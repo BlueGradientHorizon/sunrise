@@ -1625,7 +1625,7 @@ impl Game<'_> {
             }
             "open-inventory" => {
                 self.require_playing_screen()?;
-                self.key_pressed(KeyCode::KeyE, KeyCode::KeyE)?;
+                self.open_inventory();
                 ok(json!({ "ok": true, "screen": self.screen_label() }))
             }
             "click-button" => {

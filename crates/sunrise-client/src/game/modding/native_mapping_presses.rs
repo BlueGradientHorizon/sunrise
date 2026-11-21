@@ -1,199 +1,62 @@
-//! A mod holds or clicks a resolved vanilla key mapping. The client tick's key step
-//! acts on gameplay mappings with the same checks it makes for the player's own keys, so the
-//! server hears the packets of a normal client at the vanilla moments.
+//! The live vanilla mapping slots shared by device input, ClientHost and the keybind tick.
 use super::Game;
 use mod_api::{MappingError, VanillaKeyMappingRef};
-use sunrise_client::keymapping::{ATTACK, SNEAK, SPRINT, USE};
-use winit::{event::MouseButton, keyboard::KeyCode};
-
-/// The toggle slot of sneak's and sprint's default keys (`ToggleKeys`).
-fn toggle_slot(key: KeyCode) -> Option<usize> {
-    match key {
-        KeyCode::ShiftLeft => Some(SNEAK),
-        KeyCode::ControlLeft => Some(SPRINT),
-        _ => None,
-    }
-}
+use sunrise_client::keybinds::VanillaMappingSlot;
+use sunrise_client::keymapping::toggle_index;
+use winit::keyboard::KeyCode;
 
 impl Game<'_> {
-    /// `KeyMapping.setDown` for the mapping on `button`: attack and use, toggled by their option;
-    /// nothing reads the pick mapping's held state in gameplay.
-    pub(super) fn mouse_mapping_set_down(&mut self, button: MouseButton, down: bool) {
-        let (slot, option) = match button {
-            MouseButton::Left => (ATTACK, self.settings.toggle_attack),
-            MouseButton::Right => (USE, self.settings.toggle_use),
-            _ => return,
-        };
-        self.toggles.0[slot].set_down(down, option);
-        self.vanilla_mappings
-            .sync_toggle_slot(slot, &self.toggles.0[slot]);
-        self.left = self.toggles.is_down(ATTACK);
-        self.right = self.toggles.is_down(USE);
-    }
-    /// `KeyMapping.click` for the mapping on `button`: on a server, the queued click
-    /// `handleKeybinds` takes on the next tick (`interaction_input`); with no server, the attack
-    /// and use clicks `tick_local_hand` takes, and pick block at once.
-    pub(super) fn mouse_mapping_click(&mut self, button: MouseButton) {
-        use sunrise_client::interaction_input::Button;
-        if let Some(slot) = match button {
-            MouseButton::Left => Some(ATTACK),
-            MouseButton::Right => Some(USE),
-            _ => None,
-        } {
-            self.toggles.0[slot].click();
-            self.vanilla_mappings
-                .sync_toggle_slot(slot, &self.toggles.0[slot]);
-        }
-        if let Some(remote) = self.remote.as_mut() {
-            let input = match button {
-                MouseButton::Left => Button::Attack,
-                MouseButton::Right => Button::Use,
-                MouseButton::Middle => Button::Pick,
-                _ => return,
-            };
-            remote.input.press(input);
-            return;
-        }
-        match button {
-            // KeyMapping.click: Minecraft.tick starts the attack.
-            MouseButton::Left => self.attack_clicks = self.attack_clicks.saturating_add(1),
-            // handleKeybinds consumes use clicks without acting while an
-            // item is in use. Minecraft.tick runs them after the attack
-            // clicks, so a place and a break in one tick replace the block.
-            MouseButton::Right => {
-                if self.using.is_none() {
-                    self.use_clicks = self.use_clicks.saturating_add(1);
-                }
-            }
-            MouseButton::Middle => {
-                // handleKeybinds: the number keys select before key.pickItem.
-                self.select_queued_hotbar();
-                // Minecraft.pickBlockOrEntity -> the server's handlePickItemFromBlock:
-                // the block's clone item, with its block entity's data on Ctrl in
-                // creative, picked from the inventory (`pick_into_inventory`).
-                if let Some(entity) = self.pick_entity_hit() {
-                    // handlePickItemFromEntity: the entity's pick result.
-                    if let Some(stack) = entity.and_then(|id| self.entity_pick_result(id)) {
-                        let infinite = self.creative;
-                        self.pick_into_inventory(&stack, infinite);
-                    }
-                } else if let Some(hit) = self.pick() {
-                    let include_data = self.creative && self.has_control_down();
-                    if let Some(stack) = self.picked_stack(hit.pos, include_data) {
-                        let infinite = self.creative;
-                        self.pick_into_inventory(&stack, infinite);
-                    }
-                }
-            }
-            _ => {}
+    pub(super) fn set_mapping_held(&mut self, name: &str, down: bool) {
+        if let Some(slot) = VanillaMappingSlot::by_name(name) {
+            self.vanilla_mappings.state_mut(slot).is_down = down;
         }
     }
-    /// `KeyMapping.setDown` for any resolved vanilla mapping, from a mod: attack and use
-    /// as their mouse button sets them, sneak and sprint toggled by their option, and every
-    /// other mapping held uniformly in `vanilla_mappings` (with non-debug keys also updating
-    /// `self.keys` in lockstep). Explicit host writes always mutate the mapping slot (even in
-    /// `ClientSetup` / while a screen or overlay is shown, matching `KeyMapping.setDown`),
-    /// while physical event gating and screen-transition `release_all` remain separate.
+
+    pub(super) fn queue_mapping_click(&mut self, name: &str) {
+        if let Some(slot) = VanillaMappingSlot::by_name(name) {
+            self.vanilla_mappings.click(slot);
+        }
+    }
+
+    pub(super) fn consume_mapping_click(&mut self, name: &str) -> bool {
+        VanillaMappingSlot::by_name(name)
+            .is_some_and(|slot| self.vanilla_mappings.consume_click(slot))
+    }
+
+    pub(super) fn pending_mapping_clicks(&self, name: &str) -> u32 {
+        VanillaMappingSlot::by_name(name)
+            .map_or(0, |slot| self.vanilla_mappings.pending_clicks(slot) as u32)
+    }
+
+    /// An explicit write always reaches its mapping, including behind a screen during ClientSetup.
     pub(in crate::game) fn vanilla_key_mapping_set_down(
         &mut self,
         mapping: VanillaKeyMappingRef,
         down: bool,
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        let (_, _, category) = slot.definition();
-        match (category, slot.default_input()) {
-            ("gameplay", Some(Err(button @ (MouseButton::Left | MouseButton::Right)))) => {
-                self.mouse_mapping_set_down(button, down);
-            }
-            ("movement", Some(Ok(key))) => {
-                if let Some(t_slot) = toggle_slot(key) {
-                    let option = [self.settings.toggle_crouch, self.settings.toggle_sprint][t_slot];
-                    if self.toggles.0[t_slot].needs_toggle(option) {
-                        self.toggles.0[t_slot].set_down(down, option);
-                        self.keys.resume_device_input(&key);
-                        self.sync_toggle(t_slot);
-                        return Ok(());
-                    }
-                }
+        let enabled = toggle_index(slot).is_some_and(|i| self.toggle_options()[i]);
+        self.vanilla_mappings.set_down(slot, down, enabled);
+        if let ("movement", Some(Ok(key))) = (slot.definition().2, slot.default_input()) {
+            // The analog stick (which does not generate digital key presses) also honors
+            // explicit writes until a new edge for this direction.
+            if matches!(
+                key,
+                KeyCode::KeyW | KeyCode::KeyS | KeyCode::KeyA | KeyCode::KeyD
+            ) {
                 self.keys.override_down(key, down);
-                self.vanilla_mappings.set_down(slot, down, false);
-            }
-            (cat, Some(Ok(key))) if cat != "debug" => {
-                self.keys.override_down(key, down);
-                self.vanilla_mappings.set_down(slot, down, false);
-            }
-            _ => {
-                self.vanilla_mappings.set_down(slot, down, false);
             }
         }
         Ok(())
     }
-    /// `KeyMapping.click` for any resolved vanilla mapping, from a mod: always records the click
-    /// in `vanilla_mappings` (including in `ClientSetup` / behind a screen or overlay), and when
-    /// playing with no screen/overlay open dispatches the vanilla `handleKeybinds` action.
+
+    /// Record one click. Only the keybind phase decides whether and when it has an action.
     pub(in crate::game) fn vanilla_key_mapping_click(
         &mut self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        let can_dispatch = self.player.is_some() && !self.mod_mappings_screen_open();
-        let (name, _, category) = slot.definition();
-        match (name, category, slot.default_input()) {
-            ("key.attack" | "key.use", _, Some(Err(button))) => {
-                if can_dispatch {
-                    self.mouse_mapping_click(button);
-                } else {
-                    let t_slot = if button == MouseButton::Left {
-                        ATTACK
-                    } else {
-                        USE
-                    };
-                    self.toggles.0[t_slot].click();
-                    self.vanilla_mappings
-                        .sync_toggle_slot(t_slot, &self.toggles.0[t_slot]);
-                }
-            }
-            ("key.pickItem", _, Some(Err(button))) => {
-                self.vanilla_mappings.click(slot);
-                if can_dispatch {
-                    self.mouse_mapping_click(button);
-                }
-            }
-            ("key.spectatorHotbar", _, _) => {
-                self.vanilla_mappings.click(slot);
-                if can_dispatch && self.spectator() {
-                    self.spectator_action_key();
-                }
-            }
-            ("key.smoothCamera", _, _) => {
-                self.vanilla_mappings.click(slot);
-                if can_dispatch {
-                    self.smooth_camera_action();
-                }
-            }
-            // Window-global shortcuts (`key.fullscreen`, `key.screenshot`) and debug keys are
-            // matched on physical input in vanilla (`KeyboardHandler.keyPress`), never via
-            // `consumeClick` in `handleKeybinds`; record their click count uniformly.
-            ("key.fullscreen" | "key.screenshot", _, _) | (_, "debug", _) => {
-                self.vanilla_mappings.click(slot);
-            }
-            (_, _, Some(Ok(code))) => match toggle_slot(code) {
-                Some(t_slot) => {
-                    self.toggles.0[t_slot].click();
-                    self.vanilla_mappings
-                        .sync_toggle_slot(t_slot, &self.toggles.0[t_slot]);
-                }
-                None => {
-                    self.vanilla_mappings.click(slot);
-                    if can_dispatch && let Err(error) = self.key_pressed(code, code) {
-                        log::warn!("vanilla_key_mapping_click {name}: {error:#}");
-                    }
-                }
-            },
-            _ => {
-                self.vanilla_mappings.click(slot);
-            }
-        }
+        self.vanilla_mappings.click(slot);
         Ok(())
     }
 }

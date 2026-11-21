@@ -1,8 +1,10 @@
 //! The playable game loop: streaming world, player simulation at 20 ticks/s,
 //! block interaction, inventory and HUD.
+#[cfg(test)]
+use key_codes::drop_held_behind_dialog;
 use key_codes::{
-    container_key_clones, drop_held_behind_dialog, follow_named_keymap, gameplay_has_keyboard,
-    glfw_button, glfw_modifiers, keyboard_button,
+    container_key_clones, follow_named_keymap, gameplay_has_keyboard, glfw_button, glfw_modifiers,
+    keyboard_button,
 };
 use loading_screen::{
     App, Loading, leave_fullscreen_after, missing_resources, run_event_loop, unclean_start_recovery,
@@ -3317,8 +3319,6 @@ struct Game<'a> {
     drag_button: Option<MouseButton>,
     /// Control + left click as a right click (macOS).
     right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
-    left: bool,
-    right: bool,
     cursor: (f32, f32),
     /// The window pointer sample; frames and input project it at the current GUI size.
     window_cursor: Option<sunrise_client::window::PointerSample>,
@@ -3367,8 +3367,6 @@ struct Game<'a> {
     agent_pointer: bool,
     /// `Options.smoothCamera` (cinematic camera), not persisted.
     smooth_camera: bool,
-    /// Sneak, sprint, attack and use as ToggleKeyMappings.
-    toggles: sunrise_client::keymapping::ToggleKeys,
     /// Uniform `KeyState` (`isDown`, `clickCount`) for every vanilla mapping slot.
     vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
     /// A world screen with the pointer captured was open last frame.
@@ -3673,9 +3671,6 @@ struct Game<'a> {
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
     clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
-    attack_clicks: u32,
-    /// Use clicks since the last tick; `handleKeybinds` consumes them after the attack clicks.
-    use_clicks: u32,
     hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
     look: look::LookCache,
@@ -4133,9 +4128,6 @@ struct Game<'a> {
     tick_hit: std::cell::Cell<Option<Option<Hit>>>,
     /// Non-window simulation's tick-local mob ray, including the held attack range.
     tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
-    /// Each number key's clicks since it was last consumed (`keyHotbarSlots[i].clickCount`):
-    /// `Minecraft.handleKeybinds` selects them before the tick's inputs.
-    hotbar_presses: [u32; 9],
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
@@ -6459,7 +6451,7 @@ impl Game<'_> {
         }
         self.set_screen(Screen::Inventory);
         self.capture(false);
-        self.right = false;
+        self.set_mapping_held("key.use", false);
     }
     /// `DecoratedPotBlock.playerWillDestroy`: a pot mined with an item in
     /// `breaks_decorated_pots`, unless an enchantment prevents shattering, is
@@ -6762,7 +6754,10 @@ impl Game<'_> {
         if self.destroy_delay > 0 {
             self.destroy_delay -= 1;
         }
-        if !self.left || self.screen != Screen::Playing || self.dialog_open() {
+        if !self.mapped_key_down("key.attack")
+            || self.screen != Screen::Playing
+            || self.dialog_open()
+        {
             self.mining = None;
             return Ok(());
         }
@@ -9181,7 +9176,7 @@ impl Game<'_> {
             .offhand
             .as_ref()
             .is_some_and(|s| self.blocks_attacks(s).is_some())
-            && !self.keys.held(Mapping::Sneak);
+            && !self.held_mapping(Mapping::Sneak);
         self.block_transform_in(
             stack,
             hit,
@@ -9540,7 +9535,7 @@ impl Game<'_> {
             // `Player.isShiftKeyDown`: a block that refuses the fluid (any
             // non-air block under Shift) passes it to the block beside, where
             // Shift no longer counts.
-            let sneaking = self.keys.held(Mapping::Sneak);
+            let sneaking = self.held_mapping(Mapping::Sneak);
             let emptied = self.empty_player_bucket(pos, beside, content, sound, sneaking);
             self.process_level_events()?;
             let Some(emptied) = emptied else {
@@ -10078,8 +10073,8 @@ impl Game<'_> {
         // LivingEntity.startSleeping: stopRiding once the bed is valid.
         self.stop_riding();
         self.stop_mining();
-        self.left = false;
-        self.right = false;
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         self.using = None;
         self.sleeping = Some(head);
         self.sleep_timer = 0;
@@ -10163,7 +10158,9 @@ impl Game<'_> {
                     .player
                     .as_ref()
                     .is_none_or(|p| p.health.dead_or_dying());
-            if wake_immediately || (self.screen != Screen::Chat && self.keys.held(Mapping::Sneak)) {
+            if wake_immediately
+                || (self.screen != Screen::Chat && self.held_mapping(Mapping::Sneak))
+            {
                 self.wake_up(wake_immediately, true);
                 return;
             }
@@ -11841,7 +11838,7 @@ impl Game<'_> {
                 && self.screen_key_released(key)
             {
                 // Screen cancellation must not leave a held keyboard mapping down.
-                self.keys.remove(&key);
+                self.remove_device_key(&key);
                 self.mapped_key_event(key, false, false)?;
                 return Ok(());
             }
@@ -11941,37 +11938,8 @@ impl Game<'_> {
                         let held = self.captured;
                         if self.control.is_none() {
                             self.keys.clear();
-                            // Latched sneak/sprint live in `toggles`, not in the
-                            // physical keys: put them back so a short alt-tab
-                            // (no pause screen) does not drop them. Only a mapping
-                            // whose toggle option is on is latched; a held one has
-                            // no state to keep, and an unfocused window never gets
-                            // its key release, so leaving it down would keep the
-                            // player sneaking or sprinting until the key is tapped.
-                            for (slot, needs_toggle) in [
-                                self.settings.toggle_crouch,
-                                self.settings.toggle_sprint,
-                                self.settings.toggle_attack,
-                                self.settings.toggle_use,
-                            ]
-                            .into_iter()
-                            .enumerate()
-                            {
-                                self.toggles.0[slot].set_down(false, needs_toggle);
-                            }
-                            self.vanilla_mappings.set_all_up();
-                            self.sync_toggle(0);
-                            self.sync_toggle(1);
-                            self.vanilla_mappings.sync_toggle_slot(
-                                sunrise_client::keymapping::ATTACK,
-                                &self.toggles.0[sunrise_client::keymapping::ATTACK],
-                            );
-                            self.vanilla_mappings.sync_toggle_slot(
-                                sunrise_client::keymapping::USE,
-                                &self.toggles.0[sunrise_client::keymapping::USE],
-                            );
-                            self.left = false;
-                            self.right = false;
+                            let options = self.toggle_options();
+                            self.vanilla_mappings.set_keys_up_on_focus_loss(options);
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;
@@ -12359,12 +12327,6 @@ impl Game<'_> {
                                 return Ok(());
                             }
                             self.extras_mouse(button, pressed);
-                            if pressed
-                                && self.settings.keys.get("key.smoothCamera")
-                                    == sunrise_client::keybinds::mouse_name(button)
-                            {
-                                self.smooth_camera_action();
-                            }
                             self.mapped_mouse_event(button, &input, pressed)?;
                         }
                         Screen::Inventory | Screen::Creative
@@ -12530,10 +12492,10 @@ impl Game<'_> {
                 {
                     if let PhysicalKey::Code(key) = event.physical_key {
                         if event.state == ElementState::Pressed {
-                            self.keys.insert(key);
+                            self.insert_device_key(key);
                             self.chat_key(&event);
                         } else {
-                            self.keys.remove(&key);
+                            self.remove_device_key(&key);
                         }
                     }
                 }
@@ -12772,13 +12734,6 @@ impl Game<'_> {
                         && (self.merchant_key(key) || self.recipe_book_key(key))
                     {
                         return Ok(());
-                    }
-                    if event.state == ElementState::Pressed
-                        && !event.repeat
-                        && sunrise_client::keybinds::key_name(key)
-                            .is_some_and(|n| self.settings.keys.get("key.smoothCamera") == n)
-                    {
-                        self.smooth_camera_action();
                     }
                     // ScreenEvent.KeyPressed.Post / KeyReleased.Post: no screen arm
                     // took the key, so the open screen's `keyPressed` returned
@@ -13223,8 +13178,6 @@ impl<'a> Game<'a> {
             physical_buttons: HashSet::new(),
             drag_button: None,
             right_click_emulation: Default::default(),
-            left: false,
-            right: false,
             cursor: (0.0, 0.0),
             window_cursor: None,
             window_pointer_space: std::cell::OnceCell::new(),
@@ -13247,7 +13200,6 @@ impl<'a> Game<'a> {
             mouse: MouseLook::default(),
             agent_pointer: false,
             smooth_camera: false,
-            toggles: Default::default(),
             vanilla_mappings: Default::default(),
             was_playing: false,
             pause: false,
@@ -13413,8 +13365,6 @@ impl<'a> Game<'a> {
             visible_hands: [(0, None), (0, None)],
             hands_replaced: [false; 2],
             clicks: Default::default(),
-            attack_clicks: 0,
-            use_clicks: 0,
             hand_strength: Default::default(),
             settings,
             look: Default::default(),
@@ -13667,7 +13617,6 @@ impl<'a> Game<'a> {
             forced_hit: None,
             tick_hit: Default::default(),
             tick_mob: None,
-            hotbar_presses: [0; 9],
             entity_reach: 3.0,
             block_reach: 4.5,
             client_pick: Default::default(),

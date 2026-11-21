@@ -1,11 +1,6 @@
 //! The mouse-key portion of Minecraft.handleKeybinds. Events only count clicks;
 //! the client tick consumes them before player movement and CLIENT_TICK_END.
 
-#[derive(Default)]
-pub struct InteractionInput {
-    clicks: [u32; 3],
-}
-
 #[derive(Clone, Copy)]
 pub enum Button {
     Attack,
@@ -13,7 +8,26 @@ pub enum Button {
     Pick,
 }
 
+impl Button {
+    pub const ALL: [Self; 3] = [Self::Attack, Self::Use, Self::Pick];
+
+    pub fn mapping(self) -> &'static str {
+        match self {
+            Self::Attack => "key.attack",
+            Self::Use => "key.use",
+            Self::Pick => "key.pickItem",
+        }
+    }
+}
+
 pub trait InteractionWorld {
+    fn pending_clicks(&self, button: Button) -> u32;
+    fn consume_click(&mut self, button: Button) -> bool;
+    fn is_down(&self, button: Button) -> bool;
+    fn can_continue_attack(&self) -> bool {
+        true
+    }
+    fn spectator_hotbar(&mut self) {}
     /// Minecraft.pick before handleKeybinds: the tick's `hitResult`, which
     /// every click of the tick reads, even after one of them changed the
     /// block it names (a creative break, then a use that replaces it).
@@ -51,55 +65,40 @@ pub fn use_on_target(world: &mut impl TargetUseWorld, entity: bool) {
     }
 }
 
-impl InteractionInput {
-    pub fn press(&mut self, button: Button) {
-        self.clicks[button as usize] = self.clicks[button as usize].saturating_add(1);
+/// The click phase consumes live mappings, so a screen opened in `handle_keys`
+/// can release them even partway through a tick. Clicks enqueued by interaction
+/// callbacks are left for the next tick, not processed recursively.
+pub fn tick(world: &mut impl InteractionWorld) {
+    let pending = Button::ALL.map(|button| world.pending_clicks(button));
+    world.pick_hit_result();
+    world.handle_keys();
+    let using = world.using_item();
+    if using && !world.is_down(Button::Use) {
+        world.release_using();
     }
-    /// The clicks of `button` waiting for a tick.
-    pub fn queued(&self, button: Button) -> u32 {
-        self.clicks[button as usize]
-    }
-    /// Take the pending input, leaving empty counters for callbacks during the tick.
-    /// The owner must merge callback input back after the tick.
-    pub fn take_queued(&mut self) -> Self {
-        std::mem::take(self)
-    }
-    /// Preserve clicks queued by callbacks while the owner temporarily takes this input.
-    pub fn merge_queued(&mut self, queued: Self) {
-        for (clicks, added) in self.clicks.iter_mut().zip(queued.clicks) {
-            *clicks = clicks.saturating_add(added);
-        }
-    }
-    pub fn tick(&mut self, world: &mut impl InteractionWorld, attack_down: bool, use_down: bool) {
-        world.pick_hit_result();
-        world.handle_keys();
-        let mut instant = false;
-        if world.using_item() {
-            if !use_down {
-                world.release_using();
+    let mut instant = false;
+    for (button, count) in Button::ALL.into_iter().zip(pending) {
+        for _ in 0..count {
+            if !world.consume_click(button) {
+                break;
             }
-            // Vanilla drains all three click counters while using an item,
-            // including the tick that releases it.
-            self.clicks = [0; 3];
-        } else {
-            // Drain every pending click in vanilla `while (key.consumeClick())` order.
-            let [attack, use_item, pick] = std::mem::take(&mut self.clicks);
-            for _ in 0..attack {
-                instant |= world.start_attack();
-            }
-            for _ in 0..use_item {
-                world.start_use(false);
-            }
-            for _ in 0..pick {
-                world.pick();
+            if !using {
+                match button {
+                    Button::Attack => instant |= world.start_attack(),
+                    Button::Use => world.start_use(false),
+                    Button::Pick => world.pick(),
+                }
             }
         }
-        if use_down && world.use_delay() == 0 && !world.using_item() {
-            world.start_use(true);
-        }
-        world.continue_attack(!instant && attack_down);
-        world.release_hit_result();
     }
+    if !using {
+        world.spectator_hotbar();
+    }
+    if world.is_down(Button::Use) && world.use_delay() == 0 && !world.using_item() {
+        world.start_use(true);
+    }
+    world.continue_attack(!instant && world.is_down(Button::Attack) && world.can_continue_attack());
+    world.release_hit_result();
 }
 
 /// The sentence of `Minecraft.handleKeybinds` that follows a key which opened
@@ -118,6 +117,27 @@ pub fn release_on_screen_open(world: &mut impl InteractionWorld) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keymapping::KeyState;
+
+    macro_rules! input_methods {
+        () => {
+            fn pending_clicks(&self, button: Button) -> u32 {
+                self.input[button as usize].pending_clicks() as u32
+            }
+            fn consume_click(&mut self, button: Button) -> bool {
+                self.input[button as usize].consume_click()
+            }
+            fn is_down(&self, button: Button) -> bool {
+                self.input[button as usize].is_down
+            }
+        };
+    }
+
+    fn step(world: &mut World, attack: bool, use_item: bool) {
+        world.input[Button::Attack as usize].is_down = attack;
+        world.input[Button::Use as usize].is_down = use_item;
+        tick(world);
+    }
 
     #[derive(Default)]
     struct World {
@@ -127,13 +147,15 @@ mod tests {
         begin_using: bool,
         events: Vec<&'static str>,
         use_attempts: Vec<bool>,
-        callback_input: Option<InteractionInput>,
+        callback: bool,
+        input: [KeyState; 3],
     }
     impl InteractionWorld for World {
+        input_methods!();
         fn pick_hit_result(&mut self) {
-            if let Some(input) = &mut self.callback_input {
+            if self.callback {
                 for _ in 0..1025 {
-                    input.press(Button::Attack);
+                    self.input[Button::Attack as usize].click();
                 }
             }
         }
@@ -168,21 +190,17 @@ mod tests {
         }
     }
 
-    /// Exercise the same take, callback, merge cycle as Remote without game resources:
+    /// The click phase consumes the inputs pending when it began.
     /// callbacks that enqueue more than 1024 clicks are neither capped nor split across ticks.
     #[test]
     fn callback_burst_survives_to_next_tick_without_cap() {
         let mut world = World {
-            callback_input: Some(InteractionInput::default()),
+            callback: true,
             ..Default::default()
         };
         for tick in 0..2 {
-            let mut input = world.callback_input.as_mut().unwrap().take_queued();
             world.events.clear();
-            input.tick(&mut world, false, false);
-            let queued = world.callback_input.take().unwrap();
-            input.merge_queued(queued);
-            world.callback_input = Some(input);
+            tick(&mut world);
             assert_eq!(
                 world
                     .events
@@ -196,17 +214,16 @@ mod tests {
 
     #[test]
     fn quick_clicks_wait_for_a_tick_and_follow_keybind_order() {
-        let mut input = InteractionInput::default();
         let mut world = World::default();
-        input.press(Button::Use);
-        input.press(Button::Pick);
-        input.press(Button::Attack);
+        world.input[Button::Use as usize].click();
+        world.input[Button::Pick as usize].click();
+        world.input[Button::Attack as usize].click();
         assert!(world.events.is_empty());
         // Both edges can arrive between ticks; the press still acts once.
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         assert_eq!(world.events, ["attack", "use", "pick", "continue"]);
         world.events.clear();
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         assert_eq!(
             world.events,
             ["continue"],
@@ -216,51 +233,48 @@ mod tests {
 
     #[test]
     fn releasing_actual_item_use_discards_clicks_for_that_tick() {
-        let mut input = InteractionInput::default();
         let mut world = World {
             using: true,
             ..Default::default()
         };
         for button in [Button::Attack, Button::Use, Button::Pick] {
-            input.press(button);
+            world.input[button as usize].click();
         }
-        input.tick(&mut world, true, false);
+        step(&mut world, true, false);
         assert_eq!(world.events, ["release", "continue"]);
     }
 
     #[test]
     fn holding_use_respects_the_delay_and_active_digging() {
-        let mut input = InteractionInput::default();
         let mut world = World {
             destroying: true,
             ..Default::default()
         };
-        input.press(Button::Use);
-        input.tick(&mut world, true, true);
+        world.input[Button::Use as usize].click();
+        step(&mut world, true, true);
         assert_eq!(world.events, ["continue"]);
         world.destroying = false;
         world.events.clear();
-        input.tick(&mut world, false, true);
+        step(&mut world, false, true);
         assert_eq!(world.events, ["use", "continue"]);
         world.events.clear();
-        input.tick(&mut world, false, true);
+        step(&mut world, false, true);
         assert_eq!(world.events, ["continue"]);
         assert_eq!(world.use_attempts, [false, true, true]);
     }
 
     #[test]
     fn a_quick_use_click_releases_on_the_following_tick() {
-        let mut input = InteractionInput::default();
         let mut world = World {
             begin_using: true,
             ..Default::default()
         };
-        input.press(Button::Use);
-        input.tick(&mut world, false, false);
+        world.input[Button::Use as usize].click();
+        step(&mut world, false, false);
         assert_eq!(world.events, ["use", "continue"]);
         assert!(world.using);
         world.events.clear();
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         assert_eq!(world.events, ["release", "continue"]);
     }
 
@@ -271,6 +285,7 @@ mod tests {
         block: bool,
         hit: Option<Option<()>>,
         placed: bool,
+        input: [KeyState; 3],
     }
     impl Column {
         /// Minecraft.hitResult: the tick's pick, or a fresh one outside it.
@@ -279,6 +294,7 @@ mod tests {
         }
     }
     impl InteractionWorld for Column {
+        input_methods!();
         fn pick_hit_result(&mut self) {
             self.hit = Some(self.target());
         }
@@ -314,45 +330,27 @@ mod tests {
     #[test]
     fn attack_and_use_in_one_tick_share_the_hit_result() {
         // #3006: both buttons at once replace the block the crosshair is on.
-        let mut input = InteractionInput::default();
         let mut world = Column {
             block: true,
             ..Default::default()
         };
-        input.press(Button::Attack);
-        input.press(Button::Use);
-        input.tick(&mut world, false, false);
+        world.input[Button::Attack as usize].click();
+        world.input[Button::Use as usize].click();
+        tick(&mut world);
         assert!(world.placed, "the use acts on the block the attack broke");
         assert!(world.block);
         assert!(world.hit.is_none(), "the next pick follows the crosshair");
     }
 
-    /// Click counts do not cap at 1024 and saturate cleanly at `u32::MAX`.
-    #[test]
-    fn click_counts_do_not_cap_at_1024_and_saturate_at_max() {
-        let mut input = InteractionInput::default();
-        for _ in 0..1100 {
-            for button in [Button::Attack, Button::Use, Button::Pick] {
-                input.press(button);
-            }
-        }
-        assert_eq!(input.clicks, [1100; 3]);
-        input.clicks[Button::Attack as usize] = u32::MAX - 1;
-        input.press(Button::Attack);
-        input.press(Button::Attack);
-        assert_eq!(input.queued(Button::Attack), u32::MAX);
-    }
-
     /// Every queued click drains in one tick in vanilla `while (key.consumeClick())` order.
     #[test]
     fn a_long_burst_drains_all_clicks_in_one_tick() {
-        let mut input = InteractionInput::default();
         let mut world = World::default();
         use Button::{Attack, Pick, Use};
         for button in [Attack, Attack, Attack, Use, Use, Pick] {
-            input.press(button);
+            world.input[button as usize].click();
         }
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         assert_eq!(
             world.events,
             [
@@ -360,17 +358,17 @@ mod tests {
             ]
         );
         for _ in 0..150 {
-            input.press(Button::Attack);
+            world.input[Button::Attack as usize].click();
         }
         for _ in 0..70 {
-            input.press(Button::Use);
+            world.input[Button::Use as usize].click();
         }
         world.events.clear();
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         let count = |event| world.events.iter().filter(|e| **e == event).count();
         assert_eq!([count("attack"), count("use")], [150, 70]);
         world.events.clear();
-        input.tick(&mut world, false, false);
+        step(&mut world, false, false);
         assert_eq!(world.events, ["continue"]);
     }
 }

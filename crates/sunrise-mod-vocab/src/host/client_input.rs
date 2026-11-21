@@ -139,8 +139,9 @@ pub trait ClientInputClientBackendMut {
     ///
     /// In a world, the client tick's key step acts on gameplay mappings with all its checks: a
     /// held use repeats every four ticks, and a held attack goes on breaking the block. With a
-    /// screen or overlay open a press does nothing, and opening one releases the mappings
-    /// (`KeyMapping.releaseAll`). `key_mapping_pre` is not asked: it is about physical keys.
+    /// screen or overlay open this still updates the mapping, but the game does not poll
+    /// keybinds. Opening a screen releases the mappings (`KeyMapping.releaseAll`).
+    /// `key_mapping_pre` is not asked: it is about physical keys.
     ///
     /// An unavailable backend or phase returns [`MappingError::Unavailable`], and a handle from
     /// another client returns [`MappingError::Stale`].
@@ -156,8 +157,9 @@ pub trait ClientInputClientBackendMut {
     /// checks of `startAttack` and `startUseItem` (the miss cooldown, busy hands, the item and
     /// the target under the crosshair), sending the same packets as the player's own click.
     /// Inventory and screen-opening mappings select a hotbar slot, drop an item, open the
-    /// inventory, swap hands or trigger their keybind action as usual. With a screen or overlay
-    /// open the click is dropped. `interaction_key_mapping_triggered` fires at the action as for
+    /// inventory, swap hands or open chat only when the keybind tick consumes the click.
+    /// With a screen or overlay open the click still counts, but keybinds are not polled.
+    /// `interaction_key_mapping_triggered` fires at the action as for
     /// the player's click; `key_mapping_pre` is not asked.
     ///
     /// Attack, use, pick, inventory, swap-hands and drop clicks drain completely on the client

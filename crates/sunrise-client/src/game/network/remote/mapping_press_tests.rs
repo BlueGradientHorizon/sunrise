@@ -123,7 +123,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
         game.inventory[9] = Some(ItemStack::new("minecraft:arrow", 64));
         let sequence = game.remote.as_ref().unwrap().sequence;
         assert_eq!(use_mapping.set_down(game, true), Ok(()));
-        assert!(game.right);
+        assert!(game.mapped_key_down("key.use"));
         assert_eq!(
             sent(packets),
             Vec::<String>::new(),
@@ -144,7 +144,7 @@ fn holding_use_draws_a_bow_once_and_letting_go_releases_it() {
             "no repeat while drawing"
         );
         assert_eq!(use_mapping.set_down(game, false), Ok(()));
-        assert!(!game.right);
+        assert!(!game.mapped_key_down("key.use"));
         game.remote_handle_input();
         assert_eq!(sent(packets), ["minecraft:player_action"]);
         assert!(game.using.is_none());
@@ -225,33 +225,24 @@ fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     });
 }
 
-/// Behind a screen explicit host writes still update the logical mapping slot (`KeyMapping.setDown`
-/// / `KeyMapping.click`), while gameplay action consumption does not run behind the screen and a
-/// click queued before the screen opened is cleared on the transition (`Gui.setScreen`).
+/// A screen does not poll mapping clicks, and its opening releases pending plain key clicks.
 #[test]
 #[ignore = "daily"]
 fn a_screen_drops_the_clicks_and_holds_nothing() {
     with_pressing_game(|game, packets, triggered| {
-        let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
+        let attack = game.vanilla_key_mapping("key.attack").unwrap();
+        let pick = game.vanilla_key_mapping("key.pickItem").unwrap();
         stone_under_the_crosshair(game);
+        pick.click(game).unwrap();
         game.set_screen(Screen::Inventory);
-        assert_eq!(attack_mapping.click(game), Ok(()));
-        assert_eq!(attack_mapping.set_down(game, true), Ok(()));
-        assert_eq!(attack_mapping.is_down(game), Ok(true));
+        assert_eq!(game.pending_mapping_clicks("key.pickItem"), 0);
+        pick.click(game).unwrap();
+        attack.set_down(game, true).unwrap();
         game.remote_handle_input();
-        assert_eq!(sent(packets), Vec::<String>::new());
-        assert_eq!(attack_mapping.set_down(game, false), Ok(()));
-        game.set_screen(Screen::Playing);
-        game.remote_handle_input();
-        assert_eq!(sent(packets), Vec::<String>::new());
-
-        assert_eq!(attack_mapping.click(game), Ok(()));
-        game.set_screen(Screen::Inventory);
-        game.remote_handle_input();
-        game.set_screen(Screen::Playing);
-        game.remote_handle_input();
-        assert_eq!(sent(packets), Vec::<String>::new());
-        assert_eq!(*triggered.lock().unwrap(), Vec::<Hand>::new());
+        assert!(sent(packets).is_empty());
+        assert!(triggered.lock().unwrap().is_empty());
+        assert_eq!(game.pending_mapping_clicks("key.pickItem"), 1);
+        assert_eq!(attack.is_down(game), Ok(true));
     });
 }
 
@@ -295,8 +286,10 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(mapping.is_down(game), Ok(false));
             assert_eq!(mapping.click(game), Ok(()));
             if key == "key.chat" {
+                assert_eq!(game.screen, Screen::Playing);
+                game.remote_handle_input();
                 assert_eq!(game.screen, Screen::Chat);
-                game.screen = Screen::Playing;
+                game.set_screen(Screen::Playing);
             }
         }
 
@@ -308,7 +301,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
             assert_eq!(hotbar.click(game), Err(MappingError::Unavailable));
         }
         assert_eq!(forward.is_down(game), Ok(false));
-        assert_eq!(game.hotbar_presses[2], 0);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.3"), 0);
         // `ClientSetup` allows setup-phase and no-world logical state writes even while the
         // title screen / overlay is active (`mod_mappings_screen_open()` is true).
         game.player = None;
@@ -370,7 +363,7 @@ fn opening_a_screen_releases_mod_holds() {
         forward_mapping.set_down(game, true).unwrap();
         attack_mapping.set_down(game, true).unwrap();
         use_mapping.set_down(game, true).unwrap();
-        assert!(game.left && game.right);
+        assert!(game.mapped_key_down("key.attack") && game.mapped_key_down("key.use"));
         game.physical_buttons
             .extend([MouseButton::Left, MouseButton::Right]);
         game.set_screen(Screen::Inventory);
@@ -380,7 +373,7 @@ fn opening_a_screen_releases_mod_holds() {
             game.mouse_mapping(button, false, Source::Pad).unwrap();
         }
         game.set_screen(Screen::Playing);
-        assert!(!game.left && !game.right);
+        assert!(!game.mapped_key_down("key.attack") && !game.mapped_key_down("key.use"));
         assert!(!forward_mapping.is_down(game).unwrap());
 
         // ModifiersChanged can contain an unrelated change, or be the OS's only
@@ -496,5 +489,23 @@ fn the_held_slot_goes_out_before_a_closing_screens_packet() {
             at("minecraft:set_carried_item") < at("minecraft:sign_update"),
             "{sent:?}"
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_mod_releases_the_toolbar_mapping_while_its_physical_key_stays_down() {
+    with_pressing_game(|game, _, _| {
+        use winit::keyboard::KeyCode;
+        let mapping = game
+            .vanilla_key_mapping("key.saveToolbarActivator")
+            .unwrap();
+        game.physical_keys.insert(KeyCode::KeyC);
+        game.mapped_key_event(KeyCode::KeyC, true, false).unwrap();
+        assert!(game.mapped_key_down("key.saveToolbarActivator"));
+        mapping.set_down(game, false).unwrap();
+        assert_eq!(mapping.physical_down(game), Ok(true));
+        assert_eq!(mapping.is_down(game), Ok(false));
+        assert!(!game.mapped_key_down("key.saveToolbarActivator"));
     });
 }

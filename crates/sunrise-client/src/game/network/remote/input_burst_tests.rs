@@ -119,8 +119,8 @@ fn a_large_burst_is_not_capped_at_1024() {
             assert_eq!(attack.click(game), Ok(()));
             assert_eq!(hotbar.click(game), Ok(()));
         }
-        assert_eq!(game.remote.as_ref().unwrap().pending_keys, [0, 0, 1100]);
-        assert_eq!(game.hotbar_presses[1], 1100);
+        assert_eq!(game.pending_mapping_clicks("key.drop"), 1100);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1100);
         let mut acted = [0; 3];
         for _ in 0..17 {
             game.remote_handle_input();
@@ -130,6 +130,66 @@ fn a_large_burst_is_not_capped_at_1024() {
         }
         acted[2] = triggered.lock().unwrap().len();
         assert_eq!(acted, [1100, 1100, 1100]);
-        assert_eq!(game.hotbar_presses[1], 1100 - 17);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1100 - 17);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn the_inventory_poll_releases_live_queues_only_when_it_opens_a_screen() {
+    with_pressing_game(|game, packets, _| {
+        game.selected = 0;
+        for key in [
+            KeyCode::KeyQ,
+            KeyCode::Digit3,
+            KeyCode::Digit2,
+            KeyCode::Digit2,
+            KeyCode::KeyE,
+            KeyCode::KeyF,
+        ] {
+            game.key_pressed(key, key).unwrap();
+        }
+        assert_eq!((game.screen, game.selected), (Screen::Playing, 0));
+        assert!(sent(packets).is_empty());
+        game.remote_handle_input();
+        assert_eq!((game.screen, game.selected), (Screen::Inventory, 2));
+        assert!(
+            sent(packets).is_empty(),
+            "ordinary E released swap and drop before they could act"
+        );
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 0);
+
+        game.set_screen(Screen::Playing);
+        game.remote_send_carried();
+        sent(packets);
+        let mut boat = crate::game::boats::Boat::new(47, "oak".into(), Vec3::ZERO, 0.0);
+        boat.chest = true;
+        game.boats.push(boat);
+        game.riding = Some(47);
+        for key in [
+            KeyCode::KeyQ,
+            KeyCode::Digit3,
+            KeyCode::Digit2,
+            KeyCode::Digit2,
+            KeyCode::KeyE,
+            KeyCode::KeyF,
+        ] {
+            game.key_pressed(key, key).unwrap();
+        }
+        assert!(sent(packets).is_empty());
+        game.remote_handle_input();
+        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(game.selected, 2);
+        assert_eq!(game.pending_mapping_clicks("key.hotbar.2"), 1);
+        assert_eq!(
+            sent(packets),
+            [
+                "minecraft:player_command",
+                "minecraft:player_action",
+                "minecraft:player_action"
+            ]
+        );
+        game.remote_handle_input();
+        assert_eq!(game.selected, 1);
     });
 }

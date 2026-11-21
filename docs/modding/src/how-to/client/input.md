@@ -36,8 +36,10 @@ An unknown name fails at resolution (`MappingError::Unknown { key }`), not at ei
 
 ## What the game does with them
 
-The call only sets the held flag or adds the click. The client tick's key step (`handleKeybinds`) does
-the rest:
+The call only sets the held flag or adds the click, including during setup or behind a
+screen. The client tick’s key step (`handleKeybinds`) does the rest. For example,
+`key.chat` opens chat on that tick, not inside the mod callback. Opening a screen
+releases the live mappings before any later keybind in the same tick can act:
 
 - Attack, use and pick clicks are taken only with no screen or overlay open. The miss cooldown, busy
   hands and the item checks of `startAttack` and `startUseItem` apply, an entity attack respects the
@@ -49,7 +51,9 @@ the rest:
 - A held use repeats every four ticks and does nothing more while the item is in use; letting go
   releases it (a bow shoots).
 - A click on an inventory key acts as its key's press: a hotbar slot is selected on a subsequent tick, and
-  drop, the inventory and the hand swap act as they do for the key.
+  drop, the inventory and the hand swap act as they do for the key. Ordinary inventory
+  opens locally, releasing pending swap and drop clicks; the inventory key on a mount with
+  its own menu sends the server a request instead, so swap and drop still follow it.
 - Sneak, sprint, attack and use toggle when their toggle option is on: `true` flips them and `false`
   does nothing, as `ToggleKeyMapping.setDown`.
 

@@ -25,6 +25,12 @@ pub struct KeyState {
     pad_toggled: bool,
 }
 
+impl Default for KeyState {
+    fn default() -> Self {
+        Self::plain()
+    }
+}
+
 impl KeyState {
     pub fn plain() -> Self {
         Self {
@@ -187,18 +193,18 @@ fn toggle_vanilla_slot(toggle_slot: usize) -> Option<VanillaMappingSlot> {
 /// Uniform runtime `KeyState` (`isDown`, `clickCount`) for every vanilla mapping in [`MAPPINGS`].
 #[derive(Clone, Debug)]
 pub struct VanillaMappings {
-    states: Box<[KeyState; MAPPINGS.len()]>,
+    states: [KeyState; MAPPINGS.len()],
 }
 
 impl Default for VanillaMappings {
     fn default() -> Self {
         Self {
-            states: Box::new(std::array::from_fn(|index| match MAPPINGS[index].0 {
+            states: std::array::from_fn(|index| match MAPPINGS[index].0 {
                 "key.sneak" | "key.sprint" => KeyState::toggle(true, true),
                 "key.attack" => KeyState::toggle(true, false),
                 "key.use" => KeyState::toggle(false, false),
                 _ => KeyState::plain(),
-            })),
+            }),
         }
     }
 }
@@ -232,33 +238,28 @@ impl VanillaMappings {
         self.states[slot.index()].pending_clicks()
     }
 
-    /// `KeyboardHandler.keyPress`: update every vanilla mapping bound to `input`.
+    /// Update the mappings not already delivered through the shared device edges.
     pub fn key_event(
         &mut self,
         binds: &KeyBinds,
         input: &str,
         action: KeyAction,
         screen_open: bool,
-        needs_toggle: [bool; 4],
     ) {
-        for slot in binds.slots_for(input) {
-            let option = toggle_index(slot).is_some_and(|i| needs_toggle[i]);
-            self.states[slot.index()].key(action, screen_open, option);
+        for slot in binds
+            .slots_for(input)
+            .filter(|slot| slot.definition().2 != "movement" && toggle_index(*slot).is_none())
+        {
+            self.state_mut(slot).key(action, screen_open, false);
         }
     }
 
-    /// `MouseHandler.onButton`: update every vanilla mapping bound to `input`.
-    pub fn mouse_event(
-        &mut self,
-        binds: &KeyBinds,
-        input: &str,
-        pressed: bool,
-        screen_open: bool,
-        needs_toggle: [bool; 4],
-    ) {
-        for slot in binds.slots_for(input) {
-            let option = toggle_index(slot).is_some_and(|i| needs_toggle[i]);
-            self.states[slot.index()].button(pressed, screen_open, option);
+    pub fn mouse_event(&mut self, binds: &KeyBinds, input: &str, pressed: bool, screen_open: bool) {
+        for slot in binds
+            .slots_for(input)
+            .filter(|slot| slot.definition().2 != "movement" && toggle_index(*slot).is_none())
+        {
+            self.state_mut(slot).button(pressed, screen_open, false);
         }
     }
 
@@ -302,10 +303,36 @@ impl VanillaMappings {
         }
     }
 
-    /// Keep a toggle mapping slot in lockstep with [`ToggleKeys`].
-    pub fn sync_toggle_slot(&mut self, toggle_slot: usize, state: &KeyState) {
-        if let Some(slot) = toggle_vanilla_slot(toggle_slot) {
-            self.states[slot.index()] = state.clone();
+    /// Unfocused input no longer holds a key. A toggle the player set stays latched.
+    pub fn set_keys_up_on_focus_loss(&mut self, options: [bool; 4]) {
+        for (index, state) in self.states.iter_mut().enumerate() {
+            let option = VanillaMappingSlot::from_index(index)
+                .and_then(toggle_index)
+                .is_some_and(|i| options[i]);
+            state.set_down(false, option);
+        }
+    }
+
+    pub fn toggle_state(&self, toggle: usize) -> &KeyState {
+        self.state(toggle_vanilla_slot(toggle).expect("vanilla toggle index"))
+    }
+
+    /// The four fixed ToggleKeyMapping slots.
+    pub fn toggle_state_mut(&mut self, toggle: usize) -> &mut KeyState {
+        self.state_mut(toggle_vanilla_slot(toggle).expect("vanilla toggle index"))
+    }
+
+    /// Clear device-derived movement when the logical keyboard is reset.
+    pub fn set_keyboard_movement_up(&mut self) {
+        for name in [
+            "key.forward",
+            "key.back",
+            "key.left",
+            "key.right",
+            "key.jump",
+        ] {
+            let slot = VanillaMappingSlot::by_name(name).expect("vanilla movement mapping");
+            self.state_mut(slot).is_down = false;
         }
     }
 }

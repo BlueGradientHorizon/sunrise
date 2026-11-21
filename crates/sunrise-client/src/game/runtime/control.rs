@@ -869,24 +869,9 @@ impl Game<'_> {
                 self.clear_device_keys();
                 self.physical_keys.clear();
                 self.mod_keys.set_all_up();
-                self.vanilla_mappings.set_all_up();
                 self.modifiers = winit::keyboard::ModifiersState::empty();
-                // Sneak and sprint pressed through `key` live in the toggle
-                // mappings: release them as their key's release would (a
-                // toggled one stays on), or the next sync puts them back. A
-                // controller still holding one keeps it.
-                let options = [self.settings.toggle_crouch, self.settings.toggle_sprint];
-                for (slot, name) in [(0, "key.sneak"), (1, "key.sprint")] {
-                    if !self.input_holds(name) {
-                        self.toggles.key(
-                            slot,
-                            sunrise_client::keymapping::KeyAction::Release,
-                            false,
-                            options[slot],
-                        );
-                    }
-                    self.sync_toggle(slot);
-                }
+                let options = self.toggle_options();
+                self.vanilla_mappings.set_keys_up_on_focus_loss(options);
                 self.set_mapping_held("key.attack", false);
                 self.set_mapping_held("key.use", false);
                 ok()

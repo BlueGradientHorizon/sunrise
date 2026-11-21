@@ -113,7 +113,6 @@ impl Game<'_> {
     /// toggles keeps its toggle state (`shouldSetOnIngameFocus`).
     pub(super) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
-        let toggles = [self.settings.toggle_crouch, self.settings.toggle_sprint];
         let options = self.toggle_options();
         for key in held {
             if let Some(name) = sunrise_client::keybinds::key_name(key) {
@@ -131,13 +130,7 @@ impl Game<'_> {
             }
             for mapped in self.settings.keys.translate_all(key) {
                 match mapped {
-                    Ok(slot_key @ (KeyCode::ShiftLeft | KeyCode::ControlLeft)) => {
-                        let slot = usize::from(slot_key == KeyCode::ControlLeft);
-                        if !toggles[slot] {
-                            self.toggles.0[slot].set_down(true, false);
-                            self.sync_toggle(slot);
-                        }
-                    }
+                    Ok(KeyCode::ShiftLeft | KeyCode::ControlLeft) => {}
                     Ok(other) => {
                         self.insert_device_key(other);
                     }

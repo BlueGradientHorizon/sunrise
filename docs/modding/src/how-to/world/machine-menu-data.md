@@ -278,7 +278,7 @@ its previous context. Keep owned decoded values if the screen needs them later; 
 borrowed only during construction. `pos` is an optional hint offered to the factory and later
 returned by `screen_pos()`. Neither is live data or block backing.
 The menu's declared container slots, if any, start empty. Opening returns the window id or
-`Ok(None)` when vetoed or a registered slot exclusion is out of range. Invalid type,
+`Ok(None)` when vetoed. Invalid type,
 connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
@@ -327,8 +327,8 @@ without a factory closes again. When a selected factory returns `None` or produc
 layout, the client refuses that opening.
 
 Stock menu types already have a screen. To put your own screen over a hopper-like
-menu, declare a distinct `[[menus]]` type (for example `mymod:hopper_menu`) with
-`slots = 5` and the player inventory enabled. Set `ModContainer.menu` on your
+menu, declare a distinct type in `data/mymod/sunrise/menu/hopper_menu.json`
+with `{ "slots": 5, "player_inventory": true }`. Set `ModContainer.menu` on your
 block to `Some("mymod:hopper_menu".into())`, with the same five backing slots, and
 register your factory with `r.register_menu_screen("mymod:hopper_menu", factory)`.
 In the factory, place the five slots at `[44 + 18 * i, 20]` in GUI pixels and the

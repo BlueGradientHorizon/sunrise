@@ -319,10 +319,11 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
 
             // A keybind opening a screen releases mappings and runs release_using then on_stop_using.
             start(game);
-            game.release_screen_mappings();
+            game.queue_mapping_click("key.chat");
             assert!(game.client_item_use.is_some());
-            game.release_use_for_keybind_screen();
+            game.remote_handle_input();
             assert!(game.client_item_use.is_none());
+            game.close_chat(crate::game::chat::ChatExit::Intentional);
             key_up(game);
             assert_eq!(
                 calls.take(),
@@ -341,6 +342,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
                 winit::keyboard::KeyCode::KeyG,
             )
             .unwrap();
+            game.remote_handle_input();
             assert!(!game.dialog_open());
             assert!(game.client_item_use.is_some());
             {
@@ -369,6 +371,7 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
                 winit::keyboard::KeyCode::KeyG,
             )
             .unwrap();
+            game.remote_handle_input();
             assert!(game.dialog_open());
             assert!(game.client_item_use.is_none());
             game.close_dialogs();
