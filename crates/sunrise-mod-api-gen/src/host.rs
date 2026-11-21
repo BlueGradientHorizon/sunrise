@@ -1405,7 +1405,12 @@ mod tests {
     fn the_vocabulary_marks_its_refusal_errors() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let found = refusal_errors(&root).unwrap();
-        for name in ["LevelReadError", "LevelWriteError", "AudioRefusal"] {
+        for name in [
+            "LevelReadError",
+            "LevelWriteError",
+            "AudioRefusal",
+            "MicRefusal",
+        ] {
             assert!(found.contains(name), "{name} in {found:?}");
         }
     }

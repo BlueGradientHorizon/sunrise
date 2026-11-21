@@ -122,8 +122,46 @@ can feed a stream already opened and placed on the main thread.
 - **Async producer:** Decode or generate PCM on your producer thread and `push` it when ready, independently of the client tick. Keep one producer per stream. The `AudioStreamRef` is `Send`: `push`, `set_placement`, `set_volume`, `state` and `stop` work from any thread without taking the mixer's lock.
 - **Device callback:** Drains the queued PCM and mixes it. It does not call your source or wait for a refill. If the producer falls behind, the missing audio is silent.
 
+## Microphone capture
+
+List available input devices with `host.microphone_devices()` and open live PCM capture on a `ClientHost` from client setup onward with `host.open_microphone(&spec)`:
+
+```rust
+use mod_api::{ClientHost, MicDevice, MicRef, MicRefusal, MicSpec};
+
+fn open_mic(host: &dyn ClientHost, preferred: Option<&MicDevice>) -> Result<MicRef, MicRefusal> {
+    let mut spec = MicSpec::new(1, 48_000); // 1 or 2 channels, 8000 to 48000 Hz.
+    if let Some(device) = preferred {
+        spec = spec.with_device(&device.id);
+    }
+    host.open_microphone(&spec)
+}
+
+// On any thread: read whole interleaved signed 16-bit PCM frames without waiting on a tick.
+fn read_mono<'a>(mic: &MicRef, pcm: &'a mut [i16]) -> &'a [i16] {
+    let frames = mic.read(pcm) as usize;
+    &pcm[..frames]
+}
+```
+
+Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target that endpoint. If it vanishes, opening its ID returns `MicRefusal::NoDevice`; refresh the list rather than substituting a device with the same label. Treat the ID as opaque: pass it through unchanged. To intentionally select by display label, use `MicSpec::with_label`. A label shared by multiple available inputs returns `MicRefusal::AmbiguousDevice`. If discovery fails before it can establish a unique match, opening by label returns that discovery error instead of choosing the first input it found. Use an ID to target a specific input. An inaccessible endpoint does not hide other available inputs when listing.
+
+`MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` is nonblocking: it writes whole interleaved signed 16-bit PCM frames into the returned prefix `pcm[..frames * channels]`, leaves any remaining suffix untouched, and returns `0` without modifying `pcm` if no whole frames are ready or another reader is concurrently draining the same handle. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
+
+Call `mic.close()` or drop `MicRef` to stop capture and release the OS input stream synchronously before returning. `mic.is_open()` returns `false` after close or if the input device disconnects or errors (in which case the backend stream is released promptly without waiting for a later call). Handle `MicRefusal` directly:
+
+- `OsDenied`: the operating system denied capture, blocked lookup of the selected input (for example, ALSA denied access to a card with a previously listed ID or label), or prevented listing any available inputs. On macOS the system can ask for microphone access before probing an input on the first open. Listing and opening a label that matches only outputs do not request access.
+- `Busy`: the input device is busy or held in exclusive use.
+- `NoDevice`: no default input device exists, the requested ID or label matched no input, or client audio is disabled.
+- `AmbiguousDevice`: a device label matched more than one input device (pass `MicDevice::id` instead).
+- `BadSpec(MicSpecFault)`: `channels` is not 1 or 2, or `rate` is outside 8000 to 48000 Hz (`MIC_RATE_MIN`..=`MIC_RATE_MAX`).
+- `OnServer` / `Unavailable`: called on a server or outside client setup or later.
+- `DeviceFailed`: input discovery failed, or the input device or capture worker failed to open or start.
+
+`MicDevice`, `MicRef`, `MicSpec`, `MicTarget`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
+
 ## Known limits
 
 - There is no echo cancellation: a mod that plays voice while capturing the microphone must deal with its own echo.
 - Voice is unmoderated: the engine neither records, filters nor reports a stream's audio. Replay recordings capture voice payloads like any other payload.
-- This API plays audio. To send time-sensitive audio between players, use [droppable play payloads](networking.md#droppable-delivery-audio-live-data). Your mod brings its own codec as an ordinary dependency and owns its buffering and gap handling.
+- These APIs play and capture raw PCM. To send time-sensitive audio between players, use [droppable play payloads](networking.md#droppable-delivery-audio-live-data). Your mod brings its own codec as an ordinary dependency and owns its buffering and gap handling.

@@ -44,6 +44,7 @@ pub(crate) mod mod_key_refusal;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod mesher;
+pub(crate) mod microphone;
 pub(crate) mod model_instance;
 pub(crate) mod model_layers;
 pub(crate) mod model_loader;

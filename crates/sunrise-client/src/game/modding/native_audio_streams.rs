@@ -1,7 +1,9 @@
-//! The game opens client mods' pull and push audio streams on the mixer's separate pool and
-//! places the entity-following ones each frame.
+//! The game opens client mods' pull and push audio streams on the mixer's separate pool, places
+//! the entity-following ones each frame, and exposes client microphone capture.
 use super::Game;
-use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, StreamSpec};
+use mod_api::{
+    AudioRefusal, AudioStream, AudioStreamRef, MicDevice, MicRef, MicRefusal, MicSpec, StreamSpec,
+};
 
 /// The mod whose call this is: the host marks it when it enters the native callback.
 /// A call from no mod opens nothing.
@@ -44,6 +46,24 @@ impl Game<'_> {
     pub(in crate::game) fn follow_audio_stream_entities(&self) {
         self.audio
             .follow_stream_entities(|entity| self.entity_position(entity));
+    }
+
+    /// Lists the client's audio input devices for
+    /// [`mod_api::prelude::AudioClientHost::microphone_devices`].
+    pub(in crate::game) fn microphone_devices(&self) -> Result<Vec<MicDevice>, MicRefusal> {
+        if !self.native_window() {
+            return Err(MicRefusal::OnServer);
+        }
+        self.audio.microphone_devices()
+    }
+
+    /// Opens a client microphone capture handle for
+    /// [`mod_api::prelude::AudioClientHost::open_microphone`].
+    pub(in crate::game) fn open_microphone(&self, spec: &MicSpec) -> Result<MicRef, MicRefusal> {
+        if !self.native_window() {
+            return Err(MicRefusal::OnServer);
+        }
+        self.audio.open_microphone(spec).map(MicRef::new)
     }
 }
 

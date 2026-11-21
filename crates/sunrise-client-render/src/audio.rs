@@ -5,6 +5,7 @@
 //! (streams on a worker thread) and OpenAL Soft's mixing: mono sources panned
 //! and attenuated, multi-channel buffers (stereo music and records) played
 //! direct as OpenAL does.
+mod mic;
 mod streams;
 use crate::Result;
 use crate::sound_engine::{
@@ -461,6 +462,7 @@ pub struct Audio {
     device_name: String,
     pub engine: SoundEngine,
     backend: MixerBackend,
+    mics: Arc<mic::MicPool>,
     /// Record `Heard` sounds (the subtitle overlay is listening).
     pub record_heard: bool,
     pub listener: [f64; 3],
@@ -1233,6 +1235,13 @@ fn output_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<S
         .any(|c| c.as_os_str() == "vscreen")
         .then(|| "audio off on a virtual screen (vscreen); SUNRISE_AUDIO=1 opens it".into())
 }
+/// Whether microphone capture is suppressed by an explicit opt-out (`SUNRISE_NO_AUDIO`).
+/// Unlike [`output_disabled`], capture does not inherit the `WAYLAND_DISPLAY` `vscreen`
+/// speaker-suppression heuristic.
+#[cfg(any(feature = "audio", test))]
+fn capture_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    var("SUNRISE_NO_AUDIO").is_some()
+}
 /// An output stream on `device` in its default configuration, whatever its
 /// sample format: the mixer works in f32 and converts.
 #[cfg(feature = "audio")]
@@ -1530,6 +1539,10 @@ impl Audio {
         } else {
             Vec::new()
         };
+        #[cfg(feature = "audio")]
+        let mics_enabled = output && !capture_disabled(|k| std::env::var_os(k));
+        #[cfg(not(feature = "audio"))]
+        let mics_enabled = false;
         Self {
             _stream: stream,
             device_name: target_device.to_owned(),
@@ -1546,6 +1559,7 @@ impl Audio {
                 world: 0,
                 shares: Arc::default(),
             },
+            mics: Arc::new(mic::MicPool::new(mics_enabled)),
             record_heard: false,
             listener: [0.0; 3],
             listener_yaw: 0.0,
@@ -1727,6 +1741,7 @@ impl Audio {
                 world: self.backend.world,
                 shares: self.backend.shares.clone(),
             },
+            mics: self.mics.clone(),
             record_heard: false,
             listener: [0.0; 3],
             listener_yaw: 0.0,
@@ -1904,6 +1919,19 @@ impl Audio {
     /// Pull callback panics to show on the client, naming the owning mod.
     pub fn take_pull_panics(&self) -> Vec<&'static str> {
         self.backend.streams.take_pull_panics()
+    }
+    /// Lists available microphone input devices on this client.
+    pub fn microphone_devices(
+        &self,
+    ) -> std::result::Result<Vec<mod_api::MicDevice>, mod_api::MicRefusal> {
+        self.mics.devices()
+    }
+    /// Opens a live microphone capture stream on this client.
+    pub fn open_microphone(
+        &self,
+        spec: &mod_api::MicSpec,
+    ) -> std::result::Result<Arc<dyn mod_api::MicSource>, mod_api::MicRefusal> {
+        self.mics.open(spec)
     }
     /// Places each entity-placed stream at its entity's position as `resolve` finds it now, or
     /// leaves it unplaced where it finds none. Called once a frame; it does nothing, and locks
@@ -2837,6 +2865,26 @@ mod tests {
         assert!(
             output_disabled(env(&[("SUNRISE_NO_AUDIO", "1"), ("SUNRISE_AUDIO", "1")])).is_some()
         );
+    }
+    #[test]
+    fn capture_ignores_virtual_screen_heuristic_but_honors_no_audio_override() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .map(|(_, v)| std::ffi::OsString::from(*v))
+            }
+        };
+        const VSCREEN: &str = "/run/user/1000/vscreen/main/wayland-1";
+        assert!(!capture_disabled(env(&[])));
+        assert!(!capture_disabled(env(&[("WAYLAND_DISPLAY", "wayland-1")])));
+        assert!(!capture_disabled(env(&[("WAYLAND_DISPLAY", VSCREEN)])));
+        assert!(capture_disabled(env(&[("SUNRISE_NO_AUDIO", "1")])));
+        assert!(capture_disabled(env(&[
+            ("SUNRISE_NO_AUDIO", "1"),
+            ("SUNRISE_AUDIO", "1"),
+        ])));
     }
     #[test]
     #[cfg(feature = "audio")]
