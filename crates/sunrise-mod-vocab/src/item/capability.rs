@@ -25,8 +25,11 @@ pub struct CapabilityKey<T: ?Sized + 'static> {
 /// level and position, and the side it is
 /// reached through (none: from no particular side): NeoForge's block capability context.
 ///
-/// This is a local query address: copy its dimension, position and side into your own `Wire`
-/// type at a serialization or network boundary.
+/// This is a local query address. At a serialization or network boundary, put the canonical
+/// dimension name, `pos`, and `side` in your own `Wire` type. Get the name with
+/// `level.dimension().id(host)`; if it returns `None`, do not encode the address. Do not send
+/// the `DimensionKey`: custom dimension slots can differ between processes. On receipt, use
+/// `host.level(&name)` and reconstruct the address only if it returns a level.
 ///
 /// ```compile_fail,E0277
 /// fn requires_wire<T: mod_api::wire::Wire>() {}
