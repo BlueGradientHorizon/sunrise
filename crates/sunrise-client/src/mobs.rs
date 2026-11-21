@@ -6,7 +6,6 @@
 pub mod ai;
 mod ai_pause;
 pub mod allay;
-pub mod ambient;
 pub mod anim;
 pub mod animal_brain;
 pub mod aquatic;
@@ -128,7 +127,6 @@ mod invisible_follow_tests;
 mod template_mob_tests;
 mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
-pub mod dragon_contacts;
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
 #[derive(Clone, Copy, Debug, PartialEq)]
