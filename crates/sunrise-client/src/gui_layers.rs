@@ -2,7 +2,7 @@
 //! draws them, with the layers native mods register (`register_gui_layers`) placed among them
 //! once at start, as `RegisterGuiLayersEvent` inserts them.
 
-use mod_api::{GuiLayer, GuiLayerPlacement, Identifier};
+use mod_api::{GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, Identifier};
 use std::sync::OnceLock;
 
 /// Vanilla HUD anchors used by the engine's HUD pass (no camera overlays or debug screen).
@@ -67,216 +67,239 @@ impl VanillaGuiLayer {
     }
 }
 
-/// The whole layer order: vanilla's layers and the mods'.
-#[derive(Debug, PartialEq, Eq)]
-pub struct GuiLayers {
-    /// Every layer, bottom first: a vanilla id from [`VanillaGuiLayer::ALL`] or a mod's id.
-    layers: Vec<String>,
-    /// Whether any mod layer is in `layers`.
-    mods: bool,
+// no wire: native slots own process-local draw callbacks.
+/// An installed HUD layer: a vanilla anchor or a mod's resolved draw callback.
+pub enum GuiLayerSlot {
+    Vanilla(VanillaGuiLayer),
+    Native {
+        id: String,
+        registrant: Option<&'static str>,
+        draw: Box<GuiLayerDraw>,
+    },
 }
 
-/// No mod layers: the HUD draws vanilla's alone, without looking up an order.
-static NONE: GuiLayers = GuiLayers {
-    layers: Vec::new(),
-    mods: false,
-};
+impl GuiLayerSlot {
+    fn id(&self) -> &str {
+        match self {
+            Self::Vanilla(layer) => layer.id(),
+            Self::Native { id, .. } => id,
+        }
+    }
+}
 
-/// The order with the native mods' layers, kept once at start (`register`).
-static ORDER: OnceLock<GuiLayers> = OnceLock::new();
+/// The client startup registrar, seeded with vanilla's layers.
+pub struct GuiLayers {
+    slots: Vec<GuiLayerSlot>,
+}
 
-/// Places the layers native mods registered among vanilla's, once at start.
-pub fn register(layers: Vec<GuiLayer>) {
-    if ORDER.set(GuiLayers::place(layers)).is_err() {
+impl Default for GuiLayers {
+    fn default() -> Self {
+        Self {
+            slots: VanillaGuiLayer::ALL
+                .into_iter()
+                .map(GuiLayerSlot::Vanilla)
+                .collect(),
+        }
+    }
+}
+
+impl GuiLayerRegistrar for GuiLayers {
+    fn register(
+        &mut self,
+        id: String,
+        placement: GuiLayerPlacement,
+        draw: Box<GuiLayerDraw>,
+    ) -> bool {
+        if Identifier::parse_namespaced(&id).is_none_or(|id| id.namespace() == "minecraft") {
+            log::warn!(
+                "HUD layer {id:?} must be <namespace>:<path> outside the minecraft namespace"
+            );
+            return false;
+        }
+        let position = |key: &str| self.slots.iter().position(|slot| slot.id() == key);
+        if position(&id).is_some() {
+            log::warn!("HUD layer {id} is registered twice; the first is kept");
+            return false;
+        }
+        let at = match &placement {
+            GuiLayerPlacement::BelowAll => Some(0),
+            GuiLayerPlacement::AboveAll => Some(self.slots.len()),
+            GuiLayerPlacement::Below(other) => position(other),
+            GuiLayerPlacement::Above(other) => position(other).map(|i| i + 1),
+        };
+        let Some(at) = at else {
+            log::warn!("HUD layer {id} has no registered anchor for {placement:?}; it is left out");
+            return false;
+        };
+        self.slots.insert(
+            at,
+            GuiLayerSlot::Native {
+                id,
+                registrant: mod_api::content::crash::current_native_mod(),
+                draw,
+            },
+        );
+        true
+    }
+}
+
+/// The frozen draw order, with a direct index for each vanilla anchor.
+pub struct GuiLayerOrder {
+    slots: Vec<GuiLayerSlot>,
+    positions: [usize; VanillaGuiLayer::ALL.len()],
+}
+
+impl GuiLayers {
+    fn into_order(self) -> GuiLayerOrder {
+        let mut positions = [0; VanillaGuiLayer::ALL.len()];
+        for (at, slot) in self.slots.iter().enumerate() {
+            if let GuiLayerSlot::Vanilla(layer) = slot {
+                positions[*layer as usize] = at;
+            }
+        }
+        GuiLayerOrder {
+            slots: self.slots,
+            positions,
+        }
+    }
+}
+
+impl GuiLayerOrder {
+    /// The position of a vanilla anchor, including anchors skipped this frame.
+    pub fn position(&self, layer: VanillaGuiLayer) -> usize {
+        self.positions[layer as usize]
+    }
+
+    /// Every layer, bottom first.
+    pub fn slots(&self) -> &[GuiLayerSlot] {
+        &self.slots
+    }
+}
+
+static ORDER: OnceLock<GuiLayerOrder> = OnceLock::new();
+
+/// Publish the client startup registration once, before any HUD draws.
+pub fn freeze(layers: GuiLayers) {
+    if ORDER.set(layers.into_order()).is_err() {
         log::warn!("HUD layers were registered already; these are left out");
     }
 }
 
-/// The layer order now: vanilla's alone until the mods' layers are registered.
-pub fn order() -> &'static GuiLayers {
-    ORDER.get().unwrap_or(&NONE)
-}
-
-impl GuiLayers {
-    /// `RegisterGuiLayersEvent.register` for each layer in push order: below or above every
-    /// layer, or right below or above one already in the list. An id that is not
-    /// `<namespace>:<path>` in a mod's namespace, is in the list already, or is placed against
-    /// a layer that is not is logged and left out.
-    pub fn place(registered: Vec<GuiLayer>) -> Self {
-        let mut layers: Vec<String> = VanillaGuiLayer::ALL
-            .iter()
-            .map(|layer| layer.id().to_owned())
-            .collect();
-        let mut mods = false;
-        for GuiLayer { id, placement } in registered {
-            let own =
-                Identifier::parse_namespaced(&id).is_some_and(|id| id.namespace() != "minecraft");
-            let index = |other: &str| layers.iter().position(|layer| layer == other);
-            let at = match &placement {
-                _ if !own => {
-                    log::warn!("HUD layer {id:?} is not <namespace>:<path> in a mod's namespace");
-                    continue;
-                }
-                _ if index(&id).is_some() => {
-                    log::warn!("HUD layer {id} is registered twice; the first is kept");
-                    continue;
-                }
-                GuiLayerPlacement::BelowAll => Some(0),
-                GuiLayerPlacement::AboveAll => Some(layers.len()),
-                GuiLayerPlacement::Below(other) => index(other),
-                GuiLayerPlacement::Above(other) => index(other).map(|i| i + 1),
-            };
-            match at {
-                Some(at) => {
-                    layers.insert(at, id);
-                    mods = true;
-                }
-                None => log::warn!(
-                    "HUD layer {id} is placed against {placement:?}, which is not registered; \
-                     it is left out"
-                ),
-            }
-        }
-        Self { layers, mods }
-    }
-
-    /// Whether a mod registered any layer.
-    pub fn has_mod_layers(&self) -> bool {
-        self.mods
-    }
-
-    /// How many layers there are, vanilla's and the mods'.
-    pub fn len(&self) -> usize {
-        self.layers.len()
-    }
-
-    /// Whether there are none: the order before the mods' layers are registered.
-    pub fn is_empty(&self) -> bool {
-        self.layers.is_empty()
-    }
-
-    /// Where vanilla layer `id` is in the order.
-    pub fn position(&self, id: &str) -> Option<usize> {
-        self.layers.iter().position(|layer| layer == id)
-    }
-
-    /// The mod layer at `index`; `None` for a vanilla layer or past the end.
-    pub fn mod_layer(&self, index: usize) -> Option<&str> {
-        self.layers
-            .get(index)
-            .map(String::as_str)
-            .filter(|id| !VanillaGuiLayer::ALL.iter().any(|layer| layer.id() == *id))
-    }
-
-    /// Every layer's id, bottom first.
-    pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.layers.iter().map(String::as_str)
-    }
+/// The installed order, if there are any native layers to draw.
+pub fn order() -> Option<&'static GuiLayerOrder> {
+    ORDER
+        .get()
+        .filter(|order| order.slots.len() > VanillaGuiLayer::ALL.len())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn layer(id: &str, placement: GuiLayerPlacement) -> GuiLayer {
-        GuiLayer {
-            id: id.into(),
-            placement,
-        }
-    }
-
-    /// The order around each mod layer: the layer under it and the one over it.
-    fn around<'a>(order: &'a GuiLayers, id: &str) -> (Option<&'a str>, Option<&'a str>) {
-        let ids: Vec<&str> = order.ids().collect();
-        let at = ids.iter().position(|layer| *layer == id).unwrap();
-        (
-            at.checked_sub(1).map(|below| ids[below]),
-            ids.get(at + 1).copied(),
-        )
-    }
-
     #[test]
     fn layers_go_where_register_gui_layers_event_inserts_them() {
         use GuiLayerPlacement::*;
-        let order = GuiLayers::place(vec![
-            layer("compass:bar", Above("minecraft:hotbar".into())),
+        let mut layers = GuiLayers::default();
+        for (id, placement) in [
+            ("compass:bar", Above("minecraft:hotbar".into())),
             // Below the compass, so between the hotbar and it.
-            layer("compass:shadow", Below("compass:bar".into())),
-            layer("compass:first", BelowAll),
-            layer("compass:last", AboveAll),
+            ("compass:shadow", Below("compass:bar".into())),
+            ("compass:first", BelowAll),
+            ("compass:last", AboveAll),
             // A second `BelowAll` goes under the first.
-            layer("compass:very_first", BelowAll),
-            layer("compass:over_chat", Above("minecraft:chat".into())),
-        ]);
-        assert!(order.has_mod_layers());
-        assert_eq!(order.len(), VanillaGuiLayer::ALL.len() + 6);
+            ("compass:very_first", BelowAll),
+            ("compass:over_chat", Above("minecraft:chat".into())),
+        ] {
+            assert!(layers.register(id.into(), placement, Box::new(|_, _| {})));
+        }
+        let order = layers.into_order();
+        let ids: Vec<&str> = order.slots().iter().map(GuiLayerSlot::id).collect();
         assert_eq!(
-            around(&order, "compass:shadow"),
-            (Some("minecraft:hotbar"), Some("compass:bar"))
+            ids,
+            [
+                "compass:very_first",
+                "compass:first",
+                "minecraft:crosshair",
+                "minecraft:hotbar",
+                "compass:shadow",
+                "compass:bar",
+                "minecraft:effects",
+                "minecraft:boss_overlay",
+                "minecraft:vehicle_health",
+                "minecraft:contextual_info_bar",
+                "minecraft:player_health",
+                "minecraft:selected_item_name",
+                "minecraft:sleep_overlay",
+                "minecraft:overlay_message",
+                "minecraft:title",
+                "minecraft:scoreboard_sidebar",
+                "minecraft:subtitle_overlay",
+                "minecraft:chat",
+                "compass:over_chat",
+                "minecraft:tab_list",
+                "compass:last",
+            ]
         );
-        assert_eq!(
-            around(&order, "compass:bar"),
-            (Some("compass:shadow"), Some("minecraft:effects"))
-        );
-        assert_eq!(
-            around(&order, "compass:very_first"),
-            (None, Some("compass:first"))
-        );
-        assert_eq!(
-            around(&order, "compass:first"),
-            (Some("compass:very_first"), Some("minecraft:crosshair"))
-        );
-        assert_eq!(
-            around(&order, "compass:over_chat"),
-            (Some("minecraft:chat"), Some("minecraft:tab_list"))
-        );
-        assert_eq!(
-            around(&order, "compass:last"),
-            (Some("minecraft:tab_list"), None)
-        );
-        // Vanilla's own order is unchanged around them.
-        let expected = VanillaGuiLayer::ALL.map(VanillaGuiLayer::id);
-        let vanilla: Vec<&str> = order.ids().filter(|id| expected.contains(id)).collect();
-        assert_eq!(vanilla, expected);
-        assert_eq!(order.mod_layer(0), Some("compass:very_first"));
-        assert_eq!(order.mod_layer(2), None, "the crosshair is vanilla's");
-        assert_eq!(order.position("minecraft:crosshair"), Some(2));
+        for layer in VanillaGuiLayer::ALL {
+            assert_eq!(ids[order.position(layer)], layer.id());
+        }
     }
 
     #[test]
     fn a_layer_that_cannot_be_placed_is_left_out() {
         use GuiLayerPlacement::*;
-        let order = GuiLayers::place(vec![
-            layer("minecraft:hotbar", AboveAll),
-            layer("minecraft:mine", AboveAll),
-            layer("no_namespace", AboveAll),
-            layer("compass:bar", AboveAll),
-            layer("compass:bar", BelowAll),
-            // Against a layer pushed later: not in the list yet.
-            layer("compass:early", Below("compass:late".into())),
-            layer("compass:late", AboveAll),
-            layer("compass:lost", Above("minecraft:no_such_layer".into())),
-        ]);
-        let vanilla = VanillaGuiLayer::ALL.map(VanillaGuiLayer::id);
-        let mods: Vec<&str> = order.ids().filter(|id| !vanilla.contains(id)).collect();
-        assert_eq!(mods, ["compass:bar", "compass:late"]);
+        let mut layers = GuiLayers::default();
+        for (id, placement, accepted) in [
+            ("minecraft:hotbar", AboveAll, false),
+            ("minecraft:mine", AboveAll, false),
+            ("no_namespace", AboveAll, false),
+            ("compass:bad space", AboveAll, false),
+            ("compass:bar", AboveAll, true),
+            ("compass:bar", BelowAll, false),
+            // An unknown anchor does not reserve the ID: it can be registered again later.
+            ("compass:early", Below("compass:late".into()), false),
+            ("compass:late", AboveAll, true),
+            ("compass:early", Below("compass:late".into()), true),
+            (
+                "compass:lost",
+                Above("minecraft:no_such_layer".into()),
+                false,
+            ),
+        ] {
+            assert_eq!(
+                layers.register(id.into(), placement, Box::new(|_, _| {})),
+                accepted,
+                "registration of {id}"
+            );
+        }
+        let order = layers.into_order();
+        let mods: Vec<&str> = order
+            .slots()
+            .iter()
+            .filter_map(|slot| match slot {
+                GuiLayerSlot::Native { id, .. } => Some(id.as_str()),
+                GuiLayerSlot::Vanilla(_) => None,
+            })
+            .collect();
+        assert_eq!(mods, ["compass:bar", "compass:early", "compass:late"]);
         assert_eq!(
-            order.position("compass:bar"),
-            Some(VanillaGuiLayer::ALL.len()),
-            "the first registration of an id is kept"
+            order.slots()[VanillaGuiLayer::ALL.len()].id(),
+            "compass:bar"
         );
     }
 
     #[test]
     fn no_registration_leaves_vanilla_alone() {
-        let order = GuiLayers::place(Vec::new());
-        assert!(!order.has_mod_layers());
+        let order = GuiLayers::default().into_order();
         assert!(
             order
-                .ids()
-                .eq(VanillaGuiLayer::ALL.map(VanillaGuiLayer::id))
+                .slots()
+                .iter()
+                .all(|slot| matches!(slot, GuiLayerSlot::Vanilla(_)))
         );
-        assert!(order.mod_layer(0).is_none());
-        assert!(!NONE.has_mod_layers() && NONE.is_empty());
+        for (at, layer) in VanillaGuiLayer::ALL.into_iter().enumerate() {
+            assert_eq!(order.position(layer), at);
+            assert_eq!(order.slots()[at].id(), layer.id());
+        }
     }
 }

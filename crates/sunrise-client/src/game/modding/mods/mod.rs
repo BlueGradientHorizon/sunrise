@@ -492,15 +492,14 @@ pub(super) fn register_map_decoration_types() {
     Game::native_map_decoration_types(&RegistrationContext::new(), &mut types);
     sunrise_client::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
 }
-/// The native mods' HUD layers (`native_register_gui_layers`), placed among vanilla's once at
-/// start.
+/// Install the native mods' HUD draw callbacks among the vanilla anchors once at client startup.
 pub(super) fn register_gui_layers(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
-    let mut layers = Vec::new();
+    let mut layers = sunrise_client::gui_layers::GuiLayers::default();
     Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
-    sunrise_client::gui_layers::register(layers);
+    sunrise_client::gui_layers::freeze(layers);
 }
 /// The native mods' debug renderers now (`native_register_debug_renderers`), asked at each
 /// refresh of the list (`Game::refresh_debug_renderers`).

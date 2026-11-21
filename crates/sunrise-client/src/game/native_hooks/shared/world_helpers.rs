@@ -1,5 +1,7 @@
 use super::*;
-use sunrise_client::gui_layers::VanillaGuiLayer;
+use crate::game::host::draw::GameDrawContext;
+use mod_api::content::crash::{ModCall, enter_native_mod};
+use sunrise_client::gui_layers::{self, GuiLayerSlot, VanillaGuiLayer};
 
 #[allow(dead_code)]
 impl Game<'_> {
@@ -127,37 +129,47 @@ impl Game<'_> {
     }
     /// `GuiLayerManager.renderInner` for the mods' layers (`native_register_gui_layers`) not
     /// drawn yet this frame and placed below vanilla layer `until`, or for all that are left
-    /// with `None`, at the HUD's end. Each fires `native_gui_layer_pre` (which may hide it),
-    /// `native_gui_layer_draw`, then `native_gui_layer_post`, as a vanilla layer does. So a
-    /// vanilla layer that is not drawn this frame keeps its place: the mods' layers around it
-    /// draw at the next layer that is. Nothing while the HUD is hidden, and nothing to look up
-    /// when no mod registered a layer.
+    /// with `None`, at the HUD's end. Each runs its registered callback unless hidden by
+    /// `native_gui_layer_pre`, then fires `native_gui_layer_post` as a vanilla layer does.
+    /// A vanilla layer that is not drawn this frame keeps its place: the mods' layers around
+    /// it draw at the next layer that is. Nothing while the HUD is hidden or when no mod
+    /// registered a layer.
     pub(in crate::game) fn draw_mod_gui_layers(
         &mut self,
         until: Option<VanillaGuiLayer>,
         batch: &mut HudBatch,
     ) {
-        let order = sunrise_client::gui_layers::order();
-        let Some(next) = self.hud_layer_next.filter(|_| order.has_mod_layers()) else {
+        let Some(next) = self.hud_layer_next else {
             return;
         };
-        let end = match until {
-            Some(layer) => match order.position(layer.id()) {
-                Some(at) => at,
-                None => return,
-            },
-            None => order.len(),
+        let Some(order) = gui_layers::order() else {
+            return;
         };
-        for at in next..end {
-            let Some(layer) = order.mod_layer(at) else {
+        let slots = order.slots();
+        let end = until.map_or(slots.len(), |layer| order.position(layer));
+        // An earlier anchor can still paint later (e.g. deferred subtitles). Don't redraw slots.
+        for slot in &slots[next.min(end)..end] {
+            let GuiLayerSlot::Native {
+                id,
+                registrant,
+                draw,
+            } = slot
+            else {
                 continue;
             };
             let mut canceled = false;
-            self.native_gui_layer_pre(layer, batch, &mut canceled);
+            self.native_gui_layer_pre(id, batch, &mut canceled);
             if !canceled {
-                self.native_gui_layer_draw(layer, batch);
+                let _guard = registrant.map(|id| {
+                    enter_native_mod(ModCall {
+                        id,
+                        hook: "gui_layer_draw",
+                        part: None,
+                    })
+                });
+                draw(self, &mut GameDrawContext::new(self, batch));
             }
-            self.native_gui_layer_post(layer, batch);
+            self.native_gui_layer_post(id, batch);
         }
         // Past `until` itself: it is drawn next, by `gui_layer`.
         self.hud_layer_next = Some(next.max(end + usize::from(until.is_some())));

@@ -8,6 +8,18 @@ takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the 
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
 F3 off. F1 hides the overlay unless a screen is open. The read is available only on the client host.
 
+## Registering a HUD layer
+
+In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box::new(draw))`.
+Use your own namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
+below or above a vanilla anchor or a layer already registered. The client logs and refuses
+invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it installed the layer.
+
+The client owns the callback for its lifetime. Capture any state the layer needs in the
+closure, and use the current `ClientHost` and `DrawContext` passed on each draw. The callback
+runs only for its own layer, and not when the HUD is hidden or `gui_layer_pre` cancels the layer.
+A vanilla anchor that doesn't draw that frame still determines the layer's position.
+
 ## Gradient fills
 
 `DrawContext::fill_gradient(rect, top, bottom)` is vanilla's `GuiGraphics.fillGradient`, the call screen
@@ -47,9 +59,17 @@ buffer of `Push`, `Text` and `Pop`. A half-size line under a label is `scale` 0.
 unscaled width left of where it is centred.
 
 ```rust,ignore
-fn gui_layer_draw(&self, _: &dyn ClientHost, event: &mut GuiLayerDrawEvent<'_>) {
-    let width = event.draw.text_width("12 CPS");
-    // Centred at (40, 30), half size.
-    event.draw.text_scaled("12 CPS", [40.0 - width / 4.0, 30.0], 0.5, 0xFFFF_FFFF, false);
+use mod_api::{GuiLayerPlacement, RegisterGuiLayersEvent, RegistrationContext};
+
+fn register_gui_layers(&self, _: &RegistrationContext, event: &mut RegisterGuiLayersEvent<'_>) {
+    event.layers.register(
+        "example:cps".into(),
+        GuiLayerPlacement::Above("minecraft:hotbar".into()),
+        Box::new(|_host, draw| {
+            let width = draw.text_width("12 CPS");
+            // Centred at (40, 30), half size.
+            draw.text_scaled("12 CPS", [40.0 - width / 4.0, 30.0], 0.5, 0xFFFF_FFFF, false);
+        }),
+    );
 }
 ```

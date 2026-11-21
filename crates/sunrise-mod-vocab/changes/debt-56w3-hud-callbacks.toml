@@ -1,0 +1,20 @@
+ids = [
+    "hook:register_gui_layers",
+    "hook:register_gui_layers.layers",
+    "type:RegisterGuiLayersEvent.layers",
+    "type:GuiLayer",
+    "type:GuiLayer.id",
+    "type:GuiLayer.placement",
+    "type:GuiLayerDraw",
+    "trait:GuiLayerRegistrar",
+    "method:GuiLayerRegistrar::register",
+    "hook:gui_layer_draw",
+    "hook:gui_layer_draw.layer",
+    "hook:gui_layer_draw.draw",
+    "method:Hooks::gui_layer_draw",
+    "type:GuiLayerDrawEvent",
+    "type:GuiLayerDrawEvent.layer",
+    "type:GuiLayerDrawEvent.draw",
+]
+why = "HUD layers now own their draw code. The client calls the registered callback in its placed slot under the registering mod's identity, instead of broadcasting each layer ID to draw listeners every frame."
+migrate = "In Hooks::register_gui_layers, replace event.layers.push(GuiLayer { id, placement }) with event.layers.register(id, placement, Box::new(move |host, draw| { /* draw this layer */ })). Move the matching branch from Hooks::gui_layer_draw into that closure: use host as the client host and draw in place of event.draw. Capture per-layer data instead of branching on event.layer. Remove the GuiLayer and GuiLayerDrawEvent imports and the gui_layer_draw method. Keep the same GuiLayerPlacement. register returns false if the ID or relative anchor is rejected."

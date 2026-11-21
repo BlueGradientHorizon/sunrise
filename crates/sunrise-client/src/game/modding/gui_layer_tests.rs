@@ -6,8 +6,9 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{
-    ClientHost, Flow, GuiLayer, GuiLayerDrawEvent, GuiLayerPlacement, GuiLayerPostEvent,
-    GuiLayerPreEvent, Hooks, ModEntry, RegisterGuiLayersEvent,
+    ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
+    RegisterGuiLayersEvent,
+    content::crash::{ModCall, current_native_call},
 };
 use std::sync::Mutex;
 use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
@@ -30,28 +31,35 @@ impl Hooks for Compass {
         event: &mut RegisterGuiLayersEvent<'_>,
     ) {
         use GuiLayerPlacement::*;
+        // The layer namespace is not the identity of the mod registering it.
         for (id, placement) in [
             (
-                "compass:under_crosshair",
+                "hud_test:under_crosshair",
                 Below("minecraft:crosshair".into()),
             ),
-            ("compass:bar", Above("minecraft:hotbar".into())),
-            ("compass:top", AboveAll),
+            ("hud_test:bar", Above("minecraft:hotbar".into())),
+            ("hud_test:top", AboveAll),
         ] {
-            event.layers.push(GuiLayer {
-                id: id.into(),
+            assert!(event.layers.register(
+                id.into(),
                 placement,
-            });
+                Box::new(move |_, _| {
+                    assert_eq!(
+                        current_native_call(),
+                        Some(ModCall {
+                            id: "compass",
+                            hook: "gui_layer_draw",
+                            part: None
+                        })
+                    );
+                    log(format!("draw {id}"));
+                }),
+            ));
         }
     }
     fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
         log(format!("pre {}", event.layer));
         Flow::Continue
-    }
-    fn gui_layer_draw(&self, _: &dyn ClientHost, event: &mut GuiLayerDrawEvent<'_>) {
-        if event.layer.starts_with("compass:") {
-            log(format!("draw {}", event.layer));
-        }
     }
     fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
         log(format!("post {}", event.layer));
@@ -63,7 +71,7 @@ struct Hider;
 #[mod_api::__subscriptions]
 impl Hooks for Hider {
     fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
-        if event.layer == "compass:bar" {
+        if event.layer == "hud_test:bar" {
             Flow::Cancel
         } else {
             Flow::Continue
@@ -114,23 +122,23 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         assert_eq!(
             take(),
             [
-                "pre compass:under_crosshair",
-                "draw compass:under_crosshair",
-                "post compass:under_crosshair",
+                "pre hud_test:under_crosshair",
+                "draw hud_test:under_crosshair",
+                "post hud_test:under_crosshair",
                 "pre minecraft:hotbar",
                 "vanilla minecraft:hotbar",
                 "post minecraft:hotbar",
-                "pre compass:bar",
-                "post compass:bar",
+                "pre hud_test:bar",
+                "post hud_test:bar",
                 "pre minecraft:effects",
                 "vanilla minecraft:effects",
                 "post minecraft:effects",
                 "pre minecraft:chat",
                 "vanilla minecraft:chat",
                 "post minecraft:chat",
-                "pre compass:top",
-                "draw compass:top",
-                "post compass:top",
+                "pre hud_test:top",
+                "draw hud_test:top",
+                "post hud_test:top",
             ]
         );
 
