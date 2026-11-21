@@ -540,7 +540,7 @@ mod tests {
         assert!(Arc::ptr_eq(&present, &expected));
         assert!(absent_name.is_empty());
         assert!(Arc::ptr_eq(&absent_name, &absent_namespace));
-        assert!(empty.iter().next().is_none());
+        assert!(empty.iter().try_next().unwrap().is_none());
         index.unload(1).into_result();
         assert!(index.snapshot_named("query😀", "value水").is_empty());
     }
@@ -600,7 +600,7 @@ mod existing_tests {
         let mut index = AttachmentIndex::default();
         index.register(7, [(key(), entry(7u32))]).into_result();
         let retained = query(&index);
-        let token = retained.iter().next().unwrap().unwrap().write_token();
+        let token = retained.iter().try_next().unwrap().unwrap().write_token();
         index.unload(7).into_result();
         let fresh = query(&index);
         assert_eq!(fresh.get(None, 7), Ok(None)); // no longer live

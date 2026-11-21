@@ -182,7 +182,7 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
             assert_ne!(entity.id(), 0, "{kind}");
             VALUE.set(game, Holder::Entity(entity.id()), 19).unwrap();
             let old = game.query_mut(&VALUE).unwrap();
-            let row = old.iter().next().unwrap().unwrap();
+            let row = old.iter().try_next().unwrap().unwrap();
             let work = index.lock().unwrap().work_count();
             // Exercise the clone-replay boundary used by vehicle/projectile ticks.
             match kind {
@@ -292,7 +292,12 @@ fn saved_binding_family_first_stores_publish_to_queries() {
         let id = game.tnts[0].id;
         VALUE.set(game, Holder::Entity(id), 9).unwrap();
         assert!(
-            game.query(&VALUE).unwrap().iter().next().is_none(),
+            game.query(&VALUE)
+                .unwrap()
+                .iter()
+                .try_next()
+                .unwrap()
+                .is_none(),
             "unindexed family"
         );
     });

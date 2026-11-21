@@ -86,7 +86,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
         assert_eq!(values(game), [41]);
         let captured = game.attachment_query("mirror", "value").unwrap();
         let query = captured.query(&VALUE).unwrap();
-        let row = query.iter().next().unwrap().unwrap();
+        let row = query.iter().try_next().unwrap().unwrap();
         assert_eq!(
             row.holder,
             mod_api::AttachmentHolder::Level(game.level("test:pocket").unwrap())

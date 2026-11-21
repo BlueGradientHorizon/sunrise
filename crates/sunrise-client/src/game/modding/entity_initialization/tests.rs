@@ -536,7 +536,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             use mod_api::{AttachmentQueries, AttachmentQueriesMut};
             let batch = game.query_mut(&SAVED).unwrap();
             assert_eq!(batch.iter().count(), 1);
-            let row = batch.iter().next().unwrap().unwrap();
+            let row = batch.iter().try_next().unwrap().unwrap();
             assert_eq!(
                 row.with_value(game.attachment_frame_borrow(), |value| *value)
                     .unwrap(),
@@ -757,7 +757,14 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
             assert!(!game.entity_initialization.initialized.contains(&holder));
-            assert!(game.query(&VALUE).unwrap().iter().next().is_none());
+            assert!(
+                game.query(&VALUE)
+                    .unwrap()
+                    .iter()
+                    .try_next()
+                    .unwrap()
+                    .is_none()
+            );
             assert_eq!(VALUE.get_existing(game, holder), Ok(Some(41)));
             assert_eq!(
                 calls
@@ -775,7 +782,14 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             assert!(!game.entity_initialization.initialized.contains(&holder));
             game.spawn_remote_dragon(420, [1.0, 80.0, 1.0], 0.0);
             assert!(!game.entity_attachments.contains_key(&421));
-            assert!(game.query(&VALUE).unwrap().iter().next().is_none());
+            assert!(
+                game.query(&VALUE)
+                    .unwrap()
+                    .iter()
+                    .try_next()
+                    .unwrap()
+                    .is_none()
+            );
             assert_eq!(VALUE.get_existing(game, holder), Ok(Some(41)));
             assert_eq!(
                 calls

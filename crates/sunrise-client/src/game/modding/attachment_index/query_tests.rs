@@ -37,7 +37,7 @@ fn query_snapshot_dimension_and_stale_writes() {
             .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
         VALUE.set(game, Holder::Chunk([2, 3]), 10).unwrap();
         let batch = game.query_mut(&VALUE).unwrap();
-        let row = batch.iter().next().unwrap().unwrap();
+        let row = batch.iter().try_next().unwrap().unwrap();
         VALUE.set(game, Holder::Chunk([2, 3]), 11).unwrap();
         assert_eq!(
             row.with_value(game.attachment_frame_borrow(), |value| *value)
@@ -77,7 +77,7 @@ fn query_snapshot_dimension_and_stale_writes() {
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
         let fresh = game.query_mut(&VALUE).unwrap();
-        let fresh_row = fresh.iter().next().unwrap().unwrap();
+        let fresh_row = fresh.iter().try_next().unwrap().unwrap();
         game.world
             .chunks
             .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
@@ -100,14 +100,14 @@ fn query_writes_join_transaction_journal_without_implicit_commit() {
             .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
         VALUE.set(game, Holder::Chunk([2, 3]), 10).unwrap();
         let batch = game.query_mut(&VALUE).unwrap();
-        let row = batch.iter().next().unwrap().unwrap();
+        let row = batch.iter().try_next().unwrap().unwrap();
         let aborted: Result<(), ()> = game.transaction(|host, _| {
             row.set(host, 11).unwrap();
             assert_eq!(values(host), [11]);
             let current = host.query_mut(&VALUE).unwrap();
             current
                 .iter()
-                .next()
+                .try_next()
                 .unwrap()
                 .unwrap()
                 .remove(host)
@@ -126,7 +126,7 @@ fn query_writes_join_transaction_journal_without_implicit_commit() {
             let current = host.query_mut(&VALUE).unwrap();
             current
                 .iter()
-                .next()
+                .try_next()
                 .unwrap()
                 .unwrap()
                 .set(host, 15)
@@ -153,7 +153,7 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
         let holder = Holder::Chunk([2, 3]);
         VALUE.set(game, holder, 10).unwrap();
         let before = game.query_mut(&VALUE).unwrap();
-        let before_row = before.iter().next().unwrap().unwrap();
+        let before_row = before.iter().try_next().unwrap().unwrap();
         let scoped_holder = before_row.holder();
 
         // Use the raw seal so the test can keep an iterator and both kinds of row,
@@ -163,8 +163,8 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
         let reader = game.query(&VALUE).unwrap();
         let writer = game.query_mut(&VALUE).unwrap();
         let mut retained_iter = reader.iter();
-        let read_row = retained_iter.next().unwrap().unwrap();
-        let write_row = writer.iter().next().unwrap().unwrap();
+        let read_row = retained_iter.try_next().unwrap().unwrap();
+        let write_row = writer.iter().try_next().unwrap().unwrap();
         assert_eq!(
             read_row.with_value(Default::default(), |value| {
                 game.transaction_close(&seal, false);
@@ -213,14 +213,8 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
             reader.get(game.attachment_frame_borrow(), scoped_holder),
             Err(OutsideTransaction)
         );
-        assert!(matches!(
-            retained_iter.next(),
-            Some(Err(OutsideTransaction))
-        ));
-        assert!(matches!(
-            writer.iter().next(),
-            Some(Err(OutsideTransaction))
-        ));
+        assert!(matches!(retained_iter.try_next(), Err(OutsideTransaction)));
+        assert!(matches!(writer.iter().try_next(), Err(OutsideTransaction)));
         assert_eq!(
             read_row.with_value(game.attachment_frame_borrow(), |value| *value),
             Err(OutsideTransaction)

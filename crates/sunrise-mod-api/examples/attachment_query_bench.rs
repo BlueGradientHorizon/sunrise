@@ -282,7 +282,7 @@ fn cow(host: &mut BenchHost) {
     let mut unpinned = Vec::new();
     for _ in 0..9 {
         let batch = host.query_mut(&VALUE).unwrap();
-        let row = batch.iter().next().unwrap().unwrap();
+        let row = batch.iter().try_next().unwrap().unwrap();
         let start = Instant::now();
         let (_, counts) = measured(|| row.set(host, 123).unwrap());
         pinned.push(start.elapsed().as_secs_f64() * 1e6);

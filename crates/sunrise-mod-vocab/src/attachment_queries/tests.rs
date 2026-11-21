@@ -186,5 +186,12 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
             Ok(&99)
         );
     }
-    assert!(host.query(&VALUE).unwrap().iter().next().is_none());
+    assert!(
+        host.query(&VALUE)
+            .unwrap()
+            .iter()
+            .try_next()
+            .unwrap()
+            .is_none()
+    );
 }

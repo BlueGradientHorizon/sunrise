@@ -182,7 +182,7 @@ mod tests {
             index.lock().unwrap().snapshot_named("test", "value"),
         ));
         let query = batch.query(&KEY).unwrap();
-        let row = query.iter().next().unwrap().unwrap();
+        let row = query.iter().try_next().unwrap().unwrap();
         assert_eq!(row.holder, holder);
         assert_eq!(row.with_value(Default::default(), |value| *value), Ok(7));
         let token = row.write_token();
