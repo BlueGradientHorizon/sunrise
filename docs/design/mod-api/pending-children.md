@@ -1,10 +1,20 @@
 # Design: pending children
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
-> This applies to the implemented leases and child ownership, not the proposed coordinator work.
-> See [`PendingChildrenEdits`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs) for the current native API.
+> Current native API: plain Rust scoped borrows ([`BabyEntitySpawnChild`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs), [`MobSplitChildren`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs), [`PendingChildEditor`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs)) and RAII-owned [`UnspawnedMob`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs) values.
+> The earlier lease-ID arena, per-listener expiry tracking, 64-child / slot / depth caps, and parent-staleness aborts have been removed (item 38).
+> The sections below the contract summary retain the original historical investigation notes; the current contract is authoritative.
 
-Implemented collection contract for [#825](https://github.com/arismoko/horizon/issues/825): the engine owns an action-local ordered collection of fully constructed, unspawned children. Listeners borrow editors; the engine validates and consumes the final collection exactly once at the original insertion boundary. The implementation status below distinguishes the shipped collection from the transaction-coordinator work still outstanding. The evidence and acceptance matrix record the original design investigation, not executed verification of the implementation.
+## Current native contract (scoped borrows)
+
+- **`baby_entity_spawn` (hook version 3, NeoForge `BabyEntitySpawnEvent`)**: lends `event.child` (`BabyEntitySpawnChild<'_>`), a scoped mutable editor for a single optional breeding child (`get`, `get_mut`, `construct`, `replace`, `take`, `clear`). Matching NeoForge's `Animal.spawnChildFromBreeding`, on cancel or an empty slot both parents are reset to age 6000 and in-love 0 with no baby, experience, statistic, advancement or hearts; otherwise the remaining child is finalized and inserted once.
+- **`mob_split` (hook version 3, NeoForge `MobSplitEvent`)**: lends `event.children` (`MobSplitChildren<'_>`), a scoped mutable editor for an unbounded `Vec`-backed ordered child list (`len`, `is_empty`, `get`, `get_mut`, `construct`, `push`, `insert`, `replace`, `remove`, `clear`). Matching NeoForge's `MobSplitEvent.getChildren()`, there is no 64-child cap; if not cancelled, every remaining child is inserted once in list order.
+- **Owned detached children (`UnspawnedMob`)**: `construct(PendingMobSpec)` validates the spec and returns an owned, non-`Copy`, engine-backed `UnspawnedMob` value. Passing it to `replace` / `push` / `insert` moves ownership once; dropping an unattached `UnspawnedMob` (including during listener unwind) cleans it up through normal Rust RAII `Drop` with no slot arena, lease token, per-listener expiry tracking, between-listener sweep, or slot/depth budget.
+- **No parent-staleness aborts**: no parent snapshot or staleness check runs after dispatch; listener edits and vanilla post-dispatch behaviour follow NeoForge directly.
+- **No `Wire` on scoped editors or errors**: `UnspawnedMobView`, `UnspawnedMobEditor`, `PendingChildEditor`, `UnspawnedMob`, `BabyEntitySpawnChild`, `MobSplitChildren`, `PendingMobSpec`, and `UnspawnedMobError` are in-process native types with no `Wire` impl.
+
+## Historical design notes (pre-scoped-borrow arena)
+
+The following sections record the original [#825](https://github.com/arismoko/horizon/issues/825) investigation and the superseded lease-arena design for history only.
 
 ## Evidence and limits
 
@@ -18,7 +28,7 @@ Construct the complete vanilla list first, drawing inheritance, child yaw and ot
 
 Provide ServerHost and a scoped collection receiver with construct, edit, replace, append and remove operations. Construct returns an unattached pending child owned by the action arena. Append/replace consumes its ownership token; it cannot be attached twice. Removal destroys the removed pending object and invalidates its editor. Unattached objects are destroyed when the callback action closes. Replacement preserves the list position, not the removed object's identity. Never accept a resident mob as a pending child. BabyEntitySpawn has a zero-or-one child slot; it supports replacement/removal, while multiple children belong to MobSplit's collection. A second baby is an error, not silently dropped.
 
-Native dispatch checks action identity, world epoch, slot generation and ownership. A callback-scoped UnspawnedMobRef is a borrow, not permission to retain or insert it later. End every borrow before nested dispatch; nested actions get separate arenas and cannot consume outer children. Reacquire a fresh editor after reentrancy. Reject expired, foreign-action, removed, already-consumed and cross-world tokens before mutation; slot reuse must never retarget a leaked handle. Earlier listeners' accepted edits are visible to later listeners in dependency order. Cancellation is monotonic.
+Native dispatch originally checked action identity, world epoch, slot generation and ownership via callback-scoped lease handles (superseded by Rust scoped borrows in the current native contract above). Earlier listeners' accepted edits are visible to later listeners in dependency order. Cancellation is monotonic.
 
 Freeze after dispatch, validate the entire list and parent/read-set versions, then apply once. Refuse stale preconditions without recomputing breeding or replaying RNG. Ordered insertion uses the existing residency boundary and join notifications. Never retry an entered insertion consumer: retain explicit completion progress so recovery cannot duplicate earlier children. A failure before commit inserts zero; a failure after an irreversible consumer entered is a recovery error, not authorization to replay it.
 
@@ -87,22 +97,26 @@ child but cannot undo what a listener wrote through the host. #825 stays open fo
 
 What is built:
 
-- **Hooks.** `edits` (`&dyn PendingChildrenEdits`) and the action's `dimension` replace the old count and
-  kind string; each callback gets its list with `edits.children()`.
+- **Hooks.** `event.child` (`BabyEntitySpawnChild<'_>`) for `baby_entity_spawn` (version 3) and
+  `event.children` (`MobSplitChildren<'_>`) for `mob_split` (version 3) replace the old lease
+  editor.
 - **Construction first.** A split constructs every child, with its yaw draw, before the hook; breeding
   calls the hook after the baby is built and has inherited, before finalization and insertion.
-- **Operations.** `len`, `child`, `construct`, `append`, `replace` and `remove`, plus `set_position`,
-  `set_yaw`, `set_baby` and `set_size` on a child, with `Expired`, `Ownership`, `Capacity` and `Invalid`
-  refusals. A split holds at most 64 children, breeding one baby that must stay a baby.
-- **One listener per lease.** Entering any next listener (including a different nested hook) ends the
-  previous listener's leases, so a list, child or ownership token kept from an earlier listener answers
-  `Expired`.
-- **Consumed once.** After dispatch the list is frozen and validated (kind, dimension, finite position and
-  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list,
-  a parent or world that changed under the listener (a parent's position, kind, age, love,
-  variant, colour or tameness differs from what the baby was built from), or an invalid final child spawns
-  nothing and replays nothing. Cancelling keeps the construction draws and the parent's death; breeding's
-  veto leaves both parents at age 6000 and love 0 with no experience, statistic or hearts.
+- **Operations.** `BabyEntitySpawnChild` offers `is_present`, `is_empty`, `get`, `get_mut`,
+  `construct`, `replace`, `take`, and `clear`; `MobSplitChildren` offers `len`, `is_empty`, `get`,
+  `get_mut`, `construct`, `push`, `insert`, `replace`, `remove`, and `clear`. `PendingChildEditor`
+  and `UnspawnedMob` expose all unspawned-mob reads and writes plus `set_position`, `set_yaw`,
+  `set_baby`, and `set_size`. Split lists are unbounded (no 64-child cap); breeding holds zero or
+  one baby that must stay a baby. Invalid specs, out-of-bounds indices, and non-baby breeding
+  replacements answer `UnspawnedMobError::Invalid`.
+- **Scoped borrows and RAII ownership.** Borrows cannot outlive their callback, and detached
+  `UnspawnedMob` values are cleaned up on normal Rust drop (including during unwind) with no slot
+  arena, lease expiry, or between-listener sweep.
+- **Consumed once.** After dispatch, surviving children are inserted once in order. On cancel or an
+  empty slot, breeding resets both parents to age 6000 and love 0 with no baby, experience,
+  statistic, advancement, or hearts (matching NeoForge's `Animal.spawnChildFromBreeding`), and a
+  cancelled or empty split spawns no children while keeping the construction draws and the parent's
+  death. There are no parent-staleness aborts.
 - **Unpublished while waiting.** A baby breeding hands over keeps its UUID, and its constructor
   attachments when nothing is bound to them, outside the game's tables until it joins; a split child
   has none before it joins. A removed or replaced baby, and a panicking listener, leave no state behind.
@@ -118,7 +132,6 @@ Not done, and why:
   consumed exactly once with no retry of an entered consumer, but no outer-abort fixture exists.
 - A native listener's constructor attachments that are bound to an index stay published while the baby
   waits (they cannot be withheld without the coordinator's rollback).
-- Equipment and attribute edits of a pending child: only position, yaw, baby state and size are editable.
 
 ## Historical proposed stages
 

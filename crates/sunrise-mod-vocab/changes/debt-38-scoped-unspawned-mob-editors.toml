@@ -1,0 +1,57 @@
+ids = [
+    "hook:baby_entity_spawn",
+    "hook:baby_entity_spawn.edits",
+    "hook:baby_entity_spawn.child",
+    "hook:mob_split",
+    "hook:mob_split.edits",
+    "hook:mob_split.children",
+    "hook:finalize_spawn",
+    "hook:finalize_spawn.mob",
+    "hook:finalize_spawn.edits",
+    "hook:mob_spawn_position_check",
+    "hook:mob_spawn_position_check.mob",
+    "type:BabyEntitySpawnEvent.edits",
+    "type:BabyEntitySpawnEvent.child",
+    "type:MobSplitEvent.edits",
+    "type:MobSplitEvent.children",
+    "type:FinalizeSpawnEvent.mob",
+    "type:FinalizeSpawnEvent.edits",
+    "type:MobSpawnPositionCheckEvent.mob",
+    "method:EntityPart::spawn_cluster_size",
+    "type:PendingChildrenRef",
+    "type:UnattachedMob",
+    "type:UnspawnedMobRef",
+    "trait:PendingChildrenEdits",
+    "trait:UnspawnedMobEdits",
+    "handle:UnspawnedMobRef::kind",
+    "handle:UnspawnedMobRef::position",
+    "handle:UnspawnedMobRef::equipment",
+    "handle:UnspawnedMobRef::attribute_base",
+    "handle:UnspawnedMobRef::attribute_value",
+    "handle:UnspawnedMobRef::tags",
+    "handle:UnspawnedMobRef::custom_name",
+    "handle:UnattachedMob::mob",
+    "type:UnspawnedMobError",
+    "type:UnspawnedMobError.Expired",
+    "type:UnspawnedMobError.Ownership",
+    "type:UnspawnedMobError.Capacity",
+    "type:UnspawnedMobError.Budget",
+    "type:PendingMobSpec",
+    "type:UnspawnedMobView",
+    "type:UnspawnedMobEditor",
+    "type:UnspawnedMob",
+    "type:PendingChildEditor",
+    "type:BabyEntitySpawnChild",
+    "type:MobSplitChildren",
+]
+why = """\
+Pending-child lease IDs (`PendingChildrenRef`, `UnattachedMob`, `UnspawnedMobRef`), the `PendingChildren` slot arena, per-listener `LISTENER_SERIAL` expiry tracking, parent-staleness aborts, `SPLIT_CAPACITY` (64) / `MAX_SLOTS` / `MAX_DEPTH` caps, and the `UnspawnedMobEdits` / `PendingChildrenEdits` traits (along with `Game::lent_mobs`) were replaced by plain Rust scoped borrows (`UnspawnedMobView<'_>`, `UnspawnedMobEditor<'_>`, `PendingChildEditor<'_>`, `BabyEntitySpawnChild<'_>`, `MobSplitChildren<'_>`) and RAII-owned `UnspawnedMob` values. This matches vanilla 26.3 (`Animal.spawnChildFromBreeding`, `AbstractCubeMob.remove`, `Mob.finalizeSpawn`, `Mob.checkSpawnRules`, `Mob.getMaxSpawnClusterSize`) and NeoForge (`BabyEntitySpawnEvent.getChild`/`setChild`, `MobSplitEvent.getChildren`, `FinalizeSpawnEvent`, `MobSpawnEvent.PositionCheck`): breeding lends a single optional child slot (and on cancel resets both parents to age 6000 and in-love 0), mob splitting lends an unbounded ordered child list, unattached `UnspawnedMob` values clean up on normal Rust drop without an arena or between-listener sweep, and `UnspawnedMobError` and `PendingMobSpec` are no longer `Wire` types.\
+"""
+migrate = """\
+- `finalize_spawn` (hook version 2): `event.edits` is removed and `event.mob` is now `UnspawnedMobEditor<'_>`. Call reads and writes directly on `event.mob` without passing `host` or a handle: `event.mob.kind()`, `event.mob.position()`, `event.mob.equipment(slot)`, `event.mob.attribute_base(&id)`, `event.mob.attribute_value(&id)`, `event.mob.tags()`, `event.mob.custom_name()`, `event.mob.set_equipment(slot, item)`, `event.mob.set_attribute_base(&id, base)`, `event.mob.add_attribute_modifier(&id, modifier)`, `event.mob.remove_attribute_modifier(&id, &mod_id)`, `event.mob.add_tag(tag)`, `event.mob.remove_tag(tag)`, `event.mob.set_custom_name(name)`. Use `event.mob.as_view()` when passing a read-only `UnspawnedMobView<'_>`.
+- `mob_spawn_position_check` (hook version 2): `event.mob` is now `UnspawnedMobView<'_>`. Replace `event.mob.kind(host)` / `custom_name(host)` / etc. with `event.mob.kind()` / `event.mob.custom_name()` directly without `host`.
+- `EntityPart::spawn_cluster_size`: change the `mob` parameter type from `UnspawnedMobRef` to `UnspawnedMobView<'_>`, and call read methods directly on `mob` without `host`.
+- `baby_entity_spawn` (hook version 3): replace `event.edits` (`&dyn PendingChildrenEdits`) and `PendingChildrenRef`/`UnattachedMob` lease calls with `event.child` (`BabyEntitySpawnChild<'_>`): inspect with `event.child.get()`, edit in place with `event.child.get_mut()` (`PendingChildEditor<'_>`), construct a detached `UnspawnedMob` with `event.child.construct(spec)?`, swap it in with `event.child.replace(baby)?`, or empty the slot with `event.child.take()` / `event.child.clear()`.
+- `mob_split` (hook version 3): replace `event.edits` (`&dyn PendingChildrenEdits`) and `PendingChildrenRef`/`UnattachedMob` lease calls with `event.children` (`MobSplitChildren<'_>`): use `event.children.len()`, `is_empty()`, `get(i)`, `get_mut(i)`, `construct(spec)?`, `push(child)?`, `insert(i, child)?`, `replace(i, child)?`, `remove(i)`, and `clear()`.
+- Remove match arms for `UnspawnedMobError::Expired`, `Ownership`, `Capacity`, and `Budget`, and remove any `Wire` usage of `UnspawnedMobError` or `PendingMobSpec` (and any `NoBackend` reliance on `UnspawnedMobError`). Any `UnspawnedMob` not attached to a slot or list is discarded automatically on drop.\
+"""
