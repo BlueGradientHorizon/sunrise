@@ -40,6 +40,11 @@ pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)
 }
 
+/// Mark `id`'s listener of `hook` poisoned for the session so later dispatches skip it.
+pub fn poison_hook(hook: crate::HookId, id: &'static str) {
+    crate::runtime::poison(hook, id);
+}
+
 /// Index the `(namespace, mod ID)` pairs admitted to the startup registries.
 pub fn install_content_owners<'a>(owners: impl IntoIterator<Item = (&'a str, &'a str)>) {
     crate::runtime::install_content_owners(owners);

@@ -1,6 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
 use mod_api::mod_api::BlockEntityTypeKey;
-use mod_api::mod_api::client::hud_layout::GuiDraw;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use sunrise_core::game_mode::GameMode;
@@ -143,7 +142,9 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
     use self::mod_api::StandaloneModelRegistration;
-    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
+    pub(super) use self::mod_api::{
+        BlockFace, BlockKey, BlockState, CrosshairTarget, GuiCanvas, HealthHudReplacement,
+    };
     pub use sunrise_mod_api_macros::__subscriptions;
 }
 use generated::*;

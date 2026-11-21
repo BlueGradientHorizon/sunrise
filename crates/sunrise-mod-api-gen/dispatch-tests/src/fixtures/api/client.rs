@@ -13,7 +13,6 @@ pub mod client {
     }
     pub mod hud_layout {
         pub struct HealthInputs;
-        pub struct GuiDraw;
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum HeartKind {}
     }

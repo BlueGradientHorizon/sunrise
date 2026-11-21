@@ -7,7 +7,6 @@
   "crate::entity::types::Billboard",
   "crate::world::biome_modifier::BiomeModifierError",
   "crate::world::dimension::BiomeSourceKind",
-  "crate::client::hud_layout::Blend",
   "crate::block::types::BlockEntityError",
   "crate::block::types::BlockFace",
   "crate::block::types::BlockInteraction",

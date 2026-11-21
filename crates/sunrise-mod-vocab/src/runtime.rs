@@ -160,12 +160,13 @@ pub fn isolated_failures() -> u64 {
 
 /// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling):
 /// it is skipped by that one hook alone — its other hooks and Parts are
-/// untouched, unlike a whole-mod disable. Called only from a listener's
-/// `catch_unwind` handler, so an installation is always in place.
+/// untouched, unlike a whole-mod disable.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-    let installed = installed().expect("a poison lands inside a dispatch");
+    let Some(installed) = installed() else {
+        return;
+    };
     let mut poisons = installed.poisons.lock().unwrap();
     let sets =
         poisons.get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT].into_boxed_slice());
@@ -519,11 +520,15 @@ pub(crate) fn listening(
     hook_id: generated::HookId,
 ) -> impl Iterator<Item = (bool, &'static ModEntry)> {
     installed().into_iter().flat_map(move |installed| {
+        let has_poisons = !installed
+            .poison_free
+            .load(std::sync::atomic::Ordering::Acquire);
         installed
             .subscribers
             .subscribers(hook_id as usize)
             .filter(move |subscriber| {
                 !installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed)
+                    && (!has_poisons || !poisoned(hook_id, installed.mods[subscriber.index].id))
             })
             .map(move |subscriber| {
                 // Every listener of a hook the loop reaches is one more entered: scoped
@@ -677,6 +682,58 @@ mod toggle_tests {
                 assert!(any_mod_disabled());
                 assert!(set_mod_enabled("b", true));
                 assert!(!any_mod_disabled());
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod poison_tests {
+    use super::*;
+
+    #[test]
+    fn poisoning_a_hook_skips_only_that_mod_and_hook() {
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for Listener {
+            fn health_hud(
+                &self,
+                _: &dyn crate::ClientHost,
+                _: &mut crate::HealthHudEvent<'_>,
+            ) -> Option<crate::HealthHudReplacement> {
+                None
+            }
+            fn mob_split(
+                &self,
+                _: &mut dyn crate::ServerHost,
+                _: &mut crate::MobSplitEvent<'_>,
+            ) -> Flow {
+                Flow::Continue
+            }
+        }
+        let previous = TEST_MODS.replace(None);
+        poison(generated::HookId::HealthHud, "missing");
+        TEST_MODS.set(previous);
+
+        crate::testing::with_dispatch(
+            vec![
+                ModEntry::new("a", Box::new(Listener)),
+                ModEntry::new("b", Box::new(Listener)),
+            ]
+            .into(),
+            || {
+                let ids = |hook| {
+                    listening(hook)
+                        .map(|(_, entry)| entry.id)
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(ids(generated::HookId::HealthHud), vec!["a", "b"]);
+                assert_eq!(ids(generated::HookId::MobSplit), vec!["a", "b"]);
+
+                poison(generated::HookId::HealthHud, "a");
+
+                assert_eq!(ids(generated::HookId::HealthHud), vec!["b"]);
+                assert_eq!(ids(generated::HookId::MobSplit), vec!["a", "b"]);
             },
         );
     }
