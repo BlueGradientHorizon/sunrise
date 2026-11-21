@@ -216,11 +216,12 @@ fn accepts_another_on_line(requirement: &VersionReq, pin: &Version) -> bool {
     let matches = |version: Version| {
         game_registry_pin_conflicts(pin, &version) && requirement.matches(&version)
     };
-    // The first matching stable version is the lowest of the pin's major or minor, or on or
-    // immediately after a comparison boundary. Partial comparators cover a whole major or minor;
+    // The first matching stable version is the lowest of the pin's major or minor, the release
+    // of a prerelease pin, or on or immediately after a comparison boundary. Partial comparators cover a whole major or minor;
     // advance the last specified component.
     matches(Version::new(pin.major, 0, 0))
         || matches(Version::new(pin.major, pin.minor, 0))
+        || matches(Version::new(pin.major, pin.minor, pin.patch))
         || requirement.comparators.iter().any(|cmp| {
             let (major, minor, patch) = (cmp.major, cmp.minor.unwrap_or(0), cmp.patch.unwrap_or(0));
             let next = cmp

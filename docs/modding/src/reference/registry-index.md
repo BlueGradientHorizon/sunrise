@@ -436,9 +436,10 @@ all listed files to plan installations.
 For new or changed native mod versions, `registry review --files <dir>` compares the package's Cargo
 requirements, including those of packaged path dependencies, with `<sdk-data>/<commit>/Cargo.lock` from
 `--sdk-data <sdk-data>`. It warns when a crates.io requirement excludes every version the pinned game build
-uses but accepts another version on the same version line as one of them: the same major, the same
-`0.minor`, or the same `0.0.patch`. A build would have to move the game's version to satisfy it, which it
-refuses. For example, `3.0.10` and `=3.0.5` both warn against the game's `3.0.6`; `>=2, <3` does not warn
+uses but accepts another version on the same version line as one of them: the same nonzero major, the
+same `0.minor` with a nonzero minor, or the same `0.0.patch`. The build refuses to move the game's pin to
+another version on that line. This warning does not rule out a version on a different line that also
+satisfies the requirement. For example, `3.0.10` and `=3.0.5` both warn against the game's `3.0.6`; `>=2, <3` does not warn
 against `3.1.0`, and `0.0.2` does not warn against `0.0.1`. Loosen the requirement if your mod does not need the other
 version. If the game's lock is unavailable, review notes that it skipped
 the comparison. A different pin in the mod's own lockfile does not trigger a warning.
