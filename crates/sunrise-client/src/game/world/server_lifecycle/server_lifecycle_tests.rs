@@ -2,16 +2,18 @@ use crate::game::{
     execution_role::ExecutionRole, native_entity_refs::tests::with_game,
     native_guest_turn_tests::with_guests,
 };
-use mod_api::{Hooks, ModEntry, ServerHost};
+use mod_api::{
+    __private::{HookPanicReport, take_hook_panics},
+    Hooks, ModEntry, ServerHost,
+};
 use mod_platform::testing::with_mods;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 struct PanicAt {
-    stopping: AtomicBool,
-    save: AtomicBool,
-    config_unloading: AtomicBool,
-    logout: AtomicBool,
+    stopping: bool,
+    save: bool,
+    config_unloading: bool,
+    logout: bool,
 }
 
 struct StoppedProbe {
@@ -175,7 +177,7 @@ fn integrated_stop_propagates_metadata_errors_even_after_a_record_failure() {
 fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     struct Log(
         Arc<Mutex<Vec<&'static str>>>,
-        Arc<PanicAt>,
+        PanicAt,
         Arc<Mutex<Option<StoppedProbe>>>,
     );
     #[mod_api::__subscriptions]
@@ -185,7 +187,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: &dyn mod_api::ConfigContext,
             e: &mut mod_api::RegisterConfigsEvent<'_>,
         ) {
-            if self.1.config_unloading.load(Ordering::Relaxed) {
+            if self.1.config_unloading {
                 e.configs
                     .push(mod_api::Config::new("log", mod_api::ConfigKind::Server, ""));
             }
@@ -203,13 +205,13 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
         fn server_stopping(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppingEvent) {
             self.0.lock().unwrap().push("stopping");
-            if self.1.stopping.load(Ordering::Relaxed) {
+            if self.1.stopping {
                 panic!("stopping listener");
             }
         }
         fn world_saved(&self, _: &mut dyn ServerHost, _: &mut mod_api::WorldSavedEvent) {
             self.0.lock().unwrap().push("saved");
-            if self.1.save.load(Ordering::Relaxed) {
+            if self.1.save {
                 panic!("save listener");
             }
         }
@@ -218,7 +220,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: &mut dyn ServerHost,
             _: &mut mod_api::PlayerLoggedOutEvent<'_>,
         ) {
-            if self.1.logout.load(Ordering::Relaxed) {
+            if self.1.logout {
                 self.0.lock().unwrap().push("logout");
                 panic!("logout listener");
             }
@@ -233,12 +235,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     probe.save.raw_chunk(0, 0).is_some(),
                     "dirty chunk saved before Stopped"
                 );
-                let last = if self.1.logout.load(Ordering::Relaxed) {
-                    "logout"
-                } else {
-                    "saved"
-                };
-                assert_eq!(self.0.lock().unwrap().last(), Some(&last));
+                assert_eq!(self.0.lock().unwrap().last(), Some(&"saved"));
                 // Storage is released before the notification, even if the
                 // final-save listener itself panicked after writing metadata.
                 let _lock = sunrise_client::save::SessionLock::acquire(&probe.root).unwrap();
@@ -246,53 +243,40 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             self.0.lock().unwrap().push("stopped");
         }
     }
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let panic_at = Arc::new(PanicAt {
-        stopping: AtomicBool::new(false),
-        save: AtomicBool::new(false),
-        config_unloading: AtomicBool::new(false),
-        logout: AtomicBool::new(false),
-    });
-    let stopped_probe = Arc::new(Mutex::new(None));
-    with_mods(
-        vec![ModEntry::new(
-            "log",
-            Box::new(Log(log.clone(), panic_at.clone(), stopped_probe.clone())),
-        )]
-        .into(),
-        || {
-            for dedicated in [false, true] {
-                for case in [
-                    "normal",
-                    "startup-error",
-                    "tick-error",
-                    "panic",
-                    "save-error",
-                    "unopened",
-                    "locked-unadopted",
-                    "stopping-panic",
-                    "save-panic",
-                    "config-unloading-panic",
-                    "config-unloading-save-panic",
-                    "config-unloading-logout-panic",
-                    "before-start",
-                ] {
-                    log.lock().unwrap().clear();
-                    panic_at
-                        .stopping
-                        .store(case == "stopping-panic", Ordering::Relaxed);
-                    panic_at.save.store(
-                        matches!(case, "save-panic" | "config-unloading-save-panic"),
-                        Ordering::Relaxed,
-                    );
-                    panic_at
-                        .logout
-                        .store(case == "config-unloading-logout-panic", Ordering::Relaxed);
-                    let config_panic = case.starts_with("config-unloading");
-                    panic_at
-                        .config_unloading
-                        .store(config_panic, Ordering::Relaxed);
-                    *stopped_probe.lock().unwrap() = None;
+    for dedicated in [false, true] {
+        for case in [
+            "normal",
+            "startup-error",
+            "tick-error",
+            "panic",
+            "save-error",
+            "unopened",
+            "locked-unadopted",
+            "stopping-panic",
+            "save-panic",
+            "config-unloading-panic",
+            "config-unloading-save-panic",
+            "config-unloading-logout-panic",
+            "before-start",
+        ] {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let stopped_probe = Arc::new(Mutex::new(None));
+            let config_panic = case.starts_with("config-unloading");
+            let panic_at = PanicAt {
+                stopping: case == "stopping-panic",
+                save: matches!(case, "save-panic" | "config-unloading-save-panic"),
+                config_unloading: config_panic,
+                logout: case == "config-unloading-logout-panic",
+            };
+            // Panic latches are per installed mod and hook, not per world. Each case needs
+            // a fresh installation to test its own failures, including the dedicated cases.
+            with_mods(
+                vec![ModEntry::new(
+                    "log",
+                    Box::new(Log(log.clone(), panic_at, stopped_probe.clone())),
+                )]
+                .into(),
+                || {
                     let run_case = |game: &mut crate::game::Game<'_>| {
                         game.options.execution_role = if dedicated {
                             ExecutionRole::DedicatedServer
@@ -385,24 +369,32 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 _ => Ok(()),
                             }
                         });
-                        assert_eq!(result.is_ok(), case == "normal", "{dedicated} {case}");
-                        if config_panic || matches!(case, "stopping-panic" | "save-panic") {
-                            let message = result.unwrap_err().to_string();
-                            let needle = if config_panic {
-                                "config unloading listener"
-                            } else if case == "stopping-panic" {
-                                "stopping listener"
-                            } else {
-                                "save listener"
-                            };
-                            assert!(message.contains(needle), "{dedicated} {case}: {message}");
-                            if config_panic {
-                                assert_eq!(
-                                    message,
-                                    "the server shutdown panicked: config unloading listener"
-                                );
+                        let panicked_hooks: &[&str] = match case {
+                            "stopping-panic" => &["server_stopping"],
+                            "save-panic" => &["world_saved"],
+                            "config-unloading-panic" => &["config_unloading"],
+                            "config-unloading-save-panic" => &["config_unloading", "world_saved"],
+                            "config-unloading-logout-panic" => {
+                                &["config_unloading", "player_logged_out"]
                             }
-                        }
+                            _ => &[],
+                        };
+                        assert_eq!(
+                            result.is_ok(),
+                            case == "normal" || !panicked_hooks.is_empty(),
+                            "{dedicated} {case}: {result:?}"
+                        );
+                        assert_eq!(
+                            take_hook_panics(),
+                            panicked_hooks
+                                .iter()
+                                .map(|&hook| HookPanicReport {
+                                    mod_id: "log",
+                                    hook
+                                })
+                                .collect::<Vec<_>>(),
+                            "{dedicated} {case}"
+                        );
                         let expected: &[&str] = match case {
                             "before-start" => &[],
                             "unopened" | "save-error" | "locked-unadopted" => {
@@ -419,8 +411,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "starting",
                                 "stopping",
                                 "config-unloading",
-                                "saved",
                                 "logout",
+                                "saved",
                                 "stopped",
                             ],
                             _ => &["starting", "stopping", "saved", "stopped"],
@@ -456,8 +448,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     } else {
                         with_game(run_case);
                     }
-                }
-            }
-        },
-    );
+                },
+            );
+        }
+    }
 }
