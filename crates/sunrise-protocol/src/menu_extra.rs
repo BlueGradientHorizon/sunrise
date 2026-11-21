@@ -46,6 +46,9 @@ pub fn read_query(data: &[u8]) -> Result<u8> {
         return Err(Error::new("menu extra revision: not a query"));
     }
     let offered = r.u8()?;
+    if offered == 0 {
+        return Err(Error::new("menu extra revision: unsupported revision"));
+    }
     if offered <= REVISION && r.remaining() > 0 {
         return Err(Error::new("menu extra revision: trailing bytes"));
     }
@@ -212,8 +215,9 @@ mod tests {
         // A newer server's query is clamped to the highest revision this client supports.
         let other = [QUERY, REVISION + 1, 9];
         assert_eq!(read_query(&other).unwrap(), REVISION);
-        // Revision 0 and unknown revisions are rejected rather than falling back.
-        assert!(read_answer(&answer(0)).is_err());
+        // Neither side can opt into the removed revision-0 layout.
+        assert!(read_query(&[QUERY, 0]).is_err());
+        assert!(read_answer(&[ANSWER, 0]).is_err());
         assert!(read_answer(&[ANSWER, REVISION + 1]).is_err());
         assert!(read_answer(&[ANSWER, REVISION + 1, 9]).is_err());
         assert!(read_query(&[ANSWER, REVISION]).is_err());
