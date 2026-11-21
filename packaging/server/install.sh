@@ -1,6 +1,6 @@
 #!/bin/sh
-# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (the
-# only build Sunrise ships; GitHub's latest release while there is none), downloaded from GitHub Releases and
+# Installs sunrise-server (docs/server.md) on Linux or macOS: by default the current Sunrise Nightly for this computer
+# (GitHub's latest release while there is none), or the release --version names, downloaded from GitHub Releases and
 # checked against the release's signed SHA256SUMS (docs/release-flow.md, "Signed checksums") by sunrise-verify, a
 # small program this script downloads and checks against the SHA-256 pinned below before it runs it. A download that
 # can't be verified is not installed. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
