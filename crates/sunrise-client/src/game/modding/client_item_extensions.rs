@@ -510,15 +510,15 @@ mod tests {
         calls: Arc<std::sync::Mutex<Vec<String>>>,
     }
     impl ClientItemExtensions for TwoShapes {
-        fn default_dye_color(&self, _: &dyn ClientHost, _: &mod_api::ItemStack) -> u32 {
+        fn default_dye_color(&self, _: &dyn ClientHost, _: &mod_api::ItemStackView<'_>) -> u32 {
             self.calls.lock().unwrap().push("dye".into());
             0
         }
         fn armor_layer_tint_color(
             &self,
             _: &dyn ClientHost,
-            _: &mod_api::ItemStack,
-            _: &EquipmentLayer,
+            _: &mod_api::ItemStackView<'_>,
+            _: &EquipmentLayer<'_>,
             index: u32,
             _: u32,
         ) -> u32 {
@@ -532,10 +532,10 @@ mod tests {
         fn armor_texture(
             &self,
             _: &dyn ClientHost,
-            _: &mod_api::ItemStack,
+            _: &mod_api::ItemStackView<'_>,
             _: EquipmentLayerType,
-            layer: &EquipmentLayer,
-            _: ArmorTextureRef,
+            layer: &EquipmentLayer<'_>,
+            _: &str,
         ) -> ArmorTextureRef {
             let index = usize::from(layer.texture != self.original_first);
             self.calls.lock().unwrap().push(format!("texture{index}"));
@@ -544,9 +544,9 @@ mod tests {
         fn armor_layer_model(
             &self,
             _: &dyn ClientHost,
-            _: &mod_api::ItemStack,
+            _: &mod_api::ItemStackView<'_>,
             _: EquipmentLayerType,
-            _: &EquipmentLayer,
+            _: &EquipmentLayer<'_>,
             index: u32,
         ) -> ArmorModelRef {
             self.calls.lock().unwrap().push(format!("model{index}"));
@@ -649,7 +649,7 @@ mod tests {
                     &host,
                     &registry.state,
                     &registry.state.items[&item],
-                    &stack,
+                    &mod_api::ItemStackView::from_stack(&stack),
                     &piece,
                     EquipmentBindings {
                         trim: Some(Binding {
@@ -846,19 +846,19 @@ mod tests {
                     fn armor_texture(
                         &self,
                         _: &dyn ClientHost,
-                        _: &mod_api::ItemStack,
+                        _: &mod_api::ItemStackView<'_>,
                         _: EquipmentLayerType,
-                        _: &EquipmentLayer,
-                        _: ArmorTextureRef,
+                        _: &EquipmentLayer<'_>,
+                        _: &str,
                     ) -> ArmorTextureRef {
                         ArmorTextureRef::__new(self.0, 0)
                     }
                     fn armor_layer_model(
                         &self,
                         _: &dyn ClientHost,
-                        _: &mod_api::ItemStack,
+                        _: &mod_api::ItemStackView<'_>,
                         _: EquipmentLayerType,
-                        _: &EquipmentLayer,
+                        _: &EquipmentLayer<'_>,
                         _: u32,
                     ) -> ArmorModelRef {
                         ArmorModelRef::__new(self.0, 0)
@@ -906,7 +906,7 @@ mod tests {
                         &host,
                         &registry.state,
                         part,
-                        &mod_api::ItemStack::of(item),
+                        &mod_api::ItemStackView::from_stack(&mod_api::ItemStack::of(item)),
                         &piece,
                         EquipmentBindings {
                             trim: None,
@@ -940,8 +940,8 @@ mod tests {
                     fn armor_layer_tint_color(
                         &self,
                         _: &dyn ClientHost,
-                        _: &mod_api::ItemStack,
-                        _: &EquipmentLayer,
+                        _: &mod_api::ItemStackView<'_>,
+                        _: &EquipmentLayer<'_>,
                         index: u32,
                         _: u32,
                     ) -> u32 {
@@ -1004,7 +1004,7 @@ mod tests {
                             &host,
                             &registry.state,
                             &registry.state.items[&item],
-                            &mod_api::ItemStack::of(item),
+                            &mod_api::ItemStackView::from_stack(&mod_api::ItemStack::of(item)),
                             &piece,
                             EquipmentBindings {
                                 trim: None,
@@ -1041,8 +1041,8 @@ mod tests {
         fn armor_layer_tint_color(
             &self,
             host: &dyn ClientHost,
-            _: &mod_api::ItemStack,
-            _: &EquipmentLayer,
+            _: &mod_api::ItemStackView<'_>,
+            _: &EquipmentLayer<'_>,
             _: u32,
             _: u32,
         ) -> u32 {
@@ -1100,7 +1100,7 @@ mod tests {
                             &*game,
                             &registry.state,
                             part,
-                            &mod_api::ItemStack::of(item),
+                            &mod_api::ItemStackView::from_stack(&mod_api::ItemStack::of(item)),
                             &piece,
                             EquipmentBindings {
                                 trim: None,
