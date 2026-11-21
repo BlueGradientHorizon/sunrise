@@ -8,9 +8,10 @@ use super::{
 };
 use crate::game::{Game, native_entity_refs::tests::run_with_game_stack};
 use mod_api::{
-    BlockPos, EntityTravelToDimensionEvent, Flow, GlobalPos, Hooks, Identifier, ModEntry,
-    PlayerChangedDimensionEvent, PlayerCloneEvent, PlayerRespawnConfig, PlayerRespawnPositionEvent,
-    PlayerRespawnedEvent, PlayerSetSpawnEvent, ServerHost,
+    BlockPart, BlockPos, EntityTravelToDimensionEvent, Flow, GlobalPos, Hooks, Host, Identifier,
+    ModEntry, PlayerChangedDimensionEvent, PlayerCloneEvent, PlayerRespawnConfig,
+    PlayerRespawnPositionEvent, PlayerRespawnedEvent, PlayerSetSpawnEvent, PlayerTeleportedEvent,
+    Registrar, RegistrationContext, RespawnPositionEvent, ServerHost,
 };
 use std::sync::{Arc, Mutex, mpsc};
 use sunrise_client::{
@@ -39,6 +40,7 @@ enum EndHook {
     Travel(String, String),
     Changed(String, String),
     Position(bool),
+    CommandTeleport,
     Clone(bool),
     Completed(bool),
 }
@@ -50,8 +52,26 @@ struct EndTravel {
     heard: Heard,
 }
 
+struct TiltedLanding;
+
+#[mod_api::sunrise_part]
+impl BlockPart for TiltedLanding {
+    fn respawn_position(&self, _: &dyn Host, event: &mut RespawnPositionEvent<'_>) {
+        *event.position = Some(([9.5, 102.0, 9.5], 30.0, 400.0));
+    }
+}
+
 #[mod_api::__subscriptions]
 impl Hooks for EndTravel {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let glass = r.block_key("minecraft:glass");
+        r.block_part(glass, TiltedLanding);
+    }
+
+    fn player_teleported(&self, _: &mut dyn ServerHost, _: &mut PlayerTeleportedEvent<'_>) {
+        self.heard.lock().unwrap().push(EndHook::CommandTeleport);
+    }
+
     fn entity_travel_to_dimension(
         &self,
         _: &mut dyn ServerHost,
@@ -113,7 +133,7 @@ fn with_end_travel(
 ) {
     run_with_game_stack(move || {
         let heard = Heard::default();
-        let mods = vec![ModEntry::new(
+        let mods: mod_api::Mods = vec![ModEntry::new(
             "end-travel",
             Box::new(EndTravel {
                 veto,
@@ -121,7 +141,8 @@ fn with_end_travel(
             }),
         )]
         .into();
-        mod_platform::testing::with_mods(mods, || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
             let mut resources = None;
             let (_scratch, mut game, rx) = server_with_a_nether_anchor(&mut resources);
             test(&mut game, &rx, &heard);
@@ -422,31 +443,37 @@ fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
 #[ignore = "daily"]
 fn an_end_exit_to_a_point_in_the_end_sends_no_respawn_packet() {
     with_end_travel(None, |game, rx, heard| {
+        game.resolve_parts().unwrap();
         game.enter_level(Dim::End).unwrap();
         light_spawn_chunks(game);
         put_guest_in_end_exit(game);
+        assert!(
+            game.set_state_named([9, 100, 9], "minecraft:glass", &[])
+                .unwrap()
+        );
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-            g.respawn_elsewhere = Some((Dim::End.id().to_owned(), [9, 100, 9], 30.0, 0.0, true));
+            g.respawn_elsewhere = Some((Dim::End.id().to_owned(), [9, 100, 9], 0.0, 0.0, false));
         });
         game.handle_server_portal(2);
         assert!(!game.on_server_trip(2));
-        assert_eq!(game.command_guest(2).unwrap().position, [9.5, 100.1, 9.5]);
+        let player = game.command_guest(2).unwrap();
+        assert_eq!(player.position, [9.5, 102.0, 9.5]);
         assert_eq!(
             *heard.lock().unwrap(),
             [EndHook::Travel("end_portal".into(), Dim::End.id().into())]
         );
-        let packets: Vec<_> = received_packets(rx).collect();
-        assert!(!packets.iter().any(|packet| matches!(
-            packet,
-            C::Respawn(_) | C::LevelEvent(play::LevelEvent { kind: 1032, .. })
-        )));
-        assert_eq!(
-            packets
-                .iter()
-                .filter(|packet| matches!(packet, C::PlayerPosition(_)))
-                .count(),
-            1
-        );
+        let mut positions = Vec::new();
+        for packet in received_packets(rx) {
+            match packet {
+                C::PlayerPosition(p) => positions.push((p.position, p.yaw, p.pitch)),
+                C::Respawn(_) | C::LevelEvent(play::LevelEvent { kind: 1032, .. }) => {
+                    panic!("same-level End exit sends only a position transition");
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(positions, [([9.5, 102.0, 9.5], 30.0, 90.0)]);
+        assert_eq!(player.pitch, 90.0);
     });
 }
 

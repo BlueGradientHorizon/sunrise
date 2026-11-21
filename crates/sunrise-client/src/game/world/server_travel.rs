@@ -1552,20 +1552,9 @@ impl Game<'_> {
             if source == t.dim {
                 // ServerPlayer.teleport within a level applies the absolute destination
                 // and sends only the position packet (no Respawn or command notification).
-                self.as_guest(t.conn, |g| {
-                    g.stop_riding();
-                    let [x, y, z] = t.at;
-                    let at = Vec3::new(x, y, z);
-                    if let Some(body) = &mut g.player {
-                        body.position = at;
-                        body.velocity = Vec3::ZERO;
-                        body.teleported = true;
-                        body.teleported_delta = [false; 3];
-                    }
-                    g.previous_position = at;
-                    if let Some([yaw, pitch]) = t.rotation {
-                        (g.yaw, g.pitch) = (yaw, pitch);
-                    }
+                let [x, y, z] = t.at;
+                let _ = self.as_guest(t.conn, |g| {
+                    g.place_player_teleport_in_level(Vec3::new(x, y, z), t.rotation, [false; 3])
                 });
                 return;
             }

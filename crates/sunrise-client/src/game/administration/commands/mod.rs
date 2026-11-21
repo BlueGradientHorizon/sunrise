@@ -1386,6 +1386,37 @@ impl Game<'_> {
         }
     }
 
+    /// `ServerPlayer.teleport` via `ServerGamePacketListenerImpl.teleport`: place the acting
+    /// player's body and send the teleport at the end of the guest turn. Returns its old feet
+    /// position, without adding command-only chunk holds or notifications.
+    pub(super) fn place_player_teleport_in_level(
+        &mut self,
+        at: Vec3,
+        rotation: Option<[f32; 2]>,
+        relative: [bool; 3],
+    ) -> Option<[f64; 3]> {
+        self.stop_riding();
+        let from = self.player.as_mut().map(|p| {
+            let from = [p.position.x, p.position.y, p.position.z];
+            p.position = at;
+            p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
+            p.teleported = true;
+            p.teleported_delta = relative;
+            from
+        });
+        self.previous_position = at;
+        if let Some([yaw, pitch]) = rotation {
+            if yaw.is_finite() {
+                self.yaw = yaw;
+            }
+            if !pitch.is_nan() {
+                // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
+                self.pitch = pitch.clamp(-90.0, 90.0);
+            }
+        }
+        from
+    }
+
     /// `Entity.teleportSameDimension`: shared entity/passenger placement.
     /// Returns its old position for the command caller's completion notification.
     pub(super) fn place_teleport_in_level(
@@ -1405,7 +1436,11 @@ impl Game<'_> {
         // Entity.teleportSameDimension teleports the riders before their vehicle.
         let riding = self.teleport_riders_first(t, v, relative, requested.filter(|_| turn_riders));
         // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
-        let rotation = rotation.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)]);
+        let rotation = if matches!(t, Target::Player | Target::Guest(_)) {
+            requested // Player placement applies the clamp itself.
+        } else {
+            requested.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)])
+        };
         match t {
             Target::General(id) => {
                 if let Some(entity) = self.entity(id) {
@@ -1430,37 +1465,18 @@ impl Game<'_> {
                 });
             }
             Target::Player => {
-                // ServerPlayer.teleport: removeVehicle before placing the player.
-                self.stop_riding();
+                let from = self.place_player_teleport_in_level(v, rotation, relative);
                 // A server's player teleported within their level is placed
                 // there at once: the arrival they were waiting for elsewhere
                 // in it (whose chunks lose their tickets) is abandoned.
                 if let Some(conn) = self.lan_acting {
                     self.hold_for_chunks(conn, v);
                 }
-                let from = self
-                    .player
-                    .as_ref()
-                    .map(|p| [p.position.x, p.position.y, p.position.z]);
-                if let Some(p) = self.player.as_mut() {
-                    p.position = v;
-                    p.velocity = teleport_velocity(p.velocity, relative, p.fall_flying);
-                    if !p.fall_flying {
-                        p.ground.on_ground = true;
-                    }
-                    // The end of a guest's turn sends the position packet
-                    // with the command's relatives, even without a move.
-                    p.teleported = true;
-                    p.teleported_delta = relative;
-                }
-                self.previous_position = v;
-                if let Some([yaw, pitch]) = rotation {
-                    if yaw.is_finite() {
-                        self.yaw = yaw;
-                    }
-                    if !pitch.is_nan() {
-                        self.pitch = entity_pitch(pitch);
-                    }
+                // TeleportCommand.performTeleport grounds a player unless they're gliding.
+                if let Some(p) = self.player.as_mut()
+                    && !p.fall_flying
+                {
+                    p.ground.on_ground = true;
                 }
                 // A server player's teleport is told to the mods once their
                 // move is in the hub (`leave_guest`).

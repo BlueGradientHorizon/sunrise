@@ -137,6 +137,8 @@ Both causes replace the player, so neither calls `entity_travel_to_dimension` or
 An ordinary End portal exit teleports the same player and runs the travel hooks, not the respawn hooks.
 The player keeps ticking in the End while the destination is being resolved. The travel veto sees the final
 level, including the world spawn if the saved block is missing, and refusing it leaves the player in the End.
+An exit to a point in the End itself sends a position update with the usual pitch clamp; it does not fire
+`player_changed_dimension` or the command-only `player_teleported` hook.
 
 To change the saved point copied to the replacement, use `event.player.set_respawn_config(host, Some(config))`
 inside `player_respawn_position` and set `*event.copy_original_spawn_position = true`. This works even
