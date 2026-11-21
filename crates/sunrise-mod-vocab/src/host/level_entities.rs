@@ -16,11 +16,9 @@ pub trait LevelEntitiesBackend {
     /// the visit returns `Ok(ControlFlow::Break(()))`. Returning `Continue(())` for every
     /// member gives `Ok(ControlFlow::Continue(()))`, including when there are no members.
     ///
-    /// This does not build a result list. Outside the block-entity item-tick view, it
-    /// first checks that **every** eligible lookup member resolves. An unavailable
-    /// member returns [`LevelReadError::Unavailable`] before the first callback, even
-    /// if the callback would have stopped on the first member. The item-tick view
-    /// instead skips members it cannot resolve.
+    /// This does not build a result list. It first checks that **every** eligible
+    /// lookup member resolves. An unavailable member returns [`LevelReadError::Unavailable`]
+    /// before the first callback, even if the callback would have stopped on the first member.
     ///
     /// A stale level returns [`LevelReadError::Stale`]. A parked level or a call
     /// outside server world access returns [`LevelReadError::Unavailable`]. Neither

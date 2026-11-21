@@ -167,11 +167,10 @@ Return `ControlFlow::Continue(())` to visit the next entity or
 on completion (including an empty level), or `Ok(ControlFlow::Break(()))` if the
 visitor stopped it. A stale handle returns `LevelReadError::Stale`. A remote client,
 a parked level, or an unavailable lookup member returns `LevelReadError::Unavailable`
-before the visitor runs. Outside the block-entity item-tick view, the walk checks
-that every eligible lookup member resolves before calling the visitor. This preserves
-the all-or-nothing read even if the visitor would stop at the first entity. An early
-stop saves the rest of the second pass, not the preflight. The item-tick view instead
-skips members it cannot resolve as it visits.
+before the visitor runs. The walk checks that every eligible lookup member resolves
+before calling the visitor. This preserves the all-or-nothing read even if the visitor
+would stop at the first entity. An early stop saves the rest of the second pass, not
+that preflight.
 
 The walk preserves lookup admission order across storage families, including
 removal and re-admission at the end. An entity spawned during play, such as a
