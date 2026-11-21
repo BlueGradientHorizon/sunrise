@@ -41,8 +41,9 @@ pub trait PlayerMenusBackendMut {
     /// and their clicks reach `menu_clicked`. `extra` (at most 32 KiB) is available only during
     /// construction in [`crate::MenuScreenOpen::extra`]. `pos`, when given, is offered to the
     /// factory and available later through `screen_pos`. `data` has exactly the menu type's
-    /// `data_slots` values; they arrive after opening and are read through
-    /// [`crate::MenuScreenFrame::data`]. The menu's owning mod can change them with
+    /// `data_slots` signed `i32` values. The negotiated blockless payload sends indices
+    /// `0..=u16::MAX` after opening; read the received values through
+    /// [`crate::MenuScreenFrame::data`]. The menu's owning mod can change the stored values with
     /// [`MenuRef::set_data_slot`]. Pass `opening_hand` for an item opener regardless of slot
     /// backing, or `None` for another opener. The server remembers that hand's stack for
     /// `menu_still_valid`. A type declaring `owned_slots` uses ordinary clicks and accepts
@@ -54,8 +55,8 @@ pub trait PlayerMenusBackendMut {
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
     /// a mod cancelled the open or a registered exclusion is out of range. Errors: `NotModMenu`,
     /// `OwnedSlotsWithResults`, `ClickInProgress` (a speculative click cannot open a new screen),
-    /// `PlayerUnavailable` (including a disconnect in progress or a turn unavailable for the veto),
-    /// `TooLarge`,
+    /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
+    /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
     #[access(WorldOnly)]

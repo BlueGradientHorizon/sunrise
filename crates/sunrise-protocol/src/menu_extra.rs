@@ -245,6 +245,7 @@ mod tests {
         assert_eq!(read_query(&query()).unwrap(), REVISION);
         assert_eq!(read_answer(&answer(REVISION)).unwrap(), REVISION);
         assert_eq!(read_query(&[QUERY, 1]).unwrap(), 1);
+        assert_eq!(read_query(&[QUERY, 2]).unwrap(), 2);
         assert_eq!(read_answer(&answer(1)).unwrap(), 1);
         // Another revision's exchange is still answered, and reads as none.
         let other = [QUERY, REVISION + 1, 9];

@@ -1,7 +1,7 @@
 //! The resident server ticker's two sequential loans: its subject and the world.
 use crate::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey,
-    ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
+    BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey, ItemStack, JavaString,
+    LevelRef, ServerHost, Tag, Transaction,
 };
 
 /// The block entity this server ticker is running. Its storage stays in the level.
@@ -37,7 +37,9 @@ impl<'a> BlockEntityView<'a> {
     pub fn level(&self) -> LevelRef {
         self.subject.level
     }
-    /// The entity's block state. Reborrowing after a state change refuses the loan.
+    /// The block's live [`BlockState`] at the time of this [`BlockEntityTickScope::with_view`]
+    /// loan, updating when the block changes in place to another valid state for this block
+    /// entity type.
     pub fn state(&self) -> BlockState {
         self.state
     }
@@ -54,22 +56,30 @@ impl<'a> BlockEntityView<'a> {
     pub fn data_slots(&self) -> &[i32] {
         self.data.data_slots()
     }
-    /// Set one existing slot. False for an absent slot or an equal value.
+    /// Set one existing transient menu data slot without automatically marking the chunk
+    /// unsaved. Returns `false` for an absent slot or an equal value.
     pub fn set_data_slot(&mut self, slot: u32, value: i32) -> bool {
         self.data.set_data_slot(slot, value)
     }
-    /// Set and, if necessary, resize the menu data, without a block update packet.
-    pub fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
+    /// Set and, if necessary, resize the transient menu data, without a block update
+    /// packet, 256-slot cap, or automatic chunk dirtying. Returns `true` if the values
+    /// changed and `false` on a no-op.
+    pub fn set_data_slots(&mut self, data: &[i32]) -> bool {
         self.data.set_data_slots(data)
     }
 
-    /// The resident saved compound. Modeled item slots are separate; `Items`, when
-    /// present, holds opaque saved data that has not been decoded into item slots.
+    /// The resident saved compound. Modeled item slots are separate. On a slotless
+    /// holder, `Items` is mod-owned NBT, even if it looks like an inventory list.
     pub fn nbt(&self) -> &Compound {
         self.data.nbt()
     }
-    /// Set or remove a mod-owned saved field, without reloading the block entity.
-    /// False for an equal field, excessive nesting, or engine-owned identity or item fields.
+    /// Set or remove a mod-owned saved field, without reloading the block entity or
+    /// automatically marking the chunk unsaved. Returns `false` for an equal field,
+    /// excessive nesting, engine-owned identity or shape fields, or `"Items"` when the
+    /// block entity's block has engine-managed container slots (`item_slots() > 0`).
+    /// For slotless block entities (`item_slots() == 0`), `"Items"` writes the NBT field
+    /// directly and clears any disk-decoded item slots. Chunk saves preserve the
+    /// field as written, including list order.
     pub fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
         self.data.set_nbt(key, value)
     }
@@ -90,6 +100,7 @@ impl<'a> BlockEntityView<'a> {
     }
     /// Replace a declared internal slot. An explicit write claims any opaque saved row at
     /// that index. Rejected stacks leave storage alone; untouched slots are not normalized.
+    /// Call [`BlockEntityRef::set_changed`] explicitly to mark the chunk unsaved.
     pub fn set_item_slot(
         &mut self,
         slot: u32,
@@ -154,12 +165,17 @@ impl<'a> BlockEntityTickScope<'a> {
     }
 
     /// Lend the original subject for `f`. Once `f` returns, you can use the Host
-    /// and then ask for the view again. Each loan checks the level, block state and
-    /// generation; removal or replacement returns `None` without running `f`.
+    /// and then ask for the view again. Each loan verifies the block entity instance
+    /// (same level, loaded chunk, same generation) and that the live block at `pos`
+    /// is still valid for the block entity's type (`BlockEntityType.isValid`).
+    /// In-place block-state updates of a valid block keep the loan valid and expose
+    /// the live [`BlockState`]; removal, replacement, or an invalid block returns
+    /// `None` without running `f`.
     ///
-    /// Successful storage edits dirty the chunk once per loan (at commit in a
-    /// transaction) and are visible to subsequent loans and listeners. Menu data
-    /// uses the normal menu sync. No edit sends a block update or notifies neighbors.
+    /// Successful storage edits are visible to subsequent loans and listeners, and
+    /// menu data uses the normal menu sync. Storage edits do not automatically mark
+    /// the chunk unsaved, send a block update, or notify neighbors—call `set_changed`
+    /// explicitly when saved state changes.
     pub fn with_view<R>(&mut self, f: impl FnOnce(BlockEntityView<'_>) -> R) -> Option<R> {
         let mut f = Some(f);
         let mut result = None;
@@ -209,7 +225,7 @@ pub trait ResidentBlockEntity {
     fn id(&self) -> &str;
     fn data_slots(&self) -> &[i32];
     fn set_data_slot(&mut self, slot: u32, value: i32) -> bool;
-    fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError>;
+    fn set_data_slots(&mut self, data: &[i32]) -> bool;
     fn nbt(&self) -> &Compound;
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool;
     fn item_slots(&self) -> usize;

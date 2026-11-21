@@ -6229,6 +6229,7 @@ mod tests {
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    reported_unsent_data_len: None,
                     blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: Some(mod_type),
@@ -7953,5 +7954,133 @@ mod tests {
         hub.guests.update(0, |g| g.release_tickets());
         hub.guests.update(0, |g| g.watching = false);
         assert_eq!(hub.guests[0].ticket_chunk(), left);
+    }
+
+    #[test]
+    fn sync_container_data_above_255_and_signed_short_boundary() {
+        use std::collections::BTreeMap;
+        use sunrise_protocol::{
+            buf::Reader,
+            packets::play::{Clientbound, ContainerSetData},
+        };
+
+        static MENU_TYPE: crate::containers::ModMenuType = crate::containers::ModMenuType {
+            id: "test:wide",
+            owner: "test",
+            slots: 0,
+            player_inventory: false,
+            data_slots: usize::MAX,
+            results: Vec::new(),
+            inputs: Vec::new(),
+            links: None,
+            crafting: None,
+        };
+        let (mut hub, rx) = hub_with_a_guest();
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        let pos = (0, 64, 0);
+        let max_wire_index = usize::from(i16::MAX as u16);
+        let mut data = vec![0i32; 65_537];
+        data[0] = 11;
+        data[300] = 22;
+        data[max_wire_index] = 33;
+        data[max_wire_index + 1] = 44;
+        data[65_536] = 55;
+        world.block_entities.insert(
+            pos,
+            crate::containers::BlockEntity::Mod(Box::new(crate::containers::ModBlockEntity::new(
+                "test:machine".into(),
+                crate::containers::ModBlockEntityFields {
+                    data,
+                    ..Default::default()
+                },
+            ))),
+        );
+        hub.guests.update(0, |g| {
+            g.menu = Some(super::super::menu::Menu {
+                window: 1,
+                kind: 2,
+                pos: Some(pos),
+                slots: super::super::menu::Slots::Block(pos),
+                size: 0,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                reported_unsent_data_len: None,
+                blockless_data: Vec::new(),
+                hidden: Vec::new(),
+                mod_type: Some(&MENU_TYPE),
+                registry_id: MENU_TYPE.id.into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: false,
+            });
+        });
+        let drain_data =
+            |rx: &std::sync::mpsc::Receiver<crate::lan::Out>| -> Vec<ContainerSetData> {
+                rx.try_iter()
+                    .flat_map(|out| match out {
+                        crate::lan::Out::Packet(body) => vec![body],
+                        crate::lan::Out::Packets(bodies) => bodies,
+                        _ => Vec::new(),
+                    })
+                    .filter_map(|body| {
+                        let mut reader = Reader::new(&body);
+                        let id = reader.varint().unwrap();
+                        match Clientbound::decode(id, reader.rest()).unwrap() {
+                            Clientbound::ContainerSetData(packet) => Some(packet),
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            };
+
+        // The declaration is larger than any Vec can hold; it is not used as a capacity.
+        hub.sync_containers(&world);
+        let packets = drain_data(&rx);
+        let mut by_id = BTreeMap::new();
+        for packet in packets {
+            assert_eq!(packet.container, 1);
+            assert!(packet.id >= 0, "negative wire id {}", packet.id);
+            assert!(
+                by_id.insert(packet.id, packet.value).is_none(),
+                "duplicate wire id {}",
+                packet.id
+            );
+        }
+        assert_eq!(by_id.len(), max_wire_index + 1);
+        assert_eq!(by_id.get(&0), Some(&11));
+        assert_eq!(by_id.get(&300), Some(&22));
+        assert_eq!(by_id.get(&i16::MAX), Some(&33));
+
+        // Unchanged sync emits no data packets.
+        hub.sync_containers(&world);
+        assert!(drain_data(&rx).is_empty());
+
+        // Changing a representable slot above 255 sends only that slot; changing an
+        // unrepresentable index does not alias slot 0.
+        if let Some(crate::containers::BlockEntity::Mod(entity)) =
+            world.block_entities.get_mut(&pos)
+        {
+            entity.data[300] = 222;
+            entity.data[65_536] = 555;
+        }
+        hub.sync_containers(&world);
+        let updates = drain_data(&rx);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(
+            (updates[0].container, updates[0].id, updates[0].value),
+            (1, 300, 222)
+        );
+
+        let Some(crate::containers::BlockEntity::Mod(entity)) = world.block_entities.get_mut(&pos)
+        else {
+            panic!("missing menu block entity");
+        };
+        entity.data.truncate(301);
+        hub.sync_containers(&world);
+        let updates = drain_data(&rx);
+        assert_eq!(updates.len(), 1);
+        assert_eq!((updates[0].id, updates[0].value), (i16::MAX, 0));
     }
 }

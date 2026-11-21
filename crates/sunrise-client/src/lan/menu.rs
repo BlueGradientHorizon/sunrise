@@ -80,6 +80,8 @@ pub struct Menu {
     /// The data slots the client was last sent (ContainerSetData), a furnace's
     /// progress; None until sent, so any first value goes out.
     pub sent_data: Vec<Option<i16>>,
+    /// Last data count reported as too wide for ContainerSetData on this opening.
+    pub reported_unsent_data_len: Option<usize>,
     /// Committed live data owned by this blockless mod menu window, not a block entity.
     pub blockless_data: Vec<i32>,
     /// Container slots the menu does not have: a mod's screen hides them, so
@@ -2144,6 +2146,7 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
+            reported_unsent_data_len: None,
             blockless_data: Vec::new(),
             hidden: Vec::new(),
             mod_type: Some(t),
@@ -2264,6 +2267,7 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
+            reported_unsent_data_len: None,
             blockless_data: Vec::new(),
             hidden: Vec::new(),
             mod_type: Some(t),
@@ -3402,6 +3406,7 @@ pub(crate) mod tests {
             sent: Vec::new(),
             drag: None,
             sent_data: Vec::new(),
+            reported_unsent_data_len: None,
             blockless_data: Vec::new(),
             hidden: Vec::new(),
             mod_type: None,

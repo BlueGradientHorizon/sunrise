@@ -2270,6 +2270,142 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn revision_two_blockless_menu_syncs_only_encodable_indices() {
+        use sunrise_client::lan::menu::input::PICKUP;
+        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
+
+        const LAST: usize = u16::MAX as usize;
+        const OVERFLOW: usize = LAST + 1;
+        const FIRST_VALUE: i32 = 123_456;
+        const LAST_VALUE: i32 = -80_000;
+        const OVERFLOW_VALUE: i32 = 456_789;
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                MOD_MENU.into(),
+                "status_package".into(),
+                0,
+                OVERFLOW + 1,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                false,
+            )],
+            || {
+                with_game(|game| {
+                    let (rx, key) = mod_menu_guest(game);
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |g| g.sender.menu_extra_rev = 2);
+                    let player = game.player(123).unwrap();
+                    let mut data = vec![0; OVERFLOW + 1];
+                    data[0] = FIRST_VALUE;
+                    data[LAST] = LAST_VALUE;
+                    data[OVERFLOW] = OVERFLOW_VALUE;
+                    let window = player
+                        .open_mod_menu(
+                            game,
+                            key,
+                            mod_api::Text::literal("status"),
+                            vec![],
+                            data,
+                            None,
+                            MenuReplace::CloseFirst,
+                        )
+                        .unwrap()
+                        .unwrap();
+                    let updates = || {
+                        sent(&rx).into_iter().filter_map(|packet| match packet {
+                            C::CustomPayload(p) if p.channel == DATA_CHANNEL => {
+                                Some(DataSlot::decode(&p.data).unwrap())
+                            }
+                            _ => None,
+                        })
+                    };
+                    let assert_snapshot = |route, last_value| {
+                        let expected = (0..=u16::MAX).map(|index| DataSlot {
+                            window,
+                            index,
+                            value: match index {
+                                0 => FIRST_VALUE,
+                                u16::MAX => last_value,
+                                _ => 0,
+                            },
+                        });
+                        assert!(
+                            updates().eq(expected),
+                            "incorrect revision-2 snapshot on {route}"
+                        );
+                    };
+                    assert_snapshot("open", LAST_VALUE);
+                    let _guard = mod_api::content::crash::enter_native_mod(
+                        mod_api::content::crash::ModCall {
+                            id: "status_package",
+                            hook: "test",
+                            part: None,
+                        },
+                    );
+                    let menu = player.container_menu(game).unwrap();
+                    let host: &mut dyn ServerHost = game;
+                    let committed: Result<(), ()> = host.transaction(|host, _| {
+                        assert_eq!(menu.set_data_slot(host, LAST, i32::MAX), Ok(true));
+                        assert!(sent(&rx).is_empty());
+                        Ok(())
+                    });
+                    assert_eq!(committed, Ok(()));
+                    assert!(updates().eq([DataSlot {
+                        window,
+                        index: u16::MAX,
+                        value: i32::MAX,
+                    }]));
+                    let committed: Result<(), ()> = host.transaction(|host, _| {
+                        assert_eq!(menu.set_data_slot(host, OVERFLOW, i32::MIN), Ok(true));
+                        assert!(sent(&rx).is_empty());
+                        Ok(())
+                    });
+                    assert_eq!(committed, Ok(()));
+                    assert!(sent(&rx).is_empty(), "unencodable index sent a delta");
+
+                    let hub = &mut game.lan.as_mut().unwrap().hub;
+                    let open = hub.guests[0].menu.as_ref().unwrap();
+                    assert_eq!(open.blockless_data[OVERFLOW], i32::MIN);
+                    hub.resend_menu(1, window, &game.world);
+                    assert_snapshot("explicit resend", i32::MAX);
+                    let state = hub.guests[0].menu.as_ref().unwrap().state;
+                    // The live native click route resends in prepare_click, before answer_click.
+                    game.lan_guest_packet(
+                        1,
+                        S::ContainerClick(play::ContainerClick {
+                            container: window,
+                            state: (state - 1) & 0x7FFF,
+                            slot: -999,
+                            button: 0,
+                            input: PICKUP,
+                            changed: vec![],
+                            carried: None,
+                        }),
+                    );
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.native_menu_events,
+                        [NativeMenuEvent::Click {
+                            uuid: 123,
+                            window,
+                            slot: -999,
+                            button: 0,
+                            mode: PICKUP,
+                        }]
+                    );
+                    assert_snapshot("stale click", i32::MAX);
+                })
+            },
+        );
+    }
+
+    #[test]
     fn menu_clicks_map_to_the_inventory_below() {
         // A 6-row chest: 54 slots, then the inventory's 27, then the hotbar.
         assert_eq!(native_menu_inventory_slot(54, 3), None);

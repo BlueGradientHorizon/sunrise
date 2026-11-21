@@ -56,17 +56,33 @@ impl Game<'_> {
         self.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let stone = self
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:stone")
-            .unwrap();
+        let block = if listening {
+            let block = self
+                .pack
+                .assets
+                .registry
+                .default_state(KIND)
+                .ok_or_else(|| format!("{name}: registered benchmark block {KIND} is missing"))?;
+            let block_name = &self.res.facts().get(block).name;
+            if sunrise_client::block_entity_types::valid(block_name, KIND) != Some(true) {
+                return Err(format!(
+                    "{name}: benchmark block {block_name} is not valid for block entity type {KIND}"
+                )
+                .into());
+            }
+            block
+        } else {
+            self.pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .ok_or_else(|| format!("{name}: baseline block minecraft:stone is missing"))?
+        };
         let positions: Vec<_> = (0..MACHINES as i32)
             .map(|i| (i % 16, FLOOR + 1, i / 16))
             .collect();
         for &(x, y, z) in &positions {
-            self.world.set(x, y, z, stone)?;
+            self.world.set(x, y, z, block)?;
             let fields = ModBlockEntityFields {
                 data: vec![INITIAL_PROGRESS, 7200],
                 nbt: [

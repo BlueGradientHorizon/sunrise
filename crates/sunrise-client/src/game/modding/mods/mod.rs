@@ -1453,7 +1453,7 @@ fn register_menu_types(
             m.id.clone(),
             owner.to_owned(),
             m.slots.into(),
-            m.data_slots.into(),
+            m.data_slots,
             results,
             inputs,
             crafting,

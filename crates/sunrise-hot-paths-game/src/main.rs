@@ -11,9 +11,9 @@
 use mod_api::__private::native::BuiltMod;
 use mod_api::Side;
 use mod_api::{
-    BlockEntityPart, BlockEntityTickEvent, BlockPart, BlockState, EntityTickListenedEvent,
-    EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry, Registrar,
-    RegistrationContext, ServerHost, ServerStartedEvent,
+    Block, BlockEntityPart, BlockEntityTickEvent, BlockPart, BlockState, BlocksEvent,
+    EntityTickListenedEvent, EntityTickPostEvent, EntityTickPreEvent, Hooks, HostSide, ModEntry,
+    Registrar, RegistrationContext, ServerHost, ServerStartedEvent,
 };
 use sunrise_client::game::{
     HotPathsMods, hot_paths_next_block_entity, note_hot_paths_listener_call,
@@ -36,10 +36,21 @@ impl Hooks for Listener {
         };
         let handle = mode.starts_with("handle_");
         let write = mode.ends_with("_write");
-        let kind = registrar.block_entity_type("progress").build();
+        let kind = registrar
+            .block_entity_type("progress")
+            .blocks(&["hot_paths_listener:progress"])
+            .build();
         registrar
             .block_entity_part(&kind, Progress { handle, write })
             .unwrap();
+    }
+
+    fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+        if std::env::var_os("SUNRISE_BLOCK_ENTITY_VIEW_BENCH").is_some() {
+            event
+                .register(Block::new("hot_paths_listener:progress", "minecraft:stone"))
+                .unwrap();
+        }
     }
 
     fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {

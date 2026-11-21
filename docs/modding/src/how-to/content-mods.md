@@ -1072,7 +1072,7 @@ clicks and quick-move still use the declared rules and `menu_slot_rules` (vanill
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 256), the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json
@@ -1087,6 +1087,9 @@ A status or control screen that has no item slots at all can omit the player inv
 
 `player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
 container slots, never the optional player group. A mapping to an absent slot is refused at load.
+The `data_slots` count is separate from `slots`. Larger declarations can be stored on the server,
+but each sync packet retains its index range: 0 through 32,767 for a block-backed menu and
+0 through 65,535 for the negotiated blockless payload.
 
 For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
 It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.

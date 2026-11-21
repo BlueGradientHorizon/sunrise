@@ -16,6 +16,7 @@ struct ScreenEvents {
     frames: Vec<Frame>,
     tooltip_at: Vec<[f32; 2]>,
     data: Vec<Vec<i32>>,
+    data_slots: Vec<usize>,
     extra: Vec<(i32, Vec<u8>)>,
     cancel_opening: bool,
 }
@@ -31,11 +32,11 @@ impl mod_api::MenuScreenFactory for Position {
         open: mod_api::MenuScreenOpen<'_>,
     ) -> Option<mod_api::MenuScreen> {
         // A block's screen leaves slot 4 out; without a block it shows none.
-        self.0
-            .lock()
-            .unwrap()
-            .extra
-            .push((open.window, open.extra.to_vec()));
+        {
+            let mut seen = self.0.lock().unwrap();
+            seen.extra.push((open.window, open.extra.to_vec()));
+            seen.data_slots.push(open.data_slots);
+        }
         let slots = match open.block {
             Some(_) => (0..open.backing_slots)
                 .map(|i| (i != 4).then(mod_api::ScreenSlot::default))
@@ -714,6 +715,206 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                 assert_eq!(game.menu_opener_block(pos, menu), None);
                 assert!(Game::native_hidden_slots(menu, None, 5).unwrap().is_empty());
                 assert!(heard.lock().unwrap().is_empty());
+            },
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_hooks::screen_position_tests::stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary",
+        "SUNRISE_SCREEN_POSITION_DATA_SYNC_CHILD",
+        &["sync"],
+    ) {
+        return;
+    }
+    use sunrise_client::{
+        containers::{ModBlockEntity, ModBlockEntityFields},
+        lan::{
+            Joined, Lan, NetConfig, Out, PlayerSender,
+            chunks::ChunkEncoder,
+            data::SyncData,
+            guest::Guest,
+            hub::{Hub, HubConfig},
+            menu::{Menu, Slots},
+        },
+        world::World,
+    };
+    use sunrise_protocol::{
+        buf::Reader,
+        packets::{
+            configuration::ClientInformation,
+            play::{Clientbound as C, ContainerSetData},
+        },
+    };
+
+    let seen = Seen::default();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "test",
+        Box::new(CrateMod(seen.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_api::__private::mark_game_thread();
+        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
+        crate::game::native_entity_refs::tests::with_game_role(
+            root.prepared().to_owned(),
+            crate::game::execution_role::ExecutionRole::Client,
+            |game| {
+                seed_native_menu(game, 1, "minecraft:generic_9x3");
+                let pos = (17, 63, -9);
+                game.world.chunks.insert(
+                    (1, -1),
+                    Arc::new(sunrise_client::chunk::Chunk::empty(1, -1)),
+                );
+                let state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("test:crate")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+                assert!(game.open_native_screen(pos, Some(pos), 27, None));
+                assert_eq!(seen.lock().unwrap().data_slots, [0]);
+                game.container = Some(pos);
+                game.set_screen(Screen::Inventory);
+
+                let config = NetConfig {
+                    announce: false,
+                    listen: false,
+                    ..NetConfig::loopback(0, "StockDataSyncTest".into(), 2)
+                };
+                let sync = Arc::new(SyncData::empty());
+                let lan = Lan::start_with(sync.clone(), config).unwrap();
+                let encoder = ChunkEncoder::new(
+                    [] as [(Arc<str>, bool); 0],
+                    &sunrise_protocol::registry::Builtin::default(),
+                    &[],
+                    &[],
+                    Default::default(),
+                );
+                let hub_config = HubConfig {
+                    default_game_mode: 0,
+                    guest_commands: false,
+                    force_game_mode: false,
+                    hardcore: false,
+                    view_distance: 10,
+                    simulation_distance: 10,
+                    dimension: "minecraft:overworld".into(),
+                    allow_flight: false,
+                    seed: 0,
+                    max_players: 20,
+                    integrated: false,
+                    levels: Default::default(),
+                    level_seeds: Default::default(),
+                };
+                let mut hub = Hub::new(lan, sync, encoder, hub_config, game.loop_context.clone());
+                let (tx, rx) = std::sync::mpsc::channel();
+                let mut guest = Guest::new(
+                    Joined {
+                        conn: 1,
+                        uuid: 1,
+                        name: "Guest".into(),
+                        properties: Vec::new(),
+                        info: ClientInformation::new(8),
+                        brand: "sunrise".into(),
+                        sender: PlayerSender::new(tx, Arc::default()),
+                        latency: Arc::new(std::sync::atomic::AtomicI32::new(0)),
+                        address: "127.0.0.1:25565".parse().unwrap(),
+                        expected: false,
+                    },
+                    1,
+                    [17.5, 64.0, -8.5],
+                    8,
+                );
+                guest.placed = true;
+                guest.dimension = "minecraft:overworld".into();
+                guest.menu = Some(Menu {
+                    window: 1,
+                    kind: 2,
+                    pos: Some(pos),
+                    slots: Slots::Block(pos),
+                    size: 27,
+                    state: 0,
+                    sent: Vec::new(),
+                    drag: None,
+                    sent_data: Vec::new(),
+                    reported_unsent_data_len: None,
+                    blockless_data: Vec::new(),
+                    hidden: Vec::new(),
+                    mod_type: None,
+                    registry_id: "minecraft:generic_9x3".into(),
+                    craft: None,
+                    links: Vec::new(),
+                    asks_still_valid: false,
+                });
+                hub.guests.push(guest);
+
+                let max_wire_index = usize::from(i16::MAX as u16);
+                let mut data = vec![0i32; 65_537];
+                data[0] = 11;
+                data[300] = 22;
+                data[max_wire_index] = 33;
+                data[max_wire_index + 1] = 44;
+                data[65_536] = 55;
+                let mut server_world = World::new(game.res.facts().air, 0);
+                server_world.block_entities.insert(
+                    pos,
+                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                        "test:crate".into(),
+                        ModBlockEntityFields {
+                            data,
+                            ..Default::default()
+                        },
+                    ))),
+                );
+
+                hub.sync_containers(&server_world);
+                let packets: Vec<C> = rx
+                    .try_iter()
+                    .flat_map(|out| match out {
+                        Out::Packet(body) => vec![body],
+                        Out::Packets(bodies) => bodies,
+                        _ => Vec::new(),
+                    })
+                    .filter_map(|body| {
+                        let mut reader = Reader::new(&body);
+                        let id = reader.varint().unwrap();
+                        match C::decode(id, reader.rest()).unwrap() {
+                            packet @ C::ContainerSetData(_) => Some(packet),
+                            _ => None,
+                        }
+                    })
+                    .collect();
+                assert_eq!(packets.len(), max_wire_index + 1);
+                for packet in packets {
+                    game.handle_packet(packet).unwrap();
+                }
+
+                // Signed-short negative wire IDs must be rejected instead of reinterpreted as u16.
+                for negative in [-1i16, i16::MIN] {
+                    game.handle_packet(C::ContainerSetData(ContainerSetData {
+                        container: 1,
+                        id: negative,
+                        value: 99,
+                    }))
+                    .unwrap();
+                }
+
+                let mut batch = HudBatch::scratch([200, 200]);
+                assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
+                let frames = &seen.lock().unwrap().data;
+                assert_eq!(frames.len(), 1);
+                let frame = &frames[0];
+                assert_eq!(frame.len(), max_wire_index + 1);
+                assert_eq!(frame[0], 11);
+                assert_eq!(frame[1], 0);
+                assert_eq!(frame[300], 22);
+                assert_eq!(frame[max_wire_index], 33);
             },
         );
     });

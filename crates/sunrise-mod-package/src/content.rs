@@ -1013,9 +1013,9 @@ pub struct MenuType {
     /// Append the 36 player inventory slots (default: true).
     #[serde(default = "yes")]
     pub player_inventory: bool,
-    /// 0 to [`MAX_MENU_SLOTS`].
+    /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
-    pub data_slots: u16,
+    pub data_slots: usize,
     /// Per-slot maxima for transient slots when the menu is opened with no backing block.
     /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
     /// with take-only `results` or a `crafting` layout.
@@ -1081,7 +1081,7 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
+/// the most container slots a mod menu type has, as many as a mod
 /// container (`native_block_entity_container`) may.
 pub const MAX_MENU_SLOTS: u16 = 256;
 
@@ -1769,10 +1769,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
+            if file.slots > MAX_MENU_SLOTS {
                 return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
+                    "{source}: slots ({}) is 0 to {MAX_MENU_SLOTS}",
+                    file.slots
                 ));
             }
             if let Some(limits) = &file.owned_slots
@@ -2970,13 +2970,29 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let wide = smod(
+            "menu-wide-data",
+            MANIFEST_TEXT,
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 1, "data_slots": 300}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/huge.json",
+                    br#"{"slots": 1, "data_slots": 70000}"#,
+                ),
+            ],
+        )
+        .unwrap();
+        let wide_counts: Vec<_> = wide
+            .menu_types
+            .iter()
+            .map(|m| (m.id.as_str(), m.data_slots))
+            .collect();
+        assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
         for (case, file, details) in [
             ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
-            (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
-            ),
             (
                 "menu-result",
                 r#"{"slots": 0, "results": [0]}"#,

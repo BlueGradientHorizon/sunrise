@@ -99,7 +99,7 @@ impl Game<'_> {
             return Err(WrongOwner);
         }
         let &committed = open.blockless_data.get(index).ok_or(InvalidIndex)?;
-        let (conn, index) = (guest.conn, index as u16);
+        let conn = guest.conn;
         let key = (conn, guest.menu_generation, index);
         if self.pending_menu_data(key).unwrap_or(committed) == value {
             return Ok(false);

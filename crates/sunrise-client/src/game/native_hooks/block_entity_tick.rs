@@ -1,18 +1,14 @@
 use super::*;
 use crate::game::{
-    Dim,
     api_values::{TryIntoApi, TryIntoEngine},
     transactions::OpenTransactions,
 };
 use mod_api::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess,
-    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost,
+    BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess, BlockEntityTickScope,
+    BlockEntityView, ResidentBlockEntity, ServerHost,
 };
 use std::collections::HashMap;
-use sunrise_client::{
-    block_entities::BlockEntityLoan, chunk_map::ChunkMap, fast_hash::FxHashMap,
-    world::ModifiedChunks,
-};
+use sunrise_client::{block_entities::BlockEntityLoan, chunk_map::ChunkMap, fast_hash::FxHashMap};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_items::items::Items;
 
@@ -21,29 +17,44 @@ use sunrise_items::items::Items;
 mod tests;
 
 impl Game<'_> {
-    /// The tick of the resident mod block entity at `pos`.
-    pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) {
+    /// `LevelChunk.BoundTickingBlockEntity.tick` for a resident mod block entity.
+    /// Returns whether the ticker was dispatched, so skipped rows have no after-slot.
+    pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) -> bool {
         let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
-            return;
+            return false;
         };
         let Some(kind) = entity.tick_kind() else {
-            return;
-        };
-        let Some(level) = self.level(self.dim.id()) else {
-            return;
+            return false;
         };
         let Some(generation) = self.world.block_entities.generation(&pos) else {
-            return;
+            return false;
         };
-        let state = self.world.block(pos.0, pos.1, pos.2);
+        let live_state = self.world.block(pos.0, pos.1, pos.2);
+        let block = &self.res.facts().get(live_state).name;
+        if !valid_tick_subject(block, entity) {
+            if let Some(id) = self
+                .world
+                .block_entities
+                .record_invalid_mod_tick(pos, generation)
+            {
+                log::warn!("Block entity {id} at {pos:?} cannot tick on {block}");
+            }
+            return false;
+        }
+        let Some(level) = self.level(self.dim.id()) else {
+            return false;
+        };
         let subject =
             mod_api::__private::game::block_entity_ref(level, [pos.0, pos.1, pos.2], generation);
         let mut access = TickAccess {
             game: self,
             subject,
-            state,
         };
         Self::native_block_entity_tick(kind, BlockEntityTickScope::new(&mut access));
+        self.world
+            .block_entities
+            .clear_ticker_warning(pos, generation);
+        true
     }
 
     /// Dispatch the one resident server ticker; the scope owns access to the Host.
@@ -55,10 +66,13 @@ impl Game<'_> {
     }
 }
 
+fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
+    sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)
+}
+
 struct TickAccess<'g, 'w> {
     game: &'g mut Game<'w>,
     subject: BlockEntityRef,
-    state: BlockStateId,
 }
 
 impl BlockEntityTickAccess for TickAccess<'_, '_> {
@@ -66,20 +80,18 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         use mod_api::__private::game::Fields;
         let target = self.subject.fields();
         let [x, y, z] = target.position;
-        if !self.game.level_in_place(target.level)
-            || !self.game.world.loaded(x, z)
-            || self.game.world.block(x, y, z) != self.state
-        {
+        if !self.game.level_in_place(target.level) || !self.game.world.loaded(x, z) {
             return;
         }
-        let Ok(state) = self.state.try_into_api() else {
+        let live_state = self.game.world.block(x, y, z);
+        let Ok(state) = live_state.try_into_api() else {
             return;
         };
         let slot_count = self
             .game
             .world
             .block_entities
-            .mod_container(self.state.0)
+            .mod_container(live_state.0)
             .map_or(0, |c| c.slots);
         let pos = (x, y, z);
         let Some(loan) = self
@@ -90,18 +102,18 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         else {
             return;
         };
+        if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
+            return;
+        }
         let mut data = TickData {
             pos,
-            dim: self.game.dim,
             loan,
             slot_count,
             items: self.game.res.items(),
             journal: &mut self.game.transactions,
-            modified: &mut self.game.world.modified,
             chunks: &self.game.world.chunks,
             names: &self.game.world.block_names,
             hoppers: &self.game.hoppers,
-            dirty: false,
         };
         call(BlockEntityView::new(self.subject, state, &mut data));
     }
@@ -113,16 +125,13 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
 
 struct TickData<'a> {
     pos: Pos,
-    dim: Dim,
     loan: BlockEntityLoan<'a>,
     slot_count: usize,
     items: &'a Items,
     journal: &'a mut OpenTransactions,
-    modified: &'a mut ModifiedChunks,
     chunks: &'a ChunkMap,
     names: &'a FxHashMap<Pos, Tag>,
     hoppers: &'a HashMap<Pos, super::super::machines::HopperState>,
-    dirty: bool,
 }
 
 impl TickData<'_> {
@@ -130,7 +139,7 @@ impl TickData<'_> {
         self.loan.entity
     }
 
-    fn edit(&mut self, dirty: bool) -> &mut EngineBlockEntity {
+    fn edit(&mut self) -> &mut EngineBlockEntity {
         self.journal.journal_block_entity_loan(
             self.pos,
             &self.loan,
@@ -138,17 +147,7 @@ impl TickData<'_> {
             self.names.get(&self.pos),
             self.hoppers.get(&self.pos).copied(),
         );
-        self.dirty |= dirty;
         self.loan.entity
-    }
-}
-
-impl Drop for TickData<'_> {
-    fn drop(&mut self) {
-        if self.dirty {
-            self.journal
-                .mark_block_entity_saved(self.dim, self.modified, self.pos);
-        }
     }
 }
 
@@ -170,25 +169,18 @@ impl ResidentBlockEntity for TickData<'_> {
         {
             return false;
         }
-        self.edit(true).data[index] = value;
+        self.edit().data[index] = value;
         true
     }
 
-    fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
-        let limit = usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS);
-        if data.len() > limit {
-            return Err(BlockEntityDataError::TooManySlots {
-                count: data.len() as u64,
-                limit: limit as u64,
-            });
-        }
+    fn set_data_slots(&mut self, data: &[i32]) -> bool {
         if self.entity().data == data {
-            return Ok(false);
+            return false;
         }
-        let dest = &mut self.edit(true).data;
+        let dest = &mut self.edit().data;
         dest.clear();
         dest.extend_from_slice(data);
-        Ok(true)
+        true
     }
 
     fn nbt(&self) -> &Compound {
@@ -196,30 +188,35 @@ impl ResidentBlockEntity for TickData<'_> {
     }
 
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
-        if [
-            "id",
-            "x",
-            "y",
-            "z",
-            "Items",
-            sunrise_client::containers::SHAPES_KEY,
-        ]
-        .iter()
-        .any(|reserved| key.0.iter().copied().eq(reserved.encode_utf16()))
+        let is_items = key.0.iter().copied().eq("Items".encode_utf16());
+        if ["id", "x", "y", "z", sunrise_client::containers::SHAPES_KEY]
+            .iter()
+            .any(|reserved| key.0.iter().copied().eq(reserved.encode_utf16()))
+            || (is_items && self.slot_count > 0)
             || value.as_ref().is_some_and(|tag| {
                 matches!(tag, Tag::End) || sunrise_client::nbt_path::too_deep(tag, 1)
             })
-            || self.entity().nbt.get(&key) == value.as_ref()
         {
             return false;
         }
-        let nbt = &mut self.edit(true).nbt;
+        let unchanged = if is_items && !self.entity().items.is_empty() {
+            sunrise_client::save::block_entity_encode::mod_items(self.entity(), self.items) == value
+        } else {
+            self.entity().nbt.get(&key) == value.as_ref()
+        };
+        if unchanged {
+            return false;
+        }
+        let entity = self.edit();
+        if is_items {
+            entity.items.clear();
+        }
         match value {
             Some(tag) => {
-                nbt.insert(key, tag);
+                entity.nbt.insert(key, tag);
             }
             None => {
-                nbt.remove(&key);
+                entity.nbt.remove(&key);
             }
         }
         true
@@ -270,7 +267,7 @@ impl ResidentBlockEntity for TickData<'_> {
         {
             return Ok(false);
         }
-        let entity = self.edit(true);
+        let entity = self.edit();
         if index >= entity.items.len() {
             entity.items.resize(slots, None);
         }
@@ -282,7 +279,7 @@ impl ResidentBlockEntity for TickData<'_> {
 
     fn set_client_update_fields(&mut self, fields: Compound) {
         if !fields.is_empty() || self.entity().has_client_update_fields() {
-            self.edit(false).set_client_update_fields(fields);
+            self.edit().set_client_update_fields(fields);
         }
     }
 }

@@ -249,8 +249,6 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data[index] = value);
-        self.transactions
-            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 
@@ -261,13 +259,6 @@ impl Game<'_> {
         entity: BlockEntityRef,
         values: Vec<i32>,
     ) -> Result<bool, BlockEntityDataError> {
-        let limit = usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS);
-        if values.len() > limit {
-            return Err(BlockEntityDataError::TooManySlots {
-                count: values.len() as u64,
-                limit: limit as u64,
-            });
-        }
         let key = self
             .native_block_entity_write_key(entity)
             .ok_or(BlockEntityDataError::Stale)?;
@@ -278,8 +269,6 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data = values);
-        self.transactions
-            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 

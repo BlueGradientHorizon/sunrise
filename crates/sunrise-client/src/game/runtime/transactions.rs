@@ -54,7 +54,7 @@ mod scratch;
 
 type Pos = (i32, i32, i32);
 /// The last pending value at this depth for a connection, menu generation and data index.
-type MenuDataJournal = BTreeMap<(u32, u64, u16), i32>;
+type MenuDataJournal = BTreeMap<(u32, u64, usize), i32>;
 type ComposterRandoms =
     HashMap<(mod_api::DimensionKey, (i32, i32)), HashMap<Pos, sunrise_core::random::LegacyRandom>>;
 
@@ -134,21 +134,6 @@ impl OpenTransactions {
                 extras: BlockEntityExtras::capture(chunks, pos),
                 contents_watches: loan.contents_watches.snapshot(loan.identity),
             });
-        }
-    }
-
-    /// Publish a storage-only save mark, deferring it to the root commit if needed.
-    pub(in crate::game) fn mark_block_entity_saved(
-        &mut self,
-        dim: super::Dim,
-        modified: &mut sunrise_client::world::ModifiedChunks,
-        pos: Pos,
-    ) {
-        let chunk = (pos.0 >> 4, pos.2 >> 4);
-        if let Some(level) = self.last_mut() {
-            level.save_chunks.insert((dim, chunk));
-        } else {
-            modified.insert(chunk);
         }
     }
 
@@ -1758,14 +1743,18 @@ impl Game<'_> {
             }
         }
     }
-    pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, u16)) -> Option<i32> {
+    pub(in crate::game) fn pending_menu_data(&self, key: (u32, u64, usize)) -> Option<i32> {
         self.transactions
             .iter()
             .rev()
             .find_map(|level| level.menu_data.get(&key).copied())
     }
 
-    pub(in crate::game) fn journal_menu_data(&mut self, key: (u32, u64, u16), value: i32) -> bool {
+    pub(in crate::game) fn journal_menu_data(
+        &mut self,
+        key: (u32, u64, usize),
+        value: i32,
+    ) -> bool {
         let Some(level) = self.transactions.last_mut() else {
             return false;
         };

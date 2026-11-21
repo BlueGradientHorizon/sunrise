@@ -26,6 +26,9 @@ fn mod_screen_data_is_its_windows_only() {
     assert!(s.set_data(4, 1, 7));
     assert!(!s.set_data(3, 1, 99));
     assert_eq!(s.menu.data, [0, 7]);
+    assert!(s.set_data(4, 300, 11));
+    assert_eq!(s.menu.data.len(), 301);
+    assert_eq!(s.menu.data[300], 11);
 }
 
 /// A slot move changes only a shown slot, to a finite position, takes
