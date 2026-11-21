@@ -4,14 +4,15 @@
 pub trait Hooks {
     /// Before one of vanilla's HUD layers is drawn (`RenderGuiLayerEvent.Pre`):
     /// draw here to put something below the layer, or set `canceled` to hide
-    /// it. `layer` is the layer's id, in the order Sunrise draws them:
+    /// it. `layer` is the layer's id. The built-in registration anchors, in registration order, are:
     /// `minecraft:crosshair`, `hotbar`, `effects`, `boss_overlay`,
     /// `vehicle_health` (only riding a mount), `contextual_info_bar` (the
     /// mount's jump bar, the locator bar or the experience bar, with the level
     /// number), `player_health` (one layer for the health, armor, food and air
     /// rows), `selected_item_name`, `sleep_overlay`, `overlay_message` (the
     /// action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. A layer F1 hides fires nothing, and the chat
+    /// `chat` and `tab_list`. In the render pass, `player_health` fires before
+    /// `contextual_info_bar`. A layer F1 hides fires nothing, and the chat
     /// screen draws the focused chat itself, so `chat` is only the unfocused
     /// lines. The camera overlays and the debug screen are not layers here:
     /// they are not drawn in this pass. The selected item name and action bar

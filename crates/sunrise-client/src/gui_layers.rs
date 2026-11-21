@@ -1,5 +1,5 @@
-//! The HUD's layer order (NeoForge's `GuiLayerManager`): vanilla's layers in the order Sunrise
-//! draws them, with the layers native mods register (`register_gui_layers`) placed among them
+//! The HUD's layer registration order (NeoForge's `GuiLayerManager`), not its draw order.
+//! Layers native mods register (`register_gui_layers`) are placed among the built-in anchors
 //! once at start, as `RegisterGuiLayersEvent` inserts them.
 
 use mod_api::{GuiLayer, GuiLayerPlacement, Identifier};
