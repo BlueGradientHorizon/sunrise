@@ -536,6 +536,16 @@ pub trait BlockEntityDrawContext {
         unimplemented!("BlockEntityDrawContext::draw_fluid_box")
     }
 }
+/// The posed first-person draw context passed to [`crate::RenderHandEvent`].
+pub trait HandDrawContext: BlockEntityDrawContext {
+    /// Appends the local avatar's physical left or right arm in its rest pose with the vanilla
+    /// outward roll, using the frame's skin, model width and that side's sleeve setting. The
+    /// current draw pose and fixed light apply, not the default hand's item, swing or equip pose.
+    /// Either arm can be submitted on either hand callback. This does not fire `render_arm`,
+    /// change draw state or cancel the default. If the avatar arm is unavailable, draws nothing.
+    fn render_arm(&mut self, arm: MainHand);
+}
+
 /// What `block_screen_effect_draw` draws with, one per hook call: quads in camera space, in
 /// blocks, with `+x` right, `+y` up and the camera at the origin looking down `-z`. It is the
 /// space of `ScreenEffectRenderer`'s own quads, whose whole-view quad has corners at `(±1, ±1, -0.5)`,

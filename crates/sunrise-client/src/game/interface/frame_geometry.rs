@@ -86,10 +86,7 @@ impl Game<'_> {
             .then(|| (celestial_frame(sky.star_angle), sky.star_brightness));
         (out, bodies, stars)
     }
-    /// `renderPlayerHand` (`AvatarRenderer.renderHand`): the player's own
-    /// `left` or right arm with its skin at pose `m`, in its rest pose
-    /// turned 0.1 radians outwards. Mods are asked first (`RenderArmEvent`)
-    /// and may draw at `m` or leave the arm out.
+    /// `renderPlayerHand`: ask `RenderArmEvent` before submitting the default arm.
     pub(super) fn first_person_arm(
         &self,
         left: bool,
@@ -123,15 +120,25 @@ impl Game<'_> {
                 return;
             }
         }
-        let slim = self.player_model.as_ref().is_some_and(|m| m.slim);
+        self.submit_first_person_arm(left, m, light, out);
+    }
+
+    /// `AvatarRenderer.renderHand`: submit the posed avatar arm without posting another hook.
+    pub(in crate::game) fn submit_first_person_arm(
+        &self,
+        left: bool,
+        m: glam::Mat4,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let avatar = self.player_model.as_ref();
+        let slim = avatar.is_some_and(|m| m.slim);
         let Some(arm) = self.res.player_arm(slim, left).as_ref() else {
             return;
         };
         // The player's own skin, as the inventory's model shows it.
         let sprites = &self.gui.atlas.sprites;
-        let Some(r) = self
-            .player_model
-            .as_ref()
+        let Some(r) = avatar
             .and_then(|m| m.skin.as_deref())
             .and_then(|skin| sprites.get(skin))
             .or_else(|| sprites.get("entity/player/wide/steve"))
@@ -139,15 +146,31 @@ impl Game<'_> {
         else {
             return;
         };
-        let z_rot = if left { -0.1 } else { 0.1 };
+        let (sleeve, bit, z_rot) = if left {
+            ("left_sleeve", 2, -0.1)
+        } else {
+            ("right_sleeve", 3, 0.1)
+        };
+        let hide_sleeve = avatar.is_some_and(|a| a.extra.hidden_model_parts & (1 << bit) != 0);
         let pose = |p: &sunrise_client::mobs::Part| {
+            if hide_sleeve && p.name == sleeve {
+                return None;
+            }
             let mut pose = p.pose;
             pose[3] = 0.0;
             pose[4] = 0.0;
-            pose[5] = if p.name == arm.name { z_rot } else { 0.0 };
-            pose
+            pose[5] = if std::ptr::eq(p, arm) { z_rot } else { 0.0 };
+            Some(pose)
         };
-        sunrise_client::mobs::render_model(arm, m, &pose, [r.u0, r.v0, r.u1, r.v1], light, 0, out);
+        sunrise_client::mobs::render_model_filtered(
+            arm,
+            m,
+            &pose,
+            [r.u0, r.v0, r.u1, r.v1],
+            light,
+            0,
+            out,
+        );
     }
     /// FirstPersonHandsAndItemsRenderer: the right arm or the held items of
     /// both hands in view space, converted to camera-relative world space,

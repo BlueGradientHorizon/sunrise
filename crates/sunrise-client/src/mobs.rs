@@ -5064,6 +5064,19 @@ pub fn render_model(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
+    render_model_filtered(part, base, &|p| Some(pose_for(p)), uv, light, overlay, out);
+}
+
+/// Draw a posed model, skipping a part and its descendants when its pose is `None`.
+pub fn render_model_filtered(
+    part: &Part,
+    base: glam::Mat4,
+    pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
+    uv: [f32; 4],
+    light: u32,
+    overlay: u32,
+    out: &mut Vec<Vertex>,
+) {
     visit(
         part,
         base,
@@ -5078,13 +5091,15 @@ pub fn render_model(
         part: &Part,
         parent: glam::Mat4,
         normals: ModelNormals,
-        pose_for: &dyn Fn(&Part) -> [f32; 9],
+        pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
         uv: [f32; 4],
         light: u32,
         overlay: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let p = pose_for(part);
+        let Some(p) = pose_for(part) else {
+            return;
+        };
         let m = parent
             * glam::Mat4::from_translation(glam::Vec3::new(p[0], p[1], p[2]) / 16.0)
             * glam::Mat4::from_quat(glam::Quat::from_euler(
