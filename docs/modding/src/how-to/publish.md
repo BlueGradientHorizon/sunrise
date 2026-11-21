@@ -1,11 +1,10 @@
 # Publishing your mod
 
 Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods), lists mods, modpacks,
-resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). The
-[registry submission form](https://playsunrise.net/mods/submit) uploads your package and opens a pull request for a
-person to review. Every new registry version row must name a stable Sunrise release in `sunrise`. To submit a
-mod yourself, use [the stable source submission](#publishing-a-stable-source-version). The steps below also show
-how to prepare and check a local draft.
+resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). Every new or changed
+registry version row must name a stable Sunrise release in `sunrise`, so submit a version through
+[the stable source submission](#publishing-a-stable-source-version). The steps below show how to prepare and check
+a local draft, and what review and staging do with a submission.
 
 ## 1. Build and write the submission
 
@@ -60,6 +59,9 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 ```
 
 ## 3. Open the pull request
+
+A row written without `--sunrise` is refused by review; give `publish` the flags of
+[the stable source submission](#publishing-a-stable-source-version) before opening the pull request.
 
 1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.

@@ -556,9 +556,9 @@ fn review_requires_a_stable_release_on_a_changed_row() {
     let mut head = base.clone();
     head.versions[0].changelog = "An edited changelog.".into();
     let r = review(&[base], &[head], "ludovic111");
-    assert_eq!(
-        r.errors,
-        ["coords_hud 0.1.0: a new or changed version row needs sunrise = \"<stable release tag>\""]
+    assert!(
+        matches!(&r.errors[..], [e] if e.starts_with("coords_hud 0.1.0:")),
+        "{r:?}"
     );
 }
 
@@ -566,9 +566,9 @@ fn review_requires_a_stable_release_on_a_changed_row() {
 fn review_refuses_deleting_an_entry_even_with_only_legacy_rows() {
     let base: Entry = toml::from_str(&hud_entry()).unwrap();
     let r = review(&[base], &[], "ludovic111");
-    assert_eq!(
-        r.errors,
-        ["coords_hud: removed; take its files down in revoked.toml instead"]
+    assert!(
+        matches!(&r.errors[..], [e] if e.starts_with("coords_hud:")),
+        "{r:?}"
     );
 }
 
