@@ -263,6 +263,25 @@ impl Registry {
         )
     }
 
+    fn broke_at(&mut self, label: &str) {
+        self.published
+            .projects
+            .iter_mut()
+            .find(|p| p.id == ID)
+            .unwrap()
+            .versions[0]
+            .verdicts
+            .insert(
+                label.into(),
+                index::BuildVerdict {
+                    fit: index::FitVerdict::Breaks {
+                        changed: vec!["hook removed".into()],
+                    },
+                    targets: Vec::new(),
+                },
+            );
+    }
+
     fn add_version(&mut self, version: &str) {
         let rows = &mut self.checkout.entries[0].versions;
         let mut copy = rows[0].clone();
@@ -348,21 +367,11 @@ fn rebuild_skips_unavailable_or_unfit_source_rows() {
             "broken" => {
                 registry
                     .published
-                    .projects
-                    .iter_mut()
-                    .find(|p| p.id == ID)
+                    .releases
+                    .as_mut()
                     .unwrap()
-                    .versions[0]
-                    .verdicts
-                    .insert(
-                        TIP_TAG.into(),
-                        index::BuildVerdict {
-                            fit: index::FitVerdict::Breaks {
-                                changed: vec!["hook removed".into()],
-                            },
-                            targets: Vec::new(),
-                        },
-                    );
+                    .extend(stable_list(&[(TIP_TAG, TIP)]));
+                registry.broke_at(TIP_TAG);
                 "1.0.0"
             }
             "moved-pin" => {
@@ -383,6 +392,42 @@ fn rebuild_skips_unavailable_or_unfit_source_rows() {
         assert!(registry.select(None).unwrap().is_none(), "{why}");
         assert!(registry.select(Some((version, TIP_TAG))).is_err(), "{why}");
     }
+}
+
+#[test]
+fn a_nightly_break_still_applies_to_that_commit_as_a_stable_target() {
+    let mut registry = Registry::new();
+    registry.published.nightly_build = Some(index::NightlyBuild {
+        commit: TIP.into(),
+        date: "2026-11-20".into(),
+    });
+    registry.broke_at("nightly");
+    assert!(registry.select(None).unwrap().is_none());
+    assert!(registry.select(Some(("1.0.0", TIP_TAG))).is_err());
+}
+
+#[test]
+fn a_stable_verdict_does_not_follow_a_moved_tag_to_another_commit() {
+    let mut registry = Registry::new();
+    registry
+        .published
+        .releases
+        .as_mut()
+        .unwrap()
+        .extend(stable_list(&[(TIP_TAG, GAP)]));
+    registry.broke_at(TIP_TAG);
+    assert_eq!(registry.select(None).unwrap().unwrap().target.commit, TIP);
+    assert_eq!(
+        registry
+            .select(Some(("1.0.0", TIP_TAG)))
+            .unwrap()
+            .unwrap()
+            .target
+            .commit,
+        TIP
+    );
+    // The old breaking commit is still refused if asked for under its other stable tag.
+    assert!(registry.select(Some(("1.0.0", GAP_TAG))).is_err());
 }
 
 #[test]

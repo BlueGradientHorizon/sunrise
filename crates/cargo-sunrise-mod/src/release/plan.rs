@@ -295,6 +295,18 @@ fn rebuild<'a>(
                 .ok_or_else(|| format!("Sunrise {tag:?} is not in --releases"))
         })
         .transpose()?;
+    // A verdict's label is meaningful only in the snapshot that published it. A tag
+    // may later move, and the Nightly that was judged may become a stable release.
+    let mut published_commits: BTreeMap<_, _> = published
+        .releases
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .map(|r| (r.tag.as_str(), r.commit.as_str()))
+        .collect();
+    if let Some(nightly) = &published.nightly_build {
+        published_commits.insert("nightly", &nightly.commit);
+    }
 
     for (_, row) in versions {
         let (Some(source_tag), Some(signature)) = (&row.sunrise, &row.signature) else {
@@ -325,12 +337,7 @@ fn rebuild<'a>(
         let Some((source_version, source)) = by_tag.get(source_tag.as_str()) else {
             continue;
         };
-        if !published
-            .releases
-            .as_deref()
-            .unwrap_or_default()
-            .contains(source)
-        {
+        if published_commits.get(source.tag.as_str()).copied() != Some(source.commit.as_str()) {
             continue; // The reviewed source's stable tag must still resolve to the published pin.
         }
         let Some((target_version, target)) =
@@ -353,7 +360,8 @@ fn rebuild<'a>(
                 .iter()
                 .any(|build| build.build == target.commit)
             || listed.verdicts.iter().any(|(tag, verdict)| {
-                matches!(verdict.fit, index::FitVerdict::Breaks { .. }) && covers_target(tag)
+                matches!(verdict.fit, index::FitVerdict::Breaks { .. })
+                    && published_commits.get(tag.as_str()).copied() == Some(target.commit.as_str())
             })
         {
             continue;
