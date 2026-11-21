@@ -53,7 +53,7 @@ handle; it cannot directly mutate server state. Do not add player-id helpers to
 Book identities are separate from `RecipeBookCategory` in
 `crates/sunrise-mod-vocab/src/item/recipe_book.rs`. Categories group recipes and provide
 icons; a book owns two flags. A screen associates categories with a registered
-book explicitly through `Screen.recipe_book`. Neither category registration nor
+book explicitly through `MenuScreenLayout.recipe_book`. Neither category registration nor
 recipe-type registration implicitly registers a book. Recipe unlocking and
 placement remain separate from displaying the declared recipe layouts.
 
@@ -240,22 +240,22 @@ and a category selected in another book cannot be reused as a tab here.
 
 ### Hosting the panel in a mod screen
 
-Construct `Screen` with the geometry your menu needs and use struct update syntax
+Construct `MenuScreenLayout` with the geometry your menu needs and use struct update syntax
 for fields you do not set. This keeps the literal compiling when optional fields
 are added; it does not make the default geometry suitable for your menu.
 
 ```rust
-let screen = mod_api::Screen {
+let screen = mod_api::MenuScreenLayout {
     width: 176.0,
     height: 166.0,
     slots: vec![Some([44.0, 35.0]), Some([116.0, 35.0])],
     inventory_x: 8.0,
     inventory_y: 84.0,
-    ..mod_api::Screen::default()
+    ..mod_api::MenuScreenLayout::default()
 };
 ```
 
-Set `Screen.recipe_book` to `Some(key.clone())` in the existing `native_screen`
+Set `MenuScreenLayout.recipe_book` to `Some(key.clone())` in the existing `native_screen`
 declaration. Leave it `None` for a screen without a recipe book. The key must
 belong to the categories' `target_menu`; a different menu cannot display that
 book. The green book button sits just outside the menu's right edge so it does
@@ -306,7 +306,7 @@ amplification without leaving a lost resnapshot or pending UI intent unresolved.
 
 ## Toggle layout and large books
 
-`Screen.recipe_book_toggle` optionally reserves a 20 × 18 GUI-pixel toggle:
+`MenuScreenLayout.recipe_book_toggle` optionally reserves a 20 × 18 GUI-pixel toggle:
 `RecipeBookToggle { x, y, from }` puts it `x` pixels right of the menu's left edge and `y` below the
 menu's top edge (`from: Menu`) or below the window's centre (`from: ScreenCentre`, vanilla's
 `height / 2` with integer division, so `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0`).
@@ -319,7 +319,7 @@ GUI pixels, windows narrower than 379 GUI pixels, or windows narrower than the
 menu width plus 202 GUI pixels use overlay mode instead of shifting slots. If
 the toggle does not fit in the viewport in the closed layout or in the open
 layout, the book is refused with a diagnostic identifying the mod block and menu.
-The diagnostic requests `Screen.recipe_book_toggle` when absent, or reports an
+The diagnostic requests `MenuScreenLayout.recipe_book_toggle` when absent, or reports an
 anchored toggle outside the viewport when the declared anchor does not fit. The menu still opens unchanged; the
 engine never clamps a toggle onto mod slots or clips the menu to make room.
 
@@ -332,7 +332,7 @@ the entire declared book, not just the visible page.
 
 During shared registration,
 `r.menu_recipe_book(menu, &book, recipe_type, layout, screen)` binds a content
-menu to a registered book, a recipe type and its existing typed `Screen` value. The menu namespace
+menu to a registered book, a recipe type and its existing typed `MenuScreenLayout` value. The menu namespace
 must belong to the registering mod. Duplicate bindings and unknown books refuse
 installation even when the registration error is ignored. The declaration is
 frozen with the other registrations and explicitly derives `Wire`.
@@ -356,7 +356,7 @@ persistent input storage instead: for example, six cooking-pot inputs in a 3 by 
 grid. Placement never fills its cooked output or fuel, and preserves those slots.
 An incompatible display or one that does not fit refuses the declaration
 generation rather than truncating ingredients. All mapped slots need finite
-coordinates in `Screen.slots`. Registration rejects missing or nonfinite
+coordinates in `MenuScreenLayout.slots`. Registration rejects missing or nonfinite
 coordinates, nonpositive/nonfinite panel sizes and a screen bound to another
 book. Startup also rejects geometry for slots beyond the actual content menu.
 The screen is frozen in this same declaration, not a second registry. For these

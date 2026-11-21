@@ -34,7 +34,7 @@ impl RecipeBookLayout {
     /// Engine integration: frozen screen geometry.
     // hidden: engine reads the frozen declaration; mods supply their screen through registration.
     #[doc(hidden)]
-    pub fn registered_screen(menu: &str) -> Option<crate::Screen> {
+    pub fn registered_screen(menu: &str) -> Option<crate::MenuScreenLayout> {
         crate::parts::installed()?
             .menu_recipe_books
             .get(menu)
@@ -50,7 +50,7 @@ impl RecipeBookLayout {
             .map(|binding| binding.owner)
     }
     /// Validate typed screen geometry at the same registration boundary as roles.
-    pub fn validate_screen(&self, screen: &crate::Screen) -> Result<(), String> {
+    pub fn validate_screen(&self, screen: &crate::MenuScreenLayout) -> Result<(), String> {
         if ![screen.width, screen.height]
             .into_iter()
             .all(|size| size.is_finite() && size > 0.0)

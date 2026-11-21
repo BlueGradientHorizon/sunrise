@@ -28,7 +28,7 @@ impl mod_api::MenuPart for Position {
         &self,
         _: &dyn mod_api::Host,
         event: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::Screen> {
+    ) -> Option<mod_api::MenuScreenLayout> {
         // A block's screen leaves slot 4 out; without a block it shows none.
         let slots = match event.block {
             Some(_) => (0..27)
@@ -36,7 +36,7 @@ impl mod_api::MenuPart for Position {
                 .collect(),
             None => Vec::new(),
         };
-        Some(mod_api::Screen {
+        Some(mod_api::MenuScreenLayout {
             height: if event.block.is_some() { 166.0 } else { 133.0 },
             slots,
             own_labels: true,
@@ -465,9 +465,9 @@ impl<const HIDDEN: usize> mod_api::MenuPart for HopperScreen<HIDDEN> {
         &self,
         _: &dyn mod_api::Host,
         _: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::Screen> {
+    ) -> Option<mod_api::MenuScreenLayout> {
         self.heard.lock().unwrap().push((self.owner, "screen"));
-        Some(mod_api::Screen {
+        Some(mod_api::MenuScreenLayout {
             slots: (0..5)
                 .map(|i| (i != HIDDEN).then(mod_api::ScreenSlot::default))
                 .collect(),

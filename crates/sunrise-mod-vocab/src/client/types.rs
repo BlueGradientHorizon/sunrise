@@ -1001,7 +1001,7 @@ impl ColoredLight {
     }
 }
 
-/// A menu type's screen, a mod's (`screen`): its size, where
+/// Layout for a mod menu type's screen (`screen`): its size, where
 /// each of the container's slots is (`Slot.x`, `Slot.y`; none hides the
 /// slot, and so do slots past the list; for a block's menu the server's menu
 /// does not have a hidden slot either, so clicks and shift-clicks skip it), and the player inventory's first
@@ -1010,7 +1010,7 @@ impl ColoredLight {
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
 #[derive(sunrise_mod_api_macros::Wire)]
-pub struct Screen {
+pub struct MenuScreenLayout {
     /// Vanilla's container screens are 176 wide.
     pub width: f32,
     /// The screen's height in GUI pixels; vanilla's is 166.

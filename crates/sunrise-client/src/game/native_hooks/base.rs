@@ -1089,7 +1089,7 @@ impl Game<'_> {
         &self,
         menu: &str,
         block: Option<&str>,
-        screen: &mut Option<mod_api::Screen>,
+        screen: &mut Option<mod_api::MenuScreenLayout>,
     ) {
         self.fire_screen(menu, block, screen);
     }

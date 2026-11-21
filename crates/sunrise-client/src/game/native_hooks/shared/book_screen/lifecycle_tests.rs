@@ -48,7 +48,7 @@ impl mod_api::Hooks for BoundBookMod {
                     slots: vec![0],
                     result: 1,
                 },
-                mod_api::Screen {
+                mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![
@@ -198,7 +198,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 mod_type: None,
                 data: Vec::new(),
                 extra: None,
-                screen: mod_api::Screen {
+                screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![Some(mod_api::ScreenSlot {
@@ -379,7 +379,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                 mod_type: None,
                 data: Vec::new(),
                 extra: None,
-                screen: mod_api::Screen {
+                screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![
@@ -493,7 +493,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                 mod_type: None,
                 data: Vec::new(),
                 extra: None,
-                screen: mod_api::Screen {
+                screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
                     slots: vec![

@@ -1379,7 +1379,7 @@ mod tests {
                 &self,
                 _: &dyn mod_api::Host,
                 _: &mut mod_api::ScreenEvent<'_>,
-            ) -> Option<mod_api::Screen> {
+            ) -> Option<mod_api::MenuScreenLayout> {
                 HEARD.lock().unwrap().push("layout".to_owned());
                 None
             }

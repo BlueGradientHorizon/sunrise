@@ -14,7 +14,7 @@ impl MenusRegistrar for PartRegistrar {
         book: &crate::RecipeBookTypeKey,
         recipe_type: &str,
         layout: crate::RecipeBookLayout,
-        screen: crate::Screen,
+        screen: crate::MenuScreenLayout,
     ) -> Result<(), String> {
         let result: Result<(), String> = (|| {
             if mod_vocab::__private::parts_installation::parts_installed() {

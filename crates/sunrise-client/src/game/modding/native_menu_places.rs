@@ -980,8 +980,8 @@ mod tests {
             &self,
             _: &dyn mod_api::Host,
             _: &mut mod_api::ScreenEvent<'_>,
-        ) -> Option<mod_api::Screen> {
-            Some(mod_api::Screen {
+        ) -> Option<mod_api::MenuScreenLayout> {
+            Some(mod_api::MenuScreenLayout {
                 slots: (0..9)
                     .map(|i| (i != 0).then(mod_api::ScreenSlot::default))
                     .collect(),

@@ -103,7 +103,7 @@ over the screen override.
 
 ## Moving or hiding a mod screen's slots
 
-A mod screen declares where each slot sits in `Screen::slots`. A screen whose layout changes while it is
+A mod screen declares where each slot sits in `MenuScreenLayout::slots`. A screen whose layout changes while it is
 open (tabs, a collapsing panel, a scrolling slot grid, Tinkers' station laying its inputs out for the tool
 being built) moves or hides a slot afterwards with `ClientHost::set_screen_slot`, as a Java screen sets
 `Slot.x`/`Slot.y` or deactivates a slot:
@@ -123,8 +123,8 @@ that does not own the open screen. A screen with a registered recipe-book layout
 registered it, which moves its slots with or without a screen part; any other screen belongs to the mod whose
 screen part lays it out (several mods' blocks can open one vanilla menu type, each with its own mod's screen).
 `slot` is the index into
-`Screen::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
-corner, as in `Screen::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
+`MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
+corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
 `screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
 costs no layout work. The change lasts until the screen closes, and the next screen opens with its declared
 layout. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
@@ -146,7 +146,7 @@ click outside the screen.
 
 The call is client-side only: nothing is sent, and the server's menu never learns a position. It keeps every slot,
 so a hidden slot keeps its item and a shift-click may still fill it, as a deactivated Java slot does. A slot the
-screen hid in `Screen::slots` when it opened is not in the server's menu, so it can't be shown: declare the most
+screen hid in `MenuScreenLayout::slots` when it opened is not in the server's menu, so it can't be shown: declare the most
 slots any layout shows, and hide the ones a layout doesn't use.
 
 Each refusal changes nothing and is named by `ScreenSlotRefusal`:
@@ -154,8 +154,8 @@ Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 | Refusal | When |
 |---|---|
 | `NoScreen` | No mod screen is open, or the open one is another menu type's |
-| `NoSuchSlot` | `slot` is past the end of `Screen::slots` |
-| `HiddenAtOpen` | A position for a slot `Screen::slots` hid when the screen opened |
+| `NoSuchSlot` | `slot` is past the end of `MenuScreenLayout::slots` |
+| `HiddenAtOpen` | A position for a slot `MenuScreenLayout::slots` hid when the screen opened |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |
 | `Unavailable` | No game backend: screens are the client's |
 
@@ -164,7 +164,7 @@ It moves only the slots a mod screen declares; the player's inventory stays unde
 
 ## Mod container title and inventory labels
 
-`Screen::title_label` and `Screen::inventory_label` optionally place those two labels,
+`MenuScreenLayout::title_label` and `MenuScreenLayout::inventory_label` optionally place those two labels,
 independently of slot positions. `Some([x, y])` is relative to the screen image's
 top-left corner, in GUI pixels. `None` uses vanilla's defaults: title `[8, 6]` and
 inventory `[8, height - 94]`. Moving `inventory_x` or `inventory_y` moves slots,
@@ -174,7 +174,7 @@ are supplied; draw them yourself from `screen_draw` instead.
 The default inventory label is at y 72 for a standard 166-high screen and y 39
 for a 133-high hopper layout. Chest layouts use `height - 94`; a shulker box's
 167-high image places it at y 73.
-When building a complete `Screen` literal, include `title_label: None` and
+When building a complete `MenuScreenLayout` literal, include `title_label: None` and
 `inventory_label: None`, or use `..Default::default()`.
 
 ## Buttons with your own art

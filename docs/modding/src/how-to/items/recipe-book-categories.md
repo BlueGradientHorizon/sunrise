@@ -158,5 +158,5 @@ menu's layout (the crafting, furnace, stonecutter and smithing layouts map the d
 sits in a slot the menu's screen does not show, is dropped, and at most 256 are kept. The hook fires on the
 client only, once per answer, for the open menu's book, and only for a menu whose type has a part that listens.
 
-`Screen::recipe_book_big_result` gives the result ghost vanilla's 24 by 24 frame
+`MenuScreenLayout::recipe_book_big_result` gives the result ghost vanilla's 24 by 24 frame
 (`isBiggerResultSlot`). It is off by default.

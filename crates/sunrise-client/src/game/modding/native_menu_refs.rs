@@ -717,8 +717,8 @@ mod tests {
             &self,
             _: &dyn mod_api::Host,
             _: &mut mod_api::ScreenEvent<'_>,
-        ) -> Option<mod_api::Screen> {
-            Some(mod_api::Screen {
+        ) -> Option<mod_api::MenuScreenLayout> {
+            Some(mod_api::MenuScreenLayout {
                 slots: vec![Some(mod_api::ScreenSlot::default()); self.slots],
                 ..Default::default()
             })

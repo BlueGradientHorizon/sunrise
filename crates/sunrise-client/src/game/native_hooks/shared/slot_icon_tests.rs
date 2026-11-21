@@ -20,7 +20,7 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                 window: 1,
                 menu: "test:menu".into(),
                 block: Some("test:block".into()),
-                screen: mod_api::Screen {
+                screen: mod_api::MenuScreenLayout {
                     slots: vec![Some(mod_api::ScreenSlot {
                         position: [8.0, 18.0],
                         no_item_icon: Some(icon.into()),
@@ -70,8 +70,8 @@ impl mod_api::MenuPart for IconScreen {
         &self,
         _: &dyn mod_api::Host,
         _: &mut mod_api::ScreenEvent<'_>,
-    ) -> Option<mod_api::Screen> {
-        Some(mod_api::Screen {
+    ) -> Option<mod_api::MenuScreenLayout> {
+        Some(mod_api::MenuScreenLayout {
             width: 176.0,
             height: 166.0,
             slots: vec![Some(mod_api::ScreenSlot {

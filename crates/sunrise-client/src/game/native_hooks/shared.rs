@@ -664,14 +664,14 @@ pub(super) struct OpenNativeScreen {
     menu: String,
     /// The mod block whose menu it is; none for a menu opened without one.
     block: Option<String>,
-    screen: mod_api::Screen,
+    screen: mod_api::MenuScreenLayout,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
     extra: Option<sunrise_protocol::menu_extra::Message>,
 }
 
 /// Where a mod moved the open screen's slots after it opened, over the
-/// positions its `Screen` declared. Interior state, as the screen hooks that
+/// positions its `MenuScreenLayout` declared. Interior state, as the screen hooks that
 /// move slots hold `&self`. A move is pending until the layout build commits
 /// it, so drawing and hit-testing read one position within a frame and both
 /// take a move together from the next.

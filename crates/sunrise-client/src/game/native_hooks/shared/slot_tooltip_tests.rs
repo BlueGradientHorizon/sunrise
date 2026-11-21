@@ -142,7 +142,7 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                     mod_type: None,
                     data: Vec::new(),
                     extra: None,
-                    screen: mod_api::Screen {
+                    screen: mod_api::MenuScreenLayout {
                         width: 176.0,
                         height: 166.0,
                         inventory_x: 8.0,

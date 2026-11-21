@@ -1,6 +1,6 @@
 use super::*;
-fn screen(book: &crate::RecipeBookTypeKey) -> crate::Screen {
-    crate::Screen {
+fn screen(book: &crate::RecipeBookTypeKey) -> crate::MenuScreenLayout {
+    crate::MenuScreenLayout {
         width: 176.0,
         height: 166.0,
         slots: vec![

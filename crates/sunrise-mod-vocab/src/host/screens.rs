@@ -54,7 +54,7 @@ pub trait ScreensClientHost {
     /// Side: client.
     /// Moves container slot `slot` of the open screen of mod menu type `menu` to `pos`, or hides
     /// it with None, as a Java screen that lays its slots out again sets `Slot.x`/`Slot.y` or
-    /// deactivates a slot (Tinkers' station layouts). `slot` indexes `Screen::slots`. From the
+    /// deactivates a slot (Tinkers' station layouts). `slot` indexes `MenuScreenLayout::slots`. From the
     /// next frame the slot is a vanilla slot at that position: the hovered slot (the 18 by 18
     /// box around it), its highlight, its contents, its empty-slot icon and the recipe book's
     /// ghost items; a hidden one is none of these. A position outside the image is allowed.

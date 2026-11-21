@@ -316,8 +316,8 @@ window closes again.
 struct BackpackScreen;
 #[mod_api::sunrise_part]
 impl mod_api::MenuPart for BackpackScreen {
-    fn screen(&self, _: &dyn mod_api::Host, _: &mut mod_api::ScreenEvent<'_>) -> Option<mod_api::Screen> {
-        Some(mod_api::Screen {
+    fn screen(&self, _: &dyn mod_api::Host, _: &mut mod_api::ScreenEvent<'_>) -> Option<mod_api::MenuScreenLayout> {
+        Some(mod_api::MenuScreenLayout {
             width: 176.0,
             height: 133.0,
             // One row of nine; a slot left `None` is hidden.

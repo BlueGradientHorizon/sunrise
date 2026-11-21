@@ -16,7 +16,7 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                 window: 1,
                 menu: "test:menu".into(),
                 block: Some("test:block".into()),
-                screen: mod_api::Screen {
+                screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     own_background: true,
                     ..Default::default()

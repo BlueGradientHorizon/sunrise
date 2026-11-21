@@ -7,7 +7,7 @@ pub(crate) struct MenuBookDeclaration {
     pub(crate) book: crate::RecipeBookTypeKey,
     pub(crate) recipe_type: String,
     pub(crate) layout: crate::RecipeBookLayout,
-    pub(crate) screen: crate::Screen,
+    pub(crate) screen: crate::MenuScreenLayout,
 }
 
 impl HookParts {
@@ -133,7 +133,7 @@ pub trait MenusRegistrar {
         book: &crate::RecipeBookTypeKey,
         recipe_type: &str,
         layout: crate::RecipeBookLayout,
-        screen: crate::Screen,
+        screen: crate::MenuScreenLayout,
     ) -> Result<(), String>;
     /// Attach `part`, of kind `kind`, to the menu type `menu`.
     fn attach_menu_part(&mut self, menu: &str, kind: &'static str, part: Arc<dyn MenuPart>);

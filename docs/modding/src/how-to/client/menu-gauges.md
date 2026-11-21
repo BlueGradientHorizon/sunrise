@@ -25,7 +25,7 @@ to panel-relative positions. Pass `None` for no tint. An unknown sprite ID
 returns `false`.
 
 This example uses the game's furnace sprites. Add the drawing to the
-`MenuPart` that defines your machine's `Screen`. Replace `mymod:machine`
+`MenuPart` that defines your machine's `MenuScreenLayout`. Replace `mymod:machine`
 with your block ID and adjust the panel-relative positions to fit your layout.
 
 ```rust,ignore

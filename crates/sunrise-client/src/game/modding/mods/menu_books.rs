@@ -22,7 +22,7 @@ fn validate(
     menus: &[&MenuType],
     id: &str,
     layout: RecipeBookLayout,
-    screen: &mod_api::Screen,
+    screen: &mod_api::MenuScreenLayout,
 ) -> Result<(), String> {
     let menu = menus
         .iter()
@@ -53,8 +53,8 @@ fn validate(
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn screen() -> mod_api::Screen {
-        mod_api::Screen {
+    fn screen() -> mod_api::MenuScreenLayout {
+        mod_api::MenuScreenLayout {
             width: 176.0,
             height: 166.0,
             slots: vec![
@@ -137,7 +137,7 @@ mod tests {
             results: vec![6],
             ..menu()
         };
-        let geometry = mod_api::Screen {
+        let geometry = mod_api::MenuScreenLayout {
             slots: vec![
                 Some(mod_api::ScreenSlot {
                     position: [8.0, 8.0],

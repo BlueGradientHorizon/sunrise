@@ -10,7 +10,7 @@ fn mod_screen_data_is_its_windows_only() {
         window: 4,
         menu: "gtmod:menu".into(),
         block: Some("gtmod:machine".into()),
-        screen: mod_api::Screen::default(),
+        screen: mod_api::MenuScreenLayout::default(),
         mod_type: None,
         data: Vec::new(),
         extra: None,

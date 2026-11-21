@@ -4,7 +4,7 @@ impl Game<'_> {
     /// The screen of menu type `menu`: its startup-validated registered book
     /// layout, else what the menu type's parts answer `native_screen`. `block`
     /// is the mod block whose menu it is, when the menu is block-backed.
-    fn menu_screen(&self, menu: &str, block: Option<&str>) -> Option<mod_api::Screen> {
+    fn menu_screen(&self, menu: &str, block: Option<&str>) -> Option<mod_api::MenuScreenLayout> {
         let mut screen = mod_api::RecipeBookLayout::registered_screen(menu);
         if screen.is_some() {
             // A code-opened menu may provide its grid through native slot
@@ -22,7 +22,7 @@ impl Game<'_> {
         &self,
         menu: &str,
         target: Option<Pos>,
-    ) -> Option<(Option<String>, mod_api::Screen)> {
+    ) -> Option<(Option<String>, mod_api::MenuScreenLayout)> {
         let block = target.and_then(|t| self.menu_opener_block(t, menu));
         if block.is_none() && sunrise_client::containers::mod_menu_type(menu).is_none() {
             return None;
