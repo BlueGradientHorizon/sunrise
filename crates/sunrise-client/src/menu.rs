@@ -26,7 +26,7 @@ pub use models::{
     RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome, StoredRules,
 };
 mod slot_context;
-pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
+pub use slot_context::{apply_menu_slot_rules, lan_container};
 use std::sync::Arc;
 
 mod bundle;
@@ -793,7 +793,6 @@ impl Menu {
                     _ => None,
                 },
                 block_pos: None,
-                slot_snapshot: SlotSnapshot::default(),
                 slots,
                 containers,
                 grid_size,
@@ -3605,8 +3604,7 @@ pub(crate) mod tests {
             if menu == "test:context" && slot == 1 {
                 *may_place = context.player == Some(7)
                     && context.pos == Some([4, 5, 6])
-                    && context.slots.len() == 2
-                    && context.slots[0].is_none();
+                    && context.slot(mod_api::MenuContainer::Main, 0).is_none();
             }
             if menu == "test:rules" && slot == 0 {
                 *may_place = self.0.side() == LoopSide::Server;
