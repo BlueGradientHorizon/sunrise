@@ -81,11 +81,7 @@ pub(super) fn startup_root(
         mod_sources,
     ));
     let mut enabled = packs::enabled(&all, selected);
-    // NeoForge's rollbackResourcePacks only clears the selection if it contains an optional pack.
-    let cleared = enabled
-        .iter()
-        .any(|pack| !pack.selection.as_ref().is_some_and(|info| info.required))
-        .then(|| packs::enabled(&all, &[]));
+    let cleared = packs::has_optional_pack(&enabled).then(|| packs::enabled(&all, &[]));
     enabled.extend_from_slice(server);
     let base = super::mods::content_root(vanilla, mod_sources)?;
     let selected = layer_client_packs(&base, &enabled);
@@ -354,15 +350,13 @@ impl Game<'_> {
             self.selection_reload_failed(&format!("could not start the pack reload: {e}"));
         }
     }
-    /// `reloadResourcePacks`' failure (`Minecraft.rollbackResourcePacks`): with
-    /// a pack selected, all selected packs are dropped and the reload runs
-    /// again, with the load-failure toast; with none left to drop, the pack
-    /// screen again, with the error.
+    /// NeoForge's `Minecraft.rollbackResourcePacks`: reset the selection and
+    /// reload only if an optional pack was selected; otherwise show the error.
     fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
-        if packs::able_to_clear_any_pack(&all, &self.settings.resource_packs) {
+        if packs::has_optional_pack(&packs::enabled(&all, &self.settings.resource_packs)) {
             // clearResourcePacksOnError.
             log::info!("Caught error loading resourcepacks, removing all selected resourcepacks");
             self.settings.resource_packs.clear();
