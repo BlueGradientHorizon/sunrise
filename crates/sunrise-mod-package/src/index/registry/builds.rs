@@ -104,6 +104,8 @@ fn submissions<'a>(
         .key
         .as_deref()
         .ok_or("builds need a project signing key")?;
+    let source_repo = super::github_repo(&entry.source)
+        .ok_or("builds need the project's GitHub repository in `source`")?;
     let mut seen = BTreeSet::new();
     version
         .builds
@@ -128,6 +130,11 @@ fn submissions<'a>(
                 || !tag.split('/').all(super::super::plain_name)
             {
                 return Err(invalid());
+            }
+            if !repo.eq_ignore_ascii_case(&source_repo) {
+                return Err(at(format!(
+                    "binaries must be hosted in the project's repository {source_repo}"
+                )));
             }
             Ok(Submission {
                 entry,

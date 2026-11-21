@@ -35,6 +35,10 @@ impl Release {
         r.edit(ID, |t| {
             t.replace("kind='mod'", "kind='native-mod'")
                 .replace(
+                    "https://example.test/release_probe",
+                    "https://github.com/Test-Author/Release_Probe",
+                )
+                .replace(
                     "[[versions]]",
                     &format!("key='{}'\n\n[[versions]]", key.trim()),
                 )
@@ -179,6 +183,23 @@ fn rebuilds_use_the_signed_sources_canonical_version_without_changing_the_label(
         row.native_binaries
             .iter()
             .all(|binary| binary.file.name.starts_with("release_probe-1.0+"))
+    );
+}
+
+#[test]
+fn descriptors_must_be_in_the_projects_own_repository() {
+    let release = Release::new("source.smod");
+    release.use_descriptor("valid");
+    release.0.edit(ID, |text| {
+        text.replace(
+            URL,
+            "https://github.com/test-author/another_repo/releases/download/v1.0.0",
+        )
+    });
+    let error = release.check().unwrap_err();
+    assert!(
+        error.contains("the project's repository Test-Author/Release_Probe"),
+        "{error}"
     );
 }
 
