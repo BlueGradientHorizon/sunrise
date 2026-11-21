@@ -513,9 +513,7 @@ impl GameLevel<'_, '_> {
         }
         let bounds = mob.bounds();
         let vanilla = spawn_selection::max_cluster_size(r.species);
-        let cluster_size = self
-            .game
-            .spawn_cluster_size(&mut mob, r.reason, None, vanilla);
+        let cluster_size = self.game.spawn_cluster_size(&mob, r.reason, None, vanilla);
         pending.push(mob);
         Some(Spawned {
             bounds,
@@ -730,7 +728,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
         let provisional = self.provisional.get();
-        let mut mob = pending
+        let mob = pending
             .fresh
             .then(|| self.game.res.mob_types().get(entity))
             .flatten()
@@ -744,20 +742,17 @@ impl NaturalLevel for GameLevel<'_, '_> {
                 )
             });
         let level = self.level_ref();
+        let borrowed = self.game.borrowed_unspawned_mob(entity, at, mob.as_ref());
         self.game
-            .lend_unspawned(entity, at, mob.as_mut(), |handle, _| {
-                self.game.native_mob_spawn_position_check(
-                    mod_api::__private::MobSpawnPositionCheckCall {
-                        dimension: self.game.dim.id(),
-                        kind: entity,
-                        reason,
-                        pos: at,
-                        level,
-                        spawner: self.spawner,
-                        mob: handle,
-                        result: &mut result,
-                    },
-                );
+            .native_mob_spawn_position_check(mod_api::__private::MobSpawnPositionCheckCall {
+                dimension: self.game.dim.id(),
+                kind: entity,
+                reason,
+                pos: at,
+                level,
+                spawner: self.spawner,
+                mob: mod_api::UnspawnedMobView::new(&borrowed),
+                result: &mut result,
             });
         if let Some(mob) = mob {
             *self.checked.borrow_mut() = Some(Checked { mob, provisional });
@@ -1995,14 +1990,14 @@ mod tests {
         }
         fn mob_spawn_position_check(
             &self,
-            host: &dyn mod_api::Host,
+            _: &dyn mod_api::Host,
             event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
         ) {
             let mob = event.mob;
             let reads = (
-                mob.kind(host),
-                mob.position(host),
-                mob.equipment(host, mod_api::EquipmentSlot::Head)
+                mob.kind(),
+                mob.position(),
+                mob.equipment(mod_api::EquipmentSlot::Head)
                     .map(|e| e.is_none()),
             );
             self.log.lock().unwrap().push(Heard {
@@ -2144,7 +2139,6 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2226,7 +2220,6 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2312,7 +2305,6 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2665,13 +2657,13 @@ mod tests {
     impl mod_api::EntityPart for ZombieClusters {
         fn spawn_cluster_size(
             &self,
-            host: &dyn mod_api::Host,
-            mob: mod_api::UnspawnedMobRef,
+            _: &dyn mod_api::Host,
+            mob: mod_api::UnspawnedMobView<'_>,
             reason: mod_api::SpawnReason,
             _: Option<mod_api::SpawnSource>,
             vanilla: u32,
         ) -> Option<u32> {
-            assert_eq!(mob.kind(host).unwrap().to_string(), "minecraft:zombie");
+            assert_eq!(mob.kind().unwrap().to_string(), "minecraft:zombie");
             Some(if reason == mod_api::SpawnReason::Natural {
                 vanilla * 2
             } else {
@@ -2686,7 +2678,7 @@ mod tests {
         fn spawn_cluster_size(
             &self,
             _: &dyn mod_api::Host,
-            _: mod_api::UnspawnedMobRef,
+            _: mod_api::UnspawnedMobView<'_>,
             _: mod_api::SpawnReason,
             _: Option<mod_api::SpawnSource>,
             _: u32,
@@ -2735,7 +2727,7 @@ mod tests {
                 let kind = game.res.mob_types().get(id).unwrap().clone();
                 Mob::new(1, kind, Vec3::ZERO, 0.0)
             };
-            let ask = |id: &str, reason| game.spawn_cluster_size(&mut mob(id), reason, None, 4);
+            let ask = |id: &str, reason| game.spawn_cluster_size(&mob(id), reason, None, 4);
             assert_eq!(
                 ask("minecraft:zombie", mod_api::SpawnReason::Natural),
                 Some(8)

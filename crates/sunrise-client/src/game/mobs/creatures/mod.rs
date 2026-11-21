@@ -1216,7 +1216,7 @@ impl Game<'_> {
     /// `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
     pub(super) fn spawn_cluster_size(
         &self,
-        mob: &mut Mob,
+        mob: &Mob,
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         vanilla: u32,
@@ -1231,27 +1231,27 @@ impl Game<'_> {
             return None;
         }
         let at = [mob.position.x, mob.position.y, mob.position.z];
-        self.lend_unspawned(&kind, at, Some(mob), |lent, _| {
-            list.iter().find_map(|attached| {
-                let _guard =
-                    mod_api::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
-                        id: attached.mod_id(),
-                        hook: "spawn_cluster_size",
-                        part: Some(attached.type_name()),
-                    });
-                // Called outside the world (a reload or setup) a refused Host call is no answer.
-                match mod_api::__private::contain_outside_world(|| {
-                    attached
-                        .part()
-                        .spawn_cluster_size(self, lent, reason, spawner, vanilla)
-                }) {
-                    Ok(answer) => answer,
-                    Err(refusal) => {
-                        refusal.report();
-                        None
-                    }
+        let borrowed = self.borrowed_unspawned_mob(&kind, at, Some(mob));
+        let view = mod_api::UnspawnedMobView::new(&borrowed);
+        list.iter().find_map(|attached| {
+            let _guard =
+                mod_api::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
+                    id: attached.mod_id(),
+                    hook: "spawn_cluster_size",
+                    part: Some(attached.type_name()),
+                });
+            // Called outside the world (a reload or setup) a refused Host call is no answer.
+            match mod_api::__private::contain_outside_world(|| {
+                attached
+                    .part()
+                    .spawn_cluster_size(self, view, reason, spawner, vanilla)
+            }) {
+                Ok(answer) => answer,
+                Err(refusal) => {
+                    refusal.report();
+                    None
                 }
-            })
+            }
         })
     }
     /// The shared finalization decision for a mob type the game keeps apart
@@ -1289,20 +1289,18 @@ impl Game<'_> {
             .as_ref()
             .and_then(|g| super::native_unspawned_mob::native_spawn_group(g, self.lend_epoch()));
         let mut native_group = given.clone();
-        self.lend_unspawned(kind, at, mob, |mob, edits| {
-            self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
-                dimension: self.dim.id(),
-                kind,
-                reason,
-                pos: at,
-                spawner,
-                difficulty: &mut heard,
-                spawn_cancelled: &mut spawn_cancelled,
-                mob,
-                edits,
-                group: &mut native_group,
-                cancel: &mut skip,
-            });
+        let mut borrowed = self.borrowed_unspawned_mob_mut(kind, at, mob);
+        self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
+            dimension: self.dim.id(),
+            kind,
+            reason,
+            pos: at,
+            spawner,
+            difficulty: &mut heard,
+            spawn_cancelled: &mut spawn_cancelled,
+            mob: mod_api::UnspawnedMobEditor::new(&mut borrowed),
+            group: &mut native_group,
+            cancel: &mut skip,
         });
         if native_group != given {
             *group = native_group

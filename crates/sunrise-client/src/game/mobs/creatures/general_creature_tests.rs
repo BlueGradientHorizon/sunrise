@@ -346,7 +346,7 @@ impl mod_api::EntityPart for GatedCluster {
     fn spawn_cluster_size(
         &self,
         host: &dyn mod_api::Host,
-        _: mod_api::UnspawnedMobRef,
+        _: mod_api::UnspawnedMobView<'_>,
         _: mod_api::SpawnReason,
         _: Option<mod_api::SpawnSource>,
         _: u32,
@@ -383,17 +383,17 @@ fn a_spawn_cluster_size_outside_the_world_is_refused_not_a_panic() {
     super::super::native_entity_refs::tests::with_game(|game| {
         game.resolve_parts().unwrap();
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let mut cow = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+        let cow = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
         for reloading in [false, true] {
             let setup = PhaseOwner::scope(ModPhase::Setup);
             let _reload = reloading.then(|| setup.reloading().unwrap());
             assert_eq!(
-                game.spawn_cluster_size(&mut cow, Reason::Command, None, 4),
+                game.spawn_cluster_size(&cow, Reason::Command, None, 4),
                 None
             );
         }
         assert_eq!(
-            game.spawn_cluster_size(&mut cow, Reason::Command, None, 4),
+            game.spawn_cluster_size(&cow, Reason::Command, None, 4),
             Some(1)
         );
     });
