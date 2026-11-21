@@ -1,12 +1,14 @@
 //! `player_changed_dimension` is heard on every logical server: the integrated server that runs
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
 //! These prepared tests also exercise menu retirement during travel.
-use super::{Dim, RespawnConfig};
+use super::Dim;
 use crate::game::{
     Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
     native_entity_refs::tests::with_game_role,
 };
-use mod_api::{Hooks, ModEntry, PlayerChangedDimensionEvent, ServerHost};
+use mod_api::{
+    Hooks, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent, ServerHost,
+};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
@@ -36,6 +38,19 @@ impl Hooks for Recorder {
             .lock()
             .unwrap()
             .push((event.from.to_owned(), event.to.to_owned()));
+    }
+}
+
+struct MoveRespawn;
+
+#[mod_api::__subscriptions]
+impl Hooks for MoveRespawn {
+    fn player_respawn_position(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut PlayerRespawnPositionEvent,
+    ) {
+        event.position[0] += 10.0;
     }
 }
 
@@ -131,6 +146,20 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
         .target;
     light(game, (at.x.floor() as i32) >> 4, (at.z.floor() as i32) >> 4);
     for _ in 0..20 {
+        let (target_dim, target) = game
+            .server_trips
+            .iter()
+            .find(|trip| trip.conn == CONN)
+            .map(|trip| (trip.dim, trip.target))
+            .unwrap_or((game.dim, at));
+        if game.dim != target_dim {
+            game.enter_level(target_dim).unwrap();
+        }
+        light(
+            game,
+            (target.x.floor() as i32) >> 4,
+            (target.z.floor() as i32) >> 4,
+        );
         if !game.on_server_trip(CONN) {
             break;
         }
@@ -138,9 +167,29 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
     }
     assert!(
         !game.on_server_trip(CONN),
-        "the trip into {dim:?} never ended"
+        "the trip into {dim:?} never ended (current {:?}, trips {:?})",
+        game.dim,
+        game.server_trips
+            .iter()
+            .map(|trip| (
+                trip.dim,
+                trip.target,
+                trip.respawn.is_some(),
+                trip.world_spawn
+            ))
+            .collect::<Vec<_>>()
     );
     game.enter_level(home).unwrap();
+}
+
+fn place_anchor(game: &mut Game<'_>, pos: [i32; 3]) {
+    light(game, pos[0] >> 4, pos[2] >> 4);
+    let registry = game.pack.assets.registry;
+    let id = registry.default_state("minecraft:respawn_anchor").unwrap();
+    let mut state = registry.state(id).unwrap().clone();
+    state.properties.insert("charges".into(), "1".into());
+    let charged = registry.resolve(&state).unwrap();
+    game.world.set(pos[0], pos[1], pos[2], charged).unwrap();
 }
 
 fn run_as_player(game: &mut Game<'_>, role: ExecutionRole, command: &str) {
@@ -153,6 +202,21 @@ fn run_as_player(game: &mut Game<'_>, role: ExecutionRole, command: &str) {
     }));
     // The integrated server runs them at its tick's start (`integrated.rs`).
     game.run_level_teleports();
+}
+
+fn prepare_end_exit(game: &mut Game<'_>, credits: bool) {
+    game.enter_level(Dim::End).unwrap();
+    game.streaming
+        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+    assert!(
+        game.set_state_named([3, 64, 5], "minecraft:end_portal", &[])
+            .unwrap()
+    );
+    game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+        guest.dimension = Dim::End.id().to_owned();
+        guest.position = [3.5, 64.0, 5.5];
+        guest.seen_credits = credits;
+    });
 }
 
 fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>, &Heard)) {
@@ -469,7 +533,11 @@ fn player_tick_count_survives_teleports_and_deferred_arrivals() {
             game.player.as_mut().unwrap().health.tick_count = 29;
         })
         .unwrap();
-        game.start_server_trip(CONN, Dim::Overworld, None, false);
+        run_as_player(
+            game,
+            ExecutionRole::DedicatedServer,
+            "execute in minecraft:overworld run tp @s 8.5 70 8.5",
+        );
         finish_trip(game, Dim::Overworld);
         assert_eq!(entity.tick_count(game), Some(29));
     });
@@ -480,15 +548,18 @@ fn player_tick_count_survives_teleports_and_deferred_arrivals() {
 fn ordinary_end_exit_with_configured_respawn_keeps_player_tick_count() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
+        game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+            guest.respawn_elsewhere =
+                Some((Dim::Nether.id().to_owned(), [8, 70, 8], 0.0, 0.0, false));
+        });
         game.as_guest(CONN, |game| {
             game.player.as_mut().unwrap().health.tick_count = 41;
         })
         .unwrap();
-        game.start_server_trip(CONN, Dim::Nether, None, false);
-        game.trip_respawn(
-            CONN,
-            Some(RespawnConfig::wrapped(Dim::Nether, [8, 70, 8], 0.0, false)),
-        );
+        prepare_end_exit(game, true);
+        game.handle_server_portal(CONN);
+        game.enter_level(Dim::Nether).unwrap();
+        place_anchor(game, [8, 70, 8]);
         finish_trip(game, Dim::Nether);
         assert_eq!(entity.tick_count(game), Some(41));
     });
@@ -503,10 +574,73 @@ fn credits_world_spawn_fallback_resets_player_tick_count() {
             game.player.as_mut().unwrap().health.tick_count = 41;
         })
         .unwrap();
-        game.start_server_trip(CONN, Dim::Overworld, None, true);
-        game.mark_credits_world_spawn(CONN);
+        prepare_end_exit(game, false);
+        game.handle_server_portal(CONN);
+        game.lan
+            .as_mut()
+            .unwrap()
+            .play
+            .get_mut(&CONN)
+            .unwrap()
+            .respawn_requested = true;
+        game.handle_server_portal(CONN);
         finish_trip(game, Dim::Overworld);
         assert_eq!(entity.tick_count(game), Some(0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn credits_missing_respawn_point_resets_player_tick_count() {
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let entity = game.entity(CONN).unwrap();
+        game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+            guest.respawn_elsewhere =
+                Some((Dim::Nether.id().to_owned(), [8, 70, 8], 0.0, 0.0, false));
+        });
+        game.as_guest(CONN, |game| {
+            game.player.as_mut().unwrap().health.tick_count = 41;
+        })
+        .unwrap();
+        prepare_end_exit(game, false);
+        game.handle_server_portal(CONN);
+        game.lan
+            .as_mut()
+            .unwrap()
+            .play
+            .get_mut(&CONN)
+            .unwrap()
+            .respawn_requested = true;
+        game.handle_server_portal(CONN);
+        finish_trip(game, Dim::Nether);
+        assert_eq!(entity.tick_count(game), Some(0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn credits_respawn_position_redirect_resets_player_tick_count() {
+    let mods = vec![ModEntry::new("move-respawn", Box::new(MoveRespawn))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let entity = game.entity(CONN).unwrap();
+            game.as_guest(CONN, |game| {
+                game.player.as_mut().unwrap().health.tick_count = 41;
+            })
+            .unwrap();
+            prepare_end_exit(game, false);
+            game.handle_server_portal(CONN);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .play
+                .get_mut(&CONN)
+                .unwrap()
+                .respawn_requested = true;
+            game.handle_server_portal(CONN);
+            finish_trip(game, Dim::Overworld);
+            assert_eq!(entity.tick_count(game), Some(0));
+        });
     });
 }
 
@@ -516,6 +650,10 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
     use sunrise_world::attributes::{Modifier, Operation};
 
     with_server(ExecutionRole::DedicatedServer, |game| {
+        game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+            guest.respawn_elsewhere =
+                Some((Dim::Nether.id().to_owned(), [8, 70, 8], 0.0, 0.0, false));
+        });
         game.as_guest(CONN, |game| {
             let player = game.player.as_mut().unwrap();
             let key = player.attributes.key("minecraft:step_height").unwrap();
@@ -529,11 +667,18 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
                 .unwrap();
         })
         .unwrap();
-        game.start_server_trip(CONN, Dim::Nether, None, true);
-        game.trip_respawn(
-            CONN,
-            Some(RespawnConfig::wrapped(Dim::Nether, [8, 70, 8], 0.0, false)),
-        );
+        prepare_end_exit(game, false);
+        game.handle_server_portal(CONN);
+        game.lan
+            .as_mut()
+            .unwrap()
+            .play
+            .get_mut(&CONN)
+            .unwrap()
+            .respawn_requested = true;
+        game.handle_server_portal(CONN);
+        game.enter_level(Dim::Nether).unwrap();
+        place_anchor(game, [8, 70, 8]);
         finish_trip(game, Dim::Nether);
         let step_height = game
             .as_guest(CONN, |game| {
@@ -547,6 +692,25 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
         // PlayerMotion's default step height is 0.6; restore_all reapplies the
         // permanent +0.4 modifier, yielding the 1.0 covered by playerdata tests.
         assert!((step_height - 1.0).abs() < 1.0e-9);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn death_respawn_starts_a_new_player_tick_count() {
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let entity = game.entity(CONN).unwrap();
+        game.as_guest(CONN, |game| {
+            game.player.as_mut().unwrap().health.tick_count = 41;
+        })
+        .unwrap();
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(CONN, |guest| guest.dead = true);
+        game.guest_respawn(CONN);
+        assert_eq!(entity.tick_count(game), Some(0));
     });
 }
 

@@ -1353,28 +1353,29 @@ impl Game<'_> {
                         };
                         if let Some(d) = self.respawn_position(trip.conn, found, trip.missing) {
                             self.apply_respawn_copy(trip.conn, &d, trip.missing);
+                            if trip.credits_respawn
+                                && let Some(host) = self.lan.as_mut()
+                            {
+                                let _ = host.hub.update_guest(trip.conn, Self::finish_credits_body);
+                            }
                             if d.moved && d.to.dim != trip.dim {
-                                if trip.credits_respawn
-                                    && let Some(host) = self.lan.as_mut()
-                                {
-                                    let _ =
-                                        host.hub.update_guest(trip.conn, Self::finish_credits_body);
-                                }
                                 self.respawn_into_other_level(trip.conn, d.to);
                             } else if d.moved
                                 && let Some(host) = self.lan.as_mut()
                             {
                                 host.hub.guests.update(i, |g| {
                                     (g.yaw, g.pitch) = (d.to.yaw, d.to.pitch);
-                                    if trip.credits_respawn {
-                                        Self::finish_credits_body(g);
-                                    } else {
+                                    if !trip.credits_respawn {
                                         g.new_body(true);
                                     }
                                 });
                                 host.hub
                                     .teleport(i, Some([d.to.at.x, d.to.at.y, d.to.at.z]));
                             }
+                        } else if trip.credits_respawn
+                            && let Some(host) = self.lan.as_mut()
+                        {
+                            let _ = host.hub.update_guest(trip.conn, Self::finish_credits_body);
                         }
                         continue;
                     }
