@@ -758,11 +758,11 @@ fn an_impl_gained_is_additive_and_one_lost_breaks_by_name() {
     );
 }
 
-fn wired(wire: bool, form: Option<&str>) -> Surface {
+fn wired(wire: bool, form: Option<&str>, shape: Option<&str>) -> Surface {
     types(vec![Type::new(
         "type:Id",
         "",
-        None,
+        shape.map(str::to_owned),
         TypeContract {
             wire,
             wire_form: form.map(str::to_owned),
@@ -775,9 +775,9 @@ fn wired(wire: bool, form: Option<&str>) -> Surface {
 
 #[test]
 fn a_wire_change_adds_when_a_type_starts_crossing_and_is_conditional_otherwise() {
-    let none = wired(false, None);
-    let derive = wired(true, Some("derive"));
-    let via = wired(true, Some("via:u32"));
+    let none = wired(false, None, None);
+    let derive = wired(true, Some("derive"), Some("aaaa"));
+    let via = wired(true, Some("via:u32"), Some("aaaa"));
     let class_and_lines = |a: &Surface, b: &Surface| {
         let d = diff(a, b);
         let (_, _, class, what, _) = only(&d);
@@ -847,6 +847,41 @@ fn a_note_may_name_a_folded_member() {
     };
     assert!(d.attach(&note, &["type:Hand.Off".into()]).is_empty());
     assert_eq!(d.changes[0].notes, [note]);
+}
+
+#[test]
+fn stable_sdk_surfaces_produce_release_verdicts_even_with_change_notes() {
+    let read_sdk_surface = |behaviours| {
+        let sdk_json =
+            serde_json::json!({"schema": 3, "hash": "surface", "behaviours": behaviours});
+        Surface::read(&sdk_json.to_string().into_bytes()).unwrap()
+    };
+    let id = "behaviour:example";
+    let example = serde_json::json!({"id": id, "hash": "declaration", "version": 1});
+    let added = serde_json::json!({"id": "behaviour:new", "hash": "declaration", "version": 1});
+    let bumped = serde_json::json!({"id": id, "hash": "declaration", "version": 2});
+    let old = read_sdk_surface(vec![example.clone()]);
+    let cases = [
+        (vec![example.clone()], "identical"),
+        (vec![example, added], "additive"),
+        (vec![bumped], "conditional"),
+        (vec![], "breaking"),
+    ];
+    let note = Note {
+        file: "example.toml".into(),
+        why: "The old contract no longer applies.".into(),
+        migrate: Some("Use the new contract.".into()),
+    };
+    for (records, expected) in cases {
+        let new = read_sdk_surface(records);
+        let mut report = diff(&old, &new);
+        assert_eq!(serde_json::to_value(&report).unwrap()["verdict"], expected);
+        if matches!(expected, "breaking" | "conditional") {
+            assert!(report.attach(&note, &[id.into()]).is_empty());
+            assert_eq!(report.undeclared().count(), 0);
+            assert_eq!(serde_json::to_value(&report).unwrap()["verdict"], expected);
+        }
+    }
 }
 
 #[test]
@@ -1138,15 +1173,11 @@ fn a_struct_gaining_non_exhaustive_is_conditional_whatever_else_changed() {
 
 #[test]
 fn a_wire_layout_change_is_conditional() {
-    let at = |shape: &str| {
-        let mut s = types(vec![structure("Pos", false, &[("x", "i32")])]);
-        s.types[0].shape = Some(shape.into());
-        s
-    };
+    let at = |shape: &str| wired(true, Some("derive"), Some(shape));
     assert_eq!(
         only(&diff(&at("aaaa"), &at("bbbb"))),
         (
-            "type:Pos",
+            "type:Id",
             ChangeKind::Changed,
             Class::Conditional,
             vec!["wire layout: `aaaa` → `bbbb`: affects users of this encoding"],

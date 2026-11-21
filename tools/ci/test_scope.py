@@ -68,7 +68,12 @@ READERS = {
     # The shared guest-stack tests read the sources that use its constants, and the jobs they wait on.
     "sunrise-guest-stack": ["crates/sunrise-client/src", "crates/sunrise-threads/src"],
     "sunrise-mod-api": MOD_API_GEN,
-    "sunrise-mod-api-gen": [*MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags"],
+    # Its daily stable-release test drives the release gate's Python through the real surface differ.
+    "sunrise-mod-api-gen": [
+        *MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tags",
+        "tests/stable_mod_api_integration.py", "tests/test_stable_mod_api.py", "tools/ci/nightly.py",
+        "tools/release_train.py",
+    ],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     "sunrise-mod-package": [
         "Cargo.lock", "docs/developer-install.md", "tools/mixins/narrow-reference-rule.patch",
