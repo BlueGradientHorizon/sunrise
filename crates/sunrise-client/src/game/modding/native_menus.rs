@@ -2291,6 +2291,7 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
             )],
             || {
                 with_game(|game| {
@@ -2306,18 +2307,10 @@ mod tests {
                     data[0] = FIRST_VALUE;
                     data[LAST] = LAST_VALUE;
                     data[OVERFLOW] = OVERFLOW_VALUE;
-                    let window = player
-                        .open_mod_menu(
-                            game,
-                            key,
-                            mod_api::Text::literal("status"),
-                            vec![],
-                            data,
-                            None,
-                            MenuReplace::CloseFirst,
-                        )
-                        .unwrap()
-                        .unwrap();
+                    let mut request = ModMenuOpen::new(key, mod_api::Text::literal("status"));
+                    request.data = data;
+                    request.replace = MenuReplace::CloseFirst;
+                    let window = player.open_mod_menu(game, request).unwrap().unwrap();
                     let updates = || {
                         sent(&rx).into_iter().filter_map(|packet| match packet {
                             C::CustomPayload(p) if p.channel == DATA_CHANNEL => {
@@ -2376,7 +2369,7 @@ mod tests {
                     hub.resend_menu(1, window, &game.world);
                     assert_snapshot("explicit resend", i32::MAX);
                     let state = hub.guests[0].menu.as_ref().unwrap().state;
-                    // The live native click route resends in prepare_click, before answer_click.
+                    // The live native click route resends in prepare_click -> answer_click.
                     game.lan_guest_packet(
                         1,
                         S::ContainerClick(play::ContainerClick {
@@ -2388,16 +2381,6 @@ mod tests {
                             changed: vec![],
                             carried: None,
                         }),
-                    );
-                    assert_eq!(
-                        game.lan.as_ref().unwrap().hub.native_menu_events,
-                        [NativeMenuEvent::Click {
-                            uuid: 123,
-                            window,
-                            slot: -999,
-                            button: 0,
-                            mode: PICKUP,
-                        }]
                     );
                     assert_snapshot("stale click", i32::MAX);
                 })

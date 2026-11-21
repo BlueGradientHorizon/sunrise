@@ -850,6 +850,7 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                     registry_id: "minecraft:generic_9x3".into(),
                     craft: None,
                     links: Vec::new(),
+                    opening_item: None,
                     asks_still_valid: false,
                 });
                 hub.guests.push(guest);

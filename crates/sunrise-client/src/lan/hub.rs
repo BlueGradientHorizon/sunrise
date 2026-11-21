@@ -7970,6 +7970,7 @@ mod tests {
             slots: 0,
             player_inventory: false,
             data_slots: usize::MAX,
+            owned_slots: None,
             results: Vec::new(),
             inputs: Vec::new(),
             links: None,
@@ -8013,6 +8014,7 @@ mod tests {
                 registry_id: MENU_TYPE.id.into(),
                 craft: None,
                 links: Vec::new(),
+                opening_item: None,
                 asks_still_valid: false,
             });
         });
