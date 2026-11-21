@@ -2256,12 +2256,16 @@ mod transfer_lifetime_tests {
 
 #[cfg(test)]
 mod credits_respawn_tests {
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use super::Dim;
+    use crate::game::Game;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_client::lan::{
-        Joined, NetConfig, Out, PlayerSender,
-        guest::{Guest, InboxItem, SPECTATOR},
-        hub::HubConfig,
+    use sunrise_client::{
+        chunk::Chunk,
+        lan::{
+            Joined, NetConfig, Out, PlayerSender,
+            guest::{Guest, InboxItem, SPECTATOR},
+            hub::HubConfig,
+        },
     };
     use sunrise_protocol::{
         buf::Reader,
@@ -2270,6 +2274,7 @@ mod credits_respawn_tests {
             play::{self, Clientbound as C, Serverbound as S},
         },
     };
+    use sunrise_world::registry::BlockStateId;
 
     /// `ServerGamePacketListenerImpl.handleClientCommand(PERFORM_RESPAWN)` for a
     /// player who won the game: `restartClientLoadTimerAfterRespawn`, so the
@@ -2278,111 +2283,25 @@ mod credits_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn the_credits_respawn_waits_for_the_client_to_load() {
-        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            loaded.gui.unwrap(),
-            options,
-            settings,
-            Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
-            None,
-        )
-        .unwrap();
-        let scratch = std::env::temp_dir().join(format!(
-            "sunrise-credits-respawn-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
-        game.level.world_spawn = Some([0, 100, 0]);
-        game.lan_host(
-            super::super::lan::LanSettings {
-                port: 0,
-                guest_commands: true,
-                force_game_mode: false,
-            },
-            NetConfig {
-                announce: false,
-                ..NetConfig::loopback(0, "credits-respawn-test".into(), 2)
-            },
-            HubConfig {
-                default_game_mode: 0,
-                guest_commands: true,
-                force_game_mode: false,
-                hardcore: false,
-                view_distance: 2,
-                simulation_distance: 2,
-                dimension: "minecraft:overworld".into(),
-                allow_flight: false,
-                seed: 0,
-                max_players: 2,
-                integrated: false,
-                levels: Default::default(),
-                level_seeds: Default::default(),
-            },
-        )
-        .unwrap();
-        let (tx, rx) = mpsc::channel();
-        let mut guest = Guest::new(
-            Joined {
-                conn: 2,
-                uuid: 330,
-                name: "CreditsGuest".into(),
-                properties: Vec::new(),
-                info: ClientInformation::new(2),
-                brand: "test".into(),
-                sender: PlayerSender::new(tx, Arc::default()),
-                latency: Arc::new(AtomicI32::new(0)),
-                address: "127.0.0.1:25565".parse().unwrap(),
-                expected: false,
-            },
-            2,
-            [0.5, 100.0, 0.5],
-            2,
-        );
-        guest.dimension = "minecraft:overworld".into();
-        guest.spawn = Some([0.5, 100.0, 0.5]);
-        guest.saved = Some(sunrise_core::nbt::Tag::compound([(
-            "NeoForgeData",
-            sunrise_core::nbt::Tag::compound([
-                ("outside", sunrise_core::nbt::Tag::Int(1)),
-                (
-                    "PlayerPersisted",
-                    sunrise_core::nbt::Tag::compound([("inside", sunrise_core::nbt::Tag::Int(2))]),
-                ),
-            ]),
-        )]));
-        guest.placed = true;
-        guest.loaded = true;
-        guest.loading = false;
-        guest.load_timeout = 0;
-        let mut host = game.lan.take().unwrap();
-        host.hub.guests.push(guest);
+        let mut resources = None;
+        let (_scratch, mut game, rx) = server_with_a_nether_anchor(&mut resources);
+        let host = game.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| {
+            g.spawn = Some([0.5, 100.0, 0.5]);
+            g.respawn_elsewhere = None;
+            g.saved = Some(sunrise_core::nbt::Tag::compound([(
+                "NeoForgeData",
+                sunrise_core::nbt::Tag::compound([
+                    ("outside", sunrise_core::nbt::Tag::Int(1)),
+                    (
+                        "PlayerPersisted",
+                        sunrise_core::nbt::Tag::compound([(
+                            "inside",
+                            sunrise_core::nbt::Tag::Int(2),
+                        )]),
+                    ),
+                ]),
+            )]));
             g.health = 13.0;
             g.food = 9;
             g.saturation = 2.0;
@@ -2392,7 +2311,6 @@ mod credits_respawn_tests {
         assert!(host.hub.guests[0].client_loaded());
         rx.try_iter().for_each(drop);
 
-        game.lan = Some(host);
         game.remove_old_player_for_clone(2, false);
         let host = game.lan.as_mut().unwrap();
         host.play.entry(2).or_default().won_game = true;
@@ -2403,20 +2321,9 @@ mod credits_respawn_tests {
             ));
         });
         game.tick_lan_packets();
-        let mut host = game.lan.take().unwrap();
+        let host = game.lan.as_mut().unwrap();
         host.hub.sync_guest_after_tick(2);
-        let delivered: Vec<_> = rx
-            .try_iter()
-            .flat_map(|out| match out {
-                Out::Packet(body) => vec![body],
-                Out::Packets(bodies) => bodies,
-                Out::Disconnect(_) => Vec::new(),
-            })
-            .filter_map(|body| {
-                let mut reader = Reader::new(&body);
-                C::decode(reader.varint().ok()?, reader.rest()).ok()
-            })
-            .collect();
+        let delivered: Vec<_> = received_packets(&rx).collect();
         assert!(delivered.iter().any(|packet| matches!(packet,
             C::SetHealth(health) if (health.health, health.food, health.saturation) == (13.0, 9, 2.0)
         )));
@@ -2438,30 +2345,31 @@ mod credits_respawn_tests {
             )])),
             "the real first-End-exit path drops only data outside PlayerPersisted"
         );
-        drop(host);
-        drop(game);
-        std::fs::remove_dir_all(scratch).unwrap();
     }
 
-    /// The player's own point in the tests here: a respawn anchor in the Nether.
-    const ANCHOR: [i32; 3] = [10, 100, 10];
+    pub(super) fn received_packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = C> + '_ {
+        rx.try_iter()
+            .flat_map(|out| match out {
+                Out::Packet(body) => vec![body],
+                Out::Packets(bodies) => bodies,
+                Out::Disconnect(_) => Vec::new(),
+            })
+            .filter_map(|body| {
+                let mut reader = Reader::new(&body);
+                C::decode(reader.varint().ok()?, reader.rest()).ok()
+            })
+    }
 
-    /// A server on a scratch world with one guest, placed in the Overworld,
-    /// whose own point is a respawn anchor in the Nether.
-    fn server_with_a_nether_anchor<'a>(
+    /// The player's saved point: a respawn anchor in the Nether.
+    pub(super) const ANCHOR: [i32; 3] = [10, 100, 10];
+
+    /// A scratch server whose Overworld guest has a Nether respawn point.
+    pub(super) fn server_with_a_nether_anchor<'a>(
         resources: &'a mut Option<Arc<crate::game::Resources>>,
-    ) -> (Game<'a>, std::path::PathBuf) {
+    ) -> (tempfile::TempDir, Game<'a>, mpsc::Receiver<Out>) {
+        let scratch = tempfile::tempdir().unwrap();
         let mut game = crate::game::game_tests::tests::server_game(resources);
-        let scratch = std::env::temp_dir().join(format!(
-            "sunrise-credits-anchor-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&scratch).unwrap();
-        game.world_root = scratch.clone();
+        game.world_root = scratch.path().to_owned();
         // The world spawn a player without a point of its own comes back to.
         game.level.world_spawn = Some([0, 100, 0]);
         game.lan_host(
@@ -2471,6 +2379,7 @@ mod credits_respawn_tests {
                 force_game_mode: false,
             },
             NetConfig {
+                listen: false,
                 announce: false,
                 ..NetConfig::loopback(0, "credits-anchor-test".into(), 2)
             },
@@ -2491,12 +2400,19 @@ mod credits_respawn_tests {
             },
         )
         .unwrap();
-        let (tx, _rx) = mpsc::channel();
+        let (mut guest, rx) = placed_guest(2, Dim::Overworld, [0.5, 100.0, 0.5]);
+        guest.respawn_elsewhere = Some((Dim::Nether.id().into(), ANCHOR, 0.0, 0.0, false));
+        game.lan.as_mut().unwrap().hub.guests.push(guest);
+        (scratch, game, rx)
+    }
+
+    pub(super) fn placed_guest(conn: u32, dim: Dim, at: [f64; 3]) -> (Guest, mpsc::Receiver<Out>) {
+        let (tx, rx) = mpsc::channel();
         let mut guest = Guest::new(
             Joined {
-                conn: 2,
-                uuid: 330,
-                name: "CreditsGuest".into(),
+                conn,
+                uuid: 330 + u128::from(conn),
+                name: format!("Guest{conn}"),
                 properties: Vec::new(),
                 info: ClientInformation::new(2),
                 brand: "test".into(),
@@ -2505,18 +2421,36 @@ mod credits_respawn_tests {
                 address: "127.0.0.1:25565".parse().unwrap(),
                 expected: false,
             },
-            2,
-            [0.5, 100.0, 0.5],
+            conn as i32,
+            at,
             2,
         );
-        guest.dimension = "minecraft:overworld".into();
+        guest.dimension = dim.id().into();
         guest.placed = true;
         guest.loaded = true;
         guest.loading = false;
         guest.load_timeout = 0;
-        guest.respawn_elsewhere = Some(("minecraft:the_nether".into(), ANCHOR, 0.0, 0.0, false));
-        game.lan.as_mut().unwrap().hub.guests.push(guest);
-        (game, scratch)
+        (guest, rx)
+    }
+
+    pub(super) fn light_spawn_chunks(game: &mut Game<'_>) {
+        for x in -2..=2 {
+            for z in -2..=2 {
+                game.streaming
+                    .insert_remote(&mut game.world, Chunk::empty(x, z));
+            }
+        }
+    }
+
+    pub(super) fn charge_anchor(game: &mut Game<'_>) -> BlockStateId {
+        let registry = game.pack.assets.registry;
+        let id = registry.default_state("minecraft:respawn_anchor").unwrap();
+        let mut value = registry.state(id).unwrap().clone();
+        value.properties.insert("charges".into(), "1".into());
+        let charged = registry.resolve(&value).unwrap();
+        let [x, y, z] = ANCHOR;
+        game.world.set(x, y, z, charged).unwrap();
+        charged
     }
 
     /// A player whose own point is a charged Nether anchor and who has seen the
@@ -2527,9 +2461,8 @@ mod credits_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn the_credits_respawn_returns_to_a_nether_anchor_and_keeps_its_charge() {
-        use sunrise_client::chunk::Chunk;
         let mut resources = None;
-        let (mut game, scratch) = server_with_a_nether_anchor(&mut resources);
+        let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         game.remove_old_player_for_clone(2, false);
         game.lan
             .as_mut()
@@ -2546,23 +2479,9 @@ mod credits_respawn_tests {
         );
 
         // The Nether loads around the anchor, which holds one charge.
-        game.enter_level(super::Dim::Nether).unwrap();
-        for x in -2..=2 {
-            for z in -2..=2 {
-                game.streaming
-                    .insert_remote(&mut game.world, Chunk::empty(x, z));
-            }
-        }
-        let charged = {
-            let registry = game.pack.assets.registry;
-            let id = registry.default_state("minecraft:respawn_anchor").unwrap();
-            let mut value = registry.state(id).unwrap().clone();
-            value.properties.insert("charges".into(), "1".into());
-            registry.resolve(&value).unwrap()
-        };
-        game.world
-            .set(ANCHOR[0], ANCHOR[1], ANCHOR[2], charged)
-            .unwrap();
+        game.enter_level(Dim::Nether).unwrap();
+        light_spawn_chunks(&mut game);
+        let charged = charge_anchor(&mut game);
         game.tick_server_travel();
 
         // RespawnAnchorBlock.findStandUpPosition: the block's top is the only
@@ -2586,8 +2505,6 @@ mod credits_respawn_tests {
             "the anchor keeps its charge"
         );
         assert!(!game.on_server_trip(2), "the trip has arrived");
-        drop(game);
-        std::fs::remove_dir_all(scratch).unwrap();
     }
 
     /// A spectator that right-clicks the exit portal in the End leaves for the
@@ -2597,9 +2514,8 @@ mod credits_respawn_tests {
     #[test]
     #[ignore = "daily"]
     fn a_spectator_leaves_the_end_for_its_nether_point() {
-        use sunrise_client::chunk::Chunk;
         let mut resources = None;
-        let (mut game, scratch) = server_with_a_nether_anchor(&mut resources);
+        let (_scratch, mut game, _rx) = server_with_a_nether_anchor(&mut resources);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.game_mode = SPECTATOR;
             g.seen_credits = true;
@@ -2620,8 +2536,6 @@ mod credits_respawn_tests {
             "a spectator's exit from the End goes to its point's level"
         );
         assert!(game.on_server_trip(2), "the player is on its way there");
-        drop(game);
-        std::fs::remove_dir_all(scratch).unwrap();
     }
 }
 
@@ -2632,3 +2546,7 @@ mod hold_tests;
 #[cfg(test)]
 #[path = "server_travel/changed_dimension_tests.rs"]
 mod changed_dimension_tests;
+
+#[cfg(test)]
+#[path = "server_travel/respawn_tests.rs"]
+mod respawn_tests;

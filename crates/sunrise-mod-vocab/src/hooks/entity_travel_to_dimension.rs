@@ -19,8 +19,9 @@ pub trait Hooks {
     /// recursively. A refused passenger stays in the source level, dismounted,
     /// with its own passengers; it does not veto the vehicle's travel. An entity
     /// discarded during a callback never travels. A falling block is held out of the level while it
-    /// ticks, so its handle reads nothing yet. A respawn and a world's join
-    /// are not travel; the return from the End credits is `end_portal`.
+    /// ticks, so its handle reads nothing yet. A respawn (including the
+    /// return after the End credits) and a world's join are not travel.
+    /// Later End portal exits are ordinary `end_portal` travel.
     /// Server-side. Diverges
     /// from upstream: replaces `player_portal`, which covered only server
     /// players through portals.
@@ -29,6 +30,7 @@ pub trait Hooks {
         side = "server",
         contract = "cancel",
         out = "cancel",
+        version = 2,
         neoforge = "EntityTravelToDimensionEvent",
         cancellable = true
     )]

@@ -1446,21 +1446,10 @@ impl Game<'_> {
     /// `player` (`name`) changed dimension (NeoForge's
     /// `PlayerChangedDimensionEvent`): `from` and `to` are dimension ids
     /// (`minecraft:overworld`, `minecraft:the_nether`, `minecraft:the_end`).
-    /// Heard once per move, when it has ended: the portal's exit is found
-    /// and the player stands there (after the destination has loaded), a
-    /// command's teleport has landed, or a respawn in another level than the
-    /// death's is placed for good (a bed or anchor, or the world spawn's
-    /// free column, after the fallback when a respawn block was gone). The
-    /// level of `to` is the one in place, and the player's state is swapped
-    /// in, as for `native_run_mod_command`: `native_acting_player`,
-    /// `native_tell`, the item helpers and the rest reach them. Heard for:
-    /// Nether and End portals (also riding a vehicle, and leaving the End as
-    /// its winner), `/execute in ... run tp` and any other command that
-    /// teleports a player into another level, and death respawns, on dedicated
-    /// and integrated servers (single player and LAN), where the world is simulated.
-    /// Not heard by a remote client window, for a move within a level (`/tp`,
-    /// an End gateway), for a player who leaves before the move ends, or for a
-    /// move ending where it started (a respawn in the dimension of the death).
+    /// `ServerPlayer.teleport`: once a portal or command teleport crosses
+    /// dimensions and lands, with the destination level and player in place.
+    /// `PlayerList.respawn` replacements, including the return after credits,
+    /// use `native_player_respawned` instead.
     pub(in crate::game) fn native_player_changed_dimension(
         &mut self,
         player: u128,

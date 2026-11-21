@@ -108,12 +108,35 @@ and also covers `/say` and `/me`. With no listener nothing is asked or allocated
 `chat_recipient` fails instead of reentering the hook or sending an unchecked line. The server's log keeps every
 broadcast line, hidden or not.
 
-`player.respawn(host)` makes the same request as the client's Respawn button (`PERFORM_RESPAWN`). In a transaction,
-placement begins only after the root scope commits, and it can wait for destination chunks. Use `player_respawned`
-to act on the placed replacement. `player_respawn_position` runs with the removed original, before cloning;
-its `from_end_fight` flag and `player_respawned`'s `end_conquered` flag distinguish the End credits from death.
-An ordinary End portal teleport runs neither respawn hook. Call it outside every player's
-hook (from `server_tick`, say). It returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
+`player.respawn(host)` makes the same request as the client's Respawn button (`PERFORM_RESPAWN`). Call it outside
+player hooks, for example from `server_tick`. `Ok(())` means the request was accepted, not that the replacement is
+already placed. In a transaction, the server begins the respawn only after the outermost scope commits. It may still
+wait for destination chunks. Use `player_respawned` to act on the placed replacement:
+
+```rust,ignore
+use mod_api::{Hooks, PlayerRespawnedEvent, ServerHost, Text};
+
+struct WelcomeBack;
+
+#[mod_api::sunrise_mod]
+impl Hooks for WelcomeBack {
+    fn player_respawned(&self, host: &mut dyn ServerHost, event: &mut PlayerRespawnedEvent<'_>) {
+        if event.end_conquered {
+            return; // This notice is only for a return after death.
+        }
+        if let Some(player) = host.player(event.player) {
+            player.tell(host, Text::translate("example.respawn.welcome_back", Vec::new()));
+        }
+    }
+}
+```
+
+`player_respawn_position` runs with the removed original before cloning. Use `event.from_end_fight` there and
+`event.end_conquered` in `player_respawned` to distinguish the return after the End credits from a death respawn.
+Both causes replace the player, so neither calls `entity_travel_to_dimension` or `player_changed_dimension`.
+An ordinary End portal exit teleports the same player and runs the travel hooks, not the respawn hooks.
+
+`player.respawn(host)` returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
 this order: `Client`, `InPlayerHook` (a player's state is swapped in), `Stale` (no player on this server behind the
 handle), `NoConnection` (a fake player, or the world's own player in a single-player world, which respawns through its
 own screen) and `Alive` (health above 0 and the game not won: the case the button ignores; a player who has won the game and is watching the End poem is respawned even alive, as the button does).

@@ -9,8 +9,8 @@ pub trait Hooks {
     /// player came back at the world spawn. Change `level`, `position`, `yaw`
     /// and `pitch` to choose their final destination; no preliminary placement is made.
     /// `copy_original_spawn_position` (default: the block wasn't missing) says whether
-    /// they keep their respawn point. Runs on the original player before `player_clone`
-    /// and placement. `from_end_fight` is true for the respawn after the End credits,
+    /// they keep their respawn point. Runs on the removed original player, before
+    /// `player_clone` and placement. `from_end_fight` is true for the respawn after the End credits,
     /// false for death. An ordinary End portal teleport does not run this hook. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_respawn_position",
@@ -35,7 +35,8 @@ pub trait Hooks {
     /// `player` (`name`) respawned (NeoForge's `PlayerRespawnEvent`): at the
     /// end of `PlayerList.respawn`, after placement and initial synchronization,
     /// with the replacement in scope. `end_conquered` is true after the End credits
-    /// (the player keeps health, food and experience), false after death. Server-side.
+    /// (the player keeps health, food and experience), false after death. An ordinary
+    /// End portal teleport does not fire this hook. Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_respawned",
         dispatch = "flat",
