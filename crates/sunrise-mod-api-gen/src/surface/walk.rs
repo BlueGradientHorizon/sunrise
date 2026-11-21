@@ -1,15 +1,14 @@
 //! The public items of `mod_api`, each under the path a mod writes: the facade crate's root,
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
-use crate::index::{Found, Index, ItemId, OutsideSeam, default_build, uses};
+use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
+use mod_source::index::Binding;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
 /// The facade crate a mod depends on, and the crate its root re-exports.
 const FACADE: &str = "sunrise_mod_api";
 const VOCAB: &str = "mod_api";
-/// The vocabulary crate's own name, as the facade writes it.
-const VOCAB_WRITTEN: &str = "mod_vocab";
 /// The procedural macros crate whose macros the API re-exports.
 pub(super) const MACROS: &str = "sunrise_mod_api_macros";
 
@@ -19,6 +18,9 @@ pub(super) enum Target {
     Item(ItemId),
     Module(usize),
     External(Vec<String>),
+    /// A resolved outside definition; its canonical path need not be publicly reachable.
+    OutsideItem(Vec<String>),
+    Ambiguous(String),
     ExternalGlob {
         path: Vec<String>,
         written: Vec<String>,
@@ -58,11 +60,6 @@ pub(super) fn hidden(attrs: &[syn::Attribute]) -> bool {
     })
 }
 
-/// Whether the items under `attrs` are part of the default native build.
-pub(super) fn compiled(attrs: &[syn::Attribute]) -> bool {
-    default_build(attrs)
-}
-
 pub(super) fn attrs(item: &Item) -> &[syn::Attribute] {
     match item {
         Item::Const(i) => &i.attrs,
@@ -99,9 +96,10 @@ pub(super) struct Walker<'i, 'a> {
     pub(super) index: &'i mut Index<'a>,
     names: HashMap<usize, Vec<Name>>,
     open: HashSet<usize>,
+    cycle_cuts: usize,
     notes: Vec<String>,
-    /// Public items compiled out only under `cfg(test)`.
-    test_only: usize,
+    /// Public items compiled out only under `cfg(test)`, keyed by module and item position.
+    test_only: HashSet<(usize, usize)>,
 }
 
 /// How many paths through re-exports one module is visited by.
@@ -123,8 +121,9 @@ impl<'i, 'a> Walker<'i, 'a> {
             index,
             names: HashMap::new(),
             open: HashSet::new(),
+            cycle_cuts: 0,
             notes: Vec::new(),
-            test_only: 0,
+            test_only: HashSet::new(),
         }
     }
 
@@ -143,11 +142,7 @@ impl<'i, 'a> Walker<'i, 'a> {
         path: &[String],
         outside: &OutsideSeam,
     ) -> Option<usize> {
-        let mut path = path.to_vec();
-        if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
-            path[0] = VOCAB.to_owned();
-        }
-        outside.internal_module(self.index, module, &path)
+        outside.internal_module(self.index, module, path)
     }
 
     /// What a path rooted in the extern prelude names, without letting a local module shadow its
@@ -158,53 +153,22 @@ impl<'i, 'a> Walker<'i, 'a> {
         path: &[String],
         outside: &OutsideSeam,
     ) -> Result<Option<Target>, String> {
-        let mut path = path.to_vec();
-        if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
-            path[0] = VOCAB.to_owned();
-        }
-        if let Some(external) = outside.external_path(self.index, module, &path, true) {
+        if let Some(external) = outside.external_path(self.index, module, path, true)? {
             return Ok(Some(Target::External(external)));
         }
-        let Some((krate, relative)) = path.split_first() else {
-            return Ok(None);
-        };
-        let indexed = *krate == FACADE
-            || crate::index::CRATES
-                .iter()
-                .any(|(name, _)| *name == krate.as_str());
-        if !indexed {
-            return Ok(None);
-        }
-        let root = self.index.module(krate, &[])?;
-        if relative.is_empty() {
-            return Ok(Some(Target::Module(root)));
-        }
-        if let Some(target) = self.index.resolve_module_path(root, relative)? {
-            let module_path = &self.index.modules[target];
-            let canonical = std::iter::once(module_path.krate.clone())
-                .chain(module_path.path.iter().cloned())
-                .collect::<Vec<_>>();
-            if let Some(external) = outside.external_path(self.index, module, &canonical, true) {
-                return Ok(Some(Target::External(external)));
-            }
+        if let Binding::Found(Found::Module(target)) =
+            self.index.resolve_type_binding(module, path, true)?
+        {
             return Ok(Some(Target::Module(target)));
         }
-        let (last, parent_path) = relative.split_last().expect("a nonempty path");
-        let parent = if parent_path.is_empty() {
-            Some(root)
-        } else {
-            self.index.resolve_module_path(root, parent_path)?
+        // This can also name a value or a macro re-exported by an indexed module.
+        let Some((last, parent)) = path.split_last() else {
+            return Ok(None);
         };
-        if let Some(parent) = parent {
-            let module_path = &self.index.modules[parent];
-            let canonical = std::iter::once(module_path.krate.clone())
-                .chain(module_path.path.iter().cloned())
-                .collect::<Vec<_>>();
-            if let Some(mut external) = outside.external_path(self.index, module, &canonical, true)
-            {
-                external.push(last.clone());
-                return Ok(Some(Target::External(external)));
-            }
+        if !parent.is_empty()
+            && let Binding::Found(Found::Module(parent)) =
+                self.index.resolve_type_binding(module, parent, true)?
+        {
             if let Some(name) = self
                 .names(parent, outside)?
                 .into_iter()
@@ -212,27 +176,14 @@ impl<'i, 'a> Walker<'i, 'a> {
             {
                 return Ok(Some(name.target));
             }
-        }
-        Ok(match self.index.resolve_path(root, relative) {
-            Ok(Found::Item(id)) => {
-                let (_, name) = defined(self.index.item(id)).expect("resolved items have names");
-                let item_module = &self.index.modules[id.module];
-                let canonical = std::iter::once(item_module.krate.clone())
-                    .chain(item_module.path.iter().cloned())
-                    .chain(std::iter::once(name))
-                    .collect::<Vec<_>>();
-                match outside.external_path(self.index, module, &canonical, true) {
-                    Some(external) => Some(Target::External(external)),
-                    None => Some(Target::Item(id)),
-                }
+            if let Ok(Found::Item(id)) = self.index.resolve_rooted_path(module, path) {
+                let target = outside
+                    .external_item_path(self.index, id)
+                    .map_or_else(|| Target::Item(id), Target::OutsideItem);
+                return Ok(Some(target));
             }
-            Ok(Found::External(path)) => Some(Target::External(
-                outside
-                    .external_path(self.index, root, &path, true)
-                    .unwrap_or(path),
-            )),
-            Err(_) => None,
-        })
+        }
+        Ok(None)
     }
 
     /// What `path`, written in a `pub use` of `module`, leads to.
@@ -252,15 +203,18 @@ impl<'i, 'a> Walker<'i, 'a> {
         if let Some(target) = self.module_at(module, path, outside) {
             return Ok(Target::Module(target));
         }
-        if let Some(path) = outside.external_path(self.index, module, path, false) {
-            return Ok(Target::External(path));
+        match outside.external_path(self.index, module, path, false) {
+            Ok(Some(path)) => return Ok(Target::External(path)),
+            Err(error) => return Ok(Target::Ambiguous(error)),
+            Ok(None) => {}
         }
         let (last, parent) = path.split_last().ok_or("an empty path")?;
         if parent.is_empty() {
             // A name the module does not define or import is an outside crate (`serde_json`).
             return Ok(match self.index.resolve(module, last) {
                 Ok(Found::Item(id)) => Target::Item(id),
-                Ok(Found::External(path)) => Target::External(path),
+                Ok(Found::Module(target)) => Target::Module(target),
+                Ok(Found::External { path, .. }) => Target::External(path),
                 Err(_) => Target::External(path.to_vec()),
             });
         }
@@ -286,14 +240,16 @@ impl<'i, 'a> Walker<'i, 'a> {
             return Ok(names.clone());
         }
         if !self.open.insert(module) {
+            self.cycle_cuts += 1;
             return Ok(Vec::new());
         }
+        let cycle_cuts = self.cycle_cuts;
         let items = self.index.modules[module].items.clone();
         let mut own: Vec<Name> = Vec::new();
         let mut globbed: Vec<Name> = Vec::new();
         for (position, item) in items.iter().enumerate() {
             let attrs = attrs(item);
-            if !compiled(attrs) {
+            if !self.index.default_build(module, attrs) {
                 let public = match item {
                     Item::Use(i) => matches!(i.vis, Visibility::Public(_)),
                     Item::Mod(i) => matches!(i.vis, Visibility::Public(_)),
@@ -307,7 +263,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                         && !gate.contains("feature")
                         && !gate.contains("target")
                     {
-                        self.test_only += 1;
+                        self.test_only.insert((module, position));
                     } else {
                         let what = match item {
                             Item::Mod(child) => format!("mod {}", child.ident),
@@ -379,8 +335,11 @@ impl<'i, 'a> Walker<'i, 'a> {
                                         name.hidden |= hidden;
                                         globbed.push(name);
                                     }
-                                } else if let Some(external) =
-                                    outside.external_path(self.index, module, &path, rooted)
+                                } else if let Some(external) = outside
+                                    .external_path(self.index, module, &path, rooted)
+                                    .map_err(|error| {
+                                        format!("{}::*: {error}", self.module_name(module))
+                                    })?
                                 {
                                     globbed.push(Name {
                                         name: String::new(),
@@ -390,12 +349,6 @@ impl<'i, 'a> Walker<'i, 'a> {
                                         },
                                         hidden,
                                     });
-                                } else if let Some(target) = self.module_at(module, &path, outside)
-                                {
-                                    for mut name in self.names(target, outside)? {
-                                        name.hidden |= hidden;
-                                        globbed.push(name);
-                                    }
                                 } else {
                                     self.notes.push(format!(
                                         "pub use {}::* in {}: not a module of the API's crates",
@@ -444,7 +397,11 @@ impl<'i, 'a> Walker<'i, 'a> {
             }
         }
         self.open.remove(&module);
-        self.names.insert(module, own.clone());
+        // A cycle cut is only valid along this route. Another caller may reach the names
+        // missing from this expansion when it starts from a different module.
+        if self.cycle_cuts == cycle_cuts {
+            self.names.insert(module, own.clone());
+        }
         Ok(own)
     }
 
@@ -512,14 +469,24 @@ impl<'i, 'a> Walker<'i, 'a> {
                             all.entry(id).or_default().insert(path);
                         }
                     }
-                    Target::External(_) if behind => {}
+                    Target::External(_) | Target::OutsideItem(_) | Target::Ambiguous(_)
+                        if behind => {}
+                    Target::OutsideItem(external) => {
+                        return Err(OutsideSeam::error(
+                            &format!("mod_api::{}", path.join("::")),
+                            &external,
+                        ));
+                    }
+                    Target::Ambiguous(error) => {
+                        return Err(format!("mod_api::{}: {error}", path.join("::")));
+                    }
                     Target::External(external) => {
                         if external.first().map(String::as_str) == Some(MACROS)
                             && external.len() == 2
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
                         } else if let Some(external) =
-                            outside.external_path(self.index, module, &external, true)
+                            outside.external_path(self.index, module, &external, true)?
                         {
                             return Err(OutsideSeam::error(
                                 &format!("mod_api::{}", path.join("::")),
@@ -572,10 +539,10 @@ impl<'i, 'a> Walker<'i, 'a> {
             "{} items are reachable only through #[doc(hidden)] items or modules: recorded only where a recorded signature names them",
             hidden_items.len()
         ));
-        if self.test_only > 0 {
+        if !self.test_only.is_empty() {
             public.notes.push(format!(
                 "{} public items compiled only under cfg(test), not recorded",
-                self.test_only
+                self.test_only.len()
             ));
         }
         public.macros = macros.into_iter().collect();
@@ -596,7 +563,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                 matches!(item, Item::Mod(child)
                     if child.ident == path[depth].as_str()
                         && matches!(child.vis, Visibility::Public(_))
-                        && compiled(&child.attrs)
+                        && self.index.default_build(parent, &child.attrs)
                         && !hidden(&child.attrs))
             });
             if !public {
@@ -630,7 +597,9 @@ impl<'i, 'a> Walker<'i, 'a> {
                 .items
                 .iter()
                 .filter_map(|item| match item {
-                    Item::Mod(child) if compiled(&child.attrs) => Some(child.ident.to_string()),
+                    Item::Mod(child) if self.index.default_build(module, &child.attrs) => {
+                        Some(child.ident.to_string())
+                    }
                     _ => None,
                 })
                 .collect();

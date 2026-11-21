@@ -2,7 +2,8 @@
 //! relative to `mod_api`, lifetimes kept, one spacing), and each type's wire layout description
 //! for the shape function.
 use crate::index::{Found, Index, ItemId, OutsideSeam};
-use mod_source::layouts::{WireForm, Wires, param_names};
+use mod_source::index::Binding;
+use mod_source::layouts::{GenericName, WireForm, Wires, param_names};
 use mod_surface::shape::Shape;
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 use quote::ToTokens;
@@ -12,8 +13,6 @@ use syn::{Item, Type};
 
 /// The crates whose paths are written by their last segment (`Arc`, `HashMap`, `Duration`).
 const STD: &[&str] = &["std", "core", "alloc"];
-/// The vocabulary crate is indexed by its public API name, not its Cargo library name.
-const INDEXED_CRATE_ALIASES: &[(&str, &str)] = &[("mod_vocab", "mod_api")];
 
 /// `tokens` with one spacing: a space after `,`, `;` and a lone `:`, around `->`, `=`, `+` and
 /// `=>`, between two words, after a word-ending `>`, `)` or `]` before a word; none elsewhere.
@@ -129,8 +128,8 @@ pub(super) struct Paths<'p, 'a> {
     pub(super) index: &'p mut Index<'a>,
     pub(super) public: &'p HashMap<ItemId, Vec<String>>,
     pub(super) module: usize,
-    /// Generic parameters in scope (and `Self`), written as they are.
-    pub(super) params: Vec<String>,
+    /// Generic parameters in scope, written as they are.
+    pub(super) params: Vec<GenericName>,
     pub(super) refs: BTreeSet<String>,
     pub(super) check: Option<(&'p ExternalTypes<'p>, ItemId)>,
     /// Private aliases already followed while checking this public item's types.
@@ -141,7 +140,7 @@ pub(super) struct Paths<'p, 'a> {
 pub(super) struct ExternalTypes<'a> {
     outside: &'a OutsideSeam,
     public: &'a HashMap<ItemId, Vec<String>>,
-    first: std::cell::RefCell<Option<(ItemId, Vec<String>)>>,
+    first: std::cell::RefCell<Option<String>>,
 }
 
 impl<'a> ExternalTypes<'a> {
@@ -161,16 +160,11 @@ impl<'a> ExternalTypes<'a> {
         path: &[String],
         rooted: bool,
     ) {
-        if let Some(path) = self.outside.external_path(index, module, path, rooted) {
-            self.first.borrow_mut().get_or_insert_with(|| (id, path));
+        let result = self.outside.external_path(index, module, path, rooted);
+        if matches!(result, Ok(None)) {
+            return;
         }
-    }
-
-    pub(super) fn finish(&self, index: &Index<'_>) -> Result<(), String> {
-        if let Some(error) = self.outside.take_resolution_error() {
-            return Err(error);
-        }
-        if let Some((id, path)) = self.first.take() {
+        self.first.borrow_mut().get_or_insert_with(|| {
             let owner = self.public.get(&id).map_or_else(
                 || {
                     let (_, name) =
@@ -179,9 +173,16 @@ impl<'a> ExternalTypes<'a> {
                 },
                 |public| format!("mod_api::{}", public.join("::")),
             );
-            return Err(OutsideSeam::error(&owner, &path));
-        }
-        Ok(())
+            match result {
+                Ok(Some(path)) => OutsideSeam::error(&owner, &path),
+                Err(error) => format!("{owner}: {error}"),
+                Ok(None) => unreachable!("a disallowed path or resolution error"),
+            }
+        });
+    }
+
+    pub(super) fn finish(&self) -> Result<(), String> {
+        self.first.take().map_or(Ok(()), Err)
     }
 }
 
@@ -195,20 +196,9 @@ pub(super) fn ref_kind(item: &Item) -> Option<&'static str> {
 }
 
 impl Paths<'_, '_> {
-    /// Resolve an absolute path from its crate root, where a local module cannot shadow the
-    /// extern-prelude crate name. The vocabulary's Rust crate name differs from its index name.
     fn rooted_item(&mut self, path: &[String]) -> Option<ItemId> {
-        let (written_crate, relative) = path.split_first()?;
-        let indexed_crate = INDEXED_CRATE_ALIASES
-            .iter()
-            .find_map(|(alias, indexed)| (*alias == written_crate).then_some(*indexed))
-            .unwrap_or(written_crate);
-        if relative.is_empty() {
-            return None;
-        }
-        let root = self.index.module(indexed_crate, &[]).ok()?;
-        match self.index.resolve_type_path(root, relative) {
-            Ok(Found::Item(id)) => Some(id),
+        match self.index.resolve_type_binding(self.module, path, true) {
+            Ok(Binding::Found(Found::Item(id))) => Some(id),
             _ => None,
         }
     }
@@ -222,7 +212,7 @@ impl Paths<'_, '_> {
                 .ok()
                 .and_then(|found| match found {
                     Found::Item(id) => Some(id),
-                    Found::External(_) => None,
+                    Found::External { .. } | Found::Module(_) => None,
                 })
         };
         if let Some(id) = found
@@ -306,19 +296,32 @@ impl Paths<'_, '_> {
     fn rewrite(&mut self, path: &mut syn::Path) {
         let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
         let rooted = path.leading_colon.is_some();
-        if path.leading_colon.is_none()
-            && segments.len() == 1
-            && self.params.iter().any(|p| *p == segments[0])
-            || segments.first().is_some_and(|s| s == "Self")
+        // Syn parses a bare const argument as a type path. It can name a const
+        // parameter, but the head of a qualified type path is in the type namespace.
+        if !rooted
+            && segments.first().is_some_and(|first| {
+                first == "Self"
+                    || self
+                        .params
+                        .iter()
+                        .any(|param| param.name == *first && (param.is_type || segments.len() == 1))
+            })
         {
             return;
         }
         let found = if rooted {
             // `::` starts at the extern prelude. Resolve known API crates from their own roots,
             // not from this module where a local module may shadow the crate name.
-            self.rooted_item(&segments)
-                .map(Found::Item)
-                .map_or_else(|| Ok(Found::External(segments.clone())), Ok)
+            self.rooted_item(&segments).map(Found::Item).map_or_else(
+                || {
+                    Ok(Found::External {
+                        module: self.module,
+                        path: segments.clone(),
+                        rooted,
+                    })
+                },
+                Ok,
+            )
         } else {
             self.index.resolve_type_path(self.module, &segments)
         };
@@ -341,11 +344,20 @@ impl Paths<'_, '_> {
                             .map(|segment| segment.arguments.clone())
                             .unwrap_or(syn::PathArguments::None);
                         self.inspect_private_alias(id, &arguments);
-                        vec![segments.last().cloned().unwrap_or_default()]
+                        // Keep imported module qualifiers in the published spelling. A direct
+                        // path from an indexed crate root still normalises to its last segment.
+                        let owner = &self.index.modules[id.module].krate;
+                        if *owner != self.index.modules[self.module].krate
+                            && segments.first() != Some(owner)
+                        {
+                            segments.clone()
+                        } else {
+                            vec![segments.last().cloned().unwrap_or_default()]
+                        }
                     }
                 }
             }
-            Ok(Found::External(full)) => {
+            Ok(Found::External { path: full, .. }) => {
                 if let Some((check, id)) = self.check {
                     // Keep the written alias for namespace checks; `full` has already discarded
                     // whether the local import was a type, value, or module.
@@ -357,7 +369,7 @@ impl Paths<'_, '_> {
                     full
                 }
             }
-            Err(_) => {
+            Err(_) | Ok(Found::Module(_)) => {
                 if let Some((check, id)) = self.check {
                     check.inspect(self.index, self.module, id, &segments, rooted);
                 }
@@ -446,7 +458,13 @@ impl Wires for GameWires<'_> {
     fn path(&self, id: ItemId) -> Option<&[String]> {
         self.ids.get(&id).map(Vec::as_slice)
     }
-    fn opaque(&self, index: &mut Index<'_>, module: usize, ty: &Type, params: &[String]) -> Shape {
+    fn opaque(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        ty: &Type,
+        params: &[GenericName],
+    ) -> Shape {
         let mut ty = ty.clone();
         let mut paths = Paths {
             index,

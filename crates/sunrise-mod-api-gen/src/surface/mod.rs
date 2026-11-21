@@ -17,8 +17,7 @@ mod wire_forms;
 
 use crate::catalog::{self, Catalog};
 use crate::index::{Found, Index, ItemId, OutsideSeam};
-use mod_source::layouts::Layouts;
-use mod_source::layouts::{WireForm, derives, param_names};
+use mod_source::layouts::{GenericName, Layouts, WireForm, derives, param_names};
 use mod_surface::shape::{ShapeError, Shapes};
 use mod_surface::*;
 use quote::ToTokens;
@@ -27,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use syn::visit_mut::VisitMut;
 use syn::{Item, Visibility};
-use walk::{attrs, compiled, hidden};
+use walk::{attrs, hidden};
 
 /// The crates whose own `macro_rules!` calls the export expands: the API and the crates its
 /// public items come from.
@@ -372,7 +371,7 @@ struct Writer<'p, 'a> {
 }
 
 impl<'a> Writer<'_, 'a> {
-    fn paths(&mut self, module: usize, params: &[String]) -> Paths<'_, 'a> {
+    fn paths(&mut self, module: usize, params: &[GenericName]) -> Paths<'_, 'a> {
         Paths {
             index: self.index,
             public: self.public,
@@ -384,7 +383,12 @@ impl<'a> Writer<'_, 'a> {
         }
     }
 
-    fn ty(&mut self, module: usize, params: &[String], ty: &syn::Type) -> (String, Vec<String>) {
+    fn ty(
+        &mut self,
+        module: usize,
+        params: &[GenericName],
+        ty: &syn::Type,
+    ) -> (String, Vec<String>) {
         let mut ty = ty.clone();
         let mut paths = self.paths(module, params);
         paths.visit_type_mut(&mut ty);
@@ -397,7 +401,7 @@ impl<'a> Writer<'_, 'a> {
     fn path(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         path: &syn::Path,
     ) -> (String, Vec<String>) {
         let ty = syn::Type::Path(syn::TypePath {
@@ -410,7 +414,7 @@ impl<'a> Writer<'_, 'a> {
     fn signature(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         sig: &syn::Signature,
     ) -> (String, Vec<String>) {
         let mut sig = sig.clone();
@@ -452,7 +456,7 @@ impl<'a> Writer<'_, 'a> {
     fn associated(
         &mut self,
         module: usize,
-        params: &[String],
+        params: &[GenericName],
         item: &syn::TraitItem,
     ) -> Option<(String, AssociatedKind, bool, Vec<String>)> {
         let (mut written, kind, required) = match item {
@@ -496,10 +500,10 @@ fn merge(into: &mut Vec<String>, refs: Vec<String>) {
 }
 
 /// An item's public inherent members: methods and consts of `impl Type` and `impl dyn Trait`
-/// blocks, with the block's module, generic parameter names (and `Self`) and generics text.
+/// blocks, with the block's module and generics.
 struct Inherent {
     module: usize,
-    params: Vec<String>,
+    params: Vec<GenericName>,
     generics: syn::Generics,
     item: syn::ImplItem,
 }
@@ -508,7 +512,7 @@ struct Inherent {
 struct Impls {
     inherent: HashMap<ItemId, Vec<Inherent>>,
     /// The traits implemented for each nameable type, by trait path as written in its module.
-    traits: HashMap<ItemId, Vec<(usize, Vec<String>, syn::Path)>>,
+    traits: HashMap<ItemId, Vec<(usize, Vec<GenericName>, syn::Path)>>,
     /// Impl blocks whose self type the export does not record, by kind.
     skipped: BTreeMap<&'static str, usize>,
     /// Impl blocks and inherent members compiled out of a default native build.
@@ -538,7 +542,7 @@ fn impls(
         let module_items = index.modules[module].items.clone();
         for item in module_items {
             let Item::Impl(block) = item else { continue };
-            if !compiled(&block.attrs) {
+            if !index.default_build(module, &block.attrs) {
                 out.gated.push(format!(
                     "impl {} in {}: compiled out of a default native build ({}), not recorded",
                     print(block.self_ty.to_token_stream()),
@@ -579,7 +583,7 @@ fn impls(
             if !nameable.contains_key(&owner) {
                 continue;
             }
-            let mut params = param_names(&block.generics);
+            let params = param_names(&block.generics);
             if let Some((_, trait_path, _)) = &block.trait_ {
                 out.traits
                     .entry(owner)
@@ -587,14 +591,16 @@ fn impls(
                     .push((module, params, trait_path.clone()));
                 continue;
             }
-            params.push("Self".into());
             for impl_item in &block.items {
                 let (vis, attrs) = match impl_item {
                     syn::ImplItem::Fn(f) => (&f.vis, &f.attrs),
                     syn::ImplItem::Const(c) => (&c.vis, &c.attrs),
                     _ => continue,
                 };
-                if matches!(vis, Visibility::Public(_)) && !compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && !index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     let name = match impl_item {
                         syn::ImplItem::Fn(f) => f.sig.ident.to_string(),
                         syn::ImplItem::Const(c) => c.ident.to_string(),
@@ -607,7 +613,10 @@ fn impls(
                     ));
                     continue;
                 }
-                if matches!(vis, Visibility::Public(_)) && compiled(attrs) && !hidden(attrs) {
+                if matches!(vis, Visibility::Public(_))
+                    && index.default_build(module, attrs)
+                    && !hidden(attrs)
+                {
                     out.inherent.entry(owner).or_default().push(Inherent {
                         module,
                         params: params.clone(),
@@ -646,7 +655,9 @@ pub(crate) fn build(
 ) -> Result<Export, String> {
     // The facade crate is indexed for this walk only.
     index.add_crate("sunrise_mod_api", "crates/sunrise-mod-api/src");
-    // The API crates' own macro calls, expanded before anything reads their modules.
+    let outside = OutsideSeam::read(root)?;
+    outside.add_to_index(index)?;
+    // The API crates' own macro calls, expanded in the default build before the public walk.
     let mut notes = Vec::new();
     let mut expanded = Vec::new();
     {
@@ -658,8 +669,6 @@ pub(crate) fn build(
         }
     }
     notes.extend(expand::expand_modules(index, &expanded));
-    let outside = OutsideSeam::read(root)?;
-    outside.add_to_index(index)?;
     let mut walker = walk::Walker::new(index);
     let public = walker.public(&outside)?;
     notes.extend(public.notes.iter().cloned());
@@ -846,7 +855,7 @@ pub(crate) fn build(
         }
     }
 
-    external.finish(index)?;
+    external.finish()?;
     let macros = macros(root, index, &public.macros, &mut notes)?;
 
     // Shapes, over every type the crossing types contain.
@@ -859,7 +868,7 @@ pub(crate) fn build(
         })
         .collect();
     layouts.finish(index);
-    external.finish(index)?;
+    external.finish()?;
     let mut shapes = Shapes::new(&layouts.table);
     let mut types = Vec::new();
     for (record, key) in pending.into_iter().zip(keys) {
@@ -930,8 +939,7 @@ fn trait_record(
     let owner = format!("trait:{path}");
     let role = roles.role(id);
     let (generics, mut refs) = writer.generics(module, &item.generics);
-    let mut params = param_names(&item.generics);
-    params.push("Self".into());
+    let params = param_names(&item.generics);
     let mut bounds = Vec::new();
     for bound in &item.supertraits {
         let mut bound = bound.clone();
@@ -954,7 +962,7 @@ fn trait_record(
         if hidden(attrs) {
             continue;
         }
-        if !compiled(attrs) {
+        if !writer.index.default_build(module, attrs) {
             let name = match member {
                 syn::TraitItem::Fn(f) => f.sig.ident.to_string(),
                 syn::TraitItem::Type(t) => t.ident.to_string(),
@@ -1039,7 +1047,7 @@ fn type_record(
     item_id: ItemId,
     path: &str,
     item: &Item,
-    trait_impls: &[(usize, Vec<String>, syn::Path)],
+    trait_impls: &[(usize, Vec<GenericName>, syn::Path)],
     forms: &HashMap<ItemId, WireForm>,
 ) -> Pending {
     let module = item_id.module;
@@ -1440,7 +1448,7 @@ fn macros(
                 let Some(name) = &mac.ident else { continue };
                 if !has_attr(&mac.attrs, "macro_export")
                     || hidden(&mac.attrs)
-                    || !compiled(&mac.attrs)
+                    || !walker.index.default_build(module, &mac.attrs)
                     || name.to_string().starts_with("__")
                 {
                     continue;

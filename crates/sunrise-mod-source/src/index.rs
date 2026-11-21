@@ -1,6 +1,10 @@
 //! The Rust items a set of crates' signatures name, found as rustc finds them: through each
 //! module's items, `use`s and glob imports, into the crates `sunrise-mod-api` builds on.
-use std::{collections::HashMap, fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::Path,
+};
 use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
 fn target_cfg(name: &str) -> Option<String> {
@@ -11,16 +15,12 @@ fn target_cfg(name: &str) -> Option<String> {
     match name {
         "target_os" => Some(std::env::consts::OS.to_owned()),
         "target_arch" => Some(std::env::consts::ARCH.to_owned()),
-        "target_family" => Some(
-            if cfg!(unix) {
-                "unix"
-            } else if cfg!(windows) {
-                "windows"
-            } else {
-                "other"
-            }
-            .to_owned(),
-        ),
+        "target_abi" => Some(env!("CARGO_CFG_TARGET_ABI").to_owned()),
+        "target_env" => Some(env!("CARGO_CFG_TARGET_ENV").to_owned()),
+        "target_feature" => Some(env!("CARGO_CFG_TARGET_FEATURE").to_owned()),
+        "target_has_atomic" => Some(env!("CARGO_CFG_TARGET_HAS_ATOMIC").to_owned()),
+        "target_vendor" => Some(env!("CARGO_CFG_TARGET_VENDOR").to_owned()),
+        "target_family" => Some(env!("CARGO_CFG_TARGET_FAMILY").to_owned()),
         "target_pointer_width" => Some(usize::BITS.to_string()),
         "target_endian" if cfg!(target_endian = "little") => Some("little".to_owned()),
         "target_endian" if cfg!(target_endian = "big") => Some("big".to_owned()),
@@ -32,7 +32,7 @@ fn target_flag(name: &str, fallback: bool) -> bool {
     std::env::var_os(format!("CARGO_CFG_{}", name.to_ascii_uppercase())).is_some() || fallback
 }
 
-fn cfg_active(meta: &Meta) -> bool {
+fn cfg_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
     match meta {
         Meta::Path(path) => {
             let Some(name) = path.get_ident().map(ToString::to_string) else {
@@ -58,10 +58,7 @@ fn cfg_active(meta: &Meta) -> bool {
             let Some(name) = pair.path.get_ident().map(ToString::to_string) else {
                 return true;
             };
-            if name == "feature" {
-                return false;
-            }
-            if !name.starts_with("target_") {
+            if name != "feature" && !name.starts_with("target_") {
                 return true;
             }
             let syn::Expr::Lit(syn::ExprLit {
@@ -71,6 +68,9 @@ fn cfg_active(meta: &Meta) -> bool {
             else {
                 return true;
             };
+            if name == "feature" {
+                return features.is_some_and(|features| features.contains(&expected.value()));
+            }
             target_cfg(&name).is_none_or(|actual| {
                 actual
                     .split(',')
@@ -84,11 +84,11 @@ fn cfg_active(meta: &Meta) -> bool {
                 return true;
             };
             if list.path.is_ident("any") {
-                inner.iter().any(cfg_active)
+                inner.iter().any(|meta| cfg_active(meta, features))
             } else if list.path.is_ident("all") {
-                inner.iter().all(cfg_active)
+                inner.iter().all(|meta| cfg_active(meta, features))
             } else if list.path.is_ident("not") {
-                !inner.iter().all(cfg_active)
+                !inner.iter().all(|meta| cfg_active(meta, features))
             } else {
                 true
             }
@@ -96,11 +96,11 @@ fn cfg_active(meta: &Meta) -> bool {
     }
 }
 
-fn attribute_is_active(meta: &Meta) -> bool {
+fn attribute_is_active(meta: &Meta, features: Option<&HashSet<String>>) -> bool {
     match meta {
         Meta::List(list) if list.path.is_ident("cfg") => list
             .parse_args::<Meta>()
-            .map(|condition| cfg_active(&condition))
+            .map(|condition| cfg_active(&condition, features))
             .unwrap_or(true),
         Meta::List(list) if list.path.is_ident("cfg_attr") => {
             let Ok(args) = list.parse_args_with(
@@ -111,15 +111,31 @@ fn attribute_is_active(meta: &Meta) -> bool {
             let Some(condition) = args.first() else {
                 return true;
             };
-            !cfg_active(condition) || args.iter().skip(1).all(attribute_is_active)
+            !cfg_active(condition, features)
+                || args
+                    .iter()
+                    .skip(1)
+                    .all(|meta| attribute_is_active(meta, features))
         }
         _ => true,
     }
 }
 
-/// Whether source items are present in the default build for Cargo's target.
-pub fn default_build(attrs: &[Attribute]) -> bool {
-    attrs.iter().all(|attr| attribute_is_active(&attr.meta))
+/// Whether a Cargo target dependency table applies to the current target.
+pub fn target_dependency_active(selector: &str) -> Result<bool, String> {
+    if let Some(condition) = selector
+        .strip_prefix("cfg(")
+        .and_then(|s| s.strip_suffix(')'))
+    {
+        let meta: Meta = syn::parse_str(condition)
+            .map_err(|error| format!("invalid Cargo target selector `{selector}`: {error}"))?;
+        return Ok(cfg_active(&meta, None));
+    }
+    let target = std::env::var("TARGET");
+    Ok(selector
+        == target
+            .as_deref()
+            .unwrap_or(env!("SUNRISE_MOD_SOURCE_TARGET")))
 }
 
 /// One module: its crate, its path below the crate root, and its items.
@@ -137,16 +153,99 @@ pub struct ItemId {
 }
 
 /// Where a name leads.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Found {
     Item(ItemId),
-    /// A path outside the indexed crates (`std::…`, `serde_json::…`), as written.
-    External(Vec<String>),
+    Module(usize),
+    /// A path outside the indexed crates, with the scope and root of the original spelling.
+    External {
+        module: usize,
+        path: Vec<String>,
+        rooted: bool,
+    },
 }
 
-#[derive(Clone, Copy)]
+/// The outcome of looking up a name without picking an arbitrary glob binding.
+#[derive(Clone)]
+pub enum Binding {
+    Missing,
+    /// A definition or explicit import shadows this module's globs, but is not visible here.
+    Hidden,
+    Found(Found),
+    Ambiguous(String),
+}
+
+impl Binding {
+    fn require(self, index: &Index<'_>, module: usize, name: &str) -> Result<Found, String> {
+        match self {
+            Self::Found(found) => Ok(found),
+            Self::Ambiguous(error) => Err(error),
+            Self::Missing | Self::Hidden => {
+                let m = &index.modules[module];
+                Err(format!(
+                    "{name} not found in {}::{}",
+                    m.krate,
+                    m.path.join("::")
+                ))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Namespace {
     Any,
     Type,
+}
+
+/// Visibility must hold for every module holding a glob on the route. A restricted binding
+/// is visible to all holders iff it is visible to their common ancestor. Holders in different
+/// crates have no common ancestor and can only see public bindings.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Audience {
+    Public,
+    Within(String, Vec<String>),
+}
+
+impl Audience {
+    fn include(&mut self, module: &Module) {
+        if let Self::Within(krate, path) = self {
+            if *krate == module.krate {
+                path.truncate(
+                    path.iter()
+                        .zip(&module.path)
+                        .take_while(|(a, b)| a == b)
+                        .count(),
+                );
+            } else {
+                *self = Self::Public;
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct LookupKey {
+    module: usize,
+    name: String,
+    namespace: Namespace,
+    audience: Audience,
+}
+
+#[derive(Default)]
+struct Lookups {
+    active: HashSet<LookupKey>,
+    memo: HashMap<LookupKey, Binding>,
+    cycle_cuts: usize,
+    path_depth: usize,
+}
+
+struct GlobLookup {
+    key: LookupKey,
+    globs: std::vec::IntoIter<(Vec<String>, bool)>,
+    cycle_cuts: usize,
+    candidate: Binding,
+    indexed: Option<Found>,
 }
 
 /// The indexed crates' modules, parsed as they are first reached.
@@ -158,8 +257,6 @@ pub struct Index<'a> {
     included: &'a [(&'a str, &'a str)],
     pub modules: Vec<Module>,
     by_path: HashMap<(String, Vec<String>), usize>,
-    /// How deep `resolve` is in following imports.
-    depth: usize,
     /// Every source file read, for the build script to track.
     pub read: std::cell::RefCell<Vec<std::path::PathBuf>>,
     /// Rewrites a source file's text before it is parsed: the game's generated module lists.
@@ -168,11 +265,14 @@ pub struct Index<'a> {
     extra: Vec<(String, String)>,
     /// A crate's root file where it is not `lib.rs` (a library's `[lib] path`).
     root_files: HashMap<String, String>,
+    /// Cargo names for dependencies whose source is in this index, by importing crate.
+    dependency_aliases: HashMap<String, HashMap<String, String>>,
+    default_features: HashMap<String, HashSet<String>>,
 }
 
 /// The file a module's `#[path = "..."]` names.
-fn path_attribute(attrs: &[syn::Attribute]) -> Option<String> {
-    fn path(meta: &Meta) -> Option<String> {
+fn path_attribute(attrs: &[syn::Attribute], features: Option<&HashSet<String>>) -> Option<String> {
+    fn path(meta: &Meta, features: Option<&HashSet<String>>) -> Option<String> {
         match meta {
             Meta::NameValue(value) if value.path.is_ident("path") => match &value.value {
                 syn::Expr::Lit(syn::ExprLit {
@@ -188,15 +288,15 @@ fn path_attribute(attrs: &[syn::Attribute]) -> Option<String> {
                     )
                     .ok()?;
                 let condition = args.first()?;
-                cfg_active(condition)
-                    .then(|| args.iter().skip(1).find_map(path))
+                cfg_active(condition, features)
+                    .then(|| args.iter().skip(1).find_map(|meta| path(meta, features)))
                     .flatten()
             }
             _ => None,
         }
     }
 
-    attrs.iter().find_map(|attr| path(&attr.meta))
+    attrs.iter().find_map(|attr| path(&attr.meta, features))
 }
 
 /// The directory below the crate root that holds `path`'s last module, with its slash.
@@ -219,10 +319,11 @@ impl<'a> Index<'a> {
             included,
             modules: Vec::new(),
             by_path: HashMap::new(),
-            depth: 0,
             read: Default::default(),
             extra: Vec::new(),
             root_files: HashMap::new(),
+            dependency_aliases: HashMap::new(),
+            default_features: HashMap::new(),
         }
     }
 
@@ -243,6 +344,45 @@ impl<'a> Index<'a> {
         if self.crate_dir(name).is_none() {
             self.extra.push((name.to_owned(), dir.to_owned()));
         }
+    }
+
+    pub fn add_dependency_aliases(&mut self, aliases: &HashMap<String, HashMap<String, String>>) {
+        self.dependency_aliases.extend(aliases.clone());
+    }
+
+    pub fn add_default_features(&mut self, features: &HashMap<String, HashSet<String>>) {
+        self.default_features.extend(features.clone());
+    }
+
+    /// Whether an item's attributes admit the default build of its owning crate.
+    pub fn default_build(&self, module: usize, attrs: &[Attribute]) -> bool {
+        let features = self.default_features.get(&self.modules[module].krate);
+        attrs
+            .iter()
+            .all(|attr| attribute_is_active(&attr.meta, features))
+    }
+
+    fn extern_crate_name(&mut self, module: usize, name: &str) -> Result<Option<String>, String> {
+        let krate = self.modules[module].krate.clone();
+        let root = self.module(&krate, &[])?;
+        let spelling = self.modules[root].items.iter().find_map(|item| {
+            let Item::ExternCrate(item) = item else {
+                return None;
+            };
+            let alias = item.rename.as_ref().map_or(&item.ident, |(_, name)| name);
+            (self.default_build(root, &item.attrs) && *alias == name)
+                .then(|| item.ident.to_string())
+        });
+        if spelling.as_deref() == Some("self") {
+            return Ok(Some(krate));
+        }
+        let name = spelling.as_deref().unwrap_or(name);
+        Ok(self
+            .dependency_aliases
+            .get(&krate)
+            .and_then(|aliases| aliases.get(name))
+            .cloned()
+            .or_else(|| self.crate_name(name)))
     }
 
     fn crate_name(&self, name: &str) -> Option<String> {
@@ -275,6 +415,36 @@ impl<'a> Index<'a> {
         &self.modules[id.module].items[id.item]
     }
 
+    /// The owning crate, defining module and original name of an indexed item.
+    pub fn item_path(&self, id: ItemId) -> Option<Vec<String>> {
+        let module = &self.modules[id.module];
+        let name = match self.item(id) {
+            Item::Const(item) => &item.ident,
+            Item::Enum(item) => &item.ident,
+            Item::Fn(item) => &item.sig.ident,
+            Item::Static(item) => &item.ident,
+            Item::Struct(item) => &item.ident,
+            Item::Trait(item) => &item.ident,
+            Item::Type(item) => &item.ident,
+            Item::Union(item) => &item.ident,
+            _ => return None,
+        };
+        Some(
+            std::iter::once(module.krate.clone())
+                .chain(module.path.iter().cloned())
+                .chain(std::iter::once(name.to_string()))
+                .collect(),
+        )
+    }
+
+    /// The owning crate and the path below its root for a resolved module.
+    pub fn module_path(&self, module: usize) -> Vec<String> {
+        let Module { krate, path, .. } = &self.modules[module];
+        std::iter::once(krate.clone())
+            .chain(path.iter().cloned())
+            .collect()
+    }
+
     /// The module at `path` in `krate`, parsed on first use.
     pub fn module(&mut self, krate: impl AsRef<str>, path: &[String]) -> Result<usize, String> {
         let requested = krate.as_ref();
@@ -300,9 +470,13 @@ impl<'a> Index<'a> {
                     .any(|item| matches!(item, Item::Mod(item) if item.ident == last.as_str()));
                 let declared = declarations.iter().find_map(|item| match item {
                     Item::Mod(item)
-                        if item.ident == last.as_str() && default_build(&item.attrs) =>
+                        if item.ident == last.as_str()
+                            && self.default_build(parent, &item.attrs) =>
                     {
-                        Some((item.content.clone(), path_attribute(&item.attrs)))
+                        Some((
+                            item.content.clone(),
+                            path_attribute(&item.attrs, self.default_features.get(&krate)),
+                        ))
                     }
                     _ => None,
                 });
@@ -383,287 +557,450 @@ impl<'a> Index<'a> {
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import
     /// that provides it.
     pub fn resolve(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Any)
+        self.lookup_here(module, name, Namespace::Any, &mut Lookups::default())?
+            .require(self, module, name)
     }
 
     /// What type `name` means in `module`, following named and glob imports in the type namespace.
     /// A named import of a value does not hide a type provided by a glob import.
     pub fn resolve_type(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Type)
+        self.lookup_here(module, name, Namespace::Type, &mut Lookups::default())?
+            .require(self, module, name)
     }
 
-    fn resolve_in_namespace(
+    fn lookup_here(
         &mut self,
         module: usize,
         name: &str,
         namespace: Namespace,
-    ) -> Result<Found, String> {
-        self.depth += 1;
-        if self.depth > 64 {
-            self.depth = 0;
-            let m = &self.modules[module];
-            return Err(format!(
-                "{name} in {}::{} imports itself",
-                m.krate,
-                m.path.join("::")
-            ));
-        }
-        let found = self.lookup(module, name, namespace, &mut vec![module], &mut Vec::new());
-        self.depth = self.depth.saturating_sub(1);
-        found?.ok_or_else(|| {
-            let m = &self.modules[module];
-            format!("{name} not found in {}::{}", m.krate, m.path.join("::"))
-        })
+        lookups: &mut Lookups,
+    ) -> Result<Binding, String> {
+        let m = &self.modules[module];
+        self.lookup(
+            LookupKey {
+                module,
+                name: name.to_owned(),
+                namespace,
+                audience: Audience::Within(m.krate.clone(), m.path.clone()),
+            },
+            lookups,
+        )
     }
 
-    /// `name` as bound in `module`, seen from every module in `holders`: the module the lookup
-    /// started in, then each module whose glob led here. A glob imports only what is visible
-    /// from the module holding it, and a module's own definition or named import of `name`
-    /// shadows its globs even where that binding is not visible.
-    fn lookup(
-        &mut self,
-        module: usize,
-        name: &str,
-        namespace: Namespace,
-        holders: &mut Vec<usize>,
-        seen: &mut Vec<usize>,
-    ) -> Result<Option<Found>, String> {
-        if seen.contains(&module) {
-            return Ok(None);
+    fn lookup(&mut self, key: LookupKey, lookups: &mut Lookups) -> Result<Binding, String> {
+        let mut stack: Vec<GlobLookup> = Vec::new();
+        let mut next = Some(key);
+        let mut result = Binding::Missing;
+        loop {
+            if let Some(key) = next.take() {
+                if let Some(found) = lookups.memo.get(&key) {
+                    result = found.clone();
+                } else if !lookups.active.insert(key.clone()) {
+                    lookups.cycle_cuts += 1;
+                    result = Binding::Missing;
+                } else {
+                    let cycle_cuts = lookups.cycle_cuts;
+                    let mut globs = Vec::new();
+                    let candidate = self.explicit_binding(&key, lookups, &mut globs)?;
+                    result = Binding::Missing;
+                    stack.push(GlobLookup {
+                        key,
+                        globs: globs.into_iter(),
+                        cycle_cuts,
+                        candidate,
+                        indexed: None,
+                    });
+                }
+            }
+            let Some(frame) = stack.last_mut() else {
+                return Ok(result);
+            };
+            match std::mem::replace(&mut result, Binding::Missing) {
+                found @ Binding::Found(_) if frame.key.namespace == Namespace::Any => {
+                    frame.candidate = found;
+                }
+                Binding::Found(found) => {
+                    if matches!(found, Found::Item(_) | Found::Module(_)) {
+                        if let Some(first) = &frame.indexed {
+                            if *first != found {
+                                let path = |found: &Found| match found {
+                                    Found::Item(id) => self.item_path(*id).unwrap_or_default(),
+                                    Found::Module(module) => self.module_path(*module),
+                                    Found::External { path, .. } => path.clone(),
+                                };
+                                frame.candidate = Binding::Ambiguous(ambiguous_glob(
+                                    &frame.key.name,
+                                    &path(first),
+                                    &path(&found),
+                                ));
+                            }
+                        } else {
+                            frame.indexed = Some(found.clone());
+                        }
+                    }
+                    if matches!(frame.candidate, Binding::Missing) {
+                        frame.candidate = Binding::Found(found);
+                    }
+                }
+                ambiguous @ Binding::Ambiguous(..) => frame.candidate = ambiguous,
+                // A hidden glob binding shadows names in its own module only.
+                Binding::Missing | Binding::Hidden => {}
+            }
+            let finished = match frame.candidate {
+                Binding::Found(_) => frame.key.namespace == Namespace::Any,
+                Binding::Ambiguous(..) | Binding::Hidden => true,
+                Binding::Missing => false,
+            };
+            if !finished {
+                for (glob, rooted) in frame.globs.by_ref() {
+                    let binding = self.resolve_path_in_namespace(
+                        frame.key.module,
+                        &glob,
+                        rooted,
+                        Namespace::Type,
+                        lookups,
+                    )?;
+                    if matches!(binding, Binding::Ambiguous(..)) {
+                        frame.candidate = binding;
+                        break;
+                    }
+                    if let Binding::Found(Found::Module(target)) = binding {
+                        let mut key = frame.key.clone();
+                        key.audience.include(&self.modules[key.module]);
+                        key.module = target;
+                        next = Some(key);
+                        break;
+                    }
+                }
+                if next.is_some() {
+                    continue;
+                }
+            }
+            let Some(frame) = stack.pop() else {
+                return Ok(result);
+            };
+            result = frame.candidate;
+            lookups.active.remove(&frame.key);
+            // A branch cut by an active ancestor is not a complete lookup, even if another
+            // branch supplied a binding. It may resolve differently along another route.
+            if lookups.cycle_cuts == frame.cycle_cuts {
+                lookups.memo.insert(frame.key, result.clone());
+            }
         }
-        seen.push(module);
+    }
+
+    fn explicit_binding(
+        &mut self,
+        key: &LookupKey,
+        lookups: &mut Lookups,
+        globs: &mut Vec<(Vec<String>, bool)>,
+    ) -> Result<Binding, String> {
+        let LookupKey {
+            module,
+            name,
+            namespace,
+            audience,
+        } = key;
+        let (module, name, namespace) = (*module, name.as_str(), *namespace);
         let items = &self.modules[module].items;
+        let reachable = |vis| self.visible_to(module, vis, audience);
         let mut shadowed = false;
-        for (item, definition) in items.iter().enumerate() {
-            if default_build(definition_attrs(definition))
-                && let Some(vis) = definition_visibility(definition, name)
-                && (matches!(namespace, Namespace::Any) || is_type_item(definition))
+        for (item, definition_item) in items.iter().enumerate() {
+            if let Some((attrs, visibility)) = definition(definition_item)
+                && self.default_build(module, attrs)
+                && defines(definition_item, name, namespace)
             {
-                if holders
-                    .iter()
-                    .all(|&holder| self.visible(module, holder, vis))
-                {
-                    return Ok(Some(Found::Item(ItemId { module, item })));
+                if reachable(visibility) {
+                    if let Item::Mod(child) = definition_item {
+                        let krate = self.modules[module].krate.clone();
+                        let mut path = self.modules[module].path.clone();
+                        path.push(child.ident.to_string());
+                        return self
+                            .module(&krate, &path)
+                            .map(|target| Binding::Found(Found::Module(target)));
+                    }
+                    return Ok(Binding::Found(Found::Item(ItemId { module, item })));
                 }
                 shadowed = true;
             }
         }
-
         let mut named = Vec::new();
-        let mut globs = Vec::new();
         for item in items {
-            if let Item::Use(item) = item
-                && default_build(&item.attrs)
-            {
-                let open = holders
-                    .iter()
-                    .all(|&holder| self.visible(module, holder, &item.vis));
-                uses(
-                    &item.tree,
-                    &mut Vec::new(),
-                    &mut |path, alias| match alias {
-                        Some(alias) if alias == name => named.push((path, open)),
-                        None if open => globs.push(path),
-                        _ => {}
-                    },
-                );
-            }
-        }
-
-        let mut external_named = None;
-        if matches!(namespace, Namespace::Any) {
-            if let Some((path, open)) = named.first() {
-                if *open {
-                    return self.resolve_path(module, path).map(Some);
+            match item {
+                Item::Use(item) if self.default_build(module, &item.attrs) => {
+                    let open = reachable(&item.vis);
+                    uses(
+                        &item.tree,
+                        &mut Vec::new(),
+                        &mut |path, alias| match alias {
+                            Some(alias) if alias == name => {
+                                named.push((path, item.leading_colon.is_some(), open));
+                            }
+                            None if open => globs.push((path, item.leading_colon.is_some())),
+                            _ => {}
+                        },
+                    );
                 }
-                return Ok(None);
-            }
-        } else {
-            for (path, open) in named {
-                match self.resolve_path(module, &path) {
-                    Ok(found @ Found::Item(id)) if is_type_item(self.item(id)) => {
-                        if open {
-                            return Ok(Some(found));
-                        }
-                        shadowed = true;
-                    }
-                    Ok(found @ Found::External(_)) => {
-                        if open {
-                            // An external named binding could be a value or a type. Keep it ahead
-                            // of any indexed glob type so the API boundary fails closed.
-                            external_named.get_or_insert(found);
+                Item::ExternCrate(item) if self.default_build(module, &item.attrs) => {
+                    let alias = item.rename.as_ref().map_or(&item.ident, |(_, alias)| alias);
+                    if *alias == name {
+                        let (source, rooted) = if item.ident == "self" {
+                            ("crate".to_owned(), false)
                         } else {
-                            shadowed = true;
-                        }
+                            (item.ident.to_string(), true)
+                        };
+                        named.push((vec![source], rooted, reachable(&item.vis)));
                     }
-                    Ok(Found::Item(_)) | Err(_) => {}
                 }
+                _ => {}
             }
         }
-        if shadowed {
-            return Ok(None);
+        if namespace == Namespace::Any
+            && let Some((path, rooted, open)) = named.first()
+        {
+            globs.clear();
+            return if *open {
+                self.resolve_path_in_namespace(module, path, *rooted, namespace, lookups)
+            } else {
+                Ok(Binding::Hidden)
+            };
         }
-
-        for glob in globs {
-            if let Some((krate, path)) = self.absolute(module, &glob)
-                && let Ok(target) = self.module(&krate, &path)
-            {
-                holders.push(module);
-                let found = self.lookup(target, name, namespace, holders, seen);
-                holders.pop();
-                if let Some(found) = found? {
-                    return Ok(Some(external_named.unwrap_or(found)));
+        let mut external_named = None;
+        for (path, rooted, open) in named {
+            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type, lookups)? {
+                found @ (Binding::Found(Found::Item(_) | Found::Module(_))
+                | Binding::Ambiguous(..))
+                    if open =>
+                {
+                    globs.clear();
+                    return Ok(found);
                 }
+                Binding::Found(found @ Found::External { .. }) if open => {
+                    // An unindexed import's namespace is unknown. Preserve the external path
+                    // so the caller can handle that without mistaking it for a local glob type.
+                    external_named.get_or_insert(found);
+                }
+                Binding::Found(_) | Binding::Ambiguous(..) => shadowed = true,
+                Binding::Missing | Binding::Hidden => {}
             }
         }
-        Ok(external_named)
+        if shadowed || external_named.is_some() {
+            globs.clear();
+        }
+        Ok(if shadowed {
+            Binding::Hidden
+        } else {
+            external_named.map_or(Binding::Missing, Binding::Found)
+        })
     }
 
-    /// A glob does not import a sibling's private definitions or local `use` bindings.
-    fn visible(&self, module: usize, from: usize, vis: &Visibility) -> bool {
-        if module == from {
-            return true;
-        }
-        let module_path = &self.modules[module];
-        let from = &self.modules[from];
-        match vis {
-            Visibility::Public(_) => true,
-            _ if module_path.krate != from.krate => false,
-            Visibility::Inherited => from.path.starts_with(&module_path.path),
-            Visibility::Restricted(vis) => {
-                let path: Vec<_> = vis
+    /// A restricted item is visible only in the named module and its descendants.
+    fn visible_to(&self, module: usize, visibility: &Visibility, audience: &Audience) -> bool {
+        let scope = &self.modules[module];
+        match (visibility, audience) {
+            (Visibility::Public(_), _) => true,
+            (_, Audience::Public) => false,
+            (Visibility::Inherited, Audience::Within(krate, path)) => {
+                scope.krate == *krate && path.starts_with(&scope.path)
+            }
+            (Visibility::Restricted(visibility), Audience::Within(krate, path)) => {
+                let written = visibility
                     .path
                     .segments
                     .iter()
-                    .map(|seg| seg.ident.to_string())
-                    .collect();
-                self.absolute(module, &path).is_some_and(|(krate, scope)| {
-                    from.krate == krate && from.path.starts_with(&scope)
-                })
+                    .map(|segment| segment.ident.to_string())
+                    .collect::<Vec<_>>();
+                self.local_absolute(module, &written)
+                    .is_some_and(|(owner, prefix)| owner == *krate && path.starts_with(&prefix))
             }
         }
     }
 
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        if path.len() == 1 {
-            return self.resolve(module, &path[0]);
-        }
-        let (last, parent) = path.split_last().unwrap();
-        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
-            return self.resolve(target, last);
-        }
-        // A non-module path prefix can still be an external crate/type alias.
-        if let Ok(Found::External(prefix)) = self.resolve(module, &path[0])
-            && prefix.len() > 1
-        {
-            let mut full = prefix;
-            full.extend(path[1..].iter().cloned());
-            return Ok(Found::External(full));
-        }
-        Ok(Found::External(path.to_vec()))
+        self.resolve_path_in_namespace(
+            module,
+            path,
+            false,
+            Namespace::Any,
+            &mut Lookups::default(),
+        )?
+        .require(self, module, path.last().map_or("", String::as_str))
     }
 
     /// What the signature type path `path`, written in `module`, names.
     pub fn resolve_type_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        if path.len() == 1 {
-            return self.resolve_type(module, &path[0]);
-        }
-        let (last, parent) = path.split_last().unwrap();
-        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
-            return self.resolve_type(target, last);
-        }
-        // A non-module path prefix can still be an external crate/type alias.
-        if let Ok(Found::External(prefix)) = self.resolve_type(module, &path[0])
-            && prefix.len() > 1
-        {
-            let mut full = prefix;
-            full.extend(path[1..].iter().cloned());
-            return Ok(Found::External(full));
-        }
-        Ok(Found::External(path.to_vec()))
+        self.resolve_path_in_namespace(
+            module,
+            path,
+            false,
+            Namespace::Type,
+            &mut Lookups::default(),
+        )?
+        .require(self, module, path.last().map_or("", String::as_str))
     }
 
-    /// Resolves `path` as a module if its segments name declared modules, following local
-    /// `use` aliases. Missing source for a declared module is an error; a type or unknown name is
-    /// simply not a module.
+    /// What a `::`-rooted import names, skipping local bindings of the crate name.
+    pub fn resolve_rooted_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
+        self.resolve_path_in_namespace(module, path, true, Namespace::Any, &mut Lookups::default())?
+            .require(self, module, path.last().map_or("", String::as_str))
+    }
+
+    fn resolve_path_in_namespace(
+        &mut self,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+        namespace: Namespace,
+        lookups: &mut Lookups,
+    ) -> Result<Binding, String> {
+        // Glob edges use the explicit DFS stack. Bound the remaining recursive path/alias
+        // expansion against pathological source rather than treating it as an absent binding.
+        if lookups.path_depth >= 128 {
+            let scope = &self.modules[module];
+            return Err(format!(
+                "import path nesting limit resolving `{}` in {}::{}",
+                path.join("::"),
+                scope.krate,
+                scope.path.join("::")
+            ));
+        }
+        lookups.path_depth += 1;
+        let result = self.follow_path(module, path, rooted, namespace, lookups);
+        lookups.path_depth -= 1;
+        result
+    }
+
+    fn follow_path(
+        &mut self,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+        namespace: Namespace,
+        lookups: &mut Lookups,
+    ) -> Result<Binding, String> {
+        let (first, suffix) = path.split_first().ok_or("an empty item path")?;
+        let mut scope = module;
+        let mut remaining = path;
+        let mut unqualified = false;
+        if rooted {
+            let Some(krate) = self.extern_crate_name(module, first)? else {
+                return Ok(Binding::Found(Found::External {
+                    module,
+                    path: path.to_vec(),
+                    rooted,
+                }));
+            };
+            scope = self.module(krate, &[])?;
+            remaining = suffix;
+        } else {
+            match first.as_str() {
+                "crate" => {
+                    scope = self.module(self.modules[module].krate.clone(), &[])?;
+                    remaining = suffix;
+                }
+                "self" => remaining = suffix,
+                "super" => {
+                    let count = path
+                        .iter()
+                        .take_while(|segment| *segment == "super")
+                        .count();
+                    let m = &self.modules[module];
+                    let Some(length) = m.path.len().checked_sub(count) else {
+                        return Ok(Binding::Missing);
+                    };
+                    let prefix = Vec::from(&m.path[..length]);
+                    scope = self.module(m.krate.clone(), &prefix)?;
+                    remaining = &path[count..];
+                }
+                _ => unqualified = true,
+            }
+        }
+        let origin = &self.modules[module];
+        let audience = Audience::Within(origin.krate.clone(), origin.path.clone());
+        while let Some((segment, rest)) = remaining.split_first() {
+            let binding = self.lookup(
+                LookupKey {
+                    module: scope,
+                    name: segment.clone(),
+                    namespace: if rest.is_empty() {
+                        namespace
+                    } else {
+                        Namespace::Type
+                    },
+                    audience: audience.clone(),
+                },
+                lookups,
+            )?;
+            let binding = if unqualified && matches!(binding, Binding::Missing) {
+                if let Some(krate) = self.extern_crate_name(module, segment)? {
+                    Binding::Found(Found::Module(self.module(krate, &[])?))
+                } else if !rest.is_empty() {
+                    return Ok(Binding::Found(Found::External {
+                        module,
+                        path: path.to_vec(),
+                        rooted,
+                    }));
+                } else {
+                    Binding::Missing
+                }
+            } else {
+                binding
+            };
+            match binding {
+                Binding::Found(Found::Module(target)) => scope = target,
+                Binding::Found(Found::External {
+                    module,
+                    path: mut prefix,
+                    rooted,
+                }) => {
+                    prefix.extend_from_slice(rest);
+                    return Ok(Binding::Found(Found::External {
+                        module,
+                        path: prefix,
+                        rooted,
+                    }));
+                }
+                Binding::Found(Found::Item(_)) if !rest.is_empty() => return Ok(Binding::Missing),
+                other => return Ok(other),
+            }
+            unqualified = false;
+            remaining = rest;
+        }
+        Ok(Binding::Found(Found::Module(scope)))
+    }
+
+    /// The type-namespace binding of a complete path, retaining shadowing and ambiguity.
+    pub fn resolve_type_binding(
+        &mut self,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+    ) -> Result<Binding, String> {
+        self.resolve_path_in_namespace(
+            module,
+            path,
+            rooted,
+            Namespace::Type,
+            &mut Lookups::default(),
+        )
+    }
+
+    /// Resolves `path` as a module using the same namespace as signature types.
     pub fn resolve_module_path(
         &mut self,
         module: usize,
         path: &[String],
     ) -> Result<Option<usize>, String> {
-        self.module_path(module, path, &mut Vec::new())
+        match self.resolve_type_binding(module, path, false)? {
+            Binding::Found(Found::Module(module)) => Ok(Some(module)),
+            Binding::Ambiguous(error) => Err(error),
+            _ => Ok(None),
+        }
     }
 
-    /// Resolves a path to a module, including `use` aliases of local modules. It checks each
-    /// segment against a module declaration so a type prefix such as `Engine::Assoc` remains an
-    /// external path instead of being mistaken for a source module.
-    fn module_path(
-        &mut self,
-        module: usize,
-        path: &[String],
-        seen: &mut Vec<(usize, String)>,
-    ) -> Result<Option<usize>, String> {
-        if let Some((krate, path)) = self.absolute(module, path) {
-            let mut target = self.module(&krate, &[])?;
-            let mut prefix = Vec::new();
-            for (position, segment) in path.iter().enumerate() {
-                let is_module = self.modules[target]
-                    .items
-                    .iter()
-                    .any(|item| {
-                        matches!(item, Item::Mod(item) if item.ident == segment.as_str() && default_build(&item.attrs))
-                    });
-                if !is_module {
-                    if krate == self.modules[module].krate {
-                        return self.module_path(target, &path[position..], seen);
-                    }
-                    return Ok(None);
-                }
-                prefix.push(segment.clone());
-                target = self.module(&krate, &prefix)?;
-            }
-            return Ok(Some(target));
-        }
-
-        let (first, rest) = path.split_first().ok_or("an empty module path")?;
-        if !seen.contains(&(module, first.clone())) {
-            seen.push((module, first.clone()));
-            let mut imported = None;
-            for item in &self.modules[module].items {
-                match item {
-                    Item::Use(item) if default_build(&item.attrs) => {
-                        uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
-                            if alias.as_deref() == Some(first.as_str()) {
-                                imported = Some(path);
-                            }
-                        })
-                    }
-                    Item::ExternCrate(item) if default_build(&item.attrs) => {
-                        let alias = item
-                            .rename
-                            .as_ref()
-                            .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
-                        if alias == *first {
-                            imported = Some(vec![item.ident.to_string()]);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            if let Some(mut imported) = imported {
-                imported.extend(rest.iter().cloned());
-                let resolved = self.module_path(module, &imported, seen)?;
-                seen.pop();
-                return Ok(resolved);
-            }
-            seen.pop();
-        }
-        Ok(None)
-    }
-
-    /// `path`, written in `module`, as a module of an indexed crate, if it is one.
-    pub fn absolute(&self, module: usize, path: &[String]) -> Option<(String, Vec<String>)> {
+    /// A path to a declared local module, or one starting at `crate`, `self` or `super`.
+    fn local_absolute(&self, module: usize, path: &[String]) -> Option<(String, Vec<String>)> {
         let m = &self.modules[module];
         let (first, rest) = path.split_first()?;
         let mut base = match first.as_str() {
@@ -674,14 +1011,14 @@ impl<'a> Index<'a> {
                 m.path[..m.path.len().checked_sub(1)?].to_vec(),
             ),
             name if m.items.iter().any(|item| {
-                matches!(item, Item::Mod(item) if item.ident == name && default_build(&item.attrs))
+                matches!(item, Item::Mod(item) if item.ident == name && self.default_build(module, &item.attrs))
             }) =>
             {
                 let mut path = m.path.clone();
                 path.push(name.to_string());
                 (m.krate.clone(), path)
             }
-            name => (self.crate_name(name)?, Vec::new()),
+            _ => return None,
         };
         for segment in rest {
             if segment == "super" {
@@ -694,39 +1031,60 @@ impl<'a> Index<'a> {
     }
 }
 
-/// The visibility of an indexed definition named `name`, if this item defines it.
-fn definition_visibility<'a>(item: &'a Item, name: &str) -> Option<&'a Visibility> {
-    let (ident, vis) = match item {
-        Item::Struct(item) => (&item.ident, &item.vis),
-        Item::Enum(item) => (&item.ident, &item.vis),
-        Item::Type(item) => (&item.ident, &item.vis),
-        Item::Trait(item) => (&item.ident, &item.vis),
-        Item::Union(item) => (&item.ident, &item.vis),
-        Item::Const(item) => (&item.ident, &item.vis),
-        Item::Static(item) => (&item.ident, &item.vis),
-        _ => return None,
-    };
-    (ident == name).then_some(vis)
-}
-
-fn is_type_item(item: &Item) -> bool {
-    matches!(
-        item,
-        Item::Struct(_) | Item::Enum(_) | Item::Type(_) | Item::Trait(_) | Item::Union(_)
+/// Describes two distinct definitions imported into a type namespace through globs.
+fn ambiguous_glob(name: &str, first: &[String], second: &[String]) -> String {
+    let first = first.join("::");
+    let second = second.join("::");
+    format!(
+        "ambiguous type-namespace binding `{name}`: glob imports supply both `{first}` and `{second}`; qualify the intended path explicitly"
     )
 }
 
-fn definition_attrs(item: &Item) -> &[Attribute] {
-    match item {
-        Item::Const(item) => &item.attrs,
-        Item::Enum(item) => &item.attrs,
-        Item::Struct(item) => &item.attrs,
-        Item::Static(item) => &item.attrs,
-        Item::Trait(item) => &item.attrs,
-        Item::Type(item) => &item.attrs,
-        Item::Union(item) => &item.attrs,
-        _ => &[],
+/// Whether `item` defines `name` in the requested namespace.
+fn defines(item: &Item, name: &str, namespace: Namespace) -> bool {
+    if matches!(namespace, Namespace::Type) {
+        return is_type_item_named(item, name);
     }
+    match item {
+        Item::Mod(item) => item.ident == name,
+        Item::Struct(item) => item.ident == name,
+        Item::Enum(item) => item.ident == name,
+        Item::Type(item) => item.ident == name,
+        Item::Trait(item) => item.ident == name,
+        Item::Union(item) => item.ident == name,
+        Item::Const(item) => item.ident == name,
+        Item::Fn(item) => item.sig.ident == name,
+        Item::Static(item) => item.ident == name,
+        _ => false,
+    }
+}
+
+fn is_type_item_named(item: &Item, name: &str) -> bool {
+    match item {
+        Item::Mod(item) => item.ident == name,
+        Item::Struct(item) => item.ident == name,
+        Item::Enum(item) => item.ident == name,
+        Item::Type(item) => item.ident == name,
+        Item::Trait(item) => item.ident == name,
+        Item::Union(item) => item.ident == name,
+        _ => false,
+    }
+}
+
+fn definition(item: &Item) -> Option<(&[Attribute], &Visibility)> {
+    let (attrs, visibility) = match item {
+        Item::Const(item) => (&item.attrs, &item.vis),
+        Item::Fn(item) => (&item.attrs, &item.vis),
+        Item::Mod(item) => (&item.attrs, &item.vis),
+        Item::Enum(item) => (&item.attrs, &item.vis),
+        Item::Struct(item) => (&item.attrs, &item.vis),
+        Item::Static(item) => (&item.attrs, &item.vis),
+        Item::Trait(item) => (&item.attrs, &item.vis),
+        Item::Type(item) => (&item.attrs, &item.vis),
+        Item::Union(item) => (&item.attrs, &item.vis),
+        _ => return None,
+    };
+    Some((attrs, visibility))
 }
 
 /// Each path `tree` imports, with the name it binds (`None` for a glob).
@@ -780,7 +1138,8 @@ mod index_tests {
         let module = index.module("k", &path).unwrap();
         match index.resolve(module, name) {
             Ok(Found::Item(id)) => Some(index.modules[id.module].path.clone()),
-            Ok(Found::External(path)) => panic!("{name} left the crate: {path:?}"),
+            Ok(Found::Module(_)) => panic!("{name} is a module"),
+            Ok(Found::External { path, .. }) => panic!("{name} left the crate: {path:?}"),
             Err(_) => None,
         }
     }
@@ -788,7 +1147,10 @@ mod index_tests {
     #[test]
     fn default_build_uses_debug_and_thread_local_cfgs() {
         let debug: Attribute = syn::parse_quote!(#[cfg(debug_assertions)]);
-        assert_eq!(default_build(&[debug]), cfg!(debug_assertions));
+        assert_eq!(
+            attribute_is_active(&debug.meta, None),
+            cfg!(debug_assertions)
+        );
 
         let thread_local: Attribute = syn::parse_quote!(#[cfg(target_thread_local)]);
         let family_supports_thread_local = target_cfg("target_family").is_some_and(|family| {
@@ -797,12 +1159,12 @@ mod index_tests {
                 .any(|name| name == "unix" || name == "windows")
         });
         assert_eq!(
-            default_build(&[thread_local]),
+            attribute_is_active(&thread_local.meta, None),
             target_flag("target_thread_local", family_supports_thread_local)
         );
 
         let test_only: Attribute = syn::parse_quote!(#[cfg(test)]);
-        assert!(!default_build(&[test_only]));
+        assert!(!attribute_is_active(&test_only.meta, None));
     }
 
     #[test]
@@ -905,6 +1267,34 @@ mod index_tests {
         };
         assert_eq!(index.modules[id.module].krate, "consumer");
         assert!(matches!(index.item(id), Item::Struct(item) if item.ident == "Explicit"));
+    }
+
+    #[test]
+    fn mixed_named_and_glob_cycles_leave_later_globs_available() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(
+            dir.path().join("k/src/lib.rs"),
+            "mod left { pub use crate::middle::{Name, Shown}; }
+             mod right { pub use crate::middle::{Name, Shown}; }
+             mod middle { pub use crate::left::*; pub use crate::right::*; pub use crate::later::*; }
+             mod later { pub struct Shown; }",
+        )
+        .unwrap();
+        let mut index = Index::new(dir.path(), &[], &[("k", "k/src")]);
+        let root = index.module("k", &[]).unwrap();
+        assert!(
+            index
+                .resolve_type_path(root, &["middle".into(), "Name".into()])
+                .is_err()
+        );
+        let Found::Item(id) = index
+            .resolve_type_path(root, &["middle".into(), "Shown".into()])
+            .unwrap()
+        else {
+            panic!("the later glob should supply Shown");
+        };
+        assert_eq!(index.modules[id.module].path, ["later"]);
     }
 
     #[test]
