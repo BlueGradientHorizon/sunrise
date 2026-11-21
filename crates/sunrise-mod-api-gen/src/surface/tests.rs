@@ -312,6 +312,14 @@ const MOVE: &str = "<move>";
 
 /// The export of the fixture with `edits` (file, from, to) applied.
 fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
+    export_fixture_with_includes(edits, hooks, &[])
+}
+
+fn export_fixture_with_includes(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Export {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (path, text) in FILES {
@@ -333,7 +341,7 @@ fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
         std::fs::write(path, text).unwrap();
     }
     let catalog = Catalog::parse(&[("hooks/ping.rs".into(), hooks.into())]).unwrap();
-    let mut index = crate::index::game(root, &[]);
+    let mut index = crate::index::game(root, included);
     build(root, &mut index, &catalog.hooks, &boundary()).unwrap()
 }
 
@@ -433,6 +441,44 @@ fn macro_calls_are_expanded_or_noted_and_ids_ignore_routes() {
         .unwrap();
     assert_eq!(thing.id, "type:shared::Thing");
     assert!(thing.paths.contains(&"s1::Thing".to_owned()));
+}
+
+#[test]
+fn a_generated_impl_on_a_glob_reexported_handle_is_recorded() {
+    let export = export_fixture_with_includes(
+        &[(
+            LIB,
+            "pub mod entity;",
+            r#"
+pub mod entity;
+pub use loan_views::*;
+pub use loan_handles::*;
+mod loan_views {
+    use crate::LoanRef;
+    pub fn loan_exists(_: LoanRef) -> bool { true }
+}
+mod loan_handles {
+    pub struct LoanRef(u32);
+}
+mod generated_handles {
+    use super::*;
+    include!(concat!(env!("OUT_DIR"), "/fixture_generated_handles.rs"));
+}
+"#,
+        )],
+        HOOKS,
+        &[(
+            "fixture_generated_handles.rs",
+            "impl LoanRef { pub fn serial(self) -> u32 { 23 } }",
+        )],
+    );
+    let exported = export
+        .surface
+        .handles
+        .iter()
+        .find(|handle| handle.id == "handle:LoanRef::serial")
+        .map(|handle| handle.contract.signature.as_str());
+    assert_eq!(exported, Some("fn serial(self) -> u32"));
 }
 
 #[test]
