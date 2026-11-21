@@ -1,0 +1,128 @@
+# Behaviour-only or signature-unchanged entry points (omitted from `ids` because
+# the surface gate rejects unchanged IDs as stale):
+#   method:ClientHost::mod_screen_open
+#   handle:client::widgets::TextField::new
+#   method:Hooks::screen_init_post                    type:ScreenInitPostEvent
+#   method:Hooks::screen_mouse_button_pressed_pre     type:ScreenMouseButtonPressedPreEvent
+#   method:Hooks::screen_mouse_button_pressed_post    type:ScreenMouseButtonPressedPostEvent
+#   method:Hooks::screen_mouse_button_released_post   type:ScreenMouseButtonReleasedPostEvent
+#   method:Hooks::screen_mouse_dragged_post           type:ScreenMouseDraggedPostEvent
+#   method:Hooks::screen_mouse_scrolled_post          type:ScreenMouseScrolledPostEvent
+#   method:Hooks::screen_key_pressed_post             type:ScreenKeyPressedPostEvent
+#   method:Hooks::screen_key_released_post            type:ScreenKeyReleasedPostEvent
+#                                                     type:ScreenCharTypedPostEvent
+ids = [
+    "hook:screen_init_post",
+    "hook:screen_init_post.widgets",
+    "type:ScreenInitPostEvent.widgets",
+    "hook:screen_mouse_button_pressed_pre",
+    "hook:screen_mouse_button_pressed_pre.double_click",
+    "type:ScreenMouseButtonPressedPreEvent.double_click",
+    "hook:screen_mouse_button_pressed_post",
+    "type:ScreenMouseButtonPressedPostEvent.double_click",
+    "type:ScreenMouseButtonPressedPostEvent.handled",
+    "hook:screen_mouse_button_released_post",
+    "type:ScreenMouseButtonReleasedPostEvent.handled",
+    "hook:screen_mouse_dragged_post",
+    "hook:screen_mouse_scrolled_post",
+    "hook:screen_key_pressed_post",
+    "hook:screen_key_released_post",
+    "hook:screen_char_typed_post",
+    "hook:screen_char_typed_post.cancelled",
+    "method:Hooks::screen_char_typed_post",
+    "type:ScreenCharTypedPostEvent.cancelled",
+    "method:DrawContext::widget_button",
+    "method:DrawContext::widget_text_field",
+    "type:client::widgets::TextFieldView",
+    "type:client::widgets::TextFieldLayout",
+    "handle:client::widgets::TextFieldLayout::new",
+    "type:client::widgets::WidgetId",
+    "type:client::widgets::Outcome",
+    "handle:client::widgets::Outcome::handled",
+    "type:client::widgets::Button",
+    "type:client::widgets::Button.rect",
+    "type:client::widgets::Button.label",
+    "type:client::widgets::Button.active",
+    "type:client::widgets::Button.sprites",
+    "handle:client::widgets::Button::new",
+    "type:client::widgets::TextField",
+    "type:client::widgets::TextField.rect",
+    "type:client::widgets::TextField.edit",
+    "type:client::widgets::TextField.active",
+    "type:client::widgets::TextField.bordered",
+    "type:client::widgets::TextField.text_color",
+    "type:client::widgets::TextField.suggestion",
+    "type:client::widgets::TextField.message",
+    "handle:client::widgets::TextField::value",
+    "handle:client::widgets::TextField::set_value",
+    "type:client::widgets::Widget",
+    "type:client::widgets::Widgets",
+    "handle:client::widgets::Widgets::new",
+    "handle:client::widgets::Widgets::add_button",
+    "handle:client::widgets::Widgets::add_text_field",
+    "handle:client::widgets::Widgets::widget",
+    "handle:client::widgets::Widgets::button",
+    "handle:client::widgets::Widgets::button_mut",
+    "handle:client::widgets::Widgets::text_field",
+    "handle:client::widgets::Widgets::text_field_mut",
+    "handle:client::widgets::Widgets::focused",
+    "handle:client::widgets::Widgets::set_focus",
+    "handle:client::widgets::Widgets::draw",
+    "handle:client::widgets::Widgets::mouse_pressed",
+    "handle:client::widgets::Widgets::mouse_released",
+    "handle:client::widgets::Widgets::mouse_dragged",
+    "handle:client::widgets::Widgets::key_pressed",
+    "handle:client::widgets::Widgets::char_typed",
+]
+why = """
+Replaces mod-owned immediate-mode widget records and layout round-trips (`Widgets`, `Outcome`, \
+`Widget`, `WidgetId`, `TextFieldView`, `TextFieldLayout`, `DrawContext::widget_button`, \
+`DrawContext::widget_text_field`) with engine-mounted screen widgets (`Button`, `ButtonState`, \
+`TextField`, `ScreenWidget`, `ScreenWidgetId`, `ScreenWidgets`) registered during \
+`Hooks::screen_init_post`, following NeoForge `ScreenEvent.Init.Post` and vanilla 26.3 \
+`Screen.addRenderableWidget`, `Button.Builder` / `Button.onPress`, `EditBox`, and \
+`ContainerEventHandler`. The engine now owns mounted widget drawing, hover, focus, Tab traversal, \
+narration, local `EditBox` layout/IME/double-click state, and synchronous screen transitions from \
+widget callbacks via temporary ownership extraction. Aligns `ClientHost::mod_screen_open` with \
+vanilla `Gui.setScreen` and NeoForge `ScreenEvent.Opening` / `ScreenEvent.Closing` so it can \
+replace any open screen, title screen, overlay, or other mod screen with proper close cleanup. \
+Aligns screen input Pre/Post hooks to vanilla `MouseHandler.onButton` / `LastClick` (250 ms \
+same-screen same-button `double_click`) and NeoForge `MouseHandler.java.patch`, \
+`KeyboardHandler.java.patch`, and `ScreenEvent.*.Post`: every Post reports the receiving screen \
+captured at Pre time; mouse press/release Post hooks collect `handled`; key press/release Post \
+hooks fire only when unhandled and remain cancellable; and drag, scroll, char, and preedit Post \
+hooks fire as non-cancellable notices only when unhandled.
+"""
+migrate = """
+1. Mounted widgets (`screen_init_post` v2): remove mod-owned `Widgets` fields, `Outcome` matches, \
+`DrawContext::widget_button` / `widget_text_field` calls, `TextFieldView` / `TextFieldLayout`, and \
+manual screen input forwarding for buttons and text fields. In `Hooks::screen_init_post`, mount \
+children on `event.widgets`:
+   - Buttons: replace `let mut b = Button::new(rect, label); b.sprites = Some(art); widgets.add_button(b)` \
+with `event.widgets.add_button(Button::new(rect, label, |state, host| { ... }).sprites(art))` (or \
+`Button::inactive(rect, label)` for disabled buttons). Mutate `state: &mut ButtonState` and call \
+`host.close_screen()`, `host.mod_screen_close(...)`, or `host.mod_screen_open(...)` synchronously \
+inside `on_press`.
+   - Text fields: replace `TextField` field mutations, `value()`, and `set_value(...)` with \
+`TextField::new(rect, max_length).value(initial).hint(...).editable(...).bordered(...).on_change(|text, host| ...).on_submit(|text, host| ...)` \
+mounted via `event.widgets.add_text_field(...)`, storing shared state on your mod struct across \
+resizes. Call `event.widgets.set_initial_focus(id)` to focus a widget on open.
+   - Custom controls: implement `ScreenWidget` and mount via `event.widgets.add_widget(Box::new(...))`.
+2. `ClientHost::mod_screen_open`: no signature change; it now opens over any open vanilla screen, \
+title screen, overlay, or other mod screen through `screen_opening` / `screen_closing` rather than \
+returning `false` outside bare `Screen::Playing`. Remove any workaround that closed another screen \
+first only to satisfy the old restriction.
+3. Screen input hooks (all bumped to version 2):
+   - `screen_mouse_button_pressed_pre` and `screen_mouse_button_pressed_post`: read `event.double_click` \
+for vanilla's 250 ms double-click flag (update exhaustive pattern matches or literals).
+   - `screen_mouse_button_pressed_post` and `screen_mouse_button_released_post`: read `event.handled` \
+(whether mounted widgets or the receiving screen handled the input) and set `event.handled = true` \
+to mark an unhandled click or release as handled.
+   - `screen_mouse_dragged_post` and `screen_mouse_scrolled_post`: now fire on the receiving screen \
+only when neither mounted widgets nor the screen handled the drag or scroll.
+   - `screen_key_pressed_post` and `screen_key_released_post`: continue cancelling with \
+`event.cancelled = true` or `Flow::Cancel` for unhandled keys; both now report the receiving screen.
+   - `screen_char_typed_post`: change the return type from `Flow` to `()`, remove any \
+`event.cancelled` access, and rely on it as a non-cancellable notice for unhandled characters on \
+the receiving screen.
+"""
