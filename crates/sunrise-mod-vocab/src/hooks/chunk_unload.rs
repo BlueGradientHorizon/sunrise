@@ -6,7 +6,8 @@ pub trait Hooks {
     /// `ChunkEvent.Unload`), with a level that closes for being empty too. Don't
     /// read its blocks. Its block entities are still there, but changes made in
     /// this hook aren't saved: as in vanilla, the chunk is saved before it unloads.
-    /// Not told when the world closes, which `world_lifecycle` tells.
+    /// Not told when the world closes, which `level_unload` and
+    /// `server_stopping`/`server_stopped` tell.
     /// Server-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::on_chunk_unloaded::Game<'_>::native_chunk_unload",

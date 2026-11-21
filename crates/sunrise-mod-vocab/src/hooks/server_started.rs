@@ -4,10 +4,11 @@
 pub trait Hooks {
     /// The server has opened its worlds and is about to run its tick loop
     /// (NeoForge's `ServerStartedEvent`): every level is loaded, no player has
-    /// joined, and the first tick has not run. Fired where `WorldOpenReady` was,
-    /// on the single player server thread and on a dedicated server, once per
-    /// open that succeeds (a failed open fires `WorldOpenFailed` instead).
-    /// `dedicated` tells a dedicated server from the single player one.
+    /// joined, and the first tick has not run. Fired on the single player
+    /// server thread and on a dedicated server, once per open that succeeds; a
+    /// failed open skips `server_started` and still runs teardown to reach
+    /// `server_stopped`. `dedicated` tells a dedicated server from the single
+    /// player one.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_server_started",
         dispatch = "flat",

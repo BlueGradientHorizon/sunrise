@@ -822,12 +822,6 @@
       "path": "crate::client::world_draw::WorldDepth",
       "hash": "4409bd351ad1b1df",
       "canonical_path": "crate::client::world_draw::WorldDepth"
-    },
-    {
-      "name": "WorldPhase",
-      "path": "crate::world::types::WorldPhase",
-      "hash": "1322c39e2b688618",
-      "canonical_path": "crate::world::types::WorldPhase"
     }
   ],
   "retired_identities": [
@@ -842,7 +836,8 @@
     "crate::world::phase::LoadAccess",
     "crate::world::phase::LoopSide",
     "crate::world::phase::ModPhase",
-    "crate::world::phase::PackageKind"
+    "crate::world::phase::PackageKind",
+    "crate::world::types::WorldPhase"
   ],
   "manual_contract_changes": {
     "AttachmentError": {

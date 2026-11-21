@@ -1,0 +1,11 @@
+ids = [
+    "hook:world_lifecycle",
+    "method:Hooks::world_lifecycle",
+    "type:WorldPhase",
+    "type:WorldLifecycleEvent",
+    "hook:server_starting",
+    "hook:server_stopping",
+    "hook:level_unload",
+]
+why = "Aligned server and level lifecycle hooks to vanilla 26.3 (`MinecraftServer.runServer`, `MinecraftServer.stopServer`, `DedicatedServer.initServer`, `IntegratedServer.initServer`) and NeoForge (`ServerLifecycleHooks`, `ServerStoppingEvent`, `ServerStoppedEvent`, `LevelEvent.Unload`). Removed the Sunrise-only `world_lifecycle` hook and `WorldPhase` enum (including `WorldOpenFailed`, `WorldCloseFinal`, and `WorldCloseFailed`); startup and stop failures are reported through engine logs as in vanilla rather than a separate phase event. Bumped `server_starting` to version 3 so integrated servers also fire it after world/level loading (`level_load`), adopted pack/text setup, and spawn preparation. Bumped `server_stopping` to version 2 so it fires only on an orderly tick-loop exit before `stopServer`, matching NeoForge's `MinecraftServer.java.patch` (failed opens and tick crashes/panics skip straight to `stopServer` teardown and `server_stopped`). Bumped `level_unload` to version 2 so every level that fired `level_load` unloads unconditionally during `stopServer` after the final save attempt and network teardown, before storage release and `server_stopped` (including after a failed open, tick failure, or save failure)."
+migrate = "Remove `Hooks::world_lifecycle`, `WorldLifecycleEvent`, and `WorldPhase` imports and implementations. Move `WorldPhase::WorldCloseFinal` cleanup to `Hooks::server_stopped` (or per-level cleanup to `Hooks::level_unload`). Where a mod previously handled `WorldPhase::WorldOpenFailed` or `WorldPhase::WorldCloseFailed`, rely on engine logs for the error text and clean up state in `Hooks::level_unload` and `Hooks::server_stopped`, which always run on teardown after startup begins. Rebuild against the bumped hook versions (`server_starting` v3, `server_stopping` v2, `level_unload` v2): move any work that must run before integrated world loading from `server_starting` to `server_about_to_start`, and move any unconditional shutdown cleanup that must also run after failed opens or tick crashes from `server_stopping` to `level_unload` or `server_stopped`."

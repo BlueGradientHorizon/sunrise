@@ -21,12 +21,6 @@ pub trait Notes {
   require a validated stack. Trail and vibration remain unsupported. Count zero sends one directional
   particle. The return value says whether the call was accepted, not whether any player received it.
 
-- Authoritative world lifecycle events through `world_lifecycle`: open failed, final close and
-  close failed (contract version 2). **Migration (`WorldPhase::WorldOpenReady` → `server_started`):** a mod that matched
-  `WorldOpenReady` in `world_lifecycle` implements `server_started` instead, fired at the same moment (after the worlds
-  open, before the tick loop; one call per successful open, with the same `dedicated` flag as `server_about_to_start`);
-  delete the match arm. Nothing else about the phases changed. Diverges from upstream: upstream still has the phase.
-
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
@@ -323,19 +317,22 @@ pub trait Notes {
   abort restores each stream's first snapshot in that frame, including snapshots inherited from committed
   children. A mod that sets its own seed uses a separate `LegacyRandomSource`.
 
-- Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server.
+- Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server,
+  matching NeoForge 26.3 and vanilla's `MinecraftServer` order.
   `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).
-  `server_starting(dedicated)` (`ServerStartingEvent`) follows world and pack loading and spawn preparation on dedicated servers, or immediately follows about-to-start on integrated servers. Both precede accepting play.
-  `server_started(dedicated)` runs after every level loads but before the first tick (`ServerStartedEvent`).
-  On every exit after startup began, including a failed open, failed tick, or caught panic,
-  `server_stopping(dedicated)` (`ServerStoppingEvent`) runs before player cleanup and the final world save attempt.
-  `server_stopped(dedicated)` (`ServerStoppedEvent`) runs last, after network teardown, flushing saves and releasing
-  storage, even when the save failed or a shutdown listener panicked. An early callback panic (including
-  `config_unloading`) still reaches the final adopted-world save attempt and full server/network teardown,
-  not just unpublishing or flushing queued writes. The first failure is retained if cleanup also fails.
-  These are server-side, mutable `ServerHost` notifications, not cancellable.
-  A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the prepared level is installed, and only that installation allows the final save. `WorldOpenFailed` or `WorldCloseFailed`
-  still reports the failure; `WorldCloseFinal` is only emitted after a successful orderly close. No tick-time cost:
+  After world and level loading (`level_load`), adopted datapack/text setup, and spawn preparation,
+  `server_starting(dedicated)` (`ServerStartingEvent`) runs on both dedicated and integrated servers, before
+  accepting play.
+  `server_started(dedicated)` runs after initialization completes and before the first tick (`ServerStartedEvent`).
+  On an orderly shutdown (when the tick loop exits normally), `server_stopping(dedicated)` (`ServerStoppingEvent`)
+  runs before `stopServer` (config unloading, player cleanup, final world save, network teardown, level unloads via
+  `level_unload`, and storage release) and `server_stopped(dedicated)` (`ServerStoppedEvent`).
+  On a failed open or a tick error/panic, `server_stopping` is skipped; `stopServer` still runs (saving adopted
+  worlds only, unloading any opened levels via `level_unload`, logging stop errors, and releasing storage) and
+  `server_stopped` still fires, even if the final save failed or a shutdown listener panicked.
+  A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the
+  prepared level is installed, and only that installation allows the final save. The first failure is retained if
+  cleanup also fails. These are server-side, mutable `ServerHost` notifications, not cancellable. No tick-time cost:
   these hooks dispatch only at server startup and shutdown.
 
 - Mod block entities are sent to clients. Only declared types receive wire IDs after vanilla's, and several valid

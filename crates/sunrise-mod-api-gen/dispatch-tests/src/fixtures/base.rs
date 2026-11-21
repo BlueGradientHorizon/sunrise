@@ -828,8 +828,6 @@ mod stubs {
     }
     #[derive(Clone, Copy)]
     pub(super) struct ServerTickPhase;
-    #[derive(Clone, Copy)]
-    pub(super) struct WorldPhase;
 }
 
 mod api {
