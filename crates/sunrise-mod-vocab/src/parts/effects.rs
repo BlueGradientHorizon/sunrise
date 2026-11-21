@@ -132,38 +132,82 @@ pub fn dispatch_mob_effect_tick<'a>(
     else {
         return;
     };
-    let mut due = crate::entered_parts(attached, "mob_effect_tick").filter(|part| {
+    let contained = crate::runtime::outside_world();
+    let mut due = crate::entered_parts(
+        HookId::ShouldApplyEffectTickThisTick,
+        attached,
+        "should_apply_effect_tick_this_tick",
+    )
+    .filter(|&(mod_id, part)| {
         let mut should = crate::ShouldApplyEffectTickThisTickEvent {
             effect,
             tick_count,
             amplifier,
             apply: false,
         };
-        part.should_apply_effect_tick_this_tick(host, &mut should);
-        should.apply
+        match crate::runtime::invoke(
+            HookId::ShouldApplyEffectTickThisTick,
+            "should_apply_effect_tick_this_tick",
+            mod_id,
+            contained,
+            || {
+                part.should_apply_effect_tick_this_tick(host, &mut should);
+                should.apply
+            },
+        ) {
+            crate::runtime::DispatchOutcome::Ok(apply) => apply,
+            crate::runtime::DispatchOutcome::Refused(refusal) => {
+                refusal.report();
+                false
+            }
+            crate::runtime::DispatchOutcome::Panicked => false,
+        }
     });
     let Some(first) = due.next() else {
         return;
     };
     let call = make_call(effect, amplifier);
-    for part in std::iter::once(first).chain(due) {
-        let mut event = crate::ApplyEffectTickEvent {
-            effect: call.effect,
-            dimension: call.dimension,
-            entity: call.entity,
-            amplifier: call.amplifier,
-            holder: call.holder,
-            health: call.health,
-            max_health: call.max_health,
-            food: call.food,
-            active_effects: call.active_effects,
-            changes: &mut *call.changes,
-            keep: *call.keep,
-        };
-        part.apply_effect_tick(host, &mut event);
-        *call.keep = event.keep;
-        if !*call.keep {
-            break;
+    for (mod_id, part) in std::iter::once(first).chain(due) {
+        if crate::runtime::poisoned(HookId::ApplyEffectTick, mod_id) {
+            continue;
+        }
+        let changes_len = call.changes.len();
+        match crate::runtime::invoke(
+            HookId::ApplyEffectTick,
+            "apply_effect_tick",
+            mod_id,
+            contained,
+            || {
+                let mut event = crate::ApplyEffectTickEvent {
+                    effect: call.effect,
+                    dimension: call.dimension,
+                    entity: call.entity,
+                    amplifier: call.amplifier,
+                    holder: call.holder,
+                    health: call.health,
+                    max_health: call.max_health,
+                    food: call.food,
+                    active_effects: call.active_effects,
+                    changes: &mut *call.changes,
+                    keep: *call.keep,
+                };
+                part.apply_effect_tick(host, &mut event);
+                event.keep
+            },
+        ) {
+            crate::runtime::DispatchOutcome::Ok(keep) => {
+                *call.keep = keep;
+                if !*call.keep {
+                    break;
+                }
+            }
+            crate::runtime::DispatchOutcome::Refused(refusal) => {
+                call.changes.truncate(changes_len);
+                refusal.report();
+            }
+            crate::runtime::DispatchOutcome::Panicked => {
+                call.changes.truncate(changes_len);
+            }
         }
     }
 }

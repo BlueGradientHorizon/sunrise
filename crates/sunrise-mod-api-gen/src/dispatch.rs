@@ -109,6 +109,7 @@ pub(super) fn emit<'a>(
                     ));
         let mut used: HashSet<_> = args.iter().map(|(name, _)| name.clone()).collect();
         let mod_item = fresh_name("mod_hook", &mut used);
+        let listener_id = fresh_name("listener_id", &mut used);
         let part_list = fresh_name("parts", &mut used);
         let part_item = fresh_name("part", &mut used);
         let part_table = fresh_name("part_table", &mut used);
@@ -912,28 +913,25 @@ pub(super) fn emit<'a>(
         } else {
             (write_back, String::new())
         };
-        // A trait mod's call is marked with the mod for a panic to name.
-        let each = match &hook.owner {
-            Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
-            None if answered || hook.collect_validator.is_some() => {
-                format!("super::entered_with_id(HookId::{hook_id}, \"{name}\")")
-            }
-            None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
-        };
-        // A listener refused by the phase gate restores event fields from a
-        // snapshot taken before its call. Outside `World` only (`contained`); in `World` the
-        // call is the plain one.
+        // A listener refused by the phase gate or unwinding on a panic restores event fields from
+        // a snapshot taken before its call. Copy snapshots run unconditionally; cloned snapshots
+        // run outside `World` (`contained`).
         let snapshot = fresh_name("snapshot", &mut used);
         let saved = fresh_name("saved", &mut used);
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
+        let answered_collect_batch =
+            answered && contract == Contract::Collect && declaration.is_none();
         // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
         // surface has no whole value to copy.
         for (field, by_reference) in rollback
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
         {
-            if hook.owned_answer_batch && Some(field.as_str()) == out {
+            if (hook.owned_answer_batch || answered_collect_batch) && Some(field.as_str()) == out {
+                continue;
+            }
+            if stack_outputs.iter().any(|(name, _)| *name == field) {
                 continue;
             }
             let index = snaps.len();
@@ -961,62 +959,70 @@ pub(super) fn emit<'a>(
             restores.push(format!("{event}.cancelled = {saved}.{};", snaps.len()));
             snaps.push(format!("{event}.cancelled"));
         }
+        let cheap_snapshot = !snaps.iter().any(|snap| snap.starts_with("ToOwned"));
         let snapshot_statement = if snaps.is_empty() {
             String::new()
+        } else if cheap_snapshot {
+            format!("let {saved} = ({},); ", snaps.join(", "))
         } else {
-            // A snapshot that only copies is no work to defer: `then_some`.
-            let (then, arm) = if !snaps.iter().any(|snap| snap.starts_with("ToOwned")) {
-                ("then_some", "")
-            } else {
-                ("then", "|| ")
-            };
             format!(
-                "let {snapshot} = contained.{then}({arm}({},)); ",
+                "let {snapshot} = contained.then(|| ({},)); ",
                 snaps.join(", ")
             )
         };
         let restore_statement = if snaps.is_empty() {
             String::new()
+        } else if cheap_snapshot {
+            format!("{} ", restores.join(" "))
         } else {
             format!(
                 "if let Some({saved}) = {snapshot} {{ {} }} ",
                 restores.join(" ")
             )
         };
-        // Answered collectors drain this private batch after each mod. The refused mod has
-        // no earlier entries to restore, and its callback objects need not be Clone.
-        let clear_batch = if hook.owned_answer_batch {
+        // Answered collectors drain this private batch after each mod. A refused or panicked mod
+        // has no earlier entries to restore, and its entries must not leak to the next mod.
+        let clear_batch = if hook.owned_answer_batch || answered_collect_batch {
             format!("{event}.{}.clear(); ", out.unwrap())
         } else {
             String::new()
         };
-        let refused_value = if result.trim() == "-> Flow" {
-            "Flow::Continue"
-        } else {
-            "Default::default()"
-        };
-        let run = |expression: &str| {
+        let stack_restore = stack_outputs
+            .iter()
+            .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
+            .collect::<String>();
+        let run_with = |mod_id_expr: &str,
+                        on_abort: &str,
+                        extra_restore: &str,
+                        expression: &str| {
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
+                "match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, contained, || {expression}) {{ super::runtime::DispatchOutcome::Ok(answer) => answer, super::runtime::DispatchOutcome::Refused(refusal) => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}refusal.report(); {on_abort} }} super::runtime::DispatchOutcome::Panicked => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
+        let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
+            run_with(mod_id_expr, on_abort, "", expression)
+        };
         // One callee's call: a mod's, or a scoped hook's part's.
-        let call = |callee: &str, exit: &str| {
+        let call = |callee: &str, mod_id_expr: &str, on_abort: &str, exit: &str| {
             // Early exits must validate while the listener still owns the scope.
             let exit = format!("{stack_after} {exit}");
             let answer_call = if scoped_write_replace {
-                run(&format!("{invoke_part}({callee}, &mut {event})"))
+                run(
+                    mod_id_expr,
+                    on_abort,
+                    &format!("{invoke_part}({callee}, &mut {event})"),
+                )
             } else {
-                run(&format!("{callee}.{name}({invoke})"))
+                run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"))
             };
-            let plain_call = run(&format!("{callee}.{name}({invoke})"));
+            let plain_call = run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"));
             let invocation = match contract {
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",
                     o = out.unwrap()
                 ),
                 Contract::Replace if answered => format!(
-                    "if let Some({replacement}) = {answer_call} {{ *{o} = Some(Answered {{ answer: {replacement}, mod_id }}); {exit}; }}",
+                    "if let Some({replacement}) = {answer_call} {{ *{o} = Some(Answered {{ answer: {replacement}, mod_id: {mod_id_expr} }}); {exit}; }}",
                     o = out.unwrap()
                 ),
                 Contract::Replace => format!(
@@ -1024,14 +1030,20 @@ pub(super) fn emit<'a>(
                     o = out.unwrap()
                 ),
                 Contract::Collect if answered => format!(
-                    "{plain_call}; {o}.extend({event}.{o}.drain(..).map(|answer| Answered {{ answer, mod_id }}));",
+                    "{plain_call}; {o}.extend({event}.{o}.drain(..).map(|answer| Answered {{ answer, mod_id: {mod_id_expr} }}));",
                     o = out.unwrap()
                 ),
                 Contract::Collect if hook.collect_validator.is_some() => {
                     let validator = hook.collect_validator.as_ref().unwrap();
                     let output = out.unwrap();
+                    let validated_call = run_with(
+                        mod_id_expr,
+                        on_abort,
+                        &format!("*{event}.{output} = previous; "),
+                        &format!("{callee}.{name}({invoke})"),
+                    );
                     format!(
-                        "let previous = {event}.{output}.clone(); {plain_call}; {validator}(mod_id, &previous, {event}.{output});"
+                        "let previous = {event}.{output}.clone(); {validated_call}; {validator}({mod_id_expr}, &previous, {event}.{output});"
                     )
                 }
                 _ => format!("{plain_call};"),
@@ -1039,11 +1051,6 @@ pub(super) fn emit<'a>(
             format!(
                 "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
             )
-        };
-        let binding = if answered || hook.collect_validator.is_some() {
-            format!("(mod_id, {mod_item})")
-        } else {
-            mod_item.clone()
         };
         // The #2414 ruling an isolated cancel hook carries: a listener that unwinds keeps the
         // **requested** outputs — not one an earlier listener had proposed — is skipped by this
@@ -1082,7 +1089,11 @@ pub(super) fn emit<'a>(
         let cancel_step = {
             let cancel = format!(
                 "{snapshot_statement}if matches!({}, Flow::Cancel) {{ {event}.cancelled = true; }}",
-                run(&format!("{mod_item}.{name}({invoke})"))
+                run(
+                    &format!("{mod_entry}.id"),
+                    "continue;",
+                    &format!("{mod_item}.{name}({invoke})"),
+                )
             );
             if stack_after.is_empty() {
                 cancel
@@ -1094,7 +1105,9 @@ pub(super) fn emit<'a>(
         // returns: a refused set is rolled back to the last accepted one (the requested values
         // before any listener), the refusal names the mod and the field, and later listeners
         // run on the accepted values.
-        let (validated_start, validated_arms) = match &hook.output_validator {
+        let (validated_start, isolate_pre, validated_arms, isolate_refused_restore) = match &hook
+            .output_validator
+        {
             Some(validator) if hook.isolate => {
                 let accepted = rollback
                     .iter()
@@ -1133,16 +1146,20 @@ pub(super) fn emit<'a>(
                     .collect::<String>();
                 (
                     format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
+                    String::new(),
                     format!(
-                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
+                        "super::runtime::DispatchOutcome::Ok(__flow) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} {event}.cancelled = __accepted_cancelled; }} "
                     ),
+                    format!("{undo} {event}.cancelled = __accepted_cancelled; "),
                 )
             }
             _ => (
                 String::new(),
+                snapshot_statement.clone(),
                 format!(
-                    "Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} "
+                    "super::runtime::DispatchOutcome::Ok(Flow::Cancel) => {{ {event}.cancelled = true; }} super::runtime::DispatchOutcome::Ok(_) => {{}} "
                 ),
+                restore_statement.clone(),
             ),
         };
         let inert_owner = fresh_name("disabled_owner", &mut used);
@@ -1150,37 +1167,41 @@ pub(super) fn emit<'a>(
             None if declaration.is_some() => (
                 String::new(),
                 format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id, context, {name} }}; {mod_item}.{name}(context, &mut {event}); }}"
+                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }}; match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, false, || {mod_item}.{name}(context, &mut {event})) {{ super::runtime::DispatchOutcome::Ok(()) | super::runtime::DispatchOutcome::Panicked => {{}} super::runtime::DispatchOutcome::Refused(refusal) => {{ refusal.report(); }} }} }}"
                 ),
             ),
-            None if hook.context == Some(PhaseContext::ChunkDisk) => (
-                String::new(),
-                format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ if {event}.data.failure().is_some() {{ break; }} let result = super::chunk_disk::invoke(mod_id, || {{ {} }}); result.unwrap_or_else(|error| {event}.data.refuse(error)); if let Some(error) = {event}.data.failure().cloned() {{ let mut error = error; if error.mod_id.is_empty() {{ error.mod_id = mod_id.into(); }} {event}.data.attribute_failure(error); break; }} }}",
-                    call(&mod_item, "break"),
-                ),
-            ),
+            None if hook.context == Some(PhaseContext::ChunkDisk) => {
+                let chunk_call = format!(
+                    "{local_event} {snapshot_statement}match super::runtime::refusable(contained, || {mod_item}.{name}({invoke})) {{ Ok(()) => {{}} Err(refusal) => {{ {restore_statement}refusal.report(); }} }} {local_write_back} {stack_after}"
+                );
+                (
+                    String::new(),
+                    format!(
+                        "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ if {event}.data.failure().is_some() {{ break; }} let result = super::chunk_disk::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, || {{ {chunk_call} }}); result.unwrap_or_else(|error| {event}.data.refuse(error)); if let Some(error) = {event}.data.failure().cloned() {{ let mut error = error; if error.mod_id.is_empty() {{ error.mod_id = {listener_id}.into(); }} {event}.data.attribute_failure(error); break; }} }}"
+                    ),
+                )
+            }
             None if name == "consume_effect" => (
                 format!(
                     "let Some(owner) = super::runtime::listening_kind_owner(HookId::{hook_id}, kind) else {{ return; }};"
                 ),
                 format!(
                     "let mut {entered} = super::runtime::ListenerScope::new(); let {mod_item} = {entered}.enter(owner, \"{name}\"); {}",
-                    call(&mod_item, ""),
+                    call(&mod_item, "owner.id", "return;", ""),
                 ),
             ),
             None if hook.owner.is_some() => (
                 String::new(),
                 format!(
                     "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, owner) in super::listening(HookId::{hook_id}) {{ if owner.id != {event}.{owner} {{ continue; }} let {mod_item} = {entered}.enter(owner, \"{name}\"); {} }} }}",
-                    call(&mod_item, "break"),
+                    call(&mod_item, "owner.id", "continue;", "break"),
                     owner = hook.owner.as_deref().unwrap(),
                 ),
             ),
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
-                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
+                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if {event}.cancelled && !{receives} {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {isolate_pre}match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_entry}.id, contained, || {mod_item}.{name}({invoke})) {{ {validated_arms}super::runtime::DispatchOutcome::Refused(refusal) => {{ {isolate_refused_restore}refusal.report(); }} super::runtime::DispatchOutcome::Panicked => {{ {isolate_restore}*{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
                     o = out.unwrap()
                 ),
             ),
@@ -1193,7 +1214,10 @@ pub(super) fn emit<'a>(
             ),
             None => (
                 String::new(),
-                format!("for {binding} in {each} {{ {} }}", call(&mod_item, "break")),
+                format!(
+                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ {} }}",
+                    call(&mod_item, &listener_id, "continue;", "break")
+                ),
             ),
             Some((_, lookup)) => (
                 // The parts are looked up first: the key may be moved into the event. A worldgen
@@ -1228,13 +1252,18 @@ pub(super) fn emit<'a>(
                     // The synthetic answer occupies the owner's original place in the chain.
                     // Earlier enabled Parts still get their regular call and can answer first.
                     format!(
-                        "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
-                        call(&part_item, "break 'dispatch_parts"),
+                        "'dispatch_parts: {{ for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, &{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
+                        call(
+                            &part_item,
+                            &listener_id,
+                            "continue;",
+                            "break 'dispatch_parts"
+                        ),
                     )
                 } else {
                     format!(
-                        "for {part_item} in super::entered_parts({part_list}, \"{name}\") {{ {} }}",
-                        call(&part_item, "break"),
+                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
+                        call(&part_item, &listener_id, "continue;", "break"),
                     )
                 },
             ),
@@ -1260,7 +1289,8 @@ pub(super) fn emit<'a>(
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
         };
         // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
+        let early_return = if body.contains(", contained,") || body.contains("refusable(contained,")
+        {
             format!("{early_return} let contained = super::runtime::outside_world();")
         } else {
             early_return
@@ -2376,8 +2406,9 @@ fn listening(_: generated::HookId) -> impl Iterator<Item=(bool, &'static Owner)>
 mod runtime {{
     pub struct Refusal;
     impl Refusal {{ pub fn report(&self) {{}} }}
+    pub enum DispatchOutcome<T> {{ Ok(T), Refused(Refusal), Panicked }}
     pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn invoke<T>(_: super::generated::HookId, _: &str, _: &str, _: bool, call: impl FnOnce() -> T) -> DispatchOutcome<T> {{ DispatchOutcome::Ok(call()) }}
     pub struct ListenerScope;
     impl ListenerScope {{
         pub fn new() -> Self {{ Self }}
@@ -2630,8 +2661,9 @@ fn entered_with_id(_: generated::HookId, _: &str) -> impl Iterator<Item = (&'sta
 mod runtime {{
     pub struct Refusal;
     impl Refusal {{ pub fn report(&self) {{}} }}
+    pub enum DispatchOutcome<T> {{ Ok(T), Refused(Refusal), Panicked }}
     pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn invoke<T>(_: super::generated::HookId, _: &str, _: &str, _: bool, call: impl FnOnce() -> T) -> DispatchOutcome<T> {{ DispatchOutcome::Ok(call()) }}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{

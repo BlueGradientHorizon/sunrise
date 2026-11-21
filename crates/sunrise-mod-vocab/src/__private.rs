@@ -92,16 +92,25 @@ pub fn install(mods: Mods) {
     crate::install(mods);
 }
 
+// no wire: process-local diagnostic report, never crosses the wire.
+// exhaustive: internal two-field report for the game client's toast queue.
+/// One hook-listener panic queued for the game client's error toast.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HookPanicReport {
+    /// The `[mod] id` of the panicking mod.
+    pub mod_id: &'static str,
+    /// The hook name in which the mod panicked.
+    pub hook: &'static str,
+}
+
+/// Drain queued hook-listener panic reports for the game client's error toast.
+pub fn take_hook_panics() -> Vec<HookPanicReport> {
+    crate::runtime::take_hook_panics()
+}
+
 /// Revision of the enabled mod set, for engine caches of hook answers.
 pub fn mods_switched() -> u64 {
     crate::runtime::mods_switched()
-}
-
-/// Start a new tick's output diagnostics on the authoritative game thread.
-pub fn reset_output_refusals() {
-    if let Some(backend) = crate::dispatch_scope::backend() {
-        (backend.diagnostics.reset_output_refusals)();
-    }
 }
 
 /// Whether an installed mod subscribes to `hook`.

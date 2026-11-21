@@ -121,9 +121,11 @@ mod root {
         impl Refusal {
             pub(super) fn report(&self) {}
         }
-        pub(super) fn first_output_refusal(_: super::HookId, id: &'static str) -> bool {
-            super::OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().push(id));
-            true
+
+        pub(super) enum DispatchOutcome<T> {
+            Ok(T),
+            Refused(Refusal),
+            Panicked,
         }
 
         pub(super) fn outside_world() -> bool {
@@ -131,6 +133,24 @@ mod root {
         }
         pub(super) fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {
             Ok(call())
+        }
+        pub(super) fn invoke<T>(
+            hook: super::HookId,
+            _: &'static str,
+            mod_id: &'static str,
+            contained: bool,
+            call: impl FnOnce() -> T,
+        ) -> DispatchOutcome<T> {
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                refusable(contained, call)
+            })) {
+                Ok(Ok(value)) => DispatchOutcome::Ok(value),
+                Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
+                Err(_) => {
+                    poison(hook, mod_id);
+                    DispatchOutcome::Panicked
+                }
+            }
         }
 
         pub(super) fn listening_kind_owner(

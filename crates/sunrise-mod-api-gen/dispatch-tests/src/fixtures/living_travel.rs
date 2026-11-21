@@ -130,6 +130,7 @@ fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
         }
     }
 
+    OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().clear());
     install(vec![ModEntry::new("observe", Box::new(Observe))].into());
     assert_eq!(
         dispatch_travel([0.0; 3], [65.0, 0.0, 0.0]),
@@ -139,7 +140,7 @@ fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
 }
 
 thread_local! {
-    static OUTPUT_REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+    pub(crate) static OUTPUT_REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 mod crate_root {
@@ -154,10 +155,14 @@ mod crate_root {
                 velocity: &[f64; 3],
             ) -> Result<(), &'static str> {
                 if accepted_input[0].to_bits() != input[0].to_bits() && input[0] > 1.0 {
+                    crate::tests::OUTPUT_REFUSALS
+                        .with(|refusals| refusals.borrow_mut().push("input"));
                     Err("input")
                 } else if accepted_velocity[0].to_bits() != velocity[0].to_bits()
                     && velocity[0] > 64.0
                 {
+                    crate::tests::OUTPUT_REFUSALS
+                        .with(|refusals| refusals.borrow_mut().push("velocity"));
                     Err("velocity")
                 } else {
                     Ok(())

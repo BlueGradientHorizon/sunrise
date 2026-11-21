@@ -94,10 +94,7 @@ fn dispatch_snapshot_nested_scopes_and_unwind_restore_the_outer_owner() {
         Some(outer_call)
     );
     state.phase.store(2, SeqCst);
-    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        dispatch_client_tick_pre(&mut host)
-    }));
-    assert!(panic.is_err());
+    dispatch_client_tick_pre(&mut host);
     assert_eq!(
         mod_api::content::crash::current_native_call(),
         Some(outer_call)

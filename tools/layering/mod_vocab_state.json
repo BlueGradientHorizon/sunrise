@@ -159,6 +159,16 @@
     "category": "immutable cache",
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
+  "runtime.rs::HAS_HOOK_PANICS": {
+    "type": "std::sync::atomic::AtomicBool",
+    "category": "dispatch table",
+    "reason": "Fast-path flag checked on the client tick before locking HOOK_PANICS to drain hook-listener panic reports for the error toast."
+  },
+  "runtime.rs::HOOK_PANICS": {
+    "type": "std::sync::Mutex<Vec<HookPanicReport>>",
+    "category": "dispatch table",
+    "reason": "Process-wide queue of first-time hook-listener panic reports drained by the game client to show error toasts."
+  },
   "runtime.rs::LISTENER_SERIAL": {
     "type": "std::cell::Cell<(u64,u64)>",
     "category": "dispatch table",
@@ -188,11 +198,6 @@
     "type": "Cell<Option<Scope>>",
     "category": "reentrancy guard",
     "reason": "Per-thread record of the mod and hook whose listener call is in flight and whether a refusal has latched, which the gate reads to contain a wrong-phase Host call."
-  },
-  "world/phase_refusal.rs::report::LOGGED": {
-    "type": "OnceLock<Mutex<HashSet<(&'staticstr,&'staticstr)>>>",
-    "category": "reentrancy guard",
-    "reason": "Process-wide set of the (mod, operation) pairs whose refusal has been logged, so a refusing hook names the operation once and not on every call."
   },
   "world/server_reload.rs::first::ID": {
     "type": "LazyLock<Identifier>",
