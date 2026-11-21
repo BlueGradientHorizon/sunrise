@@ -294,6 +294,72 @@ fn a_travel_veto_can_refuse_a_spectators_resolved_end_exit() {
 
 #[test]
 #[ignore = "daily"]
+fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
+    with_end_travel(Some(Dim::Overworld), |game, rx, heard| {
+        // The saved Nether point is missing, and the fallback Overworld column is cold.
+        assert!(!game.streaming.is_lit(0, 0));
+        game.enter_level(Dim::Nether).unwrap();
+        light_spawn_chunks(game);
+        put_guest_in_end_exit(game);
+        let slot = game
+            .as_guest(2, |g| {
+                let slot = g.held_slot();
+                *g.stack_in_mut(slot) = Some(crate::items::ItemStack::new("minecraft:bow", 1));
+                assert!(g.start_using_item());
+                g.add_cooldown(Arc::from("minecraft:ender_pearl"), 1);
+                g.destroy_delay = 2;
+                g.player.as_mut().unwrap().health.tick_count = 10;
+                slot
+            })
+            .unwrap();
+
+        game.handle_server_portal(2);
+        assert!(heard.lock().unwrap().is_empty());
+        game.tick_guests();
+        assert_eq!(
+            game.as_guest(2, |g| {
+                (
+                    g.player.as_ref().unwrap().health.tick_count,
+                    g.destroy_delay,
+                    g.using,
+                    g.cooldowns.is_on_cooldown("minecraft:ender_pearl"),
+                )
+            }),
+            Some((11, 1, Some((slot, 1)), false))
+        );
+
+        game.enter_level(Dim::Overworld).unwrap();
+        light_spawn_chunks(game);
+        assert!(game.ui.rules.set_string("respawn_radius", "0"));
+        assert!(
+            game.set_state_named([0, 99, 0], "minecraft:stone", &[])
+                .unwrap()
+        );
+        game.tick_server_travel();
+        assert_eq!(
+            *heard.lock().unwrap(),
+            [EndHook::Travel(
+                "end_portal".into(),
+                Dim::Overworld.id().into()
+            )]
+        );
+        let player = game.command_guest(2).unwrap();
+        assert_eq!(player.dimension, Dim::End.id());
+        assert_eq!(player.position, [0.5, 100.0, 0.5]);
+        assert!(!received_packets(rx).any(|packet| matches!(
+            packet,
+            C::Respawn(_)
+                | C::PlayerPosition(_)
+                | C::GameEvent(play::GameEvent {
+                    event: game_event::NO_RESPAWN_BLOCK_AVAILABLE,
+                    ..
+                })
+        )));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn an_end_exit_to_a_point_in_the_end_sends_no_respawn_packet() {
     with_end_travel(None, |game, rx, heard| {
         game.enter_level(Dim::End).unwrap();

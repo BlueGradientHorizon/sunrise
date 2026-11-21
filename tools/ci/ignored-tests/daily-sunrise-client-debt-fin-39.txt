@@ -1,0 +1,1 @@
+sunrise-client game::server_travel::respawn_tests::a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto lib daily resources

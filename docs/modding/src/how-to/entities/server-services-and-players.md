@@ -135,7 +135,8 @@ impl Hooks for WelcomeBack {
 `event.end_conquered` in `player_respawned` to distinguish the return after the End credits from a death respawn.
 Both causes replace the player, so neither calls `entity_travel_to_dimension` or `player_changed_dimension`.
 An ordinary End portal exit teleports the same player and runs the travel hooks, not the respawn hooks.
-The travel veto sees the resolved destination, including the world spawn if the saved block is missing.
+The player keeps ticking in the End while the destination is being resolved. The travel veto sees the final
+level, including the world spawn if the saved block is missing, and refusing it leaves the player in the End.
 
 To change the saved point copied to the replacement, use `event.player.set_respawn_config(host, Some(config))`
 inside `player_respawn_position` and set `*event.copy_original_spawn_position = true`. This works even

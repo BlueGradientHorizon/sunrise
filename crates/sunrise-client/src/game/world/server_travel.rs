@@ -271,14 +271,16 @@ impl Trip {
             })
     }
 
+    fn is_resolving_end_exit(&self) -> bool {
+        self.spawn_search
+            .as_ref()
+            .is_some_and(|s| matches!(s.action, SpawnAction::EndExit))
+    }
+
     /// Respawns and command arrivals hold their loading area; an unresolved End teleport
     /// must not change the source player's placement or movement before the travel veto.
     fn holds_movement(&self) -> bool {
-        !self
-            .spawn_search
-            .as_ref()
-            .is_some_and(|s| matches!(s.action, SpawnAction::EndExit))
-            && (self.hold || self.respawn.is_some() || self.world_spawn)
+        !self.is_resolving_end_exit() && (self.hold || self.respawn.is_some() || self.world_spawn)
     }
 }
 
@@ -376,10 +378,17 @@ impl Game<'_> {
             });
         }
     }
-    /// Whether `conn` is between two levels: the server leaves its body
-    /// alone until it arrives.
+    /// Whether the server leaves the player's body alone until arrival. A player whose
+    /// End exit is still being resolved hasn't traveled yet and ticks in the source level.
     pub(super) fn on_server_trip(&self, conn: u32) -> bool {
-        self.server_trips.iter().any(|t| t.conn == conn)
+        self.server_trips
+            .iter()
+            .any(|t| t.is(conn) && !t.is_resolving_end_exit())
+    }
+
+    /// Portal processing does not start another trip while one is already being resolved.
+    fn has_pending_travel(&self, conn: u32) -> bool {
+        self.server_trips.iter().any(|t| t.is(conn))
     }
 
     /// Whether a vehicle waits in `dim` for its rider to arrive elsewhere:
@@ -415,7 +424,7 @@ impl Game<'_> {
             .map(|g| g.conn)
             .collect();
         for conn in conns {
-            if self.on_server_trip(conn) {
+            if self.has_pending_travel(conn) {
                 continue;
             }
             // `Entity.portalProcess` and `portalCooldown` are the player's own.
@@ -443,7 +452,7 @@ impl Game<'_> {
         if !matches!(name, "nether_portal" | "end_portal" | "end_gateway") {
             return false;
         }
-        if self.on_server_trip(conn) {
+        if self.has_pending_travel(conn) {
             return true;
         }
         let Some(g) = self.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
@@ -784,7 +793,7 @@ impl Game<'_> {
                 .filter(|g| {
                     g.vehicle
                         .is_some_and(|mount| self.vehicle_tree_contains_mount(vehicle, mount))
-                        && !self.on_server_trip(g.conn)
+                        && !self.has_pending_travel(g.conn)
                 })
                 .map(|g| g.conn)
                 .collect();
