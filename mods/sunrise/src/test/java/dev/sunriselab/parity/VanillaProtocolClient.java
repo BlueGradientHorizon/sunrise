@@ -33,7 +33,6 @@ import java.util.zip.Inflater;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.level.ChunkTrackingView;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.FriendlyByteBuf;
@@ -1089,20 +1088,10 @@ public final class VanillaProtocolClient {
             if (sections.isReadable() || arrays.hasNext()) throw new IllegalStateException("unexpected light column height");
         }
         engine.runLightUpdates();
-        var sky = engine.getLayerListener(LightLayer.SKY);
         for (var entry : packets.entrySet()) {
-            String state = layers.get(entry.getKey());
-            if (state.equals("empty") || state.equals("packed-zero")) {
-                var packet = entry.getValue();
-                var pos = new BlockPos.MutableBlockPos();
-                for (int i = 0; i < 4096; i++) {
-                    pos.set(packet.x() * 16 + (i & 15), minLight * 16 + (i >> 8), packet.z() * 16 + (i >> 4 & 15));
-                    if (sky.getLightValue(pos) != 0) {
-                        state = "not-dark";
-                        break;
-                    }
-                }
-            }
+            var packet = entry.getValue();
+            String state = VanillaLightStorageOracle.visibleLowerSkyPad(engine,
+                new ChunkPos(packet.x(), packet.z()), layers.get(entry.getKey()));
             record("lower-sky-pad", entry.getKey() + " " + state);
         }
     }

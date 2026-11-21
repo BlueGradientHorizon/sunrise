@@ -144,6 +144,7 @@ class SaveRoundtripChunkTests(unittest.TestCase):
             # The saved section above can be queued without visible light support.
             # Its zero bottom row does not make an absent first-packet pad dark.
             ('absent', zero),
+            ('unsupported', zero),
             ('packed-nonzero', zero),
             (None, zero),
         ):

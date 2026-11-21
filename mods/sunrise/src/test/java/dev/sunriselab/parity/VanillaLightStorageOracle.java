@@ -30,6 +30,7 @@ import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.chunk.storage.SerializableChunkData;
 import net.minecraft.world.level.lighting.ChunkSkyLightSources;
+import net.minecraft.world.level.lighting.LayerLightSectionStorage.SectionType;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 
 /**
@@ -78,6 +79,7 @@ public final class VanillaLightStorageOracle {
         verifySavedPadding(obstructed, false);
         verifySavedPadding(obstructed, true);
         verifyVoidPadding(fixtureChunk(false));
+        verifyUnsupportedPadIsNotEvidence();
     }
 
     private static LightChunk fixtureChunk(boolean obstructed) {
@@ -185,6 +187,39 @@ public final class VanillaLightStorageOracle {
                 throw new AssertionError("returning support must create a new full-sky layer");
             }
         }
+    }
+
+    private static void verifyUnsupportedPadIsNotEvidence() {
+        var engine = engine(true, null);
+        var center = new ChunkPos(0, 0);
+        var pad = SectionPos.of(center, MIN_SECTION - 1);
+        engine.queueSectionData(LightLayer.SKY, pad, new DataLayer(new byte[2048]));
+        // The section one above the lowest terrain section supports that lowest section,
+        // but not the pad. A read below the column can still inherit its zero bottom row.
+        engine.updateSectionStatus(SectionPos.of(center, MIN_SECTION + 1), false);
+        engine.runLightUpdates();
+        var packet = new ClientboundLightUpdatePacketData(center, engine, null, null);
+        checkMask(packet.skyYMask(), 0);
+        if (!Arrays.equals(packet.skyUpdates().getFirst(), new byte[2048])
+            || engine.getLayerListener(LightLayer.SKY).getLightValue(pad.origin()) != 0
+            || !visibleLowerSkyPad(engine, center, "packed-zero").equals("unsupported")) {
+            throw new AssertionError("an explicit queued zero pad is not a supported dark pad");
+        }
+    }
+
+    static String visibleLowerSkyPad(LevelLightEngine engine, ChunkPos column, String received) {
+        if (!received.equals("empty") && !received.equals("packed-zero")) return received;
+        var pad = SectionPos.of(column, engine.getMinLightSection());
+        // getDataLayerData can see the queued copy even when no visible layer exists.
+        if (engine.getDebugSectionType(LightLayer.SKY, pad) != SectionType.LIGHT_ONLY) return "unsupported";
+        var sky = engine.getLayerListener(LightLayer.SKY);
+        var origin = pad.origin();
+        var pos = new BlockPos.MutableBlockPos();
+        for (int i = 0; i < 4096; i++) {
+            pos.set(origin.getX() + (i & 15), origin.getY() + (i >> 8), origin.getZ() + (i >> 4 & 15));
+            if (sky.getLightValue(pos) != 0) return "not-dark";
+        }
+        return received;
     }
 
     private static void writeOrderedPadding(Path output) throws Exception {
