@@ -1887,6 +1887,25 @@ pub(super) mod tests {
                                 ("minecraft:max_stack_size".into(), Tag::Int(1)),
                                 ("minecraft:max_damage".into(), Tag::Short(20)),
                                 ("minecraft:damage".into(), Tag::Int(0)),
+                                (
+                                    "minecraft:consumable".into(),
+                                    Tag::compound([
+                                        ("consume_seconds", Tag::Float(0.75_f32.to_bits())),
+                                        ("has_consume_particles", Tag::Byte(0)),
+                                    ]),
+                                ),
+                                (
+                                    "minecraft:death_protection".into(),
+                                    Tag::compound([("death_effects", Tag::List(Vec::new()))]),
+                                ),
+                                (
+                                    "minecraft:villager_food".into(),
+                                    Tag::compound([("nutrition", Tag::Int(7))]),
+                                ),
+                                (
+                                    "minecraft:potion_contents".into(),
+                                    Tag::compound([("custom_color", Tag::Int(0x123456))]),
+                                ),
                             ]
                             .into(),
                         )
@@ -1911,6 +1930,23 @@ pub(super) mod tests {
             assert_eq!(
                 parked.component(component::DAMAGE),
                 Some(&Component::Int(0))
+            );
+            let client = game.lan.as_ref().unwrap().hub.stack_from_network(parked);
+            let consumable = client
+                .consumable(None)
+                .expect("cursor's consumable override");
+            assert_eq!(consumable.seconds.to_bits(), 0.75_f32.to_bits());
+            assert!(!consumable.particles);
+            assert!(client.death_protection(None).is_some_and(<[_]>::is_empty));
+            assert_eq!(client.villager_food(None), Some(7));
+            assert_eq!(
+                parked.component(component::POTION_CONTENTS),
+                Some(&Component::Potion {
+                    potion: None,
+                    color: Some(0x123456),
+                    // No custom effects and no custom name.
+                    rest: Vec::new(),
+                })
             );
             game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());

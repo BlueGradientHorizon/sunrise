@@ -134,7 +134,8 @@ the editor. An empty or unreadable slot (`ItemPlaceEditError::NotHeld`), an unav
 or a closed transaction (`Unavailable`) refuses before the editor runs. After the callback, the
 game validates the changed overrides together, including the resulting stack limits. If it returns
 `Stack(error)`, none of the edits were applied. Unchanged overrides are not rewritten. The usual
-inventory, menu, cursor and equipment sync sends the change without replaying equip sounds,
+inventory, menu, cursor and equipment sync sends the change, including synchronized component
+overrides, without replaying equip sounds,
 events or attribute effects. Aborting this transaction or an enclosing one restores the previous
 stack.
 

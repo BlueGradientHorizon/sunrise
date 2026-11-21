@@ -86,7 +86,9 @@ resident stack's capacity. The resident writes it produces must pass validation.
 Game inventory, menus, trades and models keep their engine-owned representations. Where a
 native hook or host method takes an owned API snapshot, the game converts only after a listener
 guard and stages every mutable result before committing any captured output. Invalid hook
-edits retain those captured engine values. Consuming mutable events such as `bonemeal` and
+edits retain those captured engine values. The same durability rules govern writable hook
+outputs: a valid damage value above that stack's maximum reaches later listeners and the game.
+Consuming mutable events such as `bonemeal` and
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 

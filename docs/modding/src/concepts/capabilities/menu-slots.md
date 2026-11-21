@@ -301,7 +301,7 @@ host.transaction(|host, tx| {
 })
 ```
 
-`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 3, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
+`menu_clicked` and `menu_quick_move` (with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
 through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
 `menu_quick_move` answer that is invalid, or a `Host` write to a player's inventory, cursor or menu storage,
 refuses the whole click instead of falling back to the game's routing. `menu_clicked` hears the raw slot, button

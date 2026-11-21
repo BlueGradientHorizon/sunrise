@@ -432,7 +432,7 @@ impl ServerAdvancements {
         if let Some(d) = &a.display {
             w.nbt(&json_to_nbt(&d.title));
             w.nbt(&json_to_nbt(&d.description));
-            let icon = super::guest::network_stack(
+            let (icon, _) = super::guest::network_stack(
                 &|name| sync.id("minecraft:item", name).unwrap_or(0),
                 &|registry, name| sync.id(registry, name),
                 &d.icon,

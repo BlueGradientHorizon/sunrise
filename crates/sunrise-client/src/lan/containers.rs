@@ -581,27 +581,19 @@ impl Hub {
             items.push(self.guests[i].inventory[player_slot(j)].clone());
         }
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried_net = self.stack(&carried);
-        self.guests.update(i, |g| {
-            let Some(menu) = g.menu.as_mut() else {
-                return;
-            };
+        let Some((window, state)) = self.guests.update(i, |g| {
+            let menu = g.menu.as_mut()?;
             menu.state = (menu.state + 1) & 0x7FFF;
-            let packet = C::ContainerSetContent(play::ContainerSetContent {
-                container: menu.window,
-                state: menu.state,
-                items: net,
-                carried: carried_net,
-            });
             menu.sent = items;
-            g.carried_sent = carried;
-            let inventory_included = menu.player_slots() != 0;
-            g.send(&packet);
-            if inventory_included {
+            let address = (menu.window, menu.state);
+            if menu.player_slots() != 0 {
                 g.inventory_told();
             }
-        });
+            Some(address)
+        }) else {
+            return;
+        };
+        self.send_menu_items(i, window, state, net);
     }
 
     /// `AbstractContainerMenu.sendAllDataToRemote` for the guest's open
@@ -1173,11 +1165,12 @@ impl Hub {
             });
         }
         let carried = self.guests[i].carried.clone();
-        if !self.hashed_matches(&p.carried, &carried) {
-            let net = self.stack(&carried);
-            self.guests[i].send(&C::SetCursorItem(play::SetCursorItem { item: net }));
+        if self.hashed_matches(&p.carried, &carried) {
+            self.guests.update(i, |g| g.carried_sent = Some(carried));
+        } else {
+            self.send_carried(i);
         }
-        // What the client now believes equals the server's state.
+        // The slots the client now believes match the server's.
         let items: Vec<_> = (0..total).map(|s| self.view_slot(i, world, s)).collect();
         self.guests.update(i, |g| {
             if in_menu {
@@ -1194,7 +1187,6 @@ impl Hub {
             } else {
                 g.menu_sent = items;
             }
-            g.carried_sent = carried;
         });
     }
 

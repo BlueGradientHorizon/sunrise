@@ -11,7 +11,7 @@ use super::{
     data::SyncData,
     entity::{Entities, EntityState},
     equipment_cache,
-    guest::{Guest, InboxItem, SentEffect, stack_to_network},
+    guest::{Guest, InboxItem, SentEffect, network_stack},
 };
 use crate::{
     chunk::Chunk,
@@ -871,7 +871,18 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
-        let item = s.as_ref()?.item.clone();
+        self.stack_with_completeness(s).0
+    }
+
+    /// Encode the cursor for menu sync. Only a complete packet may advance its checkpoint.
+    fn stack_with_completeness(
+        &mut self,
+        s: &Option<ItemStack>,
+    ) -> (Option<sunrise_protocol::item::Stack>, bool) {
+        let Some(stack) = s else {
+            return (None, true);
+        };
+        let item = stack.item.clone();
         let id = self.item_id(&item);
         let sync = self.sync.clone();
         // The stacks inside it (a bundle's contents, a crossbow's projectiles)
@@ -885,7 +896,9 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        stack_to_network(item_id, |registry, name| sync.id(registry, name), s)
+        let (net, complete) =
+            network_stack(&item_id, &|registry, name| sync.id(registry, name), stack);
+        (Some(net), complete)
     }
 
     /// `PlayerList.broadcastAll`: send a packet to every placed player.
@@ -2360,33 +2373,51 @@ impl Hub {
     pub fn send_inventory(&mut self, i: usize) {
         let items: Vec<Option<ItemStack>> = (0..46).map(|s| self.guests[i].menu_slot(s)).collect();
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried_net = self.stack(&carried);
-        self.guests.update(i, |g| {
+        let state = self.guests.update(i, |g| {
             g.menu_state = (g.menu_state + 1) & 0x7FFF;
-            g.send(&C::ContainerSetContent(play::ContainerSetContent {
-                container: 0,
-                state: g.menu_state,
-                items: net,
-                carried: carried_net,
-            }));
             g.menu_sent = items;
-            g.carried_sent = carried;
-        })
+            g.menu_state
+        });
+        self.send_menu_items(i, 0, state, net);
+    }
+
+    /// `ContainerSynchronizer.sendInitialData`: this full packet also publishes the cursor.
+    pub fn send_menu_items(
+        &mut self,
+        i: usize,
+        container: i32,
+        state: i32,
+        items: Vec<Option<sunrise_protocol::item::Stack>>,
+    ) {
+        let carried = self.guests[i].carried.clone();
+        let (carried_net, complete) = self.stack_with_completeness(&carried);
+        let sent = self.guests[i].try_send(&C::ContainerSetContent(play::ContainerSetContent {
+            container,
+            state,
+            items,
+            carried: carried_net,
+        }));
+        if sent {
+            self.guests
+                .update(i, |g| g.carried_sent = complete.then_some(carried));
+        }
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send the cursor stack when it differs
     /// from what the remote client last received.
     pub(in crate::lan) fn sync_carried(&mut self, i: usize) {
-        if self.guests[i].carried == self.guests[i].carried_sent {
+        if self.guests[i].carried_sent.as_ref() == Some(&self.guests[i].carried) {
             return;
         }
+        self.send_carried(i);
+    }
+
+    pub fn send_carried(&mut self, i: usize) {
         let carried = self.guests[i].carried.clone();
-        let net = self.stack(&carried);
-        self.guests.update(i, |g| {
-            g.carried_sent = carried;
-            g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
-        });
+        let (item, complete) = self.stack_with_completeness(&carried);
+        if complete && self.guests[i].try_send(&C::SetCursorItem(play::SetCursorItem { item })) {
+            self.guests.update(i, |g| g.carried_sent = Some(carried));
+        }
     }
 
     // ---- per tick ------------------------------------------------------

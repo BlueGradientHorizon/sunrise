@@ -82,15 +82,16 @@ impl Game<'_> {
         let Some(index) = self.mobs.iter().position(|m| m.id == mob) else {
             return;
         };
-        let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
+        let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
             return;
         };
+        let g = &host.hub.guests[gi];
         let (saddle, body, items) = self.mount_contents(index);
         let mut slots = vec![saddle, body.flatten()];
         slots.extend(items.into_iter().take(columns * 3));
         slots.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
         let carried = g.carried.clone();
-        let now = Some((slots, carried));
+        let now = (slots, carried);
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -101,21 +102,14 @@ impl Game<'_> {
         else {
             return;
         };
-        if gm.sent == now {
+        if gm.sent.as_ref() == Some(&now) {
             return;
         }
         gm.state = (gm.state + 1) & 0x7FFF;
         let (window, state) = (gm.window, gm.state);
-        let (slots, carried) = now.clone().unwrap_or_default();
-        gm.sent = now;
-        let content = C::ContainerSetContent(play::ContainerSetContent {
-            container: window,
-            state,
-            items: slots.iter().map(|s| host.hub.stack(s)).collect(),
-            carried: host.hub.stack(&carried),
-        });
-        host.hub.send_to(conn, &content);
-        let _ = host.hub.update_guest(conn, |g| g.carried_sent = carried);
+        let items = now.0.iter().map(|s| host.hub.stack(s)).collect();
+        gm.sent = Some(now);
+        host.hub.send_menu_items(gi, window, state, items);
     }
 
     /// A click on the guest's mount window; false for other windows.

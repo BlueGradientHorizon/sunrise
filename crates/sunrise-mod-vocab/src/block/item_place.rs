@@ -685,8 +685,8 @@ impl ItemPlace {
     /// callback runs. The game validates the changed overrides together against the stack's
     /// effective limits before writing any of them. Only those changes are applied, in place
     /// like `ItemStack.set`; an unchanged batch needs no write. The result reaches clients
-    /// through the usual menu, cursor, inventory or equipment sync, without replaying equip
-    /// sounds, events or attribute effects.
+    /// through the usual menu, cursor, inventory or equipment sync, including synchronized
+    /// component overrides, without replaying equip sounds, events or attribute effects.
     ///
     /// `Strict` preserves this contract. `OneByOne` and `InfiniteMaterials` refuse before
     /// calling the editor: they do not provide a synced whole-stack write. Other places use

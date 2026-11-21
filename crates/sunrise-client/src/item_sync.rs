@@ -511,6 +511,13 @@ fn components_tag(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> Option<Tag>
                     .flatten()
             })
     };
+    let lookup = |registry: &str, id| {
+        synced
+            .name(registry, id)
+            .or_else(|| builtin.get(registry)?.name(id))
+            .map(str::to_owned)
+    };
+    let names = sunrise_protocol::item::persistent::NameLookup::new(&lookup);
     let mut entries: Vec<(&str, Tag)> = Vec::new();
     for (kind, c) in &s.added {
         let Some(key) = name(*kind) else {
@@ -629,8 +636,15 @@ fn components_tag(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> Option<Tag>
                 };
                 tag
             }
-            // Read past, not decoded: the item keeps its prototype's value.
-            Component::Raw(_) => continue,
+            // Decode the remaining persistent overrides with the shared component codecs.
+            Component::Raw(_) | Component::Potion { .. } => {
+                let Ok(Some(tag)) =
+                    sunrise_protocol::item::persistent::component_to_tag(*kind, c, &names)
+                else {
+                    continue;
+                };
+                tag
+            }
             // Trim materials and patterns are synced registries, as enchantments are.
             Component::Trim { material, pattern } => {
                 let (Some(material), Some(pattern)) = (
@@ -756,16 +770,6 @@ fn components_tag(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> Option<Tag>
                     })
                     .collect(),
             ),
-            // PotionContents' NBT: the potion by name and the custom colour.
-            Component::Potion { potion, color, .. } => {
-                let potion = potion.and_then(|id| builtin.get("minecraft:potion")?.name(id));
-                Tag::compound(
-                    potion
-                        .map(|name| ("potion", Tag::String(name.into())))
-                        .into_iter()
-                        .chain(color.map(|c| ("custom_color", Tag::Int(c)))),
-                )
-            }
             // ItemStackTemplate.CODEC: id, count and components.
             Component::Stacks(stacks) => Tag::List(
                 stacks
@@ -820,32 +824,7 @@ fn components_tag(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> Option<Tag>
     let mut out = Tag::compound(entries);
     if let Tag::Compound(map) = &mut out {
         for id in &s.removed {
-            // A removed `attribute_modifiers` grants nothing, not its item type's.
-            if matches!(
-                *id,
-                component::MAX_STACK_SIZE
-                    | component::KINETIC_WEAPON
-                    | component::ATTRIBUTE_MODIFIERS
-            ) && let Some(name) = name(*id)
-            {
-                map.insert(
-                    format!("!{name}").as_str().into(),
-                    Tag::Compound(Default::default()),
-                );
-            }
-            // A removal the item's own prototype would otherwise provide:
-            // `totem_of_undying[!death_protection]` must not keep protecting.
-            if *id == component::DEATH_PROTECTION
-                && let Some(name) = name(*id)
-            {
-                map.insert(
-                    format!("!{name}").as_str().into(),
-                    Tag::Compound(Default::default()),
-                );
-            }
-            if synced.custom_components
-                && let Some(name) = sunrise_protocol::item::custom::name(*id)
-            {
+            if let Some(name) = name(*id) {
                 map.insert(
                     format!("!{name}").as_str().into(),
                     Tag::Compound(Default::default()),
