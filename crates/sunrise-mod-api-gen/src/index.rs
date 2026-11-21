@@ -300,6 +300,32 @@ impl OutsideSeam {
             return Some(path.to_vec());
         }
         let krate = &index.modules[module].krate;
+        let root = index
+            .modules
+            .iter()
+            .find(|candidate| candidate.krate == *krate && candidate.path.is_empty())?;
+        if let Some(real) = root.items.iter().find_map(|item| {
+            let Item::ExternCrate(item) = item else {
+                return None;
+            };
+            if !default_build(&item.attrs) {
+                return None;
+            }
+            let alias = item
+                .rename
+                .as_ref()
+                .map_or_else(|| item.ident.to_string(), |(_, name)| name.to_string());
+            if alias != *first {
+                return None;
+            }
+            let name = item.ident.to_string();
+            self.crates
+                .contains(&name)
+                .then_some(name.clone())
+                .or_else(|| self.dependencies.get(krate)?.get(&name).cloned())
+        }) {
+            return Some(std::iter::once(real).chain(rest.iter().cloned()).collect());
+        }
         let real = self.dependencies.get(krate)?.get(first)?;
         Some(
             std::iter::once(real.clone())
@@ -317,6 +343,11 @@ impl OutsideSeam {
         if !self.crates.contains(&module.krate) {
             return None;
         }
+        Self::indexed_item_path(index, id)
+    }
+
+    fn indexed_item_path(index: &Index<'_>, id: crate::index::ItemId) -> Option<Vec<String>> {
+        let module = &index.modules[id.module];
         let name = match index.item(id) {
             Item::Const(item) => item.ident.to_string(),
             Item::Enum(item) => item.ident.to_string(),
@@ -332,6 +363,77 @@ impl OutsideSeam {
                 .chain(std::iter::once(name))
                 .collect(),
         )
+    }
+
+    fn item_at_path(index: &mut Index<'_>, path: &[String]) -> Option<crate::index::ItemId> {
+        let (krate, relative) = path.split_first()?;
+        let (name, parent) = relative.split_last()?;
+        let module = index.module(krate, parent).ok()?;
+        match index.resolve(module, name).ok()? {
+            Found::Item(id) => Some(id),
+            Found::External(_) => None,
+        }
+    }
+
+    fn imported_item(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        path: &[String],
+        rooted: bool,
+    ) -> Option<crate::index::ItemId> {
+        if let Some(path) = self.external_path(index, module, path, rooted) {
+            return Self::item_at_path(index, &path);
+        }
+        match index.resolve_path(module, path).ok()? {
+            Found::Item(id) => Some(id),
+            Found::External(path) => Self::item_at_path(index, &path),
+        }
+    }
+
+    fn has_named_type_import(&self, index: &mut Index<'_>, module: usize, name: &str) -> bool {
+        let mut imports = Vec::new();
+        for item in &index.modules[module].items {
+            match item {
+                Item::Use(import) if default_build(&import.attrs) => {
+                    uses(&import.tree, &mut Vec::new(), &mut |path, alias| {
+                        if alias.as_deref() == Some(name) {
+                            imports.push((path, import.leading_colon.is_some()));
+                        }
+                    });
+                }
+                Item::ExternCrate(import) if default_build(&import.attrs) => {
+                    let alias = import
+                        .rename
+                        .as_ref()
+                        .map_or_else(|| import.ident.to_string(), |(_, name)| name.to_string());
+                    if alias == name {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        imports.into_iter().any(|(path, rooted)| {
+            self.external_module_target(index, module, &path, rooted)
+                .is_some()
+                || self
+                    .imported_item(index, module, &path, rooted)
+                    .is_some_and(|id| type_item(index.item(id)).is_some())
+        })
+    }
+
+    fn record_ambiguous_binding(&self, name: &str, first: &[String], second: &[String]) {
+        if first == second {
+            return;
+        }
+        let first = first.join("::");
+        let second = second.join("::");
+        self.resolution_error.borrow_mut().get_or_insert_with(|| {
+            format!(
+                "ambiguous type-namespace binding `{name}`: external import `{first}` may collide with workspace glob binding `{second}`; qualify the intended path explicitly"
+            )
+        });
     }
 
     /// Finds a type among the names a module actually exports. `Index::resolve` deliberately
@@ -616,7 +718,7 @@ impl OutsideSeam {
             }
             return self.resolve_external(index, target, rest, seen);
         }
-        if let Ok(found) = index.resolve(scope, first) {
+        if let Ok(found) = index.resolve_type(scope, first) {
             match found {
                 Found::External(external) => {
                     let workspace_binding =
@@ -629,17 +731,9 @@ impl OutsideSeam {
                                         .collect()
                                 })
                         });
-                    let Some(workspace_binding) = workspace_binding else {
-                        return None;
-                    };
+                    let workspace_binding = workspace_binding?;
+                    self.record_ambiguous_binding(first, &external, &workspace_binding);
                     if external != workspace_binding {
-                        let external = external.join("::");
-                        let workspace_binding = workspace_binding.join("::");
-                        self.resolution_error.borrow_mut().get_or_insert_with(|| {
-                            format!(
-                                "ambiguous type-namespace binding `{first}`: external import `{external}` may collide with workspace glob binding `{workspace_binding}`; qualify the intended path explicitly"
-                            )
-                        });
                         return None;
                     }
                 }
@@ -649,6 +743,14 @@ impl OutsideSeam {
                     if !self.crates.contains(&index.modules[id.module].krate)
                         && type_item(index.item(id)).is_some() =>
                 {
+                    if id.module != scope
+                        && !self.has_named_type_import(index, scope, first)
+                        && let Some(workspace_binding) =
+                            self.globbed_external_path(index, scope, first)
+                        && let Some(indexed_binding) = Self::indexed_item_path(index, id)
+                    {
+                        self.record_ambiguous_binding(first, &indexed_binding, &workspace_binding);
+                    }
                     return None;
                 }
                 Found::Item(id) if self.crates.contains(&index.modules[id.module].krate) => {
@@ -701,6 +803,18 @@ impl OutsideSeam {
             }
         }
         if let Some((imported, rooted)) = named {
+            if self
+                .imported_item(index, scope, &imported, rooted)
+                .is_some_and(|id| matches!(index.item(id), Item::Const(_) | Item::Static(_)))
+            {
+                if !self.has_named_type_import(index, scope, first)
+                    && let Some(mut resolved) = self.globbed_external_path(index, scope, first)
+                {
+                    resolved.extend(rest.iter().cloned());
+                    return Some(resolved);
+                }
+                return None;
+            }
             if let Some(mut resolved) = self.external_path(index, scope, &imported, rooted) {
                 resolved.extend(rest.iter().cloned());
                 return Some(resolved);
@@ -846,5 +960,100 @@ mod tests {
             error.contains("qualify the intended path explicitly"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn rooted_path_resolves_root_extern_crate_alias() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"consumer\", \"engine\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("consumer/src")).unwrap();
+        fs::create_dir_all(root.join("engine/src")).unwrap();
+        fs::write(
+            root.join("consumer/Cargo.toml"),
+            "[package]\nname = \"consumer\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[dependencies]\nengine_library = { package = \"engine-library\", path = \"../engine\" }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("consumer/src/lib.rs"),
+            "extern crate engine_library as engine;\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("engine/Cargo.toml"),
+            "[package]\nname = \"engine-library\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\nname = \"engine_library\"\n",
+        )
+        .unwrap();
+        fs::write(root.join("engine/src/lib.rs"), "pub struct Secret;\n").unwrap();
+
+        let outside = OutsideSeam::read(root).unwrap();
+        let mut index = Index::new(root, &[], &[]);
+        outside.add_to_index(&mut index).unwrap();
+        let consumer = index.module("consumer", &[]).unwrap();
+
+        assert_eq!(
+            outside.external_path(
+                &mut index,
+                consumer,
+                &["engine", "Secret"].map(str::to_owned),
+                true,
+            ),
+            Some(["engine_library", "Secret"].map(str::to_owned).to_vec())
+        );
+    }
+
+    #[test]
+    fn allowed_type_and_workspace_glob_collision_fails_closed() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"consumer\", \"engine\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("consumer/src")).unwrap();
+        fs::create_dir_all(root.join("engine/src")).unwrap();
+        fs::create_dir_all(root.join("api/src")).unwrap();
+        fs::write(
+            root.join("consumer/Cargo.toml"),
+            "[package]\nname = \"consumer\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[dependencies]\nengine = { package = \"engine-library\", path = \"../engine\" }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("consumer/src/lib.rs"),
+            "use allowed_api::*;\nuse engine::*;\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("engine/Cargo.toml"),
+            "[package]\nname = \"engine-library\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\nname = \"engine_library\"\n",
+        )
+        .unwrap();
+        fs::write(root.join("engine/src/lib.rs"), "pub struct Secret;\n").unwrap();
+        fs::write(root.join("api/src/lib.rs"), "pub struct Secret;\n").unwrap();
+
+        let outside = OutsideSeam::read(root).unwrap();
+        let mut index = Index::new(root, &[], &[]);
+        outside.add_to_index(&mut index).unwrap();
+        index.add_crate("allowed_api", "api/src");
+        let consumer = index.module("consumer", &[]).unwrap();
+
+        assert_eq!(
+            outside.external_path(&mut index, consumer, &["Secret".to_owned()], false,),
+            None
+        );
+        let error = outside
+            .take_resolution_error()
+            .expect("the allowed and workspace glob bindings must be reported as ambiguous");
+        assert!(
+            error.contains("ambiguous type-namespace binding `Secret`"),
+            "{error}"
+        );
+        assert!(error.contains("allowed_api::Secret"), "{error}");
+        assert!(error.contains("engine_library::Secret"), "{error}");
     }
 }

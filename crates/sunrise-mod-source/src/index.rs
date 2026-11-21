@@ -143,6 +143,12 @@ pub enum Found {
     External(Vec<String>),
 }
 
+#[derive(Clone, Copy)]
+enum Namespace {
+    Any,
+    Type,
+}
+
 /// The indexed crates' modules, parsed as they are first reached.
 pub struct Index<'a> {
     root: &'a Path,
@@ -377,6 +383,21 @@ impl<'a> Index<'a> {
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import
     /// that provides it.
     pub fn resolve(&mut self, module: usize, name: &str) -> Result<Found, String> {
+        self.resolve_in_namespace(module, name, Namespace::Any)
+    }
+
+    /// What type `name` means in `module`, following named and glob imports in the type namespace.
+    /// A named import of a value does not hide a type provided by a glob import.
+    pub fn resolve_type(&mut self, module: usize, name: &str) -> Result<Found, String> {
+        self.resolve_in_namespace(module, name, Namespace::Type)
+    }
+
+    fn resolve_in_namespace(
+        &mut self,
+        module: usize,
+        name: &str,
+        namespace: Namespace,
+    ) -> Result<Found, String> {
         self.depth += 1;
         if self.depth > 64 {
             self.depth = 0;
@@ -387,7 +408,7 @@ impl<'a> Index<'a> {
                 m.path.join("::")
             ));
         }
-        let found = self.lookup(module, name, &mut Vec::new());
+        let found = self.lookup(module, name, namespace, &mut Vec::new());
         self.depth = self.depth.saturating_sub(1);
         found?.ok_or_else(|| {
             let m = &self.modules[module];
@@ -399,6 +420,7 @@ impl<'a> Index<'a> {
         &mut self,
         module: usize,
         name: &str,
+        namespace: Namespace,
         seen: &mut Vec<usize>,
     ) -> Result<Option<Found>, String> {
         if seen.contains(&module) {
@@ -406,13 +428,12 @@ impl<'a> Index<'a> {
         }
         seen.push(module);
         let items = &self.modules[module].items;
-        if let Some(item) = items
-            .iter()
-            .position(|item| default_build(definition_attrs(item)) && defines(item, name))
-        {
+        if let Some(item) = items.iter().position(|item| {
+            default_build(definition_attrs(item)) && defines(item, name, namespace)
+        }) {
             return Ok(Some(Found::Item(ItemId { module, item })));
         }
-        let mut named = None;
+        let mut named = Vec::new();
         let mut globs = Vec::new();
         for item in items {
             if let Item::Use(item) = item
@@ -422,25 +443,47 @@ impl<'a> Index<'a> {
                     &item.tree,
                     &mut Vec::new(),
                     &mut |path, alias| match alias {
-                        Some(alias) if alias == name && named.is_none() => named = Some(path),
+                        Some(alias) if alias == name => named.push(path),
                         None => globs.push(path),
                         _ => {}
                     },
                 );
             }
         }
-        if let Some(path) = named {
-            return self.resolve_path(module, &path).map(Some);
+        if matches!(namespace, Namespace::Any)
+            && let Some(path) = named.first()
+        {
+            return self.resolve_path(module, path).map(Some);
+        }
+        let mut external_named = None;
+        for path in named {
+            match self.resolve_path(module, &path) {
+                Ok(found @ Found::Item(id)) if is_type_item(self.item(id)) => {
+                    return Ok(Some(found));
+                }
+                Ok(found @ Found::External(_)) => {
+                    // The index cannot tell whether an unindexed external name is a value or a
+                    // type. Try indexed glob types first; preserve the external path as fallback.
+                    external_named.get_or_insert(found);
+                }
+                Ok(Found::Item(_)) | Err(_) => {}
+            }
         }
         for glob in globs {
             if let Some((krate, path)) = self.absolute(module, &glob)
                 && let Ok(target) = self.module(krate, &path)
-                && let Some(found) = self.lookup(target, name, seen)?
+                && let Some(found) = self.lookup(target, name, namespace, seen)?
             {
+                if let Some(external) = external_named.take() {
+                    // Without indexing the external crate, its named binding could be either a
+                    // value or a type. Preserve it so the API boundary can fail closed if a glob
+                    // also supplies a type with this name.
+                    return Ok(Some(external));
+                }
                 return Ok(Some(found));
             }
         }
-        Ok(None)
+        Ok(external_named)
     }
 
     /// What the path `path`, written in `module`, names.
@@ -454,6 +497,26 @@ impl<'a> Index<'a> {
         }
         // A non-module path prefix can still be an external crate/type alias.
         if let Ok(Found::External(prefix)) = self.resolve(module, &path[0])
+            && prefix.len() > 1
+        {
+            let mut full = prefix;
+            full.extend(path[1..].iter().cloned());
+            return Ok(Found::External(full));
+        }
+        Ok(Found::External(path.to_vec()))
+    }
+
+    /// What the signature type path `path`, written in `module`, names.
+    pub fn resolve_type_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
+        if path.len() == 1 {
+            return self.resolve_type(module, &path[0]);
+        }
+        let (last, parent) = path.split_last().unwrap();
+        if let Some(target) = self.module_path(module, parent, &mut Vec::new())? {
+            return self.resolve_type(target, last);
+        }
+        // A non-module path prefix can still be an external crate/type alias.
+        if let Ok(Found::External(prefix)) = self.resolve_type(module, &path[0])
             && prefix.len() > 1
         {
             let mut full = prefix;
@@ -573,8 +636,11 @@ impl<'a> Index<'a> {
     }
 }
 
-/// Whether `item` defines the type or trait `name`.
-fn defines(item: &Item, name: &str) -> bool {
+/// Whether `item` defines `name` in the requested namespace.
+fn defines(item: &Item, name: &str, namespace: Namespace) -> bool {
+    if matches!(namespace, Namespace::Type) {
+        return is_type_item_named(item, name);
+    }
     match item {
         Item::Struct(item) => item.ident == name,
         Item::Enum(item) => item.ident == name,
@@ -582,6 +648,25 @@ fn defines(item: &Item, name: &str) -> bool {
         Item::Trait(item) => item.ident == name,
         Item::Union(item) => item.ident == name,
         Item::Const(item) => item.ident == name,
+        Item::Static(item) => item.ident == name,
+        _ => false,
+    }
+}
+
+fn is_type_item(item: &Item) -> bool {
+    matches!(
+        item,
+        Item::Struct(_) | Item::Enum(_) | Item::Type(_) | Item::Trait(_) | Item::Union(_)
+    )
+}
+
+fn is_type_item_named(item: &Item, name: &str) -> bool {
+    match item {
+        Item::Struct(item) => item.ident == name,
+        Item::Enum(item) => item.ident == name,
+        Item::Type(item) => item.ident == name,
+        Item::Trait(item) => item.ident == name,
+        Item::Union(item) => item.ident == name,
         _ => false,
     }
 }
@@ -591,6 +676,7 @@ fn definition_attrs(item: &Item) -> &[Attribute] {
         Item::Const(item) => &item.attrs,
         Item::Enum(item) => &item.attrs,
         Item::Struct(item) => &item.attrs,
+        Item::Static(item) => &item.attrs,
         Item::Trait(item) => &item.attrs,
         Item::Type(item) => &item.attrs,
         Item::Union(item) => &item.attrs,
@@ -699,5 +785,65 @@ mod index_tests {
             index.resolve(module, expected),
             Ok(Found::Item(_))
         ));
+    }
+
+    #[test]
+    fn type_resolution_skips_named_const_and_static_imports_before_globs() {
+        const CRATES: &[(&str, &str)] = &[("consumer", "consumer/src"), ("engine", "engine/src")];
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("consumer/src")).unwrap();
+        fs::create_dir_all(root.join("engine/src")).unwrap();
+        fs::write(
+            root.join("consumer/src/lib.rs"),
+            "const LOCAL_CONST: u8 = 0;\nstatic LOCAL_STATIC: u8 = 0;\nuse crate::LOCAL_CONST as ConstName;\nuse crate::LOCAL_STATIC as StaticName;\nuse engine::*;\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("engine/src/lib.rs"),
+            "pub struct ConstName;\npub struct StaticName;\n",
+        )
+        .unwrap();
+
+        let mut index = Index::new(root, &[], CRATES);
+        let consumer = index.module("consumer", &[]).unwrap();
+        for name in ["ConstName", "StaticName"] {
+            let Found::Item(id) = index.resolve_type(consumer, name).unwrap() else {
+                panic!("{name} should resolve to the globbed type");
+            };
+            assert_eq!(index.modules[id.module].krate, "engine");
+            assert!(matches!(index.item(id), Item::Struct(item) if item.ident == name));
+        }
+
+        let Found::Item(id) = index.resolve(consumer, "LOCAL_STATIC").unwrap() else {
+            panic!("the static should remain resolvable as a value name");
+        };
+        assert!(matches!(index.item(id), Item::Static(item) if item.ident == "LOCAL_STATIC"));
+    }
+
+    #[test]
+    fn type_resolution_prefers_a_named_type_import_over_a_glob() {
+        const CRATES: &[(&str, &str)] = &[("consumer", "consumer/src"), ("engine", "engine/src")];
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        fs::create_dir_all(root.join("consumer/src")).unwrap();
+        fs::create_dir_all(root.join("engine/src")).unwrap();
+        fs::write(
+            root.join("consumer/src/lib.rs"),
+            "pub struct Explicit;\nuse crate::Explicit as Secret;\nuse engine::*;\n",
+        )
+        .unwrap();
+        fs::write(root.join("engine/src/lib.rs"), "pub struct Secret;\n").unwrap();
+
+        let mut index = Index::new(root, &[], CRATES);
+        let consumer = index.module("consumer", &[]).unwrap();
+        let Found::Item(id) = index
+            .resolve_type_path(consumer, &["Secret".to_owned()])
+            .unwrap()
+        else {
+            panic!("the explicit named type import should resolve to an indexed item");
+        };
+        assert_eq!(index.modules[id.module].krate, "consumer");
+        assert!(matches!(index.item(id), Item::Struct(item) if item.ident == "Explicit"));
     }
 }

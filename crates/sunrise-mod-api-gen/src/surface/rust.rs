@@ -207,9 +207,29 @@ impl Paths<'_, '_> {
             return None;
         }
         let root = self.index.module(indexed_crate, &[]).ok()?;
-        match self.index.resolve_path(root, relative) {
+        match self.index.resolve_type_path(root, relative) {
             Ok(Found::Item(id)) => Some(id),
             _ => None,
+        }
+    }
+
+    fn record_ref(&mut self, path: &[String], rooted: bool) {
+        let found = if rooted {
+            self.rooted_item(path)
+        } else {
+            self.index
+                .resolve_type_path(self.module, path)
+                .ok()
+                .and_then(|found| match found {
+                    Found::Item(id) => Some(id),
+                    Found::External(_) => None,
+                })
+        };
+        if let Some(id) = found
+            && let (Some(public), Some(kind)) =
+                (self.public.get(&id), ref_kind(self.index.item(id)))
+        {
+            self.refs.insert(format!("{kind}:{}", public.join("::")));
         }
     }
 
@@ -300,7 +320,7 @@ impl Paths<'_, '_> {
                 .map(Found::Item)
                 .map_or_else(|| Ok(Found::External(segments.clone())), Ok)
         } else {
-            self.index.resolve_path(self.module, &segments)
+            self.index.resolve_type_path(self.module, &segments)
         };
         let written = match found {
             Ok(Found::Item(id)) => {
@@ -373,6 +393,7 @@ impl VisitMut for Paths<'_, '_> {
                 .take(qself.position)
                 .map(|segment| segment.ident.to_string())
                 .collect();
+            self.record_ref(&trait_path, ty.path.leading_colon.is_some());
             if let Some((check, id)) = self.check {
                 check.inspect(
                     self.index,

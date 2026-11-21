@@ -441,6 +441,47 @@ fn a_local_constant_does_not_shadow_a_workspace_type_imported_by_glob() {
 }
 
 #[test]
+fn a_named_value_import_does_not_hide_a_workspace_type_imported_by_glob() {
+    let edited = "const LOCAL_SECRET: u8 = 0;\nuse crate::LOCAL_SECRET as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("a value import does not shadow a workspace type in a signature");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_named_static_import_does_not_hide_a_workspace_type_imported_by_glob() {
+    let edited = "static LOCAL_SECRET: u8 = 0;\nuse crate::LOCAL_SECRET as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("a static import does not shadow a workspace type in a signature");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_named_type_import_keeps_precedence_over_workspace_type_globs() {
+    let edited = "const LOCAL_SECRET: u8 = 0;\nuse crate::LOCAL_SECRET as Secret;\nuse crate::Text as Secret;\nuse engine_library::*;\npub fn safe() -> Secret { unimplemented!() }\n/// A colour.";
+    let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("an explicit API type import takes precedence over globbed types");
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let function = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:safe")
+        .expect("the function is exported");
+    assert!(function["signature"].as_str().unwrap().contains("Text"));
+    assert!(
+        function["refs"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("type:Text"))
+    );
+}
+
+#[test]
 fn an_external_value_import_and_workspace_glob_collision_fails_closed() {
     let edited = "use core::f32::consts::PI as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
@@ -827,6 +868,26 @@ fn a_private_alias_keeps_references_from_its_public_type_expansion() {
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("type:Text"))
+    );
+}
+
+#[test]
+fn a_private_alias_keeps_trait_references_from_a_qualified_associated_type() {
+    let edited = "pub trait LocalTrait { type Out; }\ntype Private = <u32 as LocalTrait>::Out;\npub fn through_alias() -> Private { unimplemented!() }\n/// A colour.";
+    let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("a private alias to a public associated type is valid");
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let function = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:through_alias")
+        .expect("the function is exported");
+    assert!(
+        function["refs"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("trait:LocalTrait"))
     );
 }
 
