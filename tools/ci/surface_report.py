@@ -2,8 +2,8 @@
 
 Exports the surface of the merge base and of the checked-out tree with the head's `sunrise-stage`, diffs them, and
 writes the classified report to the job summary. The base comes from the event: on `pull_request` the checkout is
-GitHub's merge commit, whose first parent is the base; on a dispatch with `pr`, GitHub's compare API gives the merge
-base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`, in CI's shallow
+GitHub's merge commit, whose first parent is the base, and a dispatch with `pr` checks out that pull request's test
+merge the same way (tools/ci/pr_gate.py). Only that one commit is fetched (`--depth 1`, in CI's shallow
 checkout; a full clone is never fetched shallow), and `crates/`, `tools/layering`, Cargo manifests, and workspace
 members outside `crates/` are unpacked. This includes non-crates library source such as `docs/modding/examples/`.
 The exporter uses the manifests to identify workspace library names. The engine catalogs are read from source. CI
@@ -40,7 +40,6 @@ import sys
 import tempfile
 import time
 import tomllib
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,27 +64,15 @@ def merge_parent(commit_text: str) -> str | None:
     return parents[0] if len(parents) == 2 else None
 
 
-def base_commit(event: str, pr: str, git, api) -> tuple[str | None, str]:
-    """The commit to compare against, or None with the reason."""
-    if event == "pull_request":
+def base_commit(event: str, pr: str, git) -> tuple[str | None, str]:
+    """The commit to compare against, or None with the reason.
+
+    A pull_request run and a dispatch with `pr` both check out the pull request's test merge: its first parent is the
+    base the pull request would merge into."""
+    if event == "pull_request" or (event == "workflow_dispatch" and pr):
         parent = merge_parent(git("cat-file", "-p", "HEAD"))
         return (parent, "") if parent else (None, "the checkout is not a pull request's merge commit")
-    if event == "workflow_dispatch" and pr:
-        # The checked-out revision, not the pull request's head now: a push after the run
-        # picked its revision would give a base from another history.
-        head = git("rev-parse", "HEAD").strip()
-        pull = api(f"pulls/{pr}")
-        compare = api(f"compare/{pull['base']['ref']}...{head}")
-        return compare["merge_base_commit"]["sha"], ""
     return None, f"no base for a {event or 'local'} run"
-
-
-def github_api(path: str) -> dict:
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}",
-        headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(request, timeout=20) as answer:
-        return json.load(answer)
 
 
 def git(*args: str) -> str:
@@ -390,7 +377,7 @@ def main(argv=None) -> int:
         else:
             base = work / "base"
             try:
-                sha, why = base_commit(os.environ.get("EVENT", ""), os.environ.get("PR", ""), git, github_api)
+                sha, why = base_commit(os.environ.get("EVENT", ""), os.environ.get("PR", ""), git)
                 if sha:
                     base.mkdir()
                     unpack(sha, base)

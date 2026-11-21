@@ -526,7 +526,8 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request' || inputs.pr != ''", fields.get("if", ""))
         self.assertEqual(fields.get("EVENT"), "${{ github.event_name }}")
         self.assertEqual(fields.get("PR"), "${{ inputs.pr }}")
-        self.assertEqual(fields.get("GH_TOKEN"), "${{ github.token }}")
+        # The base is the checkout's own merge parent: the step reads no API.
+        self.assertNotIn("GH_TOKEN", fields)
         self.assertNotIn("continue-on-error", fields)
         # It needs the tool the stage build puts in SUNRISE_STAGE_TOOL.
         self.assertLess(verify.index("- name: Build the source stage generator (test profile)"), verify.index(name))

@@ -23,28 +23,22 @@ SINGLE = "tree t\nparent aaaa\nauthor x\n\nA commit\n"
 
 class BaseCommitTests(unittest.TestCase):
     def test_a_pull_request_compares_against_its_merge_commits_first_parent(self):
-        sha, _ = surface_report.base_commit("pull_request", "", lambda *a: MERGE, None)
+        sha, _ = surface_report.base_commit("pull_request", "", lambda *a: MERGE)
         self.assertEqual(sha, "aaaa")
-        sha, why = surface_report.base_commit("pull_request", "", lambda *a: SINGLE, None)
+        sha, why = surface_report.base_commit("pull_request", "", lambda *a: SINGLE)
         self.assertIsNone(sha)
         self.assertIn("not a pull request's merge commit", why)
 
-    def test_a_dispatch_asks_for_the_merge_base_of_the_checked_out_revision(self):
-        asked = []
-
-        def api(path):
-            asked.append(path)
-            if path == "pulls/12":
-                # The pull request has moved on since the run picked its revision.
-                return {"base": {"ref": "main"}, "head": {"sha": "eeee"}}
-            return {"merge_base_commit": {"sha": "dddd"}}
-
-        git = lambda *a: "cccc\n" if a == ("rev-parse", "HEAD") else ""
-        sha, _ = surface_report.base_commit("workflow_dispatch", "12", git, api)
-        self.assertEqual((sha, asked), ("dddd", ["pulls/12", "compare/main...cccc"]))
+    def test_a_dispatch_compares_against_its_test_merges_first_parent(self):
+        sha, _ = surface_report.base_commit("workflow_dispatch", "12", lambda *a: MERGE)
+        self.assertEqual(sha, "aaaa")
+        # A dispatch without `pr` checks main's own commit: there is no base to compare.
+        sha, why = surface_report.base_commit("workflow_dispatch", "", lambda *a: MERGE)
+        self.assertIsNone(sha)
+        self.assertEqual(why, "no base for a workflow_dispatch run")
 
     def test_a_push_has_no_base(self):
-        sha, why = surface_report.base_commit("push", "", None, None)
+        sha, why = surface_report.base_commit("push", "", None)
         self.assertIsNone(sha)
         self.assertEqual(why, "no base for a push run")
 
@@ -392,13 +386,10 @@ class MainTests(unittest.TestCase):
         self.assertTrue(out.startswith("No surface report: the base could not be fetched: "), out)
         self.assertIn("No surface report", summary)
 
-    def test_a_dispatch_whose_api_call_fails_reports_and_passes(self):
-        def api(path):
-            raise urllib.error.URLError("no route")
-
-        code, out, _ = self.run_main("workflow_dispatch", "7", github_api=api, git=lambda *a: "cccc\n")
+    def test_a_dispatch_whose_checkout_is_not_a_merge_reports_and_passes(self):
+        code, out, _ = self.run_main("workflow_dispatch", "7", git=lambda *a: SINGLE)
         self.assertEqual(code, 0)
-        self.assertIn("the base could not be fetched", out)
+        self.assertIn("not a pull request's merge commit", out)
 
     def test_a_report_is_printed_written_and_its_code_returned(self):
         fetched = []

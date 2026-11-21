@@ -90,9 +90,11 @@ jobs:
       actions: read
       pull-requests: read
     outputs:
-      # Whether the heavy jobs run (tools/ci/pr_gate.py); a dispatch with `pr` runs them on that head.
+      # Whether the heavy jobs run (tools/ci/pr_gate.py); a dispatch with `pr` runs them on that pull request's test
+      # merge with its base, and reports them on its head (`pr_sha`).
       heavy: ${{ steps.gate.outputs.heavy == 'false' && 'false' || 'true' }}
       pr_sha: ${{ steps.gate.outputs.pr_sha }}
+      pr_merge: ${{ steps.gate.outputs.pr_merge }}
       # Whether this run's code may use our own runners: never a fork's pull request, dispatched or not.
       trusted: ${{ steps.gate.outputs.trusted || ((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false') }}
       # Off where selection needs none, and on a main push whose tree its merged head's pull_request run already
@@ -311,8 +313,9 @@ jobs:
       # Not diff-selected: any tracked file can contain a captured tool notice.
       - uses: actions/checkout@v4
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       # The tree this gate checks, so a main push of the same tree can take its verdict (tools/ci/gate_reuse.py). Only
       # where the tree's own dyna-ci.yml runs (a push, a pull_request's test merge): a `pr` dispatch runs main's
       # definition on another tree. Best-effort: a failed record only loses the saving.
@@ -499,8 +502,9 @@ jobs:
         run: exit 1
       - uses: actions/checkout@v4
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       - uses: actions/setup-python@v5
         if: needs.changes.outputs.tooling_required != 'false' && (env.RUNNER_KIND == 'github' || env.RUNNER_KIND == 'boat')
         with:
@@ -690,7 +694,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           PR: ${{ inputs.pr }}
-          GH_TOKEN: ${{ github.token }}
         run: python3 tools/ci/surface_report.py
       - name: Test Rust documentation examples
         id: test_rust_documentation_examples
@@ -778,8 +781,9 @@ jobs:
       - uses: actions/checkout@v4
         id: checkout
         with:
-          # A dispatch with `pr`: that pull request's head; otherwise this event's commit.
-          ref: ${{ needs.changes.outputs.pr_sha }}
+          # A dispatch with `pr`: that pull request's test merge with its base, as a pull_request run checks out;
+          # otherwise this event's commit.
+          ref: ${{ needs.changes.outputs.pr_merge }}
       # Public-tree ranges and sync ancestry need full history of this exact commit,
       # not every branch and tag. The Rust job only needs its checkout's HEAD and tracked files.
       - name: Fetch this commit's history
