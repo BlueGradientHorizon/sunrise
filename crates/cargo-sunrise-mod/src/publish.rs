@@ -407,7 +407,9 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             .as_ref()
             .map(|path| {
                 bounded::read(path, 16 << 10).map_err(|e| {
-                    format!("{e}: pass the .minisig produced by minisign -S to --signature")
+                    format!(
+                        "{e}: pass the .minisig produced by cargo sunrise-mod sign to --signature"
+                    )
                 })
             })
             .transpose()?;
