@@ -3039,8 +3039,8 @@ fn push_entities(
     }
     super::world::give_push_targets(targets);
 }
-/// `Mob.aiStep` -> `Mob.burnUndead`: tagged mobs can burn in daylight, even
-/// with `NoAI` (which only skips `serverAiStep`).
+/// `Mob.aiStep` -> `Mob.burnUndead`: mobs in `minecraft:burn_in_daylight`
+/// can burn in daylight even with `NoAI`.
 fn burn_undead(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if m.kind.flags.burns_in_day && m.alive() && sun_burn_tick(m, w) {
         if m.item_by_slot(m.sun_protection_slot()).is_some() {
