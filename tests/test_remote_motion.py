@@ -5,39 +5,19 @@ import subprocess
 import tempfile
 import unittest
 
+from tools.ci import rust_tests
+
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def method(source, name):
-    # The method lives in its own module now; cut it by counting braces in code only, so a brace
-    # inside a string literal or a comment cannot end it early.
-    start = source.index(f"fn {name}(")
-    start = source.rfind("\n", 0, start) + 1
-    depth, quoted, i = 0, False, source.index("{", start)
-    while True:
-        ch = source[i]
-        if quoted:
-            quoted = ch != '"' or source[i - 1] == "\\"
-        elif ch == '"':
-            quoted = True
-        elif ch == "/" and source.startswith("//", i):
-            i = source.index("\n", i)
-            continue
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    return source[start:i + 1].replace("pub(super) fn", "fn", 1).replace("pub(in crate::game) fn", "fn", 1)
 
 
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMotionTests(unittest.TestCase):
     def test_mob_velocity_reaches_squid_animation(self):
-        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/motion.rs'))).read_text()
-        method_source = method(source, "remote_motion")
+        source = (ROOT / "crates/sunrise-client/src/game/network/remote/motion.rs").read_text(encoding="utf-8")
+        code = rust_tests.blank(source)
+        start = code.index("fn remote_motion(")
+        opening = code.index("{", start)
+        method_source = source[start:rust_tests.matching_brace(code, opening)]
         fixture = r'''
 #![allow(dead_code)]
 use std::collections::HashMap;
