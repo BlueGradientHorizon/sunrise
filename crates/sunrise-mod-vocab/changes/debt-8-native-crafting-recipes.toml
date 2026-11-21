@@ -1,10 +1,4 @@
 ids = [
-    "handle:Registrar::register_raw_recipe_serializer",
-    "type:CraftingGrid",
-    "handle:CraftingGrid::new",
-    "type:RecipeInput",
-    "type:RecipeInput.Crafting",
-    "handle:LevelRef::recipe_for",
     "type:CraftingRecipeCodec",
     "handle:CraftingRecipeCodec::wire",
     "type:CraftingRecipeValue",
