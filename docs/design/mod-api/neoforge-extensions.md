@@ -212,7 +212,7 @@ entity coverage is data, handles and global hooks. On the server a mod can act o
 | `isInFluidType()` | Partial | `host.entity_fluid_heights` | A non-empty list. Both sides. |
 | `getFirstEyeInFluidType()` | Partial | `host.entity_eye_fluid` | Water or lava at the eyes from the last fluid update; mobs now track lava there too. Both sides: predicted for the local player, the last client fluid update for tracked entities. Mod fluids still need the entity update to track them (#3341). |
 | `isEyeInFluidType(type)` | Partial | `host.entity_eye_fluid` | Compare its answer. Both sides. |
-| `canStartSwimming()` | Missing | — | Swimming start is engine-owned. |
+| `canStartSwimming()` | Partial | `Hooks::can_start_swimming` (`hooks/can_start_swimming.rs`) | Boolean replacement for players on both sides, including its local shallow-water caller. Without an answer Sunrise keeps vanilla's saved eye and feet-cell checks; NeoForge's default uses the current eye sample and swimmable fluid types. |
 | `getFluidMotionScale(type)` | Missing | — | No per-entity fluid scale. |
 | `isPushedByFluid(type)` | Partial | `FluidTypeProperties.can_push_entity` | Per-fluid data, not a per-entity answer. |
 | `canSwimInFluidType(type)` | Partial | `FluidTypeProperties.can_swim` | Per-fluid data. |

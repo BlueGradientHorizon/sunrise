@@ -1,0 +1,2 @@
+sunrise-client game::remote::swim_start_tests::local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query lib daily resources
+sunrise-client game::remote::swim_start_tests::swim_entry_reads_each_authoritative_guests_own_equipment lib daily resources

@@ -529,9 +529,7 @@ impl Game<'_> {
         let (can_sprint, local) = self
             .driven_mount()
             .map_or((false, false), |m| (equine::can_sprint(m.species()), true));
-        if let Some(p) = self.player.as_mut() {
-            p.sprint_input_tick_riding(keys, sprint_window, can_sprint, local)?;
-        }
+        self.player_sprint_tick(keys, sprint_window, Some((can_sprint, local)))?;
         // Settle an invisible seat riding a moving avatar before reading it.
         // The normal end-of-tick pass alone leaves the local rider a tick behind.
         self.position_riders();

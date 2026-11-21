@@ -946,9 +946,30 @@ impl Game<'_> {
         }
         let walks = self.can_move_local_player();
         let section_scope = self.player_section_scope();
+        let swim_listener = self.has_swim_eligibility_listener();
+        // Release the field borrows for the read-only Game host, then resume the same body.
+        macro_rules! motion_world {
+            ($side:ident, $player:expr) => {
+                MotionWorld {
+                    side: &$side,
+                    entities: &entity_collisions,
+                    player: $player,
+                    scene: &mut self.world,
+                    assets: &self.pack.assets,
+                    collision_binding: self.collision,
+                    resources: self.motion,
+                    health: &self.health_resources,
+                    loop_context: &self.loop_context,
+                    damage_hooks: &self.damage_hooks,
+                    tag_items: None,
+                    block_registries: None,
+                }
+            };
+        }
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
+        let body = player.entity_id;
         let was_gliding = player.fall_flying;
         let dead = self.screen == Screen::Dead;
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
@@ -971,21 +992,27 @@ impl Game<'_> {
                         .map(|m| (m.id, m.bounds())),
                 );
             }
-            MotionWorld {
-                side: &side,
-                entities: &entity_collisions,
-                player,
-                scene: &mut self.world,
-                assets: &self.pack.assets,
-                collision_binding: self.collision,
-                resources: self.motion,
-                health: &self.health_resources,
-                loop_context: &self.loop_context,
-                damage_hooks: &self.damage_hooks,
-                tag_items: None,
-                block_registries: None,
-            }
-            .controlled_simulation_tick_with_sprint_window(keys, sprint_window)?;
+            let mut motion = motion_world!(side, player);
+            motion.begin_local_tick()?;
+            let decision = if swim_listener {
+                motion.swim_entry()
+            } else {
+                None
+            };
+            let answer = self.ask_swim_entry(decision);
+            let side = game_side!(self);
+            let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                return Ok(None);
+            };
+            let mut motion = motion_world!(side, player);
+            motion.finish_fluid_tick(answer)?;
+            let keys = motion.prepare_local_sprint(keys)?;
+            self.player_sprint_tick(keys, sprint_window, None)?;
+            let side = game_side!(self);
+            let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                return Ok(None);
+            };
+            motion_world!(side, player).finish_local_tick(keys)?;
         } else {
             // LivingEntity.baseTick counts hurtTime down for a dead or riding
             // player too (controlled_simulation_tick does it otherwise): left
@@ -995,32 +1022,34 @@ impl Game<'_> {
                 let side = game_side!(self);
                 let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 player.client_side = true;
-                let mut passenger = MotionWorld {
-                    side: &side,
-                    entities: &entity_collisions,
-                    player: &mut *player,
-                    scene: &mut self.world,
-                    assets: &self.pack.assets,
-                    collision_binding: self.collision,
-                    resources: self.motion,
-                    health: &self.health_resources,
-                    loop_context: &self.loop_context,
-                    damage_hooks: &self.damage_hooks,
-                    tag_items: None,
-                    block_registries: None,
-                };
+                let mut passenger = motion_world!(side, player);
                 // The rider moves from its old seat; the new one is its place after.
                 let seat = passenger.player.position;
                 if let Some(from) = old_seat {
                     passenger.player.position = from;
                 }
-                passenger.rider_tick(keys.direction())?;
+                passenger.begin_fluid_tick()?;
+                let decision = if swim_listener {
+                    passenger.swim_entry()
+                } else {
+                    None
+                };
+                let answer = self.ask_swim_entry(decision);
+                let side = game_side!(self);
+                let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+                    return Ok(None);
+                };
+                let mut passenger = motion_world!(side, player);
+                passenger.finish_rider_tick(keys.direction(), answer)?;
                 sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).
                 passenger.passenger_block_effects_tick()?;
             }
         }
+        let Some(player) = self.player.as_mut().filter(|p| p.entity_id == body) else {
+            return Ok(None);
+        };
         // The server decides fire the window cannot predict (blaze fireballs,
         // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
         // the predicted tick's countdown must not end it while it is set.
