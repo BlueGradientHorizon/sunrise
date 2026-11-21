@@ -34,7 +34,11 @@ fn untouched_writeback_runtime_and_mutants() {
         ("grindstone_place", api_values, "fn api_grindstone_place("),
         ("grindstone_take", api_values, "fn api_grindstone_take("),
         ("menu_button", shared_hooks, "fn apply_menu_button_cursor("),
-        ("menu_quick_move", quick_move, "fn menu_quick_move_checked("),
+        (
+            "menu_quick_move",
+            quick_move,
+            "fn apply_quick_move_remainder(",
+        ),
     ] {
         let start = source.find(adapter).unwrap();
         let text = &source[start..];
@@ -61,16 +65,18 @@ fn untouched_writeback_runtime_and_mutants() {
             "menu_button" => {
                 "let items = self.items(); let mut cursor = carried.try_into_api().unwrap(); let original = cursor.clone(); self.native_menu_button(\"test:menu\", None, context, &mut cursor); let (original, cursor) = (&original, &cursor);"
             }
-            "menu_quick_move" => "",
+            "menu_quick_move" => {
+                "let items = self.items(); let mut held = carried.try_into_api().unwrap(); let original = held.clone(); let mut candidate_handled = *handled; self.native_menu_quick_move(pos, entity, container_slots, slot, &mut held, &mut candidate_handled); let (original, held) = (&original, &held);"
+            }
             _ => "let entity = 0;",
         };
         let body = if matches!(name, "grindstone_place" | "grindstone_take") {
             body.to_owned()
         } else if name == "menu_quick_move" {
-            // The checked adapter answers whether the mods' answer was valid; a refusal
-            // is the decision's error.
+            // The checked remainder helper answers whether the mods' answer was valid; a refusal
+            // leaves `stack` and `handled` untouched.
             format!(
-                "if (|| -> bool {{ {body} }})() {{ Ok(()) }} else {{ Err(InvalidReason::Count) }}"
+                "if (|| -> bool {{ {body} }})() {{ *handled = candidate_handled; Ok(()) }} else {{ Err(InvalidReason::Count) }}"
             )
         } else {
             // Keep the adapter's early `return` inside its original unit-returning body.
@@ -86,7 +92,6 @@ extern crate self as log;
 type EngineStack = Stack;
 struct Game { change: bool }
 static VALIDATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-#[derive(Debug)] enum BlockEntitySnapshotError { InvalidStack }
 mod mod_api {
     #[derive(Debug)] pub enum StackWriteError { Unavailable }
     pub enum HookId { Proof, MenuButton, MenuQuickMove }
@@ -99,7 +104,6 @@ mod game { pub mod api_values {
     pub trait TryIntoApi { type Api; fn try_into_api(&self) -> Result<Self::Api, ()>; }
     pub trait TryIntoEngine { type Engine; fn try_into_engine(&self, _: &()) -> Result<Self::Engine, crate::mod_api::StackWriteError>; }
     pub trait ItemBoundary { fn boundary_items(&self) -> Option<&()> { Some(&()) } }
-    pub(crate) use crate::{BlockEntitySnapshotError, finish_block_entity_writeback};
 }
 pub mod transactions { pub mod decision {
     #[derive(Debug, PartialEq, Eq)] pub enum InvalidReason { Count }
@@ -109,8 +113,6 @@ impl TryIntoApi for Stack { type Api = Stack; fn try_into_api(&self) -> Result<S
 impl TryIntoEngine for Stack { type Engine = Stack; fn try_into_engine(&self, _: &()) -> Result<Stack, mod_api::StackWriteError> { VALIDATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed); if self.0 > 250 { Err(mod_api::StackWriteError::Unavailable) } else { Ok(self.clone()) } } }
 impl TryIntoApi for Option<Stack> { type Api = Self; fn try_into_api(&self) -> Result<Self, ()> { Ok(self.clone()) } }
 impl TryIntoEngine for Option<Stack> { type Engine = Self; fn try_into_engine(&self, items: &()) -> Result<Self, mod_api::StackWriteError> { self.as_ref().map(|s| s.try_into_engine(items)).transpose() } }
-impl Stack { fn revision(&self) -> u32 { 0 } }
-fn finish_block_entity_writeback<T>(_: &mut Stack, _: &Stack, _: u32, _: &(), _: &str, result: Result<T, BlockEntitySnapshotError>) -> Result<T, BlockEntitySnapshotError> { result }
 impl ItemBoundary for Game {}
 impl Game {
     fn items(&self) -> &() { &() }

@@ -1,8 +1,7 @@
-//! `menu_clicked` and `menu_quick_move` through real listeners: both are server hooks on the menus
-//! the game runs for a guest, and each now runs as one decided action (`decided_action`): the
-//! hook is fired inside an action savepoint, its answer is validated once and applied once, and a
-//! refusal (stale, invalid, a failing listener) changes nothing and undoes every write the
-//! listener made. The fixtures need prepared resources.
+//! `menu_clicked`, `menu_button`, `menu_quick_move` and `menu_slot_take` through real listeners:
+//! `menu_clicked` runs as a decided action (`decided_action`), while `menu_button`,
+//! `menu_quick_move` and `menu_slot_take` lend live resident storage through `BlockEntityScope`.
+//! The fixtures need prepared resources.
 use crate::game::native_guest_turn_tests::{register_test_menu, with_guests};
 use mod_api::{
     BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
@@ -86,13 +85,12 @@ struct Part;
 impl mod_api::BlockPart for Part {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Part {
-    fn menu_quick_move(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut MenuQuickMoveEvent<'_>,
-    ) -> Flow {
+    fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
-        IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
+        IN_ACTION.with(|a| {
+            a.borrow_mut()
+                .push(event.subject.host().transaction_current().is_some())
+        });
         let s = SCRIPT.with(|s| s.borrow().clone());
         let stone = |count| {
             mod_api::ItemStack::new(
@@ -102,20 +100,78 @@ impl BlockEntityPart for Part {
             .unwrap()
         };
         if s.write_dirt {
-            write_dirt(host);
+            let _: Result<(), ()> = event.subject.transaction(|scope, tx| {
+                let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                let dirt = mod_api::ItemStack::new(key, 1).unwrap();
+                let place = ItemPlace::PlayerSlot {
+                    player: 12,
+                    slot: 20,
+                };
+                assert_eq!(
+                    place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
+                    2
+                );
+                Ok(())
+            });
+        }
+        if s.invalid {
+            let err = event
+                .subject
+                .with_view(|mut entity| entity.set_item_slot(1, Some(stone(65))))
+                .expect("live resident block entity")
+                .expect_err("oversized stack must be refused at the boundary");
+            assert!(matches!(
+                err,
+                mod_api::BlockEntityItemError::StackRejected(_)
+            ));
+            *event.stack = Some(stone(65));
+            return Flow::Cancel;
+        }
+        if s.transactional_panic {
+            *event.stack = Some(stone(1));
+            let _: Result<(), ()> = event.subject.transaction(|scope, tx| {
+                scope
+                    .with_view(|mut entity| {
+                        assert_eq!(entity.set_item_slot(1, Some(stone(4))), Ok(true));
+                        assert_eq!(entity.set_item_slot(2, Some(stone(5))), Ok(true));
+                        if s.write_update {
+                            entity.set_client_update_fields(mod_api::Compound::from([(
+                                "panic_fixture".into(),
+                                mod_api::Tag::Int(1),
+                            )]));
+                        }
+                    })
+                    .expect("live resident block entity");
+                let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                let dirt = mod_api::ItemStack::new(key, 1).unwrap();
+                let place = ItemPlace::PlayerSlot {
+                    player: 12,
+                    slot: 20,
+                };
+                assert_eq!(
+                    place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
+                    2
+                );
+                panic!("a listener failed");
+            });
         }
         if s.take {
-            event.entity.items.resize(9, None);
-            event.entity.items[1] = Some(stone(if s.invalid { 65 } else { 4 }));
-            event.entity.items[2] = Some(stone(if s.all { 6 } else { 5 }));
-            if s.write_update {
-                event
-                    .entity
-                    .set_client_update_fields(mod_api::Compound::from([(
-                        "panic_fixture".into(),
-                        mod_api::Tag::Int(1),
-                    )]));
-            }
+            event
+                .subject
+                .with_view(|mut entity| {
+                    assert_eq!(entity.set_item_slot(1, Some(stone(4))), Ok(true));
+                    assert_eq!(
+                        entity.set_item_slot(2, Some(stone(if s.all { 6 } else { 5 }))),
+                        Ok(true)
+                    );
+                    if s.write_update {
+                        entity.set_client_update_fields(mod_api::Compound::from([(
+                            "panic_fixture".into(),
+                            mod_api::Tag::Int(1),
+                        )]));
+                    }
+                })
+                .expect("live resident block entity");
             if s.all {
                 *event.stack = None;
             } else {
@@ -123,15 +179,18 @@ impl BlockEntityPart for Part {
             }
         }
         if s.cross {
-            let level = host.level("minecraft:overworld").expect("the level");
-            let items = level
-                .capability(host, &ITEMS, [2, 64, 1], None)
-                .expect("the second block's items");
-            let tx = host.transaction_current().expect("inside the action");
-            assert_eq!(
-                items.insert_at(host, &tx, 0, &ItemResource::of(&stone(1)), 4),
-                4
-            );
+            let _: Result<(), ()> = event.subject.transaction(|scope, tx| {
+                let host = scope.host();
+                let level = host.level("minecraft:overworld").expect("the level");
+                let items = level
+                    .capability(host, &ITEMS, [2, 64, 1], None)
+                    .expect("the second block's items");
+                assert_eq!(
+                    items.insert_at(host, tx, 0, &ItemResource::of(&stone(1)), 4),
+                    4
+                );
+                Ok(())
+            });
             event.stack.as_mut().unwrap().set_count(6).unwrap();
         }
         if s.panic {
@@ -143,7 +202,7 @@ impl BlockEntityPart for Part {
         Flow::Continue
     }
 
-    fn menu_slot_take(&self, host: &mut dyn ServerHost, event: &mut MenuSlotTakeEvent<'_>) {
+    fn menu_slot_take(&self, event: &mut MenuSlotTakeEvent<'_>) {
         if !SCRIPT.with(|s| s.borrow().handle_cross) {
             return;
         }
@@ -152,8 +211,19 @@ impl BlockEntityPart for Part {
             event.left.map_or(0, |left| left.count()),
         )));
         if SCRIPT.with(|s| s.borrow().fail_take) {
-            write_dirt(host);
-            panic!("the take listener failed after the cross-block move");
+            let _: Result<(), ()> = event.subject.transaction(|scope, tx| {
+                let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                let dirt = mod_api::ItemStack::new(key, 1).unwrap();
+                let place = ItemPlace::PlayerSlot {
+                    player: 12,
+                    slot: 20,
+                };
+                assert_eq!(
+                    place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
+                    2
+                );
+                panic!("the take listener failed after the cross-block move");
+            });
         }
     }
 }
@@ -313,18 +383,6 @@ fn with_publication_mods(test: impl FnOnce()) {
     });
 }
 
-fn detached_depot(id: &str) -> ModBlockEntity {
-    let mut items = vec![None; 9];
-    items[0] = Some(ItemStack::new("minecraft:stone", 10));
-    ModBlockEntity::new(
-        id.into(),
-        ModBlockEntityFields {
-            items,
-            ..Default::default()
-        },
-    )
-}
-
 /// How many decisions were entered since the last `script`.
 fn decided() -> usize {
     super::decided_action::DECIDED.get()
@@ -460,6 +518,25 @@ fn open_depot(game: &mut crate::game::Game<'_>) -> i32 {
         (0, 0),
         std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
     );
+    let state = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    game.world.set(POS.0, POS.1, POS.2, state).unwrap();
+    game.world.block_entities.set_mod_containers(
+        [(
+            state.0,
+            Arc::new(ModContainer {
+                slots: 9,
+                inputs: vec![0],
+                ..Default::default()
+            }),
+        )]
+        .into_iter()
+        .collect(),
+    );
     let mut fields = ModBlockEntityFields {
         items: vec![None; 9],
         ..Default::default()
@@ -567,15 +644,15 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
                     .window;
                 game.lan_guest_packet(12, container_click(window, 0, 1));
             };
-            // Row 72: the mod takes 9 of the 10 into two slots: the move applies once, inside the
-            // action, and the plain routing is skipped.
+            // The mod takes 9 of the 10 into two live slots and skips plain routing, with no
+            // implicit per-listener transaction.
             script(Script {
                 take: true,
                 ..Script::default()
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
+            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
             assert_eq!(depot(game), (1, 4, 5, 0));
             assert!(game.transactions.is_empty());
             // A complete move empties the source through the optional API remainder.
@@ -587,9 +664,8 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             });
             click(game);
             assert_eq!(depot(game), (0, 4, 6, 0));
-            // Row 77: the same move, and the listener also writes the guest's inventory: stale,
-            // so the whole move is refused: the source keeps its 10 and neither target slot is
-            // left holding a prefix of the move.
+            // Writing guest inventory alongside the live quick move is allowed (no Epoch::Player
+            // staleness guard).
             open_depot(game);
             script(Script {
                 take: true,
@@ -598,8 +674,15 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             });
             click(game);
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(depot(game), (10, 0, 0, 0));
-            // Row 89: an invalid answer (a stack past the maximum) refuses the whole move too.
+            assert_eq!(depot(game), (1, 4, 5, 2));
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |g| g.inventory[20] = None);
+            // Boundary validation refuses an oversized stack write and an oversized remainder
+            // leaves the clicked slot untouched.
             open_depot(game);
             script(Script {
                 take: true,
@@ -608,7 +691,7 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             });
             click(game);
             assert_eq!(depot(game), (10, 0, 0, 0));
-            // Row 90: applied inside a transaction that then aborts: the move is undone.
+            // Applied inside an enclosing transaction that then aborts: live edits roll back.
             open_depot(game);
             script(Script {
                 take: true,
@@ -619,12 +702,11 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             assert_eq!(depot(game), (1, 4, 5, 0));
             game.transaction_close(&seal, false);
             assert_eq!(depot(game), (10, 0, 0, 0));
-            // Rows 79 and 84: a panic aborts the live write inside the click's savepoint.
+            // A panic inside `subject.transaction(...)` aborts subject and world writes together
+            // and discards the remainder without falling through to plain routing.
             open_depot(game);
             script(Script {
-                take: true,
-                write_dirt: true,
-                panic: true,
+                transactional_panic: true,
                 ..Script::default()
             });
             click(game);
@@ -776,39 +858,67 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
 
 #[test]
 #[ignore = "daily"]
-fn a_panicking_checked_quick_move_cannot_publish_a_detached_prefix() {
+fn menu_quick_move_validates_writes_and_contains_panics_on_live_resident_block_entity() {
     with_publication_mods(|| {
         with_guests(|game| {
-            let pos = [POS.0, POS.1, POS.2];
-            let mut entity = detached_depot("movemod:depot");
-            let before = entity.revision();
-            let mut stack = Some(ItemStack::new("minecraft:stone", 10));
-            let mut handled = false;
-            let edits = Script {
-                take: true,
-                write_update: true,
-                ..Script::default()
+            let window = open_depot(game);
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(SECOND.0, SECOND.1, SECOND.2, stone).unwrap();
+            let mut healthy_fields = ModBlockEntityFields {
+                items: vec![None; 9],
+                ..Default::default()
             };
+            healthy_fields.items[0] = Some(ItemStack::new("minecraft:stone", 10));
+            game.world.block_entities.insert(
+                SECOND,
+                BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                    "healthy_menu:depot".into(),
+                    healthy_fields,
+                ))),
+            );
+            let entity_at = |game: &crate::game::Game<'_>, pos: (i32, i32, i32)| {
+                let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos) else {
+                    panic!("live resident block entity missing at {pos:?}");
+                };
+                entity
+            };
+
+            // Invalid boundary write and oversized remainder leave the live resident entity untouched.
             script(Script {
-                panic: true,
-                ..edits.clone()
+                invalid: true,
+                ..Script::default()
             });
-            // Call the publication boundary directly; the decided-action guard cannot
-            // undo an accidental writeback and make this test pass.
-            assert!(!game.menu_quick_move_checked(
-                pos,
-                &mut entity,
-                9,
-                0,
-                &mut stack,
-                &mut handled
-            ));
+            game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(entity.revision(), before);
-            assert!(entity.items[1..3].iter().all(Option::is_none));
-            assert!(!entity.has_client_update_fields());
-            assert_eq!(stack, Some(ItemStack::new("minecraft:stone", 10)));
-            assert!(!handled);
+            assert_eq!(
+                entity_at(game, POS).items[0],
+                Some(ItemStack::new("minecraft:stone", 10))
+            );
+            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
+            assert!(!entity_at(game, POS).has_client_update_fields());
+
+            // A panic inside `subject.transaction(...)` rolls back subject + world edits together,
+            // discards the remainder/handled outputs, and disables `"movemod"` for `menu_quick_move`.
+            script(Script {
+                write_update: true,
+                transactional_panic: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(
+                entity_at(game, POS).items[0],
+                Some(ItemStack::new("minecraft:stone", 10))
+            );
+            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
+            assert!(!entity_at(game, POS).has_client_update_fields());
+            assert_eq!(inventory(game, 20), 0);
+            assert!(game.transactions.is_empty());
             assert_eq!(
                 mod_api::__private::take_hook_panics(),
                 [mod_api::__private::HookPanicReport {
@@ -817,25 +927,47 @@ fn a_panicking_checked_quick_move_cannot_publish_a_detached_prefix() {
                 }]
             );
 
-            script(edits);
-            assert!(game.menu_quick_move_checked(pos, &mut entity, 9, 0, &mut stack, &mut handled));
+            // Subsequent shift-clicks on `"movemod:depot"` skip the disabled listener and fall
+            // through to vanilla routing.
+            let edits = Script {
+                take: true,
+                write_update: true,
+                ..Script::default()
+            };
+            script(edits.clone());
+            game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 0);
-            assert!(!handled);
-            let mut healthy = detached_depot("healthy_menu:depot");
-            assert!(game.menu_quick_move_checked(
-                pos,
-                &mut healthy,
-                9,
-                0,
-                &mut stack,
-                &mut handled
-            ));
+            assert_eq!(entity_at(game, POS).items[0], None);
+            assert!(entity_at(game, POS).items[1..3].iter().all(Option::is_none));
+
+            // A healthy owner's block entity still runs `menu_quick_move` in place.
+            let host = game.lan.as_mut().unwrap();
+            host.hub.open_container(
+                12,
+                "minecraft:generic_9x1",
+                sunrise_core::nbt::Tag::String("healthy".into()),
+                SECOND,
+                Slots::Block(SECOND),
+                vec![None; 9],
+                None,
+            );
+            let healthy_window = host.hub.guests[0].menu.as_ref().unwrap().window;
+            script(edits);
+            game.lan_guest_packet(12, container_click(healthy_window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(healthy.items[1], Some(ItemStack::new("minecraft:stone", 4)));
-            assert_eq!(healthy.items[2], Some(ItemStack::new("minecraft:stone", 5)));
-            assert!(healthy.has_client_update_fields());
-            assert_eq!(stack, Some(ItemStack::new("minecraft:stone", 1)));
-            assert!(handled);
+            assert_eq!(
+                entity_at(game, SECOND).items[0],
+                Some(ItemStack::new("minecraft:stone", 1))
+            );
+            assert_eq!(
+                entity_at(game, SECOND).items[1],
+                Some(ItemStack::new("minecraft:stone", 4))
+            );
+            assert_eq!(
+                entity_at(game, SECOND).items[2],
+                Some(ItemStack::new("minecraft:stone", 5))
+            );
+            assert!(entity_at(game, SECOND).has_client_update_fields());
         });
     });
 }
@@ -854,58 +986,56 @@ fn a_mod_quick_move_no_mod_took_is_left_to_the_games_routing() {
         });
         result.unwrap()
     };
-    // Row 92: with no part for the hook, the plain click: no dispatch, and the result is the
+    // With no part for the hook, the plain click: no dispatch, and the result is the
     // game's own routing.
     let plain = run();
     assert_eq!(DISPATCHES.get(), 0);
-    // The ordinary path: the decision is never entered.
     assert_eq!(decided(), 0);
-    // A listener that only looks is asked once, in the action, and leaves the click to the same
-    // routing: the same result.
+    // A listener that only looks is asked once directly (no decided action) and leaves the click
+    // to the same routing: the same result.
     with_mod(|| {
         assert_eq!(run(), plain);
         assert_eq!(DISPATCHES.get(), 1);
-        assert_eq!(decided(), 1);
-        assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
+        assert_eq!(decided(), 0);
+        assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
     });
 }
 
 #[test]
 #[ignore = "daily"]
-fn an_untaken_quick_move_that_wrote_to_another_block_is_undone_and_routed_once() {
+fn an_untaken_quick_move_keeps_live_writes_and_falls_through_to_routing() {
     with_mod(|| {
         with_guests(|game| {
             let window = open_depot(game);
             second_block(game);
-            // The listener moves 4 of the 10 into the second block, leaves 6 in `stack` and
-            // returns unhandled. The action is cancelled: the second block is empty again, and
-            // the game's own routing then moves the original 10 exactly once, so no stone exists
-            // twice and none is lost.
+            // The listener moves 4 into the second block via `subject.transaction(...)` and
+            // returns unhandled: its committed cross-block write stays (no rollback-before-fallback)
+            // and the game's routing then moves the depot's 10 to inventory.
             script(Script {
                 cross: true,
                 ..Script::default()
             });
             game.lan_guest_packet(12, container_click(window, 0, 1));
             assert_eq!(DISPATCHES.get(), 1);
-            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
-            let (depot, second, inventory) = stone_everywhere(game);
-            assert_eq!((second, depot + inventory), (0, 10));
+            assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [false]);
+            let (depot, second, inv) = stone_everywhere(game);
+            assert_eq!((depot, second, inv), (0, 4, 10));
             assert!(game.transactions.is_empty());
-            // The same click inside a transaction that aborts afterwards: the depot's 10 are
-            // back in it, the second block is empty, and the inventory holds what the first
-            // click routed there.
+            // The same click inside an enclosing transaction that aborts afterwards rolls back
+            // both the listener's cross-block write and the game's routing.
             let window = open_depot(game);
+            second_block(game);
             let seal = game.transaction_open();
             game.lan_guest_packet(12, container_click(window, 0, 1));
             game.transaction_close(&seal, false);
-            assert_eq!(stone_everywhere(game), (10, 0, inventory));
+            assert_eq!(stone_everywhere(game), (10, 0, inv));
         });
     });
 }
 
 #[test]
 #[ignore = "daily"]
-fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
+fn a_handled_cross_block_move_fires_slot_take_and_contains_take_panics() {
     with_mod(|| {
         with_guests(|game| {
             let kind = Box::leak(Box::new(ModMenuType {
@@ -937,42 +1067,23 @@ fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
                 game.lan_guest_packet(12, container_click(window, 0, 1));
                 assert_eq!(DISPATCHES.get(), 1);
                 assert_eq!(TAKE.get(), Some((4, 6)));
-                assert_eq!(
-                    stone_everywhere(game),
-                    if fail_take { (10, 0, 0) } else { (6, 4, 0) }
-                );
+                // The cross-block move committed before `menu_slot_take`; when `menu_slot_take`
+                // panics inside its own `subject.transaction(...)`, its transactional write is
+                // rolled back and the panic is contained without undoing the earlier move.
+                assert_eq!(stone_everywhere(game), (6, 4, 0));
                 assert_eq!(inventory(game, 20), 0);
                 assert!(game.transactions.is_empty());
+                if fail_take {
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "movemod",
+                            hook: "menu_slot_take",
+                        }]
+                    );
+                }
             }
         })
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
-    use super::native_quick_move::Admitted;
-    with_guests(|game| {
-        let window = open_depot(game);
-        let admitted = Admitted::of(game, 12, POS, 9, window).expect("the menu is open");
-        assert!(admitted.holds(game));
-        // The same values written again keep the block entity's identity: still fresh.
-        let same = game.world.block_entities.get(&POS).unwrap().clone();
-        game.world.block_entities.insert(POS, same.clone());
-        assert!(admitted.holds(game));
-        // Another instance with equal values, which a listener's command could have placed: stale.
-        game.world.block_entities.replace(POS, same);
-        assert!(!admitted.holds(game));
-        // A fresh admission on the replacement holds, and a closed window does not.
-        let admitted = Admitted::of(game, 12, POS, 9, window).unwrap();
-        assert!(admitted.holds(game));
-        game.lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update(0, |guest| guest.menu = None);
-        assert!(!admitted.holds(game));
     });
 }
 

@@ -3,30 +3,33 @@
 
 pub trait Hooks {
     /// A player shift-clicked slot `slot` of the menu of the mod block
-    /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
-    /// Java menu overrides), on the server, before the game's own routing:
-    /// move the stack where your block wants it. `slot` is the menu's index:
-    /// below `container_slots` it is the block's own slot (`entity.items`),
-    /// from there on the player's inventory (27 main slots, then the hotbar).
+    /// entity (`AbstractContainerMenu.quickMoveStack`, the method a Java
+    /// menu overrides), on the server, before the game's own routing:
+    /// move the stack where your block wants it. `subject` lends sequential
+    /// access to the live resident block entity (`subject.with_view(...)`),
+    /// the server `Host` (`subject.host()`), and atomic transactions
+    /// (`subject.transaction(...)`); `with_view` returns `None` if the block
+    /// entity was removed or replaced during the call. `slot` is the menu's
+    /// index: below `container_slots` it is the block's own slot, from there
+    /// on the player's inventory (27 main slots, then the hotbar).
     /// `stack` is a copy of what the slot holds; take what you move out of
-    /// it (put it in `entity.items`, or in another block through its
-    /// `ITEMS` capability) and set `handled`: the slot then holds what is
-    /// left of `stack` (`None` empties it, overriding that slot of `entity.items`),
-    /// the game's routing is skipped, and the player's client gets the menu
-    /// again. Left unhandled, `entity.items` goes back to what it held and
-    /// the game moves the stack as for any container; a later mod sees what
-    /// an earlier one did to `stack`.
+    /// it (put it into the block entity through `subject.with_view`, or into
+    /// another block through its `ITEMS` capability) and set `handled`: the
+    /// slot then holds what is left of `stack` (`None` empties it, overriding
+    /// that slot of the block entity), the game's routing is skipped, and the
+    /// player's client gets the menu again. Left unhandled, the game routes the
+    /// stack as for any container; a later mod sees what an earlier one did
+    /// to `stack`.
     ///
-    /// The move is one action: the answer is validated once and applied once.
-    /// A refused move changes nothing, with the listener's writes undone and the
-    /// client given the menu again. A panicking callback refuses the move before
-    /// writing back the detached entity, its queued update fields, or the `stack`
-    /// and `handled` outputs. An invalid answer (a stack past its item's maximum in
-    /// `entity.items` or `stack`) also refuses the move, as does a
-    /// listener wrote through the `Host` to a player's inventory, cursor or
-    /// menu storage (the move read its own player's; a write to any player's
-    /// counts). Writes to another block, as a move into its `ITEMS`
-    /// capability makes, do not make it stale.
+    /// Writes through `subject.with_view(...)` are checked at the boundary
+    /// and apply to the live resident block entity in place, marking the
+    /// chunk dirty and firing container updates when items change (matching
+    /// vanilla `BlockEntity.setChanged`). Use `subject.transaction(...)` when
+    /// an edit must span the subject and other world storage atomically. A
+    /// panicking callback is contained and disabled for `menu_quick_move` for
+    /// the rest of the session, discarding its `stack` and `handled` outputs
+    /// and resending the menu. An invalid `stack` remainder leaves the
+    /// clicked slot's original stack untouched.
     ///
     /// For a mod container on a vanilla menu type and on a mod menu type,
     /// the left or right button, a slot that holds something and that the
@@ -34,23 +37,23 @@ pub trait Hooks {
     /// longer valid, nor during a drag.
     /// Asked once per click, where vanilla asks `quickMoveStack` again while
     /// it keeps moving the same item. The player's state is swapped in, so
-    /// `host.players().acting_player()` names them; `entity` is out of the world
-    /// during the call, as in `menu_button`.
+    /// `subject.host().players().acting_player()` names them.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_quick_move",
+        receiver = "associated",
         dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "handled",
         scope = "block_entity",
-        key = "entity",
+        key = "kind",
         neoforge = "none (a Java menu overrides AbstractContainerMenu.quickMoveStack; no event)",
         cancellable = true,
-        version = 4
+        version = 5
     )]
     fn menu_quick_move(
-        pos: [i32; 3],
-        entity: &mut ModBlockEntity,
+        kind: mod_api::BlockEntityTypeKey,
+        subject: mod_api::BlockEntityScope<'_>,
         container_slots: usize,
         slot: usize,
         stack: &mut Option<mod_api::ItemStack>,

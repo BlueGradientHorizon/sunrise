@@ -239,7 +239,10 @@ pub(super) struct Level {
     block_entities: HashMap<Pos, Kept>,
     /// The block entities this transaction removed (`journal_remove_block_entity`): an abort
     /// puts them back as `block_entities` keeps them.
-    removed_block_entities: std::collections::HashSet<Pos>,
+    /// Entities this transaction removed from `world.block_entities`, holding the entity state
+    /// at removal time so a committing block removal spills post-edit contents while rollback
+    /// restores `block_entities`'s pre-transaction capture.
+    removed_block_entities: std::collections::HashMap<Pos, Option<BlockEntity>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -819,9 +822,16 @@ impl Game<'_> {
                 for (pos, kept) in level.block_entities {
                     outer.block_entities.entry(pos).or_insert(kept);
                 }
-                outer
-                    .removed_block_entities
-                    .extend(level.removed_block_entities);
+                for (pos, removed) in level.removed_block_entities {
+                    match removed {
+                        Some(entity) => {
+                            outer.removed_block_entities.insert(pos, Some(entity));
+                        }
+                        None => {
+                            outer.removed_block_entities.entry(pos).or_insert(None);
+                        }
+                    }
+                }
                 for (pos, block) in level.blocks {
                     outer
                         .blocks
@@ -1044,10 +1054,15 @@ impl Game<'_> {
             .entry(pos)
             .or_insert_with(|| Kept::capture(&self.world, &self.hoppers, pos));
     }
-    /// Puts back the block entity at `pos` that a transaction removed, as `kept` holds it, with
-    /// its generation, where none stands there now.
-    fn restore_removed_block_entity(&mut self, pos: Pos, kept: &Kept) {
-        let Some(entity) = &kept.entity else {
+    /// Puts back the block entity at `pos` that a transaction removed, using `entity` with
+    /// `kept`'s generation, where none stands there now.
+    fn restore_removed_block_entity(
+        &mut self,
+        pos: Pos,
+        kept: &Kept,
+        entity: Option<&BlockEntity>,
+    ) {
+        let Some(entity) = entity else {
             return;
         };
         if self.world.block_entities.get(&pos).is_some() {
@@ -1066,10 +1081,17 @@ impl Game<'_> {
     /// none. Outside a transaction, it just goes.
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
+        let removed = self.world.block_entities.remove(&pos);
         if let Some(level) = self.transactions.last_mut() {
-            level.removed_block_entities.insert(pos);
+            match removed {
+                Some(entity) => {
+                    level.removed_block_entities.insert(pos, Some(entity));
+                }
+                None => {
+                    level.removed_block_entities.entry(pos).or_insert(None);
+                }
+            }
         }
-        self.world.block_entities.remove(&pos);
     }
     /// How many block entities the open transactions keep whole, and how many single slots:
     /// what a test reads to tell a slot journal from a whole capture without timing it.
@@ -1720,12 +1742,16 @@ impl Game<'_> {
                     // Restore an entity that the real write must remove with its side effects,
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
-                    if level.removed_block_entities.contains(&pos)
+                    if let Some(removed) = level.removed_block_entities.get(&pos)
                         && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
                         && let Some(kept) = level.block_entities.get(&pos)
                     {
-                        self.restore_removed_block_entity(pos, kept);
+                        self.restore_removed_block_entity(
+                            pos,
+                            kept,
+                            removed.as_ref().or(kept.entity.as_ref()),
+                        );
                     }
                     if now != was {
                         // The stored state back, so the one real write sees the change.
@@ -1841,8 +1867,8 @@ impl Game<'_> {
                         .restore_generation(pos, kept.generation.unwrap());
                 }
                 // One this transaction removed comes back.
-                (Some(_), None) if level.removed_block_entities.contains(&pos) => {
-                    self.restore_removed_block_entity(pos, &kept);
+                (Some(_), None) if level.removed_block_entities.contains_key(&pos) => {
+                    self.restore_removed_block_entity(pos, &kept, kept.entity.as_ref());
                 }
                 _ => {}
             }
