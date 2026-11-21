@@ -136,22 +136,15 @@ impl Game<'_> {
         // tick's. A piston's moved block reaches the clients once their own
         // copy of it finished moving, so a slow tick rate shows it slide
         // (#8430).
-        if let Some(sent_blocks) = sent {
-            if let Some(log) = self.world.block_log.as_mut() {
-                self.world.block_log_held = log.split_off(sent_blocks.min(log.len()));
-            }
-            if let Some(log) = self.world.connection_group_log.as_mut() {
-                self.world.connection_group_log_held = std::mem::take(log);
-            }
+        if let Some(sent_blocks) = sent
+            && let Some(log) = self.world.block_log.as_mut()
+        {
+            self.world.block_log_held = log.split_off(sent_blocks.min(log.len()));
         }
         sunrise_client::spans::time("tick_lan", || self.tick_lan(false));
         let held = std::mem::take(&mut self.world.block_log_held);
         if let Some(log) = self.world.block_log.as_mut() {
             log.extend(held);
-        }
-        let held_groups = std::mem::take(&mut self.world.connection_group_log_held);
-        if let Some(log) = self.world.connection_group_log.as_mut() {
-            log.extend(held_groups);
         }
         span("tick_friends", || self.tick_friends());
         sunrise_client::spans::time("tick_sleep", || self.tick_sleep());

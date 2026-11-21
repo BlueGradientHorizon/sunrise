@@ -1,45 +1,118 @@
 //! Per-position connected-texture group receive path.
-use super::{Game, remote::Remote};
-use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
+use super::Game;
+use sunrise_protocol::{
+    Error,
+    connection_groups::{self, Section},
+    packets::play::Clientbound as C,
+};
 
 #[path = "native_connection_groups/receive.rs"]
 mod receive;
-pub(in crate::game) use receive::{GroupIngress, ReceivedGroup};
+pub(in crate::game) use receive::{GroupUpdates, ReceivedGroup, block_groups, column_groups};
 
-impl Remote {
-    pub(in crate::game) fn negotiates_connection_groups(&self) -> bool {
-        self.session
-            .payload_transport()
-            .epoch()
-            .is_some_and(|epoch| {
-                epoch.phase == Phase::Play
-                    && epoch
-                        .peer
-                        .engine_receives(Phase::Play, connection_groups::CHANNEL)
-            })
+fn payload<'a>(packet: &'a C, channel: &str) -> Option<&'a [u8]> {
+    match packet {
+        C::CustomPayload(packet) if packet.channel == channel => Some(&packet.data),
+        _ => None,
     }
 }
 
 impl Game<'_> {
-    pub(super) fn remote_connection_groups(&mut self, data: &[u8]) {
-        let Some(remote) = self.remote.as_mut() else {
-            return;
+    /// True means this whole bundle was routed. Ordinary bundles still use the
+    /// usual dispatch, with the same packet observations in their original order.
+    pub(in crate::game) fn route_connection_group_bundle(
+        &mut self,
+        members: &[C],
+        negotiated: bool,
+    ) -> crate::game::Result<bool> {
+        let [first, rest @ ..] = members else {
+            return Ok(false);
         };
-        if !remote.negotiates_connection_groups() {
-            return;
+        if members
+            .iter()
+            .any(|event| payload(event, connection_groups::CHANNEL).is_some())
+        {
+            let result = (|| {
+                if !negotiated {
+                    return Err(Error::new("connection groups: channel was not negotiated"));
+                }
+                let sections = rest
+                    .iter()
+                    .map(|event| {
+                        let data = payload(event, connection_groups::CHANNEL).ok_or_else(|| {
+                            Error::new("connection groups: unexpected packet in bundle")
+                        })?;
+                        Section::decode(data)
+                    })
+                    .collect::<sunrise_protocol::Result<Vec<_>>>()?;
+                if sections.is_empty() {
+                    return Err(Error::new("connection groups: missing companion packet"));
+                }
+                self.observe_client_packet(first);
+                self.apply_connection_group_packet(first, &sections)?;
+                for packet in rest {
+                    self.observe_client_packet(packet);
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                self.refuse_play_payload(error)?;
+            }
+            return Ok(true);
         }
-        match remote.group_ingress.receive(data, &remote.group_budget) {
-            Ok(Some(updates)) => {
-                for (pos, group) in updates.into_updates() {
-                    self.server_group(pos, group);
+        // A scoped pair has one vanilla packet in its first run and group
+        // sections in the following runs, all in one vanilla outer bundle.
+        let channel = sunrise_protocol::viewed_levels::CHANNEL;
+        if !rest.is_empty()
+            && payload(first, channel).is_some()
+            && let Some(runs) = members
+                .iter()
+                .map(|packet| payload(packet, channel).map(|data| (packet, data)))
+                .collect::<Option<Vec<_>>>()
+        {
+            if let Err(error) = self.route_viewed_bundle(&runs, negotiated) {
+                self.refuse_play_payload(error)?;
+            }
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    fn apply_connection_group_packet(
+        &mut self,
+        packet: &C,
+        sections: &[Section],
+    ) -> sunrise_protocol::Result<()> {
+        if let C::LevelChunkWithLight(packet) = packet {
+            if !self.remote_chunk_in_range(packet.x, packet.z) {
+                return Err(Error::new("connection groups: column outside the view"));
+            }
+            let format = self
+                .remote
+                .as_ref()
+                .ok_or_else(|| Error::new("connection groups: no remote level"))?
+                .chunk_format
+                .clone();
+            let mut chunk = format.column(packet).map_err(Error::new)?;
+            column_groups(&mut chunk, self.world.shape, sections)?;
+            self.remote_chunk(packet, Some((&format, Ok(chunk))));
+        } else {
+            let mut groups = block_groups(&self.world, packet, sections)?;
+            match packet {
+                C::BlockUpdate(packet) => {
+                    self.server_block(packet.pos, packet.state, groups.remove(&packet.pos))
+                }
+                C::SectionBlocksUpdate(packet) => {
+                    self.apply_section_blocks_update_packet(packet, groups)
+                }
+                _ => {
+                    return Err(Error::new(
+                        "connection groups: companion is not a block update",
+                    ));
                 }
             }
-            Ok(None) => {}
-            Err(error) => {
-                remote.group_ingress.discard();
-                log::debug!("Sunrise: bad connection_groups payload: {error}");
-            }
         }
+        Ok(())
     }
 }
 
@@ -66,11 +139,12 @@ mod tests {
     };
     use sunrise_protocol::{
         connection::Pipe,
-        connection_groups::{ChunkEntry, Message, UpdateEntry},
+        connection_groups::{Cell, Entry},
         packets::{
             custom_payload::CustomPayload,
             play::{self, Clientbound as C},
         },
+        payload_negotiation::Phase,
     };
 
     fn state(game: &Game<'_>, name: &str) -> mod_api::BlockState {
@@ -157,14 +231,16 @@ mod tests {
             assert_eq!(level.connection_group(game, [2, 64, 3]), Ok(Some(0)));
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Replacing with a different block clears storage automatically without logging an
-            // explicit connection-group entry (clients derive the group when the block is sent).
+            // Replacing with a different block also publishes the automatic clear.
             assert_eq!(
                 level.set_block(game, [2, 64, 3], stone, BlockUpdateFlags::NONE),
                 Ok(true)
             );
             assert_eq!(level.connection_group(game, [2, 64, 3]), Ok(None));
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(2, 64, 3)].into_iter().collect()
+            );
 
             // Weathering a copper chest preserves the connection group (same rule as block entities).
             assert_eq!(
@@ -378,8 +454,7 @@ mod tests {
             assert!(game.world.dirty_sections.is_empty());
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Committed transaction replacing a block without setting a new group clears storage
-            // automatically without logging an explicit connection-group entry.
+            // A committed replacement with no vanilla notification still publishes its clear.
             let commit_clear = game.transaction_open();
             assert_eq!(
                 level.set_block(game, [4, 64, 4], glass, BlockUpdateFlags::NONE),
@@ -389,7 +464,10 @@ mod tests {
             game.transaction_close(&commit_clear, true);
             assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(None));
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(4, 64, 4)].into_iter().collect()
+            );
 
             // Committed transaction replacing a block and setting a new group keeps the new group
             // and logs only the explicit write.
@@ -420,8 +498,8 @@ mod tests {
                 &[(4, 64, 4)].into_iter().collect()
             );
 
-            // Held non-ticking column round-trip (`oak_log[y] -> stone -> oak_log[x]`): clears
-            // storage without logging to either `block_log` or `connection_group_log`.
+            // Held non-ticking column round-trip (`oak_log[y] -> stone -> oak_log[x]`):
+            // there is no vanilla send, but the group lifetime ended.
             assert_eq!(
                 level.set_block(game, [5, 64, 5], log_y, BlockUpdateFlags::NONE),
                 Ok(true)
@@ -445,11 +523,14 @@ mod tests {
             game.transaction_close(&round_trip, true);
             assert_eq!(level.connection_group(game, [5, 64, 5]), Ok(None));
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(5, 64, 5)].into_iter().collect()
+            );
 
             // Held non-ticking column with explicit write sandwiched between two replacing writes
             // (`oak_log[y] -> stone -> set_connection_group(99) -> oak_log[x]`): second replace
-            // clears storage and drops the superseded explicit log entry without leaking `None`.
+            // clears the group and only its final value is published.
             assert_eq!(
                 level.set_block(game, [7, 64, 7], log_y, BlockUpdateFlags::NONE),
                 Ok(true)
@@ -477,10 +558,12 @@ mod tests {
             game.transaction_close(&sandwich, true);
             assert_eq!(level.connection_group(game, [7, 64, 7]), Ok(None));
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(7, 64, 7)].into_iter().collect()
+            );
 
-            // Held non-ticking column `now == was` round-trip (`oak_log[y] -> stone -> oak_log[y]`):
-            // clears storage without leaking a synthetic connection-group log entry.
+            // Returning to the same block state does not extend a cleared group's lifetime.
             assert_eq!(
                 level.set_block(game, [7, 65, 7], log_y, BlockUpdateFlags::NONE),
                 Ok(true)
@@ -503,10 +586,12 @@ mod tests {
             game.transaction_close(&same_state, true);
             assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(None));
             assert!(game.world.block_log.as_ref().unwrap().is_empty());
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(7, 65, 7)].into_iter().collect()
+            );
 
-            // The same notified round-trip in a ticking column queues a real block update.
-            // The broadcast derives the clear from the same cell as the queued block.
+            // A same-state transaction can also publish a new group without adding vanilla traffic.
             game.tickets.update(Some(Sources {
                 forced: vec![(0, 0)],
                 ..Sources::default()
@@ -526,10 +611,17 @@ mod tests {
                 level.set_block(game, [7, 65, 7], log_y, BlockUpdateFlags::CLIENTS),
                 Ok(true)
             );
+            assert_eq!(
+                level.set_connection_group(game, [7, 65, 7], Some(15)),
+                Ok(true)
+            );
             game.transaction_close(&same_state, true);
-            assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(None));
-            assert_eq!(game.world.block_log.as_deref(), Some(&[(7, 65, 7)][..]));
-            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+            assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(Some(15)));
+            assert!(game.world.block_log.as_ref().unwrap().is_empty());
+            assert_eq!(
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(7, 65, 7)].into_iter().collect()
+            );
             game.tickets.update(Some(non_ticking));
 
             // Cross-position cascade on held non-ticking column: `set_connection_group(torch)`
@@ -764,7 +856,7 @@ mod tests {
             );
             game.transaction_close(&abort, false);
             assert_eq!(level.connection_group(game, untouched), Ok(None));
-            assert!(!game.world.chunks[&(1, 0)].has_held_connection_groups);
+            assert!(game.world.chunks[&(1, 0)].connection_groups.is_empty());
 
             // A command can temporarily put another dimension in place while a transaction
             // stays open. The same coordinates there must not rewrite the parked baseline.
@@ -796,11 +888,39 @@ mod tests {
         });
     }
 
-    fn group_packet(msg: Message) -> C {
+    fn group_packet(pos: [i32; 3], group: Option<u64>) -> C {
         C::CustomPayload(CustomPayload {
             channel: connection_groups::CHANNEL.into(),
-            data: connection_groups::encode(&msg).unwrap(),
+            data: Section {
+                pos: pos.map(|coord| coord >> 4),
+                entries: vec![Entry {
+                    cell: Cell::of(pos),
+                    group,
+                }],
+            }
+            .encode()
+            .unwrap(),
         })
+    }
+
+    fn deliver_group_bundle(game: &mut Game<'_>, packets: Vec<C>) {
+        let epoch = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .session
+            .payload_transport()
+            .epoch();
+        let negotiated = epoch.is_some_and(|epoch| {
+            epoch.phase == Phase::Play
+                && epoch
+                    .peer
+                    .engine_receives(Phase::Play, connection_groups::CHANNEL)
+        });
+        assert!(
+            game.route_connection_group_bundle(&packets, negotiated)
+                .unwrap()
+        );
     }
 
     fn negotiate(game: &Game<'_>, with_groups: bool) {
@@ -816,7 +936,14 @@ mod tests {
             .collect();
         transport.accept(&entries).unwrap();
         transport.finish_configuration().unwrap();
-        assert_eq!(remote.negotiates_connection_groups(), with_groups);
+        assert_eq!(
+            transport
+                .epoch()
+                .unwrap()
+                .peer
+                .engine_receives(Phase::Play, connection_groups::CHANNEL),
+            with_groups
+        );
     }
 
     #[test]
@@ -838,34 +965,19 @@ mod tests {
             let sy = (64 - MIN_Y) >> 4;
             game.handle_packet(viewed_column(1, 0)).unwrap();
             game.world.dirty_sections.clear();
-            let snapshot = |replace, entries| {
-                group_packet(Message::Chunk {
-                    cx: 0,
-                    cz: 0,
-                    replace,
-                    entries,
-                })
-            };
-            let border = ChunkEntry::new(15, 64, 2, 55).unwrap();
-            let interior = ChunkEntry::new(1, 80, 2, 66).unwrap();
-
-            // Each arrival can land on a different frame: neither prefix publishes a
-            // partial column or requests a remesh. Adoption publishes both parts together.
-            game.handle_packet(snapshot(true, vec![border])).unwrap();
-            assert!(!game.world.chunks.contains_key(&(0, 0)));
-            game.handle_packet(snapshot(false, vec![interior])).unwrap();
-            assert!(!game.world.chunks.contains_key(&(0, 0)));
-            assert!(game.world.dirty_sections.is_empty());
-            game.handle_packet(viewed_column(0, 0)).unwrap();
+            let border = group_packet([15, 64, 2], Some(55));
+            let interior = group_packet([1, 80, 2], Some(66));
+            deliver_group_bundle(
+                game,
+                vec![viewed_column(0, 0), border.clone(), interior.clone()],
+            );
             assert_eq!(level.connection_group(game, [15, 64, 2]), Ok(Some(55)));
             assert_eq!(level.connection_group(game, [1, 80, 2]), Ok(Some(66)));
 
-            // Repartition the same groups across parts. The unchanged column remains clean.
+            // A resend compares one complete map. Reordering its sections does
+            // not invalidate the mesh of either side of an unchanged border.
             game.world.dirty_sections.clear();
-            game.handle_packet(snapshot(true, vec![interior])).unwrap();
-            game.handle_packet(snapshot(false, vec![border])).unwrap();
-            assert!(game.world.dirty_sections.is_empty());
-            game.handle_packet(viewed_column(0, 0)).unwrap();
+            deliver_group_bundle(game, vec![viewed_column(0, 0), interior, border]);
             assert!(!game.world.dirty_sections.contains(&(0, sy, 0)));
             assert!(!game.world.dirty_sections.contains(&(1, sy, 0)));
 
@@ -876,19 +988,16 @@ mod tests {
             for (sequence, server, shown, id) in [(1, stone, air, 88), (2, air, air, 99)] {
                 game.predict_blocks(&[(at, shown)], sequence);
                 let group_before = level.connection_group(game, pos);
-                game.handle_packet(group_packet(Message::Blocks {
-                    entries: vec![UpdateEntry {
-                        pos,
-                        group: Some(id),
-                    }],
-                }))
-                .unwrap();
-                assert_eq!(level.connection_group(game, pos), group_before);
-                game.handle_packet(C::BlockUpdate(play::BlockUpdate {
-                    pos,
-                    state: server.0 as i32,
-                }))
-                .unwrap();
+                deliver_group_bundle(
+                    game,
+                    vec![
+                        C::BlockUpdate(play::BlockUpdate {
+                            pos,
+                            state: server.0 as i32,
+                        }),
+                        group_packet(pos, Some(id)),
+                    ],
+                );
                 assert_eq!(game.world.block(pos[0], pos[1], pos[2]), shown);
                 assert_eq!(level.connection_group(game, pos), group_before);
                 game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence }))
@@ -990,15 +1099,13 @@ mod tests {
                 .layer
         };
         let send_column = |game: &mut Game<'_>, cx, local_x| {
-            game.handle_packet(group_packet(Message::Chunk {
-                cx,
-                cz: 0,
-                replace: true,
-                entries: vec![ChunkEntry::new(local_x, 79, 2, 7).unwrap()],
-            }))
-            .unwrap();
-            game.handle_packet(crate::game::viewed_worlds::tests::layered(cx, 0, 9))
-                .unwrap();
+            deliver_group_bundle(
+                game,
+                vec![
+                    crate::game::viewed_worlds::tests::layered(cx, 0, 9),
+                    group_packet([(cx << 4) + local_x, 79, 2], Some(7)),
+                ],
+            );
         };
         send_column(&mut game, 0, 15);
         let alone = top_layer(&game, &mut mesher, &mut scratch);
@@ -1014,66 +1121,56 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn viewed_groups_require_negotiation_and_share_the_active_worlds_budget() {
+    fn viewed_group_bundles_are_scoped_and_refuse_invalid_targets() {
         let mut resources = None;
         let pos = [15, 64, 2];
-        let group = |id| {
-            group_packet(Message::Update {
-                entries: vec![UpdateEntry {
-                    pos,
-                    group: Some(id),
-                }],
-            })
+        let packet = |pos| C::BlockUpdate(play::BlockUpdate { pos, state: 1 });
+        let send = |game: &mut Game<'_>, pos, group| {
+            deliver_group_bundle(
+                game,
+                vec![
+                    viewed_run(1, &[packet(pos)]),
+                    viewed_run(1, &[group_packet(pos, group)]),
+                ],
+            );
         };
-        for with_groups in [false, true] {
+        for reject in [None, Some(false), Some(true)] {
             let (mut game, _server) = client_with_pipe(&mut resources);
-            negotiate(&game, with_groups);
+            // Vanilla server adoption, before any mod negotiation, is unchanged.
             game.handle_packet(viewed_column(0, 0)).unwrap();
+            let own = game.level("minecraft:overworld").unwrap();
+            assert!(own.block_state(&game, pos).is_some());
+            assert_eq!(own.connection_group(&game, pos), Ok(None));
+            negotiate(&game, reject.unwrap_or(true));
             game.handle_packet(viewed_open(1, "minecraft:the_nether"))
                 .unwrap();
-            game.handle_packet(viewed_run(1, &[viewed_column(0, 0)]))
-                .unwrap();
-            let viewed = game.level("minecraft:the_nether").unwrap();
-            let own = game.level("minecraft:overworld").unwrap();
-            let budget = game.remote.as_ref().unwrap().group_budget.clone();
-            let _other_columns = budget.reserve(budget.available() - 2);
-
-            game.handle_packet(viewed_run(1, &[group(50)])).unwrap();
-            assert_eq!(
-                viewed.connection_group(&game, pos),
-                Ok(with_groups.then_some(50))
-            );
-            assert_eq!(own.connection_group(&game, pos), Ok(None));
-
-            game.handle_packet(group(60)).unwrap();
-            assert_eq!(
-                own.connection_group(&game, pos),
-                Ok(with_groups.then_some(60))
-            );
-            if !with_groups {
-                assert_eq!(budget.available(), 2);
+            if let Some(with_groups) = reject {
+                game.handle_packet(viewed_run(1, &[viewed_column(0, 0)]))
+                    .unwrap();
+                let target = if with_groups { [32, 64, 0] } else { pos };
+                send(&mut game, target, Some(70));
+                assert!(
+                    game.remote.is_none(),
+                    "unnegotiated or unloaded group target must disconnect"
+                );
                 continue;
             }
-            assert_eq!(budget.available(), 0);
-            let next = [14, 64, 2];
-            let update = || {
-                group_packet(Message::Update {
-                    entries: vec![UpdateEntry {
-                        pos: next,
-                        group: Some(70),
-                    }],
-                })
-            };
-            game.handle_packet(update()).unwrap();
-            assert_eq!(own.connection_group(&game, next), Ok(None));
-
+            deliver_group_bundle(
+                &mut game,
+                vec![
+                    viewed_run(1, &[viewed_column(0, 0)]),
+                    viewed_run(1, &[group_packet(pos, Some(50))]),
+                ],
+            );
+            let viewed = game.level("minecraft:the_nether").unwrap();
+            assert_eq!(viewed.connection_group(&game, pos), Ok(Some(50)));
+            assert_eq!(own.connection_group(&game, pos), Ok(None));
+            send(&mut game, pos, Some(60));
+            assert_eq!(viewed.connection_group(&game, pos), Ok(Some(60)));
+            send(&mut game, pos, None);
+            assert_eq!(viewed.connection_group(&game, pos), Ok(None));
             game.handle_packet(viewed_close(1)).unwrap();
-            assert_eq!(budget.available(), 1);
-            game.handle_packet(update()).unwrap();
-            assert_eq!(own.connection_group(&game, next), Ok(Some(70)));
-            game.handle_packet(C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [0, 0] }))
-                .unwrap();
-            assert_eq!(budget.available(), 2);
+            assert_eq!(own.connection_group(&game, pos), Ok(None));
         }
     }
 }

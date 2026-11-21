@@ -2562,7 +2562,7 @@ impl Hub {
                 .any(|g| g.participates_online() && g.dimension == self.config.dimension)
             {
                 let _ = ctx.world.block_log.take();
-                ctx.world.stop_group_sync();
+                ctx.world.connection_group_log = None;
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
@@ -2919,12 +2919,16 @@ impl Hub {
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
-                    g.sender.send_many(batch.into_iter().flat_map(|j| {
+                    let grouped = sync_groups
+                        && batch
+                            .iter()
+                            .any(|&j| !chunks[j].connection_groups.is_empty());
+                    let bodies = batch.into_iter().flat_map(|j| {
                         let chunk = chunks[j];
                         if memory {
                             super::handoff::offer(chunk);
                         }
-                        let prefix = if sync_groups {
+                        let groups = if grouped && !chunk.connection_groups.is_empty() {
                             block_changes::encode_chunk_connection_groups(chunk)
                         } else {
                             Vec::new()
@@ -2935,8 +2939,13 @@ impl Hub {
                         } else {
                             encoded[j].clone()
                         };
-                        prefix.into_iter().chain(std::iter::once(body))
-                    }));
+                        block_changes::group_bundle(body, groups)
+                    });
+                    if grouped {
+                        g.sender.send_batch(bodies);
+                    } else {
+                        g.sender.send_many(bodies);
+                    }
                     g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
                         size: size as i32,
                     }));
@@ -2969,9 +2978,6 @@ impl Hub {
                     );
                 }
                 for key in seen {
-                    if sync_groups && let Some(revision) = world.group_snapshot_revision(key) {
-                        g.group_snapshots.insert(key, revision);
-                    }
                     g.sent_chunks.insert(key);
                 }
             });
@@ -3003,7 +3009,6 @@ impl Hub {
                 .collect();
             for (x, z) in forget {
                 g.sent_chunks.remove(&(x, z));
-                g.group_snapshots.remove(&(x, z));
                 super::chunk_watch::unwatch(&mut self.chunk_watches, g, (x, z));
                 g.send(&C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [x, z] }));
             }
@@ -4885,7 +4890,6 @@ impl Hub {
             }
             g.tracker.clear();
             g.sent_chunks.clear();
-            g.group_snapshots.clear();
             g.chunk_queue.clear();
             g.viewed.forget_views();
             g.entity_id

@@ -146,12 +146,6 @@ impl World {
                                 .connection_groups
                                 .contains_key(&((s as u32) << 12 | at as u32)))
                             || (!journaled_groups.is_empty() && journaled_groups.contains(&pos))
-                            || self
-                                .connection_group_log
-                                .as_ref()
-                                .is_some_and(|log| !log.is_empty() && log.contains(&pos))
-                            || (!self.connection_group_log_held.is_empty()
-                                && self.connection_group_log_held.contains(&pos))
                         {
                             grouped_changes.push((pos, old, r.state));
                         }

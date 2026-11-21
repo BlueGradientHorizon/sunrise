@@ -27,7 +27,7 @@ fn every_registered_engine_codec_refuses_a_hostile_oversized_body() {
             protocol::attachment_sync::decode(body).is_err()
         }),
         ("sunrise:connection_groups", |body| {
-            protocol::connection_groups::decode(body).is_err()
+            protocol::connection_groups::Section::decode(body).is_err()
         }),
         ("sunrise:menu_extra", |body| {
             protocol::menu_extra::decode(body).is_err()

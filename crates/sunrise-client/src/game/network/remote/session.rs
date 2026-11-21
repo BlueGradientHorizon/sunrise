@@ -229,8 +229,6 @@ impl Game<'_> {
             last_input: 0,
             was_sprinting: false,
             carried: std::cell::Cell::new(None),
-            group_ingress: Default::default(),
-            group_budget: Default::default(),
             was_shared_flags: 0,
             was_living_flags: 0,
             last_recorded_pose: None,
@@ -489,8 +487,6 @@ impl Game<'_> {
             was_living_flags: 0,
             last_recorded_pose: None,
             carried: std::cell::Cell::new(None),
-            group_ingress: Default::default(),
-            group_budget: Default::default(),
             abilities: None,
             respawn_velocity: None,
             loaded_sent: false,
@@ -597,6 +593,18 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
+    /// Refuse a bad Play payload with the normal connection-error screen.
+    pub(in crate::game) fn refuse_play_payload(
+        &mut self,
+        error: impl std::fmt::Display,
+    ) -> Result<()> {
+        log::warn!("Sunrise: {error}");
+        self.leave_server(Some(Text::translate(
+            "disconnect.genericReason",
+            &[Text::literal(error.to_string())],
+        )))
+    }
+
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
     pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
@@ -793,7 +801,6 @@ impl Game<'_> {
         self.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
         r.predictions.clear();
-        r.group_ingress.discard();
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();

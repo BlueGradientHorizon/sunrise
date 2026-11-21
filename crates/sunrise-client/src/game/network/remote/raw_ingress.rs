@@ -44,9 +44,6 @@ impl Game<'_> {
             if let Received::Event(Event::Packet(packet), _) = &item
                 && let C::ForgetLevelChunk(p) = &**packet
             {
-                if let Some(remote) = self.remote.as_mut() {
-                    remote.group_ingress.discard();
-                }
                 self.observe_client_packet(packet);
                 forgotten.insert((p.pos[0], p.pos[1]));
                 forgotten_credits.push(item.into_event_credit());
@@ -83,9 +80,6 @@ impl Game<'_> {
                             break;
                         }
                         Next::Lost => {
-                            if let Some(remote) = self.remote.as_mut() {
-                                remote.group_ingress.discard();
-                            }
                             log::warn!("Sunrise: the chunk decoder stopped; a column is missing");
                             continue;
                         }
@@ -130,7 +124,7 @@ impl Game<'_> {
     fn handle_play_bundle(&mut self, bundle: sunrise_client::net::CompletedBundle) -> Result<bool> {
         use sunrise_client::net::BundleStep;
         use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
-        use sunrise_protocol::payload_negotiation::Phase;
+        use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
         let Some(remote) = self.remote.as_ref() else {
             return Ok(false);
@@ -139,6 +133,15 @@ impl Game<'_> {
             return Ok(true);
         }
         let endpoint = remote.session.payload_endpoint();
+        let negotiated = endpoint.transport().epoch().is_some_and(|epoch| {
+            epoch.phase == Phase::Play
+                && epoch
+                    .peer
+                    .engine_receives(Phase::Play, connection_groups::CHANNEL)
+        });
+        if self.route_connection_group_bundle(&packets, negotiated)? {
+            return Ok(self.remote.is_some());
+        }
         let mut end = None;
         for packet in packets {
             match io.bundle_member(packet) {

@@ -136,7 +136,12 @@ impl Game<'_> {
 
     /// ClientLevel.setServerVerifiedBlockState: a predicted block keeps its on-screen
     /// state until acknowledgement, but remembers the server's update for then.
-    pub(super) fn server_block(&mut self, pos: [i32; 3], state: i32, group: Option<ReceivedGroup>) {
+    pub(in crate::game) fn server_block(
+        &mut self,
+        pos: [i32; 3],
+        state: i32,
+        group: Option<ReceivedGroup>,
+    ) {
         // An unknown state (a server with mods we lack) reads as air, as in its chunks.
         let state = state.max(0) as u32;
         let state = BlockStateId(if sunrise_client::chunk::known_block_state(state) {
@@ -165,18 +170,6 @@ impl Game<'_> {
             group.apply(&mut self.world, pos);
         }
         self.finish_client_block_write(pos, previous, state, false);
-    }
-
-    pub(in crate::game) fn server_group(&mut self, pos: [i32; 3], group: ReceivedGroup) {
-        if let Some(prediction) = self
-            .remote
-            .as_mut()
-            .and_then(|r| r.predictions.get_mut(&pos))
-        {
-            prediction.group = Some(group);
-        } else {
-            group.apply(&mut self.world, pos);
-        }
     }
 
     /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known

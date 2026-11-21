@@ -24,12 +24,6 @@ impl Game<'_> {
         let key = (pos[0], pos[1], pos[2]);
         if let Some(entity) = payload.entity {
             self.world.replace_block_entity(key, entity);
-            if self.world.group_block_pending(key).is_some() {
-                let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-                self.with_level(|_, level, _| {
-                    sunrise_world::level::LevelAccess::send_block_updated(level, at);
-                });
-            }
             match payload.name {
                 Some(name) => self.world.block_names.insert(key, name),
                 None => self.world.block_names.remove(&key),

@@ -471,7 +471,7 @@ fn check_level_scoped(id: i32, body: &[u8], revision: u8) -> Result<(), ViewedLe
             Clientbound::GameEvent(e) => WEATHER_EVENTS.contains(&e.event),
             Clientbound::LevelEvent(e) => !e.global,
             // Its own receive boundary checks negotiation and decodes against the connection's
-            // retained-group budget. This envelope owns only whether the channel is scoped.
+            // bundle. This envelope owns only whether the channel is scoped.
             Clientbound::CustomPayload(p) => p.channel == crate::connection_groups::CHANNEL,
             _ => true,
         };
@@ -913,13 +913,15 @@ mod tests {
 
     #[test]
     fn a_run_carries_connection_groups_and_refuses_other_custom_payloads() {
-        use crate::connection_groups::{self, ChunkEntry, Message as Cg};
-        let valid_data = connection_groups::encode(&Cg::Chunk {
-            cx: 1,
-            cz: -2,
-            replace: true,
-            entries: vec![ChunkEntry::new(3, 64, 4, 99).unwrap()],
-        })
+        use crate::connection_groups::{self, Cell, Entry, Section};
+        let valid_data = Section {
+            pos: [1, 4, -2],
+            entries: vec![Entry {
+                cell: Cell::of([3, 64, 4]),
+                group: Some(99),
+            }],
+        }
+        .encode()
         .unwrap();
         let valid = Clientbound::CustomPayload(CustomPayload {
             channel: connection_groups::CHANNEL.into(),

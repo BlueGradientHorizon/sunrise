@@ -2,74 +2,71 @@ use super::*;
 use crate::lan::viewed_levels::areas::{ChunkArea, ChunkAreaMode};
 use sunrise_protocol::{
     buf::Reader,
-    connection_groups::{self, ChunkEntry, Message, UpdateEntry},
+    connection_groups::{self, Cell, Entry, Section},
     packets::play::Clientbound as C,
     viewed_levels,
 };
 
-fn negotiated_transport() -> Arc<crate::raw_payloads::Transport> {
+fn transport(with_groups: bool) -> Arc<crate::raw_payloads::Transport> {
     let transport =
         crate::raw_payloads::Transport::capture(crate::raw_payloads::Side::Server).unwrap();
-    transport
-        .accept(transport.local.manifest.entries())
-        .unwrap();
+    let entries: Vec<_> = transport
+        .local
+        .manifest
+        .entries()
+        .iter()
+        .filter(|entry| with_groups || entry.id() != connection_groups::CHANNEL)
+        .cloned()
+        .collect();
+    transport.accept(&entries).unwrap();
     transport.finish_configuration().unwrap();
     transport
 }
 
-fn decode_packets(rx: &std::sync::mpsc::Receiver<crate::lan::Out>) -> Vec<C> {
-    let mut out = Vec::new();
-    while let Ok(item) = rx.try_recv() {
-        let bodies = match item {
+fn bodies(rx: &std::sync::mpsc::Receiver<crate::lan::Out>) -> Vec<Vec<u8>> {
+    rx.try_iter()
+        .flat_map(|out| match out {
             crate::lan::Out::Packet(body) => vec![body],
             crate::lan::Out::Packets(bodies) => bodies,
             crate::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
-        };
-        for body in bodies {
-            let mut r = Reader::new(&body);
-            let id = r.varint().unwrap();
-            if let Ok(packet) = C::decode(id, r.rest()) {
-                out.push(packet);
-            }
-        }
-    }
-    out
-}
-
-fn group_messages(packets: &[C]) -> Vec<Message> {
-    packets
-        .iter()
-        .filter_map(|p| match p {
-            C::CustomPayload(p) if p.channel == connection_groups::CHANNEL => {
-                Some(connection_groups::decode(&p.data).unwrap())
-            }
-            _ => None,
         })
         .collect()
 }
 
-fn wrapped_group_messages(packets: &[C]) -> Vec<(viewed_levels::Level, Message)> {
-    let mut out = Vec::new();
-    for p in packets {
-        let C::CustomPayload(cp) = p else {
-            continue;
-        };
-        if cp.channel != viewed_levels::CHANNEL {
-            continue;
-        }
-        if let Ok(viewed_levels::Message::Run { level, packets }) =
-            viewed_levels::Message::decode_in(&cp.data, viewed_levels::REVISION)
-        {
-            for (id, body) in packets {
-                if let Ok(C::CustomPayload(inner)) = C::decode(id, body)
-                    && inner.channel == connection_groups::CHANNEL
-                {
-                    out.push((level, connection_groups::decode(&inner.data).unwrap()));
-                }
-            }
-        }
+fn decode(body: &[u8]) -> C {
+    let mut r = Reader::new(body);
+    let id = r.varint().unwrap();
+    C::decode(id, r.rest()).unwrap()
+}
+
+fn groups(packet: &C) -> Section {
+    let C::CustomPayload(payload) = packet else {
+        panic!("missing group data");
+    };
+    assert_eq!(payload.channel, connection_groups::CHANNEL);
+    Section::decode(&payload.data).unwrap()
+}
+
+fn section(at: [i32; 3], group: Option<u64>) -> Section {
+    Section {
+        pos: at.map(|v| v >> 4),
+        entries: vec![Entry {
+            cell: Cell::of(at),
+            group,
+        }],
     }
-    out
+}
+
+/// Vanilla body, followed by its group's section, in one wire bundle.
+fn pair(bodies: &[Vec<u8>], expect: &Section) -> (Vec<u8>, C) {
+    let [open, vanilla, group, close] = bodies else {
+        panic!("not one pair: {} frames", bodies.len());
+    };
+    for delimiter in [open, close] {
+        assert!(matches!(decode(delimiter), C::BundleDelimiter(_)));
+    }
+    assert_eq!(&groups(&decode(group)), expect);
+    (vanilla.clone(), decode(vanilla))
 }
 
 fn hub_with_sunrise_and_vanilla() -> (
@@ -82,7 +79,7 @@ fn hub_with_sunrise_and_vanilla() -> (
     let sunrise_sender = crate::lan::PlayerSender::new_with_payload_transport(
         tx_sunrise,
         Arc::default(),
-        negotiated_transport(),
+        transport(true),
     );
     hub.guests.update(0, |g| {
         g.sender = sunrise_sender;
@@ -113,10 +110,7 @@ fn hub_with_sunrise_and_vanilla() -> (
     (hub, rx_sunrise, rx_vanilla)
 }
 
-#[test]
-fn chunk_send_prefixes_column_with_connection_groups_only_to_negotiated_guests() {
-    let (mut hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
-    hub.ticks = 10;
+fn grouped_world() -> World {
     let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
     for cz in -1..=1 {
         for cx in -1..=1 {
@@ -129,14 +123,15 @@ fn chunk_send_prefixes_column_with_connection_groups_only_to_negotiated_guests()
             world.chunks.insert((cx, cz), Arc::new(chunk));
         }
     }
+    world
+}
 
-    let mut next_entity = 10;
-    let border = crate::worldborder::WorldBorder::default();
-    let ctx = TickCtx {
+fn in_tick(world: &mut World, f: impl FnOnce(&mut TickCtx<'_>)) {
+    f(&mut TickCtx {
         sea_level: 63,
-        world: &mut world,
+        world,
         entities: &[],
-        next_entity: &mut next_entity,
+        next_entity: &mut 10,
         spawn: [0.5, 64.0, 0.5],
         spawn_angle: [0.0; 2],
         spawn_dimension: "minecraft:overworld",
@@ -147,428 +142,214 @@ fn chunk_send_prefixes_column_with_connection_groups_only_to_negotiated_guests()
         tick_frozen: false,
         tick_steps: Default::default(),
         collision: None,
-        border: &border,
+        border: &crate::worldborder::WorldBorder::default(),
         streaming: None,
-    };
-    hub.update_chunks(&ctx);
-
-    let sunrise = decode_packets(&rx_sunrise);
-    let batch_end = sunrise
-        .iter()
-        .position(|p| matches!(p, C::ChunkBatchFinished(_)))
-        .expect("ChunkBatchFinished sent");
-    let group_pkt = sunrise
-        .iter()
-        .position(|p| matches!(p, C::CustomPayload(cp) if cp.channel == connection_groups::CHANNEL))
-        .expect("sunrise:connection_groups sent");
-    assert!(group_pkt < batch_end);
-    assert!(matches!(&sunrise[group_pkt + 1], C::LevelChunkWithLight(p) if (p.x, p.z) == (0, 0)));
-    assert_eq!(
-        group_messages(&sunrise),
-        vec![Message::Chunk {
-            cx: 0,
-            cz: 0,
-            replace: true,
-            entries: vec![ChunkEntry::new(3, 64, 5, 77).unwrap()],
-        }]
-    );
-
-    let vanilla = decode_packets(&rx_vanilla);
-    assert!(
-        vanilla
-            .iter()
-            .any(|p| matches!(p, C::ChunkBatchFinished(_))),
-        "vanilla guest still received chunk batch"
-    );
-    assert!(
-        group_messages(&vanilla).is_empty(),
-        "non-negotiated guest never receives sunrise:connection_groups"
-    );
+    });
 }
 
 #[test]
-fn authoritative_block_correction_prefixes_the_block_with_current_group() {
-    let (hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
-    let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-    world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    let pos = [1, 64, 2];
-    let sunrise = hub.guests[0].conn;
-
-    hub.send_authoritative_block(sunrise, &world, pos);
-    assert!(matches!(
-        decode_packets(&rx_sunrise).as_slice(),
-        [C::BlockUpdate(_)]
-    ));
-
-    assert!(world.set_connection_group(1, 64, 2, Some(17), true));
-    for group in [Some(17), None] {
-        if group.is_none() {
-            assert!(world.invalidate_replaced_group((1, 64, 2)));
+fn chunk_send_keeps_the_vanilla_body_for_both_kinds_of_unnegotiated_peer() {
+    for vanilla in [true, false] {
+        let (mut hub, rx_sunrise, mut rx_plain) = hub_with_sunrise_and_vanilla();
+        if !vanilla {
+            let (tx, rx) = std::sync::mpsc::channel();
+            hub.guests.update(1, |g| {
+                g.sender = crate::lan::PlayerSender::new_with_payload_transport(
+                    tx,
+                    Arc::default(),
+                    transport(false),
+                );
+            });
+            rx_plain = rx;
         }
-        hub.send_authoritative_block(sunrise, &world, pos);
-        hub.send_authoritative_block(hub.guests[1].conn, &world, pos);
-        let packets = decode_packets(&rx_sunrise);
+        hub.ticks = 10;
+        let mut world = grouped_world();
+        in_tick(&mut world, |ctx| hub.update_chunks(ctx));
+        let ours = bodies(&rx_sunrise);
+        let plain = bodies(&rx_plain);
+        let group = ours.iter().position(|body| matches!(decode(body), C::CustomPayload(p) if p.channel == connection_groups::CHANNEL)).unwrap();
+        let (column_bytes, column) =
+            pair(&ours[group - 2..=group + 1], &section([3, 64, 5], Some(77)));
+        assert!(matches!(column, C::LevelChunkWithLight(p) if (p.x, p.z) == (0, 0)));
         assert!(
-            matches!(packets.as_slice(), [C::CustomPayload(_), C::BlockUpdate(block)] if block.pos == pos)
+            plain
+                .iter()
+                .all(|p| !matches!(decode(p), C::BundleDelimiter(_)))
         );
-        assert_eq!(
-            group_messages(&packets),
-            [Message::Blocks {
-                entries: vec![UpdateEntry { pos, group }],
-            }]
+        let vanilla_column = plain
+            .iter()
+            .find(|p| matches!(decode(p), C::LevelChunkWithLight(p) if (p.x, p.z) == (0, 0)))
+            .unwrap();
+        assert_eq!(&column_bytes, vanilla_column);
+        assert!(
+            ours[group + 2..]
+                .iter()
+                .any(|body| matches!(decode(body), C::ChunkBatchFinished(_)))
         );
-        assert!(matches!(
-            decode_packets(&rx_vanilla).as_slice(),
-            [C::BlockUpdate(_)]
-        ));
     }
 }
 
 #[test]
-fn incremental_updates_dedup_wire_order_auto_clear_filter_and_bulk_resend() {
+fn corrective_block_update_bundles_its_group_or_clear_only_for_the_negotiated_holder() {
     let (mut hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
-    let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-    world.block_log = Some(Vec::new());
+    let mut world = grouped_world();
+    let pos = [3, 64, 5];
     world.connection_group_log = Some(Default::default());
-    world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-    world.chunks.insert((1, 0), Arc::new(Chunk::empty(1, 0)));
-    world.chunks.insert((2, 0), Arc::new(Chunk::empty(2, 0)));
     hub.guests.update(0, |g| {
         g.sent_chunks.insert((0, 0));
-        g.sent_chunks.insert((1, 0));
     });
-    hub.guests.update(1, |g| {
-        g.sent_chunks.insert((0, 0));
-        g.sent_chunks.insert((1, 0));
-    });
+    for group in [Some(77), None] {
+        if group.is_none() {
+            assert!(world.invalidate_replaced_group((3, 64, 5)));
+        }
+        hub.send_authoritative_block(hub.guests[0].conn, &world, pos);
+        hub.send_authoritative_block(hub.guests[1].conn, &world, pos);
+        let (body, packet) = pair(&bodies(&rx_sunrise), &section(pos, group));
+        assert!(matches!(packet, C::BlockUpdate(block) if block.pos == pos));
+        assert_eq!(bodies(&rx_vanilla), [body]);
+    }
+}
 
-    // A chunk that has never held a connection group emits no `sunrise:connection_groups` packets
-    // on either incremental block updates or bulk chunk resends.
-    world.block_log.as_mut().unwrap().push((17, 64, 2));
+#[test]
+fn group_only_changes_publish_current_blocks_and_never_add_vanilla_traffic() {
+    let (mut hub, rx_groups, rx_plain) = hub_with_sunrise_and_vanilla();
+    let mut world = grouped_world();
+    world.block_log = Some(Vec::new());
+    world.connection_group_log = Some(Default::default());
+    for i in 0..2 {
+        hub.guests.update(i, |g| {
+            g.sent_chunks.insert((0, 0));
+        });
+    }
+    let at = [3, 64, 5];
+    let state = sunrise_world::registry::BlockStateId(2);
+    // This replacement uses no vanilla notification. The next real group
+    // change must nevertheless arrive with the cell's authoritative state.
+    world.set_with_notification(3, 64, 5, state, false).unwrap();
+    assert!(world.set_connection_group(3, 64, 5, Some(100), true));
+    assert!(world.set_connection_group(3, 64, 5, Some(101), true));
+    // This group's column has not been sent to either player.
+    assert!(world.set_connection_group(17, 64, 1, Some(99), true));
     hub.broadcast_block_changes(&mut world);
-    let untouched = decode_packets(&rx_sunrise);
-    assert!(untouched.iter().any(|p| matches!(p, C::BlockUpdate(_))));
-    assert!(group_messages(&untouched).is_empty());
-    let _ = decode_packets(&rx_vanilla);
-
-    world.bulk_log.insert((1, 0));
-    hub.broadcast_block_changes(&mut world);
-    let untouched_bulk = decode_packets(&rx_sunrise);
-    assert!(
-        untouched_bulk
-            .iter()
-            .any(|p| matches!(p, C::LevelChunkWithLight(_)))
-    );
-    assert!(group_messages(&untouched_bulk).is_empty());
-    let _ = decode_packets(&rx_vanilla);
-
-    // Multiple edits to the same cell collapse to the last value; an unsent chunk (2, 0) is
-    // omitted from incremental updates; the block and its metadata are adjacent on the wire.
-    world.block_log.as_mut().unwrap().push((1, 64, 2));
-    assert!(world.set_connection_group(1, 64, 2, Some(10), true));
-    assert!(world.set_connection_group(1, 64, 2, Some(20), true));
-    assert!(world.set_connection_group(3, 64, 4, Some(5), true));
-    assert!(world.set_connection_group(3, 64, 4, None, true));
-    assert!(world.set_connection_group(33, 64, 1, Some(99), true));
-
-    hub.broadcast_block_changes(&mut world);
+    let (_, p) = pair(&bodies(&rx_groups), &section(at, Some(101)));
+    assert!(matches!(p, C::BlockUpdate(p) if p.pos == at && p.state == state.0 as i32));
+    assert!(bodies(&rx_plain).is_empty());
     assert!(world.connection_group_log.as_ref().unwrap().is_empty());
 
-    let sunrise = decode_packets(&rx_sunrise);
-    let block_idx = sunrise
-        .iter()
-        .position(|p| matches!(p, C::BlockUpdate(_)))
-        .expect("BlockUpdate sent");
-    let group_idx = sunrise
-        .iter()
-        .position(|p| matches!(p, C::CustomPayload(cp) if cp.channel == connection_groups::CHANNEL))
-        .expect("sunrise:connection_groups sent");
-    assert_eq!(group_idx + 1, block_idx);
-    assert_eq!(
-        group_messages(&sunrise),
-        vec![
-            Message::Blocks {
-                entries: vec![UpdateEntry {
-                    pos: [1, 64, 2],
-                    group: Some(20)
-                }],
-            },
-            Message::Update {
-                entries: vec![UpdateEntry {
-                    pos: [3, 64, 4],
-                    group: None
-                }],
-            }
-        ]
-    );
-    assert!(group_messages(&decode_packets(&rx_vanilla)).is_empty());
-
-    // Two-broadcast case (blocker 1): client holds `(1, 64, 2) -> Some(20)`.
-    // Broadcast 1: replace the block with `BlockUpdateFlags::NONE` (automatic clear without a
-    // `block_log` entry; also an explicit write on `(4, 64, 4)` superseded by an automatic clear
-    // in the same pass). Neither leaks to the client.
-    assert!(world.invalidate_replaced_group((1, 64, 2)));
-    assert!(world.set_connection_group(4, 64, 4, Some(42), true));
-    assert!(world.invalidate_replaced_group((4, 64, 4)));
+    // A normal scheduled update consumes that cell's group change in its own
+    // bundle. The ordinary recipient sees the same bytes, once, no delimiters.
+    world.block_log.as_mut().unwrap().push((3, 64, 5));
+    assert!(world.invalidate_replaced_group((3, 64, 5)));
     hub.broadcast_block_changes(&mut world);
-    assert!(
-        group_messages(&decode_packets(&rx_sunrise)).is_empty(),
-        "unsent block replacements never leak connection-group clears"
-    );
+    let (body, _) = pair(&bodies(&rx_groups), &section(at, None));
+    assert_eq!(bodies(&rx_plain), [body]);
 
-    // Broadcast 2: in a later tick, change a property of the replacement block at `(1, 64, 2)`
-    // with `CLIENTS` (`block_log` only; `connection_group_log` stays empty and no new group was
-    // written). Because the chunk's sticky bit is set, the server derives the authoritative `None`
-    // at send time and sends it with `BlockUpdate`.
-    assert!(world.connection_group_log.as_ref().unwrap().is_empty());
-    world.block_log.as_mut().unwrap().push((1, 64, 2));
+    // A scheduled block in the next tick uses the existing held block log.
+    world.block_log_held.push((3, 64, 5));
+    assert!(world.set_connection_group(3, 64, 5, Some(40), true));
     hub.broadcast_block_changes(&mut world);
-    let later = decode_packets(&rx_sunrise);
-    let block_idx = later
-        .iter()
-        .position(|p| matches!(p, C::BlockUpdate(_)))
-        .expect("BlockUpdate sent");
-    let group_idx = later
-        .iter()
-        .position(|p| matches!(p, C::CustomPayload(cp) if cp.channel == connection_groups::CHANNEL))
-        .expect("derived connection-group clear sent with later block update");
-    assert_eq!(group_idx + 1, block_idx);
-    assert_eq!(
-        group_messages(&later),
-        vec![Message::Blocks {
-            entries: vec![UpdateEntry {
-                pos: [1, 64, 2],
-                group: None,
-            }],
-        }]
-    );
+    assert!(bodies(&rx_groups).is_empty());
+    world.block_log = Some(std::mem::take(&mut world.block_log_held));
+    hub.broadcast_block_changes(&mut world);
+    let (body, _) = pair(&bodies(&rx_groups), &section(at, Some(40)));
+    assert_eq!(bodies(&rx_plain), [body]);
 
     // A bare bulk column is authoritative for an empty group map.
-    assert!(world.set_connection_group(1, 64, 2, Some(40), true));
-    hub.broadcast_block_changes(&mut world);
-    let _ = decode_packets(&rx_sunrise);
-    assert!(world.invalidate_replaced_group((1, 64, 2)));
+    assert!(world.invalidate_replaced_group((3, 64, 5)));
     world.bulk_log.insert((0, 0));
     hub.broadcast_block_changes(&mut world);
-    let bulk_pkts = decode_packets(&rx_sunrise);
-    assert!(matches!(bulk_pkts.as_slice(), [C::LevelChunkWithLight(_)]));
+    let got = bodies(&rx_groups);
+    assert!(matches!(got.as_slice(), [body] if matches!(decode(body), C::LevelChunkWithLight(_))));
+    assert_eq!(bodies(&rx_plain), got);
 }
 
 #[test]
-fn chunk_snapshot_splits_above_max_entries_with_replace_only_on_first() {
+fn chunk_snapshot_has_at_most_one_payload_for_each_occupied_section() {
     let mut chunk = Chunk::empty(0, 0);
-    let total = connection_groups::MAX_ENTRIES + 1;
-    for i in 0..total {
-        let lx = (i & 15) as i32;
-        let lz = ((i >> 4) & 15) as i32;
-        let y = (i >> 8) as i32;
-        chunk.set_connection_group(lx, y, lz, Some(i as u64));
+    for i in 0..4097 {
+        chunk.set_connection_group(i & 15, i >> 8, (i >> 4) & 15, Some(i as u64));
     }
     let bodies = block_changes::encode_chunk_connection_groups(&chunk);
-    assert_eq!(bodies.len(), 2);
-    let decoded: Vec<Message> = bodies
-        .iter()
-        .map(|body| {
-            let mut r = Reader::new(body);
-            let id = r.varint().unwrap();
-            let C::CustomPayload(cp) = C::decode(id, r.rest()).unwrap() else {
-                panic!("not custom payload");
-            };
-            assert_eq!(cp.channel, connection_groups::CHANNEL);
-            connection_groups::decode(&cp.data).unwrap()
-        })
-        .collect();
-    match &decoded[0] {
-        Message::Chunk {
-            cx: 0,
-            cz: 0,
-            replace: true,
-            entries,
-        } => assert_eq!(entries.len(), connection_groups::MAX_ENTRIES),
-        other => panic!("unexpected first part: {other:?}"),
-    }
-    match &decoded[1] {
-        Message::Chunk {
-            cx: 0,
-            cz: 0,
-            replace: false,
-            entries,
-        } => assert_eq!(entries.len(), 1),
-        other => panic!("unexpected second part: {other:?}"),
-    }
+    let [a, b] = bodies.as_slice() else {
+        panic!("expected two sections");
+    };
+    let (a, b) = (groups(&decode(a)), groups(&decode(b)));
+    assert_eq!((a.pos, a.entries.len()), ([0, 0, 0], 4096));
+    assert_eq!(b, section([0, 16, 0], Some(4096)));
 }
 
 #[test]
-fn viewed_level_syncs_initial_snapshots_updates_and_bulk_resends_to_negotiated_viewers_only() {
-    let (mut hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
+fn viewed_group_bundle_keeps_a_normal_scoped_run_first_and_omits_metadata_without_negotiation() {
+    let (mut hub, rx_groups, rx_plain) = hub_with_sunrise_and_vanilla();
     hub.ticks = 10;
     let levels = hub.level_keys();
-    let answer = viewed_levels::Answer {
-        revision: viewed_levels::REVISION,
-        max_levels: 2,
-    };
-    let uuid0 = hub.guests[0].uuid;
-    let uuid1 = hub.guests[1].uuid;
-    for idx in 0..2 {
-        hub.guests.update(idx, |g| {
-            g.sender.viewed_levels = answer;
+    for i in 0..2 {
+        hub.guests.update(i, |g| {
+            g.sender.viewed_levels = viewed_levels::Answer {
+                revision: viewed_levels::REVISION,
+                max_levels: 2,
+            };
             g.batch_quota = 9.0;
             g.viewed.logged_in_with(levels.clone());
         });
-    }
-    let area = vec![ChunkArea {
-        level: "minecraft:the_nether".into(),
-        center: (0, 0),
-        radius: 0,
-        mode: ChunkAreaMode::Loaded,
-    }];
-    hub.set_viewed_areas(uuid0, "test:portal", area.clone())
+        hub.set_viewed_areas(
+            hub.guests[i].uuid,
+            "test:portal",
+            vec![ChunkArea {
+                level: "minecraft:the_nether".into(),
+                center: (0, 0),
+                radius: 0,
+                mode: ChunkAreaMode::Loaded,
+            }],
+        )
         .unwrap();
-    hub.set_viewed_areas(uuid1, "test:portal", area).unwrap();
-    hub.set_dimension("minecraft:the_nether");
-
-    let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-    for cz in -1..=1 {
-        for cx in -1..=1 {
-            let mut chunk = Chunk::empty(cx, cz);
-            chunk.lit = true;
-            if (cx, cz) == (0, 0) {
-                chunk.set(3, 64, 5, 1);
-                chunk.set_connection_group(3, 64, 5, Some(77));
-            }
-            world.chunks.insert((cx, cz), Arc::new(chunk));
-        }
     }
-
-    let mut next_entity = 10;
-    let border = crate::worldborder::WorldBorder::default();
-    let mut run_pass = |hub: &mut Hub, world: &mut World| {
-        let mut ctx = TickCtx {
-            sea_level: 63,
-            world,
-            entities: &[],
-            next_entity: &mut next_entity,
-            spawn: [0.5, 64.0, 0.5],
-            spawn_angle: [0.0; 2],
-            spawn_dimension: "minecraft:overworld",
-            difficulty: 2,
-            difficulty_locked: false,
-            clock_rate: 1.0,
-            tick_rate: 20.0,
-            tick_frozen: false,
-            tick_steps: Default::default(),
-            collision: None,
-            border: &border,
-            streaming: None,
+    hub.set_dimension("minecraft:the_nether");
+    let mut world = grouped_world();
+    in_tick(&mut world, |ctx| assert!(hub.viewed_pass(ctx)));
+    let scoped = |body: &[u8]| {
+        let C::CustomPayload(cp) = decode(body) else {
+            return None;
         };
-        assert!(hub.viewed_pass(&mut ctx));
+        let Ok(viewed_levels::Message::Run { level, packets }) =
+            viewed_levels::Message::decode(&cp.data)
+        else {
+            return None;
+        };
+        Some((
+            level,
+            packets
+                .into_iter()
+                .map(|(id, data)| {
+                    let mut w = sunrise_protocol::buf::Writer::new();
+                    w.varint(id);
+                    w.bytes(data);
+                    w.data
+                })
+                .collect::<Vec<_>>(),
+        ))
     };
-
-    // Initial viewed-level snapshots prefix their column, for negotiated viewers only.
-    run_pass(&mut hub, &mut world);
-    let sunrise = decode_packets(&rx_sunrise);
-    let batch_end = sunrise
+    let our = bodies(&rx_groups);
+    let plain = bodies(&rx_plain);
+    let start = our
         .iter()
-        .position(|p| matches!(p, C::ChunkBatchFinished(_)))
-        .expect("ChunkBatchFinished sent");
-    let group_run = sunrise
-        .iter()
-        .rposition(|p| !wrapped_group_messages(std::slice::from_ref(p)).is_empty())
-        .expect("wrapped sunrise:connection_groups sent");
-    assert!(group_run < batch_end);
-    let wrapped = wrapped_group_messages(&sunrise);
-    assert_eq!(wrapped.len(), 1);
-    assert_eq!(
-        wrapped[0].1,
-        Message::Chunk {
-            cx: 0,
-            cz: 0,
-            replace: true,
-            entries: vec![ChunkEntry::new(3, 64, 5, 77).unwrap()],
-        }
-    );
-    let vanilla = decode_packets(&rx_vanilla);
+        .position(|b| matches!(decode(b), C::BundleDelimiter(_)))
+        .unwrap();
+    let (level, column) = scoped(&our[start + 1]).unwrap();
+    let (group_level, metadata) = scoped(&our[start + 2]).unwrap();
+    assert_eq!(level, group_level);
+    assert_eq!(groups(&decode(&metadata[0])), section([3, 64, 5], Some(77)));
+    assert!(matches!(decode(&our[start + 3]), C::BundleDelimiter(_)));
     assert!(
-        vanilla
+        plain
             .iter()
-            .any(|p| matches!(p, C::ChunkBatchFinished(_)))
+            .all(|p| !matches!(decode(p), C::BundleDelimiter(_)))
     );
-    assert!(wrapped_group_messages(&vanilla).is_empty());
-
-    // 2. Incremental update in a viewed level routes wrapped to negotiated viewers only.
-    assert!(world.set_connection_group(3, 64, 5, Some(88), true));
-    run_pass(&mut hub, &mut world);
-    let wrapped = wrapped_group_messages(&decode_packets(&rx_sunrise));
-    assert_eq!(wrapped.len(), 1);
-    assert_eq!(
-        wrapped[0].1,
-        Message::Update {
-            entries: vec![UpdateEntry {
-                pos: [3, 64, 5],
-                group: Some(88),
-            }],
-        }
-    );
-    assert!(wrapped_group_messages(&decode_packets(&rx_vanilla)).is_empty());
-
-    // A loaded-only view sees neither a clear superseded by a replacement (even if
-    // storage is already empty), nor a set describing a replacement not yet sent.
-    assert!(world.set_connection_group(3, 64, 5, None, true));
-    world.invalidate_replaced_group((3, 64, 5));
-    run_pass(&mut hub, &mut world);
-    assert!(wrapped_group_messages(&decode_packets(&rx_sunrise)).is_empty());
-    assert!(world.set_connection_group(3, 64, 5, Some(99), true));
-    run_pass(&mut hub, &mut world);
-    assert!(wrapped_group_messages(&decode_packets(&rx_sunrise)).is_empty());
-
-    // A newly synchronized viewer receives the replacement in its initial column. Its
-    // subsequent standalone group changes are safe even while the first viewer is stale.
-    let (tx_fresh, rx_fresh) = std::sync::mpsc::channel();
-    hub.guests.update(1, |g| {
-        let mut sender = crate::lan::PlayerSender::new_with_payload_transport(
-            tx_fresh,
-            Arc::default(),
-            negotiated_transport(),
-        );
-        sender.viewed_levels = g.sender.viewed_levels;
-        g.sender = sender;
-        let view = g.viewed.views.get_mut("minecraft:the_nether").unwrap();
-        assert!(view.sent.remove(&(0, 0)));
-        view.queue.push((0, 0));
-    });
-    run_pass(&mut hub, &mut world);
-    assert!(matches!(
-        wrapped_group_messages(&decode_packets(&rx_fresh)).as_slice(),
-        [(_, Message::Chunk { .. })]
-    ));
-    assert!(world.set_connection_group(3, 64, 5, Some(100), true));
-    run_pass(&mut hub, &mut world);
-    assert!(wrapped_group_messages(&decode_packets(&rx_sunrise)).is_empty());
-    assert!(matches!(
-        wrapped_group_messages(&decode_packets(&rx_fresh)).as_slice(),
-        [(_, Message::Update { entries })] if entries == &[UpdateEntry { pos: [3, 64, 5], group: Some(100) }]
-    ));
-
-    // When the vanilla block is finally published, its group goes with it.
-    world.block_log.as_mut().unwrap().push((3, 64, 5));
-    run_pass(&mut hub, &mut world);
-    let wrapped = wrapped_group_messages(&decode_packets(&rx_sunrise));
-    assert_eq!(wrapped.len(), 1);
-    assert_eq!(
-        wrapped[0].1,
-        Message::Blocks {
-            entries: vec![UpdateEntry {
-                pos: [3, 64, 5],
-                group: Some(100),
-            }],
-        }
-    );
-    assert_eq!(wrapped_group_messages(&decode_packets(&rx_fresh)), wrapped);
-
-    // A bare bulk column replaces the complete viewed group map.
-    assert!(world.invalidate_replaced_group((3, 64, 5)));
-    world.bulk_log.insert((0, 0));
-    run_pass(&mut hub, &mut world);
-    assert!(wrapped_group_messages(&decode_packets(&rx_sunrise)).is_empty());
-    assert!(wrapped_group_messages(&decode_packets(&rx_fresh)).is_empty());
+    let plain_column = plain
+        .iter()
+        .filter_map(|p| scoped(p))
+        .flat_map(|(_, packets)| packets)
+        .find(|p| matches!(decode(p), C::LevelChunkWithLight(_)))
+        .unwrap();
+    assert_eq!(column, [plain_column]);
 }

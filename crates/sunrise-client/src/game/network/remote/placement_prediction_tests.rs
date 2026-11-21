@@ -1,5 +1,7 @@
 use super::*;
-use crate::game::native_entity_refs::tests::with_game_role;
+use crate::game::{
+    native_connection_groups::ReceivedGroup, native_entity_refs::tests::with_game_role,
+};
 use mod_api::{
     BlockPart, BlockState, CanSurviveEvent, CanSustainPlantEvent, FenceGateInWallEvent, Hooks,
     LevelSide, MayPlaceOnEvent, Registrar, StateForPlacementEvent,
@@ -468,6 +470,17 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         };
         assert_eq!(replacement, &Default::default());
         assert!(attachment_values(game).is_empty());
+
+        // A bare verification can supersede the block state, not the last explicit group.
+        let cell = [0, 65, 0];
+        game.server_block(cell, spruce.0 as i32, Some(ReceivedGroup(Some(23))));
+        game.predict_break([1, 65, 0], support, 9);
+        game.server_block(cell, spruce.0 as i32, Some(ReceivedGroup(None)));
+        game.server_block(cell, spruce.0 as i32, None);
+        assert_eq!(game.world.connection_group(0, 65, 0), Some(23));
+        game.end_predictions(9);
+        assert_eq!(game.world.block(0, 65, 0), spruce);
+        assert_eq!(game.world.connection_group(0, 65, 0), None);
     });
 }
 

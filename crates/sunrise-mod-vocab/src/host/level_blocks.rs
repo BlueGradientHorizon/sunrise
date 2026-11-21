@@ -233,11 +233,12 @@ pub trait LevelBlocksBackendMut {
     /// `Err(LevelWriteError::Stale)` for a stale handle and `Err(LevelWriteError::Unavailable)`
     /// on a client, parked level, or outside the world phase.
     ///
-    /// Connection groups are derived visual state: they are synced to Sunrise clients (on chunk
-    /// send, bulk resend, viewed-level updates, and incremental changes) and are **never saved to
-    /// disk**. Mods that keep multi-block structure groups across reloads should republish them
-    /// from `block_entity_on_load` (when `HostSide::Server`) for block-entity-backed structures,
-    /// or record loaded chunks in `chunk_load` and publish on the next server tick. Changing a
+    /// Connection groups are derived visual state and **never saved to disk**. A negotiated
+    /// client receives the cell's current authoritative block state with its group, including
+    /// in viewed levels. If only the group would be sent, a current block update goes first in
+    /// the same bundle, only to negotiated clients. To keep block-entity-backed groups across
+    /// reloads, republish them from `block_entity_on_load` (when `HostSide::Server`). Otherwise,
+    /// record loaded chunks in `chunk_load` and publish on the next server tick. Changing a
     /// block's state properties on the same block (or weathering a copper chest / copper golem
     /// statue) preserves the group; replacing it with a different block (or air) clears it
     /// automatically.

@@ -49,7 +49,6 @@ impl Hub {
         let watching = self.chunk_watches.recording();
         let kept = self.guests.update(i, |g| {
             let own = std::mem::take(&mut g.sent_chunks);
-            let own_groups = std::mem::take(&mut g.group_snapshots);
             g.chunk_queue.clear();
             // The client drops both levels' entities: the server sends them again.
             g.tracker.clear();
@@ -71,7 +70,6 @@ impl Hub {
             // revision 4 its client learns its binding right after the Respawn.
             let mut old = View::new(level);
             old.sent = own;
-            old.group_snapshots = own_groups;
             g.viewed.views.insert(left.to_owned(), old);
             if let Level::Bound { .. } = level {
                 g.sender.send(viewed_levels::swap(level));
@@ -79,7 +77,6 @@ impl Hub {
             // What the view sent is the player's own now: `update_view` forgets what is past the
             // player's view and queues the rest.
             g.sent_chunks = view.sent;
-            g.group_snapshots = view.group_snapshots;
             let mut kept: Vec<_> = g.sent_chunks.iter().copied().collect();
             kept.sort_unstable();
             if watching {

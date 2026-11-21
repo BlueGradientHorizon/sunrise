@@ -636,7 +636,7 @@ pub(in crate::game) mod tests {
             },
             raw_payloads::{Side, Transport},
         };
-        use sunrise_protocol::connection_groups::{self, ChunkEntry};
+        use sunrise_protocol::connection_groups::{self, Cell, Entry, Section};
 
         const NAME: &str = "game::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
         if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
@@ -742,18 +742,76 @@ pub(in crate::game) mod tests {
                 std::thread::sleep(Duration::from_millis(20));
             };
             if reopen {
-                let Got::Wrapped(2, C::CustomPayload(prefix)) = &packets[body - 1] else {
-                    panic!("reloaded column lacked its group prefix");
+                let [
+                    Got::Plain(C::BundleDelimiter(_)),
+                    _,
+                    Got::Wrapped(2, C::CustomPayload(group)),
+                    Got::Plain(C::BundleDelimiter(_)),
+                ] = &packets[body - 1..=body + 2]
+                else {
+                    panic!("reloaded column was not bundled with its group");
                 };
-                assert_eq!(prefix.channel, connection_groups::CHANNEL);
+                assert_eq!(group.channel, connection_groups::CHANNEL);
                 assert_eq!(
-                    connection_groups::decode(&prefix.data).unwrap(),
-                    connection_groups::Message::Chunk {
-                        cx: COLUMN.0,
-                        cz: COLUMN.1,
-                        replace: true,
-                        entries: vec![ChunkEntry::new(8, AT[1], 8, 729).unwrap()],
+                    Section::decode(&group.data).unwrap(),
+                    Section {
+                        pos: AT.map(|v| v >> 4),
+                        entries: vec![Entry {
+                            cell: Cell::of(AT),
+                            group: Some(729)
+                        }],
                     }
+                );
+
+                // The viewer already has this column. A committed round trip to
+                // the same block state still sends its changed group with that state.
+                game.enter_level(Dim::Nether).unwrap();
+                game.options.dedicated = Some(Vec::new());
+                let level = game.level(Dim::Nether.id()).unwrap();
+                let host: &dyn mod_api::Host = &game;
+                let state = host.block_state_id(BLOCK).unwrap();
+                let air = host.block_state_id("minecraft:air").unwrap();
+                let seal = game.transaction_open();
+                assert_eq!(
+                    level.set_block(&mut game, AT, air, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert_eq!(
+                    level.set_block(&mut game, AT, state, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                assert_eq!(
+                    level.set_connection_group(&mut game, AT, Some(730)),
+                    Ok(true)
+                );
+                game.transaction_close(&seal, true);
+                let expected = game.world.block(AT[0], AT[1], AT[2]).0 as i32;
+                game.enter_level(Dim::Overworld).unwrap();
+                game.tick_server(false).unwrap();
+                let packets = decode_ordered(out());
+                let updated = packets.windows(4).find_map(|packets| match packets {
+                    [
+                        Got::Plain(C::BundleDelimiter(_)),
+                        Got::Wrapped(2, C::BlockUpdate(block)),
+                        Got::Wrapped(2, C::CustomPayload(group)),
+                        Got::Plain(C::BundleDelimiter(_)),
+                    ] if block.pos == AT
+                        && block.state == expected
+                        && group.channel == connection_groups::CHANNEL =>
+                    {
+                        Some(Section::decode(&group.data).unwrap())
+                    }
+                    _ => None,
+                });
+                assert_eq!(
+                    updated,
+                    Some(Section {
+                        pos: AT.map(|v| v >> 4),
+                        entries: vec![Entry {
+                            cell: Cell::of(AT),
+                            group: Some(730)
+                        }],
+                    })
                 );
             } else {
                 game.enter_level(Dim::Nether).unwrap();

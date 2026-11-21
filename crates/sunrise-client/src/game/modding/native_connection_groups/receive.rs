@@ -1,147 +1,101 @@
-//! A group's block or column is the publication boundary, not the metadata packet preceding it.
+//! Give one completed bundle's group data to the packet that owns it. Nothing
+//! here waits for another frame or survives the packet's adoption.
 use sunrise_client::{
-    chunk::{
-        Chunk,
-        group_budget::{GroupBudget, GroupReservation},
-    },
+    chunk::{Chunk, LevelShape},
     fast_hash::FxHashMap,
     world::World,
 };
-use sunrise_protocol::connection_groups::{self, ChunkEntry, Message, UpdateEntry};
+use sunrise_protocol::{
+    Error, Result, connection_groups::Section, packets::play::Clientbound as C,
+};
 
-type Pos = [i32; 3];
-type Column = (i32, i32);
-
-pub(in crate::game) struct ReceivedGroup {
-    group: Option<u64>,
-    reservation: Option<GroupReservation>,
-}
+#[derive(Clone, Copy)]
+pub(in crate::game) struct ReceivedGroup(pub Option<u64>);
 
 impl ReceivedGroup {
-    pub(in crate::game) fn apply(self, world: &mut World, pos: Pos) {
-        world.apply_received_group(pos, self.group, self.reservation);
+    pub(in crate::game) fn apply(self, world: &mut World, [x, y, z]: [i32; 3]) {
+        world.set_connection_group(x, y, z, self.0, false);
     }
 }
 
-pub(in crate::game) struct GroupUpdates {
-    entries: FxHashMap<Pos, Option<u64>>,
-    reservation: GroupReservation,
-}
+pub(in crate::game) type GroupUpdates = FxHashMap<[i32; 3], ReceivedGroup>;
 
-impl GroupUpdates {
-    fn new(entries: Vec<UpdateEntry>, budget: &GroupBudget) -> Self {
-        let reservation =
-            budget.reserve(entries.iter().filter(|entry| entry.group.is_some()).count());
-        Self {
-            entries: entries
-                .into_iter()
-                .map(|entry| (entry.pos, entry.group))
-                .collect(),
-            reservation,
+/// Install the decoded map in the new column before the column, its remesh
+/// diff or any of its load hooks can become visible.
+pub(in crate::game) fn column_groups(
+    chunk: &mut Chunk,
+    shape: LevelShape,
+    sections: &[Section],
+) -> Result<()> {
+    let mut seen = sunrise_client::fast_hash::FxHashSet::default();
+    for section in sections {
+        let [x, y, z] = section.pos;
+        if (x, z) != (chunk.x, chunk.z) || !shape.contains_y(y << 4) || !seen.insert(y) {
+            return Err(Error::new("connection groups: unexpected column section"));
+        }
+        for entry in &section.entries {
+            let Some(group) = entry.group else {
+                return Err(Error::new("connection groups: clear in full column"));
+            };
+            let [x, y, z] = entry.cell.at(section.pos);
+            chunk.set_connection_group(x & 15, y, z & 15, Some(group));
         }
     }
-
-    pub(in crate::game) fn take(&mut self, pos: Pos) -> Option<ReceivedGroup> {
-        let group = self.entries.remove(&pos)?;
-        Some(ReceivedGroup {
-            group,
-            reservation: group.map(|_| self.reservation.take_one()),
-        })
-    }
-
-    pub(in crate::game) fn into_updates(self) -> impl Iterator<Item = (Pos, ReceivedGroup)> {
-        let Self {
-            entries,
-            mut reservation,
-        } = self;
-        entries.into_iter().map(move |(pos, group)| {
-            (
-                pos,
-                ReceivedGroup {
-                    group,
-                    reservation: group.map(|_| reservation.take_one()),
-                },
-            )
-        })
-    }
+    Ok(())
 }
 
-struct Snapshot {
-    key: Column,
-    entries: Vec<ChunkEntry>,
-    reservation: GroupReservation,
-}
-
-enum Prefix {
-    Column(Snapshot),
-    Blocks(GroupUpdates),
-}
-
-/// A stream has at most one pending record. A viewed world owns its own stream, but every
-/// stream of the connection charges the same budget. No state becomes visible here.
-#[derive(Default)]
-pub(in crate::game) struct GroupIngress(Option<Prefix>);
-
-impl GroupIngress {
-    pub(in crate::game) fn discard(&mut self) {
-        self.0 = None;
-    }
-
-    pub(in crate::game) fn receive(
-        &mut self,
-        data: &[u8],
-        budget: &GroupBudget,
-    ) -> sunrise_protocol::Result<Option<GroupUpdates>> {
-        let message = connection_groups::decode_with_budget(data, budget.available())?;
-        match message {
-            Message::Chunk {
-                cx,
-                cz,
-                replace,
-                entries,
-            } => {
-                let key = (cx, cz);
-                let reservation = budget.reserve(entries.len());
-                if replace {
-                    self.0 = Some(Prefix::Column(Snapshot {
-                        key,
-                        entries,
-                        reservation,
-                    }));
-                } else if let Some(Prefix::Column(snapshot)) = &mut self.0
-                    && snapshot.key == key
-                {
-                    snapshot.entries.extend(entries);
-                    snapshot.reservation.extend(reservation);
-                } else {
-                    return Err(sunrise_protocol::Error::new(
-                        "connection groups: unexpected column continuation",
+pub(in crate::game) fn block_groups(
+    world: &World,
+    packet: &C,
+    sections: &[Section],
+) -> Result<GroupUpdates> {
+    let [section] = sections else {
+        return Err(Error::new(
+            "connection groups: block update needs one group section",
+        ));
+    };
+    let mut updates = GroupUpdates::default();
+    match packet {
+        C::BlockUpdate(block) => {
+            let [entry] = section.entries.as_slice() else {
+                return Err(Error::new(
+                    "connection groups: single block needs one group cell",
+                ));
+            };
+            if entry.cell.at(section.pos) != block.pos {
+                return Err(Error::new(
+                    "connection groups: group cell not in block update",
+                ));
+            }
+            updates.insert(block.pos, ReceivedGroup(entry.group));
+        }
+        C::SectionBlocksUpdate(blocks) if blocks.section == section.pos => {
+            let mut positions = [0_u64; 4096 / 64];
+            for &change in &blocks.changes {
+                let index = (change & 0xFFF) as usize;
+                positions[index / 64] |= 1 << (index % 64);
+            }
+            for entry in &section.entries {
+                let index = entry.cell.index();
+                if positions[index / 64] & (1 << (index % 64)) == 0 {
+                    return Err(Error::new(
+                        "connection groups: group cell not in section update",
                     ));
                 }
-            }
-            Message::Blocks { entries } => {
-                self.0 = Some(Prefix::Blocks(GroupUpdates::new(entries, budget)));
-            }
-            Message::Update { entries } => {
-                self.discard();
-                return Ok(Some(GroupUpdates::new(entries, budget)));
+                updates.insert(entry.cell.at(section.pos), ReceivedGroup(entry.group));
             }
         }
-        Ok(None)
-    }
-
-    pub(in crate::game) fn install_column(&mut self, key: Column, chunk: &mut Chunk) {
-        if let Some(Prefix::Column(snapshot)) = self.0.take()
-            && snapshot.key == key
-        {
-            chunk.install_group_snapshot(snapshot.entries, snapshot.reservation);
+        _ => {
+            return Err(Error::new(
+                "connection groups: companion is not its block update",
+            ));
         }
     }
-
-    pub(in crate::game) fn take_blocks(&mut self) -> Option<GroupUpdates> {
-        match self.0.take() {
-            Some(Prefix::Blocks(updates)) => Some(updates),
-            _ => None,
-        }
+    if updates
+        .keys()
+        .any(|&[x, y, z]| !world.is_loaded_at(x, y, z))
+    {
+        return Err(Error::new("connection groups: group cell is not loaded"));
     }
+    Ok(updates)
 }

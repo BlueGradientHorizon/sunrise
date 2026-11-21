@@ -127,12 +127,12 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
   Changing only a state property of the same block (or weathering a copper chest or copper golem statue)
   preserves it. Writing to an unloaded chunk, an out-of-height position, a carrier-fenced cell, or an unchanged
   group returns `Ok(false)`.
-- **Sync and transactions.** Sunrise clients adopt groups with their columns and authoritative block changes,
-  including in viewed levels. A replacement's group waits for its block or column to be published; changing a
-  group alone remeshes affected sections and borders without changing the block. Vanilla peers do not receive
-  groups. Writes inside a Host transaction are tentative: aborting restores the previous group quietly, and
-  committing publishes the final block and group per position (including a clear caused by an intermediate
-  replacement).
+- **Sync and transactions.** Negotiated clients adopt groups with the cell's current authoritative state,
+  including in viewed levels. If only the group would be sent, the server sends the current block update first
+  in the same bundle, only to negotiated clients. Group changes remesh affected sections and borders. Vanilla
+  peers get neither the groups nor any additional updates. Writes inside a Host transaction are tentative:
+  aborting restores the previous group quietly, and committing publishes the final block and group per position
+  (including a clear caused by an intermediate replacement).
 
 ## What it joins, and what it does not
 

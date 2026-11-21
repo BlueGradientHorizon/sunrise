@@ -112,23 +112,24 @@ impl Runs {
             }
         }
     }
-    /// Commit a prefix and its packet together; if the body cannot be wrapped, no prefix
-    /// escapes. In the ordinary case with no prefix, keep coalescing into the current run.
-    pub(crate) fn push_prefixed(&mut self, prefix: &[Vec<u8>], body: &[u8]) -> bool {
-        if prefix.is_empty() {
+    /// The scoped vanilla packet stays byte-identical. Its normal run comes
+    /// first in the outer bundle, followed by runs of only section group data.
+    pub(crate) fn push_grouped(&mut self, body: &[u8], groups: &[Vec<u8>]) -> bool {
+        if groups.is_empty() {
             return self.push(body);
         }
-        let mut paired = Self::new(self.level);
-        for packet in prefix {
-            if !paired.push(packet) {
-                return false;
-            }
-        }
-        if !paired.push(body) {
+        let mut primary = Self::new(self.level);
+        let mut metadata = Self::new(self.level);
+        if !primary.push(body) || !groups.iter().all(|packet| metadata.push(packet)) {
             return false;
         }
+        let body = primary.finish().pop().expect("one primary packet");
         self.flush();
-        self.payloads.extend(paired.finish());
+        self.payloads
+            .extend(super::super::hub::block_changes::group_bundle(
+                body,
+                metadata.finish(),
+            ));
         true
     }
 
@@ -167,13 +168,13 @@ pub(crate) fn batch_runs<T>(
     level: Level,
     taken: &[(usize, T)],
     bodies: &[Vec<u8>],
-    mut prefix: impl FnMut(&T) -> Vec<Vec<u8>>,
+    mut groups: impl FnMut(&T) -> Vec<Vec<u8>>,
 ) -> (Vec<Vec<u8>>, Vec<usize>) {
     let mut runs = Runs::new(level);
     let sent = taken
         .iter()
         .zip(bodies)
-        .filter(|((_, element), body)| runs.push_prefixed(&prefix(element), body))
+        .filter(|((_, element), body)| runs.push_grouped(body, &groups(element)))
         .map(|((idx, _), _)| *idx)
         .collect();
     (runs.finish(), sent)
@@ -336,8 +337,10 @@ impl Hub {
             streaming.and_then(|s| s.proto_sections(x, z))
         });
         let sync_groups = g.negotiated_connection_groups();
+        let mut grouped = false;
         let (payloads, taken) = batch_runs(view.level, &taken, &bodies, |chunk| {
-            if sync_groups {
+            if sync_groups && !chunk.connection_groups.is_empty() {
+                grouped = true;
                 super::super::hub::block_changes::encode_chunk_connection_groups(chunk)
             } else {
                 Vec::new()
@@ -351,7 +354,11 @@ impl Hub {
         self.guests.update(i, |g| {
             g.batch_quota -= size as f32;
             g.send(&C::ChunkBatchStart(Empty));
-            g.sender.send_many(payloads);
+            if grouped {
+                g.sender.send_batch(payloads);
+            } else {
+                g.sender.send_many(payloads);
+            }
             g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
                 size: size as i32,
             }));
@@ -359,9 +366,6 @@ impl Hub {
             if let Some(view) = g.viewed.views.get_mut(&dimension) {
                 for idx in taken.into_iter().rev() {
                     let key = view.queue.remove(idx);
-                    if sync_groups && let Some(revision) = world.group_snapshot_revision(key) {
-                        view.group_snapshots.insert(key, revision);
-                    }
                     view.sent.insert(key);
                 }
             }

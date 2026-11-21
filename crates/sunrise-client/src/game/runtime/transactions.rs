@@ -1678,12 +1678,19 @@ impl Game<'_> {
                 _ => None,
             })
             .collect();
-        // Restore every tentatively touched connection group to its pre-transaction value before
-        // replaying `level.after` in order, so block replacements, cross-position cascades, and
-        // explicit `set_connection_group` calls observe and publish the exact sequence of writes.
+        // Replay from the old group so committed callbacks see writes in order. A fresh
+        // publication entry survives only if the final group differs from that baseline.
+        let mut clean_groups = Vec::new();
         for ((dim, (x, y, z)), was) in level.connection_groups {
             if let Some(world) = self.connection_group_world_mut(dim) {
                 world.set_connection_group_stored(x, y, z, was);
+                if world
+                    .connection_group_log
+                    .as_ref()
+                    .is_some_and(|log| !log.contains(&(x, y, z)))
+                {
+                    clean_groups.push((dim, (x, y, z), was));
+                }
             }
         }
         let mut told = std::collections::HashSet::new();
@@ -1749,20 +1756,23 @@ impl Game<'_> {
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
-                    } else if clear_connection_group
-                        && self.world.invalidate_replaced_group(pos)
-                        && flags & flags::UPDATE_CLIENTS != 0
-                    {
-                        // The block ended where it began, but an intermediate replacement
-                        // removed its group. Publish the pair through the normal ticket gate.
-                        let at = sunrise_core::position::BlockPos::new(pos.0, pos.1, pos.2);
-                        self.with_level(|_, level, _| {
-                            sunrise_world::level::LevelAccess::send_block_updated(level, at);
-                        });
+                    } else if clear_connection_group {
+                        // A round trip that preserves the block state can still end the
+                        // group's lifetime. Its group-only publication sends the current
+                        // block to negotiated holders without notifying vanilla peers.
+                        self.world.invalidate_replaced_group(pos);
                     }
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}
                 after => self.run_after(after),
+            }
+        }
+        for (dim, (x, y, z), was) in clean_groups {
+            if let Some(world) = self.connection_group_world_mut(dim)
+                && world.connection_group(x, y, z) == was
+                && let Some(log) = world.connection_group_log.as_mut()
+            {
+                log.remove(&(x, y, z));
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each

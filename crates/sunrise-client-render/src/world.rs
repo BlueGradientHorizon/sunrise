@@ -97,14 +97,6 @@ impl DirtySections {
     }
 }
 
-#[derive(Default)]
-struct UnpublishedGroupBlocks {
-    /// An unsent full column affects even cells that previously had no group.
-    bulk: u64,
-    /// Per-cell overrides; zero means a block was published after a missed full column.
-    cells: FxHashMap<(i32, i32, i32), u64>,
-}
-
 pub struct World {
     // Initialized only for a logical server level, then borrowed by every AI worker.
     path_type_cache: OnceLock<path_type_cache::PathTypeCache>,
@@ -195,17 +187,9 @@ pub struct World {
     /// Writes of this tick's block events and block entities, held out of
     /// the log while it is sent: they go out with the next tick's.
     pub block_log_held: Vec<(i32, i32, i32)>,
-    /// Positions with explicit `LevelRef::set_connection_group` writes since the log was last
-    /// drained, kept only while the world is open to the network (mirrored with `block_log`).
-    /// Automatic clears on block replacement are never logged here: clients derive the
-    /// authoritative group when the block change itself is sent.
+    /// Positions whose group changed or was cleared since publication. Kept only while
+    /// the world is open to the network, alongside the vanilla block log.
     pub connection_group_log: Option<FxHashSet<(i32, i32, i32)>>,
-    /// Connection-group positions written after `tick_blocks`' broadcast, held out of
-    /// `connection_group_log` while it is sent so they never outrun held block writes.
-    pub connection_group_log_held: FxHashSet<(i32, i32, i32)>,
-    /// Replaced positions whose block has not been published to all of this column's holders.
-    group_blocks_pending: FxHashMap<(i32, i32), UnpublishedGroupBlocks>,
-    group_block_revision: u64,
     /// Only an authoritative world expires groups on storage replacement. Client group data
     /// comes with the verified block from the server.
     group_lifetime: Option<Arc<sunrise_world::level::Behaviours>>,
@@ -407,9 +391,6 @@ impl World {
             block_log: None,
             block_log_held: Vec::new(),
             connection_group_log: None,
-            connection_group_log_held: Default::default(),
-            group_blocks_pending: Default::default(),
-            group_block_revision: 0,
             group_lifetime: None,
             path_writes: None,
             bulk_log: Default::default(),
@@ -576,8 +557,8 @@ impl World {
             .get(&(x >> 4, z >> 4))?
             .connection_group(x & 15, y, z & 15)
     }
-    /// Write or clear the connection group in resident storage only: no log, remesh or sticky
-    /// marker for speculative writes. Returns `false` if the chunk is unloaded, `y` is out of
+    /// Write or clear the connection group in resident storage only: no log or remesh
+    /// for speculative writes. Returns `false` if the chunk is unloaded, `y` is out of
     /// height, or the group was unchanged.
     pub fn set_connection_group_stored(
         &mut self,
@@ -586,7 +567,7 @@ impl World {
         z: i32,
         group: Option<u64>,
     ) -> bool {
-        self.write_connection_group((x, y, z), group, None, false)
+        self.write_connection_group((x, y, z), group, false)
     }
 
     /// Publish a server-side group without changing save or lighting state.
@@ -598,7 +579,7 @@ impl World {
         group: Option<u64>,
         notify: bool,
     ) -> bool {
-        if !self.write_connection_group((x, y, z), group, None, true) {
+        if !self.write_connection_group((x, y, z), group, true) {
             return false;
         }
         if notify && let Some(log) = &mut self.connection_group_log {
@@ -607,21 +588,10 @@ impl World {
         true
     }
 
-    /// Adopt a validated client delta, transferring its reservation only if it adds a group.
-    pub fn apply_received_group(
-        &mut self,
-        [x, y, z]: [i32; 3],
-        group: Option<u64>,
-        mut reservation: Option<crate::chunk::group_budget::GroupReservation>,
-    ) {
-        self.write_connection_group((x, y, z), group, reservation.as_mut(), true);
-    }
-
     fn write_connection_group(
         &mut self,
         (x, y, z): (i32, i32, i32),
         group: Option<u64>,
-        reservation: Option<&mut crate::chunk::group_budget::GroupReservation>,
         publish: bool,
     ) -> bool {
         let Some(chunk) = self.chunks.get_mut(&(x >> 4, z >> 4)) else {
@@ -634,9 +604,8 @@ impl World {
             return false;
         }
         let chunk = Arc::make_mut(chunk);
-        chunk.write_group(cell, group, reservation);
+        chunk.write_group(cell, group);
         if publish {
-            chunk.has_held_connection_groups |= group.is_some();
             let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
             self.mark_remesh_at(x, y, z, min_y, sections, false);
         }
@@ -670,74 +639,10 @@ impl World {
         }
     }
 
-    /// A replacement ends the group's lifetime even if an explicit clear left nothing in the
-    /// map. The committed block packet, not an independent group packet, publishes that fact.
-    /// Also used by a transaction whose committed replacement rounds back to its first state.
-    pub fn invalidate_replaced_group(&mut self, pos: (i32, i32, i32)) -> bool {
-        let (x, _, z) = pos;
-        let mut canceled = false;
-        if let Some(log) = &mut self.connection_group_log {
-            canceled = log.remove(&pos) | self.connection_group_log_held.remove(&pos);
-            self.group_block_revision += 1;
-            self.group_blocks_pending
-                .entry((x >> 4, z >> 4))
-                .or_default()
-                .cells
-                .insert(pos, self.group_block_revision);
-        }
-        self.write_connection_group(pos, None, None, true) || canceled
-    }
-
-    pub fn stop_group_sync(&mut self) {
-        self.connection_group_log = None;
-        self.connection_group_log_held.clear();
-        self.group_blocks_pending.clear();
-    }
-
-    pub fn group_block_pending(&self, pos: (i32, i32, i32)) -> Option<u64> {
-        let pending = self.group_blocks_pending.get(&(pos.0 >> 4, pos.2 >> 4))?;
-        let revision = pending.cells.get(&pos).copied().unwrap_or(pending.bulk);
-        (revision != 0).then_some(revision)
-    }
-
-    /// A scoped sender rejected a bulk replacement. Until a holder gets its column, even
-    /// a cell with no group at the time of the edit can be showing an older block.
-    pub fn group_column_missed(&mut self, column: (i32, i32)) -> u64 {
-        self.group_block_revision += 1;
-        self.group_blocks_pending.insert(
-            column,
-            UnpublishedGroupBlocks {
-                bulk: self.group_block_revision,
-                cells: Default::default(),
-            },
-        );
-        self.group_block_revision
-    }
-
-    /// A column snapshot incorporates every pending replacement through this revision.
-    pub fn group_snapshot_revision(&self, column: (i32, i32)) -> Option<u64> {
-        self.group_blocks_pending
-            .contains_key(&column)
-            .then_some(self.group_block_revision)
-    }
-
-    pub fn group_blocks_sent(&mut self, column: (i32, i32), positions: Option<&[(i32, i32, i32)]>) {
-        if let Some(positions) = positions {
-            if let Some(pending) = self.group_blocks_pending.get_mut(&column) {
-                if pending.bulk != 0 {
-                    pending.cells.extend(positions.iter().map(|&pos| (pos, 0)));
-                } else {
-                    for pos in positions {
-                        pending.cells.remove(pos);
-                    }
-                    if pending.cells.is_empty() {
-                        self.group_blocks_pending.remove(&column);
-                    }
-                }
-            }
-        } else {
-            self.group_blocks_pending.remove(&column);
-        }
+    /// A committed replacement (including a fresh block entity of the same state)
+    /// clears this cell and publishes the clear with the current block state.
+    pub fn invalidate_replaced_group(&mut self, (x, y, z): (i32, i32, i32)) -> bool {
+        self.set_connection_group(x, y, z, None, true)
     }
 
     /// Attach a fresh instance, even over a block of the same state. Payload updates to an
@@ -754,7 +659,7 @@ impl World {
     }
 
     /// A replacement column carries its complete group map. Compare by cell once, before
-    /// adopting it, so a multipart snapshot never removes and re-adds an unchanged group.
+    /// adopting it, so a bundle never removes and re-adds an unchanged group.
     pub(crate) fn dirty_connection_group_diff(&mut self, old: &Chunk, next: &Chunk) {
         let removed_or_changed = old.connection_groups.iter().filter_map(|(&cell, &value)| {
             (next.connection_groups.get(&cell) != Some(&value)).then_some(cell)
@@ -935,7 +840,6 @@ impl World {
     /// positions held.
     pub fn unload_chunk(&mut self, key: (i32, i32)) -> Option<Arc<Chunk>> {
         self.capability_generations.unload_chunk(key);
-        self.group_blocks_pending.remove(&key);
         let chunk = self.chunks.remove(&key)?;
         // A surviving quad may join across any side or corner of the dropped column.
         for &cell in chunk.connection_groups.keys() {
@@ -1347,18 +1251,15 @@ mod tests {
         world.chunks.insert((0, 1), Arc::new(Chunk::empty(0, 1)));
         world.chunks.insert((1, 1), Arc::new(Chunk::empty(1, 1)));
 
-        // Unloaded chunk and out-of-height return false without logging, setting the sticky bit,
-        // or dirtying.
+        // Unloaded chunk and out-of-height return false without logging or dirtying.
         assert!(!world.set_connection_group(32, 64, 0, Some(1), true));
         assert!(!world.set_connection_group(15, 999, 15, Some(1), true));
-        assert!(!world.chunks[&(0, 0)].has_held_connection_groups);
         assert!(world.connection_group_log.as_ref().unwrap().is_empty());
         assert!(world.dirty_sections.is_empty());
 
-        // Setting group 0 (valid u64 value) succeeds, sets the sticky chunk bit, logs, and marks
+        // Setting group 0 (valid u64 value) succeeds, logs, and marks
         // remesh across borders without touching dirty_light, light_edits, or modified.
         assert!(world.set_connection_group(15, 64, 15, Some(0), true));
-        assert!(world.chunks[&(0, 0)].has_held_connection_groups);
         assert_eq!(world.connection_group(15, 64, 15), Some(0));
         assert!(!world.set_connection_group(15, 64, 15, Some(0), true));
         assert_eq!(
@@ -1375,13 +1276,17 @@ mod tests {
         assert!(world.light_edits.is_empty());
         assert!(world.modified.is_empty());
 
-        // Automatic clear removes storage and drops any pending same-tick explicit write for that
-        // cell from connection_group_log while keeping the sticky bit; repeating it is a no-op.
+        // Automatic clear publishes the cell's final empty value; repeating it is a no-op.
         assert!(world.invalidate_replaced_group((15, 64, 15)));
         assert_eq!(world.connection_group(15, 64, 15), None);
-        assert!(world.chunks[&(0, 0)].has_held_connection_groups);
         assert!(!world.invalidate_replaced_group((15, 64, 15)));
-        assert!(world.connection_group_log.as_ref().unwrap().is_empty());
+        assert!(
+            world
+                .connection_group_log
+                .as_ref()
+                .unwrap()
+                .contains(&(15, 64, 15))
+        );
 
         // Forget a grouped column with no visibility hooks. Its surviving neighbours
         // must retire their joins; groups farther from the edge do not affect them.

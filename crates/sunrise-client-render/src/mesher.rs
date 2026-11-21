@@ -24,7 +24,7 @@ pub use visibility_plan::{
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]
 mod source_tests;
-use crate::connected::{Pick, TileLayer};
+use crate::connected::{FaceNeighbours, Pick, TileLayer};
 use crate::{
     assets::{Assets, RenderAssets},
     biome::{Biomes, GrassModifier},
@@ -2649,17 +2649,22 @@ impl Mesher<'_> {
                 face.layer as u16,
                 CtmFace::ALL[q.facing as usize],
                 [world.x, world.y, world.z],
-                neighbour,
-                |n| groups.and_then(|groups| groups.at((cell as isize + step_index(n)) as usize)),
-                |s| self.tables.full_faces[s as usize],
-                || Some(tints.biome(pos[0], pos[1], pos[2])),
-                // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
-                || {
-                    if state.pane {
-                        Some(CtmAxes::cube(CtmFace::ALL[q.facing as usize]))
-                    } else {
-                        CtmAxes::texture(&q.positions, &q.uv)
-                    }
+                FaceNeighbours {
+                    state: neighbour,
+                    group: |n| {
+                        groups
+                            .and_then(|groups| groups.at((cell as isize + step_index(n)) as usize))
+                    },
+                    full_faces: |s| self.tables.full_faces[s as usize],
+                    biome: || Some(tints.biome(pos[0], pos[1], pos[2])),
+                    // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
+                    texture: || {
+                        if state.pane {
+                            Some(CtmAxes::cube(CtmFace::ALL[q.facing as usize]))
+                        } else {
+                            CtmAxes::texture(&q.positions, &q.uv)
+                        }
+                    },
                 },
                 &mut push,
             )
