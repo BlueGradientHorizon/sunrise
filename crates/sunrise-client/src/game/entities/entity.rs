@@ -926,7 +926,7 @@ impl Game<'_> {
                     item.velocity.z * v[2],
                 );
             }
-            mod_api::EntityWrite::Hurt { amount, .. } => {
+            mod_api::EntityWrite::Hurt { amount } => {
                 let _ = item.hurt(amount as i32);
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,

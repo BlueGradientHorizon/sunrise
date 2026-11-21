@@ -148,10 +148,7 @@ mod sweep_tests {
             if self.kill_after.is_some_and(|after| seen > after) {
                 event.run_after(
                     mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 1000.0,
-                    },
+                    mod_api::EntityWrite::Hurt { amount: 1000.0 },
                 );
             }
             event.run_after(

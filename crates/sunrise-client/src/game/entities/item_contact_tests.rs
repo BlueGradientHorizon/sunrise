@@ -696,10 +696,7 @@ struct StepWrites(Arc<Mutex<Vec<[[f64; 3]; 2]>>>);
 impl BlockPart for StepWrites {
     fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
         self.0.lock().unwrap().push(event.bounds);
-        let hurt = mod_api::EntityWrite::Hurt {
-            source: None,
-            amount: 1.0,
-        };
+        let hurt = mod_api::EntityWrite::Hurt { amount: 1.0 };
         match level {
             mod_api::LevelRandomSide::Server(level) => {
                 let state = level.block_state_id("minecraft:glass").unwrap();

@@ -163,8 +163,7 @@ Non-finite edits are ignored; there is no veto. Keep movement answers consistent
 on replay.
 
 `LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
-lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { source: None,
-amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid requested state refuses the batch
@@ -207,6 +206,13 @@ After the entity batch ticks, writes apply in request order if the block still m
 its original landed state. That guard runs once, so a first write can change the state
 without suppressing the next write. SetBlock notifies neighbors and clients; DestroyBlock
 preserves the requested resource-drop flag.
+
+## Inside-block effects
+
+`BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
+Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
+`InsideEffect`. `EntityWrite::Hurt { amount }` deals generic damage to the swept
+entity, without a causing or direct entity.
 
 ## Storage changes
 
