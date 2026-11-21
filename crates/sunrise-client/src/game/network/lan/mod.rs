@@ -3099,7 +3099,7 @@ impl Game<'_> {
             entities
         };
         let clock_rate = self.network_clock_rate();
-        let mut ctx = TickCtx {
+        let ctx = TickCtx {
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.world,
             entities,
@@ -3120,7 +3120,11 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        host.hub.place_new_player(conn, &mut ctx);
+        if let Some(i) = host.hub.begin_player_join(conn, &ctx) {
+            host.hub
+                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+            host.hub.finish_player_join(i, &ctx);
+        }
         self.bind_player_attachments(conn, false);
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());

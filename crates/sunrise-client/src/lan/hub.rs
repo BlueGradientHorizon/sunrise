@@ -1420,18 +1420,12 @@ impl Hub {
         }
     }
 
-    /// PlayerList.placeNewPlayer for a guest whose saved state is loaded.
-    pub fn place_new_player(&mut self, conn: u32, ctx: &mut TickCtx) {
-        let Some(i) = self.guests.iter().position(|g| g.conn == conn) else {
-            return;
-        };
+    /// PlayerList.placeNewPlayer up to the command-tree send.
+    pub fn begin_player_join(&mut self, conn: u32, ctx: &TickCtx) -> Option<usize> {
+        let i = self.guests.connection_index(conn)?;
         if !self.guests[i].participates_online() {
-            return;
+            return None;
         }
-        let (name, uuid, entity_id, mode) = {
-            let g = &self.guests[i];
-            (g.name.clone(), g.uuid, g.entity_id, g.game_mode)
-        };
         // A player whose login used up a proxy's expectation (`arrivals`, as the
         // login started) is held: it gets the whole join sequence, so it can build
         // its picture of the world, but no one else is told about it.
@@ -1444,10 +1438,9 @@ impl Hub {
         let levels = self.level_keys();
         self.guests
             .update(i, |g| g.viewed.logged_in_with(levels.clone()));
-        let held = self.guests[i].held;
         let g = &self.guests[i];
         g.send(&C::Login(play::Login {
-            player_id: entity_id,
+            player_id: g.entity_id,
             hardcore: self.config.hardcore,
             levels,
             max_players: i32::try_from(self.lan.shared.max_players()).unwrap_or(i32::MAX),
@@ -1477,8 +1470,14 @@ impl Hub {
             super::recipes::send_content(g);
             super::recipes::advertise_viewer_channels(g);
         }
-        // PlayerList.sendPlayerPermissionLevel, then the recipe book.
         self.send_permission_level(i);
+        Some(i)
+    }
+
+    /// The rest of PlayerList.placeNewPlayer, after the player's command tree.
+    pub fn finish_player_join(&mut self, i: usize, ctx: &TickCtx) {
+        let g = &self.guests[i];
+        let (conn, name, uuid, mode, held) = (g.conn, g.name.clone(), g.uuid, g.game_mode, g.held);
         self.send_initial_recipe_book(i);
         // PlayerList.placeNewPlayer broadcasts the join line before
         // players.add: the others read it, the newcomer doesn't (nor those
@@ -1886,7 +1885,6 @@ impl Hub {
             id: g.entity_id,
             event: 24 + g.permission.min(4) as i8,
         }));
-        self.send_commands(i);
     }
 
     /// The permissions changed: tell everyone their level and commands again.
@@ -1895,6 +1893,7 @@ impl Hub {
         for i in 0..self.guests.len() {
             if self.guests[i].placed {
                 self.send_permission_level(i);
+                self.send_commands(i, self.commands_packet(self.guests[i].permission));
             }
         }
     }
@@ -1946,7 +1945,7 @@ impl Hub {
         if self.store_mod_commands(key, commands) {
             for i in 0..self.guests.len() {
                 if self.guests[i].placed {
-                    self.send_commands(i);
+                    self.send_commands(i, self.commands_packet(self.guests[i].permission));
                 }
             }
         }
@@ -1962,7 +1961,7 @@ impl Hub {
     }
 
     /// The command tree a player of this permission level gets.
-    fn commands_packet(&self, permission: u8) -> play::Commands {
+    pub fn commands_packet(&self, permission: u8) -> play::Commands {
         match &self.sync.commands {
             Some(tree) => {
                 let dedicated = !self.config.integrated;
@@ -4846,7 +4845,13 @@ impl Hub {
     /// start" event and the chunk under the player, so the packets follow vanilla's order.
     /// `rotation` is the facing a mod's `player_respawn_position` chose; none
     /// is the level's respawn direction.
-    pub fn respawn(&mut self, i: usize, at: [f64; 3], rotation: Option<[f32; 2]>, ctx: &TickCtx) {
+    pub fn begin_respawn(
+        &mut self,
+        i: usize,
+        at: [f64; 3],
+        rotation: Option<[f32; 2]>,
+        ctx: &TickCtx,
+    ) {
         let info = self.spawn_info(i, 0, ctx.sea_level);
         self.close_container_for(i);
         let id = self.guests.update(i, |g| {
@@ -4921,6 +4926,10 @@ impl Hub {
         });
         self.send_level_info(i, ctx, true);
         self.send_permission_level(i);
+    }
+
+    /// The rest of PlayerList.respawn, after sending the command tree.
+    pub fn finish_respawn(&mut self, i: usize) {
         // ServerLevel.addRespawnedPlayer: the chunk tracking starts again at the player.
         self.guests.update(i, |g| {
             let (cx, cz) = g.chunk();
@@ -4983,13 +4992,12 @@ impl Hub {
     /// the destination has loaded around `at`. Until [`Self::land`] the
     /// client gets no position, so it stays on its level loading screen
     /// instead of showing the player in the air at `at`.
-    pub fn change_level(
+    pub fn begin_level_change(
         &mut self,
         i: usize,
         at: [f64; 3],
         yaw: f32,
         pitch: Option<f32>,
-        portal: bool,
         portal_cooldown: i32,
         ctx: &TickCtx,
     ) {
@@ -5025,6 +5033,10 @@ impl Hub {
             locked: ctx.difficulty_locked,
         }));
         self.send_permission_level(i);
+    }
+
+    /// Finish the level change after sending the command tree.
+    pub fn finish_level_change(&mut self, i: usize, portal: bool, ctx: &TickCtx) {
         if portal {
             // A teleport still pending from the old level is void: its late
             // acceptance must not move the player back there.
@@ -5073,7 +5085,7 @@ impl Hub {
         });
     }
 
-    /// The rest of a portal's [`Self::change_level`] once its exit is found:
+    /// The rest of a portal's [`Self::finish_level_change`] once its exit is found:
     /// the position, LEVEL_CHUNKS_LOAD_START (the client's loading screen
     /// closes once its chunk is in) and TeleportTransition.PLAY_PORTAL_SOUND.
     pub fn land(&mut self, i: usize, at: [f64; 3]) {
@@ -5493,7 +5505,9 @@ mod tests {
             border: &border,
             streaming: None,
         };
-        hub.change_level(0, [100.5, 49.0, 0.5], 0.0, None, false, 0, &ctx);
+        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, false, &ctx);
         assert_eq!(drain(&rx).1, [3]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Crouching);
         hub.sync_player_state(0);
@@ -5504,7 +5518,9 @@ mod tests {
         hub.guests.update(0, |g| g.sneaking = true);
         hub.sync_player_state(0);
         drain(&rx);
-        hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), &ctx);
+        hub.begin_respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_respawn(0);
         assert_eq!(drain(&rx).1, [0]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Standing);
         hub.sync_player_state(0);
@@ -5541,7 +5557,7 @@ mod tests {
                 if refresh {
                     hub.set_mod_commands(7, serde_json::json!({"children":{"plugin":{"type":"literal","executable":true}}}));
                 } else {
-                    hub.send_commands(0);
+                    hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
                 }
                 let crate::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
                     panic!("packet");
@@ -5614,7 +5630,7 @@ mod tests {
                 .unwrap(),
         );
         hub.guests.update(0, |guest| guest.permission = 2);
-        hub.send_commands(0);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
         let crate::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
             panic!("packet")
         };
@@ -5668,7 +5684,7 @@ mod tests {
         let (mut hub, rx) = hub_with_sync(sync);
         hub.rule_registry = Arc::new(crate::gamerules::RuleRegistry::vanilla());
         hub.guests.update(0, |g| g.permission = 2);
-        hub.send_commands(0);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
         let crate::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
             panic!("expected packet")
         };
@@ -6166,7 +6182,9 @@ mod tests {
             border: &border,
             streaming: None,
         };
-        hub.change_level(0, [100.5, 49.0, 0.5], 0.0, None, false, 0, &ctx);
+        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, false, &ctx);
         let _ = shared_flags_sent(&rx);
         hub.guests.update(0, |g| g.sneaking = false);
         hub.sync_player_state(0);
@@ -6249,11 +6267,15 @@ mod tests {
             g.recipe_book.custom.set("test:cooking", flags).unwrap();
         });
         open(&mut hub);
-        hub.change_level(0, [100.5, 49.0, 0.5], 0.0, None, false, 0, &ctx);
+        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_level_change(0, false, &ctx);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
         open(&mut hub);
-        hub.respawn(0, [0.5, 64.0, 0.5], None, &ctx);
+        hub.begin_respawn(0, [0.5, 64.0, 0.5], None, &ctx);
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+        hub.finish_respawn(0);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
     }
@@ -6438,9 +6460,15 @@ mod tests {
             let value = false;
             hub.guests.update(0, |g| g.placed = value);
         }
-        hub.place_new_player(2, &mut ctx);
+        if let Some(i) = hub.begin_player_join(2, &mut ctx) {
+            hub.send_commands(i, hub.commands_packet(hub.guests[i].permission));
+            hub.finish_player_join(i, &ctx);
+        }
         assert!(rx.try_recv().is_err());
-        hub.place_new_player(1, &mut ctx);
+        if let Some(i) = hub.begin_player_join(1, &mut ctx) {
+            hub.send_commands(i, hub.commands_packet(hub.guests[i].permission));
+            hub.finish_player_join(i, &ctx);
+        }
         let mut saw_list = false;
         while let Ok(crate::lan::Out::Packet(body)) = rx.try_recv() {
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
@@ -7731,7 +7759,9 @@ mod tests {
                 border: &border,
                 streaming: None,
             };
-            hub.change_level(0, [0.5, 64.0, 0.5], 0.0, None, true, 0, &ctx);
+            hub.begin_level_change(0, [0.5, 64.0, 0.5], 0.0, None, 0, &ctx);
+            hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
+            hub.finish_level_change(0, true, &ctx);
             // The nether's chunks: the level left and the new one are a run
             // each, which names its level once.
             send_chunks(&mut hub, &mut world);

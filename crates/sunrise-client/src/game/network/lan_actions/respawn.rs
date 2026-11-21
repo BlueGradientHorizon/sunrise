@@ -184,7 +184,10 @@ impl Game<'_> {
             streaming: Some(&self.streaming),
         };
         if let Some(host) = self.lan.as_mut() {
-            host.hub.respawn(i, spawn, rotation, &ctx);
+            host.hub.begin_respawn(i, spawn, rotation, &ctx);
+            host.hub
+                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+            host.hub.finish_respawn(i);
         }
         self.bind_player_attachments(conn, false);
         // ServerGamePacketListenerImpl.handleClientCommand: a hardcore world's

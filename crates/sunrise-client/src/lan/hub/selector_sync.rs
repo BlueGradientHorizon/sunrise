@@ -11,9 +11,8 @@ impl Hub {
 
     /// Commands.sendCommands: the command tree for this player. Public because `Hub::set_mod_commands`, a function
     /// replacement's target (`tools/ci/fn-replace-check/lower`), calls it from a copy in another crate.
-    pub fn send_commands(&self, i: usize) {
+    pub fn send_commands(&self, i: usize, mut packet: play::Commands) {
         let g = &self.guests[i];
-        let mut packet = self.commands_packet(g.permission);
         // What the mods took out is not in the tree the client gets.
         if !g.hidden_commands.is_empty() {
             let hidden: Vec<i32> = packet

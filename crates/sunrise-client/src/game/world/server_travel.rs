@@ -997,7 +997,10 @@ impl Game<'_> {
         // Entity.handlePortal set before the teleport.
         if let Some(host) = self.lan.as_mut() {
             host.hub
-                .change_level(i, at, yaw, None, true, PLAYER_DELAY, &ctx);
+                .begin_level_change(i, at, yaw, None, PLAYER_DELAY, &ctx);
+            host.hub
+                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+            host.hub.finish_level_change(i, true, &ctx);
         }
         if credits_respawn && let Some(host) = self.lan.as_mut() {
             host.hub.guests.update(i, |g| {
@@ -1669,7 +1672,10 @@ impl Game<'_> {
             let ctx = server_ctx!(self);
             if let Some(host) = self.lan.as_mut() {
                 host.hub
-                    .change_level(i, t.at, yaw, Some(pitch), false, cooldown, &ctx);
+                    .begin_level_change(i, t.at, yaw, Some(pitch), cooldown, &ctx);
+                host.hub
+                    .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+                host.hub.finish_level_change(i, false, &ctx);
                 host.hub.guests.update(i, |g| {
                     g.vehicle = t.vehicle;
                     if let Some(mut body) = passenger_body {
