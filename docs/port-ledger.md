@@ -30,11 +30,15 @@ python3 tools/port_ledger.py todo --package world/entity/animal       # the next
 python3 tools/ci/check_port_map_paths.py                             # every row's Rust function is still there
 ```
 
-A `port` or `inline` row's third column is `path::owner::fn`: it must name a file that exists and mentions that
-function, or the ledger answers with a file the function left. `tools/ci/check_port_map_paths.py` holds every row
-to that, and CI and `pr_ready.py` run it, so a refactor repoints its rows in the same change. The rows that do not
-resolve yet are listed in `tools/ci/port_map_known_stale.txt`, which only shrinks: `--refresh` deletes the lines
-that resolve now, and fixing a row means pointing it at the function's new file (or the `impl` it moved into).
+A `port` or `inline` row's third column is `path::owner::fn`: its file must exist and declare that function
+(`fn name`, whatever the visibility), or import it with a `use`, which is how a file re-exports a child module's
+function. A call to it is not a location, and neither is a mention in a comment or a string; the ledger would
+answer with a file the function left. `tools/ci/check_port_map_paths.py` holds every row to that, and CI and
+`pr_ready.py` run it, so a refactor repoints its rows in the same change. The rows that do not resolve yet are
+listed in `tools/ci/port_map_known_stale.txt`, which only shrinks: `--refresh` deletes the lines that no longer
+need one, and fixing a row means pointing it at the function's new file (or the `impl` it moved into). The growth
+check needs a base, because only a base tells a line this branch added from one main moved down the file:
+`pr_ready.py` passes the checkout's merge base and CI the pull request's base commit.
 
 `--json` on any query gives machine output for agents.
 

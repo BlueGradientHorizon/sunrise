@@ -352,7 +352,7 @@ CONTENT_ROOT_TESTS = "cargo test --locked -p sunrise-client-lib --lib mod_conten
 HOLDER_ACTOR = "cargo build --locked -p sunrise-mod-package --features runtime-process --example holder_actor"
 
 
-def plan(args, base, changed, crates_of, libraries, dependencies):
+def plan(args, base, merge_base, changed, crates_of, libraries, dependencies):
     """The checks for these changed files, in the order they run."""
     rust = any(workspace_rust(path) for path in changed)
     # The Python tests also hold ROADMAP.md to roadmap/roadmap.toml (tests/test_roadmap.py).
@@ -380,7 +380,8 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
         Step("Layers", f"python3 tools/check_layers.py --base {shlex.quote(base)}", where="here"),
         Step("Addresses", f"python3 tools/check_addresses.py --base {shlex.quote(base)}", where="here"),
         # tools/port_map/: a row that names a Sunrise function still finds it, and the known-stale list only shrinks.
-        Step("Port map", f"python3 tools/ci/check_port_map_paths.py --base {shlex.quote(base)}", where="here"),
+        # The merge base, not the moving tip: a line main already had is not this branch's addition.
+        Step("Port map", f"python3 tools/ci/check_port_map_paths.py --base {shlex.quote(merge_base)}", where="here"),
         # tools/hotspots/README.md: export brace lists stay at 12 names or under; longer ones only shrink.
         Step("Export lists", "python3 tools/hotspots/check_lists.py", where="here"),
         # tools/hotspots/check_stand_ins.py: test stand-ins keep up with the hooks and traits they mirror.
@@ -707,7 +708,7 @@ def main():
     merge_base = git("merge-base", "HEAD", args.base).strip()
     counts = line_counts(merge_base, changed)
     crates_of, libraries, dependencies = packages() if any(workspace_rust(p) for p in changed) else ({}, set(), {})
-    steps = plan(args, args.base, changed, crates_of, libraries, dependencies)
+    steps = plan(args, args.base, merge_base, changed, crates_of, libraries, dependencies)
     print(f"pr_ready: {len(changed)} files changed since {args.base}; checks on {args.host}", file=sys.stderr, flush=True)
 
     lock = steps[0]
