@@ -159,6 +159,11 @@
     "category": "immutable cache",
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
+  "runtime.rs::CALLBACK_FAULTS": {
+    "type": "std::sync::Mutex<Vec<CallbackFault>>",
+    "category": "dispatch table",
+    "reason": "Bounded per-(mod, callback) queue of mod callback panics drained by the engine for error-toast reporting."
+  },
   "runtime.rs::LISTENER_SERIAL": {
     "type": "std::cell::Cell<(u64,u64)>",
     "category": "dispatch table",

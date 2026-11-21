@@ -63,6 +63,10 @@ pub(crate) struct Installed {
     /// poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    /// Mods whose living-damage reduction callback panicked in this session.
+    /// `reduction_poison_free` answers through one atomic load on the normal path.
+    reduction_poisons: std::sync::Mutex<Option<std::collections::HashSet<&'static str>>>,
+    reduction_poison_free: std::sync::atomic::AtomicBool,
 }
 
 impl Installed {
@@ -113,6 +117,8 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            reduction_poisons: std::sync::Mutex::new(None),
+            reduction_poison_free: std::sync::atomic::AtomicBool::new(true),
         }
     }
 }
@@ -192,6 +198,86 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
                 .and_then(|poisons| poisons[hook as usize].as_ref())
                 .is_some_and(|poisoned| poisoned.contains(id))
     })
+}
+
+/// Mark `id`'s living-damage reduction callbacks poisoned for the session:
+/// any reduction modifier registered by `id` is skipped after a panic.
+pub(crate) fn poison_reduction(id: &'static str) {
+    let Some(installed) = installed() else {
+        return;
+    };
+    let mut poisons = installed
+        .reduction_poisons
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    poisons
+        .get_or_insert_with(std::collections::HashSet::new)
+        .insert(id);
+    installed
+        .reduction_poison_free
+        .store(false, std::sync::atomic::Ordering::Release);
+}
+
+/// Whether `id`'s living-damage reduction callbacks are poisoned for the session.
+pub(crate) fn reduction_poisoned(id: &str) -> bool {
+    installed().is_some_and(|installed| {
+        !installed
+            .reduction_poison_free
+            .load(std::sync::atomic::Ordering::Acquire)
+            && installed
+                .reduction_poisons
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .is_some_and(|poisoned| poisoned.contains(id))
+    })
+}
+
+/// One mod callback panic queued for engine error-toast reporting.
+// no wire: process-local fault report for error toast reporting.
+// exhaustive: engine-only fault record.
+// hidden: engine-side toast queue record, not part of the mod surface.
+#[doc(hidden)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CallbackFault {
+    /// The `[mod] id` of the mod whose callback panicked, or `"unknown"`.
+    pub mod_id: &'static str,
+    /// The callback name that panicked (for example, `"living_damage_reduction"`).
+    pub callback: &'static str,
+    /// The panic message captured from the unwinding payload.
+    pub message: String,
+}
+
+static CALLBACK_FAULTS: std::sync::Mutex<Vec<CallbackFault>> = std::sync::Mutex::new(Vec::new());
+
+/// Record a mod callback panic for error-toast reporting, deduplicating by `(mod_id, callback)`
+/// so long-running dedicated servers never grow unbounded.
+pub(crate) fn report_callback_fault(mod_id: &'static str, callback: &'static str, message: String) {
+    let mut faults = CALLBACK_FAULTS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if let Some(existing) = faults
+        .iter_mut()
+        .find(|fault| fault.mod_id == mod_id && fault.callback == callback)
+    {
+        existing.message = message;
+    } else {
+        faults.push(CallbackFault {
+            mod_id,
+            callback,
+            message,
+        });
+    }
+}
+
+/// Drain the mod callback panics recorded since the last call.
+// hidden: engine-side toast queue consumer, not part of the mod surface.
+#[doc(hidden)]
+pub fn take_callback_faults() -> Vec<CallbackFault> {
+    let mut faults = CALLBACK_FAULTS
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    std::mem::take(&mut *faults)
 }
 
 pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {

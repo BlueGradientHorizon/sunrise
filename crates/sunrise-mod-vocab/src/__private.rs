@@ -789,3 +789,6 @@ include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private.rs"));
 pub fn listener_serial() -> u64 {
     crate::runtime::listener_serial()
 }
+
+pub use crate::entity::health::{DamageContainerBackend, DamageContainerRead};
+pub use crate::runtime::{CallbackFault, take_callback_faults};
