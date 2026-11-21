@@ -47,6 +47,12 @@ server log is unaffected. The mod's other delayed callbacks stop for the rest of
 if you reopen the world. Its other hooks are unaffected, the tick continues, and other mods' due
 tasks still run. A phase refusal is logged each time and does not disable further tasks.
 
+If a capture's destructor panics on cancellation or world close, the game disables the
+**scheduling** mod's delayed callbacks for the same session, even when another mod cancelled the
+task. The error names the scheduling mod in the log and shows a system toast in the owning
+window without calling `toast_add`. `cancel_task` still returns `true`, and world close still
+drops the remaining tasks and finishes cleanup.
+
 **Lifetime.** The queue belongs to the current world and is never saved. Closing the world or a
 failed open drops all its pending tasks. If a deadline needs to outlive a restart, save the deadline
 in your mod's own storage and schedule a new closure when the world opens.

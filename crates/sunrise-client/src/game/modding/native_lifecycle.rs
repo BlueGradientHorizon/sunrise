@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::{
     Game,
     execution_role::ExecutionRole,
-    scheduled_tasks::{ScheduledTasks, ServerTask, run_all},
+    scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, run_all},
 };
 use mod_api::{ScheduleError, TaskId};
 // Their old home, for mixin code that names them here.
@@ -351,14 +351,13 @@ impl Game<'_> {
             .schedule(owner, delay_ticks, task)
     }
 
-    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, dropping its captures
-    /// under the scheduling owner's attribution when attributed.
+    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`, disposing of its captures
+    /// under the scheduling owner's panic policy when attributed.
     pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
-        let Some((owner, task)) = self.native_lifecycle.tasks.cancel(id) else {
+        let Some(task) = self.native_lifecycle.tasks.cancel(id) else {
             return false;
         };
-        let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
-        drop(task);
+        dispose_pending_task(task);
         true
     }
 
@@ -810,6 +809,121 @@ mod tests {
                 let log = LOG.0.lock().unwrap();
                 assert_eq!(log.len(), 2, "each refusal must be reported: {log:?}");
                 assert!(log.iter().all(|line| line.contains(OWNER)), "{log:?}");
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use mod_api::{
+            __private::{enter, game::take_callback_panic_notices},
+            content::crash::current_native_mod,
+        };
+        use std::{cell::RefCell, rc::Rc};
+        use sunrise_client::{join_seq::residency::table::EntityLookup, mobs::Mob};
+
+        if run_fresh_cases(
+            "game::native_lifecycle::tests::panicking_scheduled_task_captures_do_not_interrupt_cancellation_or_close",
+            "SUNRISE_SCHEDULED_TASK_DROP_CHILD",
+            &["dispose"],
+        ) {
+            return;
+        }
+        let home = std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap());
+        sunrise_client::logging::init(&home, "Server thread");
+        sunrise_client::crash::install(home, "server");
+
+        const CANCELLED: &str = "cancelled_task_owner";
+        const CLOSED: &str = "closed_task_owner";
+        const HEALTHY: &str = "healthy_task_owner";
+        struct PanickingCapture(&'static str);
+        impl Drop for PanickingCapture {
+            fn drop(&mut self) {
+                panic!("{}", self.0);
+            }
+        }
+
+        let mods: Vec<_> = [CANCELLED, CLOSED, HEALTHY]
+            .into_iter()
+            .map(|id| ModEntry::new(id, Box::new(TaskOwner)))
+            .collect();
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.native_lifecycle.world_open_ready().unwrap();
+                let cancelled = {
+                    let _owner = enter(CANCELLED, "schedule fixture");
+                    let capture = PanickingCapture("cancelled capture panicked");
+                    game.schedule_task(20, Box::new(move |_| drop(capture)))
+                        .unwrap()
+                };
+                {
+                    let _caller = enter(HEALTHY, "cancel fixture");
+                    assert!(game.cancel_task(cancelled));
+                    assert_eq!(current_native_mod(), Some(HEALTHY));
+                    assert!(!game.cancel_task(cancelled));
+                }
+                let closed = {
+                    let _owner = enter(CLOSED, "schedule fixture");
+                    let capture = PanickingCapture("closing capture panicked");
+                    game.schedule_task(20, Box::new(move |_| drop(capture)))
+                        .unwrap()
+                };
+                let healthy_capture = Rc::new(());
+                let pending = Rc::clone(&healthy_capture);
+                let later = game
+                    .schedule_task(20, Box::new(move |_| drop(pending)))
+                    .unwrap();
+
+                let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(410, pig, Default::default(), 0.0));
+                assert!(matches!(
+                    game.server_resident_entity(410),
+                    EntityLookup::Found { .. }
+                ));
+                game.native_lifecycle.begin_close();
+                game.native_lifecycle_world_closed();
+                assert!(game.native_lifecycle.epoch().is_none());
+                assert!(matches!(
+                    game.server_resident_entity(410),
+                    EntityLookup::Missing
+                ));
+                assert_eq!(Rc::strong_count(&healthy_capture), 1);
+
+                let notices = take_callback_panic_notices();
+                let logs = sunrise_client::logging::recent_lines();
+                assert_eq!(notices.len(), 2, "{notices:?}");
+                for (notice, (owner, message)) in notices.iter().zip([
+                    (CANCELLED, "cancelled capture panicked"),
+                    (CLOSED, "closing capture panicked"),
+                ]) {
+                    assert_eq!(notice.mod_id, owner);
+                    assert!(notice.message.contains(message), "{notice:?}");
+                    assert!(
+                        logs.iter()
+                            .any(|line| line.contains(owner) && line.contains(message))
+                    );
+                }
+
+                game.native_lifecycle
+                    .begin_open(Authority::IntegratedServer);
+                game.native_lifecycle.world_open_ready().unwrap();
+                let ran = Rc::new(RefCell::new(Vec::new()));
+                for owner in [CANCELLED, CLOSED, HEALTHY] {
+                    let _owner = enter(owner, "schedule fixture");
+                    let ran = Rc::clone(&ran);
+                    let fresh = game
+                        .schedule_task(0, Box::new(move |_| ran.borrow_mut().push(owner)))
+                        .unwrap();
+                    assert!(![cancelled, closed, later].contains(&fresh));
+                }
+                for stale in [cancelled, closed, later] {
+                    assert!(!game.cancel_task(stale));
+                }
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert_eq!(*ran.borrow(), [HEALTHY]);
             });
         });
     }
