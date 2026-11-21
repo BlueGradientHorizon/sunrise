@@ -11,8 +11,9 @@ mod fire;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
-    BlockDropsCall, BlockScreenEffectDrawCall, ConnectsToCall, EntityChangeBlockPreCall,
-    ItemAfterVerticalCollisionCall, PreRemoveSideEffectsCall, UpdateShapeCall,
+    BlockDropsCall, BlockScreenEffectDrawCall, CloneItemStackCall, ConnectsToCall,
+    EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall, PreRemoveSideEffectsCall,
+    UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 

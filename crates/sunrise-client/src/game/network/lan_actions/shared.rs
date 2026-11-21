@@ -1312,7 +1312,7 @@ mod tests {
                 host: &dyn Host,
                 event: &mut CloneItemStackEvent<'_>,
             ) -> Option<ItemStack> {
-                assert!(event.player.food_level(host).is_some());
+                assert!(event.player.food(host).is_some());
                 self.0.lock().unwrap().push((
                     event.player.entity().id(),
                     event.player.uuid(),
