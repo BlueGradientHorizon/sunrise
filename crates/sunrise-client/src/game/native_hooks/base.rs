@@ -4544,6 +4544,12 @@ impl Game<'_> {
         }
         self.stored_setting(mod_id, key)
     }
+    pub(in crate::game) fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
+        if Self::another_mods(mod_id) {
+            return None;
+        }
+        mod_settings::read_raw(&Self::mod_data_root().join(mod_id), mod_id, key)
+    }
     pub(super) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)
     }

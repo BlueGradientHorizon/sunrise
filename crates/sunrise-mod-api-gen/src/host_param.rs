@@ -83,6 +83,7 @@ pub(super) fn context_param(hook: &Hook) -> Option<HostParam> {
             PhaseContext::Config => "&dyn ConfigContext",
             PhaseContext::Reload => "&dyn ReloadContext",
             PhaseContext::ClientReload => "&dyn ClientReloadHost",
+            PhaseContext::ClientReloadListener => "&dyn ClientReloadListenerContext",
             PhaseContext::ClientSetup => "&mut dyn ClientSetupContext",
         }
         .into(),
@@ -100,6 +101,7 @@ pub(super) fn phase_engine_type(phase: PhaseContext) -> &'static str {
         PhaseContext::Config => "&dyn mod_api::ConfigContext",
         PhaseContext::Reload => "&dyn mod_api::ReloadContext",
         PhaseContext::ClientReload => "&dyn mod_api::ClientReloadHost",
+        PhaseContext::ClientReloadListener => "&dyn mod_api::ClientReloadListenerContext",
         PhaseContext::ClientSetup => "&mut dyn mod_api::ClientSetupContext",
     }
 }
@@ -176,6 +178,10 @@ mod tests {
             (PhaseContext::Config, "&dyn ConfigContext"),
             (PhaseContext::Reload, "&dyn ReloadContext"),
             (PhaseContext::ClientReload, "&dyn ClientReloadHost"),
+            (
+                PhaseContext::ClientReloadListener,
+                "&dyn ClientReloadListenerContext",
+            ),
             (PhaseContext::ClientSetup, "&mut dyn ClientSetupContext"),
         ] {
             let hook = Hook {

@@ -25,7 +25,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "both",
         contract = "listen",
-        neoforge = "DataMapsUpdatedEvent"
+        neoforge = "DataMapsUpdatedEvent",
+        version = 2
     )]
     fn data_maps_updated(registry: &str, cause: mod_api::DataMapsUpdateCause);
 }

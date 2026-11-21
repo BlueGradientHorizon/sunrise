@@ -20,7 +20,8 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "FMLClientSetupEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn client_setup();
 }

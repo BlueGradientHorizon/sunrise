@@ -2144,8 +2144,8 @@ own live state.
 ```rust,ignore
 use std::sync::{Arc, RwLock};
 use mod_api::{
-    self, AddClientReloadListenersEvent, ClientHost, ClientReloadContext, ClientReloadListener,
-    FileToIdConverter, Hooks, Identifier, ReloadResourceError,
+    self, AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+    ClientReloadListenerContext, FileToIdConverter, Hooks, Identifier, ReloadResourceError,
 };
 
 #[derive(Default)]
@@ -2171,7 +2171,7 @@ struct MyMod(Arc<Theme>);
 impl Hooks for MyMod {
     fn add_client_reload_listeners(
         &self,
-        _context: &dyn ClientReloadHost,
+        _context: &dyn ClientReloadListenerContext,
         event: &mut AddClientReloadListenersEvent<'_>,
     ) {
         event.listeners.add_listener(

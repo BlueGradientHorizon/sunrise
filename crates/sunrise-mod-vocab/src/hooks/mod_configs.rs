@@ -16,7 +16,8 @@ pub trait Hooks {
         side = "both",
         contract = "collect",
         out = "configs",
-        neoforge = "ModContainer.registerConfig"
+        neoforge = "ModContainer.registerConfig",
+        version = 2
     )]
     fn register_configs(configs: &mut Vec<mod_api::Config>);
     /// A registered config was read (`ModConfigEvent.Loading`): `config`
@@ -33,32 +34,41 @@ pub trait Hooks {
         side = "both",
         contract = "listen",
         neoforge = "ModConfigEvent.Loading",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn config_loading(config: &ConfigFile);
     /// A loaded config's file changed on disk (`ModConfigEvent.Reloading`):
     /// its new text. The game looks at the files' modification times once a
     /// second, on the window and on the server's tick; a file saved with the
     /// same text, removed or unreadable fires nothing and keeps its last
-    /// text.
+    /// text. Receives a [`ConfigContext`] with settings reads and the scoped
+    /// `ConfigFiles` service.
     #[hook(
+        receiver = "associated",
+        context = "config",
         dispatch = "flat",
         side = "both",
         contract = "listen",
         neoforge = "ModConfigEvent.Reloading",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn config_reloading(config: &ConfigFile);
     /// A `Server` config is dropped as its server stops
     /// (`ModConfigEvent.Unloading`), after `server_stopping`; the next
     /// world reads it again. `Client` and `Common` configs stay until the
-    /// game quits.
+    /// game quits. Receives a [`ConfigContext`] with settings reads and the
+    /// scoped `ConfigFiles` service.
     #[hook(
+        receiver = "associated",
+        context = "config",
         dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "ModConfigEvent.Unloading",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn config_unloading(config: &ConfigFile);
 }

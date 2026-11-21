@@ -14,42 +14,63 @@ use super::Game;
 use super::packs::reload_files;
 use mod_api::{
     __private::reload::{PreparedStep, ReloadStageError, apply_listeners, prepare_listeners},
-    ClientReloadContext, ClientReloadHost, ClientReloadListener, HookId, ReloadContext,
+    ClientReloadContext, ClientReloadHost, ClientReloadListener, ClientReloadListenerContext,
+    HookId,
 };
-use sunrise_client::datapack::DataPack;
+use sunrise_client::{datapack::DataPack, settings::Settings};
 
 /// One client reload step to run later on the game-owning thread: a mod
 /// listener's prepared apply.
 pub(super) type PreparedClientReload = PreparedStep<()>;
 
-/// The registration context of the first load: no game exists yet, so
-/// [`ClientReloadHost`] defaults answer empty/unavailable while listeners
-/// register. Later reloads pass `&Game` directly.
-pub(super) struct StartupReloadContext;
-impl mod_api::prelude::BlockStatesHost for StartupReloadContext {}
-impl mod_api::prelude::KeysHost for StartupReloadContext {}
-impl mod_api::prelude::TagsHost for StartupReloadContext {}
-impl mod_api::prelude::TextHost for StartupReloadContext {
+/// The registration context of the first load: no game or published assets
+/// exist yet, so [`published`](ClientReloadListenerContext::published) is
+/// `None` while process, mod-roster, settings, math-profile, and local text
+/// queries return real values. Later reloads pass `&Game` directly.
+pub(super) struct StartupReloadContext<'a> {
+    settings: Option<&'a Settings>,
+}
+
+impl ClientReloadListenerContext for StartupReloadContext<'_> {
+    fn dist(&self) -> mod_api::Dist {
+        crate::entry::runtime_environment::try_get().map_or(mod_api::Dist::Client, |env| env.dist())
+    }
+    fn game_version(&self) -> &'static str {
+        crate::entry::runtime_environment::try_get()
+            .map_or(sunrise_core::VANILLA_VERSION, |env| env.game_version())
+    }
+    fn server_data_version(&self) -> i32 {
+        sunrise_core::version::DATA_VERSION
+    }
+    fn sunrise_version(&self) -> &'static str {
+        crate::entry::runtime_environment::try_get().map_or("", |env| env.sunrise_version())
+    }
+    fn game_tests_enabled(&self) -> bool {
+        crate::entry::runtime_environment::try_get().is_some_and(|env| env.game_tests_enabled())
+    }
+    fn on(&self, mod_id: &str) -> bool {
+        self.settings
+            .is_none_or(|settings| !settings.mods.disabled.contains(mod_id))
+    }
+    fn is_loaded(&self, id: &str) -> bool {
+        mod_api::__private::loaded_mods().get(id).is_some()
+    }
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+        Game::startup_setting(mod_id, key)
+    }
+    fn math_profile(&self) -> mod_api::MathProfile {
+        Game::startup_math_profile()
+    }
     fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
             sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
         })
         .0
     }
-}
-impl mod_api::prelude::RecipesHost for StartupReloadContext {}
-impl mod_api::prelude::RecipePropertiesHost for StartupReloadContext {}
-impl mod_api::prelude::ResourcesHost for StartupReloadContext {}
-impl mod_api::prelude::MathHost for StartupReloadContext {}
-impl mod_api::prelude::PayloadTokensHost for StartupReloadContext {}
-impl mod_api::prelude::PayloadDropsHost for StartupReloadContext {}
-impl mod_api::prelude::ItemParticlesClientHost for StartupReloadContext {
-    fn item_particle_options(&self, _: &mod_api::ItemStack) -> Option<mod_api::ParticleOptions> {
+    fn published(&self) -> Option<&dyn ClientReloadHost> {
         None
     }
 }
-impl ReloadContext for StartupReloadContext {}
-impl ClientReloadHost for StartupReloadContext {}
 
 impl Game<'_> {
     /// Registers a later reload's client listeners through the game
@@ -65,11 +86,15 @@ impl Game<'_> {
 }
 
 /// Registers the first load's client listeners: no game exists yet, so
-/// [`StartupReloadContext`] stands in, before any resources are loaded.
-pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListenerRegistry {
+/// [`StartupReloadContext`] answers the process/mod/settings facts known on
+/// the loader thread and leaves `published()` as `None`.
+pub(super) fn register_startup_client_reload_listeners(
+    settings: Option<&Settings>,
+) -> mod_api::ClientListenerRegistry {
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-        mod_api::dispatch_add_client_reload_listeners(&StartupReloadContext, &mut listeners);
+        let context = StartupReloadContext { settings };
+        mod_api::dispatch_add_client_reload_listeners(&context, &mut listeners);
     }
     listeners
 }

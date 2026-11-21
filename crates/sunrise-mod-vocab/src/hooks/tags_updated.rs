@@ -29,7 +29,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "both",
         contract = "listen",
-        neoforge = "TagsUpdatedEvent"
+        neoforge = "TagsUpdatedEvent",
+        version = 2
     )]
     fn tags_updated(cause: mod_api::TagsUpdateCause);
 }

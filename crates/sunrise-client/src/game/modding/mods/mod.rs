@@ -3625,7 +3625,7 @@ mod server_side_tests {
     impl Hooks for Reloads {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientReloadHost,
+            _: &dyn ClientReloadListenerContext,
             _: &mut AddClientReloadListenersEvent<'_>,
         ) {
         }

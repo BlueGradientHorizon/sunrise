@@ -11,16 +11,19 @@ pub trait Hooks {
     /// parsed state, all applies after all prepares, before
     /// `client_resources_reloaded`. A listener that returns an error
     /// aborts the reload and keeps every listener's previous assets.
-    /// Client-side, taking a [`ClientReloadHost`]. Later registration is on
-    /// the render thread, prepare on the loader, and apply on the owning game
-    /// thread. Startup's empty context grants no extra access.
+    /// Client-side, taking a [`ClientReloadListenerContext`]. Later
+    /// registration is on the render thread, prepare on the loader, and apply
+    /// on the owning game thread. On initial startup before any resources are
+    /// published, `context.published()` is `None`; on later reloads it returns
+    /// `Some(&dyn ClientReloadHost)`.
     #[hook(
         receiver = "associated",
-        context = "client_reload",
+        context = "client_reload_listener",
         dispatch = "flat",
         side = "client",
         contract = "listen",
-        neoforge = "AddClientReloadListenersEvent"
+        neoforge = "AddClientReloadListenersEvent",
+        version = 2
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }

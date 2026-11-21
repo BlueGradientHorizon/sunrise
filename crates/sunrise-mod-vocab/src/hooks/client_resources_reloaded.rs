@@ -15,7 +15,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "client",
         contract = "listen",
-        neoforge = "ClientResourceLoadFinishedEvent"
+        neoforge = "ClientResourceLoadFinishedEvent",
+        version = 2
     )]
     fn client_resources_reloaded();
 }

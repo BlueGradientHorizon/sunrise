@@ -259,9 +259,11 @@ mod tests {
             }
             fn config_unloading(
                 &self,
-                _: &mut dyn mod_api::ServerHost,
+                context: &dyn ConfigContext,
                 event: &mut mod_api::ConfigUnloadingEvent<'_>,
             ) {
+                let _ = context.setting("phase_probe", "unused");
+                let _ = context.config_files();
                 self.0.lock().unwrap().push((false, event.config.kind));
             }
         }

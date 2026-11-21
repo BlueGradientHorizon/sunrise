@@ -571,7 +571,17 @@ mod tests {
                 assert_eq!(files.read(&other), Err(ConfigFileError::NotOwned));
                 assert_eq!(files.write(&other, b"x"), Err(ConfigFileError::NotOwned));
             }
-            fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
+            fn config_reloading(
+                &self,
+                context: &dyn mod_api::ConfigContext,
+                event: &mut ConfigReloadingEvent<'_>,
+            ) {
+                assert!(
+                    context
+                        .config_files()
+                        .read(&path("proof/state.bin"))
+                        .is_ok()
+                );
                 heard().push(format!("reloading {}", event.config.text.trim()));
             }
         }

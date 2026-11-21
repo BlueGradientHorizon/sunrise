@@ -238,7 +238,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
     impl Hooks for StartupProbe {
         fn add_client_reload_listeners(
             &self,
-            _context: &dyn ClientReloadHost,
+            _context: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             event
@@ -390,7 +390,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
     impl Hooks for HatListener {
         fn add_client_reload_listeners(
             &self,
-            _context: &dyn ClientReloadHost,
+            _context: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             event
@@ -843,15 +843,91 @@ fn refused_client_context_keeps_pack_and_listeners() {
 }
 
 #[test]
+fn startup_client_reload_listener_context_reports_known_facts_and_no_published_assets() {
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientReloadListenerContext, Dist, Hooks, ModEntry, Text,
+    };
+    use std::sync::Mutex;
+
+    struct StartupObservation {
+        dist: Dist,
+        data_version: i32,
+        math_profile: mod_api::MathProfile,
+        enabled_self: bool,
+        disabled_other: bool,
+        plain: String,
+        has_published: bool,
+    }
+    struct Probe(Arc<Mutex<Option<StartupObservation>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn add_client_reload_listeners(
+            &self,
+            context: &dyn ClientReloadListenerContext,
+            _: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            *self.0.lock().unwrap() = Some(StartupObservation {
+                dist: context.dist(),
+                data_version: context.server_data_version(),
+                math_profile: context.math_profile(),
+                enabled_self: context.on("startup_probe"),
+                disabled_other: context.on("muted_mod"),
+                plain: context.text_string(&Text::literal("hello startup")),
+                has_published: context.published().is_some(),
+            });
+        }
+    }
+    let observed = Arc::new(Mutex::new(None));
+    let mut settings = sunrise_client::settings::Settings::default();
+    settings.mods.disabled.insert("muted_mod".into());
+    let mods = vec![ModEntry::new(
+        "startup_probe",
+        Box::new(Probe(observed.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let _ = register_startup_client_reload_listeners(Some(&settings));
+    });
+    let seen = observed.lock().unwrap().take().expect("startup hook fired");
+    assert_eq!(seen.dist, Dist::Client);
+    assert_eq!(seen.data_version, sunrise_core::version::DATA_VERSION);
+    assert_eq!(seen.math_profile, Game::startup_math_profile());
+    assert!(seen.enabled_self);
+    assert!(!seen.disabled_other);
+    assert_eq!(seen.plain, "hello startup");
+    assert!(!seen.has_published);
+}
+
+#[test]
 #[ignore = "daily"]
 fn client_completion_reads_published_resources_without_world_access() {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use mod_api::{ClientReloadHost, ClientResourcesReloadedEvent, Hooks, ModEntry};
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientReloadHost, ClientReloadListenerContext,
+        ClientResourcesReloadedEvent, Hooks, ModEntry,
+    };
     use std::sync::Mutex;
 
     struct Probe(Arc<Mutex<Vec<u64>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
+        fn add_client_reload_listeners(
+            &self,
+            context: &dyn ClientReloadListenerContext,
+            _: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            let published = context
+                .published()
+                .expect("later reloads expose published client assets");
+            assert!(
+                published.block_sprites(&[published.block_state_id("minecraft:stone").unwrap()])[0]
+                    .is_some()
+            );
+            self.0
+                .lock()
+                .unwrap()
+                .push(published.block_sprites_version());
+        }
         fn client_resources_reloaded(
             &self,
             context: &dyn ClientReloadHost,
@@ -875,9 +951,10 @@ fn client_completion_reads_published_resources_without_world_access() {
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
             let version = game.block_sprites_version();
+            let _ = game.register_client_reload_listeners();
             game.native_client_resources_reloaded();
             game.native_client_resources_reloaded();
-            assert_eq!(*seen.lock().unwrap(), [version, version]);
+            assert_eq!(*seen.lock().unwrap(), [version, version, version]);
         })
     });
 }

@@ -55,7 +55,7 @@ RULES = [
     ("slots", r"^(sunrise_mod_api_macros|sunrise_mod_api_gen)\b"),
     ("attachments", r"^sunrise_mod_runtime::(attachments|impl_attachment_lifetime)\b"),
     ("attachments", r"^mod_api::(Attachment\w*|attachment_queries|__private::attach\w*)\b"),
-    ("host", r"^mod_api::(\w*Host|HostSide|Backend\w*|ConfigContext|ReloadContext|ClientSetupContext|__private::(backend\w*|game))\b"),
+    ("host", r"^mod_api::(\w*Host|HostSide|Backend\w*|ConfigContext|ReloadContext|ClientReloadListenerContext|ClientSetupContext|__private::(backend\w*|game))\b"),
     ("content_render", r"^mod_render\b|^sunrise_mod_runtime\b"),
     ("content_render", r"^mod_api::(content|client|sprite_source|RegistrationContext|Registr\w*|Config\w*"
                        r"|__private::(\w+_key(_id|_by_\w+)?|\w+_id|effect_index|resolve_\w+|block_definitions"

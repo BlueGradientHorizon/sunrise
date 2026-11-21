@@ -13,7 +13,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        neoforge = "AddServerReloadListenersEvent"
+        neoforge = "AddServerReloadListenersEvent",
+        version = 2
     )]
     fn add_server_reload_listeners(listeners: &mut dyn ServerReloadListeners);
 }

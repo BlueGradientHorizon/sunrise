@@ -67,6 +67,8 @@ pub enum PhaseContext {
     Reload,
     /// A client resource-reload hook.
     ClientReload,
+    /// The client reload-listener registration hook (`add_client_reload_listeners`).
+    ClientReloadListener,
     /// The client setup hook after initial resources load.
     ClientSetup,
 }

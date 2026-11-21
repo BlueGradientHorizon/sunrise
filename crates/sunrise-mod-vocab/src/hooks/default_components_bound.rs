@@ -21,7 +21,8 @@ pub trait Hooks {
         dispatch = "flat",
         side = "both",
         contract = "listen",
-        neoforge = "DefaultDataComponentsBoundEvent"
+        neoforge = "DefaultDataComponentsBoundEvent",
+        version = 2
     )]
     #[notes = r##"## When the notice fires, per side and cause
 
