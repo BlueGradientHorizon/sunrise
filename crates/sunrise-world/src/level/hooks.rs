@@ -202,7 +202,6 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                 Class::PotentSulfur => self.potent_sulfur_on_place(pos, state),
                 Class::Observer => {
                     if !same
-                        && !self.level.is_client_side()
                         && b.table.bool(state, b.props.powered)
                         && !self.ticks.has_block_tick(pos, block)
                     {
