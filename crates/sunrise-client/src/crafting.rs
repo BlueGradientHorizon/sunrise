@@ -2032,7 +2032,7 @@ fn decode_vanilla_recipe(
     let show_notification = v["show_notification"].as_bool().unwrap_or(true);
     match kind {
         "minecraft:stonecutting" | "minecraft:smithing_transform" | "minecraft:smithing_trim" => {
-            match crate::stations::ParsedStationRecipe::parse(qualified(name), v, &ingredient) {
+            match crate::stations::ParsedStationRecipe::parse(qualified(name), v, ingredient) {
                 Some(recipe) => Ok(DecodedRecipe::Station {
                     recipe,
                     category: text("category"),

@@ -806,7 +806,7 @@ mod tests {
             let a = f32::from(signal(index)) / 32768.0;
             let b = f32::from(signal(index + 1)) / 32768.0;
             let left = a + (b - a) * (remainder as f32 / OUTPUT_RATE as f32);
-            assert_eq!(frame, [left, -left], "source frame {index}");
+            assert_eq!(*frame, [left, -left], "source frame {index}");
         }
         assert_eq!(samples[6..], [0.0; 14]);
         assert_eq!(stream.state(), AudioStreamState::Stopped);
