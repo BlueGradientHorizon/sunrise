@@ -37,6 +37,7 @@ Native text is appended after vanilla's entries in registration order."#]
         out = "entries",
         context = "registration",
         answered_by = "mod",
+        owned_answer_batch = true,
         neoforge = "RegisterDebugEntriesEvent",
         version = 2
     )]

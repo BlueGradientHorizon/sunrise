@@ -29,6 +29,7 @@ readiness, timeout and closing."#]
         out = "screens",
         context = "registration",
         answered_by = "mod",
+        owned_answer_batch = true,
         neoforge = "RegisterDimensionTransitionScreenEvent",
         version = 2
     )]

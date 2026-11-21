@@ -933,6 +933,9 @@ pub(super) fn emit<'a>(
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
         {
+            if hook.owned_answer_batch && Some(field.as_str()) == out {
+                continue;
+            }
             let index = snaps.len();
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
@@ -980,6 +983,13 @@ pub(super) fn emit<'a>(
                 restores.join(" ")
             )
         };
+        // Answered collectors drain this private batch after each mod. The refused mod has
+        // no earlier entries to restore, and its callback objects need not be Clone.
+        let clear_batch = if hook.owned_answer_batch {
+            format!("{event}.{}.clear(); ", out.unwrap())
+        } else {
+            String::new()
+        };
         let refused_value = if result.trim() == "-> Flow" {
             "Flow::Continue"
         } else {
@@ -987,7 +997,7 @@ pub(super) fn emit<'a>(
         };
         let run = |expression: &str| {
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}refusal.report(); {refused_value} }} }}"
+                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
             )
         };
         // One callee's call: a mod's, or a scoped hook's part's.
