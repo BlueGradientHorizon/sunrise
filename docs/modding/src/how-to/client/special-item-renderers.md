@@ -147,9 +147,9 @@ bakes new renderer instances and leases for enabled factories. Submit only lease
 from the current load. Item states already resolved before a reload retain their baked geometry
 and can finish drawing it.
 
-An unknown type or an error or panic in decode or bake refuses the enclosing item definition.
-That item draws the missing model; the other definitions still load and the game does not try a
-lower pack's definition.
+An unknown type, a disabled winning factory, or an error or panic in decode or bake refuses the
+enclosing item definition. That item draws the missing model. Other definitions still load; the
+game does not try the built-in decoder for an overridden type or a lower pack's definition.
 
 The factory, argument extraction and submission run as the mod that registered the type.
 A failed draw rolls back the entire special layer, including earlier submissions. A panic

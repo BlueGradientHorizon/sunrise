@@ -17,11 +17,13 @@ static TASK_OWNERS: LazyLock<Mutex<TaskOwners>> = LazyLock::new(Mutex::default);
 /// [`RegisterConfigurationTasksEvent::register`]. The server runs it in queue order,
 /// on the server thread without holding the connection's task lock, and keeps the
 /// same instance while it waits. Callbacks run as the registering mod. A disabled
-/// callback is skipped; a panic closes that peer and disables the task implementation
-/// for that mod for the session, without disabling other mods' tasks.
+/// implementation is skipped; a panic during registration, start or tick closes that
+/// peer and disables the task implementation for that mod for the session, without
+/// disabling other mods' tasks.
 pub trait ConfigurationTask: Send + 'static {
-    /// The namespaced task type, read once on registration. It must be nonempty and
-    /// unique among all tasks registered for this connection.
+    /// The namespaced task type, read once as the registering mod. It must be
+    /// nonempty and unique among all tasks registered for this connection. A phase
+    /// refusal here rolls back the enclosing listener's task registrations.
     fn task_type(&self) -> &Identifier;
 
     /// Start this task exactly once. Call [`ConfigurationTaskContext::finish`] or
@@ -45,6 +47,9 @@ pub enum ConfigurationTaskRegistrationError {
     EmptyType,
     /// Another task already declared this type for this connection.
     DuplicateType(Identifier),
+    /// The task type could not be read under its owner. If it panicked, later
+    /// submissions of this implementation by the same mod are skipped.
+    CallbackFailed(String),
 }
 impl fmt::Display for ConfigurationTaskRegistrationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -53,40 +58,58 @@ impl fmt::Display for ConfigurationTaskRegistrationError {
                 f.write_str("Configuration task type has an empty namespace or path")
             }
             Self::DuplicateType(id) => write!(f, "Duplicate configuration task type: {id}"),
+            Self::CallbackFailed(reason) => f.write_str(reason),
         }
     }
 }
 impl std::error::Error for ConfigurationTaskRegistrationError {}
 
 impl RegisterConfigurationTasksEvent<'_> {
-    /// Append a task to this connection's queue. An invalid or duplicate type refuses
-    /// registration, aborting the registration transaction and admission even if the
-    /// listener ignores this result. The first refusal supplies the diagnostic.
-    /// If the listener itself hits a phase refusal, discard its staged tasks and diagnostic.
+    /// Append a task to this connection's queue. An invalid or duplicate type, or a
+    /// panic while reading it, aborts the registration transaction and admission even
+    /// if the listener ignores this result. The first error supplies the diagnostic.
+    /// A disabled implementation is not queued. If the listener or `task_type` hits
+    /// a phase refusal, discard this listener's staged tasks and diagnostic.
     pub fn register(
         &mut self,
         task: impl ConfigurationTask,
     ) -> Result<(), ConfigurationTaskRegistrationError> {
-        let id = task.task_type();
-        let refusal = if id.namespace().is_empty() || id.path().is_empty() {
-            ConfigurationTaskRegistrationError::EmptyType
-        } else if !self.registration.types.insert(id.clone()) {
-            ConfigurationTaskRegistrationError::DuplicateType(id.clone())
-        } else {
-            let owner = crate::content::crash::current_native_mod().map(|mod_id| {
-                TASK_OWNERS
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .entry((mod_id, (&task as &dyn Any).type_id()))
-                    .or_insert_with(|| CallbackOwner::for_mod(mod_id))
-                    .clone()
-            });
-            self.registration.tasks.push(RegisteredConfigurationTask {
-                kind: id.clone(),
-                task: Box::new(task),
-                owner,
-            });
-            return Ok(());
+        let owner = crate::content::crash::current_native_mod().map(|mod_id| {
+            TASK_OWNERS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .entry((mod_id, (&task as &dyn Any).type_id()))
+                .or_insert_with(|| CallbackOwner::for_mod(mod_id))
+                .clone()
+        });
+        let binding = match owner {
+            Some(owner) if !owner.is_enabled() => return Ok(()),
+            Some(owner) => owner
+                .call_in_listener("configuration task", "ConfigurationTask::task_type", || {
+                    task.task_type()
+                })
+                .map(|id| (owner, id))
+                .map_err(ConfigurationTaskRegistrationError::CallbackFailed),
+            None => Err(ConfigurationTaskRegistrationError::CallbackFailed(
+                "Configuration task registration has no owning mod".into(),
+            )),
+        };
+        let refusal = match binding {
+            Err(error) => error,
+            Ok((_, id)) if id.namespace().is_empty() || id.path().is_empty() => {
+                ConfigurationTaskRegistrationError::EmptyType
+            }
+            Ok((_, id)) if !self.registration.types.insert(id.clone()) => {
+                ConfigurationTaskRegistrationError::DuplicateType(id.clone())
+            }
+            Ok((owner, id)) => {
+                self.registration.tasks.push(RegisteredConfigurationTask {
+                    kind: id.clone(),
+                    task: Box::new(task),
+                    owner,
+                });
+                return Ok(());
+            }
         };
         self.registration
             .refusal
@@ -143,7 +166,7 @@ pub struct RegisteredConfigurationTask {
     /// The connection-owned instance.
     pub task: Box<dyn ConfigurationTask>,
     /// The registering mod, for Host calls that depend on the caller's identity.
-    pub owner: Option<CallbackOwner>,
+    pub owner: CallbackOwner,
 }
 
 /// One configuring connection, available while registering its tasks.

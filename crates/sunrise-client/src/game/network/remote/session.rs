@@ -900,7 +900,6 @@ impl Game<'_> {
         self.finish_remote_level();
         if let Some(registration) = transition_factory
             && registration.factory_owner.is_enabled()
-            && registration.draw_owner.is_enabled()
             && let Ok(presentation) = registration.factory_owner.call(
                 "dimension transition screen",
                 "dimension_transition_screen_factory",

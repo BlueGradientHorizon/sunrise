@@ -594,6 +594,41 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
 }
 
 #[test]
+fn a_disabled_override_never_reveals_the_builtin_decoder() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const ITEM: &str = r#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"minecraft:trident"}}}"#;
+    let temp = tempfile::tempdir().unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let factories = BTreeMap::from([(
+        "minecraft:trident".into(),
+        owned_factory(
+            {
+                let calls = calls.clone();
+                move |_| -> Result<Pan, String> {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("override decoder panicked")
+                }
+            },
+            |pan, _| Ok(pan),
+        ),
+    )]);
+    let first = renderer(temp.path(), 2, 2, &factories);
+    assert!(first.decode_definition(ITEM, None).is_ok());
+    let failure = first.decode_definition(ITEM, Some(&factories)).unwrap_err();
+    assert!(failure.to_string().contains("override decoder panicked"));
+
+    let reloaded = renderer(temp.path(), 2, 2, &factories);
+    for generation in [&first, &reloaded] {
+        let failure = generation
+            .decode_definition(ITEM, Some(&factories))
+            .unwrap_err();
+        assert!(failure.to_string().contains("owner is disabled"));
+    }
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+}
+
+#[test]
 fn a_generation_bakes_typed_config_once_and_draws_use_the_baked_instance() {
     let temp = tempfile::tempdir().unwrap();
     let calls = Arc::new(Mutex::new(Vec::new()));

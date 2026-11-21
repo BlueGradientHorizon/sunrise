@@ -172,9 +172,8 @@ impl ItemRenderer {
             let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };
-            if !factory.bake_owner.is_enabled() {
-                return Ok(None);
-            }
+            // A disabled winner still owns this type. Only a missing registration
+            // permits the built-in decoder to read the node.
             let renderer = factory
                 .bake_owner
                 .call("special model factory", "special_model_bake", || {

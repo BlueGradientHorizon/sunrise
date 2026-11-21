@@ -25,7 +25,8 @@ pub trait GuiLayerWrapContext {
     fn with_draw(&mut self, draw: &mut dyn FnMut(&mut dyn DrawContext));
 
     /// Paint the previous body at this point in the same batch without firing layer hooks again.
-    /// This can call another wrapper. Omit it to skip the previous body for this draw.
+    /// The previous mod body runs as its own mod; a previous vanilla body runs as the engine.
+    /// Omit it to skip the previous body for this draw.
     fn draw_previous(&mut self);
 }
 

@@ -33,8 +33,9 @@ place in the HUD and its draw conditions.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
-The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
-for this draw without discarding it at registration.
+The latest wrapper runs first. A delegated mod body draws as its own mod; vanilla paint runs
+as the engine, not as the wrapper's mod. Don't call `draw_previous()` if you want to skip the
+previous body for this draw without discarding it at registration.
 
 ```rust,ignore
 event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {

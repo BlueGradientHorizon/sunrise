@@ -289,9 +289,12 @@ mod tests {
             RegisterConfigurationTasksEvent, ServerHost,
         };
 
-        struct Task(Identifier);
+        struct Task(Identifier, bool);
         impl ConfigurationTask for Task {
             fn task_type(&self) -> &Identifier {
+                if self.1 {
+                    mod_api::__private::refuse("test gated operation", ModPhase::Setup);
+                }
                 &self.0
             }
 
@@ -306,12 +309,13 @@ mod tests {
                 _: &mut dyn ServerHost,
                 event: &mut RegisterConfigurationTasksEvent<'_>,
             ) {
-                let task = || Task(Identifier::parse(self.0).unwrap());
-                event.register(task()).unwrap();
+                let task = |refuse| Task(Identifier::parse(self.0).unwrap(), refuse);
+                event.register(task(false)).unwrap();
                 if self.1 {
                     // Both the reservation and this validation error belong to the refused listener.
-                    assert!(event.register(task()).is_err());
-                    mod_api::__private::refuse("test gated operation", ModPhase::Setup);
+                    assert!(event.register(task(false)).is_err());
+                    let _ = event.register(task(true));
+                    panic!("task_type must unwind to the listener's checkpoint");
                 }
             }
         }
@@ -337,12 +341,92 @@ mod tests {
                 assert_eq!(registration.refusal(), None);
                 let tasks = registration.into_tasks();
                 assert_eq!(
-                    tasks
-                        .iter()
-                        .map(|task| task.owner.as_ref().unwrap().id())
-                        .collect::<Vec<_>>(),
+                    tasks.iter().map(|task| task.owner.id()).collect::<Vec<_>>(),
                     ["first_task", "next_task"]
                 );
+            },
+        );
+    }
+
+    #[test]
+    fn a_panicking_task_type_refuses_one_registration_and_disables_only_its_owner() {
+        use mod_api::{
+            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
+            ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskRegistrationError,
+            Identifier, RegisterConfigurationTasksEvent, ServerHost,
+            content::crash::current_native_call,
+        };
+
+        struct Task {
+            owner: &'static str,
+            kind: Identifier,
+            panic: bool,
+        }
+        impl ConfigurationTask for Task {
+            fn task_type(&self) -> &Identifier {
+                let call = current_native_call().unwrap();
+                assert_eq!(
+                    (call.id, call.hook),
+                    (self.owner, "ConfigurationTask::task_type")
+                );
+                assert!(mod_api::__private::game::retained_callback_active());
+                assert!(!self.panic, "test task type panic");
+                &self.kind
+            }
+
+            fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+        }
+
+        struct Register(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Register {
+            fn register_configuration_tasks(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut RegisterConfigurationTasksEvent<'_>,
+            ) {
+                // Do not propagate the registration error: the engine must still refuse admission.
+                let _ = event.register(Task {
+                    owner: self.0,
+                    kind: Identifier::parse("config:task").unwrap(),
+                    panic: self.1,
+                });
+            }
+        }
+
+        const BROKEN: &str = "broken_task_type";
+        const HEALTHY: &str = "healthy_task_type";
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new(BROKEN, Box::new(Register(BROKEN, true))),
+                mod_api::ModEntry::new(HEALTHY, Box::new(Register(HEALTHY, false))),
+            ]
+            .into(),
+            || {
+                let _phase = PhaseOwner::scope(ModPhase::Setup);
+                let mut host = mod_api::testing::FakeHost::new();
+                for peer in [1, 2] {
+                    let mut registration = ConfigurationTaskRegistration::default();
+                    mod_api::dispatch_register_configuration_tasks(
+                        &mut host,
+                        mod_api::__private::configuration_connection(peer),
+                        0,
+                        "Test",
+                        &mut registration,
+                    );
+                    if peer == 1 {
+                        assert!(matches!(
+                            registration.refusal(),
+                            Some(ConfigurationTaskRegistrationError::CallbackFailed(reason))
+                                if reason.contains(BROKEN) && reason.contains("test task type panic")
+                        ));
+                    } else {
+                        assert_eq!(registration.refusal(), None);
+                    }
+                    let tasks = registration.into_tasks();
+                    assert_eq!(tasks.len(), 1);
+                    assert_eq!(tasks[0].owner.id(), HEALTHY);
+                }
             },
         );
     }

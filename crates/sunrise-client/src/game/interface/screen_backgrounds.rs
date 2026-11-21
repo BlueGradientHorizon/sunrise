@@ -42,22 +42,42 @@ impl Game<'_> {
         let Some(screen) = tracker.transition_screen() else {
             return false;
         };
-        screen.owner.is_enabled()
-            && screen
-                .owner
-                .call(
-                    "dimension transition screen",
-                    "dimension_transition_screen_draw",
-                    || {
-                        screen.presentation.draw(
-                            self,
-                            tracker.reason.into(),
-                            progress,
-                            &mut GameDrawContext::new(self, batch),
-                        );
-                    },
-                )
-                .is_ok()
+        if !screen.owner.is_enabled() {
+            return false;
+        }
+        let vertices = batch.vertices.len();
+        let blends = batch.blends.len();
+        let blend_end = batch.blends.last().map(|(range, _)| range.end);
+        let pictures = batch.pictures.len();
+        let profiles = batch.inline_profiles.len();
+        if screen
+            .owner
+            .call(
+                "dimension transition screen",
+                "dimension_transition_screen_draw",
+                || {
+                    screen.presentation.draw(
+                        self,
+                        tracker.reason.into(),
+                        progress,
+                        &mut GameDrawContext::new(self, batch),
+                    );
+                },
+            )
+            .is_ok()
+        {
+            return true;
+        }
+        // Discard visible output, including an extension of the previous blend run.
+        // Keep atlas uploads: their cache entries can be reused by the vanilla screen.
+        batch.vertices.truncate(vertices);
+        batch.blends.truncate(blends);
+        if let Some(((range, _), end)) = batch.blends.last_mut().zip(blend_end) {
+            range.end = end;
+        }
+        batch.pictures.truncate(pictures);
+        batch.inline_profiles.truncate(profiles);
+        false
     }
     /// `LevelLoadingScreen.extractBackground`.
     pub(super) fn draw_level_loading_background(

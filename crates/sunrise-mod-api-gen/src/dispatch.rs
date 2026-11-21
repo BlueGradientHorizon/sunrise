@@ -1059,9 +1059,15 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
+        let report = if event_type == "RegisterConfigurationTasksEvent" {
+            // A refusal from task_type also unwinds to this listener's checkpoint.
+            "report_each"
+        } else {
+            "report"
+        };
         let run = |expression: &str| {
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
+                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.{report}(); {refused_value} }} }}"
             )
         };
         // One callee's call: a mod's, or a scoped hook's part's.

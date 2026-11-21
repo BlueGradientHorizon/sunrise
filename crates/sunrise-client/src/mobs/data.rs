@@ -164,7 +164,6 @@ pub struct RegisteredSpawnPlacement {
     placement: Option<Placement>,
     heightmap: Option<Heightmap>,
     pub(super) predicates: SpawnPredicates,
-    pub(super) vanilla: bool,
 }
 
 pub(super) enum SpawnPredicates {
@@ -536,7 +535,6 @@ impl MobData {
                         };
                         let row = entry.insert(RegisteredSpawnPlacement {
                             kind: d.kind,
-                            vanilla: is_vanilla,
                             placement,
                             heightmap,
                             predicates: SpawnPredicates::Combined {

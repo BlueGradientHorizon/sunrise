@@ -185,3 +185,123 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
         },
     );
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::remote::RemoteDimensionEntry;
+    use mod_api::{
+        __private::{ModPhase, game::RegistrationContextNew},
+        ClientHost, DimensionTransition, DimensionTransitionScreen, DrawContext,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sunrise_client::{
+        hud::HudBatch,
+        level_loading::{self, Reason},
+    };
+    use sunrise_protocol::packets::play;
+
+    const END: &str = "minecraft:the_end";
+    static CREATES: AtomicUsize = AtomicUsize::new(0);
+    static DRAWS: AtomicUsize = AtomicUsize::new(0);
+
+    struct Arrival;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Arrival {
+        fn register_dimension_transition_screen(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterDimensionTransitionScreenEvent<'_>,
+        ) {
+            event.screens.push(DimensionTransitionScreen::new(
+                "marker:failing".into(),
+                DimensionTransition::Incoming(END.into()),
+                |_, _| {
+                    CREATES.fetch_add(1, Ordering::Relaxed);
+                    Box::new(|_: &dyn ClientHost, _, _, draw: &mut dyn DrawContext| {
+                        draw.fill([0.0, 0.0, 80.0, 10.0], 0xFFFF_0000);
+                        if DRAWS.fetch_add(1, Ordering::Relaxed) == 0 {
+                            mod_api::__private::refuse("test draw refusal", ModPhase::Setup);
+                        }
+                        panic!("test draw panic");
+                    })
+                },
+            ));
+        }
+    }
+
+    crate::game::in_own_process(
+        "game::remote::tests::dimension_transition_tests::a_failed_presentation_discards_its_draws_without_disabling_its_factory",
+        || {
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "failed_transition",
+                    Box::new(Arrival),
+                )]
+                .into(),
+                || {
+                    let mut registrations = Vec::new();
+                    super::Game::native_register_dimension_transition_screen(
+                        &mod_api::RegistrationContext::new(),
+                        &mut registrations,
+                    );
+                    sunrise_client_render::dimension_transition::register(registrations);
+                    with_client_game(|game| {
+                        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                        game.connect_local(client, "TransitionTest").unwrap();
+                        let spawn = |dimension: &str| play::SpawnInfo {
+                            dimension_type: 0,
+                            dimension: dimension.into(),
+                            seed: 0,
+                            game_type: 0,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: true,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 63,
+                        };
+                        let overworld = spawn("minecraft:overworld");
+                        let end = spawn(END);
+                        game.enter_remote_dimension(
+                            &overworld,
+                            RemoteDimensionEntry::Login,
+                            Reason::Other,
+                        );
+                        for trip in [1, 2] {
+                            game.remote.as_mut().unwrap().level_load.finish();
+                            game.enter_remote_dimension(
+                                &end,
+                                RemoteDimensionEntry::Respawn,
+                                Reason::EndPortal,
+                            );
+                            assert_eq!(CREATES.load(Ordering::Relaxed), trip);
+
+                            let mut vanilla = HudBatch::scratch([320, 240]);
+                            game.draw_level_loading_background(&mut vanilla, Reason::EndPortal);
+                            level_loading::draw(&mut vanilla, &game.gui.atlas, None, None);
+                            assert!(!vanilla.vertices.is_empty());
+                            for _ in 0..2 {
+                                let mut frame = HudBatch::scratch([320, 240]);
+                                assert!(game.remote_overlay(&mut frame));
+                                assert_eq!(
+                                    bytemuck::cast_slice::<_, u8>(&frame.vertices),
+                                    bytemuck::cast_slice::<_, u8>(&vanilla.vertices)
+                                );
+                                assert_eq!(frame.blends, vanilla.blends);
+                            }
+                            assert_eq!(DRAWS.load(Ordering::Relaxed), 2);
+                            game.remote.as_mut().unwrap().level_load.finish();
+                            game.enter_remote_dimension(
+                                &overworld,
+                                RemoteDimensionEntry::Respawn,
+                                Reason::EndPortal,
+                            );
+                        }
+                    });
+                },
+            );
+        },
+    );
+}

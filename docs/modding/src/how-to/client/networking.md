@@ -36,30 +36,22 @@ connecting client, including vanilla clients, after the built-in registry, tag
 and resource-pack steps. During registration, keep using
 `event.connection.has_channel(host, &channel)` to check what the peer negotiated.
 
-Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
-`ConfigurationTask` for a `Send + 'static` struct and call `event.register(MyTask { id, ... })`.
-Replace the old `ConfigurationTask.id` field with your own field and return it
-from `task_type(&self) -> &Identifier`. The type is read once on registration and
-must be nonempty and unique for that connection across all listeners. `register`
-returns `ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)`
-for an invalid submission. The first refusal aborts registration and admission
-and supplies the disconnect diagnostic, even if its result is ignored. A phase refusal
-in a listener discards just that listener's tasks, reservations and diagnostic.
+Implement `ConfigurationTask` for a `Send + 'static` struct and pass an instance to
+`event.register(MyTask { id, ... })`. Return its namespaced type from
+`task_type(&self) -> &Identifier`. The server reads it once as the registering mod;
+it must be nonempty and unique across all listeners for that connection. `register`
+returns `EmptyType` or `DuplicateType(id)` for an invalid type and `CallbackFailed(reason)`
+if reading the type panics. The first error refuses admission and supplies the disconnect
+diagnostic even if the listener ignores it. A phase refusal in the listener or in `task_type`
+instead discards only that listener's staged tasks, reservations and diagnostic.
 
-Move `configuration_task_start` and `configuration_task_tick` into your task's
-`start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
-context: &mut ConfigurationTaskContext<'_>`. Use your own type field instead of
-`event.task_type` and keep shared state in the task struct. Only the registered
-instance runs: once for `start`, then at most once per later server tick while
-pending. Tasks run in registration order, without holding the connection task lock.
-
-| Old call in a start or tick hook | Replacement in the task callback |
-| --- | --- |
-| `event.connection.has_channel(host, &channel)` | `context.has_channel(host, &channel)` |
-| `event.connection.send_payload(host, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` |
-| `host.configuration_send_payload(event.connection, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` (or pass `context.instance()` as the first argument to the Host method) |
-| `event.connection.finish(host, task_type)`, `host.configuration_finish(connection, task_type)`, or `event.finished = true` | `context.finish()` |
-| `event.connection.fail(host, reason)` or `host.configuration_fail(connection, reason)` | `context.fail(reason)` |
+Implement `start` and, if needed, `tick`, both with `&mut self`, `host: &mut dyn ServerHost`
+and `context: &mut ConfigurationTaskContext<'_>`. Keep per-connection state in the task
+struct. Only the registered instance runs: once for `start`, then at most once per later
+server tick while pending, in registration order and without holding the connection task lock.
+Use `context.has_channel(host, &channel)` and `context.send_payload(host, &channel, bytes)`
+to exchange payloads. Call `context.finish()` to advance the queue or `context.fail(reason)`
+to refuse admission; otherwise the task waits.
 
 For delayed completion, capture `context.instance()` in server-local state when
 you send the **original challenge**. Match the reply to that challenge and pass

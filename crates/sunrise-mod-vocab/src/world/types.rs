@@ -1055,7 +1055,8 @@ pub enum SpawnPlacementOperation {
 pub trait SpawnPlacementPredicate: Send + Sync + 'static {
     /// Whether this check passes. Use the lent random stream for any draws. The game invokes
     /// the predicate as the registering mod, skipping it when disabled. A panic disables
-    /// the predicate for this session but does not rewind draws already made.
+    /// the predicate for this session but does not rewind draws already made. A disabled or
+    /// refused replacement fails the predicate check; it never retries the original.
     fn test(
         &self,
         kind: EntityTypeKey,

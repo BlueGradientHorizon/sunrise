@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::host::draw::GameDrawContext;
-use mod_api::{ClientHost, DrawContext, GuiLayerWrapContext};
+use mod_api::{__private::game::CallbackOwner, ClientHost, DrawContext, GuiLayerWrapContext};
 use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
 
 #[allow(dead_code)]
@@ -257,7 +257,7 @@ impl<'g> Game<'g> {
             GuiLayerBody::Vanilla => {
                 // Only a vanilla slot can contain this node; its paint site lends the closure.
                 if let Some(draw) = vanilla {
-                    draw(self, batch);
+                    CallbackOwner::call_engine(|| draw(self, batch));
                 }
             }
             GuiLayerBody::Native { owner, draw } => {

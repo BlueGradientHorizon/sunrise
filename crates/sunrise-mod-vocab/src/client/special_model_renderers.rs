@@ -393,8 +393,9 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
 pub trait SpecialModelRenderers {
     /// The counterpart of NeoForge's `register(location, codec)`: `factory` decodes and bakes
     /// each special model node of type `kind` (`mymod:skillet`). The last registration wins,
-    /// including replacements for builtins; the game logs both owners. An id that is not
-    /// `<namespace>:<path>` is logged and skipped.
+    /// including replacements for builtins; the game logs both owners. A failed or disabled
+    /// winning factory refuses the definition instead of exposing an earlier decoder.
+    /// An id that is not `<namespace>:<path>` is logged and skipped.
     fn register(&mut self, kind: String, factory: SpecialModelFactory);
 }
 
@@ -447,8 +448,9 @@ impl SpecialModelRendererRegistry {
             .map(|(kind, owner)| (kind.as_str(), *owner))
     }
 
-    /// Consume the registry into its winning `(owner, factory)` pairs, keyed by type, and
-    /// the list of registrations that replaced an earlier one.
+    /// Consume the registry into its winning `(Option<&'static str>, SpecialModelFactory)`
+    /// pairs, keyed by type, and the list of replacements. The optional string is the owning
+    /// mod's ID, or `None` for a registration made outside a mod call.
     pub fn into_renderers(
         self,
     ) -> (
