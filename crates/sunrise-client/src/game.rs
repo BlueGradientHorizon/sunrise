@@ -13,8 +13,8 @@ use motion_ids::{motion_at, motion_block_entity};
 #[cfg(test)]
 use resource_load::load_resources;
 use resource_load::{
-    Progress, launch_world, load_resources_for_mods, load_resources_sync, named_scope,
-    synchronous_startup,
+    Progress, StartupLoadContext, launch_world, load_resources_for_mods, load_resources_sync,
+    named_scope, synchronous_startup,
 };
 /// The content tables the world plays with, as field-level borrows: the
 /// world's data packs' over the game's own. The `Game::items`/`recipes`/
@@ -14133,10 +14133,12 @@ pub(crate) fn run_with(
     let mut loaded = load_resources_sync(
         roots,
         pack_finders::data_packs(&options.mods),
-        launch_world(&options),
-        &vanilla_root,
+        StartupLoadContext {
+            vanilla_root: &vanilla_root,
+            launch_world: launch_world(&options),
+            started,
+        },
         &mut early_settings,
-        started,
         mods::LoadRole::startup(options.execution_role),
         &Progress::new(),
         &options.mods,

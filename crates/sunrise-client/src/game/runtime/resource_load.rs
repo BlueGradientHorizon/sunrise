@@ -579,15 +579,19 @@ pub(super) fn load_resources(
     )
 }
 
+/// The prepared resource location, optional world to preload, and launch start time.
+pub(super) struct StartupLoadContext<'a> {
+    pub(super) vanilla_root: &'a std::path::Path,
+    pub(super) launch_world: Option<&'a str>,
+    pub(super) started: Instant,
+}
+
 /// A launch without an interactive title owns its settings on the loading thread.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn load_resources_sync(
     roots: packs::PackRoots,
     additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
-    launch_world: Option<&str>,
-    vanilla_root: &std::path::Path,
+    context: StartupLoadContext<'_>,
     settings: &mut Settings,
-    started: Instant,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
     mod_sources: &mods::ModsState,
@@ -596,10 +600,10 @@ pub(super) fn load_resources_sync(
     load_resources_for_mods(
         roots,
         additional_data,
-        launch_world,
-        vanilla_root,
+        context.launch_world,
+        context.vanilla_root,
         &snapshot,
-        started,
+        context.started,
         false,
         role,
         progress,
