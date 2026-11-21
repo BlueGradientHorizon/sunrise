@@ -409,7 +409,7 @@ impl Game<'_> {
                 a.yaw,
                 a.on_ground,
             );
-            e.head_yaw = a.yaw;
+            e.head_yaw = a.head_yaw;
             e.velocity = [a.velocity.x, a.velocity.y, a.velocity.z];
             let mut flags = 0i8;
             if a.is_on_fire() {
@@ -1491,6 +1491,70 @@ mod tests {
         );
         let plain = sunrise_client::entities::ArmorStand::new(1, Default::default(), 0.0);
         assert!(stand_poses(&plain).is_empty());
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_client::{
+            entities::ArmorStand,
+            lan::entity::{Entities, Tracker, Viewer},
+        };
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::packets::play::Clientbound;
+
+        if run_fresh_cases(
+            "game::lan_entities::tests::a_stands_add_entity_packet_keeps_head_yaw_separate_from_view_yaw",
+            "SUNRISE_STAND_PAIR_TEST",
+            &["pair"],
+        ) {
+            return;
+        }
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            let at = [3.0, 64.0, 5.0];
+            let mut stand = ArmorStand::new(40, Vec3::new(at[0], at[1], at[2]), 45.0);
+            stand.head_yaw = 90.0;
+            game.armor_stands.push(stand);
+            let mut rows = States::default();
+            game.lan_object_states(&mut rows, false, 0);
+
+            let mut out = Vec::new();
+            let mut tracker = Tracker::default();
+            let chunks = [(0, 0)].into_iter().collect();
+            let sync = game.lan.as_ref().unwrap().hub.sync_data();
+            Entities::default().pair_after_tick(
+                rows.as_slice(),
+                &Riding::default(),
+                &mut [Viewer {
+                    entity_id: 12,
+                    spectator: false,
+                    permission: 0,
+                    sunrise: false,
+                    general_entity: false,
+                    moved: false,
+                    position: at,
+                    view_distance: 2,
+                    chunks: &chunks,
+                    sources: None,
+                    tracker: &mut tracker,
+                    out: &mut out,
+                }],
+                |kind| sync.id("minecraft:entity_type", kind),
+            );
+            let packet = out
+                .iter()
+                .find_map(|body| {
+                    let Clientbound::AddEntity(p) =
+                        Clientbound::decode(i32::from(body[0]), &body[1..]).ok()?
+                    else {
+                        return None;
+                    };
+                    (p.id == 40).then_some(p)
+                })
+                .expect("the tracker sent the stand's AddEntity");
+            assert_eq!([packet.yaw, packet.head_yaw], [32, 64]);
+        });
     }
 
     /// Issue #8050: a cart's custom display block and offset reach clients

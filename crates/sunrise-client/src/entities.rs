@@ -2096,15 +2096,13 @@ impl ArmorStand {
         self.previous_body_yaw = self.previous_yaw;
         self.body_yaw = self.yaw;
     }
-    /// Put there at once, with nothing to blend from
-    /// (`Entity.snapTo`).
+    /// Snap position and view yaw without changing the body's or head's yaw
+    /// samples (`Entity.snapTo`).
     pub fn snap(&mut self, at: Vec3, yaw: f32) {
         self.position = at;
         self.previous = at;
         self.yaw = yaw;
-        self.body_yaw = yaw;
         self.previous_yaw = yaw;
-        self.previous_body_yaw = yaw;
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
