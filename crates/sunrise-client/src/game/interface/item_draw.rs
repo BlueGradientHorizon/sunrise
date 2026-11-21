@@ -113,7 +113,7 @@ impl ItemEnv for Env<'_, '_> {
         let Some(bound) = property.0.downcast_ref::<item_render::BoundRangeProperty>() else {
             return 0.0;
         };
-        if !bound.owner.is_enabled() {
+        if !bound.eval.owner().is_enabled() {
             return 0.0;
         }
         let Ok(snapshot) = stack.try_into_api() else {
@@ -123,11 +123,12 @@ impl ItemEnv for Env<'_, '_> {
         let input =
             mod_api::ItemModelPropertyInput::new(&snapshot, stack.bundle_selected, &context);
         bound
-            .owner
+            .eval
+            .owner()
             .call(
                 "item model range property",
                 "item_model_range_property",
-                || (bound.eval)(self.game, &input),
+                || (bound.eval.value())(self.game, &input),
             )
             .unwrap_or(0.0)
     }
@@ -141,7 +142,7 @@ impl ItemEnv for Env<'_, '_> {
         let bound = property
             .payload
             .downcast_ref::<item_render::BoundSelectProperty>()?;
-        if !bound.owner.is_enabled() {
+        if !bound.eval.owner().is_enabled() {
             return None;
         }
         let Ok(snapshot) = stack.try_into_api() else {
@@ -156,7 +157,7 @@ impl ItemEnv for Env<'_, '_> {
         let Some(bound) = source.0.downcast_ref::<item_render::BoundTintSource>() else {
             return -1;
         };
-        if !bound.owner.is_enabled() {
+        if !bound.eval.owner().is_enabled() {
             return -1;
         }
         let Ok(snapshot) = stack.try_into_api() else {
@@ -164,9 +165,10 @@ impl ItemEnv for Env<'_, '_> {
         };
         let input = mod_api::ItemTintInput::new(&snapshot, stack.bundle_selected);
         bound
-            .owner
+            .eval
+            .owner()
             .call("item tint source", "item_tint_source", || {
-                (bound.eval)(self.game, &input)
+                (bound.eval.value())(self.game, &input)
             })
             .map_or(-1, |color| color as i32)
     }
@@ -180,7 +182,7 @@ impl ItemEnv for Env<'_, '_> {
         let Some(bound) = model.0.downcast_ref::<item_render::BoundItemModel>() else {
             return;
         };
-        if !bound.owner.is_enabled() {
+        if !bound.eval.owner().is_enabled() {
             return;
         }
         let Ok(snapshot) = stack.try_into_api() else {
@@ -190,9 +192,10 @@ impl ItemEnv for Env<'_, '_> {
         let input = mod_api::ItemModelUpdateInput::new(&snapshot, stack.bundle_selected, &context);
         let mut layers = Vec::new();
         if bound
-            .owner
+            .eval
+            .owner()
             .call("item model", "item_model_update", || {
-                (bound.eval)(self.game, &input, &mut layers);
+                (bound.eval.value())(self.game, &input, &mut layers);
             })
             .is_err()
         {

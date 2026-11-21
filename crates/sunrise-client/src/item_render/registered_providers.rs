@@ -9,7 +9,7 @@
 use super::SpecialModelFactories;
 use mod_api::{
     __private::game::{
-        CallbackOwner, ItemModelRegistration, ItemTintSourceRegistration,
+        CallbackOwner, CallbackValue, ItemModelRegistration, ItemTintSourceRegistration,
         RangeSelectPropertyRegistration, SelectPropertyRegistration, new_item_model_config,
     },
     Answered, Identifier, ItemModelChildren, ItemModelDecoder, ItemModelFn, ItemTintSourceDecoder,
@@ -45,29 +45,25 @@ pub type SelectPropertyFactories = BTreeMap<String, ItemProviderEntry<SelectProp
 /// Bound item tint source stored inside [`RegisteredTintSource`].
 pub struct BoundTintSource {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<ItemTintSourceFn>,
+    pub eval: CallbackValue<Arc<ItemTintSourceFn>>,
 }
 
 /// Bound item model node stored inside [`RegisteredItemModel`].
 pub struct BoundItemModel {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<ItemModelFn>,
+    pub eval: CallbackValue<Arc<ItemModelFn>>,
 }
 
 /// Bound numeric `range_dispatch` property stored inside [`RegisteredRangeProperty`].
 pub struct BoundRangeProperty {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<RangeSelectPropertyFn>,
+    pub eval: CallbackValue<Arc<RangeSelectPropertyFn>>,
 }
 
 /// Bound categorical `select` property stored inside [`RegisteredSelectProperty`].
 pub struct BoundSelectProperty {
     pub kind: Box<str>,
-    pub owner: Arc<CallbackOwner>,
-    eval: Arc<SelectPropertyFn>,
+    pub eval: CallbackValue<Arc<SelectPropertyFn>>,
 }
 
 impl BoundSelectProperty {
@@ -77,7 +73,8 @@ impl BoundSelectProperty {
         input: &mod_api::ItemModelPropertyInput<'_>,
         keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
     ) -> Option<usize> {
-        self.owner
+        self.eval
+            .owner()
             .call(
                 "item model select property",
                 "item_model_select_property",
@@ -85,7 +82,7 @@ impl BoundSelectProperty {
                     let mut keys = Iterator::filter_map(keys, |(index, key)| {
                         key.downcast_ref::<SelectCaseKey>().map(|key| (index, key))
                     });
-                    (self.eval)(host, input, &mut keys)
+                    (self.eval.value())(host, input, &mut keys)
                 },
             )
             .ok()
@@ -322,7 +319,7 @@ fn decode_entry<D, F>(
     kind: &str,
     fields: &Map<String, Value>,
     callback_kind: &'static str,
-) -> Result<Option<(Arc<CallbackOwner>, Arc<F>)>, String>
+) -> Result<Option<CallbackValue<Arc<F>>>, String>
 where
     D: Fn(&Tag) -> Result<Arc<F>, String> + ?Sized,
     F: ?Sized,
@@ -336,11 +333,17 @@ where
             format!("{callback_kind} {kind}: its JSON doesn't convert to NBT: {error}")
         })?;
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    match entry
-        .owner
-        .call(callback_kind, "decode", || (entry.decode)(&config))
-    {
-        Ok(Ok(eval)) => Ok(Some((Arc::clone(&entry.owner), eval))),
+    match entry.owner.call(callback_kind, "decode", || {
+        (entry.decode)(&config).map(|eval| {
+            CallbackValue::new(
+                (*entry.owner).clone(),
+                callback_kind,
+                "drop_evaluator",
+                eval,
+            )
+        })
+    }) {
+        Ok(Ok(eval)) => Ok(Some(eval)),
         Ok(Err(reason)) => Err(format!(
             "mod {} {callback_kind} {kind} refused it: {reason}",
             entry.owner.id()
@@ -356,10 +359,9 @@ pub fn decode_tint_source(
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredTintSource>, String> {
     decode_entry(factories, kind, fields, "item tint source").map(|bound| {
-        bound.map(|(owner, eval)| {
+        bound.map(|eval| {
             RegisteredTintSource(Arc::new(BoundTintSource {
                 kind: kind.into(),
-                owner,
                 eval,
             }))
         })
@@ -470,12 +472,13 @@ pub fn decode_item_model(
         transformation: None,
     };
     match entry.owner.call("item model", "decode", || {
-        (entry.decode)(&config, &mut children)
+        (entry.decode)(&config, &mut children).map(|eval| {
+            CallbackValue::new((*entry.owner).clone(), "item model", "drop_evaluator", eval)
+        })
     }) {
         Ok(Ok(eval)) => Ok(Some(DecodedItemModel {
             model: RegisteredItemModel(Arc::new(BoundItemModel {
                 kind: kind.into(),
-                owner: Arc::clone(&entry.owner),
                 eval,
             })),
             transformation: children.transformation,
@@ -496,10 +499,9 @@ pub fn decode_range_property(
     fields: &Map<String, Value>,
 ) -> Result<Option<RegisteredRangeProperty>, String> {
     decode_entry(factories, kind, fields, "item model range property").map(|bound| {
-        bound.map(|(owner, eval)| {
+        bound.map(|eval| {
             RegisteredRangeProperty(Arc::new(BoundRangeProperty {
                 kind: kind.into(),
-                owner,
                 eval,
             }))
         })
@@ -524,7 +526,17 @@ pub fn decode_select_property(
     let (decode_case, eval) = match entry
         .owner
         .call("item model select property", "decode", || {
-            (entry.decode)(&config)
+            (entry.decode)(&config).map(|(decode_case, eval)| {
+                (
+                    decode_case,
+                    CallbackValue::new(
+                        (*entry.owner).clone(),
+                        "item model select property",
+                        "drop_evaluator",
+                        eval,
+                    ),
+                )
+            })
         }) {
         Ok(Ok(pair)) => pair,
         Ok(Err(reason)) => {
@@ -541,7 +553,6 @@ pub fn decode_select_property(
     let case_kind = kind_owned.clone();
     let bound = BoundSelectProperty {
         kind: kind_owned,
-        owner: Arc::clone(&owner),
         eval,
     };
     Ok(Some(RegisteredSelectProperty::new(
@@ -710,7 +721,7 @@ mod tests {
                         panic!("expected bound tint source");
                     };
                     let bound = registered.0.downcast_ref::<BoundTintSource>().unwrap();
-                    (bound.eval)(&host, &input)
+                    (bound.eval.value())(&host, &input)
                 })
                 .collect();
             assert_eq!(colors, [0xFF33_3333, 0xFF22_2222]);
@@ -877,7 +888,7 @@ mod tests {
                     mod_api::ItemModelContext::new(mod_api::ItemDisplayContext::Gui, None, None, 0);
                 let input = mod_api::ItemModelUpdateInput::new(&stack, -1, &ctx);
                 let mut layers = Vec::new();
-                (bound.eval)(&FakeHost::new(), &input, &mut layers);
+                (bound.eval.value())(&FakeHost::new(), &input, &mut layers);
                 out.extend(layers.into_iter().map(|layer| ModelChoice {
                     model: layer.model,
                     transform: LayerTransform::Model,

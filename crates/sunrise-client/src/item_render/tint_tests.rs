@@ -48,9 +48,10 @@ impl ItemEnv for BoundTintEnv {
         };
         let input = ItemTintInput::new(&snapshot, stack.bundle_selected);
         bound
-            .owner
+            .eval
+            .owner()
             .call("item tint source", "item_tint_source", || {
-                (bound.eval)(&self.0, &input)
+                (bound.eval.value())(&self.0, &input)
             })
             .map_or(-1, |color| color as i32)
     }
