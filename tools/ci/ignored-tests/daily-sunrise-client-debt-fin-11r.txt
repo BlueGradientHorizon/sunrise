@@ -1,0 +1,1 @@
+sunrise-client game::slot_rules_tests::a_hub_click_uses_base_rules_for_nested_menu_queries lib daily resources

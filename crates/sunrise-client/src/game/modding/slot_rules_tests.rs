@@ -329,3 +329,66 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
         });
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_hub_click_uses_base_rules_for_nested_menu_queries() {
+    thread_local! {
+        static CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    struct ReadsOwnMenu;
+    #[mod_api::sunrise_part]
+    impl MenuPart for ReadsOwnMenu {
+        fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
+            let previous = CALLS.get();
+            CALLS.set(previous + 1);
+            // If dispatch reenters, fail the test instead of overflowing its stack.
+            if previous != 0 {
+                event.max_stack = 1;
+                return;
+            }
+            let Some(menu) = event
+                .context
+                .player
+                .and_then(|uuid| host.player(uuid))
+                .and_then(|player| player.container_menu(host))
+            else {
+                return;
+            };
+            let observed = menu.with_view(host, |view| {
+                (
+                    view.slot(0) == Some(None),
+                    view.carried().flatten().map(|stack| stack.count()),
+                    view.slot_holds(0, event.stack),
+                    view.slot_holds(1, event.stack),
+                )
+            });
+            if observed == Some((true, Some(8), Some(64), Some(64))) {
+                event.max_stack = 3;
+            }
+        }
+    }
+    struct Listener;
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("minecraft:generic_9x3", ReadsOwnMenu);
+        }
+    }
+    with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
+        with_hub_chest(|game, menu, window| {
+            CALLS.set(0);
+            hub_pickup(game, window, "minecraft:stone");
+            assert_eq!(CALLS.get(), 1);
+            assert_eq!(
+                menu.with_view(game, |view| {
+                    (
+                        view.slot(0).flatten().map(|stack| stack.count()),
+                        view.carried().flatten().map(|stack| stack.count()),
+                    )
+                }),
+                Some((Some(3), Some(5)))
+            );
+        });
+    });
+}

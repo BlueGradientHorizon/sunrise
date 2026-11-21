@@ -11,6 +11,9 @@ pub trait Hooks {
     /// those already refused by the backing are not asked. The maximum is
     /// bounded by the slot and the offered stack's component-aware item limit.
     /// This is a read-only query, including for a LAN guest on the server.
+    /// A Part can read the live menu and its slots. A nested `MenuView::slot_holds`
+    /// or `MenuView::slot_gives` read uses the slot's own rules without running
+    /// menu Parts again, even for a different slot or menu.
     /// If a Part panics, its answers are discarded, its callback is disabled for
     /// the session, and the game reports the mod; other Parts still answer.
     /// Click planning reuses an answer for the same slot, stack and base rules;
@@ -58,7 +61,7 @@ pub trait Hooks {
         key = "menu",
         host = "read",
         cancellable = false,
-        version = 6,
+        version = 7,
         neoforge = "none (vanilla Slot.mayPlace and mayPickup; NeoForge adds no event or extension for it)"
     )]
     fn menu_slot_rules(

@@ -97,9 +97,12 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
 opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot cross to the API
 shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built only for a menu type a Part answers. A Hub click and a menu view can both read
-the acting guest through the Host. Native windows can have a chest or mod layout but implement their
-own clicks: `MenuView::slot_holds` and `slot_gives` return `None` there rather than guessing.
+context is built only for a menu type a Part answers. During a Hub click, your Part can read
+the acting guest's live menu and its slots through the Host. Inside `menu_slot_rules`,
+`MenuView::slot_holds` and `slot_gives` use the slot's own rules without asking any menu Parts,
+even for another slot or menu. Read them outside the callback if you need the answer with Parts applied.
+Native windows can have a chest or mod layout but implement their own clicks: `slot_holds` and
+`slot_gives` return `None` there rather than guessing.
 A place-backed native click still uses its transactional item places. For a linked block slot,
 `slot_backing` and `ItemPlace::MenuSlot` address the connected container; an unbound link has no backing.
 
@@ -136,7 +139,7 @@ offhand swap that takes the slot's item, a throw (a refusal drops nothing), and 
 spread, a creative clone, putting a stack into an empty slot and a click outside the window never ask it; a drag
 that ends on a single slot is a pickup click on that slot. A refused click leaves the slot and the cursor as they
 were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
-gives up all of its stack or none of it. In version 6 the slot's own `may_place` includes backing admission.
+gives up all of its stack or none of it. The slot's own `may_place` includes backing admission.
 A Part can close an admitted slot but cannot reopen one the backing refuses; a quick-move top-up that the
 backing already refuses does not ask the Part. The same ask answers `may_place` and `may_pickup`. Vanilla menu
 types keep their own `mayPickup`. A shift-click asks pickup before `menu_quick_move` and reuses the answer

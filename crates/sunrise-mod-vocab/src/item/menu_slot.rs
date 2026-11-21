@@ -46,13 +46,16 @@ pub trait MenuView {
     /// and `Slot.getMaxStackSize(ItemStack)` rules. The offered stack's component
     /// maximum applies, block-backed mod menus respect their container's declared insert
     /// rules, and armour slots ask the item's parts for this player (`IItemExtension.canEquip`).
+    /// Inside a `menu_slot_rules` callback this omits menu Parts, even for a different slot
+    /// or menu; it still applies the slot's own rules.
     /// `None` when the rules or stack are unavailable, the slot is out of range, or
     /// this is a client view. A native window's screen layout does not supply rules:
     /// the native click handler or the transactional item-place handlers decide its clicks.
     fn slot_holds(&self, slot: usize, stack: &ItemStack) -> Option<u32>;
 
     /// Whether this server slot gives up what it holds (`Slot.mayPickup`); for example,
-    /// bound armour stays on outside creative. `None` when the rules or slot are
+    /// bound armour stays on outside creative. Like [`Self::slot_holds`], this omits menu Parts
+    /// inside a `menu_slot_rules` callback. `None` when the rules or slot are
     /// unavailable (including for native windows), or on the client.
     fn slot_gives(&self, slot: usize) -> Option<bool>;
 }

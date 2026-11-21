@@ -1,0 +1,8 @@
+ids = [
+    "hook:menu_slot_rules",
+    "method:MenuPart::menu_slot_rules",
+    "method:MenuView::slot_holds",
+    "method:MenuView::slot_gives",
+]
+why = "A Hub click lends its live guest and menu to the rule Part. Reading the menu's rules from that Part no longer dispatches menu Parts again, so even a cycle through other slots or menus cannot overflow the server stack. Nested reads keep the slot's underlying answers, following vanilla Slot.mayPlace, Slot.mayPickup and Slot.getMaxStackSize(ItemStack) as used by AbstractContainerMenu.doClick, and NeoForge ResourceHandlerSlot's corresponding backing queries. The outer query still uses the shared callback panic boundary."
+migrate = "Rebuild for menu_slot_rules v7; the callback signature is unchanged. Inside menu_slot_rules, keep reading live contents with view.slot(index) and view.carried(), or use event.context.slot(container, index) for the click plan's container snapshot. Calls to view.slot_holds(index, stack) and view.slot_gives(index) inside the callback now omit every menu Part, even when the view is for a different menu. To get an answer that includes Parts, make those calls outside menu_slot_rules. If a Part needs its own rule for a different slot, call the underlying predicate directly instead of asking that slot to dispatch its Parts."
