@@ -3,8 +3,6 @@ ids = [
     "method:AudioStream::read",
     "type:AudioRead.Eof",
     "type:AudioStreamState",
-    "type:AudioStreamState.Stopped",
-    "handle:AudioStreamRef::state",
     "method:prelude::AudioClientHost::open_audio_stream",
 ]
 why = """
