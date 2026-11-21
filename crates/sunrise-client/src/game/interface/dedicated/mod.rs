@@ -1368,7 +1368,9 @@ impl Game<'_> {
             self.perf_captures_done(done);
             // DedicatedServer.sendLowDiskSpaceWarning: the operators hear of it
             // (no window drains the toasts here).
-            if sunrise_client::chunk_io::take().low_disk_space
+            if sunrise_client::chunk_io::PROCESS_REPORTS
+                .take()
+                .low_disk_space
                 && let Some(host) = self.lan.as_ref()
             {
                 host.hub.send_low_disk_space_warning();

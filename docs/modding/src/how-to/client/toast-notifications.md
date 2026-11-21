@@ -22,7 +22,9 @@ description to `None` removes that line.
 The hook runs for new additions, not in-place `addOrUpdate` changes to an existing
 recipe or system toast. A cancelled tutorial hint is not retried every frame;
 a later, different hint is a new candidate. Title-screen backup/access failures,
-narrator notices, pack download/failure and chunk IO notices all use the same
-admission point. Candidates produced during the initial resource loading screen wait until
-the game can invoke the hook with a `ClientHost`. The pause screen's persistent song label
-is HUD content, not a queued toast, and is not filtered by this hook.
+narrator notices, pack download/failure and chunk I/O notices all use the same
+admission point. A failed [delayed task](../world/delayed-tasks.md) on an integrated server
+also offers a system toast there, only in the owning client's window. Editing or cancelling
+it does not change the server's error log. Candidates produced during the initial resource
+loading screen wait until the game can invoke the hook with a `ClientHost`. The pause screen's
+persistent song label is HUD content, not a queued toast, and is not filtered by this hook.

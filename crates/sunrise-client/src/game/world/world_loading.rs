@@ -10,6 +10,8 @@ pub(super) struct WorldRequest {
     pub creative: bool,
     pub create: Option<sunrise_client::title::WorldOptions>,
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
+    /// Where the server's region workers send their notices.
+    pub(super) chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The account the world opens under, for an integrated server
     /// (`IntegratedServer.getSingleplayerProfile`): its name and UUID.
     owner: Option<(String, u128)>,
@@ -106,6 +108,7 @@ impl WorldRequest {
             creative,
             create: create.cloned(),
             rule_registry,
+            chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
             owner: None,
         })
     }
@@ -135,6 +138,7 @@ impl WorldRequest {
             creative,
             create,
             rule_registry,
+            chunk_reports,
             owner,
         } = self;
         let name = name.as_deref();
@@ -316,6 +320,7 @@ impl WorldRequest {
             &level,
             biomes.clone(),
             None,
+            chunk_reports,
         )?;
         drop(streaming_step);
         streaming.radius = settings.render_distance;
@@ -966,6 +971,7 @@ pub(super) fn make_streaming(
     level: &Level,
     biomes: Arc<Biomes>,
     runtime: Option<&super::runtime_levels::Generate>,
+    chunk_reports: Arc<sunrise_client::chunk_io::Reports>,
 ) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
     use sunrise_client::save::WorldGen;
     let enabled_features = &level.enabled_features;
@@ -976,6 +982,7 @@ pub(super) fn make_streaming(
         shape,
         Some(res.shared_items()),
     );
+    save.chunk_reports = chunk_reports;
     save.enable_trusted_fluid_load();
     let save = Arc::new(save);
     if dim == Dim::End {
@@ -1540,6 +1547,7 @@ mod tests {
         with_game(|game| {
             let request = WorldRequest {
                 owner: None,
+                chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                 save_root: dir.clone(),
                 folder: "test".into(),
                 name: Some("test".into()),
@@ -1984,6 +1992,7 @@ mod tests {
                     with_game_role(root.clone(), role, |game| {
                         let request = WorldRequest {
                             owner: None,
+                            chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                             save_root: world.clone(),
                             folder: "world".into(),
                             name: Some("Region fixture".into()),
@@ -2109,6 +2118,7 @@ mod unused_feature_startup_tests {
                 creative: false,
                 create: None,
                 owner: None,
+                chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
                 rule_registry: Level::default().rule_registry,
             };
             let result = request.prepare(
@@ -2224,6 +2234,7 @@ mod unused_feature_preservation_tests {
             creative: false,
             create: None,
             owner: None,
+            chunk_reports: sunrise_client::chunk_io::PROCESS_REPORTS.clone(),
             rule_registry: Level::default().rule_registry,
         };
         assert!(

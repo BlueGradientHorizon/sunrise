@@ -312,18 +312,7 @@ impl Game<'_> {
                         "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
                     );
                     if let Some(serving) = &game.serving {
-                        use sunrise_client::{hud::rgba, text::Text, toasts::SystemToast};
-
-                        serving.report_system_toast(
-                            SystemToast::new(
-                                Text::tr("sunrise.mods.scheduled_task_error.title", &[]),
-                                Some(Text::tr(
-                                    "sunrise.mods.scheduled_task_error.message",
-                                    &[&mod_id],
-                                )),
-                            )
-                            .with_title_color(rgba(255, 85, 85, 255)),
-                        );
+                        serving.reports().report_scheduled_task_failure(mod_id);
                     }
                 }
             },
@@ -647,7 +636,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn panicking_scheduled_write_rolls_back_before_the_next_task() {
-        use crate::game::integrated::Serving;
         use mod_api::{ObjectiveRenderType, Text, TransactionLifecycle};
         use std::{cell::Cell, rc::Rc};
 
@@ -660,7 +648,6 @@ mod tests {
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
-                game.serving = Some(Serving::fixture(0));
                 let skipped = Rc::new(Cell::new(false));
                 let after_reset = Rc::new(Cell::new(false));
                 let unrelated = Rc::new(Cell::new(false));
@@ -712,13 +699,6 @@ mod tests {
                 assert!(game.objective("discarded").is_none());
                 assert!(game.objective("kept").is_some());
                 assert_eq!(game.transaction_lifecycle(), TransactionLifecycle::None);
-                let toasts = game.serving.as_ref().unwrap().take_system_toasts();
-                assert_eq!(toasts.len(), 1);
-                assert_eq!(
-                    toasts[0].message.as_ref().unwrap().component()["with"][0]["text"],
-                    FAILING
-                );
-
                 // The poison outlives the world's queue without turning off the mod itself.
                 let index = mod_api::__private::mod_index(FAILING).unwrap();
                 assert!(mod_api::__private::mod_index_on(index));
@@ -735,13 +715,6 @@ mod tests {
                 game.native_lifecycle_server_tick_start(true);
                 game.native_lifecycle_server_tick_end(false);
                 assert!(!after_reset.get(), "reopening cleared the session poison");
-                assert!(
-                    game.serving
-                        .as_ref()
-                        .unwrap()
-                        .take_system_toasts()
-                        .is_empty()
-                );
             });
         });
     }

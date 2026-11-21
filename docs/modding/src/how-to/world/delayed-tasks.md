@@ -41,10 +41,11 @@ without an open or opening server world.
 
 **Writes and failures.** Each callback runs in its own transaction. Journaled writes commit on
 normal return and roll back on panic or a phase refusal. If a mod's callback panics, the game names
-that mod in the log and shows an error toast in the integrated server owner's window. The mod's
-other delayed callbacks stop for the rest of the session, even if you reopen the world. Its other
-hooks are unaffected, the tick continues, and other mods' due tasks still run. A phase refusal is
-logged each time and does not disable further tasks.
+that mod in the log and sends a system toast to the integrated server owner's window. The owning
+client can edit or cancel the toast through [`toast_add`](../client/toast-notifications.md); the
+server log is unaffected. The mod's other delayed callbacks stop for the rest of the session, even
+if you reopen the world. Its other hooks are unaffected, the tick continues, and other mods' due
+tasks still run. A phase refusal is logged each time and does not disable further tasks.
 
 **Lifetime.** The queue belongs to the current world and is never saved. Closing the world or a
 failed open drops all its pending tasks. If a deadline needs to outlive a restart, save the deadline

@@ -33,6 +33,7 @@ use sunrise_client::spans::startup;
 use sunrise_client::{
     Result,
     audio::Audio,
+    chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
     settings::Settings,
     title::WorldOptions,
@@ -87,8 +88,8 @@ struct Flags {
     stop: AtomicBool,
     finished: AtomicBool,
     failure: Mutex<Option<String>>,
-    /// Local system toasts reported by the server and displayed by the window.
-    system_toasts: Mutex<Vec<sunrise_client::toasts::SystemToast>>,
+    /// Reports from this server and its region workers for the owning window.
+    reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
     published: AtomicU16,
@@ -120,10 +121,6 @@ struct Flags {
 }
 
 impl Flags {
-    fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
-        std::mem::take(&mut *self.system_toasts.lock().unwrap())
-    }
-
     fn emergency_save(&self, server: std::thread::ThreadId, timeout: Duration) -> bool {
         if std::thread::current().id() == server || self.finished.load(Ordering::Acquire) {
             return true;
@@ -165,9 +162,24 @@ pub(super) struct Integrated {
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
 }
 impl Integrated {
-    /// Local server reports to display in the window's toast queue.
-    pub(super) fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
-        self.flags.take_system_toasts()
+    /// Reports this window receives from its own integrated server.
+    pub(super) fn reports(&self) -> &Reports {
+        &self.flags.reports
+    }
+
+    /// The window's handle on a server fixture, with no server thread behind it.
+    #[cfg(test)]
+    pub(super) fn fixture_for(serving: &Serving) -> Self {
+        let (tasks, _receiver) = channel();
+        Self {
+            flags: serving.flags.clone(),
+            thread: None,
+            emergency_save: None,
+            tasks,
+            world_name: "test".into(),
+            save_folder: "test".into(),
+            rule_registry: Default::default(),
+        }
     }
 
     /// Queue every change, even if the currently published tree still has the requested state:
@@ -364,14 +376,9 @@ impl Serving {
             load: LoadPhase::default(),
         }
     }
-    /// Deliver a system notice to the local owner's window, not to LAN clients.
-    pub(super) fn report_system_toast(&self, toast: sunrise_client::toasts::SystemToast) {
-        self.flags.system_toasts.lock().unwrap().push(toast);
-    }
-
-    #[cfg(test)]
-    pub(super) fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
-        self.flags.take_system_toasts()
+    /// Send reports only to this server's owner, not to LAN clients.
+    pub(super) fn reports(&self) -> &Reports {
+        &self.flags.reports
     }
 
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
@@ -1391,10 +1398,10 @@ fn serve(
     )
     // `IntegratedServer.setSingleplayerProfile`: the account this world belongs to
     // (an older world's offline owner moves to it at open).
-    .map(|request| request.owned_by(&launch.player, launch.owner))
-    .and_then(|request| {
+    .and_then(|mut request| {
+        request.chunk_reports = flags.reports.clone();
         WorldLoader::start(
-            request,
+            request.owned_by(&launch.player, launch.owner),
             res.clone(),
             pack.clone(),
             options.clone(),

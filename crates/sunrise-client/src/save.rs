@@ -2354,6 +2354,8 @@ pub struct SaveDir {
     pending: Arc<PendingWrites>,
     sequence: AtomicU64,
     disk: OnceLock<Arc<chunk_disk::DiskRuntime>>,
+    /// The server report destination shared by all dimensions and their I/O workers.
+    pub chunk_reports: Arc<crate::chunk_io::Reports>,
     writer: Mutex<Option<Writer>>,
     outstanding: Arc<Outstanding>,
     /// Set by `Persistent` before the first load.
@@ -2527,6 +2529,7 @@ impl SaveDir {
             pending: Default::default(),
             sequence: AtomicU64::new(0),
             disk: OnceLock::new(),
+            chunk_reports: crate::chunk_io::PROCESS_REPORTS.clone(),
             writer: Mutex::new(None),
             outstanding: Default::default(),
             tables: OnceLock::new(),
@@ -2819,7 +2822,7 @@ impl SaveDir {
                 }
             })
             .map_err(|e| {
-                crate::chunk_io::report_load_failure(&self.root, x, z, &e);
+                self.chunk_reports.report_load_failure(&self.root, x, z, &e);
             })
     }
     /// A record brought to the current version (`upgrade_record`); `Err` when that failed.
@@ -2836,7 +2839,7 @@ impl SaveDir {
         match self.upgrade_record(Folder::of(folder), &mut record) {
             Ok(()) => Ok(Some(record)),
             Err(e) => {
-                crate::chunk_io::report_load_failure(&self.root, x, z, &e);
+                self.chunk_reports.report_load_failure(&self.root, x, z, &e);
                 Err(())
             }
         }

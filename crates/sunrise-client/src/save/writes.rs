@@ -143,6 +143,7 @@ impl SaveDir {
     fn start_writer(&self) -> Writer {
         let (send, receive) = mpsc::channel::<WriteBatch>();
         let root = self.root.clone();
+        let reports = self.chunk_reports.clone();
         let (regions, entity_regions, poi_regions) = (
             self.regions.clone(),
             self.entity_regions.clone(),
@@ -210,9 +211,7 @@ impl SaveDir {
                             log::warn!("Sunrise: {message}");
                             *outstanding.error.lock().unwrap() = Some(message);
                             for job in &batch {
-                                crate::chunk_io::report_save_failure(
-                                    &root, job.key.0, job.key.1, e,
-                                );
+                                reports.report_save_failure(&root, job.key.0, job.key.1, e);
                             }
                         }
                         if result.is_ok()

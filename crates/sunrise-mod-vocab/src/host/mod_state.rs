@@ -72,8 +72,9 @@ pub trait ModStateServerHost {
     /// server host on the same thread. When scheduled inside a mod call, it runs (and drops on
     /// cancel or shutdown) under that mod's identity. A panic rolls back its journaled writes,
     /// disables that mod's delayed callbacks for the session, and names the mod in the log and
-    /// in an error toast in the integrated server's window. The tick and other mods' tasks carry
-    /// on. A phase refusal rolls back the task and is logged each time without disabling it.
+    /// in a system toast offered to `toast_add` in the integrated server owner's window.
+    /// The tick and other mods' tasks carry on. A phase refusal rolls back the task and is
+    /// logged each time without disabling it.
     ///
     /// Tasks whose mod is disabled, or whose delayed callbacks have been disabled, are discarded
     /// when due. Reaching [`MAX_PENDING_TASKS`] logs a warning naming the mod and returns
