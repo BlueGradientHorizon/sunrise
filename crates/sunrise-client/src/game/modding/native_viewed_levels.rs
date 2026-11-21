@@ -4,7 +4,8 @@
 //! `block_state`, `clip`, `collision_boxes` and `has_collisions` read its world (`viewed_worlds`),
 //! as do the reads built on `level_block_state`: `block`, `block_property` and the both-sided
 //! fluid reads (`fluid_shape`, `fluid_height`, `fluid_height_for_camera`,
-//! `fluid_can_be_replaced_with`). A read never writes and never loads a column: a column the
+//! `fluid_can_be_replaced_with`). `get_enchant_power_bonus` uses the viewed level as context.
+//! A read never writes and never loads a column: a column the
 //! world does not hold is None. The handle answers None from the server's close of the level,
 //! and from a Login, a Respawn or a new configuration phase, which drop every viewed world. A
 //! `LevelRef` names a level and the client level's epoch, not one open of the view: a close and

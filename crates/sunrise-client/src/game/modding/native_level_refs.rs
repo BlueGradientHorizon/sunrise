@@ -657,6 +657,25 @@ impl Game<'_> {
             .get(key)
             .cloned()
     }
+    pub(super) fn level_get_enchant_power_bonus(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockStateId,
+        table_pos: [i32; 3],
+    ) -> Result<f32, mod_api::LevelReadError> {
+        use mod_api::LevelReadError;
+        if self.native_level_view_world(level).is_none() {
+            return Err(if self.level_handle_current(level) {
+                LevelReadError::Unavailable
+            } else {
+                LevelReadError::Stale
+            });
+        }
+        self.enchant_power(Some(level), state, block_pos(pos), block_pos(table_pos))
+            .ok_or(LevelReadError::Unavailable)
+    }
+
     /// Read the mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or
     /// out of height. Works on both server (including parked levels) and client (including viewed
     /// levels).

@@ -12,6 +12,72 @@ use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
 };
 
+/// Provider arguments other than the level, state and provider position.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum BlockProviderQuery {
+    EnchantPower { table: BlockPos },
+}
+
+#[derive(PartialEq, Eq)]
+struct BlockQueryKey {
+    game: *const (),
+    level: Option<LevelRef>,
+    pos: BlockPos,
+    state: BlockStateId,
+    query: BlockProviderQuery,
+}
+
+struct ActiveBlockQuery<'a> {
+    key: BlockQueryKey,
+    previous: Option<&'a Self>,
+}
+
+scoped_tls_hkt::scoped_thread_local!(static ACTIVE_BLOCK_QUERY: for<'a> &'a ActiveBlockQuery<'a>);
+
+impl Game<'_> {
+    /// A provider may ask another state for its answer. Refuse only a query already active on
+    /// this thread, without allocating or substituting a value. Only actual dispatch enters here.
+    pub(super) fn with_block_provider_query<R>(
+        &self,
+        level: Option<LevelRef>,
+        pos: BlockPos,
+        state: BlockStateId,
+        query: BlockProviderQuery,
+        ask: impl FnOnce() -> R,
+    ) -> Option<R> {
+        let key = BlockQueryKey {
+            game: std::ptr::from_ref(self).cast(),
+            level,
+            pos,
+            state,
+            query,
+        };
+        if !ACTIVE_BLOCK_QUERY.is_set() {
+            return Some(ACTIVE_BLOCK_QUERY.set(
+                &ActiveBlockQuery {
+                    key,
+                    previous: None,
+                },
+                ask,
+            ));
+        }
+        ACTIVE_BLOCK_QUERY.with(|head| {
+            let mut cursor = Some(head);
+            while let Some(node) = cursor {
+                if node.key == key {
+                    return None;
+                }
+                cursor = node.previous;
+            }
+            let node = ActiveBlockQuery {
+                key,
+                previous: Some(head),
+            };
+            Some(ACTIVE_BLOCK_QUERY.set(&node, ask))
+        })
+    }
+}
+
 /// Shared by the level handle and the restricted block-hook view.
 pub(super) fn block_face_sturdy(
     world: &World,

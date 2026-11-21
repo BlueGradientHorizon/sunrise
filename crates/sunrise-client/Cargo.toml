@@ -56,6 +56,7 @@ sunrise-mod-package = { path = "../sunrise-mod-package", default-features = fals
 wgpu = { version = "30.0.1", default-features = false, features = ["std", "parking_lot", "vulkan", "metal", "wgsl", "naga-ir"] }
 winit = "0.30.13"
 pollster = "0.4"
+scoped-tls-hkt = "0.1.5"
 bytemuck = { version = "1.24", features = ["derive"] }
 glam = "0.30"
 png = "0.18"

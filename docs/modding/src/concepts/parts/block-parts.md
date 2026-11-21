@@ -57,6 +57,17 @@ to replace the state's emission or `None` to keep it.
 
 Keep the callback a pure function of the level, position and state, without side effects.
 
+## Enchanting power
+
+`BlockPart::enchant_power_bonus` receives the queried `state`, provider `pos`, `table_pos`,
+and a read-only host. `event.power` starts at 1.0 for `#minecraft:enchantment_power_provider`
+and 0.0 otherwise. Set it to a finite answer to override the default.
+
+For live offers and `LevelRef::get_enchant_power_bonus`, `event.level` names the level to use
+for contextual reads, even if it is not the level in play. An explicit query may supply a state
+that isn't at `pos` or positions outside a table's bookshelf scan. For the client particle
+snapshot, `event.level` is `None` and both positions are the origin; answer from the state alone.
+
 ## Path classification
 
 `BlockPart::block_path_type` answers for `event.state` at `event.pos`, with an owning

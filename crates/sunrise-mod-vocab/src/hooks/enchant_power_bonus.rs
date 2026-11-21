@@ -1,27 +1,22 @@
 //! The `enchant_power_bonus` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// The enchanting power the block `state` at `pos` gives the enchanting table at
-    /// `table_pos` (`IBlockExtension.getEnchantPowerBonus`), asked for each of the table's
-    /// bookshelf offsets (`EnchantingTableBlock.BOOKSHELF_OFFSETS`) whose block between it and the
-    /// table is in `#minecraft:enchantment_power_transmitter`. `power` starts at the block's own
-    /// answer, 1.0 in `#minecraft:enchantment_power_provider` and 0.0 for the rest: set 2.0 to
-    /// count as two bookshelves, 0.5 for half of one, 0.0 to give nothing. The table adds the
-    /// answers, truncates the sum to a whole number as NeoForge does and caps it at 15 for the
-    /// offers; a negative sum counts as 0, where NeoForge would throw, and a non-finite answer is
-    /// ignored. Asked as the offers are made, in a single-player world and on a LAN host for each
-    /// guest's table, with the level read-only. Client particles use the same answer, queried once
-    /// per state at world entry, parts reload and received-server-tag publication, with `pos`
-    /// and `table_pos` both at the origin. Server tags and their tag-update listeners are
-    /// published before the client snapshot. Any nonzero answer emits particles when the
-    /// intervening block transmits. Particle answers must be state-only; changing a mod's
-    /// answer requires a parts/tag reload.
-    /// No hook is called per tick or frame. With no part attached, the only dispatch cost is one
-    /// block subscription lookup before event conversion. Diverges from upstream: new hook.
-    /// A client without this mod predicts vanilla here; the server corrects it.
+    /// The enchanting power the supplied `state` at `pos` gives the table at `table_pos`
+    /// (`IBlockExtension.getEnchantPowerBonus`). `power` starts at 1.0 for a block in
+    /// `#minecraft:enchantment_power_provider`, 0.0 otherwise. A non-finite answer is ignored.
+    ///
+    /// `level` is the read-only level for a live offer or explicit query. An explicit query can
+    /// occur during another callback and can ask about a state that doesn't occupy `pos`, with
+    /// either position outside the table's usual bookshelf scan. A repeated active query refuses.
+    /// The table, not the provider, applies transmitter, sum, truncation and offer-cost rules.
+    ///
+    /// `level` is `None` when rebuilding the client particle snapshot at world entry, parts
+    /// reload or after received tags and their listeners have been published. Both positions are
+    /// the origin for this state-only snapshot. Particles use the cached answers, not a per-frame
+    /// dispatch. Any nonzero answer qualifies its state when the intervening block transmits.
     #[hook(
         side = "both",
-        version = 2,
+        version = 3,
         contract = "collect",
         out = "power",
         scope = "block",

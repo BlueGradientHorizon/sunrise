@@ -55,6 +55,17 @@ A part's answer is used as given, as vanilla uses what `getFriction` returns: an
 above 1 or below 0 included. A non-finite answer is refused and the state's own coefficient is
 used.
 
+## Contextual enchanting power
+
+`level.get_enchant_power_bonus(host, pos, state, table_pos)` reads the effective power of
+`state` on either side. To ask the placed block, get its state from `level.block_state(host, pos)`
+first. `table_pos` is context for the [Part](../../concepts/parts/block-parts.md#enchanting-power),
+not a block the read validates. The default is 1.0 for a provider-tagged block and 0.0 otherwise.
+The read preserves signed fractional answers. Apply your own scan and transmitter checks if
+summing powers for a table; the read doesn't round or cap them. It refuses stale handles and
+unavailable views, states or phases, and refuses an exact repeated active query without loading
+chunks or writing to the world.
+
 ## Block classes
 
 `block_class(state, class)` answers what a mod would ask with `instanceof StairBlock`, `EntityBlock`,
