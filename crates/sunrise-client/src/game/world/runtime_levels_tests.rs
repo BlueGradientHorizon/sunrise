@@ -452,8 +452,9 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
         for _ in 0..=IDLE_TICKS {
             game.tick_server(false).unwrap();
         }
+        // The ticket may make this the first level to tick, leaving it in place.
         assert!(
-            game.levels.parked.contains_key(&dim),
+            game.native_level_world(custom.level()).is_some(),
             "the custom level stays open"
         );
         assert!(seen.unloads.lock().unwrap().is_empty());
