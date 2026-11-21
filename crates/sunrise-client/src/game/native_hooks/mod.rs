@@ -127,6 +127,8 @@ mod add_server_reload_listeners;
 mod adjacent_block_path_type;
 mod affect_neighbors_after_removal;
 mod animal_tame;
+mod animate_tick;
+mod animate_tick_tests;
 mod anvil_update;
 mod apply_enchantments;
 mod arm_pose_transform;
