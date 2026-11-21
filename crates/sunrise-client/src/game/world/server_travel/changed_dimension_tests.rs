@@ -441,6 +441,46 @@ fn a_command_teleport_into_the_nether_is_heard_once_on_every_server() {
 
 #[test]
 #[ignore = "daily"]
+fn player_tick_count_survives_teleports_and_deferred_arrivals() {
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        let entity = game.entity(CONN).unwrap();
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(CONN, |guest| {
+                guest.motion.as_mut().unwrap().health.tick_count = 17;
+            });
+
+        run_as_player(
+            game,
+            ExecutionRole::DedicatedServer,
+            "execute in minecraft:overworld run tp @s 8.5 70 8.5",
+        );
+        assert_eq!(entity.tick_count(game), Some(17));
+
+        run_as_player(
+            game,
+            ExecutionRole::DedicatedServer,
+            "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
+        );
+        assert_eq!(entity.tick_count(game), Some(17));
+        finish_trip(game, Dim::Nether);
+        assert_eq!(entity.tick_count(game), Some(17));
+
+        game.enter_level(Dim::Nether).unwrap();
+        game.as_guest(CONN, |game| {
+            game.player.as_mut().unwrap().health.tick_count = 29;
+        })
+        .unwrap();
+        game.start_server_trip(CONN, Dim::Overworld, None, false);
+        finish_trip(game, Dim::Overworld);
+        assert_eq!(entity.tick_count(game), Some(29));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn an_end_gateway_jump_within_the_level_is_not_heard_on_any_server() {
     for role in SERVERS {
         heard_on(role, |game, heard| {

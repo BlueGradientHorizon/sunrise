@@ -85,10 +85,11 @@ falling block and an ender pearl by name: each keeps its cooldown in a store of 
 states, the falling block's saved field, an End gateway traveller) that this write does not own, so a write can only
 reach them once that kind has its own owner decision.
 
-`EntityRef::tick_count(host)` reads the signed 32-bit `Entity.tickCount` for a player, mob, item entity, experience
+On the server, `EntityRef::tick_count(host)` reads the signed 32-bit `Entity.tickCount` for a player, mob, item entity, experience
 orb or minecart. A local player and the guest whose turn is running read their active `PlayerMotion`; a guest outside
-its turn reads the motion kept in the guest record. The value wraps like Java's `int`, and a stale handle or another
-entity kind returns `None`.
+its turn reads the motion kept in the guest record, or its carried count while a teleport is between bodies. A newly
+admitted player with no body has count 0. The value wraps like Java's `int`, and a stale handle or another entity
+kind returns `None`.
 
 `MobRef::can_use_portal` reads the existing server portal decision for a mob in the current level, including mounts and player riders. It takes `&dyn Host`: `Some(false)` means the mob is ineligible, while `None` means a client, stale or unavailable handle, parked mob, or the separately modelled dragon. It does not load a level.
 

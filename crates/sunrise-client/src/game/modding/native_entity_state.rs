@@ -624,11 +624,13 @@ impl Game<'_> {
         Some(match self.native_entity_target(entity)? {
             Target::Player => self.player.as_ref()?.health.tick_count,
             Target::Guest(conn) => {
-                self.command_guest(conn)?
+                let guest = self.command_guest(conn)?;
+                guest
                     .motion
-                    .as_deref()?
-                    .health
-                    .tick_count
+                    .as_deref()
+                    .map(|motion| motion.health.tick_count)
+                    .or(guest.carried_tick_count)
+                    .unwrap_or(0)
             }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
@@ -948,6 +950,7 @@ mod tests {
 
             let acting_guest = game.entity(12).unwrap();
             let parked_guest = game.entity(13).unwrap();
+            assert_eq!(parked_guest.tick_count(game), Some(0));
             game.as_guest(13, |game| {
                 game.player.as_mut().unwrap().health.tick_count = 314;
             })
