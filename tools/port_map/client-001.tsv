@@ -11,7 +11,7 @@ ClientAdvancements.setSelectedTab	port	crates/sunrise-client/src/game/interface/
 ClientAdvancements.setListener	skip:ui		listener plumbing for the advancements screen; Sunrise's screen reads its state each frame
 ClientAdvancements.get	port	crates/sunrise-client/src/advancements.rs::Tree::get	returns the advancement by id; holder wrapper is not needed
 ClientChunkCache.isValidChunk	skip:other		chunks are stored by position, so there is no ring slot to check
-ClientChunkCache.drop	port	crates/sunrise-client-render/src/streaming.rs::Streaming::forget_columns	Game::client_chunk_unload tells mods (client_chunk_unload) before the column is freed; block entities and renderer columns are cleared in Game::handle_packet
+ClientChunkCache.drop	port	crates/sunrise-client-render/src/streaming.rs::Streaming::forget_columns	Game::client_chunk_unload tells mods (client_chunk_unload) before the column is freed; block entities and renderer columns are cleared in Game::apply_forget_level_chunk_packet
 ClientChunkCache.getChunk	skip:java		lookup of a loaded chunk; Sunrise reads world.chunks directly
 ClientChunkCache.replaceBiomes	port	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunks_biomes	each loaded column takes the packet's biomes per section, then it and its neighbours are marked dirty so their sections are drawn again (/fillbiome reaches the client)
 ClientChunkCache.flipUpdateTrackingSets	skip:other		double-buffered change lists for LevelRenderer; Sunrise hands changed columns to the renderer directly
@@ -33,7 +33,7 @@ ClientCommonPacketListenerImpl.handleKeepAlive	port	crates/sunrise-client/src/ne
 ClientCommonPacketListenerImpl.handleCustomPayload	port	crates/sunrise-client/src/net.rs::receive_brand	gap: minor: reads the brand only; other custom payloads go to the game and are ignored
 ClientCommonPacketListenerImpl.handleResourcePackPush	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_push
 ClientCommonPacketListenerImpl.handleResourcePackPop	port	crates/sunrise-client/src/game/world/server_packs.rs::Game::handle_pack_pop
-ClientCommonPacketListenerImpl.handlePostEffects	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet
+ClientCommonPacketListenerImpl.handlePostEffects	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::apply_packet
 ClientCommonPacketListenerImpl.preparePackPrompt	port	crates/sunrise-client/src/game/world/server_packs.rs::PackPrompt::texts	builds the server prompt line from the header and the server's prompt
 ClientCommonPacketListenerImpl.handleStoreCookie	port	crates/sunrise-client/src/net.rs::receive_play	stores the cookie for a later transfer or cookie request
 ClientCommonPacketListenerImpl.handleCustomReportDetails	skip:debug		extra lines for crash reports only
@@ -95,7 +95,7 @@ ClientLevel.shouldTickDeath	missing		minor: death animations tick for every remo
 ClientLevel.tickNonPassenger	port	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_remote_entities	ticks each remote entity
 ClientLevel.tickPassenger	port	crates/sunrise-client/src/game/entities/passengers.rs::Game::position_riders	gap: minor: passengers are placed on their vehicle; no per-passenger tick
 ClientLevel.update	skip:other		runs the light queue each tick; Sunrise relights when changes arrive
-ClientLevel.unload	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	minor: the ForgetLevelChunk arm clears block entities and renderer columns; light and entity ticking are not toggled
+ClientLevel.unload	inline	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_forget_level_chunk_packet	minor: the ForgetLevelChunk arm clears block entities and renderer columns; light and entity ticking are not toggled
 ClientLevel.onChunkLoaded	inline	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	minor: chunks are meshed on arrival; no tint cache to clear and no entity-ticking gate
 ClientLevel.removeEntity	port	crates/sunrise-client/src/game/network/remote_removal.rs::Game::remove_entity	removes the entity and its passengers
 ClientLevel.getPushableEntities	missing		minor: the client does not push the local player with nearby mobs or boats; the server's position correction moves it

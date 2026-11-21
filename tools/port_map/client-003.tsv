@@ -26,14 +26,14 @@ ChatListener.flushQueue	port	crates/sunrise-client/src/game/network/remote/chat_
 ChatListener.acceptNextDelayedMessage	port	crates/sunrise-client/src/game/network/remote/chat_queue.rs::Game::accept_next_delayed_message	the chat.queue row's click shows one held message, without moving the delay timer
 ChatListener.removeFromDelayedMessageQueue	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_delete_chat
 ChatListener.handleMessage	port	crates/sunrise-client/src/game/network/remote/mod.rs::handle_player_chat	a line with a delay goes into remote.chat_queue instead of the chat
-ChatListener.handlePlayerChatMessage	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	gap: player: no Only Show Secure Chat filter, no server filter-mask text, no block or friend-only hiding of chat lines
+ChatListener.handlePlayerChatMessage	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_player_chat_packet	gap: player: no Only Show Secure Chat filter, no server filter-mask text, no block or friend-only hiding of chat lines
 ChatListener.handleChatMessageError	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_chat_message_error	the red italic chat.validation_error in the message's chat type, tagged chatError; gap: minor: a blocked or friends-only sender is not skipped (no social list), no narration, no markMessageAsProcessed
-ChatListener.handleDisguisedChatMessage	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	gap: minor: no narration and no chat log entry
+ChatListener.handleDisguisedChatMessage	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_disguised_chat_packet	gap: minor: no narration and no chat log entry
 ChatListener.showMessageToPlayer	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_line	gap: player: trust, block, friend-only and secure-only checks are not run before showing
 ChatListener.evaluateTrustLevel	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_trust
 ChatListener.logPlayerMessage	skip:service		feeds the chat log that chat reports read
 ChatListener.logSystemMessage	skip:service		feeds the chat log that chat reports read
-ChatListener.handleSystemMessage	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::handle_packet	gap: minor: hide-matched-names and friend filtering are not applied to system lines
+ChatListener.handleSystemMessage	port	crates/sunrise-client/src/game/network/remote/packets_player.rs::Game::apply_system_chat_packet	gap: minor: hide-matched-names and friend filtering are not applied to system lines
 ChatListener.guessChatUUID	skip:service		social lookup of a name in a system line, used only for blocking and hiding
 ChatListener.isSenderLocalPlayer	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::chat_trust	the local player's own message on their own server is secure
 ChatLog.codec	skip:java		serializer of the chat log
