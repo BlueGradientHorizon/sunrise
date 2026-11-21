@@ -1,5 +1,3 @@
-use super::*;
-
 /// The local player's own state reads answer on a client from what the
 /// server sent it (`LocalPlayer`); another player reads None there.
 #[test]

@@ -2315,14 +2315,14 @@ mod tests {
                     stack.item().id(game),
                     stack.count()
                 )),
-                Some(("minecraft:iron_sword".to_string(), 1))
+                Some((Some("minecraft:iron_sword"), 1))
             );
             assert_eq!(
                 player.with_hand_item(game, Hand::Off, |stack| (
                     stack.item().id(game),
                     stack.count()
                 )),
-                Some(("minecraft:shield".to_string(), 1))
+                Some((Some("minecraft:shield"), 1))
             );
             assert!(player.set_hand_item(game, Hand::Off, None).unwrap());
             assert_eq!(game.offhand, None);

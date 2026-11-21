@@ -1071,6 +1071,7 @@ mod tests {
                     .level("minecraft:overworld")
                     .and_then(|level| {
                         collect_entities_in(host, level, [-10.0, 60.0, -10.0], [20.0, 70.0, 20.0])
+                            .ok()
                     })
                     .unwrap()
                     .into_iter()
