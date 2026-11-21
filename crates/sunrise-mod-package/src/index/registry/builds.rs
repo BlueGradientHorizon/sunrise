@@ -159,13 +159,7 @@ impl Submission<'_> {
             .map_err(|e| format!("{}: {e}", self.name))?;
         let descriptor: Descriptor =
             serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", self.name))?;
-        if descriptor.id != self.entry.id
-            || !super::super::same_version(
-                &self.entry.kind,
-                &descriptor.version,
-                &self.version.version,
-            )
-        {
+        if descriptor.id != self.entry.id || descriptor.version != self.version.version {
             return Err(format!(
                 "{}: descriptor id or version does not match the entry",
                 self.name

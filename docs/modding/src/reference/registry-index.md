@@ -335,7 +335,9 @@ signature = """<descriptor .minisig text>"""
 ```
 
 The source version must be signed and pin a stable release of the same line. Its registry version label
-must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). It must contain `Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
+must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). An already published shorthand label
+stays source-only: publish a new mod version to add builds rather than renaming the old row. The package
+must contain `Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
 dependencies do not produce an independent release library. Builds are optional. Each stable release
 gets at most one row, and published rows are append-only. `registry review` reports an owner's append as
 routine only after validation and only if the append is the submission's sole registry change. The JSON

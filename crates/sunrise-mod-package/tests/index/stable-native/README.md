@@ -4,6 +4,6 @@
 
 `schema-1.json` shows the same archive records as the registry emits, alongside an unrelated source-only project and a project that depends on the native mod's source version. It is also used to test the unmodified schema-1 reader.
 
-`wrong-architecture/` signs the same source and a client archive with a real i386 shared library (`cc -m32`), while the filename and stamp still claim x86-64. Its server archive reuses the healthy archive from this directory, signed with the test's separate key.
+`wrong-architecture/` signs the same source and a client archive with a real i386 shared library (`cc -m32`), while the filename and stamp still claim x86-64. Its server archive reuses the healthy archive from this directory, signed with the test's separate key. The same key signs `short-label.binaries.json`, whose archive names are canonical but whose descriptor version is abbreviated.
 
 These packages and tar.xz archives were assembled independently of `cargo sunrise-mod`. The `.minisig` files and embedded archive signatures were made with disposable fixture keys; only the project public key is retained.

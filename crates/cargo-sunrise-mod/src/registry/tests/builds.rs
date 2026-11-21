@@ -189,6 +189,21 @@ fn a_short_version_label_cannot_list_native_builds() {
 }
 
 #[test]
+fn a_signed_descriptor_must_use_the_canonical_label() {
+    let fixture = fixtures().join("wrong-architecture");
+    let release = Release::with_signer("source.smod", &fixture);
+    release.add_build(
+        &fs::read(fixture.join("short-label.binaries.json")).unwrap(),
+        &fs::read_to_string(fixture.join("short-label.binaries.json.minisig")).unwrap(),
+    );
+    let error = release.check().unwrap_err();
+    assert!(
+        error.contains("descriptor id or version does not match the entry"),
+        "{error}"
+    );
+}
+
+#[test]
 fn descriptors_must_be_in_the_projects_own_repository() {
     let release = Release::new("source.smod");
     release.use_descriptor("valid");
