@@ -9,44 +9,50 @@ fn files() -> FileToIdConverter {
 #[test]
 fn registry_views_and_explicit_order_before_vanilla() {
     let mut listeners = ServerListenerRegistry::new();
-    let [first, functions, last, mod_first, mod_second] = [
-        "minecraft:first",
+    let [functions, mod_first, mod_second, mod_after] = [
         "minecraft:function_library",
-        "minecraft:last",
         "test_mod:first",
         "test_mod:second",
+        "test_mod:after",
     ]
     .map(id);
+    assert_eq!(VanillaServerListeners::first(), functions);
+    assert_eq!(VanillaServerListeners::last(), functions);
+    assert!(listeners.get_registry().iter().eq([&functions]));
+    assert!(listeners.get_graph().iter().next().is_none());
+
     listeners
         .add_listener(mod_first.clone(), files(), Arc::new(Boundary))
         .unwrap();
     listeners
         .add_listener(mod_second.clone(), files(), Arc::new(Boundary))
         .unwrap();
-    assert_eq!(listeners.get_last_vanilla_listener(), &functions);
-    assert!(listeners.get_registry().iter().eq([
-        &first,
-        &functions,
-        &last,
-        &mod_first,
-        &mod_second,
-    ]));
     listeners
-        .add_dependency(mod_second.clone(), functions.clone())
+        .add_listener(mod_after.clone(), files(), Arc::new(Boundary))
         .unwrap();
-    assert!(listeners.get_graph().iter().eq([
-        (&first, &functions),
-        (&functions, &last),
-        (&first, &mod_first),
-        (&mod_first, &last),
-        (&first, &mod_second),
-        (&mod_second, &last),
-        (&mod_second, &functions),
-    ]));
+    assert_eq!(listeners.get_last_vanilla_listener(), &functions);
+    assert!(
+        listeners
+            .get_registry()
+            .iter()
+            .eq([&functions, &mod_first, &mod_second, &mod_after,])
+    );
+    listeners
+        .add_dependency(mod_second.clone(), VanillaServerListeners::first())
+        .unwrap();
+    listeners
+        .add_dependency(VanillaServerListeners::last(), mod_after.clone())
+        .unwrap();
+    assert!(
+        listeners
+            .get_graph()
+            .iter()
+            .eq([(&mod_second, &functions), (&functions, &mod_after),])
+    );
     let sorted = listeners.finish().unwrap().listeners;
     assert_eq!(
         sorted.into_iter().map(|entry| entry.id).collect::<Vec<_>>(),
-        [first, mod_second, functions, mod_first, last]
+        [mod_second, functions, mod_first, mod_after]
     );
 }
 
@@ -139,7 +145,7 @@ fn panicking_server_reload_registration_discards_only_its_ordered_and_retained_t
     );
     assert_eq!(ordered.retained.len(), 2);
     let mut resources = RetainedListeners::default();
-    resources.install(ordered.retained);
+    resources.install(ordered.retained, &Default::default());
     let resources = &resources as &dyn ServerReloadResources;
     assert_eq!(resources.listener(&seeded).unwrap().0, "seeded");
     assert_eq!(resources.listener(&shared).unwrap().0, "healthy");
@@ -181,7 +187,7 @@ fn retained_listeners_read_back_typed_from_the_resources() {
     assert_eq!(key.id(), &id("test_mod:kept"));
     let ordered = listeners.finish().unwrap();
     let mut resources = RetainedListeners::default();
-    resources.install(ordered.retained);
+    resources.install(ordered.retained, &Default::default());
     let kept = (&resources as &dyn ServerReloadResources)
         .listener(&key)
         .unwrap();
@@ -206,7 +212,7 @@ fn reload_replaces_the_retained_store_whole() {
         .add_retained_listener(&first, files(), Arc::new(Boundary))
         .unwrap();
     let mut resources = RetainedListeners::default();
-    resources.install(listeners.finish().unwrap().retained);
+    resources.install(listeners.finish().unwrap().retained, &Default::default());
     assert!(
         (&resources as &dyn ServerReloadResources)
             .listener(&first)
@@ -214,7 +220,7 @@ fn reload_replaces_the_retained_store_whole() {
     );
 
     let later = ServerListenerRegistry::new().finish().unwrap();
-    resources.install(later.retained);
+    resources.install(later.retained, &Default::default());
     assert!(
         (&resources as &dyn ServerReloadResources)
             .listener(&first)
@@ -253,9 +259,19 @@ fn retained_registration_follows_the_same_rules_as_plain_listeners() {
             )
             .is_err()
     );
-    assert!(matches!(
-        listeners.finish(),
-        Err(ReloadOrderError::DuplicateObject { .. })
-    ));
+    let ordered = listeners.finish().unwrap();
+    assert_eq!(
+        ordered
+            .listeners
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect::<Vec<_>>(),
+        [
+            VanillaServerListeners::functions(),
+            id("one:listener"),
+            id("one:kept"),
+        ]
+    );
+    assert_eq!(ordered.retained.len(), 1);
     drop(key);
 }

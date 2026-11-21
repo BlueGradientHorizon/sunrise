@@ -12,34 +12,36 @@ use crate::{
 };
 use std::sync::{Arc, LazyLock};
 
-/// Sunrise's vanilla client reload listeners and ordering boundaries, from the
-/// 26.3 `Minecraft` resource-manager registration order: language, textures,
-/// shaders, sounds, the atlas, fonts, the grass and foliage colour listeners,
-/// the model manager, equipment assets, paletted textures, then the entity and
-/// block-entity render dispatchers, particles, the game renderer, the level
-/// extractor, clouds, the GPU warnlist, regional compliance and the GUI.
+/// Sunrise's vanilla client reload listeners, from the 26.3 `Minecraft`
+/// resource-manager registration order: language, textures, shaders, sounds,
+/// the atlas, fonts, the grass and foliage colour listeners, the model manager,
+/// equipment assets, paletted textures, then the entity and block-entity render
+/// dispatchers, particles, the game renderer, the level extractor, clouds, the
+/// GPU warnlist, regional compliance and the GUI.
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaClientListeners;
 impl VanillaClientListeners {
-    /// Boundary before every reload listener.
+    /// First registered vanilla client reload listener, corresponding to NeoForge's
+    /// `VanillaClientListeners.FIRST`. Sunrise currently models a single vanilla client
+    /// reload anchor, so this aliases [`Self::model_manager`].
     pub fn first() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:first").unwrap());
-        ID.clone()
+        Self::model_manager()
     }
-    /// Vanilla's model manager. Use this anchor rather than its string value,
-    /// which need not match NeoForge's identifier.
+    /// Vanilla's model manager: building the next models in prepare and publishing
+    /// them in apply, with the model-baking notification. Atlas upload precedes it. Use this anchor
+    /// rather than its string value, which need not
+    /// match NeoForge's identifier.
     pub fn model_manager() -> Identifier {
         static ID: LazyLock<Identifier> =
             LazyLock::new(|| Identifier::parse("minecraft:model_manager").unwrap());
         ID.clone()
     }
-    /// Boundary after every reload listener.
+    /// Last registered vanilla client reload listener, corresponding to NeoForge's
+    /// `VanillaClientListeners.LAST`. Sunrise currently models a single vanilla client
+    /// reload anchor, so this aliases [`Self::model_manager`].
     pub fn last() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:last").unwrap());
-        ID.clone()
+        Self::model_manager()
     }
 }
 
@@ -71,7 +73,8 @@ impl ClientReloadContext {
 /// finish before any apply, including vanilla's, runs on the game-owning thread.
 /// Prepare cannot see another listener's new published state. Dependencies order
 /// both phases deterministically; they do not remove the barrier. On a prepare
-/// error, pending actions are dropped without running, keeping the previous assets.
+/// or engine preflight error, pending actions are dropped without running, keeping
+/// the previous assets.
 pub trait ClientReloadListener: Send + Sync + 'static {
     /// Parse and validate new assets without changing the listener's live state.
     /// Return `Ok(Box::new(move || { /* publish prepared assets */ }))` with owned
@@ -82,8 +85,10 @@ pub trait ClientReloadListener: Send + Sync + 'static {
     /// carrying the rest through; returning `Err` aborts the whole reload and
     /// keeps every listener's previous assets. Attach the original error to the
     /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
-    /// A panic in `prepare` or the returned apply stops the game; the crash
-    /// report names the listener and the mod that registered it.
+    /// A panic in `prepare` or apply skips this listener for the session. The
+    /// mod and listener are reported, and unrelated listeners still apply.
+    /// Native callbacks must publish their own state atomically: the engine
+    /// cannot undo writes a closure makes to private mod memory.
     fn prepare(
         &self,
         context: &ClientReloadContext,
@@ -118,11 +123,11 @@ pub trait ClientReloadListeners {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError>;
-    /// The registered names in registration order, boundaries included.
+    /// The registered names in registration order, vanilla anchor included.
     fn get_registry(&self) -> Vec<Identifier>;
     /// The dependency edges as `(first, second)` names.
     fn get_graph(&self) -> Vec<(Identifier, Identifier)>;
-    /// The name of the vanilla anchor preceding mod listeners by default.
+    /// The name of the last vanilla client listener preceding mod listeners by default.
     fn get_last_vanilla_listener(&self) -> Identifier;
 }
 
@@ -183,9 +188,7 @@ impl ClientListenerRegistry {
     pub(crate) fn new() -> Self {
         Self {
             core: crate::world::reload::ReloadCore::new(
-                VanillaClientListeners::first(),
                 VanillaClientListeners::model_manager(),
-                VanillaClientListeners::last(),
                 || -> Arc<dyn ClientReloadListener> { Arc::new(Boundary) },
             ),
         }

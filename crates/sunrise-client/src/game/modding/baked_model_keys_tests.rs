@@ -81,7 +81,10 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
     let mods = vec![ModEntry::new("reader", Box::new(Reader(Arc::clone(&read))))].into();
     with_mods(mods, || {
         with_client_game(|game| {
-            game.publish_initial_client_models().unwrap();
+            game.publish_initial_client_models(vec![
+                crate::game::client_reload::PreparedClientReload::Vanilla(()),
+            ])
+            .unwrap();
             let first = {
                 let read = read.lock().unwrap();
                 let Ok(keys) = &read.keys[0] else {

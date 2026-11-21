@@ -130,35 +130,6 @@ pub(super) fn emit<'a>(
         let entered = fresh_name("_entered", &mut used);
         let batch = fresh_name("batch", &mut used);
         let contract = hook.contract;
-        let staged = if let Some(field) = &hook.staged_surface {
-            let Some((_, ty)) = args.iter().find(|(arg, _)| arg == field) else {
-                return Err(format!("{name}: missing staged_surface field {field}"));
-            };
-            if hook.context == Some(PhaseContext::ChunkDisk)
-                || !in_game
-                || is_render
-                || hook.dispatch != DispatchStyle::Flat
-                || args.iter().any(|(_, ty)| DrawContext::of(contexts, ty).is_some())
-                || args.iter().any(|(arg, ty)| {
-                    arg != field
-                        && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
-                })
-                || !matches!(ty, Type::Reference(reference)
-                    if reference.mutability.is_some() && matches!(*reference.elem, Type::TraitObject(_)))
-            {
-                return Err(format!(
-                    "{name}: staged_surface needs a flat global game listener with a single mutable registrar and no draw surface"
-                ));
-            }
-            let stage = fresh_name("stage_listener", &mut used);
-            let signature = format!(
-                "impl FnMut(&mut dyn FnMut({}) -> bool)",
-                ty.to_token_stream()
-            );
-            Some((field, stage, signature))
-        } else {
-            None
-        };
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
         let output = if let Some(out) = out {
@@ -230,6 +201,58 @@ pub(super) fn emit<'a>(
                     param,
                 )
             });
+        let staged_host = hook.staged_surface.as_deref() == Some("host")
+            && !args.iter().any(|(arg, _)| arg == "host");
+        let staged = if staged_host {
+            let (name, param) = host.as_ref().ok_or("staged host needs a Host")?;
+            if hook.dispatch != DispatchStyle::Direct
+                || !in_game
+                || is_render
+                || contract != Contract::Listen
+                || hook.scope.is_some()
+                || hook.owner.is_some()
+                || hook.context.is_some()
+                || !param.ty.starts_with("&mut dyn ")
+                || args.iter().any(|(_, ty)| DrawContext::of(contexts, ty).is_some()
+                    || matches!(ty, Type::Reference(reference) if reference.mutability.is_some()))
+            {
+                return Err(format!("{name}: staged host needs a direct global game listener with a mutable Host and read-only inputs"));
+            }
+            let stage = fresh_name("stage_listener", &mut used);
+            Some((
+                name,
+                stage,
+                format!("impl FnMut(&mut dyn FnMut({}) -> bool)", param.ty),
+            ))
+        } else if let Some(field) = &hook.staged_surface {
+            let Some((_, ty)) = args.iter().find(|(arg, _)| arg == field) else {
+                return Err(format!("{name}: missing staged_surface field {field}"));
+            };
+            if hook.context == Some(PhaseContext::ChunkDisk)
+                || !in_game
+                || is_render
+                || hook.dispatch != DispatchStyle::Flat
+                || args.iter().any(|(_, ty)| DrawContext::of(contexts, ty).is_some())
+                || args.iter().any(|(arg, ty)| {
+                    arg != field
+                        && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
+                })
+                || !matches!(ty, Type::Reference(reference)
+                    if reference.mutability.is_some() && matches!(*reference.elem, Type::TraitObject(_)))
+            {
+                return Err(format!(
+                    "{name}: staged_surface needs a flat global game listener with a single mutable registrar and no draw surface"
+                ));
+            }
+            let stage = fresh_name("stage_listener", &mut used);
+            let signature = format!(
+                "impl FnMut(&mut dyn FnMut({}) -> bool)",
+                ty.to_token_stream()
+            );
+            Some((field, stage, signature))
+        } else {
+            None
+        };
         // A block notice may identify a watching block entity. Its Parts receive
         // the source payload without changing the declared source key.
         let observer_routed = hook
@@ -393,11 +416,15 @@ pub(super) fn emit<'a>(
         if let Some((name, param)) = &host {
             trait_params.push(format!("{name}: {}", param.ty));
             let by_side = param.ty == "HostSide" || param.ty == "LevelSide";
-            dispatch_params.push(format!(
-                "{}{name}: {}",
-                if by_side { "mut " } else { "" },
-                param.ty
-            ));
+            if let Some((_, stage, signature)) = staged.as_ref().filter(|_| staged_host) {
+                dispatch_params.push(format!("mut {stage}: {signature}"));
+            } else {
+                dispatch_params.push(format!(
+                    "{}{name}: {}",
+                    if by_side { "mut " } else { "" },
+                    param.ty
+                ));
+            }
             call_args.push(if by_side {
                 format!("{name}.reborrow()")
             } else if param.ty.starts_with("&mut ") {
@@ -607,7 +634,7 @@ pub(super) fn emit<'a>(
         };
         let wire_comment = if registration_append.is_some() {
             "// no wire: this event borrows the registration staging vector.\n"
-        } else if staged.is_some() {
+        } else if staged.is_some() && !staged_host {
             "// no wire: this event borrows the current listener's registrar.\n"
         } else {
             ""

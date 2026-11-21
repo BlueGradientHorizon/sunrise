@@ -70,6 +70,7 @@ mod entity_outline;
 pub mod entity_pixel_test;
 mod fluid;
 mod prepared_model;
+pub use prepared_model::PreparedModels;
 #[cfg(feature = "test-support")]
 pub use prepared_model::fail_next_prepared_upload;
 pub use prepared_model::{

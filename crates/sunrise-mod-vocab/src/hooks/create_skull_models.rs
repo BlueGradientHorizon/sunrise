@@ -55,7 +55,7 @@ it is a skull is not covered yet."#]
         registration_append = "register",
         context = "registration",
         neoforge = "EntityRenderersEvent.CreateSkullModels",
-        version = 2
+        version = 3
     )]
     fn create_skull_models(models: &mut Vec<SkullModel>);
 }

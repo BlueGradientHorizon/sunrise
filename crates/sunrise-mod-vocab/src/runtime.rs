@@ -61,6 +61,9 @@ pub(crate) fn client_hook_name(subscribed: &[Option<HookId>]) -> Option<&'static
 /// The ordered list of named mods shared by the client and server.
 pub type Mods = Arc<[ModEntry]>;
 
+type NamedPoison =
+    std::collections::HashMap<(usize, &'static str), std::collections::HashSet<Identifier>>;
+
 pub(crate) struct Installed {
     pub(crate) mods: Mods,
     pub(crate) by_id: std::collections::HashMap<&'static str, usize>,
@@ -74,6 +77,8 @@ pub(crate) struct Installed {
     /// answers through one atomic load, so a dispatch with no poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    /// Session poison for named callbacks rebuilt with resources or a connection.
+    named_poison: std::sync::Mutex<NamedPoison>,
     /// Hook-listener panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
     has_hook_panics: std::sync::atomic::AtomicBool,
@@ -127,6 +132,7 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            named_poison: Default::default(),
             hook_panics: std::sync::Mutex::new(Vec::new()),
             has_hook_panics: std::sync::atomic::AtomicBool::new(false),
         }
@@ -227,9 +233,7 @@ pub fn isolated_failures() -> u64 {
 /// that one hook alone — its other hooks, Parts, and every other mod's listeners are
 /// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
 /// `(hook, id)`, so the error log line and error toast fire once.
-pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+fn poison(hook: generated::HookId, id: &'static str) -> bool {
     let Some(installed) = installed() else {
         return true;
     };
@@ -264,26 +268,10 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
 }
 
-/// Record a mod callback panic under the unified dispatch failure rule.
-///
-/// On the first panic for `(hook_id, mod_id)`, disables that mod's callback for that hook for the
-/// rest of the session (leaving other hooks and other mods running), logs an `error!` line naming
-/// the mod, hook, and panic message, and queues one [`HookPanicReport`] for the client's error
-/// toast.
-pub(crate) fn record_hook_panic(
-    hook_id: generated::HookId,
-    hook: &'static str,
-    mod_id: &'static str,
-    payload: &(dyn std::any::Any + Send),
-) {
-    if poison(hook_id, mod_id) {
-        log_and_queue_panic(hook, mod_id, payload);
-    }
-}
-
 fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
+    named_callback: Option<&Identifier>,
     payload: &(dyn std::any::Any + Send),
 ) {
     let reason = payload
@@ -291,9 +279,15 @@ fn log_and_queue_panic(
         .copied()
         .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("panic");
-    log::error!(
-        "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
-    );
+    if let Some(id) = named_callback {
+        log::error!(
+            "mod {mod_id} panicked in {hook} ({id}) and has been disabled for this callback for the rest of the session: {reason}"
+        );
+    } else {
+        log::error!(
+            "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
+        );
+    }
     if let Some(installed) = installed() {
         let mut queue = installed
             .hook_panics
@@ -315,7 +309,7 @@ pub(crate) enum DispatchOutcome<T> {
 /// Run one mod callback under the unified hook-dispatch failure rule.
 ///
 /// A panic disables `(hook_id, mod_id)` for the rest of the session, reports it once via
-/// [`record_hook_panic`] (error log line plus error toast), and returns
+/// [`log_and_queue_panic`] (error log line plus error toast), and returns
 /// [`DispatchOutcome::Panicked`] without unwinding into the game or stopping other mods.
 /// Outside `World` (`contained == true`), a load-phase refusal returns
 /// [`DispatchOutcome::Refused`] so the caller reports it each time without latching or disabling
@@ -328,15 +322,96 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_with(
+        hook,
+        mod_id,
+        contained,
+        None,
+        || poison(hook_id, mod_id),
+        call,
+    )
+}
+
+#[inline]
+fn invoke_with<T>(
+    operation: &'static str,
+    owner: &'static str,
+    contained: bool,
+    named_callback: Option<&Identifier>,
+    poison: impl FnOnce() -> bool,
+    call: impl FnOnce() -> T,
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            let (entered, trapped) = LISTENER_SERIAL.get();
+            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+            if poison() {
+                log_and_queue_panic(operation, owner, named_callback, &*payload);
+            }
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
+    }
+}
+
+/// Check the session's enablement for a callback identified across reloads or peers.
+#[doc(hidden)]
+pub fn session_callback_enabled(
+    hook: generated::HookId,
+    owner: &'static str,
+    id: &Identifier,
+) -> bool {
+    installed().is_some_and(|installed| {
+        installed
+            .by_id
+            .get(owner)
+            .is_some_and(|&index| mod_index_on(index))
+            && !installed
+                .named_poison
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&(hook as usize, owner))
+                .is_some_and(|poisoned| poisoned.contains(id))
+    })
+}
+
+/// Invoke an enabled named callback through the same failure boundary as a hook subscriber.
+#[doc(hidden)]
+pub fn call_session_callback<T>(
+    hook: generated::HookId,
+    owner: &'static str,
+    id: &Identifier,
+    operation: &'static str,
+    call: impl FnOnce() -> T,
+) -> Result<T, String> {
+    let _owner = mark_mod(owner, operation);
+    match invoke_with(
+        operation,
+        owner,
+        true,
+        Some(id),
+        || {
+            installed().is_none_or(|installed| {
+                installed
+                    .named_poison
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .entry((hook as usize, owner))
+                    .or_default()
+                    .insert(id.clone())
+            })
+        },
+        call,
+    ) {
+        DispatchOutcome::Ok(value) => Ok(value),
+        DispatchOutcome::Refused(refusal) => {
+            refusal.report();
+            Err(refusal.to_string())
+        }
+        DispatchOutcome::Panicked => Err(format!("mod {owner}: {operation} ({id}) panicked")),
     }
 }
 
@@ -455,7 +530,7 @@ pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> 
         Err(payload) => {
             let (entered, trapped) = LISTENER_SERIAL.get();
             LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-            log_and_queue_panic("register", mod_id, &*payload);
+            log_and_queue_panic("register", mod_id, None, &*payload);
             dispose_panic_payload(payload);
             false
         }

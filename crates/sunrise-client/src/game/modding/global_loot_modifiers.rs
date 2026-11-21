@@ -306,18 +306,15 @@ pub(super) fn contributed(files: &[(String, Vec<u8>)]) -> Vec<ModifierFile> {
 pub(super) fn register_anchor(
     registry: &mut mod_api::ServerListenerRegistry,
 ) -> Result<Arc<mod_api::GlobalLootModifierManager>, mod_api::ReloadOrderError> {
-    use mod_api::{__private::game::ServerReloadListenersOrder, ServerReloadListeners};
+    use mod_api::ServerReloadListeners;
     let generation = Arc::new(mod_api::GlobalLootModifierManager::default());
     let id = mod_api::GlobalLootModifierManager::key().id().clone();
-    let preceding = registry.get_last_vanilla_listener().clone();
     registry.add_retained(
-        id.clone(),
+        id,
         mod_api::FileToIdConverter::json("loot_modifiers").unwrap(),
         generation.clone(),
         generation.clone(),
     )?;
-    registry.add_dependency(preceding, id.clone())?;
-    registry.set_last_vanilla_listener(id);
     Ok(generation)
 }
 pub(super) fn bind_retained(
@@ -346,14 +343,25 @@ mod tests {
 
         register_anchor(&mut listeners).unwrap();
 
-        let anchor: &Identifier = listeners.get_last_vanilla_listener();
-        assert_eq!(anchor, &loot);
-        assert!(listeners.get_registry().iter().any(|id| id == anchor));
-        assert!(
-            listeners
-                .get_graph()
-                .iter()
-                .any(|edge| edge == (&functions, anchor))
+        assert_eq!(listeners.get_last_vanilla_listener(), &functions);
+        assert!(listeners.get_registry().iter().any(|id| id == &loot));
+        assert!(listeners.get_graph().iter().next().is_none());
+
+        let mod_listener = Identifier::parse("test_mod:after").unwrap();
+        listeners
+            .add_listener(
+                mod_listener.clone(),
+                mod_api::FileToIdConverter::json("machines").unwrap(),
+                Arc::new(mod_api::GlobalLootModifierManager::default()),
+            )
+            .unwrap();
+        let ordered = listeners.finish().unwrap().listeners;
+        assert_eq!(
+            ordered
+                .into_iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>(),
+            [functions, loot, mod_listener]
         );
     }
 }

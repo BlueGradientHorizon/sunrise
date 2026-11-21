@@ -16,7 +16,7 @@ pub trait Hooks {
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterFluidModelsEvent",
-        version = 2
+        version = 3
     )]
     fn register_fluid_models(models: &mut Vec<mod_api::FluidModel>);
 }

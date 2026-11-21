@@ -46,7 +46,7 @@ fn register_entity_spectator_shaders(
         registration_append = "register",
         context = "registration",
         neoforge = "RegisterEntitySpectatorShadersEvent",
-        version = 2
+        version = 3
     )]
     fn register_entity_spectator_shaders(shaders: &mut Vec<mod_api::EntitySpectatorShader>);
 }

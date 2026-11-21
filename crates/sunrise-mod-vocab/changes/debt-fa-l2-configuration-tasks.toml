@@ -1,0 +1,25 @@
+ids = [
+    "hook:register_configuration_tasks",
+    "handle:RegisterConfigurationTasksEvent::register",
+    "type:ConfigurationTaskRegistrationError",
+    "type:ConfigurationTaskRegistrationError.EmptyType",
+    "type:ConfigurationTaskRegistrationError.DuplicateType",
+    "method:prelude::ConfigurationTasksServerHost::configuration_send_payload",
+    "type:ConfigurationTaskRef",
+    "handle:ConfigurationTaskContext::instance",
+    "type:ConfigurationTaskError",
+    "type:ConfigurationTaskError.StaleTask",
+    "type:ConfigurationTaskError.WrongConnection",
+    "type:ConfigurationTaskError.WrongType",
+    "type:ConfigurationTaskError.NotRunning",
+    "method:IPayloadContext::finish_configuration_task",
+]
+why = "Aligns configuration task registration, sending, and completion with NeoForge (RegisterConfigurationTasksEvent.java, ServerPayloadContext.java::finishCurrentTask(ConfigurationTask.Type)) and vanilla 26.3 (ServerConfigurationPacketListenerImpl.java): registration is an infallible FIFO queue with no empty/duplicate rejection or sticky refusal latch; completion targets the receiving connection by task type Identifier across both server main-thread and network-thread configuration payload handlers with no ConfigurationTaskRef capability token, global connection counter, or transaction-layer staging queue; and a refused configuration payload send returns Err without failing the session. Bumps hook:register_configuration_tasks to version 3."
+migrate = """
+- `Hooks::register_configuration_tasks` (v3): `event.register(task)` now returns `()` infallibly instead of `Result<(), ConfigurationTaskRegistrationError>`. Remove error handling and matches on `ConfigurationTaskRegistrationError::{EmptyType, DuplicateType}`.
+- `ConfigurationTaskContext::instance()` and `ConfigurationTaskRef` are removed. Pass `&task_type` (`&Identifier`, matching `ConfigurationTask::task_type`) to `IPayloadContext::finish_configuration_task(&mut self, task_type: &Identifier)` instead of a saved `ConfigurationTaskRef`.
+- `IPayloadContext::finish_configuration_task(&task_type)` now works directly in both server main-thread and server network-thread configuration payload handlers without `enqueue_work`: main-thread handlers complete the matching task directly in the session (no transaction staging; replies still publish before the next server tick advances the queue), while network-thread handlers bind the validated task turn and publish completion inside the active-epoch gate after staged replies (discarded on failure, disconnect, or epoch invalidation). `WrongContext` means client side or non-configuration phase only.
+- Replace matches on `ConfigurationTaskError::StaleTask` and `ConfigurationTaskError::WrongConnection` with `ConfigurationTaskError::WrongType` (running task on this connection has another type) and `ConfigurationTaskError::NotRunning` (no task is currently running on this connection or completion was already requested in this handler).
+- `ConfigurationTasksServerHost::configuration_send_payload` now takes `ConfigurationConnection` instead of `ConfigurationTaskRef` (prefer `ConfigurationTaskContext::send_payload`), and a transport refusal returns `Err(ConfigurationTaskError::Payload(_))` without failing the configuration session. A saved `ConfigurationConnection` returns `ConfigurationTaskError::Disconnected` once its peer has moved to Play, even for a negotiated Play channel.
+- Custom `IPayloadContext` implementations must update `finish_configuration_task` to take `&Identifier`.
+"""

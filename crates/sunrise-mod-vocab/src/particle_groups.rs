@@ -21,11 +21,12 @@ pub struct ParticleGroup {
 }
 
 impl RegisterParticleGroupsEvent<'_> {
-    /// Register a render group under a namespaced ID such as `mymod:glow`. Empty namespaces or
-    /// paths, the `minecraft` namespace, and duplicate IDs are refused before invoking a factory.
-    /// The first registration of an ID wins. A phase-refused listener's registrations are discarded.
-    /// An accepted factory runs once per particle engine construction, not on sprite reload.
-    /// Capture owned data and return a fresh definition each time.
+    /// Register a render group under an [`Identifier`] with a nonempty namespace and path (any
+    /// namespace, including `minecraft`, is allowed). Duplicate IDs fail client startup without
+    /// invoking any factory, matching NeoForge's `RegisterParticleGroupsEvent`. A phase-refused
+    /// listener's registrations are discarded. An accepted factory runs once per particle engine
+    /// construction, not on sprite reload. Capture owned data and return a fresh definition each
+    /// time.
     pub fn register(
         &mut self,
         id: Identifier,

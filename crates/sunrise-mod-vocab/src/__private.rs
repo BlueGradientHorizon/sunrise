@@ -35,6 +35,8 @@ pub mod native {
     }
 }
 
+pub use crate::runtime::{call_session_callback, session_callback_enabled};
+
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)
@@ -628,16 +630,11 @@ pub mod game {
     }
     pub trait ServerReloadListenersOrder {
         fn new() -> Self;
-        /// The engine has registered this builtin and linked the preceding anchor.
-        fn set_last_vanilla_listener(&mut self, id: Identifier);
         fn finish(
             self,
         ) -> Result<crate::world::server_reload::OrderedServerReload, ReloadOrderError>;
     }
     impl ServerReloadListenersOrder for crate::world::server_reload::ServerListenerRegistry {
-        fn set_last_vanilla_listener(&mut self, id: Identifier) {
-            self.default_anchor = id;
-        }
         fn new() -> Self {
             crate::world::server_reload::ServerListenerRegistry::new()
         }
@@ -673,11 +670,19 @@ pub mod game {
     }
 
     pub trait ServerReloadResourcesInstall {
-        fn install(&mut self, retained: Vec<crate::world::server_reload::RetainedEntry>);
+        fn install(
+            &mut self,
+            retained: Vec<crate::world::server_reload::RetainedEntry>,
+            skipped: &std::collections::HashSet<Identifier>,
+        );
     }
     impl ServerReloadResourcesInstall for crate::world::server_reload::RetainedListeners {
-        fn install(&mut self, retained: Vec<crate::world::server_reload::RetainedEntry>) {
-            crate::world::server_reload::RetainedListeners::install(self, retained)
+        fn install(
+            &mut self,
+            retained: Vec<crate::world::server_reload::RetainedEntry>,
+            skipped: &std::collections::HashSet<Identifier>,
+        ) {
+            crate::world::server_reload::RetainedListeners::install(self, retained, skipped)
         }
     }
 

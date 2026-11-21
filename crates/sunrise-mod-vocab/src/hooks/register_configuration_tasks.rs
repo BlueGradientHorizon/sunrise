@@ -4,15 +4,18 @@ pub trait Hooks {
     /// built-in configuration steps. Runs for every peer, including vanilla.
     /// The profile has no player handle yet. Use `event.connection.has_channel`
     /// to check what the peer negotiated and `event.register(task)` to give this
-    /// connection an owned task. An empty or duplicate type refuses admission.
+    /// connection an owned task in FIFO order.
     /// Tasks start in registration order and can finish, wait or fail this peer.
+    /// Delayed tasks complete via `IPayloadContext::finish_configuration_task`
+    /// with their task type from either a server main-thread or network-thread
+    /// configuration payload handler.
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
     #[hook(
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "RegisterConfigurationTasksEvent"
     )]
     fn register_configuration_tasks(

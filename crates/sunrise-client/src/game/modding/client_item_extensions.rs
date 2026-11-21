@@ -65,6 +65,13 @@ impl<'a> Registration<'a> {
         }
     }
 
+    fn record_refusal(&mut self, error: &str) {
+        if let Some(owner) = mod_api::content::crash::current_native_mod() {
+            log::warn!("mod {owner} hook register_client_item_extensions: {error}");
+        }
+        self.refused = Some(error.to_owned());
+    }
+
     pub(in crate::game) fn register_listener(
         &mut self,
         listen: &mut dyn FnMut(&mut dyn ClientItemExtensionsRegistrar) -> bool,
@@ -143,7 +150,7 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
             Ok(ArmorModelRef::__new(self.state.generation, index))
         })();
         if let Err(error) = &result {
-            self.refused = Some(error.clone());
+            self.record_refusal(error);
         }
         result
     }
@@ -167,7 +174,7 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                 })
         };
         if let Err(error) = &result {
-            self.refused = Some(error.clone());
+            self.record_refusal(error);
         }
         result
     }
@@ -204,7 +211,7 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
             Ok(())
         })();
         if let Err(error) = &result {
-            self.refused = Some(error.clone());
+            self.record_refusal(error);
         }
         result
     }
@@ -276,12 +283,14 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 }
 
 impl Game<'_> {
-    pub(super) fn resolve_client_item_extensions(&mut self) -> std::result::Result<(), String> {
+    pub(super) fn prepare_client_item_extensions(
+        gui: &UiResources,
+    ) -> std::result::Result<ArmorExtensions, String> {
         use mod_api::__private::game::RegistrationContextNew;
-        let sprite_exists = |name: &str| self.gui.atlas.sprites.contains_key(name);
+        let sprite_exists = |name: &str| gui.atlas.sprites.contains_key(name);
         let mut registration = Registration::new(&sprite_exists);
         // Prebind every default texture once, so frame callbacks receive only integer references.
-        for name in self.gui.atlas.sprites.keys() {
+        for name in gui.atlas.sprites.keys() {
             let _ = registration.register_texture(name);
         }
         Self::native_register_client_item_extensions(
@@ -290,11 +299,9 @@ impl Game<'_> {
         );
         if let Some(why) = registration.refused {
             log::warn!("Sunrise: client item extensions refused: {why}");
-            self.armor_stand_assets.extensions = ArmorExtensions::default();
             return Err(why);
         }
-        self.armor_stand_assets.extensions = registration.state;
-        Ok(())
+        Ok(registration.state)
     }
 }
 
@@ -570,7 +577,7 @@ mod tests {
     fn a_panicking_equipment_registrar_leaves_the_next_batch_usable() {
         use mod_api::__private::game::RegistrationContextNew;
         use mod_api::{Hooks, ModEntry, RegisterClientItemExtensionsEvent, RegistrationContext};
-        use std::sync::OnceLock;
+        use std::sync::Mutex;
 
         struct Provider;
         impl ClientItemExtensions for Provider {}
@@ -578,7 +585,7 @@ mod tests {
         type Refs = (ArmorModelRef, ArmorTextureRef, ArmorTextureRef);
         struct Registrant {
             model: &'static str,
-            refs: Arc<OnceLock<Refs>>,
+            refs: Arc<Mutex<Vec<Refs>>>,
             panics: bool,
         }
         #[mod_api::__subscriptions]
@@ -608,15 +615,15 @@ mod tests {
                         Err("unknown armour texture missing".into())
                     );
                 }
-                self.refs.set((model, shared, other)).unwrap();
+                self.refs.lock().unwrap().push((model, shared, other));
                 if self.panics {
                     panic!("after staging an equipment model, textures and provider");
                 }
             }
         }
 
-        let failed_refs = Arc::new(OnceLock::new());
-        let healthy_refs = Arc::new(OnceLock::new());
+        let failed_refs = Arc::new(Mutex::new(Vec::new()));
+        let healthy_refs = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![
                 ModEntry::new(
@@ -663,13 +670,13 @@ mod tests {
                     &mut registration,
                 );
                 assert!(
-                    failed_refs.get().is_some(),
+                    failed_refs.lock().unwrap().len() == 1,
                     "the failed listener completed all staged edits before panicking"
                 );
                 assert!(registration.refused.is_none());
-                let (model, shared, clear) = *healthy_refs
-                    .get()
-                    .expect("the healthy listener registered its bindings");
+                let [(model, shared, clear)] = healthy_refs.lock().unwrap()[..] else {
+                    panic!("the healthy listener registered its bindings exactly once");
+                };
                 assert_eq!(model.__parts(), (generation, 1));
                 assert_eq!(shared.__parts(), (generation, 1));
                 assert_eq!(clear.__parts(), (generation, 2));
@@ -689,6 +696,22 @@ mod tests {
                 assert_eq!(state.items.len(), 1);
                 let item = mod_api::__private::item_key("test:gear").unwrap();
                 assert_eq!(state.items[&item].attached.mod_id(), "healthy");
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "failed",
+                        hook: "register_client_item_extensions",
+                    }]
+                );
+                let mut next = Registration::new(&|name| name != "missing");
+                Game::native_register_client_item_extensions(
+                    &RegistrationContext::new(),
+                    &mut next,
+                );
+                assert_eq!(failed_refs.lock().unwrap().len(), 1);
+                assert_eq!(healthy_refs.lock().unwrap().len(), 2);
+                assert_eq!(next.state.items[&item].attached.mod_id(), "healthy");
+                assert!(mod_api::__private::take_hook_panics().is_empty());
             },
         );
     }

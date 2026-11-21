@@ -15,29 +15,31 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-/// Sunrise's vanilla server reload listeners and ordering boundaries.
+/// Sunrise's vanilla server reload listeners.
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaServerListeners;
 impl VanillaServerListeners {
-    /// Boundary before every reload listener.
+    /// First vanilla server reload listener, matching NeoForge's
+    /// `VanillaServerListeners.FIRST` (aliases [`Self::functions`]).
     pub fn first() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:first").unwrap());
-        ID.clone()
+        Self::functions()
     }
-    /// Vanilla's function library. Use this anchor rather than its string value,
-    /// which need not match NeoForge's identifier.
-    pub fn functions() -> Identifier {
+    pub(crate) fn functions_ref() -> &'static Identifier {
         static ID: LazyLock<Identifier> =
             LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
-        ID.clone()
+        &ID
     }
-    /// Boundary after every reload listener.
+    /// Vanilla's function library: reading the next function files in prepare and
+    /// admitting the library in apply. Use this anchor rather than its string value,
+    /// which need not match NeoForge's identifier.
+    pub fn functions() -> Identifier {
+        Self::functions_ref().clone()
+    }
+    /// Last vanilla server reload listener, matching NeoForge's
+    /// `VanillaServerListeners.LAST` (aliases [`Self::functions`]).
     pub fn last() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:last").unwrap());
-        ID.clone()
+        Self::functions()
     }
 }
 
@@ -73,17 +75,19 @@ impl ServerReloadContext {
 pub trait ServerReloadListener: Send + Sync + 'static {
     /// Parse and validate new data without changing the listener's live state.
     /// Return `Ok(Box::new(move || { /* publish prepared data */ }))` with owned
-    /// data. The action is consumed once and cannot report an error. A later
-    /// server table refusal leaves the previous engine generation in place but
-    /// does not undo effects of actions that already ran.
+    /// data. The action is consumed once and cannot report an error. If the
+    /// server cannot prepare its world tables, no apply action runs.
     ///
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,
     /// carrying the rest through; returning `Err` aborts the whole reload and
     /// keeps every listener's previous data. Attach the original error to the
     /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
-    /// A panic in `prepare` or the returned apply stops the server; the crash
-    /// report names the listener and the mod that registered it.
+    /// A panic in `prepare` or apply skips this listener for the session. The
+    /// mod and listener are reported, unrelated listeners still apply, and a
+    /// failed listener does not replace its last admitted retained object.
+    /// Native callbacks must publish their own state atomically: the engine
+    /// cannot undo writes a closure makes to private mod memory.
     fn prepare(
         &self,
         context: &ServerReloadContext,
@@ -127,14 +131,14 @@ pub trait ServerReloadListeners {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError>;
-    /// Borrow the registered names in registration order, boundaries included.
+    /// Borrow the registered names in registration order, vanilla anchor included.
     fn get_registry(&self) -> ServerReloadRegistryView<'_>;
     /// Borrow the dependency graph as `(first, second)` names.
     fn get_graph(&self) -> ServerReloadGraphView<'_>;
-    /// Borrow the effective vanilla anchor preceding mod listeners by default.
-    /// On the server this is the built-in loot modifier listener once registered,
-    /// not the function library. Use `VanillaServerListeners::functions()` to
-    /// order against the function library itself.
+    /// Borrow the last vanilla server reload listener
+    /// ([`VanillaServerListeners::functions`]), which unrelated mod listeners
+    /// sort after by default (matching NeoForge's
+    /// `SortedReloadListenerEvent.getLastVanillaListener`).
     fn get_last_vanilla_listener(&self) -> &Identifier;
 }
 
@@ -146,7 +150,7 @@ pub struct ServerReloadRegistryView<'a> {
 }
 
 impl<'a> ServerReloadRegistryView<'a> {
-    /// Iterate over registered names in registration order, boundaries included.
+    /// Iterate over registered names in registration order, vanilla anchor included.
     pub fn iter(&self) -> impl Iterator<Item = &'a Identifier> + use<'a> {
         self.core.registry().map(|(id, _)| id)
     }
@@ -161,8 +165,8 @@ pub struct ServerReloadGraphView<'a> {
 
 impl<'a> ServerReloadGraphView<'a> {
     /// Iterate over dependency edges in insertion order. Each `(first, second)`
-    /// edge requires `first` to run before `second`; the edges include the
-    /// built-in ordering boundaries and are not a sorted list of listeners.
+    /// edge requires `first` to run before `second`; this is the explicit
+    /// dependency graph, not a sorted list of listeners.
     pub fn iter(&self) -> impl Iterator<Item = (&'a Identifier, &'a Identifier)> + use<'a> {
         self.core.graph()
     }
@@ -189,7 +193,6 @@ impl dyn ServerReloadListeners + '_ {
 pub struct ServerListenerRegistry {
     core: ReloadCore<dyn ServerReloadListener>,
     retained: Vec<RetainedEntry>,
-    pub(crate) default_anchor: Identifier,
 }
 impl ServerReloadListeners for ServerListenerRegistry {
     fn add_listener(
@@ -225,7 +228,7 @@ impl ServerReloadListeners for ServerListenerRegistry {
         ServerReloadGraphView { core: &self.core }
     }
     fn get_last_vanilla_listener(&self) -> &Identifier {
-        &self.default_anchor
+        VanillaServerListeners::functions_ref()
     }
 }
 impl ServerListenerRegistry {
@@ -253,18 +256,15 @@ impl ServerListenerRegistry {
     pub(crate) fn new() -> Self {
         Self {
             core: ReloadCore::new(
-                VanillaServerListeners::first(),
                 VanillaServerListeners::functions(),
-                VanillaServerListeners::last(),
                 || -> Arc<dyn ServerReloadListener> { Arc::new(Boundary) },
             ),
             retained: Vec::new(),
-            default_anchor: VanillaServerListeners::functions(),
         }
     }
     pub(crate) fn finish(self) -> Result<OrderedServerReload, ReloadOrderError> {
         Ok(OrderedServerReload {
-            listeners: self.core.finish(&self.default_anchor)?,
+            listeners: self.core.finish(VanillaServerListeners::functions_ref())?,
             retained: self.retained,
         })
     }
@@ -362,10 +362,17 @@ impl ServerReloadResources for RetainedListeners {
     }
 }
 impl RetainedListeners {
-    pub(crate) fn install(&mut self, retained: Vec<RetainedEntry>) {
-        self.entries = retained
-            .into_iter()
-            .map(|entry| (entry.id, entry.any))
-            .collect();
+    pub(crate) fn install(
+        &mut self,
+        retained: Vec<RetainedEntry>,
+        skipped: &std::collections::HashSet<Identifier>,
+    ) {
+        // Refused callbacks never replace a previously admitted retained object.
+        self.entries.retain(|id, _| skipped.contains(id));
+        self.entries.extend(
+            retained.into_iter().filter_map(|entry| {
+                (!skipped.contains(&entry.id)).then_some((entry.id, entry.any))
+            }),
+        );
     }
 }

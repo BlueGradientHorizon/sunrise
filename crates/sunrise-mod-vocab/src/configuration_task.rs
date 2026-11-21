@@ -1,6 +1,5 @@
 //! Configuration tasks and capabilities valid before the player joins.
 use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent, ServerHost};
-use std::{collections::BTreeSet, fmt};
 
 // no wire: tasks are owned objects with server-thread callbacks and local state.
 /// One task instance owned by a configuring connection. Register the instance with
@@ -8,110 +7,67 @@ use std::{collections::BTreeSet, fmt};
 /// on the server thread without holding the connection's task lock, and keeps the
 /// same instance while it waits.
 pub trait ConfigurationTask: Send + 'static {
-    /// The namespaced task type, read once on registration. It must be nonempty and
-    /// unique among all tasks registered for this connection.
+    /// The namespaced task type, read once on registration.
     fn task_type(&self) -> &Identifier;
 
     /// Start this task exactly once. Call [`ConfigurationTaskContext::finish`] or
     /// [`ConfigurationTaskContext::fail`], or leave it pending for a tick or a reply.
-    /// A finish request publishes only after the outermost transaction commits and
-    /// publishes its deferred sends.
+    /// A finish request takes effect after the callback commits and publishes its
+    /// deferred sends. A panic rolls back journaled writes and fails this peer's admission,
+    /// naming the mod in the log and error toast. This mod's task type is skipped
+    /// for the rest of the session, including on later connections.
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
 
     /// Poll a pending task, at most once per server tick after its start. By default
     /// the task just waits. As in [`Self::start`], use the context to send, finish or
-    /// fail. A failure or panic rolls back the callback and fails admission.
+    /// fail. A failure or panic rolls back journaled writes and fails admission.
+    /// Only a panic disables the mod's task type for later peers.
     fn tick(&mut self, _host: &mut dyn ServerHost, _context: &mut ConfigurationTaskContext<'_>) {}
 }
 
-// no wire: local registration diagnostics, not payload data.
-/// An invalid submission to the connection's configuration task queue.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ConfigurationTaskRegistrationError {
-    /// The task type has an empty namespace or path.
-    EmptyType,
-    /// Another task already declared this type for this connection.
-    DuplicateType(Identifier),
-}
-impl fmt::Display for ConfigurationTaskRegistrationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyType => {
-                f.write_str("Configuration task type has an empty namespace or path")
-            }
-            Self::DuplicateType(id) => write!(f, "Duplicate configuration task type: {id}"),
-        }
-    }
-}
-impl std::error::Error for ConfigurationTaskRegistrationError {}
-
 impl RegisterConfigurationTasksEvent<'_> {
-    /// Append a task to this connection's queue. An invalid or duplicate type refuses
-    /// registration, aborting the registration transaction and admission even if the
-    /// listener ignores this result. The first refusal supplies the diagnostic.
-    pub fn register(
-        &mut self,
-        task: impl ConfigurationTask,
-    ) -> Result<(), ConfigurationTaskRegistrationError> {
-        let id = task.task_type();
-        let refusal = if id.namespace().is_empty() || id.path().is_empty() {
-            ConfigurationTaskRegistrationError::EmptyType
-        } else {
-            let id = id.clone();
-            if !self.registration.types.insert(id.clone()) {
-                ConfigurationTaskRegistrationError::DuplicateType(id)
-            } else {
-                self.registration.registered_order.push(id);
-                self.registration.tasks.push(RegisteredConfigurationTask {
-                    task: Box::new(task),
-                    owner: crate::content::crash::current_native_mod(),
-                });
-                return Ok(());
-            }
-        };
-        self.registration
-            .refusal
-            .get_or_insert_with(|| refusal.clone());
-        Err(refusal)
+    /// Append a task to this connection's FIFO configuration queue, matching
+    /// NeoForge's `RegisterConfigurationTasksEvent.register`.
+    pub fn register(&mut self, task: impl ConfigurationTask) {
+        let task_type = task.task_type().clone();
+        self.registration.tasks.push(RegisteredConfigurationTask {
+            task_type,
+            task: Box::new(task),
+            owner: crate::content::crash::current_native_mod(),
+        });
     }
 }
 
 /// Engine staging for one registration transaction.
 // no wire: owns pending server-thread tasks.
 // hidden: the server stages registrations here; listeners use the scoped event.
-// exhaustive: the server starts empty staging with Default; the queue and refusal fields are private.
+// exhaustive: the server starts empty staging with Default; the queue field is private.
 #[doc(hidden)]
 #[derive(Default)]
 pub struct ConfigurationTaskRegistration {
     tasks: Vec<RegisteredConfigurationTask>,
-    registered_order: Vec<Identifier>,
-    types: BTreeSet<Identifier>,
-    refusal: Option<ConfigurationTaskRegistrationError>,
 }
 impl ConfigurationTaskRegistration {
-    /// The first refusal, if any, even if the listener ignored the error.
-    pub fn refusal(&self) -> Option<&ConfigurationTaskRegistrationError> {
-        self.refusal.as_ref()
+    pub(crate) fn checkpoint(&self) -> usize {
+        self.tasks.len()
+    }
+
+    pub(crate) fn rollback(&mut self, checkpoint: usize) {
+        for task in self.tasks.drain(checkpoint..) {
+            crate::runtime::discard_registration(
+                (
+                    crate::HookId::RegisterConfigurationTasks,
+                    "register_configuration_tasks",
+                ),
+                task.owner,
+                task,
+            );
+        }
     }
 
     /// Move the ordered queue to the server after registration commits.
     pub fn into_tasks(self) -> Vec<RegisteredConfigurationTask> {
         self.tasks
-    }
-
-    pub(crate) fn checkpoint(&self) -> (usize, bool) {
-        (self.tasks.len(), self.refusal.is_some())
-    }
-
-    pub(crate) fn rollback(&mut self, (tasks_len, had_refusal): (usize, bool)) {
-        self.tasks.truncate(tasks_len);
-        for id in self.registered_order.drain(tasks_len..) {
-            self.types.remove(&id);
-        }
-        if !had_refusal {
-            self.refusal = None;
-        }
     }
 }
 
@@ -121,6 +77,8 @@ impl ConfigurationTaskRegistration {
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct RegisteredConfigurationTask {
+    /// The task type, captured once on registration.
+    pub task_type: Identifier,
     /// The connection-owned instance.
     pub task: Box<dyn ConfigurationTask>,
     /// The registering mod, for Host calls that depend on the caller's identity.
@@ -132,6 +90,7 @@ pub struct RegisteredConfigurationTask {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ConfigurationConnection {
+    incarnation: u64,
     id: u64,
 }
 impl ConfigurationConnection {
@@ -141,46 +100,32 @@ impl ConfigurationConnection {
     }
 }
 
-/// The exact running task of one configuring connection. For delayed completion,
-/// keep the instance from the original challenge in server-local state. Never
-/// substitute the task that happens to be running when the reply arrives.
-// no wire: a process-local capability, never supplied by a peer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct ConfigurationTaskRef {
-    connection: ConfigurationConnection,
-    ordinal: usize,
-}
-
 /// The active task during one server-thread start or tick callback.
 // no wire: borrows the callback's outcome.
 #[non_exhaustive]
 pub struct ConfigurationTaskContext<'a> {
-    instance: ConfigurationTaskRef,
+    connection: ConfigurationConnection,
     outcome: &'a mut ConfigurationTaskOutcome,
 }
 impl ConfigurationTaskContext<'_> {
-    /// The exact task instance, which can outlive this callback. When sending a
-    /// challenge, save this value for the matching reply handler.
-    pub fn instance(&self) -> ConfigurationTaskRef {
-        self.instance
-    }
     /// Whether this task's peer negotiated the registered configuration channel.
     pub fn has_channel(&self, host: &dyn ServerHost, channel: &PayloadId) -> bool {
-        self.instance.connection.has_channel(host, channel)
+        self.connection.has_channel(host, channel)
     }
-    /// Queue a payload in the current transaction on this task's registered channel.
-    /// A transport refusal fails the task.
+    /// Queue a payload in the current transaction on this connection's registered
+    /// configuration channel. Another handler completing the task does not prevent
+    /// sends on a connection that is still configuring. Returns
+    /// [`ConfigurationTaskError::Disconnected`] if it has moved to Play.
     pub fn send_payload(
         &self,
         host: &mut dyn ServerHost,
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        host.configuration_send_payload(self.instance, channel, bytes)
+        host.configuration_send_payload(self.connection, channel, bytes)
     }
-    /// Request completion after the outermost transaction commits and publishes its
-    /// deferred sends. Repeated requests coalesce; failure, panic or disconnect prevents it.
+    /// Request completion when this callback finishes and publishes its deferred sends.
+    /// Repeated requests coalesce; failure, panic or disconnect prevents it.
     pub fn finish(&mut self) {
         if matches!(self.outcome, ConfigurationTaskOutcome::Pending) {
             *self.outcome = ConfigurationTaskOutcome::Finish;
@@ -202,11 +147,12 @@ impl ConfigurationTaskContext<'_> {
 pub enum ConfigurationTaskError {
     /// The connection or its configuration epoch has ended.
     Disconnected,
-    /// The instance is not the currently running task.
-    StaleTask,
-    /// The instance belongs to a different physical connection than the receiving peer.
-    WrongConnection,
-    /// Completion needs a server main-thread configuration handler with an open transaction.
+    /// The running task on this connection has a different type.
+    WrongType,
+    /// A completion was requested but no configuration task is currently running
+    /// on this connection (or this handler already requested completion).
+    NotRunning,
+    /// Completion requires a server configuration payload handler.
     WrongContext,
     /// The registered payload transport refused the send.
     Payload(crate::PayloadSendError),
@@ -229,37 +175,75 @@ pub enum ConfigurationTaskOutcome {
 
 // hidden: the engine makes capabilities after allocating a connection identity.
 #[doc(hidden)]
-pub fn configuration_connection(id: u64) -> ConfigurationConnection {
-    ConfigurationConnection { id }
+pub fn configuration_connection(incarnation: u64, id: u64) -> ConfigurationConnection {
+    ConfigurationConnection { incarnation, id }
 }
 // hidden: the engine resolves and validates a capability before every operation.
 #[doc(hidden)]
-pub fn configuration_connection_id(connection: ConfigurationConnection) -> u64 {
-    connection.id
-}
-// hidden: only the engine issues an instance for a queue entry.
-#[doc(hidden)]
-pub fn configuration_task_ref(
-    connection: ConfigurationConnection,
-    ordinal: usize,
-) -> ConfigurationTaskRef {
-    ConfigurationTaskRef {
-        connection,
-        ordinal,
-    }
-}
-// hidden: the engine resolves the instance against its own queue.
-#[doc(hidden)]
-pub fn configuration_task_parts(
-    instance: ConfigurationTaskRef,
-) -> (ConfigurationConnection, usize) {
-    (instance.connection, instance.ordinal)
+pub fn configuration_connection_parts(connection: ConfigurationConnection) -> (u64, u64) {
+    (connection.incarnation, connection.id)
 }
 // hidden: the engine lends the callback its outcome slot.
 #[doc(hidden)]
 pub fn configuration_task_context(
-    instance: ConfigurationTaskRef,
+    connection: ConfigurationConnection,
     outcome: &mut ConfigurationTaskOutcome,
 ) -> ConfigurationTaskContext<'_> {
-    ConfigurationTaskContext { instance, outcome }
+    ConfigurationTaskContext {
+        connection,
+        outcome,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct StubTask {
+        id: Identifier,
+        reads: Arc<AtomicUsize>,
+    }
+
+    impl ConfigurationTask for StubTask {
+        fn task_type(&self) -> &Identifier {
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            &self.id
+        }
+
+        fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+    }
+
+    #[test]
+    fn register_accepts_duplicate_and_empty_types_in_fifo_order() {
+        let mut registration = ConfigurationTaskRegistration::default();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let first = Identifier::parse("demo:first").unwrap();
+        let empty = Identifier::from_parts("demo", "").unwrap();
+        let mut event = RegisterConfigurationTasksEvent {
+            connection: configuration_connection(1, 1),
+            player: 1,
+            name: "Peer",
+            registration: &mut registration,
+        };
+        event.register(StubTask {
+            id: first.clone(),
+            reads: reads.clone(),
+        });
+        event.register(StubTask {
+            id: empty.clone(),
+            reads: reads.clone(),
+        });
+        event.register(StubTask {
+            id: first.clone(),
+            reads: reads.clone(),
+        });
+        let tasks = registration.into_tasks();
+        assert_eq!(reads.load(Ordering::Relaxed), 3);
+        let types: Vec<_> = tasks.into_iter().map(|entry| entry.task_type).collect();
+        assert_eq!(types, vec![first.clone(), empty, first]);
+    }
 }

@@ -3259,8 +3259,9 @@ mod tests {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 crate::game::mods::register_layer_definitions(
                     crate::game::execution_role::ExecutionRole::Client,
-                    std::path::Path::new("."),
-                );
+                    &game.vanilla_root(),
+                )
+                .unwrap();
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());

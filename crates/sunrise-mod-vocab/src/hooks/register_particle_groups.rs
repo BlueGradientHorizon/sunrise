@@ -37,14 +37,15 @@ of its own: that stays in the declaration and the provider. A type no group list
 built-in group as before, and the built-in particles are never moved. A type another group lists
 already, or no sprite set matches, is logged and left out.
 
-The game freezes factories in registration order. IDs in `minecraft`, IDs with an empty
-namespace or path, and duplicates are logged and dropped without invoking those factories.
-Each particle engine calls the accepted factories once when it is constructed. If a factory
-is disabled, refuses or panics, that engine omits the group; a duplicate never takes its place.
-When sprite sets load or reload, the game resolves each type's group from the resulting
-engine-owned definitions. A spawn, a tick and a draw use the resolved group handle, look nothing
-up by group name and scan no mod. Live provider-driven particles are dropped when resources reload, in
-a group as in the built-in one."#]
+The game freezes factories in registration order. Any nonempty namespace and path is
+allowed, including `minecraft`. Duplicate IDs fail client startup without invoking any
+factory (matching NeoForge's `RegisterParticleGroupsEvent`). IDs with an empty namespace
+or path are logged and skipped. Each particle engine calls the accepted factories once
+when it is constructed. If a factory is disabled, refuses or panics, that engine omits
+the group. When sprite sets load or reload, the game resolves each type's group from the
+resulting engine-owned definitions. A spawn, a tick and a draw use the resolved group
+handle, look nothing up by group name and scan no mod. Live provider-driven particles are
+dropped when resources reload, in a group as in the built-in one."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
@@ -55,7 +56,7 @@ a group as in the built-in one."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "RegisterParticleGroupsEvent",
-        version = 2
+        version = 3
     )]
     fn register_particle_groups(groups: &mut Vec<Answered<ParticleGroupRegistration>>);
 }

@@ -28,10 +28,17 @@ impl Game<'_> {
     /// For a client mod: each texture's sprite by name (`minecraft:block/stone`, `block/stone`), none for one no
     /// model uses. API 380.
     pub(super) fn texture_sprites(&self, textures: &[&str]) -> Vec<Option<SpriteRef>> {
-        let lookup = self.native_sprite_lookup();
+        let atlas = self
+            .stitching_block_atlas
+            .as_ref()
+            .unwrap_or(&self.pack.render);
+        let split = self
+            .renderer
+            .as_ref()
+            .map_or(u32::MAX, |r| r.sprite_split());
         textures
             .iter()
-            .map(|texture| lookup.texture(texture))
+            .map(|name| sunrise_client::block_sprites::texture_at(atlas, split, name))
             .collect()
     }
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
@@ -88,7 +95,10 @@ impl Game<'_> {
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(super) fn block_sprites_version(&self) -> u64 {
-        self.pack.context.render.generation
+        self.stitching_block_atlas
+            .as_ref()
+            .unwrap_or(&self.pack.render)
+            .generation
     }
     /// For a client mod: where GUI sprite `sprite` lies in the GUI atlas and its size, none for one the atlas lacks
     /// or whose entry its definition removed (a server's metrics-only atlas lacks them all). The atlas names its

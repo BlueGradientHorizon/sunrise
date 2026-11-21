@@ -149,6 +149,18 @@ pub(super) struct CoreTables {
     pub(super) environment: Environment,
     pub(super) collision: Arc<BlockCollisionRegistry<'static>>,
 }
+// Distinguish a failed pack (which startup can roll back) from a failed
+// load or mod prepare (neither may publish a partly prepared generation).
+enum CoreLoadError {
+    Pack(String),
+    Fatal(String),
+}
+impl From<mod_api::__private::reload::ReloadStageError> for CoreLoadError {
+    fn from(error: mod_api::__private::reload::ReloadStageError) -> Self {
+        Self::Fatal(error.diagnostic())
+    }
+}
+
 /// The block facts and the tables read from them.
 pub(super) struct GameplayTables {
     pub(super) behaviour_json: serde_json::Value,
@@ -640,27 +652,45 @@ pub(super) fn load_resources_for_mods(
         }
     };
     let mut can_rollback = true;
-    let (core, loaded_gui, resolved, conditions) = loop {
+    let (core, loaded_gui, resolved, conditions, client_applies) = loop {
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
         let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+        let listeners = (!headless).then(client_reload::register_startup_client_reload_listeners);
         let (ui, core) = std::thread::scope(|scope| {
-            let core = Step::spawn(scope, parallel, "core", || {
+            let core = |_unit: &()| {
                 // A failed pack starts core again from the game's own
                 // resources, which the world's preload must read: with packs
                 // it waits for the core that loaded.
                 let early = launch_world.filter(|_| root == vanilla_root);
-                startup::time("core", || {
-                    load_core(
-                        &resolved,
-                        &additional_data,
-                        &conditions,
-                        load_role,
-                        parallel,
-                        progress,
-                        early,
+                let build = || {
+                    startup::time("core", || {
+                        load_core(
+                            &resolved,
+                            &additional_data,
+                            &conditions,
+                            load_role,
+                            parallel,
+                            progress,
+                            early,
+                        )
+                    })
+                    .map_err(CoreLoadError::Fatal)?
+                    .map_err(CoreLoadError::Pack)
+                };
+                if let Some(listeners) = listeners {
+                    client_reload::stage_client_reload(
+                        resolved.source(),
+                        listeners,
+                        mod_api::__private::ModPhase::Setup,
+                        build,
                     )
-                })
-            });
+                } else {
+                    build().map(|core| (core, Vec::new()))
+                }
+            };
+            #[cfg(test)]
+            let core = mod_api::testing::inherit_mods(core);
+            let core = Step::spawn(scope, parallel, "core", || core(&()));
             let ui = load_ui(resolved.source()).map(|ui| offer(ui, &root));
             (ui, core.join())
         });
@@ -673,19 +703,21 @@ pub(super) fn load_resources_for_mods(
         };
         // Core data is provisional: a selected world pack may replace an entry.
         let failure = match (ui, core, clouds) {
-            (Ok(gui), Ok(Ok(core)), Ok(())) => break (core, gui, resolved, conditions),
+            (Ok(gui), Ok((core, applies)), Ok(())) => {
+                break (core, gui, resolved, conditions, applies);
+            }
+            (_, Err(CoreLoadError::Fatal(e)), _) => return Err(e.into()),
             (Err(e), _, _) if can_rollback => e.to_string(),
-            (_, Ok(Err(e)), _) if can_rollback => e,
+            (_, Err(CoreLoadError::Pack(e)), _) if can_rollback => e,
             (_, _, Err(e)) if can_rollback => e.to_string(),
-            (_, Ok(Err(e)), _) => {
+            (_, Err(CoreLoadError::Pack(e)), _) => {
                 return Err(format!(
                     "{e}\nPrepare resources with the launcher, or: sunrise-prepare --prepare"
                 )
                 .into());
             }
-            (_, Err(e), _) => return Err(e.into()),
-            (Err(e), Ok(Ok(_)), _) => return Err(e),
-            (Ok(_), Ok(Ok(_)), Err(e)) => return Err(e.into()),
+            (Err(e), Ok(_), _) => return Err(e),
+            (Ok(_), Ok(_), Err(e)) => return Err(e.into()),
         };
         log::warn!(
             "Sunrise: resource packs failed to load ({failure}); using the default resources"
@@ -909,26 +941,6 @@ pub(super) fn load_resources_for_mods(
         (Some(game_cpu), renderer_cpu)
     } else {
         (None, None)
-    };
-    // The client reload listeners register once before any prepare runs (no
-    // game exists yet) and prepare here beside the rest of the load, against
-    // the same merged root; the game applies them at handoff. A dedicated
-    // server never fires the client event. A failed prepare keeps the game
-    // running without mod reload listeners, like the reload path's rollback.
-    let client_applies = if headless {
-        Vec::new()
-    } else {
-        match client_reload::stage_client_reload(
-            resolved.source(),
-            client_reload::register_startup_client_reload_listeners(),
-            mod_api::__private::ModPhase::Setup,
-        ) {
-            Ok(steps) => steps,
-            Err(error) => {
-                log::warn!("Sunrise: resource reload failed: {error}");
-                Vec::new()
-            }
-        }
     };
     Ok(Loaded {
         game_cpu,

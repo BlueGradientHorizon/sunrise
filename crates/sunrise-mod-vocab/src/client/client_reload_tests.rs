@@ -9,47 +9,55 @@ fn files() -> FileToIdConverter {
 #[test]
 fn registry_views_and_explicit_order_before_vanilla() {
     let mut listeners = ClientListenerRegistry::new();
+    let model_manager = VanillaClientListeners::model_manager();
+    assert_eq!(VanillaClientListeners::first(), model_manager);
+    assert_eq!(VanillaClientListeners::last(), model_manager);
+    assert_eq!(listeners.get_registry(), [model_manager.clone()]);
+    assert!(listeners.get_graph().is_empty());
+
     let first = Arc::new(Boundary);
     let second = Arc::new(Boundary);
+    let after = Arc::new(Boundary);
     listeners
-        .add_listener(id("test_mod:first"), files(), first.clone())
+        .add_listener(id("test_mod:first"), files(), first)
         .unwrap();
     listeners
-        .add_listener(id("test_mod:second"), files(), second.clone())
+        .add_listener(id("test_mod:second"), files(), second)
         .unwrap();
-    assert_eq!(
-        listeners.get_last_vanilla_listener(),
-        VanillaClientListeners::model_manager()
-    );
+    listeners
+        .add_listener(id("test_mod:after"), files(), after)
+        .unwrap();
+    assert_eq!(listeners.get_last_vanilla_listener(), model_manager);
     assert_eq!(
         listeners.get_registry(),
         [
-            VanillaClientListeners::first(),
-            VanillaClientListeners::model_manager(),
-            VanillaClientListeners::last(),
+            model_manager.clone(),
             id("test_mod:first"),
             id("test_mod:second"),
+            id("test_mod:after"),
         ]
     );
     listeners
-        .add_dependency(
-            id("test_mod:second"),
-            VanillaClientListeners::model_manager(),
-        )
+        .add_dependency(id("test_mod:second"), VanillaClientListeners::first())
         .unwrap();
-    assert!(listeners.get_graph().contains(&(
-        id("test_mod:second"),
-        VanillaClientListeners::model_manager()
-    )));
+    listeners
+        .add_dependency(VanillaClientListeners::last(), id("test_mod:after"))
+        .unwrap();
+    assert_eq!(
+        listeners.get_graph(),
+        [
+            (id("test_mod:second"), model_manager.clone()),
+            (model_manager.clone(), id("test_mod:after")),
+        ]
+    );
     let sorted = listeners.finish().unwrap();
     assert_eq!(
         sorted.into_iter().map(|entry| entry.id).collect::<Vec<_>>(),
         [
-            VanillaClientListeners::first(),
             id("test_mod:second"),
-            VanillaClientListeners::model_manager(),
+            model_manager,
             id("test_mod:first"),
-            VanillaClientListeners::last(),
+            id("test_mod:after"),
         ]
     );
 }
@@ -138,5 +146,80 @@ fn duplicate_objects_cannot_make_the_reverse_lookup_ambiguous() {
             id: id("two:listener"),
             registered_as: id("one:listener"),
         })
+    );
+}
+
+#[test]
+fn registration_panic_discards_its_listeners_and_edges_before_later_subscribers() {
+    struct Broken;
+    #[mod_api::__subscriptions]
+    impl crate::Hooks for Broken {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn crate::ClientHost,
+            event: &mut crate::AddClientReloadListenersEvent<'_>,
+        ) {
+            let key = id("registration_probe:discarded");
+            event
+                .listeners
+                .add_listener(key.clone(), files(), Arc::new(Boundary))
+                .unwrap();
+            event
+                .listeners
+                .add_dependency(key, VanillaClientListeners::model_manager())
+                .unwrap();
+            panic!("registration probe");
+        }
+    }
+    struct Healthy;
+    #[mod_api::__subscriptions]
+    impl crate::Hooks for Healthy {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn crate::ClientHost,
+            event: &mut crate::AddClientReloadListenersEvent<'_>,
+        ) {
+            assert!(event.listeners.get_graph().is_empty());
+            event
+                .listeners
+                .add_listener(id("registration_probe:kept"), files(), Arc::new(Boundary))
+                .unwrap();
+        }
+    }
+    crate::testing::with_dispatch(
+        vec![
+            crate::ModEntry::new("registration_probe", Box::new(Broken)),
+            crate::ModEntry::new("registration_healthy", Box::new(Healthy)),
+        ]
+        .into(),
+        || {
+            for load in 0..2 {
+                let mut registry = ClientListenerRegistry::new();
+                crate::dispatch_add_client_reload_listeners(
+                    &crate::testing::FakeHost::new(),
+                    |listen| registry.register_listener(listen),
+                );
+                assert!(registry.get_graph().is_empty());
+                assert_eq!(
+                    registry.get_registry(),
+                    [
+                        VanillaClientListeners::model_manager(),
+                        id("registration_probe:kept")
+                    ]
+                );
+                let reports = crate::__private::take_hook_panics();
+                if load == 0 {
+                    assert_eq!(
+                        reports,
+                        [crate::__private::HookPanicReport {
+                            mod_id: "registration_probe",
+                            hook: "add_client_reload_listeners",
+                        }]
+                    );
+                } else {
+                    assert!(reports.is_empty());
+                }
+            }
+        },
     );
 }

@@ -117,6 +117,35 @@ pub struct RenderAssets {
     pub generation: u64,
 }
 impl RenderAssets {
+    /// The empty render generation before the first reload's apply.
+    pub fn unpublished() -> Self {
+        Self {
+            sprite_size: 1,
+            sprite_minimum_size: 1,
+            pixels: SpritePixels::new(Vec::new()),
+            texture_layers: 0,
+            model_catalog: Default::default(),
+            model_library: Err("models have not been published".into()),
+            model_placements: Vec::new(),
+            model_gallery: Vec::new(),
+            animations: Vec::new(),
+            sprite_layers: Default::default(),
+            sprite_names: Vec::new(),
+            file_layers: Default::default(),
+            emissive: Vec::new(),
+            translucent_layers: Vec::new(),
+            sprite_mips: Vec::new(),
+            pbr_normals: Vec::new(),
+            pbr_specular: Vec::new(),
+            pbr_size: 0,
+            connected: Default::default(),
+            fusion: Default::default(),
+            mod_animations: Default::default(),
+            mod_pipelines: Default::default(),
+            generation: 0,
+        }
+    }
+
     /// Resolve a registered standalone model in this published store.
     pub fn model(
         &self,

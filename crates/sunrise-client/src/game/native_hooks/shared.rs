@@ -1065,8 +1065,8 @@ fn screen_text_hooked(text: &str, mut canceled: impl FnMut(char) -> bool) -> Opt
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// The single admission point for all toast families. Producers decide the
-    /// candidate first; only an accepted candidate is applied to its queue.
+    /// Admission for ordinary toasts. Only an accepted candidate enters its
+    /// queue; mandatory callback-panic diagnostics bypass mod admission.
     pub(super) fn add_toast(
         &self,
         kind: mod_api::ToastKind,

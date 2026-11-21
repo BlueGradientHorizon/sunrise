@@ -2,10 +2,10 @@
 use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
-        ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
-        configuration_task_parts, configuration_task_ref,
+        ConfigurationTaskOutcome, ConfigurationTaskRegistration, call_session_callback,
+        configuration_task_context, session_callback_enabled,
     },
-    ConfigurationConnection, ConfigurationTaskError, ConfigurationTaskRef, PayloadBytes, PayloadId,
+    ConfigurationConnection, ConfigurationTaskError, HookId, Identifier, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
 use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
@@ -21,38 +21,38 @@ impl Game<'_> {
     fn configuration_callback(
         &mut self,
         session: &Arc<Session>,
+        owner: Option<(&'static str, &Identifier, &'static str)>,
         callback: impl FnOnce(&mut Self) -> Result<Option<usize>, String>,
     ) -> bool {
         let seal = self.transaction_open();
-        let failures = mod_api::runtime::isolated_failures();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
-            .unwrap_or_else(|_| Err("Configuration task callback panicked".into()))
-            .and_then(|ordinal| {
-                if mod_api::runtime::isolated_failures() != failures {
-                    Err("Configuration task callback panicked".into())
-                } else {
-                    Ok(ordinal)
-                }
-            });
+        let result = if let Some((owner, task_type, operation)) = owner {
+            call_session_callback(
+                HookId::RegisterConfigurationTasks,
+                owner,
+                task_type,
+                operation,
+                || callback(self),
+            )
+            .unwrap_or_else(Err)
+        } else {
+            callback(self)
+        };
         let ordinal = match result {
             Ok(ordinal) => ordinal,
             Err(reason) => {
                 self.transaction_close(&seal, false);
+                if let Some((owner, kind, operation)) = owner {
+                    log::error!("mod {owner}: {operation} for {kind} failed this peer: {reason}");
+                }
                 session.fail(reason);
                 return false;
             }
         };
-        let commit = !session.closed()
-            && !matches!(session.result(), Some(Err(_)))
-            && ordinal.is_none_or(|ordinal| {
-                session
-                    .prepare_finish(ordinal, None)
-                    .is_ok_and(|completion| {
-                        // A task can leave a child open; its rollback must not drop this request.
-                        self.journal_configuration_completion(Some(&seal), completion)
-                    })
-            });
+        let commit = !session.closed() && !matches!(session.result(), Some(Err(_)));
         self.transaction_close(&seal, commit);
+        if commit && let Some(ordinal) = ordinal {
+            session.finish_current(ordinal);
+        }
         commit
     }
     pub(super) fn take_lan_for_packet_tick(&mut self) -> Option<LanHost> {
@@ -75,16 +75,14 @@ impl Game<'_> {
                     .configuration_tasks
                     .insert(&request);
                 let mut registration = ConfigurationTaskRegistration::default();
-                if self.configuration_callback(&request.session, |game| {
+                if self.configuration_callback(&request.session, None, |game| {
                     game.native_register_configuration_tasks(
                         request.connection,
                         request.player,
                         &request.name,
                         &mut registration,
                     );
-                    registration
-                        .refusal()
-                        .map_or(Ok(None), |error| Err(error.to_string()))
+                    Ok(None)
                 }) {
                     self.lan
                         .as_mut()?
@@ -140,20 +138,26 @@ impl Game<'_> {
                     };
                     // No map borrow or session lock survives extraction. The callback
                     // can use the Host (including this session) and its transaction.
-                    let commit = self.configuration_callback(&session, |game| {
-                        let call = if turn.start {
-                            "ConfigurationTask::start"
-                        } else {
-                            "ConfigurationTask::tick"
-                        };
-                        let _mod = task
-                            .owner
-                            .map(|owner| mod_api::__private::enter(owner, call));
+                    let operation = if turn.start {
+                        "ConfigurationTask::start"
+                    } else {
+                        "ConfigurationTask::tick"
+                    };
+                    if task.owner.is_some_and(|owner| {
+                        !session_callback_enabled(
+                            HookId::RegisterConfigurationTasks,
+                            owner,
+                            &task.task_type,
+                        )
+                    }) {
+                        // This callback was disabled after registration (possibly by another peer).
+                        session.finish_current(turn.ordinal);
+                        continue;
+                    }
+                    let owner = task.owner.map(|id| (id, &task.task_type, operation));
+                    let commit = self.configuration_callback(&session, owner, |game| {
                         let mut outcome = ConfigurationTaskOutcome::Pending;
-                        let mut context = configuration_task_context(
-                            configuration_task_ref(connection, turn.ordinal),
-                            &mut outcome,
-                        );
+                        let mut context = configuration_task_context(connection, &mut outcome);
                         if turn.start {
                             task.task.start(game, &mut context);
                         } else {
@@ -205,21 +209,16 @@ impl Game<'_> {
     }
     pub(in crate::game) fn configuration_send_payload(
         &mut self,
-        instance: ConfigurationTaskRef,
+        connection: ConfigurationConnection,
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        let (connection, ordinal) = configuration_task_parts(instance);
-        let session = self
+        let (endpoint, epoch) = self
             .configuration_session(connection)
-            .cloned()
-            .ok_or(ConfigurationTaskError::Disconnected)?;
-        session.require_running(ordinal)?;
-        self.queue_current_payload(session.endpoint(), channel, bytes)
+            .ok_or(ConfigurationTaskError::Disconnected)?
+            .payload_target()?;
+        self.queue_payload(endpoint, epoch, channel, bytes)
             .map(|_| ())
-            .map_err(|error| {
-                session.fail(format!("Configuration payload refused: {error:?}"));
-                ConfigurationTaskError::Payload(error)
-            })
+            .map_err(ConfigurationTaskError::Payload)
     }
 }

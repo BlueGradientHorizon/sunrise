@@ -83,7 +83,7 @@ impl IPayloadContext for Context<'_, '_> {
     }
     fn finish_configuration_task(
         &mut self,
-        _: mod_api::ConfigurationTaskRef,
+        _: &mod_api::Identifier,
     ) -> Result<(), mod_api::ConfigurationTaskError> {
         Err(mod_api::ConfigurationTaskError::WrongContext)
     }
