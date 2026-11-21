@@ -406,14 +406,23 @@ when you need to react to every matching object.
 - Parts take `&self` and require `Send + Sync`. A Part panic adds `, part <type>` to
   the mod and hook attribution.
 
-## Damage and item metadata snapshots
+## Live damage state and item metadata
 
-The three damage hooks convert only after their subscription guard. `DamageValues`
-retains the entire sequence, including reductions and the pre-hook input, so changing
-`new_damage` reaches the engine's original NaN and negative normalization point.
-`DamageValues::set_reduction` edits snapshot data; it does not run a damage calculation.
-The fixed reduction storage is private; use its accessors rather than an array index.
-Use `DamageContainer` setters to edit damage and cooldown; sequencing is game-owned.
+The three damage hooks (`living_incoming_damage`, `living_damage_pre`, and
+`living_damage_post`) lend the live engine `DamageContainer` directly—mutable
+`DamageContainer<'_>` in `living_incoming_damage` and `living_damage_pre`, and read-only
+`DamageContainerView<'_>` in `living_damage_post`—with zero snapshot conversion.
+`DamageContainer` setters write straight to the live hit state while sequencing and
+normalization stay game-owned; `as_view()` borrows a read-only `DamageContainerView<'_>`.
+Use `add_reduction_modifier(Reduction::..., |view, amount| ...)` in `living_incoming_damage`
+or `living_damage_pre` to install an owned native reduction closure on the live hit.
+Closures execute in registration order when their stage runs, receiving the live container
+view at that stage and the preceding reduction value; modified reductions are recorded
+verbatim while resulting damage floors at `0.0` (and absorption deducts
+`damage.min(modified)` floored at `0.0`). A panicking reduction callback disables that
+mod's reduction callbacks for the session with an error log and toast while leaving the
+reduction unchanged; non-panic phase refusals log a warning on each occurrence without
+latching.
 
 `ItemResource::damageable`, `foil` and `repairable` delegate to the game's
 property readers through metadata access. Defaults, explicit overrides, component
