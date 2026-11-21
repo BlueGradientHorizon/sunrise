@@ -5,6 +5,7 @@ compares the surfaces and writes the classified report to the job summary. CI co
 internals. On `pull_request`, the checkout is GitHub's merge commit, whose first parent is the base; on a dispatch
 with `pr`, GitHub's compare API gives the merge base of the checked-out revision and the PR's base branch. CI builds
 the base's tool from a full archive of that commit (into target/surface-base, which a Dyna slot keeps).
+Only that one commit is fetched (`--depth 1`, in CI's shallow checkout; a full clone is never fetched shallow).
 
 Use --with-internals to audit listed internals too. With --trees BASE HEAD, use --build-base-tool when the generator
 changed: it always builds and uses BASE's own `sunrise-stage`, even if HEAD's could read the old sources. Only pass
@@ -101,14 +102,14 @@ def fetch_commit(sha: str, depth: int, git_text=git) -> None:
         git_text("fetch", "-q", "--no-tags", "origin", sha)
 
 
-def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering")) -> None:
+def unpack(sha: str, into: Path, paths=("crates", "tools/layering", ":(glob)**/Cargo.toml")) -> None:
     fetch_commit(sha, 1)
-    archive = subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE)
-    # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
-    # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
-    # not look unchanged beside a newer one's build of the same paths.
-    subprocess.run(["tar", "-x", "-m", "-C", str(into)], stdin=archive.stdout, check=True)
-    if archive.wait() != 0:
+    with subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE) as archive:
+        # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
+        # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
+        # not look unchanged beside a newer one's build of the same paths.
+        subprocess.run(["tar", "-x", "-m", "-C", str(into)], stdin=archive.stdout, check=True)
+    if archive.returncode != 0:
         raise subprocess.CalledProcessError(archive.returncode, "git archive")
 
 

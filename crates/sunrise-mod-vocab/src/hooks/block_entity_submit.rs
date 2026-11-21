@@ -23,6 +23,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
         scope = "block_entity",
         key = "block",

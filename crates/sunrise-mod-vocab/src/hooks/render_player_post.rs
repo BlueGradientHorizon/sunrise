@@ -9,14 +9,16 @@ pub trait Hooks {
     /// and effective visibility include this draw's animation, Skin Customization and Pre edits.
     /// It is `None` if no body pose was produced, including when only Living Pre canceled. The
     /// player's name tag, leash, flames and shadow are drawn after it, as in `render_living_post`.
+    /// In the ordered body pass, this player's pair finishes at its slot in level join order,
+    /// before the next body submits, including bodies drawn by a general entity renderer.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 5,
         contract = "listen",
         neoforge = "RenderPlayerEvent.Post",
-        cancellable = false,
-        version = 2
+        cancellable = false
     )]
     fn render_player_post(
         player: &MobRender<'_>,

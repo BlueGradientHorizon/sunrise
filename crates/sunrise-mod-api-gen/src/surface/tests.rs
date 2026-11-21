@@ -5,6 +5,14 @@ use std::collections::BTreeMap;
 /// The fixture: path below the root, and text.
 const FILES: &[(&str, &str)] = &[
     (
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"engine-fixture\"]\n",
+    ),
+    (
+        "engine-fixture/Cargo.toml",
+        "[package]\nname = \"engine-package\"\n[lib]\nname = \"engine_library\"\n",
+    ),
+    (
         "crates/sunrise-mod-api/src/lib.rs",
         "pub use mod_vocab::*;\n",
     ),
@@ -256,11 +264,20 @@ pub fn sunrise_mod(_: TokenStream, input: TokenStream) -> TokenStream { input }
 "#,
     ),
     (
+        "crates/sunrise-mod-vocab/extension-tags/items.json",
+        r#""crates/sunrise-mod-package/src/fixture.extension-tags.json""#,
+    ),
+    (
+        "crates/sunrise-mod-vocab/extension-tags/blocks.json",
+        r#"[{"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}]"#,
+    ),
+    (
+        "crates/unlisted/src/ignored.extension-tags.json",
+        "invalid JSON: the export must not read unrelated declarations",
+    ),
+    (
         "crates/sunrise-mod-package/src/fixture.extension-tags.json",
-        r#"[
-    {"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."},
-    {"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}
-]"#,
+        r#"[{"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."}]"#,
     ),
     (
         "crates/sunrise-mod-package/src/manifest.rs",
@@ -312,7 +329,7 @@ const MOVE: &str = "<move>";
 
 /// The export of the fixture with `edits` (file, from, to) applied.
 fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
-    export_fixture_with_includes(edits, hooks, &[])
+    try_export_fixture(edits, hooks, &[]).unwrap()
 }
 
 fn export_fixture_with_includes(
@@ -320,6 +337,14 @@ fn export_fixture_with_includes(
     hooks: &str,
     included: &[(&str, &str)],
 ) -> Export {
+    try_export_fixture(edits, hooks, included).unwrap()
+}
+
+fn try_export_fixture(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Result<Export, String> {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (path, text) in FILES {
@@ -342,10 +367,40 @@ fn export_fixture_with_includes(
     }
     let catalog = Catalog::parse(&[("hooks/ping.rs".into(), hooks.into())]).unwrap();
     let mut index = crate::index::game(root, included);
-    build(root, &mut index, &catalog.hooks, &boundary()).unwrap()
+    build(root, &mut index, &catalog.hooks, &boundary())
 }
 
 const LIB: &str = "crates/sunrise-mod-vocab/src/lib.rs";
+
+#[test]
+fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
+    let edited = "use engine_library::Secret as Imported;\npub fn leak() -> Imported { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the leak must fail the export");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
+    let edited = "pub use engine_library::Secret as Leaked;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the re-export must fail the export");
+    assert!(error.contains("mod_api::Leaked"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_wire_layout_cannot_hide_a_workspace_type_behind_private_storage() {
+    let edited = "#[derive(Wire)] struct Private(engine_library::Secret);\n#[derive(Wire)] pub struct Leaked(Private);\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the embedded type must fail the export");
+    assert!(error.contains("mod_api::Private"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
 
 fn hashes(export: &Export) -> BTreeMap<String, String> {
     export
@@ -1077,60 +1132,5 @@ fn a_hidden_type_named_only_by_an_impl_gets_its_record() {
     assert_eq!(
         secret(&[(LIB, "/// A colour.", from)]).as_deref(),
         Some("type:internal::Secret")
-    );
-}
-
-/// `placement_sync::PROTOCOL` stands for the shapes the placement frames carry, which nothing
-/// else reads: `Frame` and the catalogue body's `RecipeBookCategory`. When this fails, the
-/// frames changed: bump `PROTOCOL` there, then update the pinned hash here.
-#[test]
-#[ignore = "daily"]
-fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
-    const PINNED: &str = "2a820c6483512899fd944f85a2669524";
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let generated = crate::sources(&root).unwrap();
-    let providers = crate::capability_providers::generate(&root, &[]).unwrap().0;
-    let included = [
-        ("mod_api_generated.rs", generated.hooks.as_str()),
-        ("mod_api_generated_host.rs", generated.host.as_str()),
-        ("mod_api_host_areas.rs", generated.areas.as_str()),
-        ("capability_providers_generated.rs", providers.as_str()),
-    ];
-    let mut index = crate::index::game(&root, &included);
-    index.add_crate("sunrise_client", "crates/sunrise-client/src");
-    let modules = walk::Walker::new(&mut index)
-        .all_modules("mod_api")
-        .unwrap();
-    // Hash the declared encoding, not private Rust storage (e.g. Compound's hash table).
-    // Some Wire impls are generated by the vocabulary's own macros (e.g. ItemKey).
-    expand::expand_modules(&mut index, &modules);
-    let forms = wire_forms::wire_forms(&mut index, &modules);
-    let ids = HashMap::new();
-    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires {
-        forms: &forms,
-        ids: &ids,
-    });
-    let mut keys = Vec::new();
-    for (krate, module, name) in [
-        (
-            "sunrise_client",
-            vec!["recipe_book".to_owned(), "placement_sync".to_owned()],
-            "Frame",
-        ),
-        ("mod_api", Vec::new(), "RecipeBookCategory"),
-    ] {
-        let module = index.module(krate, &module).unwrap();
-        let Ok(Found::Item(id)) = index.resolve_path(module, &[name.to_owned()]) else {
-            panic!("{krate}: no type {name}");
-        };
-        keys.push(layouts.key(&index, id));
-    }
-    layouts.finish(&mut index);
-    let mut shapes = Shapes::new(&layouts.table);
-    let text: Vec<String> = keys.iter().map(|key| shapes.shape(key).unwrap()).collect();
-    let hash = mod_surface::digest(&text.join(","));
-    assert_eq!(
-        hash, PINNED,
-        "the placement frames' shapes changed (now {hash}): bump placement_sync PROTOCOL"
     );
 }

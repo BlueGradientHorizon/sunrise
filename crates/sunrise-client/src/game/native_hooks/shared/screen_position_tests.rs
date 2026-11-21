@@ -134,6 +134,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             None,
             None,
             false,
+            None,
         )],
         || {
             with_listener(&[], |game, seen| {
@@ -264,6 +265,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
             None,
             None,
             false,
+            None,
         )],
         || {
             with_listener(&[], |game, seen| {
@@ -475,6 +477,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
             None,
             None,
             true,
+            None,
         )],
         || {
             with_listener(&[0, 1, 2, 3, 4, 5, 6, 7, 8], |game, seen| {

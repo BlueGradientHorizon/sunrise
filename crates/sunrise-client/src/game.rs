@@ -864,6 +864,9 @@ mod lightmap_expression_tests;
 #[path = "game/entities/lightning.rs"]
 mod lightning;
 #[cfg(test)]
+#[path = "game/entities/lightning_bolt_uniform_tests.rs"]
+mod lightning_bolt_uniform_tests;
+#[cfg(test)]
 #[path = "game/entities/lightning_item_tests.rs"]
 mod lightning_item_tests;
 #[path = "game/mobs/living_attributes.rs"]
@@ -1626,6 +1629,8 @@ mod native_scene_live_tests;
 mod native_scoreboard;
 #[path = "game/modding/native_scoreboard_teams.rs"]
 mod native_scoreboard_teams;
+#[path = "game/modding/native_section_visibility.rs"]
+mod native_section_visibility;
 #[path = "game/modding/native_server.rs"]
 mod native_server;
 #[path = "game/modding/native_server_distances.rs"]
@@ -2240,6 +2245,9 @@ mod use_stop_tests;
 mod using_item;
 #[path = "game/blocks/vault.rs"]
 mod vault;
+#[cfg(test)]
+#[path = "game/entities/vehicle_removal_tests.rs"]
+mod vehicle_removal_tests;
 #[path = "game/entities/vehicle_teleport.rs"]
 mod vehicle_teleport;
 #[cfg(test)]
@@ -3401,8 +3409,6 @@ struct Game<'a> {
     entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
     /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
     entity_runs: Vec<entity::DrawRun>,
-    // Extracted general rows; keep the capacity between frames.
-    general_render_states: std::cell::RefCell<Vec<general_draw::ExtractedGeneral>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
@@ -3965,7 +3971,7 @@ struct Game<'a> {
     /// The mod whose own screen is open (`Screen::Mod`).
     native_mod_screen: Option<String>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: Vec<((i32, i32, i32), sunrise_client::mesher::SectionMesh)>,
+    pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
     upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
@@ -4082,7 +4088,7 @@ struct Game<'a> {
     gpu_culling_auto: sunrise_client::autotune::GpuCullingAuto,
     /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
     dynamic_resolution: sunrise_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_geometry` drew last frame (`lastEntityRenderStateCount`).
+    /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
     rendered_mobs: std::cell::Cell<usize>,
     /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
     screen_blur_requested: std::cell::Cell<bool>,
@@ -7223,12 +7229,15 @@ impl Game<'_> {
         let spectator = self.spectator();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
-        if !self.ui.hide_gui {
+        let replaying = self.replay.playing();
+        // RenderGuiEvent.Pre can veto the status slots even when F1 hides their vanilla paint.
+        if !replaying || !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre can hide the HUD, not the mandatory diagnostics outside it.
-        let presentation_hidden = self.ui.hide_gui || self.replay.playing();
-        let show_hud = !presentation_hidden && !gui_canceled;
+        // The veto covers status slots even under F1, but not mandatory diagnostics.
+        let dispatch_status = !gui_canceled && !replaying;
+        let presentation_hidden = self.ui.hide_gui || replaying;
+        let show_hud = dispatch_status && !self.ui.hide_gui;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7311,6 +7320,142 @@ impl Game<'_> {
             });
             self.draw_extras(&mut batch);
         }
+        if dispatch_status {
+            // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
+            // The installed vanilla bodies share the column heights and a scratch draw list.
+            let mut status_heights = hud_layout::StatusBarHeights::default();
+            let mut status_rows = Vec::new();
+            let mount = if !show_hud || spectator {
+                None
+            } else {
+                self.mount_index().map(|i| {
+                    let mob = &self.mobs[i];
+                    (
+                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
+                        mob.health,
+                    )
+                })
+            };
+            // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
+            let show_survival_status = show_hud && !self.creative && !spectator;
+            self.gui_layer(
+                VanillaGuiLayer::PlayerHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    if !show_survival_status {
+                        return;
+                    }
+                    let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
+                    let Some(p) = &mut g.player else { return };
+                    let blink = g.health_hud.update_health(
+                        p.health.health(),
+                        tick,
+                        millis,
+                        p.health.hurt.cooldown > 0,
+                    );
+                    let inputs = hud_layout::HealthInputs {
+                        tick,
+                        max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                        absorption: p.health.absorption(),
+                        regeneration: g.potions.effects.get("regeneration").is_some(),
+                        hardcore: g.level.hardcore,
+                        blink,
+                    };
+                    let Some(kind) = g.player_heart_kind() else {
+                        return;
+                    };
+                    status_rows.clear();
+                    g.health_hud.health_level(
+                        &inputs,
+                        kind,
+                        wi,
+                        hi,
+                        &mut status_heights,
+                        &mut status_rows,
+                    );
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status {
+                    return;
+                }
+                let Some(p) = &mut g.player else { return };
+                let armor = p
+                    .attribute("minecraft:armor")
+                    .or_else(|_| p.attribute("armor"))
+                    .unwrap_or(0.0) as i32;
+                status_rows.clear();
+                hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+            });
+            self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
+                    return;
+                }
+                let Some(p) = &g.player else { return };
+                let inputs = hud_layout::FoodInputs {
+                    tick: g.visual_ticks() as i32,
+                    food: p.health.food.food,
+                    saturation: p.health.food.saturation,
+                    hunger: g.potions.effects.get("hunger").is_some(),
+                };
+                status_rows.clear();
+                g.health_hud
+                    .food_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+            });
+            self.gui_layer(
+                VanillaGuiLayer::VehicleHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    let Some((hearts, health)) = mount else {
+                        return;
+                    };
+                    status_rows.clear();
+                    hud_layout::vehicle_health(
+                        wi,
+                        hi,
+                        hearts,
+                        health,
+                        &mut status_heights,
+                        &mut status_rows,
+                    );
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status {
+                    return;
+                }
+                let Some(p) = &g.player else { return };
+                let inputs = hud_layout::AirInputs {
+                    tick: g.visual_ticks() as i32,
+                    air: p.air,
+                    max_air: 300,
+                    // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
+                    under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                };
+                let at = [p.position.x, p.position.y, p.position.z];
+                status_rows.clear();
+                let pop_sound =
+                    g.health_hud
+                        .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
+                // by this client only.
+                if let Some((volume, pitch)) = pop_sound {
+                    let players = sunrise_client::settings::SOUND_SOURCES
+                        .iter()
+                        .position(|s| *s == "player")
+                        .unwrap_or(0);
+                    let capture = g.audio.capture.take();
+                    g.audio
+                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    g.audio.capture = capture;
+                }
+            });
+        }
         if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
             // the locator bar above the hotbar.
@@ -7323,77 +7468,6 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts.
-            let vehicle_hearts = if spectator {
-                0
-            } else {
-                self.draw_mount_hud(&mut batch, wi, hi)
-            };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            let kind = (!self.creative && !spectator)
-                .then(|| self.player_heart_kind())
-                .flatten();
-            if let Some(kind) = kind
-                && let Some(p) = &mut self.player
-            {
-                let effects = &self.potions.effects;
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
-                };
-                let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let draws = match native_health_hud {
-                    Some(draws) => draws,
-                    None => self.health_hud.layout(&inputs, wi, hi),
-                };
-                self.keep_status_rows(&draws, wi, hi);
-                // The rows draw in one pass here, so a mod's `player_health`
-                // layer stands for the armor, food and air rows too.
-                self.gui_layer(
-                    VanillaGuiLayer::PlayerHealth,
-                    &mut batch,
-                    &mut |g, batch| {
-                        hud_layout::paint(batch, &g.gui.atlas, &draws);
-                    },
-                );
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
-                    let players = sunrise_client::settings::SOUND_SOURCES
-                        .iter()
-                        .position(|s| *s == "player")
-                        .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
-                }
-            }
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,
@@ -7679,6 +7753,8 @@ impl Game<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The player's own model (third person, and a shader pack's shadow pass).
     pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
+    /// The local player's flame vertices are tracked separately from the body run.
+    const MOTION_OWN_PLAYER_FIRE: u64 = Self::MOTION_OWN_PLAYER | 1;
     /// The entity whose geometry starts at vertex `start` (0: none), for frame
     /// generation to follow its own motion. Each run lasts until the next mark.
     pub(super) fn mark_motion(&self, start: usize, id: u64) {
@@ -7695,6 +7771,7 @@ impl Game<'_> {
         alpha: f64,
         billboard_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
         mut out: Vec<Vertex>,
+        additive: &mut Vec<Vertex>,
     ) -> (
         Vec<Vertex>,
         Arc<[StaticSectionSnapshot]>,
@@ -7800,11 +7877,35 @@ impl Game<'_> {
         let falling_setup = std::cell::OnceCell::new();
         let orb_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
-        self.ordered_draw_runs(&mut runs);
+        let general_frame = self.begin_general_geometry(camera, alpha);
+        let crystal_frame = self.begin_crystal_geometry();
+        self.ordered_draw_runs(general_frame.is_some(), crystal_frame.is_some(), &mut runs);
+        // Sets the CEM frame even if there are no mobs; later passes also use it.
+        let mob_frame = self.begin_mob_geometry(camera, alpha);
         for run in &runs {
             use entity::DrawFamily as F;
             let range = run.range.clone();
             match run.family {
+                F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
+                F::LocalPlayer => self.local_player_geometry(camera, &mut out),
+                F::RemoteGeneral => {
+                    if let Some(frame) = &general_frame {
+                        self.general_run_geometry(frame, range, &mut out);
+                    }
+                }
+                F::Dragon => {
+                    // A dragon summoned outside the End draws at its join slot too.
+                    if let Some(dragon) = self.dragon.as_ref() {
+                        self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
+                    }
+                }
+                F::Crystal => {
+                    if let Some(frame) = &crystal_frame {
+                        for crystal in &self.crystals[range] {
+                            self.end_crystal_geometry(crystal, frame, camera, &mut out);
+                        }
+                    }
+                }
                 F::Item => {
                     // `ItemEntityRenderer`.
                     self.mark_entity(out.len(), "minecraft:item");
@@ -7869,9 +7970,11 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:ominous_item_spawner");
         self.ominous_item_spawner_geometry(camera, alpha, &mut out);
         laps.lap("eg_items_misc");
-        // Mobs and their projectiles (a span each).
-        self.mob_geometry(camera, alpha, &mut out);
+        // Spawners and projectiles still have their own pass.
+        self.other_creature_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
+        laps.lap("eg_other_creatures");
+        // These billboards stay in their later pass, outside the ordered body runs.
         for m in self.drawn_mobs() {
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
@@ -7897,13 +8000,6 @@ impl Game<'_> {
                 );
             }
         }
-        laps.lap("eg_mobs");
-        // In first person only a shader pack's shadow pass draws the player.
-        self.mark_player(out.len(), !self.own_body_in_view());
-        let player_start = out.len();
-        self.mark_motion(player_start, Self::MOTION_OWN_PLAYER);
-        let player_alpha = self.own_player_alpha();
-        self.player_model_geometry(camera, player_alpha, &mut out);
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
@@ -7917,6 +8013,8 @@ impl Game<'_> {
                 p.dimensions.width,
                 p.dimensions.height,
             ) {
+                self.mark_player(out.len(), false);
+                self.mark_motion(out.len(), Self::MOTION_OWN_PLAYER_FIRE);
                 sunrise_client::fire_render::flames(
                     [feet.x, feet.y, feet.z],
                     p.dimensions.width,
@@ -7931,19 +8029,14 @@ impl Game<'_> {
                     ),
                     &mut out,
                 );
+                self.mark_motion(out.len(), 0);
             }
         }
-        // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
-        if self.pack_ids.is_none() && !self.own_body_in_view() {
-            self.shadow_only_vertices
-                .borrow_mut()
-                .extend(out.drain(player_start..));
-        }
-        self.mark_motion(out.len(), 0);
+        laps.lap("eg_fire_living");
         self.mark_entity(out.len(), "minecraft:evoker_fangs");
         self.fangs_geometry(camera, alpha, &mut out);
         self.block_item_display_geometry(camera, alpha, &mut out);
-        laps.lap("eg_players");
+        laps.lap("eg_displays");
         let mut see_through = std::mem::take(&mut self.see_through_vertices);
         see_through.clear();
         self.name_tag_geometry(camera, alpha, &mut out, &mut see_through);
@@ -8568,7 +8661,6 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:item");
         self.pickup_item_geometry(camera, alpha, out);
         self.mark_motion(out.len(), 0);
-        self.mark_entity(out.len(), "minecraft:arrow");
         self.pickup_arrow_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:trident");
         self.pickup_trident_geometry(camera, alpha, out);
@@ -8580,7 +8672,6 @@ impl Game<'_> {
         });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
-        self.mark_entity(out.len(), "minecraft:elder_guardian");
         self.elder_apparition_geometry(alpha, out);
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();
@@ -11042,10 +11133,13 @@ impl Game<'_> {
         } else {
             self.shader_pack_inputs(camera, alpha as f32, &sky)
         };
+        // Retain the existing additive particle stream; the ordered dragon emitter appends
+        // the eyes and rays to it without changing their material routing.
+        let mut additive = self.particles.take_additive();
         if !title {
             let (built, static_sections, visible_static_sections, static_stats) =
                 spans::time("entity_geometry", || {
-                    self.entity_geometry(camera, alpha, billboard_frustum, entities)
+                    self.entity_geometry(camera, alpha, billboard_frustum, entities, &mut additive)
                 });
             entities = built;
             static_block_entities = static_sections;
@@ -11064,18 +11158,10 @@ impl Game<'_> {
         } else {
             self.bolt_instances(camera)
         };
-        // Particles blended additively (resource packs' Polytone ones, #11486), from the
-        // render that built `entities`.
-        let mut additive = self.particles.take_additive();
-        // The dragon is drawn in every dimension, as any entity: a dragon
-        // summoned outside the End (the server's AddEntity) is shown too.
         if !title {
-            let mut dragon = Vec::new();
-            self.dragon_geometry(camera, alpha, &mut dragon, &mut additive);
-            self.dragon_fireball_geometry(camera, alpha, &mut dragon);
-            entities.extend(dragon);
+            self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
-        pr.lap("pr_dragon_bolts");
+        pr.lap("pr_dragon_fireballs_bolts");
         let (celestial, stars) = if title {
             (Vec::new(), None)
         } else if self.overworld_skybox()
@@ -11122,7 +11208,7 @@ impl Game<'_> {
             self.screen_quads(alpha as f32, size, scale, hand_projection)
         };
         if !title {
-            self.end_geometry(camera, &mut entities);
+            self.eye_geometry(camera, &mut entities);
         }
         self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
@@ -13255,7 +13341,6 @@ impl<'a> Game<'a> {
             shadow_only_vertices: Default::default(),
             entity_spans: Default::default(),
             entity_runs: Vec::new(),
-            general_render_states: Default::default(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
             skin_models: Default::default(),

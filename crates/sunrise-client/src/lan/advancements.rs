@@ -1049,7 +1049,7 @@ mod tests {
         let dir = root.join("data/minecraft/recipe");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(root.join("registries.json"), REGISTRIES).unwrap();
-        std::fs::write(root.join("items.json"), "{}").unwrap();
+        std::fs::write(root.join("items.json"), r#"{"minecraft:redstone":{}}"#).unwrap();
         for (id, json) in recipes {
             std::fs::write(dir.join(format!("{id}.json")), json).unwrap();
         }
@@ -1555,7 +1555,7 @@ mod tests {
         .to_string();
         assert!(error.contains("mymod_kind.json"), "{error}");
         assert!(
-            error.contains("ingredient kind mymod:x is not registered by any mod"),
+            error.contains("ingredient kind mymod:x was not answered by any mod"),
             "{error}"
         );
         let _ = std::fs::remove_dir_all(&root);

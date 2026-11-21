@@ -24,16 +24,17 @@ The client keeps the callback for the session and calls it as the mod that insta
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
 passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
 or `gui_layer_pre` cancels the layer.
-A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
-health, player health and contextual bar anchors follow that paint order.
+A vanilla anchor still determines the layer's position if its body doesn't draw that frame.
 
 ### Replacing or wrapping a layer
 
 In the same registration hook, call `event.layers.replace_layer(id, Box::new(draw))` to discard
 an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
-registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
-place in the HUD and its draw conditions.
+registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID,
+order and dispatch. A replacement does not inherit the original body's eligibility checks.
+Those checks apply only to the original body, including when a wrapper calls `draw_previous()`
+and reaches it.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
@@ -54,6 +55,44 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
 runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
+
+## Status rows and fixed text positions
+
+`minecraft:player_health` draws the hearts. The neighbouring `minecraft:armor_level`,
+`minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level` slots draw the other
+status rows. `GuiLayerPlacement::Above("minecraft:player_health".into())` places a layer between
+hearts and armor; use `Above("minecraft:air_level".into())` for a layer above all the status rows.
+
+Cancel a slot with `gui_layer_pre`, or install a custom body in `register_gui_layers`:
+
+```rust,ignore
+event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
+    let Some(player) = host.local_player() else { return };
+    let Some(living) = host.living(player.entity()) else { return };
+    let Some(health) = living.health(host) else { return };
+    let [w, h] = draw.size();
+    draw.fill([w / 2.0 - 91.0, h - 39.0, health, 4.0], 0xFFE0_4040);
+}));
+```
+
+Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla row should still draw. Heart
+flashing and `player_heart_type` run only in the vanilla heart body, after the layer's Pre hook.
+Bubble bookkeeping and pop audio run only in the vanilla air body, even if the heart layer was
+cancelled or replaced. The status slots still run their layer hooks and installed bodies under F1,
+in creative or spectator mode, and off a mount. The original bodies check HUD visibility and the
+conditions for the row: survival or adventure for the player's rows, a mount with hearts for vehicle
+health. To hide your own paint under F1, check `host.hud_mode() == mod_api::HudMode::AllVisible`.
+A `Flow::Cancel` from `render_gui_pre` still skips those slots, even under F1. To replace all
+rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
+and `air_level`; `vehicle_health` is separate.
+You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.
+Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
+including replacements and wrappers.
+
+Adding a taller status bar does not move the selected item name or the action bar. The name starts
+59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
+pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
+`minecraft:selected_item_name` or `minecraft:overlay_message`.
 
 ## Registering F3 text
 

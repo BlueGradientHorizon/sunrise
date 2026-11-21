@@ -122,7 +122,7 @@ impl Game<'_> {
             (2, 4) => Input::Throw,
             _ => return self.lan_merchant_click_plain(conn, p),
         };
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return true;
         }
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
@@ -189,10 +189,12 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn merchant_click_in_progress(&self, conn: u32) -> bool {
+    /// Screen replacement cannot publish while a transaction owns a click. The older
+    /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
+    pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()
-            .any(|level| level.trades.active == Some(conn))
+            .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
 
     fn run_merchant_take(

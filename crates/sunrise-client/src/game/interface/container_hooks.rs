@@ -681,6 +681,7 @@ mod tests {
             slots: 201,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![200],
             inputs: Vec::new(),
             links: None,

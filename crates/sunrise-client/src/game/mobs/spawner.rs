@@ -501,7 +501,7 @@ impl Game<'_> {
         self.res.mob_types().contains_key(&id).then_some(id)
     }
     /// `SpawnEggItem.useOn` on a spawner: the egg sets its mob, and an op's
-    /// egg its entity `data` too (`block_entity_item::spawn_egg_on_spawner`).
+    /// egg its effective entity `data` too.
     /// None when the clicked block has no spawner.
     pub(super) fn use_spawn_egg_on_spawner(
         &mut self,
@@ -648,6 +648,7 @@ impl Game<'_> {
                 * glam::Mat4::from_scale(glam::Vec3::splat(scale));
             let light = self.world.light(key.0, key.1, key.2);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+            self.mark_entity(out.len(), &mob.kind.id);
             if mob.species() == sunrise_client::mobs::Species::SulfurCube {
                 self.sulfur_cube_body_geometry(
                     mob,

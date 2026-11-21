@@ -1,13 +1,12 @@
 //! Registered serializer resolution, fatal unknown IDs and shared grid dispatch.
 use super::*;
-use mod_api::{CraftingGrid, CraftingRecipeHandler, CraftingRecipeValue};
+use mod_api::{__private::LoadedCraftingRecipe, CraftingGrid};
 use std::result::Result;
 
 #[derive(Clone)]
 pub struct ModRecipe {
     pub serializer: String,
-    handler: Arc<dyn CraftingRecipeHandler>,
-    value: CraftingRecipeValue,
+    loaded: LoadedCraftingRecipe,
 }
 impl std::fmt::Debug for ModRecipe {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -54,25 +53,17 @@ fn load_reported(file: &str, json: &Value, report: &mut dyn FnMut(String)) -> Op
 }
 fn decode_reported(file: &str, json: &Value, report: &mut dyn FnMut(String)) -> Option<ModRecipe> {
     let kind = json["type"].as_str()?;
-    let (_, handler) = mod_api::__private::parts_installation::recipe_serializer(kind)?;
+    let (_, serializer) = mod_api::__private::parts_installation::recipe_serializer(kind)?;
     let mut object = json.as_object()?.clone();
     object.remove("type");
     let decoded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        handler.decode(&Value::Object(object).to_string())
+        serializer.decode(&Value::Object(object).to_string())
     }))
     .unwrap_or_else(|_| Err("serializer panicked".into()));
-    let decoded = decoded.and_then(|value| {
-        if value.bytes.len() <= 1024 * 1024 {
-            Ok(value)
-        } else {
-            Err("decoded value exceeds 1 MiB".into())
-        }
-    });
     match decoded {
-        Ok(value) => Some(ModRecipe {
+        Ok(loaded) => Some(ModRecipe {
             serializer: kind.into(),
-            handler,
-            value,
+            loaded,
         }),
         Err(error) => {
             report(format!("recipe {file}, crafting kind {kind}: {error}"));
@@ -196,22 +187,16 @@ impl ModRecipe {
         let reader = sunrise_client_render::api_context::LoopReader(context);
         let context = reader.context();
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.handler
-                .matches(&context, &self.value, input.clone())
-                .then(|| {
-                    self.handler
-                        .assemble(&context, &self.value, input)
-                        .and_then(from_api)
-                })
+            self.loaded
+                .matches(&context, input.clone())
+                .then(|| self.loaded.assemble(&context, input).and_then(from_api))
         }))
         .ok()
         .flatten()
     }
     pub fn written(&self) -> Result<String, String> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.handler.write(&self.value)
-        }))
-        .unwrap_or_else(|_| Err("serializer panicked".into()))
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.loaded.write()))
+            .unwrap_or_else(|_| Err("serializer panicked".into()))
     }
 }
 
@@ -296,7 +281,7 @@ impl Recipes {
             default,
         };
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            recipe.handler.remaining_items(&view, &recipe.value, input)
+            recipe.loaded.remaining_items(&view, input)
         }))
         .ok()
         .flatten();

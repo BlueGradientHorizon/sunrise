@@ -65,7 +65,9 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
 - `check <file>` runs what the registry runs: the file's size and SHA-256, its manifest and content, and a signature
   with `--key <public key> --signature <file>.minisig`. It reads `.smod`, `.spack`, resource pack `.zip`
   and `.sshader` files.
-- `registry build|review|check|list|release|page` is the registry repository's CI ([the registry index](../reference/registry-index.md)).
+- `registry build|review|check|list|release|releases|page` supports the registry repository's CI
+  ([the registry index](../reference/registry-index.md)). `registry releases --out releases.json` discovers stable
+  release tags and commits. The workflow verifies the signed SDK separately.
 - `use-jar <path>` records and caches an original Java jar as an external asset/data source, without copying it into the mod
   ([Java jars as external assets](#java-jars-as-external-assets)).
 
@@ -269,6 +271,14 @@ Pick-block takes the block's item by default. `"pick_item": "<item id>"` names a
 `block_item`: vanilla's `getCloneItemStack`, which lets a mature crop pick its seed while `Block.asItem` stays what it
 is (air for `"item": false`). It is an item of the mod or a vanilla one, and the load fails naming the block when no
 such item exists. A sign's wall form picks its sign's item through `wall_block`, so it declares no `pick_item`.
+
+`"suspicious_stew_effects": [{"id": "minecraft:night_vision", "duration": 100}]` makes the block a suspicious stew
+source. Entries are applied in order; duration is in ticks and defaults to 160 when omitted. An unknown mob effect is
+reported when content loads. Native `Block` declarations give the same list as `(effect ID, duration in ticks)` pairs.
+Food & Drinks and Search show one stew for each distinct list, and feeding the block's item to a brown mooshroom
+lets you milk it into that stew. The item must place the block: neither `block_item` nor `pick_item` makes an item
+place it. This does not add a crafting recipe. To craft the stew, supply a `minecraft:crafting_shapeless` recipe with
+the block's item, a bowl and two `#minecraft:mushrooms`, and set `minecraft:suspicious_stew_effects` on the result.
 
 `push_reaction` sets vanilla's `BlockBehaviour.Properties.pushReaction` to `"PUSH_PULL"`, `"PUSH"`, `"POPPED"`, `"IMMOVEABLE"`, or `"IGNORE_ENTITY"`.
 
@@ -872,6 +882,12 @@ admission errors name the file. Radius 0 disables its shadow. Radius follows `mi
 baby age scaling and the template's extra baby factors; cube sizes, pufferfish and dragon retain
 their renderer rules. The usual visibility, 32-block radius cap and distance fade still apply.
 
+A living type can set `allowed_in_peaceful` to `false` to prevent summons and spawns
+in Peaceful and to have existing mobs of that type despawn there. Its spawn egg
+shows the disabled-in-Peaceful line. Set it to `true` to allow the type in Peaceful
+without changing the template's other spawn rules or AI. If omitted, the type
+inherits its template's setting. Thrown types cannot set this key.
+
 A living type copies a mob, the way NeoForge's `EntityType.Builder.of(Zombie::new, ...)` makes a type of a vanilla
 class: `minecraft:zombie`, `minecraft:skeleton`, `minecraft:drowned`, `minecraft:villager`,
 `minecraft:wandering_trader`, or one of the tameable mobs
@@ -1022,6 +1038,10 @@ template's, with `template` added and its attributes in place of the template's.
 a client mod registers a renderer for it ([entity renderers](client/entity-renderers.md)); the content declaration
 inherits the template's goals.
 
+Daylight burning follows the type's own id, not its template. To make a type burn in sunlight,
+add its id to `data/minecraft/tags/entity_type/burn_in_daylight.json`. Leaving it out does not
+make it immune to ordinary fire.
+
 #### Block entity containers
 
 A code mod declares a block entity's `ModContainer` with `Registrar::block_container`. The
@@ -1030,7 +1050,10 @@ Per-slot `insert_rules` provide static admission, with missing entries treated a
 
 For state-dependent admission, implement `BlockEntityPart::can_place_item`
 (vanilla's `Container.canPlaceItem`). Its `CanPlaceItemEvent` gives the server part the block
-entity's saved data and current slots, the queried slot index and the offered stack. Returning
+entity's own `pos` and current block `state`, its saved data and slots, the queried slot index,
+and the offered stack. Parts shared by several blocks can branch on `state.block()`. To filter
+by a property without a Host in this query, resolve matching `BlockState` values in a hook with
+block metadata and keep them for comparison here. Returning
 `Some(true)` or `Some(false)` replaces the declared rule for that slot; `None` keeps it. Face
 and input-slot rules and stack limits still apply. Hoppers and hopper minecarts, droppers,
 default `ITEMS` and `STORAGE` insertion, and nonempty offers from `/loot insert` and
@@ -1064,6 +1087,11 @@ A status or control screen that has no item slots at all can omit the player inv
 
 `player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
 container slots, never the optional player group. A mapping to an absent slot is refused at load.
+
+For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
+It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
+Types declaring `owned_slots` are blockless-only and cannot declare `results` or `crafting`.
+A block container cannot bind an owned-slot type as its menu.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and

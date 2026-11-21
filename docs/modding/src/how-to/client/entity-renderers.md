@@ -189,6 +189,10 @@ scan over the mods.
 
 ## What draws through registered renderers
 
+In the ordered body pass, general, living, primed TNT and experience orb renderers submit at
+each entity's slot in level join order. The ender dragon and end crystals keep their own renderers
+at their slots.
+
 Registered renderers draw these routes:
 
 - content-defined thrown types: a `data/<id>/sunrise/entity_type/<name>.json` using the

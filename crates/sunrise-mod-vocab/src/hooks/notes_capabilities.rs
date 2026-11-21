@@ -30,8 +30,8 @@ pub trait Notes {
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
-- Server commands and players: `register_commands` (the commands a mod adds to every player's
-  command tree) and `run_mod_command` (a player's command on the server), with helpers to answer
+- Server commands and players: `register_commands` adds usages to the server tree with
+  `Command::executes` to bind their executors, with helpers to answer
   ([Server commands and players](#server-commands-and-players)).
 
 - A player's items for server mods: counting, taking and giving go through the player's
@@ -184,15 +184,15 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with
-  draws replaces all the rows — armour, hearts, food, air and the heights above the hotbar — for that
-  frame. Nothing answered draws Sunrise's own.
+- To draw custom status rows, replace or wrap `minecraft:player_health` (hearts), `minecraft:armor_level`,
+  `minecraft:food_level` or `minecraft:air_level` in `register_gui_layers`. Use the installed body's
+  `DrawContext` (`gui_paint` accepts a `GuiDraw` list). `gui_layer_pre` can veto a slot without vetoing
+  the other rows. Heart bookkeeping belongs to the vanilla heart body; bubble sounds belong to the
+  vanilla air body.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
-  each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod
-  may set another. It runs before `health_hud`, whose `inputs.kind` carries the answer; only the heart sprites
-  change.
+  when the vanilla player-health body draws its hearts, `kind` comes in as vanilla's pick (poisoned, withered,
+  frozen or normal) and a mod may set another. Only the heart sprites change.
 
 - Where each boss bar is drawn through `customize_boss_event_progress` (NeoForge's
   `CustomizeGuiOverlayEvent.BossEventProgress`): once a frame per bar, in the order the server added them, `x` and
@@ -382,10 +382,11 @@ pub trait Notes {
   changing the player's saved shader selection); other packs are unaffected.
 
 ### Custom ingredient metadata
-`ingredient` and `ingredient_test` carry an API `Compound`. Recipe JSON is
+`ingredient` receives its recipe metadata as an API `Compound`. Recipe JSON is
 converted at load by the shared JsonOps-to-NbtOps boundary; mod code matches
 `Tag` variants rather than JSON fields. Nested null refuses the recipe as an
-unclaimed kind does; numeric and heterogeneous arrays remain lists. Matching
-borrows the retained compound and never converts metadata on the tick."#]
+unclaimed kind does; numeric and heterogeneous arrays remain lists. Read `event.data`
+while claiming the kind and capture the parsed configuration in the predicate. Matching
+borrows the live stack, not the recipe's JSON or its converted compound."#]
     fn capabilities();
 }

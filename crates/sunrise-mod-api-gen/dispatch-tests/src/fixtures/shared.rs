@@ -1,6 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
 use mod_api::mod_api::BlockEntityTypeKey;
-use mod_api::mod_api::client::hud_layout::GuiDraw;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use sunrise_core::game_mode::GameMode;
@@ -173,8 +172,8 @@ mod generated {
         // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
-            Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
-            MapInfo, Zoom,
+            Command, CommandRegistration, Config, DeclarationError, Dispensed, InteractionResult,
+            MapDecoration, MapInfo, Zoom,
         };
         #[derive(Clone)]
         pub struct FluidModel;
@@ -644,8 +643,9 @@ impl MenuPart for Mod {
         let context = event.context;
         assert_eq!((context.player, context.pos), (Some(7), Some([1, 2, 3])));
         assert_eq!(event.container, MenuContainer::Grid);
-        assert_eq!(context.slots.len(), 2);
-        assert!(context.slots[1][0].is_none() && context.slots[1][1].is_some());
+        assert!(context.slot(MenuContainer::Grid, 0).is_none());
+        let stack = context.slot(MenuContainer::Grid, 1).unwrap();
+        assert_eq!((stack.item.as_ref(), stack.count), ("planks", 4));
         event.may_place = false;
         event.max_stack = self.id;
     }

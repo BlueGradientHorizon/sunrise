@@ -640,7 +640,7 @@ impl Game<'_> {
     }
     /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
     /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
+    /// (including its render bookkeeping) and `native_gui_layer_post`. Replacing
     /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
     /// draws from the chat screen, and a layer F1 hides fires neither hook.
     pub(in crate::game) fn native_gui_layer_pre(
@@ -699,15 +699,6 @@ impl Game<'_> {
         call: mod_api::__private::PlayerTickPostCall,
     ) {
         self.fire_player_tick_post(call);
-    }
-    pub(in crate::game) fn native_health_hud(
-        &mut self,
-        inputs: &mod_api::client::hud_layout::HealthInputs,
-        wi: i32,
-        hi: i32,
-        draws: &mut Option<Vec<GuiDraw>>,
-    ) {
-        self.fire_health_hud(inputs, wi, hi, draws);
     }
     /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
     /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.
@@ -1338,18 +1329,9 @@ impl Game<'_> {
     /// within their level. A name vanilla has is left out.
     pub(in crate::game) fn native_register_commands(
         &mut self,
-        commands: &mut Vec<mod_api::Command>,
+        commands: &mut Vec<mod_api::Answered<mod_api::CommandRegistration>>,
     ) {
         self.fire_register_commands(commands);
-    }
-    /// Execute a parsed mod command with its origin and effective permission.
-    pub(in crate::game) fn native_run_mod_command(
-        &mut self,
-        source: &CommandSource,
-        command: &CommandInvocation,
-        ran: &mut bool,
-    ) {
-        self.fire_run_mod_command(source, command, ran);
     }
     /// A player takes an item from an armor stand or puts one on it
     /// (`ArmorStand.interactAt`, after the stand's disabled-slot checks and
@@ -1377,7 +1359,7 @@ impl Game<'_> {
     /// tick (`VehicleMoveEvent`): `from` and `to` are its positions, heard
     /// after the tick moved it. Once a tick for each vehicle that carries a
     /// server player, whose state is then swapped in (as for
-    /// `native_run_mod_command`: `native_acting_player`, `native_tell` and
+    /// a command executor: `native_acting_player`, `native_tell` and
     /// the item helpers reach them; `player` is their UUID), and for one a
     /// server player rode and left, until it has stood still for ten
     /// seconds (`player` is none, nobody is swapped in). It only hears.
@@ -1405,7 +1387,7 @@ impl Game<'_> {
     /// spectator) and before the menu that was open closes. Set `cancel` and
     /// nothing opens: the open menu stays as it was and the click is spent.
     /// The player's state is swapped in for the call, as for
-    /// `native_run_mod_command`, so `native_acting_player`, `native_tell` and
+    /// a command executor, so `native_acting_player`, `native_tell` and
     /// the item helpers reach them. Not heard: a menu a mod opens
     /// (`open_menu`, unlike `open_mod_menu`), the inventory screen, and the editors (sign,
     /// book, command block). Server-side, for every player of the world.
@@ -1428,7 +1410,7 @@ impl Game<'_> {
     /// packet passed vanilla's checks (a creative player, a real slot, a valid
     /// stack) and before the slot changes or the stack drops. Set `cancel`
     /// and the packet is ignored. The player's state is swapped in for the
-    /// call, as for `native_run_mod_command`, so `native_acting_player`,
+    /// call, as for a command executor, so `native_acting_player`,
     /// `native_tell` and the item helpers reach them. Not heard: stacks a
     /// creative player gets other ways (middle-click pick block, `/give`).
     /// Server-side, for every player of the world.
@@ -1452,7 +1434,7 @@ impl Game<'_> {
     /// death's is placed for good (a bed or anchor, or the world spawn's
     /// free column, after the fallback when a respawn block was gone). The
     /// level of `to` is the one in place, and the player's state is swapped
-    /// in, as for `native_run_mod_command`: `native_acting_player`,
+    /// in, as for a command executor: `native_acting_player`,
     /// `native_tell`, the item helpers and the rest reach them. Heard for:
     /// Nether and End portals (also riding a vehicle, and leaving the End as
     /// its winner), `/execute in ... run tp` and any other command that
@@ -2556,26 +2538,26 @@ impl Game<'_> {
     ) {
         self.fire_prepare_item_enchant(player, name, pos, costs);
     }
-    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `craft` holds the inputs and the result as they were before. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
+    /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `inputs` borrows the input stacks and result from before the take. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
     pub(in crate::game) fn native_anvil_craft_pre(
         &mut self,
         player: u128,
         name: &str,
         pos: [i32; 3],
-        craft: &mod_api::item::menu::AnvilCraft,
+        inputs: &mod_api::item::menu::AnvilCraftInputs<'_>,
         cancel: &mut bool,
     ) {
-        self.fire_anvil_craft_pre(player, name, pos, craft, cancel);
+        self.fire_anvil_craft_pre(player, name, pos, inputs, cancel);
     }
-    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `craft` holds the inputs and the result as they were before. Not called when `native_anvil_craft_pre` cancelled.
+    /// A player took an anvil's result at `pos` and the levels, inputs and anvil wear are done (`AnvilCraftEvent.Post`); a broken anvil is already air. `inputs` borrows the input stacks and result from before the take. Not called when `native_anvil_craft_pre` cancelled.
     pub(in crate::game) fn native_anvil_craft_post(
         &mut self,
         player: u128,
         name: &str,
         pos: [i32; 3],
-        craft: &mod_api::item::menu::AnvilCraft,
+        inputs: &mod_api::item::menu::AnvilCraftInputs<'_>,
     ) {
-        self.fire_anvil_craft_post(player, name, pos, craft);
+        self.fire_anvil_craft_post(player, name, pos, inputs);
     }
     /// A smithing result was prepared for a server player at `pos`. Change it before it is sent.
     pub(in crate::game) fn native_prepare_smithing(
@@ -3047,26 +3029,24 @@ impl Game<'_> {
     ) {
         self.fire_player_level_change(player, name, from, to);
     }
-    /// A click in a menu a mod opened (`open_menu`), which moved
-    /// nothing: the menu's `slot` (its own first, then the player's
-    /// inventory, `native_menu_inventory_slot`; -999 outside), the `button`
-    /// and the click's `mode` (`ClickType`'s id) of the player `uuid`.
-    /// No player's state is swapped in: the menu helpers take the player's
-    /// UUID.
+    /// A server click in a mod menu before the default slot action. A listener sets
+    /// `handled` after doing the click itself.
     pub(in crate::game) fn native_menu_clicked(
         &mut self,
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
+        call: mod_api::__private::MenuClickedCall<'_>,
     ) {
-        self.fire_menu_clicked(uuid, window, slot, button, mode);
+        self.fire_menu_clicked(call);
     }
     /// A menu a mod opened closed: the player closed it, the server or a mod
     /// opened another, or the player left.
-    pub(in crate::game) fn native_menu_closed(&mut self, uuid: u128, window: i32) {
-        self.fire_menu_closed(uuid, window);
+    pub(in crate::game) fn native_menu_closed(
+        &mut self,
+        uuid: u128,
+        window: i32,
+        opening_hand: Option<mod_api::Hand>,
+        owned_slots: &[Option<mod_api::ItemStack>],
+    ) {
+        self.fire_menu_closed(uuid, window, opening_hand, owned_slots);
     }
     /// `Item.appendHoverText`: an item's own lines in its tooltip, after its
     /// name and before its components' (enchantments, lore, attributes). Add

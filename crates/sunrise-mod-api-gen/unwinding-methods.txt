@@ -903,11 +903,8 @@ player_inventory::player_selected_slot
 player_inventory::player_set_ender_chest_slot
 player_inventory::player_set_inventory_slot
 player_inventory::player_set_selected_slot
-player_menus::player_back_mod_menu_slots
 player_menus::player_container_menu
-player_menus::player_open_ender_chest
 player_menus::player_open_menu
-player_menus::player_open_mod_menu
 player_messages::player_action_bar
 player_messages::player_play_sound
 player_messages::player_send_map

@@ -1752,11 +1752,11 @@ impl Game<'_> {
         removed_y: Option<f64>,
         notified: bool,
     ) {
-        let Some(v) = self
-            .mob_object(rider)
-            .filter(|mob| !mob.removed)
-            .and_then(|mob| mob.extra.mount)
-        else {
+        let Some(mob) = self.mob_object(rider) else {
+            return;
+        };
+        let removing_rider = mob.removed;
+        let Some(v) = mob.extra.mount else {
             return;
         };
         if cart.is_some_and(|cart| cart.id != v) {
@@ -1768,7 +1768,7 @@ impl Game<'_> {
         // A callback can remove or remount the rider. Do not overwrite its decision.
         if self
             .mob_object(rider)
-            .is_none_or(|mob| mob.removed || mob.extra.mount != Some(v))
+            .is_none_or(|mob| mob.removed != removing_rider || mob.extra.mount != Some(v))
         {
             return;
         }
@@ -1782,6 +1782,14 @@ impl Game<'_> {
             .map(|m| m.id);
         if let Some(vehicle) = self.mob_object_mut(v) {
             vehicle.extra.rider = remaining;
+        }
+        // LivingEntity.dismountVehicle leaves a removed rider at its own position.
+        if removing_rider {
+            if let Some(mob) = self.mob_object_mut(rider) {
+                mob.extra.passenger = false;
+            }
+            self.release_removed_vehicle(v);
+            return;
         }
         let at = if let Some(y) = removed_y {
             self.mob_object(rider).map(|mob| {

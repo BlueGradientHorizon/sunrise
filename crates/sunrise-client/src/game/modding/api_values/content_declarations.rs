@@ -19,6 +19,20 @@ pub(in crate::game) fn push_reaction(
     }
 }
 
+pub(in crate::game) fn api_push_reaction(
+    reaction: sunrise_world::level::PushReaction,
+) -> mod_api::PushReaction {
+    use mod_api::PushReaction as Api;
+    use sunrise_world::level::PushReaction as World;
+    match reaction {
+        World::PushPull => Api::PushPull,
+        World::Push => Api::Push,
+        World::Popped => Api::Popped,
+        World::Immoveable => Api::Immoveable,
+        World::IgnoreEntity => Api::IgnoreEntity,
+    }
+}
+
 impl TryIntoEngine<()> for mod_api::GateSound {
     type Engine = engine::GateSound;
     type Error = String;
@@ -185,6 +199,15 @@ impl TryIntoEngine<()> for mod_api::Block {
                 .transpose()?,
             block_item: self.block_item.clone(),
             components: component_patch("block", &self.id, &self.components)?,
+            suspicious_stew_effects: self.suspicious_stew_effects.as_ref().map(|effects| {
+                effects
+                    .iter()
+                    .map(|(id, duration)| engine::StewEffect {
+                        id: id.clone(),
+                        duration: *duration,
+                    })
+                    .collect()
+            }),
             connects_to: self.connects_to.clone(),
             thickness: self.thickness,
             wood_type: self.wood_type.clone(),

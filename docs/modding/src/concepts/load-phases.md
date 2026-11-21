@@ -21,12 +21,11 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 | Reloading | Published asset/data queries, registry facts, settings and mod-list reads, listener registration, and `DataLoadContext` callbacks; no world handles or transactions. |
 | World | The owning game's side-typed `ServerHost` or `ClientHost`. |
 
-`RegistrationContext::instance_dir()` reads the instance directory captured before
-registration begins, as an `InstanceDirectory`: `Unix(Vec<u8>)` preserves raw Unix
-path bytes, and `Windows(Vec<u16>)` preserves Windows UTF-16 code units, including
-unpaired surrogates. Never convert Unix bytes with a lossy UTF-8 conversion when
-constructing a filesystem path. A context
-with no engine snapshot returns `RegistrationReadError::Unavailable`.
+`RegistrationContext::instance_dir()` returns `Result<&std::path::Path, RegistrationReadError>`.
+The path is borrowed from the startup snapshot and preserves the host's native encoding,
+including non-Unicode names. Use it directly for path operations, or call
+`cx.instance_dir()?.to_path_buf()` if you need to keep it beyond registration. A context
+with no startup snapshot returns `RegistrationReadError::Unavailable`.
 
 A mod that does slow work while the game starts shows it on the startup loading screen
 (NeoForge's `StartupNotificationManager` and `ProgressMeter`). `RegistrationContext::progress(label,
@@ -184,8 +183,8 @@ and dependencies express intermod ordering. Load complete is the edge after init
 through `DataLoadContext::origin()` and `LoopContext::side()` as before; if a payload needs such
 a fact, map it into a field of your own [Wire record](wire-types.md).
 
-FML's file and path APIs (`ModList` file reads, config full paths, the game directory, update URLs) are
-replaced on purpose; [FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) lists each one.
+[FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) compares the two loaders'
+file and path APIs, including the game directory.
 
 ## Settings snapshot limits
 

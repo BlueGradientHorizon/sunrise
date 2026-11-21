@@ -6,10 +6,20 @@ use super::{
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    RegisterGuiLayersEvent, RegistrationContext, content::crash::current_native_mod,
+    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPreEvent,
+    client::hud_layout::GuiDraw, content::crash::current_native_mod,
 };
-use std::sync::Mutex;
-use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
+use std::sync::{Arc, Mutex};
+use sunrise_client::{
+    chunk::Chunk,
+    gui_layers::VanillaGuiLayer,
+    hud::HudBatch,
+    motion::{MotionWorld, PlayerMotion, WATER, dry_side},
+};
+use sunrise_core::geometry::Vec3;
+
+#[path = "gui_layer_tests/hidden_panic.rs"]
+mod hidden_panic;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -151,6 +161,277 @@ impl Hooks for Editor {
 
 fn take() -> Vec<String> {
     std::mem::take(&mut *LOG.lock().unwrap())
+}
+
+const PLAYER_HEALTH: &str = "minecraft:player_health";
+const AIR_LEVEL: &str = "minecraft:air_level";
+const BUBBLE_POP: &str = "ui.hud.bubble_pop";
+// Equal RGB channels make the marker's packed vertex colour independent of channel order.
+const HEALTH_MARKER: u32 = 0xFF2D_2D2D;
+
+#[derive(Default)]
+struct HealthTrace {
+    cancel_gui: bool,
+    cancel_health: bool,
+    cancel_air: bool,
+    calls: Vec<&'static str>,
+}
+
+struct HealthLayer {
+    replace: bool,
+    trace: Arc<Mutex<HealthTrace>>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for HealthLayer {
+    fn register_gui_layers(&self, _: &RegistrationContext, event: &mut RegisterGuiLayersEvent<'_>) {
+        if self.replace {
+            let trace = self.trace.clone();
+            assert!(event.layers.replace_layer(
+                PLAYER_HEALTH,
+                Box::new(move |_, draw| {
+                    trace.lock().unwrap().calls.push("replacement");
+                    draw.gui_paint(&[GuiDraw::Fill {
+                        x0: 80,
+                        y0: 100,
+                        x1: 150,
+                        y1: 104,
+                        color: HEALTH_MARKER,
+                    }])
+                    .unwrap();
+                }),
+            ));
+        }
+        let trace = self.trace.clone();
+        assert!(event.layers.wrap_layer(
+            AIR_LEVEL,
+            Box::new(move |ctx| {
+                trace.lock().unwrap().calls.push("air wrapper");
+                ctx.draw_previous();
+            }),
+        ));
+    }
+
+    fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+        if self.trace.lock().unwrap().cancel_gui {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
+    }
+
+    fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+        let mut trace = self.trace.lock().unwrap();
+        match event.layer {
+            PLAYER_HEALTH => {
+                trace.calls.push("health pre");
+                if trace.cancel_health {
+                    return Flow::Cancel;
+                }
+            }
+            "minecraft:armor_level" => trace.calls.push("armor pre"),
+            "minecraft:food_level" => trace.calls.push("food pre"),
+            "minecraft:vehicle_health" => trace.calls.push("vehicle pre"),
+            AIR_LEVEL => {
+                trace.calls.push("air pre");
+                if trace.cancel_air {
+                    return Flow::Cancel;
+                }
+            }
+            _ => {}
+        }
+        Flow::Continue
+    }
+
+    fn player_heart_type(&self, _: &mut dyn ClientHost, _: &mut PlayerHeartTypeEvent) {
+        self.trace.lock().unwrap().calls.push("hearts");
+    }
+
+    fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+        let call = match event.layer {
+            PLAYER_HEALTH => "health post",
+            "minecraft:armor_level" => "armor post",
+            "minecraft:food_level" => "food post",
+            "minecraft:vehicle_health" => "vehicle post",
+            AIR_LEVEL => "air post",
+            _ => return,
+        };
+        self.trace.lock().unwrap().calls.push(call);
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn health_extraction_runs_only_in_the_vanilla_layer_body() {
+    const CASE: &str = "SUNRISE_HEALTH_LAYER_FIXTURE";
+    if run_fresh_cases(
+        "game::gui_layer_tests::health_extraction_runs_only_in_the_vanilla_layer_body",
+        CASE,
+        &["vanilla", "replace"],
+    ) {
+        return;
+    }
+    let replace = std::env::var(CASE).unwrap() == "replace";
+    let trace = Arc::new(Mutex::new(HealthTrace::default()));
+    with_client_game(|game| {
+        mod_platform::__private::install(
+            vec![ModEntry::new(
+                "health-test",
+                Box::new(HealthLayer {
+                    replace,
+                    trace: trace.clone(),
+                }),
+            )]
+            .into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        game.ui.hide_gui = false;
+        game.set_mode_id(0);
+        let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
+        player.health.set_health(12.0, false).unwrap();
+        player
+            .set_modifier(
+                "minecraft:armor",
+                "health-test:armor",
+                2.0,
+                "add_value",
+                true,
+            )
+            .unwrap();
+        // At 181/300, Hud.extractAirBubbles has six full bubbles and one popping.
+        // Above water the same depleted air instead resets the pop latch, with no sound.
+        player.air = 181;
+        game.player = Some(player);
+        for (under_water, creative, hidden) in [
+            (false, false, false),
+            (true, false, false),
+            (true, true, false),
+            (true, false, true),
+        ] {
+            game.set_mode_id(if creative { 1 } else { 0 });
+            game.ui.hide_gui = hidden;
+            if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
+                let water = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:water")
+                    .unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                for y in 64..=66 {
+                    game.world.set(2, y, 2, water).unwrap();
+                }
+                let player = game.player.as_mut().unwrap();
+                MotionWorld {
+                    entities: &[],
+                    player,
+                    scene: &mut game.world,
+                    assets: &game.pack.assets,
+                    collision_binding: game.collision,
+                    resources: game.motion,
+                    health: &game.health_resources,
+                    tag_items: None,
+                    loop_context: &game.loop_context,
+                    side: dry_side(),
+                    damage_hooks: &game.damage_hooks,
+                    block_registries: None,
+                }
+                .update_fluids()
+                .unwrap();
+                assert!(player.is_eye_in_fluid(WATER));
+            }
+            let vanilla_eligible = !creative && !hidden;
+            let vetoes: &[(bool, bool)] = if !vanilla_eligible {
+                &[(false, false)]
+            } else {
+                &[(true, false), (true, true), (false, false), (false, true)]
+            };
+            for &(cancel_health, cancel_air) in vetoes {
+                game.health_hud.last_health = 17;
+                game.health_hud.last_bubble_pop_sound = 3;
+                game.audio.heard.remove(BUBBLE_POP);
+                *trace.lock().unwrap() = HealthTrace {
+                    cancel_health,
+                    cancel_air,
+                    ..HealthTrace::default()
+                };
+                let batch = game.hud_layers([640, 480]);
+                let calls = std::mem::take(&mut trace.lock().unwrap().calls);
+                let mut expected = vec!["health pre"];
+                if !cancel_health {
+                    if replace {
+                        expected.push("replacement");
+                    } else if vanilla_eligible {
+                        expected.push("hearts");
+                    }
+                    expected.push("health post");
+                }
+                expected.extend([
+                    "armor pre",
+                    "armor post",
+                    "food pre",
+                    "food post",
+                    "vehicle pre",
+                    "vehicle post",
+                    "air pre",
+                ]);
+                if !cancel_air {
+                    expected.extend(["air wrapper", "air post"]);
+                }
+                assert_eq!(calls, expected);
+                let painted_replacement = !cancel_health && replace;
+                assert_eq!(
+                    batch.vertices.iter().any(|v| v.color == HEALTH_MARKER),
+                    painted_replacement,
+                );
+                if painted_replacement {
+                    assert_eq!(game.ui.room.bottom(), 100.0);
+                } else if !vanilla_eligible {
+                    assert_eq!(
+                        game.ui.room.bottom(),
+                        batch.height,
+                        "no vanilla status paint"
+                    );
+                } else {
+                    assert!(game.ui.room.bottom() > 100.0);
+                }
+                assert_eq!(
+                    game.health_hud.last_health,
+                    if cancel_health || replace || !vanilla_eligible {
+                        17
+                    } else {
+                        12
+                    }
+                );
+                let draws_air = !cancel_air && vanilla_eligible;
+                let pops = draws_air && under_water;
+                assert_eq!(
+                    game.health_hud.last_bubble_pop_sound,
+                    if !draws_air {
+                        3
+                    } else if pops {
+                        7
+                    } else {
+                        0
+                    }
+                );
+                // The sound is local-only; `heard` counts it even with the device disabled.
+                assert_eq!(game.audio.heard.get(BUBBLE_POP).copied(), pops.then_some(1));
+            }
+        }
+        // The last frame hid the vanilla HUD. The global veto still applies to its slots.
+        *trace.lock().unwrap() = HealthTrace {
+            cancel_gui: true,
+            ..HealthTrace::default()
+        };
+        let batch = game.hud_layers([640, 480]);
+        assert!(trace.lock().unwrap().calls.is_empty());
+        assert!(!batch.vertices.iter().any(|v| v.color == HEALTH_MARKER));
+    });
 }
 
 #[test]

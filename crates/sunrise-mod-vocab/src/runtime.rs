@@ -462,6 +462,25 @@ pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> 
     }
 }
 
+/// How many listeners of `hook` are poisoned for the session.
+pub(crate) fn poisoned_count(hook: generated::HookId) -> usize {
+    installed().map_or(0, |installed| {
+        if installed
+            .poison_free
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return 0;
+        }
+        installed
+            .poisons
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|poisons| poisons[hook as usize].as_ref())
+            .map_or(0, |poisoned| poisoned.len())
+    })
+}
+
 /// The process-wide list in dispatch order, or an empty list before installation.
 pub(crate) fn mods() -> &'static [ModEntry] {
     installed().map_or(&[], |installed| &installed.mods)
@@ -616,6 +635,15 @@ pub(crate) fn entered_with_id(
     entered_subscribers(hook_id, hook).map(|entry| (entry.id, &*entry.hooks))
 }
 
+/// [`entered_with_id`] filtered before entering each listener's scope.
+pub(crate) fn entered_with_id_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> + 'a {
+    entered_subscribers_matching(hook_id, hook, allow).map(|entry| (entry.id, &*entry.hooks))
+}
+
 /// A hook's enabled subscribers in dispatch order (descending priority, then dependency order),
 /// each marked as running `hook` until the next one is (or the loop ends), so a panic in it
 /// names the mod.
@@ -623,9 +651,17 @@ pub(crate) fn entered_subscribers(
     hook_id: generated::HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = &'static ModEntry> {
+    entered_subscribers_matching(hook_id, hook, |_| true)
+}
+
+fn entered_subscribers_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = &'static ModEntry> + 'a {
     let mut crash_guard = crate::dispatch_scope::ModGuard::empty();
     let scope = crate::dispatch_scope::snapshot();
-    listening(hook_id).map(move |(_, entry)| {
+    listening_matching(hook_id, allow).map(move |(_, entry)| {
         scope.replace(
             &mut crash_guard,
             crate::content::crash::ModCall {
@@ -778,23 +814,34 @@ pub(crate) fn receives_cancelled(hook: generated::HookId) -> bool {
 pub(crate) fn listening(
     hook_id: generated::HookId,
 ) -> impl Iterator<Item = (bool, &'static ModEntry)> {
-    installed().into_iter().flat_map(move |installed| {
-        installed
-            .subscribers
-            .subscribers(hook_id as usize)
-            .filter(move |subscriber| {
-                !installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed)
-                    && !is_poisoned(installed, hook_id, installed.mods[subscriber.index].id)
-            })
-            .map(move |subscriber| {
-                // Every listener of a hook the loop reaches is one more entered: scoped
-                // resources end the previous listener's lease on it.
-                bump_listener_serial();
-                (
-                    subscriber.receives_cancelled,
-                    &installed.mods[subscriber.index],
-                )
-            })
+    listening_matching(hook_id, |_| true)
+}
+
+fn listening_matching<'a>(
+    hook_id: generated::HookId,
+    mut allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = (bool, &'static ModEntry)> + 'a {
+    let mut subscribers = installed().map(|installed| {
+        (
+            installed,
+            installed.subscribers.subscribers(hook_id as usize),
+        )
+    });
+    std::iter::from_fn(move || {
+        let (installed, subscribers) = subscribers.as_mut()?;
+        for subscriber in subscribers.by_ref() {
+            let entry = &installed.mods[subscriber.index];
+            if installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed)
+                || is_poisoned(installed, hook_id, entry.id)
+                || !allow(entry.id)
+            {
+                continue;
+            }
+            // Scoped resources end the previous listener's lease on entry.
+            bump_listener_serial();
+            return Some((subscriber.receives_cancelled, entry));
+        }
+        None
     })
 }
 
