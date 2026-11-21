@@ -52,6 +52,85 @@ pub fn dispatch_pending(endpoint: &Endpoint, main: &MainQueue) {
     }
 }
 
+/// Run one `HandlerThread::Network` application payload inside a client play bundle:
+/// replies publish under the epoch gate, while main-thread `Work` is staged into
+/// `staged` so it publishes in exact subpacket order with the rest of the bundle.
+pub fn dispatch_bundled_network(
+    mut incoming: Incoming,
+    endpoint: &Endpoint,
+    send: &crate::net::ingress::Producer<crate::net::Event>,
+    staged: &mut Vec<crate::net::ingress::Prepared<crate::net::Event>>,
+) -> Option<Text> {
+    if !incoming.epoch.active() {
+        return None;
+    }
+    let main = MainQueue::Client(send.clone());
+    let Body::Payload(bytes) =
+        std::mem::replace(&mut incoming.body, Body::Payload(PayloadBytes(Vec::new())))
+    else {
+        unreachable!("bundled network payload carries raw payload bytes");
+    };
+    let mut context = NetworkContext {
+        incoming: &incoming,
+        endpoint,
+        main: &main,
+        after: Vec::new(),
+        disconnect: None,
+    };
+    match incoming.receiver.handle(bytes, &mut context) {
+        Err(mod_api::PayloadHandleError::Failed(error)) => {
+            drop(context);
+            handler_failed(&incoming, endpoint, &error);
+            None
+        }
+        Ok(()) => {
+            let reason = context.disconnect.take();
+            let mut after = std::mem::take(&mut context.after);
+            drop(context);
+            let mut staged_work = Vec::new();
+            let result = incoming.epoch.with_active(|| {
+                for action in &mut after {
+                    match action.take().unwrap() {
+                        After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
+                        After::Work(PreparedMain::Client(prepared)) => {
+                            staged_work.push(prepared);
+                        }
+                        After::Work(PreparedMain::Server(_)) => {
+                            unreachable!("client MainQueue produces client PreparedMain")
+                        }
+                    }
+                }
+                Ok::<(), FailedPublication>(())
+            });
+            drop(after);
+            match result {
+                Some(Err(error)) => {
+                    drop(staged_work);
+                    let message = match &error {
+                        FailedPublication::Reply(error) => {
+                            format!("payload {} reply refused: {error:?}", incoming.id.0)
+                        }
+                        FailedPublication::Main(error) => {
+                            format!("payload main refused: {:?}", error.reason())
+                        }
+                    };
+                    drop(error);
+                    endpoint.disconnect(failure(&message));
+                    None
+                }
+                Some(Ok(())) => {
+                    staged.extend(staged_work);
+                    reason
+                }
+                None => {
+                    drop(staged_work);
+                    None
+                }
+            }
+        }
+    }
+}
+
 fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
     if !incoming.epoch.active() {
         return;

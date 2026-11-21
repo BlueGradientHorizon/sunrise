@@ -50,12 +50,42 @@ pub struct Prepared<T> {
     permit: byte_channel::Permit<T>,
 }
 impl<T> Prepared<T> {
+    /// Inspect the prepared value before publishing.
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+    /// Mutably inspect the prepared value before publishing.
+    pub fn value_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+    /// Unwrap the value and release its byte reservation without publishing.
+    pub fn into_value(self) -> T {
+        self.value
+    }
     /// Failure returns the owned value, so its resources can be dropped after
     /// releasing any publication gate held by the caller.
     pub fn publish(self) -> Result<(), Refused<T>> {
         self.permit.publish(self.value).map_err(|value| Refused {
             reason: Refusal::Closed,
             value,
+        })
+    }
+    /// Publish every prepared item from the same channel atomically under one lock.
+    /// On closure, returns all owned values so they can be dropped outside any lock
+    /// or publication gate.
+    pub fn publish_batch(items: Vec<Self>) -> Result<(), Vec<Refused<T>>> {
+        let pairs = items
+            .into_iter()
+            .map(|prepared| (prepared.permit, prepared.value))
+            .collect();
+        byte_channel::Permit::publish_batch(pairs).map_err(|values| {
+            values
+                .into_iter()
+                .map(|value| Refused {
+                    reason: Refusal::Closed,
+                    value,
+                })
+                .collect()
         })
     }
 }

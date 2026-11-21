@@ -1,6 +1,6 @@
 //! Connection epochs and main-executor barriers, independent of gameplay ownership.
 mod payload_queue;
-pub(super) use payload_queue::PayloadTurn;
+pub(crate) use payload_queue::PayloadTurn;
 #[cfg(test)]
 mod tests;
 use super::{Local, Peer, Side};

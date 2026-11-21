@@ -863,18 +863,31 @@ mod tests {
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
-                let (tx, rx) = sunrise_client::net::ingress::channel(1024, |_| 1).unwrap();
-                tx.send(sunrise_client::net::Event::Bundle(vec![
-                    spawn(15, "mymod:missile", [1.5, 70.0, 2.5]),
-                    snapshot(15, Some(42)),
-                ]))
+                let (tx, rx) = sunrise_client::net::ingress::channel(4096, |_| 1).unwrap();
+                sunrise_client::net::ingress::Prepared::publish_batch(vec![
+                    tx.prepare(sunrise_client::net::Event::BundleStart).unwrap(),
+                    tx.prepare(sunrise_client::net::Event::Packet(Box::new(spawn(
+                        15,
+                        "mymod:missile",
+                        [1.5, 70.0, 2.5],
+                    ))))
+                    .unwrap(),
+                    tx.prepare(sunrise_client::net::Event::Packet(Box::new(snapshot(
+                        15,
+                        Some(42),
+                    ))))
+                    .unwrap(),
+                    tx.prepare(sunrise_client::net::Event::BundleEnd).unwrap(),
+                ])
                 .unwrap();
-                let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
-                game.remote
-                    .as_mut()
-                    .unwrap()
-                    .backlog
-                    .push_back(super::super::Received::Event(event, credit));
+                for receipt in rx.take_turn() {
+                    let (event, credit) = receipt.into_parts();
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .backlog
+                        .push_back(super::super::Received::Event(event, credit));
+                }
                 game.poll_remote_events(true).unwrap();
 
                 let held = rows(game);

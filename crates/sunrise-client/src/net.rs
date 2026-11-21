@@ -103,9 +103,12 @@ pub enum Event {
         name: String,
     },
     Packet(Box<play::Clientbound>),
-    /// `ClientboundBundlePacket`: packets delimited by `BundleDelimiter`, delivered
-    /// atomically in one game-thread turn (`ClientPacketListener.handleBundlePacket`).
-    Bundle(Vec<play::Clientbound>),
+    /// Opening boundary of a `ClientboundBundlePacket`: every event up to
+    /// [`Self::BundleEnd`] was published atomically under one queue lock and
+    /// dispatches in one game-thread turn (`ClientPacketListener.handleBundlePacket`).
+    BundleStart,
+    /// Closing boundary of a `ClientboundBundlePacket`.
+    BundleEnd,
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
@@ -170,7 +173,9 @@ impl Event {
             | Self::CustomBooks
             | Self::Reconfiguring
             | Self::ClearDialog
-            | Self::PackPop(_) => 0,
+            | Self::PackPop(_)
+            | Self::BundleStart
+            | Self::BundleEnd => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
                 in_flight: _,
@@ -187,14 +192,6 @@ impl Event {
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
             }
-            Self::Bundle(packets) => packets
-                .capacity()
-                .saturating_mul(size_of::<play::Clientbound>())
-                .saturating_add(
-                    packets
-                        .iter()
-                        .fold(0usize, |acc, p| acc.saturating_add(p.owned_heap_bytes())),
-                ),
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
             Self::PackPush(packet) => packet.owned_heap_bytes(),
@@ -1118,6 +1115,24 @@ fn run(
     )
 }
 
+fn queue_refusal(error: ingress::Refused<Event>) -> Result<Reason, Reason> {
+    match error.reason {
+        ingress::Refusal::Pressure => Err(Reason::plain(error.to_string())),
+        ingress::Refusal::Closed => Ok(Reason::plain("Disconnected")),
+    }
+}
+
+fn prepare_event(
+    send: &ingress::Producer<Event>,
+    event: Event,
+) -> Result<ingress::Prepared<Event>, Result<Reason, Reason>> {
+    send.prepare(event).map_err(queue_refusal)
+}
+
+fn send_event(send: &ingress::Producer<Event>, event: Event) -> Result<(), Result<Reason, Reason>> {
+    send.send(event).map_err(queue_refusal)
+}
+
 fn receive_play(
     reader: &mut ConnReader,
     shared_writer: &Arc<Mutex<Option<QueuedWriter>>>,
@@ -1132,10 +1147,10 @@ fn receive_play(
 ) -> Result<Reason, Reason> {
     // ClientPacketListener.chunkBatchSizeCalculator.
     let mut batch = sunrise_protocol::chunk_batch::ChunkBatchSize::default();
-    // PacketBundlePacker + BundlerInfo.BUNDLE_SIZE_LIMIT: collect delimited play packets into
-    // one Event::Bundle for atomic game-thread dispatch.
+    // PacketBundlePacker + BundlerInfo.BUNDLE_SIZE_LIMIT: frame delimited play packets
+    // before routing and charge each retained subpacket against ingress credit immediately.
     const MAX_BUNDLE_PACKETS: usize = 4096;
-    let mut bundle: Option<Vec<play::Clientbound>> = None;
+    let mut bundle: Option<Vec<ingress::Prepared<Event>>> = None;
     loop {
         let (id, payload) = reader
             .recv()
@@ -1170,6 +1185,285 @@ fn receive_play(
                 let _ = w.send(&p.encode());
             }
         };
+        if matches!(packet, play::Clientbound::BundleDelimiter(_)) {
+            let Some(open) = bundle.take() else {
+                bundle = Some(Vec::new());
+                continue;
+            };
+            if open.is_empty() {
+                continue;
+            }
+            let mut staged: Vec<ingress::Prepared<Event>> = Vec::with_capacity(open.len() + 2);
+            let start = match prepare_event(send, Event::BundleStart) {
+                Ok(prepared) => prepared,
+                Err(exit) => return exit,
+            };
+            staged.push(start);
+            let mut wait_epoch: Option<Arc<crate::raw_payloads::connection::Epoch>> = None;
+            let mut network_disconnect: Option<mod_api::Text> = None;
+            let mut end_after: Option<Result<Reason, Reason>> = None;
+            let mut bundle_endpoint: Option<crate::raw_payloads::Endpoint> = None;
+
+            for prepared in open {
+                let needs_routing = match prepared.value() {
+                    Event::Packet(packet) => matches!(
+                        **packet,
+                        play::Clientbound::KeepAlive(_)
+                            | play::Clientbound::ChunkBatchStart(_)
+                            | play::Clientbound::ChunkBatchFinished(_)
+                            | play::Clientbound::ResourcePackPush(_)
+                            | play::Clientbound::ResourcePackPop(_)
+                            | play::Clientbound::CookieRequest(_)
+                            | play::Clientbound::StoreCookie(_)
+                            | play::Clientbound::ServerLinks(_)
+                            | play::Clientbound::Transfer(_)
+                            | play::Clientbound::Disconnect(_)
+                            | play::Clientbound::CustomPayload(_)
+                    ),
+                    _ => false,
+                };
+                if !needs_routing {
+                    staged.push(prepared);
+                    continue;
+                }
+                let Event::Packet(packet) = prepared.into_value() else {
+                    unreachable!("open bundle only holds Event::Packet");
+                };
+                match *packet {
+                    play::Clientbound::KeepAlive(k) => reply(play::Serverbound::KeepAlive(k)),
+                    play::Clientbound::ChunkBatchStart(_) => batch.on_batch_start(),
+                    play::Clientbound::ChunkBatchFinished(p) => {
+                        batch.on_batch_finished(p.size);
+                        reply(play::Serverbound::ChunkBatchReceived(
+                            play::ChunkBatchReceived {
+                                chunks_per_tick: batch.desired_chunks_per_tick(),
+                            },
+                        ));
+                    }
+                    play::Clientbound::ResourcePackPush(p) => {
+                        match prepare_event(send, Event::PackPush(p)) {
+                            Ok(prepared) => staged.push(prepared),
+                            Err(exit) => return exit,
+                        }
+                    }
+                    play::Clientbound::ResourcePackPop(p) => {
+                        match prepare_event(send, Event::PackPop(p.id)) {
+                            Ok(prepared) => staged.push(prepared),
+                            Err(exit) => return exit,
+                        }
+                    }
+                    play::Clientbound::CookieRequest(q) => {
+                        let payload = cookies.lock().unwrap().get(&q.key).cloned();
+                        reply(play::Serverbound::CookieResponse(cfg::CookieResponse {
+                            key: q.key,
+                            payload,
+                        }));
+                    }
+                    play::Clientbound::StoreCookie(p) => {
+                        cookies.lock().unwrap().insert(p.key, p.payload);
+                    }
+                    play::Clientbound::ServerLinks(p) => {
+                        match prepare_event(send, Event::ServerLinks(p.links)) {
+                            Ok(prepared) => staged.push(prepared),
+                            Err(exit) => return exit,
+                        }
+                    }
+                    play::Clientbound::Transfer(p) => {
+                        match prepare_event(
+                            send,
+                            Event::Transfer {
+                                host: p.host,
+                                port: p.port,
+                            },
+                        ) {
+                            Ok(prepared) => staged.push(prepared),
+                            Err(exit) => return exit,
+                        }
+                        end_after = Some(Ok(Reason::keyed("disconnect.transfer", lang)));
+                        break;
+                    }
+                    play::Clientbound::Disconnect(d) => {
+                        end_after = Some(Ok(Reason::tag(&d.reason, lang)));
+                        break;
+                    }
+                    play::Clientbound::CustomPayload(p) if p.channel == "minecraft:brand" => {
+                        if let Some(event) = brand_event(&p) {
+                            match prepare_event(send, event) {
+                                Ok(prepared) => staged.push(prepared),
+                                Err(exit) => return exit,
+                            }
+                        }
+                    }
+                    play::Clientbound::CustomPayload(p) if p.channel == crate::lod_net::CHANNEL => {
+                        far.deliver(p.data);
+                    }
+                    play::Clientbound::CustomPayload(payload) => {
+                        let endpoint = bundle_endpoint.get_or_insert_with(|| {
+                            crate::raw_payloads::Endpoint::client(
+                                shared_writer.clone(),
+                                configuring.clone(),
+                                payloads.clone(),
+                                send.clone(),
+                            )
+                        });
+                        match crate::raw_payloads::Incoming::classify(
+                            endpoint.transport(),
+                            sunrise_protocol::payload_negotiation::Phase::Play,
+                            payload,
+                        )
+                        .map_err(|error| Reason::plain(error.to_string()))?
+                        {
+                            crate::raw_payloads::Classified::Other(payload) => {
+                                match prepare_event(
+                                    send,
+                                    Event::Packet(Box::new(play::Clientbound::CustomPayload(
+                                        payload,
+                                    ))),
+                                ) {
+                                    Ok(prepared) => staged.push(prepared),
+                                    Err(exit) => return exit,
+                                }
+                            }
+                            crate::raw_payloads::Classified::Application(incoming) => {
+                                if !incoming.epoch.active() {
+                                    continue;
+                                }
+                                if incoming.receiver.thread == mod_api::HandlerThread::Main {
+                                    wait_epoch = Some(incoming.epoch.clone());
+                                    match prepare_event(send, Event::RawPayload(Box::new(incoming)))
+                                    {
+                                        Ok(prepared) => staged.push(prepared),
+                                        Err(exit) => return exit,
+                                    }
+                                } else {
+                                    let before = staged.len();
+                                    let epoch = incoming.epoch.clone();
+                                    if let Some(reason) =
+                                        crate::raw_payloads::dispatch_bundled_network(
+                                            incoming,
+                                            endpoint,
+                                            send,
+                                            &mut staged,
+                                        )
+                                    {
+                                        network_disconnect.get_or_insert(reason);
+                                    }
+                                    if staged.len() > before {
+                                        wait_epoch = Some(epoch);
+                                    }
+                                }
+                            }
+                            crate::raw_payloads::Classified::Raw(_) => {}
+                        }
+                    }
+                    _ => unreachable!("only routed packets reach this branch"),
+                }
+            }
+
+            if staged.len() > 1 {
+                let end = match prepare_event(send, Event::BundleEnd) {
+                    Ok(prepared) => prepared,
+                    Err(exit) => return exit,
+                };
+                staged.push(end);
+                if let Some(epoch) = &wait_epoch
+                    && let Some(connection) = payloads.connection.as_ref()
+                {
+                    let Some(turn) = connection.claim_turn(epoch) else {
+                        drop(staged);
+                        if let Some(exit) = end_after {
+                            return exit;
+                        }
+                        continue;
+                    };
+                    if let Some(last_raw) =
+                        staged.iter_mut().rev().find_map(|p| match p.value_mut() {
+                            Event::RawPayload(incoming) => Some(incoming),
+                            _ => None,
+                        })
+                    {
+                        last_raw.attach_turn(turn);
+                    }
+                    let mut batch_to_publish = Some(staged);
+                    let published = epoch.with_active(|| {
+                        ingress::Prepared::publish_batch(batch_to_publish.take().unwrap())
+                    });
+                    drop(batch_to_publish);
+                    match published {
+                        Some(Ok(())) => {
+                            if let Some(reason) = network_disconnect
+                                && let Some(endpoint) = &bundle_endpoint
+                            {
+                                endpoint.disconnect(reason);
+                            }
+                            if let Some(exit) = end_after {
+                                return exit;
+                            }
+                            let endpoint = bundle_endpoint.unwrap_or_else(|| {
+                                crate::raw_payloads::Endpoint::client(
+                                    shared_writer.clone(),
+                                    configuring.clone(),
+                                    payloads.clone(),
+                                    send.clone(),
+                                )
+                            });
+                            let main = crate::raw_payloads::MainQueue::Client(send.clone());
+                            while connection.wait_payloads(epoch) {
+                                crate::raw_payloads::dispatch_pending(&endpoint, &main);
+                            }
+                        }
+                        Some(Err(refused)) => {
+                            drop(refused);
+                            return Ok(Reason::plain("Disconnected"));
+                        }
+                        None => {
+                            if let Some(exit) = end_after {
+                                return exit;
+                            }
+                        }
+                    }
+                } else {
+                    if let Err(refused) = ingress::Prepared::publish_batch(staged) {
+                        drop(refused);
+                        return Ok(Reason::plain("Disconnected"));
+                    }
+                    if let Some(reason) = network_disconnect
+                        && let Some(endpoint) = &bundle_endpoint
+                    {
+                        endpoint.disconnect(reason);
+                    }
+                    if let Some(exit) = end_after {
+                        return exit;
+                    }
+                }
+            } else {
+                drop(staged);
+                if let Some(reason) = network_disconnect
+                    && let Some(endpoint) = &bundle_endpoint
+                {
+                    endpoint.disconnect(reason);
+                }
+                if let Some(exit) = end_after {
+                    return exit;
+                }
+            }
+            continue;
+        }
+        if let Some(open) = bundle.as_mut() {
+            // BundlerInfo.createForPacket: terminal play packets (`isTerminal() == true`)
+            // are illegal inside a bundle (`ClientboundStartConfigurationPacket`).
+            if matches!(packet, play::Clientbound::StartConfiguration(_)) {
+                return Err(Reason::plain("Terminal message received in bundle"));
+            }
+            if open.len() >= MAX_BUNDLE_PACKETS {
+                return Err(Reason::plain("Too many packets in a bundle"));
+            }
+            match prepare_event(send, Event::Packet(Box::new(packet))) {
+                Ok(prepared) => open.push(prepared),
+                Err(exit) => return exit,
+            }
+            continue;
+        }
         match packet {
             play::Clientbound::KeepAlive(k) => reply(play::Serverbound::KeepAlive(k)),
             // ClientPacketListener.handleChunkBatchStart and handleChunkBatchFinished run on the network
@@ -1184,26 +1478,23 @@ fn receive_play(
                     },
                 ));
             }
-            play::Clientbound::BundleDelimiter(_) => {
-                if let Some(packets) = bundle.take() {
-                    if !packets.is_empty() && send.send(Event::Bundle(packets)).is_err() {
-                        return Ok(Reason::plain("Disconnected"));
-                    }
-                } else {
-                    bundle = Some(Vec::new());
+            play::Clientbound::BundleDelimiter(_) => unreachable!("handled before routing"),
+            play::Clientbound::ResourcePackPush(p) => {
+                if let Err(exit) = send_event(send, Event::PackPush(p)) {
+                    return exit;
                 }
             }
-            play::Clientbound::ResourcePackPush(p) => {
-                let _ = send.send(Event::PackPush(p));
-            }
             play::Clientbound::ResourcePackPop(p) => {
-                let _ = send.send(Event::PackPop(p.id));
+                if let Err(exit) = send_event(send, Event::PackPop(p.id)) {
+                    return exit;
+                }
             }
             play::Clientbound::StartConfiguration(_) => {
-                bundle = None;
                 payloads.begin_configuration();
                 configuring.store(true, Ordering::Release);
-                let _ = send.send(Event::Reconfiguring);
+                if let Err(exit) = send_event(send, Event::Reconfiguring) {
+                    return exit;
+                }
                 if let Some(w) = shared_writer.lock().unwrap().as_mut() {
                     w.transition_protocol(
                         sunrise_protocol::payload_negotiation::Phase::Configuration,
@@ -1222,7 +1513,9 @@ fn receive_play(
                     resources,
                     payloads,
                 )?;
-                let _ = send.send(Event::Reconfigured(Arc::new(registries)));
+                if let Err(exit) = send_event(send, Event::Reconfigured(Arc::new(registries))) {
+                    return exit;
+                }
             }
             // ClientCommonPacketListenerImpl.handleRequestCookie: the stored
             // cookie (or none) goes straight back.
@@ -1237,15 +1530,22 @@ fn receive_play(
                 cookies.lock().unwrap().insert(p.key, p.payload);
             }
             play::Clientbound::ServerLinks(p) => {
-                let _ = send.send(Event::ServerLinks(p.links));
+                if let Err(exit) = send_event(send, Event::ServerLinks(p.links)) {
+                    return exit;
+                }
             }
             // ClientCommonPacketListenerImpl.handleTransfer: the connection
             // ends and the game connects to the other address.
             play::Clientbound::Transfer(p) => {
-                let _ = send.send(Event::Transfer {
-                    host: p.host,
-                    port: p.port,
-                });
+                if let Err(exit) = send_event(
+                    send,
+                    Event::Transfer {
+                        host: p.host,
+                        port: p.port,
+                    },
+                ) {
+                    return exit;
+                }
                 return Ok(Reason::keyed("disconnect.transfer", lang));
             }
             play::Clientbound::Disconnect(d) => return Ok(Reason::tag(&d.reason, lang)),
@@ -1270,25 +1570,14 @@ fn receive_play(
                     send,
                 )? {
                     let packet = play::Clientbound::CustomPayload(payload);
-                    if let Some(packets) = bundle.as_mut() {
-                        if packets.len() >= MAX_BUNDLE_PACKETS {
-                            return Err(Reason::plain("Too many packets in a bundle"));
-                        }
-                        packets.push(packet);
-                    } else {
-                        send.send(Event::Packet(Box::new(packet)))
-                            .map_err(|_| Reason::plain("Disconnected"))?;
+                    if let Err(exit) = send_event(send, Event::Packet(Box::new(packet))) {
+                        return exit;
                     }
                 }
             }
             other => {
-                if let Some(packets) = bundle.as_mut() {
-                    if packets.len() >= MAX_BUNDLE_PACKETS {
-                        return Err(Reason::plain("Too many packets in a bundle"));
-                    }
-                    packets.push(other);
-                } else if send.send(Event::Packet(Box::new(other))).is_err() {
-                    return Ok(Reason::plain("Disconnected"));
+                if let Err(exit) = send_event(send, Event::Packet(Box::new(other))) {
+                    return exit;
                 }
             }
         }
@@ -1574,20 +1863,28 @@ fn configure(
     }
 }
 
-#[sunrise_mod_api_macros::replaceable]
-fn receive_brand(payload: &cfg::CustomPayload, send: &ingress::Producer<Event>) {
+fn brand_event(payload: &cfg::CustomPayload) -> Option<Event> {
     if payload.channel == "minecraft:brand"
         && let Ok(brand) = sunrise_protocol::buf::Reader::new(&payload.data).string(32767)
     {
-        let _ = send.send(Event::Brand(brand));
+        Some(Event::Brand(brand))
     } else if payload.channel == sunrise_protocol::quiet::CHANNEL {
-        let _ = send.send(Event::QuietCommands);
+        Some(Event::QuietCommands)
     } else if payload.channel == sunrise_protocol::custom_book::CHANNEL {
-        let _ = send.send(Event::CustomBooks);
+        Some(Event::CustomBooks)
     } else if payload.channel == crate::lod_net::CHANNEL
         && let Some(offer) = crate::lod_net::Offer::decode(&payload.data)
     {
-        let _ = send.send(Event::FarTerrain(offer));
+        Some(Event::FarTerrain(offer))
+    } else {
+        None
+    }
+}
+
+#[sunrise_mod_api_macros::replaceable]
+fn receive_brand(payload: &cfg::CustomPayload, send: &ingress::Producer<Event>) {
+    if let Some(event) = brand_event(payload) {
+        let _ = send.send(event);
     }
 }
 
@@ -2910,8 +3207,8 @@ mod tests {
     }
 
     /// `PacketBundlePacker` + `BundlerInfo`: `BundleDelimiter` frames play packets
-    /// (including game-thread `CustomPayload`s) into one `Event::Bundle` and rejects
-    /// bundles exceeding 4096 packets.
+    /// (including game-thread `CustomPayload`s) into an atomic `BundleStart..BundleEnd`
+    /// batch and rejects bundles exceeding 4096 packets.
     #[test]
     fn bundle_delimiter_collects_packets_and_rejects_oversized_bundles() {
         let (root, data) = empty_item_data("bundle");
@@ -2955,11 +3252,20 @@ mod tests {
         server.send(&ping3.encode()).unwrap();
 
         let timeout = Duration::from_secs(5);
-        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        let Event::Bundle(packets) = event else {
-            panic!("expected bundled packets");
-        };
-        assert_eq!(packets, [ping1, sync]);
+        let (first, _c0) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(first, Event::BundleStart));
+        let mut bundled = Vec::new();
+        loop {
+            let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+            if matches!(event, Event::BundleEnd) {
+                break;
+            }
+            let Event::Packet(packet) = event else {
+                panic!("expected bundled packet");
+            };
+            bundled.push(*packet);
+        }
+        assert_eq!(bundled, [ping1, sync]);
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(p) if *p == ping2));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
@@ -2981,6 +3287,183 @@ mod tests {
         );
         writer.lock().unwrap().take().unwrap().shutdown();
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bundle_rejects_terminal_start_configuration() {
+        let (root, data) = empty_item_data("bundle-terminal");
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (send, _events) = event_channel();
+        let thread_writer = writer.clone();
+        let thread = std::thread::spawn(move || {
+            receive_play(
+                &mut reader,
+                &thread_writer,
+                &Arc::new(AtomicBool::new(false)),
+                &Language::new(),
+                &send,
+                &Cookies::default(),
+                &crate::lod_net::Inbox::default(),
+                &data,
+                &Arc::new(Mutex::new(None)),
+                &crate::raw_payloads::Transport::empty(),
+            )
+        });
+        let mut server = Connection::local(server);
+        server
+            .send(&play::Clientbound::BundleDelimiter(Empty).encode())
+            .unwrap();
+        server
+            .send(&play::Clientbound::StartConfiguration(Empty).encode())
+            .unwrap();
+        let err = thread.join().unwrap().unwrap_err();
+        assert!(
+            err.text.contains("Terminal message received in bundle"),
+            "{}",
+            err.text
+        );
+        writer.lock().unwrap().take().unwrap().shutdown();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bundle_preserves_registered_main_payload_order_and_charges_open_bundle_credit() {
+        use mod_api::{
+            Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, Registrar,
+        };
+        const CHANNEL: &str = "bundle_order_probe:main";
+        struct Probe;
+        impl IPayloadHandler for Probe {
+            fn handle(
+                &self,
+                _: PayloadBytes,
+                _: &mut dyn IPayloadContext,
+            ) -> Result<(), mod_api::PayloadHandleError> {
+                Ok(())
+            }
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Probe {
+            fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                registrar
+                    .payload_handlers()
+                    .registrar("1")
+                    .play_to_client(PayloadId(CHANNEL.into()), Some(Arc::new(Probe)));
+            }
+        }
+
+        mod_platform::__private::initialize().unwrap();
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("bundle_order_probe", Box::new(Probe))].into(),
+            || {
+                mod_platform::__private::part_tests::install_parts_fixture(
+                    mod_api::__private::mods(),
+                )
+                .unwrap();
+                let transport =
+                    crate::raw_payloads::Transport::capture(crate::raw_payloads::Side::Client)
+                        .unwrap();
+                transport
+                    .accept(transport.local.manifest.entries())
+                    .unwrap();
+                transport.finish_configuration().unwrap();
+
+                let (root, data) = empty_item_data("bundle-main-payload-credit");
+                let (client, server) = sunrise_protocol::connection::Pipe::pair();
+                let (mut reader, writer) = Connection::local(client).split();
+                let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+                // Tight budget so open-bundle reservation is observable and oversize hits Pressure.
+                let (send, events) = ingress::channel(16 * 1024, Event::ingress_charge).unwrap();
+                let stats_send = send.clone();
+                let thread_writer = writer.clone();
+                let thread_transport = transport.clone();
+                let thread = std::thread::spawn(move || {
+                    receive_play(
+                        &mut reader,
+                        &thread_writer,
+                        &Arc::new(AtomicBool::new(false)),
+                        &Language::new(),
+                        &send,
+                        &Cookies::default(),
+                        &crate::lod_net::Inbox::default(),
+                        &data,
+                        &Arc::new(Mutex::new(None)),
+                        &thread_transport,
+                    )
+                });
+                let mut server = Connection::local(server);
+                let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
+                let ping1 = play::Clientbound::Ping(cfg::Ping { id: 10 });
+                let payload = play::Clientbound::CustomPayload(cfg::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: vec![7u8; 64],
+                });
+                let ping2 = play::Clientbound::Ping(cfg::Ping { id: 20 });
+
+                // Open the bundle without closing it yet: retained subpackets must immediately
+                // consume ingress credit (`reserved_bytes > 0`) while `queued_items == 0`.
+                server.send(&delimiter).unwrap();
+                server.send(&ping1.encode()).unwrap();
+                server.send(&payload.encode()).unwrap();
+                server.send(&ping2.encode()).unwrap();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while stats_send.stats().reserved_bytes == 0 && Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+                let open_stats = stats_send.stats();
+                assert!(
+                    open_stats.reserved_bytes > 0,
+                    "open bundle must reserve ingress credit per subpacket"
+                );
+                assert_eq!(
+                    open_stats.queued_items, 0,
+                    "open bundle must not publish before the closing delimiter"
+                );
+
+                // Closing delimiter publishes the whole bundle atomically in exact subpacket order.
+                server.send(&delimiter).unwrap();
+                let timeout = Duration::from_secs(5);
+                let first = events.recv_timeout_owned(timeout).unwrap();
+                let mut turn = vec![first];
+                turn.extend(events.take_turn());
+                let parts: Vec<_> = turn
+                    .into_iter()
+                    .map(ingress::OwnedReceipt::into_parts)
+                    .collect();
+                let kinds: Vec<&'static str> = parts
+                    .iter()
+                    .map(|(event, _)| match event {
+                        Event::BundleStart => "start",
+                        Event::BundleEnd => "end",
+                        Event::Packet(p) if **p == ping1 => "ping1",
+                        Event::Packet(p) if **p == ping2 => "ping2",
+                        Event::RawPayload(inc) if inc.id.0 == CHANNEL => "raw",
+                        _ => "other",
+                    })
+                    .collect();
+                assert_eq!(kinds, ["start", "ping1", "raw", "ping2", "end"]);
+                // Dropping the events drops the PayloadTurn and releases the receiver thread.
+                drop(parts);
+
+                // An open bundle exceeding the ingress budget reports queue pressure explicitly.
+                server.send(&delimiter).unwrap();
+                let oversized = play::Clientbound::CustomPayload(cfg::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: vec![9u8; 20 * 1024],
+                });
+                let _ = server.send(&oversized.encode());
+                let err = thread.join().unwrap().unwrap_err();
+                assert!(
+                    err.text.contains("incoming queue resource pressure"),
+                    "expected distinct queue pressure error, got: {}",
+                    err.text
+                );
+                writer.lock().unwrap().take().unwrap().shutdown();
+                std::fs::remove_dir_all(root).unwrap();
+            },
+        );
     }
 
     /// ClientPacketListener.handleChunkBatchStart and handleChunkBatchFinished: the
