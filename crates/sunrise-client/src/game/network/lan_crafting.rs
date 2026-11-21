@@ -466,6 +466,15 @@ impl Game<'_> {
     /// blaze powder slots) or a content mod's menu type (`Kind::Mod`) over the
     /// block entity's slots. False for other windows.
     pub(super) fn lan_machine_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+        self.lan_machine_click_checked(conn, p, false)
+    }
+
+    pub(in crate::game) fn lan_machine_click_checked(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+        pickup_checked: bool,
+    ) -> bool {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
@@ -724,7 +733,12 @@ impl Game<'_> {
                                 prepare(menu, env);
                                 menu.track_takes(true);
                                 let before = menu.container_items();
-                                (before, menu.start_click(env, click.0, click.1, click.2))
+                                let rest = if pickup_checked && click.2 == Input::QuickMove {
+                                    menu.start_checked_quick_move(env, click.0, click.1)
+                                } else {
+                                    menu.start_click(env, click.0, click.1, click.2)
+                                };
+                                (before, rest)
                             })?;
                         loop {
                             let after = menu.container_items();
@@ -831,7 +845,11 @@ impl Game<'_> {
                 let before: Vec<_> = (0..menu.slot_count())
                     .map(|s| menu.slot(s).cloned())
                     .collect();
-                let _ = menu.click(env, click.0, click.1, click.2);
+                if pickup_checked && click.2 == Input::QuickMove {
+                    let _ = menu.start_checked_quick_move(env, click.0, click.1);
+                } else {
+                    let _ = menu.click(env, click.0, click.1, click.2);
+                }
                 (0..menu.slot_count())
                     .filter(|&s| menu.slot(s) != before[s].as_ref())
                     .collect::<Vec<_>>()

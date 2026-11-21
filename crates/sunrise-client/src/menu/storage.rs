@@ -202,6 +202,11 @@ pub struct State {
     pub(super) grind_xp: i32,
     /// `AnvilMenu.createResult` ran since `anvil_created` last asked.
     pub(super) anvil_made: bool,
+    /// `GrindstoneMenu.createResult` ran since `grindstone_created` last asked.
+    pub(super) grind_made: bool,
+    /// Suspend multi-slot clicks whenever `createResult` runs so callers can deliver
+    /// `anvil_update` / `grindstone_place` live between slot writes.
+    pub(super) track_results: bool,
     /// The enchanting table's item changed to an enchantable one: the caller
     /// (with a level) fills the costs and clues (`slotsChanged`'s
     /// `access.execute`).

@@ -196,37 +196,26 @@ impl Game<'_> {
                 if w.checked_mul(h) != Some(slots.len()) {
                     return Err(InvalidInput);
                 }
-                let size = if slots.is_empty() { 0 } else { w.max(h) };
-                let grid_len = size.checked_mul(size).ok_or(InvalidInput)?;
-                let at = |i: usize| (i / w) * size + i % w;
-                let mut grid = vec![None; grid_len];
-                for (i, stack) in slots.iter().enumerate() {
+                let mut grid = Vec::with_capacity(slots.len());
+                for stack in slots {
                     #[allow(clippy::needless_borrows_for_generic_args)] // TODO(#2273)
                     {
-                        grid[at(i)] = stack.as_ref().map(&read_stack).transpose()?;
+                        grid.push(stack.as_ref().map(&read_stack).transpose()?);
                     }
                 }
                 let scale = |id: i32| self.maps.data.get(&id).map(|m| m.scale);
                 let recipes = self.recipes();
                 let matched =
-                    recipes.find_with_dimensions(&self.loop_context, &grid, size, w, h, &scale);
+                    recipes.find_with_dimensions(&self.loop_context, &grid, w, w, h, &scale);
                 let Some((id, output)) = matched.filter(|(_, output)| output.count > 0) else {
                     return Ok(None);
                 };
-                let mut placed = if matches!(
-                    recipes.recipe(id),
-                    Some(sunrise_client::crafting::Recipe::Mod(_))
-                ) {
-                    recipes.mod_remainders_rect(&self.loop_context, id, &grid, size, w, h, &|s| {
+                let remainders = recipes
+                    .remainders_rect(&self.loop_context, id, &grid, w, w, h, &|s| {
                         self.crafting_remainder(s)
                     })
-                } else {
-                    recipes.remainders(&self.loop_context, id, &grid, size, &|s| {
-                        self.crafting_remainder(s)
-                    })
-                };
-                let remainders = (0..slots.len())
-                    .map(|i| placed[at(i)].take().try_into_api().map_err(|_| InvalidItem))
+                    .into_iter()
+                    .map(|stack| stack.try_into_api().map_err(|_| InvalidItem))
                     .collect::<Result<Vec<_>, _>>()?;
                 make(id, &output, remainders, 0.0, 0)
             }

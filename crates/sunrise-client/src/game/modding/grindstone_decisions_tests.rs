@@ -19,9 +19,11 @@ struct Script {
     place_xp: Option<i32>,
     place_cancel: bool,
     place_write: bool,
+    place_unclosed_write: bool,
     place_panic: bool,
     take_panic: bool,
     take_write: bool,
+    take_unclosed_write: bool,
     take_cancel: bool,
     take_xp: Option<i32>,
     take_new_top: Option<u32>,
@@ -32,6 +34,7 @@ thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static DISPATCHES: Cell<usize> = const { Cell::new(0) };
     static PLACE_TOP_COUNT: Cell<Option<u32>> = const { Cell::new(None) };
+    static PLACE_OBSERVED: RefCell<Vec<(Option<u32>, Option<u32>)>> = const { RefCell::new(Vec::new()) };
     static TAKE_TOP_COUNT: Cell<Option<u32>> = const { Cell::new(None) };
     static TAKE_XP: Cell<Option<i32>> = const { Cell::new(None) };
 }
@@ -39,6 +42,7 @@ thread_local! {
 fn script(script: Script) {
     DISPATCHES.set(0);
     PLACE_TOP_COUNT.set(None);
+    PLACE_OBSERVED.with(|v| v.borrow_mut().clear());
     TAKE_TOP_COUNT.set(None);
     TAKE_XP.set(None);
     SCRIPT.with(|s| *s.borrow_mut() = script);
@@ -65,6 +69,19 @@ fn write_dirt(host: &mut dyn ServerHost) {
     assert_eq!(inserted, 2);
 }
 
+fn write_dirt_unclosed(host: &mut dyn ServerHost) {
+    let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+    let dirt = mod_api::ItemStack::new(key, 1).unwrap();
+    let place = ItemPlace::PlayerSlot {
+        player: 12,
+        slot: 21,
+    };
+    let seal = host.transaction_open();
+    let inserted = place.insert(host, seal.transaction(), &ItemResource::of(&dirt), 3);
+    assert_eq!(inserted, 3);
+    // Deliberately leave `seal` open before panicking.
+}
+
 struct Mod;
 
 #[mod_api::__subscriptions]
@@ -78,9 +95,18 @@ impl Hooks for Mod {
     ) -> mod_api::Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
         PLACE_TOP_COUNT.set(event.inputs.top.map(mod_api::ItemStack::count));
+        PLACE_OBSERVED.with(|v| {
+            v.borrow_mut().push((
+                event.inputs.top.map(mod_api::ItemStack::count),
+                event.inputs.bottom.map(mod_api::ItemStack::count),
+            ));
+        });
         let s = SCRIPT.with(|s| s.borrow().clone());
         if s.place_write {
             write_dirt(host);
+        }
+        if s.place_unclosed_write {
+            write_dirt_unclosed(host);
         }
         if let Some(count) = s.place_output {
             event.edits.output = Some(dirt(count));
@@ -108,6 +134,9 @@ impl Hooks for Mod {
         let s = SCRIPT.with(|s| s.borrow().clone());
         if s.take_write {
             write_dirt(host);
+        }
+        if s.take_unclosed_write {
+            write_dirt_unclosed(host);
         }
         event.edits.new_top = s.take_new_top.map(dirt);
         event.edits.new_bottom = s.take_new_bottom.map(dirt);
@@ -671,6 +700,182 @@ fn panicking_grindstone_listeners_keep_vanilla_and_initial_behavior() {
             assert_eq!(total_orb_xp(game), 5);
             assert_eq!(game.lan_events.len(), events + 1);
             assert!(game.transactions.is_empty());
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_listener_aborts_unclosed_transaction_and_keeps_committed_writes() {
+    with_mod(|| {
+        with_guests(|game| {
+            let window = open_grindstone(game);
+            let sword = enchanted_sword(game, 200);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(sword);
+            });
+            script(Script {
+                place_write: true,
+                place_unclosed_write: true,
+                place_panic: true,
+                ..Script::default()
+            });
+            click(game, window, 0, 0);
+            assert_eq!(inventory(game, 20), 2, "committed write survives");
+            assert_eq!(inventory(game, 21), 0, "unclosed transaction rolled back");
+            assert!(
+                game.transactions.is_empty(),
+                "no abandoned transaction remains open"
+            );
+
+            // Take also aborts any unclosed transaction left behind by a panicking listener.
+            script(Script {
+                take_write: true,
+                take_unclosed_write: true,
+                take_panic: true,
+                ..Script::default()
+            });
+            click(game, window, 2, 0);
+            assert_eq!(inventory(game, 20), 4, "committed take write survives");
+            assert_eq!(
+                inventory(game, 21),
+                0,
+                "unclosed take transaction rolled back"
+            );
+            assert!(game.transactions.is_empty());
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn equal_stack_swap_and_multi_slot_drag_fire_grindstone_place_live() {
+    with_mod(|| {
+        with_guests(|game| {
+            let window = open_grindstone(game);
+            let mut sticks = engine_item(game, "minecraft:stick", 2);
+            sticks.set_crafting_enchantments(vec![("minecraft:sharpness".into(), 1)]);
+
+            // Multi-slot QuickCraft drag across slots 0 and 1 fires grindstone_place live twice.
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(sticks);
+            });
+            script(Script::default());
+            game.lan_guest_packet(12, container_click(window, -999, 0, 5));
+            game.lan_guest_packet(12, container_click(window, 0, 1, 5));
+            game.lan_guest_packet(12, container_click(window, 1, 1, 5));
+            game.lan_guest_packet(12, container_click(window, -999, 2, 5));
+            assert_eq!(
+                PLACE_OBSERVED.with(|v| v.borrow().clone()),
+                vec![(Some(1), None), (Some(1), Some(1))]
+            );
+
+            // Swapping an identical non-stackable sword into slot 0 leaves slot 0 equal
+            // before and after, yet still fires grindstone_place.
+            let sword = enchanted_sword(game, 200);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .menus
+                .get_mut(&12)
+                .unwrap()
+                .station
+                .as_mut()
+                .unwrap()
+                .menu
+                .load_slot(0, Some(sword.clone()));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(sword.clone());
+            });
+            script(Script::default());
+            click(game, window, 0, 0);
+            assert_eq!(slot(game, 0), Some(sword));
+            assert_eq!(
+                PLACE_OBSERVED.with(|v| v.borrow().clone()),
+                vec![(Some(1), Some(1))]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn place_only_take_awards_xp_and_event_before_replacing_inputs() {
+    use std::sync::{Arc, Mutex};
+
+    struct PlaceOnlyMod {
+        seen: Arc<Mutex<Vec<(Option<u32>, Option<u32>, i64)>>>,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for PlaceOnlyMod {
+        fn register(&self, _: &mut dyn Registrar, _: &mod_api::RegistrationContext) {}
+
+        fn grindstone_place(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut GrindstonePlaceEvent<'_>,
+        ) -> mod_api::Flow {
+            let at = event.pos.map(f64::from);
+            let orb_xp: i64 = host
+                .experience_orbs(
+                    "minecraft:overworld",
+                    at.map(|v| v - 3.0),
+                    at.map(|v| v + 4.0),
+                )
+                .iter()
+                .map(|orb| i64::from(orb.value) * i64::from(orb.count))
+                .sum();
+            self.seen.lock().unwrap().push((
+                event.inputs.top.map(mod_api::ItemStack::count),
+                event.inputs.bottom.map(mod_api::ItemStack::count),
+                orb_xp,
+            ));
+            if event.inputs.top.is_some() && event.inputs.bottom.is_some() {
+                event.edits.output = Some(dirt(1));
+                event.edits.xp = 7;
+            }
+            Flow::Continue
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods: Mods = vec![ModEntry::new(
+        "place-only",
+        Box::new(PlaceOnlyMod { seen: seen.clone() }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        assert!(mod_api::__private::listened(
+            mod_api::HookId::GrindstonePlace
+        ));
+        assert!(!mod_api::__private::listened(
+            mod_api::HookId::GrindstoneTake
+        ));
+        with_guests(|game| {
+            let window = open_grindstone(game);
+            let top = enchanted_sword(game, 200);
+            let bottom = enchanted_sword(game, 150);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(top);
+            });
+            click(game, window, 0, 0);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(bottom);
+            });
+            click(game, window, 1, 0);
+            seen.lock().unwrap().clear();
+
+            // Taking the result without a GrindstoneTake listener must award XP before
+            // clearing slot 0 and slot 1 (so both GrindstonePlace calls observe XP = 7).
+            let events = game.lan_events.len();
+            click(game, window, 2, 0);
+            assert_eq!(
+                *seen.lock().unwrap(),
+                vec![(None, Some(1), 7), (None, None, 7)]
+            );
+            assert_eq!(game.lan_events.len(), events + 1);
+            assert_eq!(total_orb_xp(game), 7);
         });
     });
 }

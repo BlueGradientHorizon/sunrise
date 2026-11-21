@@ -822,6 +822,8 @@ impl Menu {
                 grind_take: None,
                 grind_xp: -1,
                 anvil_made: false,
+                grind_made: false,
+                track_results: false,
                 enchant_changed: false,
                 enchant_button: None,
                 may_build: true,
@@ -1150,6 +1152,7 @@ impl Menu {
                     self.state.containers[MAIN][0].as_ref(),
                     self.state.containers[MAIN][1].as_ref(),
                 );
+                self.state.grind_made = true;
             }
             Kind::CrafterBlock => self.crafter_result(env),
             Kind::Anvil => {
@@ -1267,6 +1270,12 @@ impl Menu {
     pub fn anvil_created(&mut self) -> bool {
         self.touch();
         std::mem::take(&mut self.state.anvil_made)
+    }
+
+    /// Whether `GrindstoneMenu.createResult` ran since the last call.
+    pub fn grindstone_created(&mut self) -> bool {
+        self.touch();
+        std::mem::take(&mut self.state.grind_made)
     }
 
     /// `AnvilUpdateEvent`'s question about the result `createResult` made,
@@ -1999,6 +2008,13 @@ impl Menu {
 
     /// `AnvilMenu.onTake`: the levels, the material used up, then the input.
     pub fn anvil_take(&mut self, env: &Env) {
+        self.anvil_take_material(env);
+        self.anvil_take_input(env);
+    }
+
+    /// First half of `AnvilMenu.onTake`: charge levels and consume/clear slot 1 (running
+    /// `createResult` with slot 0 still present and the newly computed cost intact).
+    pub fn anvil_take_material(&mut self, env: &Env) {
         self.touch();
         let cost = self.state.data[0];
         if !self.state.creative {
@@ -2023,6 +2039,10 @@ impl Menu {
         } else if !self.state.anvil.only_renaming {
             self.put(env, 1, None);
         }
+    }
+
+    /// Second half of `AnvilMenu.onTake`: zero `cost`, clear slot 0, and mark the craft combined.
+    pub fn anvil_take_input(&mut self, env: &Env) {
         self.state.data[0] = 0;
         self.put(env, 0, None);
         self.state.combined = true;
@@ -3781,6 +3801,111 @@ pub(crate) mod tests {
             );
             assert_eq!(menu.slot(2), None);
             assert_eq!(menu.state.grind_xp, -1);
+        });
+    }
+
+    #[test]
+    fn anvil_and_grindstone_track_results_yields_per_slot_write() {
+        bare_env(|env| {
+            let enchanted = |count| {
+                let mut s = ItemStack::new("minecraft:stick", count);
+                s.set_crafting_enchantments(vec![("minecraft:sharpness".into(), 1)]);
+                s
+            };
+
+            // QuickCraft drag across slots 0 and 1 yields once per slot write on both menus.
+            for kind in [Kind::Anvil, Kind::Grindstone] {
+                let mut menu = Menu::new(kind);
+                menu.track_results(true);
+                menu.carried = Some(enchanted(2));
+                assert!(
+                    menu.start_click(env, -999, 0, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    menu.start_click(env, 0, 1, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+                assert!(
+                    menu.start_click(env, 1, 1, Input::QuickCraft)
+                        .unwrap()
+                        .is_none()
+                );
+
+                let mut seen = Vec::new();
+                let mut rest = menu.start_click(env, -999, 2, Input::QuickCraft).unwrap();
+                loop {
+                    let made = match kind {
+                        Kind::Anvil => menu.anvil_created(),
+                        Kind::Grindstone => menu.grindstone_created(),
+                        _ => false,
+                    };
+                    if made {
+                        seen.push((menu.slot(0).map(|s| s.count), menu.slot(1).map(|s| s.count)));
+                    }
+                    let Some(step) = rest else {
+                        break;
+                    };
+                    rest = menu.resume_click(env, step);
+                }
+                assert_eq!(seen, vec![(Some(1), None), (Some(1), Some(1))]);
+                assert_eq!(menu.carried, None);
+
+                // PickAll pulling from slots 0 and 1 yields after each slot is emptied.
+                menu.carried = Some(enchanted(1));
+                let mut pick_seen = Vec::new();
+                let mut rest = menu.start_click(env, 3, 0, Input::PickupAll).unwrap();
+                loop {
+                    let made = match kind {
+                        Kind::Anvil => menu.anvil_created(),
+                        Kind::Grindstone => menu.grindstone_created(),
+                        _ => false,
+                    };
+                    if made {
+                        pick_seen
+                            .push((menu.slot(0).map(|s| s.count), menu.slot(1).map(|s| s.count)));
+                    }
+                    let Some(step) = rest else {
+                        break;
+                    };
+                    rest = menu.resume_click(env, step);
+                }
+                assert_eq!(pick_seen, vec![(None, Some(1)), (None, None)]);
+                assert_eq!(menu.carried.as_ref().map(|s| s.count), Some(3));
+            }
+
+            // Grindstone equal-stack swap still marks grindstone_created() for live hook delivery.
+            let mut grind = Menu::new(Kind::Grindstone);
+            grind.set_slot(env, 0, Some(enchanted(64)));
+            let _ = grind.grindstone_created();
+            grind.carried = Some(enchanted(64));
+            grind.click(env, 0, 0, Input::Pickup).unwrap();
+            assert!(grind.grindstone_created());
+            assert_eq!(grind.slot(0).map(|s| s.count), Some(64));
+
+            // QuickMove filling slot 0 to cap then spilling remainder into slot 1 yields twice.
+            let mut anvil = Menu::new(Kind::Anvil);
+            anvil.set_slot(env, 0, Some(ItemStack::new("minecraft:stick", 63)));
+            anvil.set_slot(env, 3, Some(ItemStack::new("minecraft:stick", 2)));
+            let _ = anvil.anvil_created();
+            anvil.track_results(true);
+            let mut qm_seen = Vec::new();
+            let mut rest = anvil.start_click(env, 3, 0, Input::QuickMove).unwrap();
+            loop {
+                if anvil.anvil_created() {
+                    qm_seen.push((
+                        anvil.slot(0).map(|s| s.count),
+                        anvil.slot(1).map(|s| s.count),
+                    ));
+                }
+                let Some(step) = rest else {
+                    break;
+                };
+                rest = anvil.resume_click(env, step);
+            }
+            assert_eq!(qm_seen, vec![(Some(64), None), (Some(64), Some(1))]);
         });
     }
 

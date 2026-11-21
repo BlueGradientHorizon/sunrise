@@ -174,6 +174,45 @@ impl Game<'_> {
         self.lan_station_op_clicked(conn, window, None, op)
     }
 
+    /// Deliver any pending `AnvilMenu.createResult` or `GrindstoneMenu.createResult` hook
+    /// live after a slot write or rename, updating `menu`'s result in place.
+    fn lan_station_deliver_result(
+        &mut self,
+        gi: usize,
+        kind: StationKind,
+        pos: [i32; 3],
+        menu: &mut Menu,
+    ) {
+        let (uuid, entity_id) = self
+            .lan
+            .as_ref()
+            .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
+            .unwrap_or((0, 0));
+        if kind == StationKind::Anvil
+            && menu.anvil_created()
+            && mod_api::__private::listened(mod_api::HookId::AnvilUpdate)
+            && let Some((inputs, mut result)) = menu.anvil_update()
+        {
+            self.api_anvil_update(uuid, entity_id, pos, inputs, &mut result);
+            menu.anvil_updated(result);
+        }
+        if kind == StationKind::Grindstone && menu.grindstone_created() && menu.grind_hook {
+            if mod_api::__private::listened(mod_api::HookId::GrindstonePlace) {
+                let mut cancel = false;
+                let edits = self.api_grindstone_place(
+                    uuid,
+                    entity_id,
+                    pos,
+                    menu.grindstone_place(),
+                    &mut cancel,
+                );
+                menu.grindstone_placed(edits, cancel);
+            } else {
+                menu.grindstone_placed(Default::default(), false);
+            }
+        }
+    }
+
     /// `lan_station_op` for `op` that makes `click`, which the mods decide first when it is a
     /// pickup they listen to (`guest_menu_op_decided`).
     fn lan_station_op_clicked(
@@ -209,36 +248,56 @@ impl Game<'_> {
                     .is_some_and(|h| h.hub.guests[gi].spectator())
             });
         if let Some(gi) = guest {
-            // createResult runs when the inputs change (or a rename): a click
-            // elsewhere must not hand the hooks their own result again.
-            let result_slot = match gs.kind {
-                StationKind::Anvil | StationKind::Grindstone => Some(2),
-                StationKind::Smithing => Some(3),
-                _ => None,
-            };
-            let before = result_slot.map(|r| {
-                let slots: Vec<_> = (0..=r).map(|s| gs.menu.slot(s).cloned()).collect();
-                // Only the anvil has a data slot (its cost) and a name; grindstone and
-                // smithing menus have neither. A rename runs createResult even when the
-                // result comes out the same (AnvilMenu.setItemName).
-                (
-                    slots,
-                    gs.menu.data.first().copied(),
-                    gs.menu.anvil.name.clone(),
-                )
+            let smithing_before = (gs.kind == StationKind::Smithing).then(|| {
+                (0..=3)
+                    .map(|s| gs.menu.slot(s).cloned())
+                    .collect::<Vec<_>>()
             });
             let take_listened =
                 gs.menu.grind_hook && mod_api::__private::listened(mod_api::HookId::GrindstoneTake);
-            let place_listened = gs.menu.grind_hook
-                && mod_api::__private::listened(mod_api::HookId::GrindstonePlace);
+            let track_results = matches!(gs.kind, StationKind::Anvil | StationKind::Grindstone);
             let pos = gs.pos;
+            let kind = gs.kind;
             if gs.kind == StationKind::Grindstone && !self.transactions.is_empty() {
                 self.journal_guest_click(conn);
                 self.journal_station_click(conn, owner, &gs);
             }
-            self.guest_menu_op_decided(gi, &mut gs.menu, click, None, |menu, env| {
-                op(menu, env);
-            });
+            let _ = gs.menu.anvil_created();
+            let _ = gs.menu.grindstone_created();
+            if let Some(click) = click.filter(|_| track_results) {
+                self.guest_menu_action(
+                    gi,
+                    &mut gs.menu,
+                    Some(click),
+                    None,
+                    |game, menu, stacked| {
+                        let mut rest =
+                            game.guest_menu_op_with(gi, menu, stacked, |menu, env| {
+                                menu.track_results(true);
+                                menu.start_click(env, click.0, click.1, click.2)
+                            })?;
+                        loop {
+                            game.lan_station_deliver_result(gi, kind, pos, menu);
+                            let Some(step) = rest.ok().flatten() else {
+                                break;
+                            };
+                            let next = game.guest_menu_op_with(gi, menu, None, |menu, env| {
+                                menu.resume_click(env, step)
+                            })?;
+                            rest = Ok(next);
+                        }
+                        menu.track_results(false);
+                        Some(())
+                    },
+                );
+            } else {
+                self.guest_menu_op_decided(gi, &mut gs.menu, click, None, |menu, env| {
+                    op(menu, env);
+                });
+                if track_results {
+                    self.lan_station_deliver_result(gi, kind, pos, &mut gs.menu);
+                }
+            }
             // Both anvil hooks borrow the same converted snapshot, even after the
             // take changes the slots. The deferred take must run even if capture fails.
             let pending = gs.menu.anvil_craft.take();
@@ -277,11 +336,13 @@ impl Game<'_> {
                     // anvil_craft_post, without undoing the click's item move.
                     cancelled = true;
                 } else {
-                    gs.menu.anvil_take(&self.menu_env());
+                    gs.menu.anvil_take_material(&self.menu_env());
+                    self.lan_station_deliver_result(gi, kind, pos, &mut gs.menu);
+                    gs.menu.anvil_take_input(&self.menu_env());
+                    self.lan_station_deliver_result(gi, kind, pos, &mut gs.menu);
                 }
             }
             // GrindstoneEvent.OnTakeItem: the taken result's onTake waits for the mods.
-            let mut ground_xp = None;
             let taken = gs.menu.grind_take.take();
             let (uuid, entity_id) = self
                 .lan
@@ -289,7 +350,7 @@ impl Game<'_> {
                 .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                 .unwrap_or((0, 0));
             if let Some(take) = taken {
-                if take_listened {
+                let edits = if take_listened {
                     let mut cancel = false;
                     let edits = self.api_grindstone_take(uuid, entity_id, pos, &take, &mut cancel);
                     if cancel {
@@ -297,60 +358,40 @@ impl Game<'_> {
                         // result is still taken) and skips XP, level event 1042 and input
                         // replacement.
                         cancelled = true;
+                        None
                     } else {
-                        self.grindstone_award(pos, edits.xp.max(0) as u32);
-                        gs.menu.grindstone_take_inputs(&self.menu_env(), edits);
+                        Some(edits)
                     }
                 } else {
-                    ground_xp = gs.menu.grindstone_taken(
-                        &self.menu_env(),
-                        &take,
-                        GrindstoneTakeEdits::initial(take.xp),
-                    );
+                    let xp = if take.xp >= 0 {
+                        take.xp
+                    } else {
+                        let amount = take.vanilla_amount(&self.menu_env());
+                        self.journal_level_random();
+                        sunrise_client::stations::grindstone_xp_roll(amount, &mut self.world.random)
+                            as i32
+                    };
+                    Some(GrindstoneTakeEdits::initial(xp))
+                };
+                if let Some(edits) = edits {
+                    // NeoForge CommonHooks.onGrindstoneTake: award XP and level event 1042
+                    // before replacing inputs (and before any GrindstonePlace they trigger).
+                    self.grindstone_award(pos, edits.xp.max(0) as u32);
+                    gs.menu.set_slot(&self.menu_env(), 0, edits.new_top);
+                    self.lan_station_deliver_result(gi, kind, pos, &mut gs.menu);
+                    gs.menu.set_slot(&self.menu_env(), 1, edits.new_bottom);
+                    self.lan_station_deliver_result(gi, kind, pos, &mut gs.menu);
                 }
             }
-            // A cancelled take runs no createResult: the inputs are untouched.
-            let recomputed = !cancelled
-                && before.is_some_and(|(slots, cost, item_name)| {
-                    cost != gs.menu.data.first().copied()
-                        || item_name != gs.menu.anvil.name
-                        || slots
-                            .iter()
-                            .enumerate()
-                            .any(|(s, b)| gs.menu.slot(s) != b.as_ref())
-                });
-            // AnvilUpdateEvent after createResult; a cancelled take skipped
-            // onTake so no createResult ran.
-            let anvil_created =
-                gs.kind == StationKind::Anvil && gs.menu.anvil_created() && !cancelled;
-            if anvil_created
-                && mod_api::__private::listened(mod_api::HookId::AnvilUpdate)
-                && let Some((inputs, mut result)) = gs.menu.anvil_update()
+            if !cancelled
+                && gs.kind == StationKind::Smithing
+                && smithing_before.is_some_and(|slots| {
+                    slots
+                        .iter()
+                        .enumerate()
+                        .any(|(s, b)| gs.menu.slot(s) != b.as_ref())
+                })
             {
-                let (uuid, entity_id) = self
-                    .lan
-                    .as_ref()
-                    .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-                    .unwrap_or((0, 0));
-                self.api_anvil_update(uuid, entity_id, gs.pos, inputs, &mut result);
-                gs.menu.anvil_updated(result);
-            }
-            if recomputed && gs.kind == StationKind::Grindstone && gs.menu.grind_hook {
-                if place_listened {
-                    let mut cancel = false;
-                    let edits = self.api_grindstone_place(
-                        uuid,
-                        entity_id,
-                        pos,
-                        gs.menu.grindstone_place(),
-                        &mut cancel,
-                    );
-                    gs.menu.grindstone_placed(edits, cancel);
-                } else {
-                    gs.menu.grindstone_placed(Default::default(), false);
-                }
-            }
-            if recomputed && gs.kind == StationKind::Smithing {
                 let (uuid, name) = self
                     .lan
                     .as_ref()
@@ -367,9 +408,6 @@ impl Game<'_> {
             self.lan_station_sounds(&mut gs);
             if let Some(amount) = gs.menu.ground.take() {
                 self.grindstone_taken(gs.pos, amount);
-            }
-            if let Some(xp) = ground_xp {
-                self.grindstone_award(gs.pos, xp.max(0) as u32);
             }
             // ItemSmithedEvent comes before the rest of SmithingMenu.onTake.
             let smithed = std::mem::take(&mut gs.menu.item_smithed);

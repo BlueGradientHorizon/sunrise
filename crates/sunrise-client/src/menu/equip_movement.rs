@@ -127,11 +127,17 @@ impl Menu {
                     target.count = total;
                     changed = true;
                     self.slot_changed(env, dest);
+                    if self.result_pending() {
+                        return true;
+                    }
                 } else if target.count < max {
                     *stack.count_mut() -= max - target.count;
                     target.count = max;
                     changed = true;
                     self.slot_changed(env, dest);
+                    if self.result_pending() {
+                        return true;
+                    }
                 }
             }
         }
@@ -142,11 +148,14 @@ impl Menu {
                 }
                 let proof = self.equip_placement(env, dest, stack);
                 if proof.allowed {
-                    let max = proof.max;
+                    let moved = stack.count.min(proof.max);
+                    if moved == 0 {
+                        continue;
+                    }
                     if !proof.can_apply(self, env, stack) {
                         return changed;
                     }
-                    let part = stack.take_portion(stack.count.min(max));
+                    let part = stack.take_portion(moved);
                     self.set_by_player(env, dest, Some(part));
                     changed = true;
                     break;
@@ -481,5 +490,69 @@ mod tests {
                 assert_eq!((parts.preparations.get(), parts.asks.get()), (1, 1));
             });
         }
+    }
+    #[test]
+    fn quick_move_skips_zero_max_empty_slots_and_terminates() {
+        struct CapSlot0 {
+            all_zero: bool,
+        }
+        impl crate::menu::SlotRules for CapSlot0 {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:cap"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                slot: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                _: &mut bool,
+                max_stack: &mut u32,
+            ) {
+                if self.all_zero || slot == 0 {
+                    *max_stack = 0;
+                }
+            }
+        }
+        super::super::tests::bare_env(|env| {
+            // Chest(1) has check_count = false (would spin without skipping moved == 0);
+            // Dispenser has check_count = true (would break out before slot 1).
+            for kind in [Kind::Chest(1), Kind::Dispenser] {
+                let cap_first = CapSlot0 { all_zero: false };
+                let env_first = Env {
+                    slot_rules: Some(&cap_first),
+                    ..*env
+                };
+                let mut menu = Menu::new(kind);
+                menu.set_registry_id(Some("test:cap"));
+                menu.set_slot(&env_first, 9, Some(ItemStack::new("minecraft:stone", 4)));
+                menu.click(&env_first, 9, 0, Input::QuickMove).unwrap();
+                assert_eq!(menu.slot(0), None, "zero-cap slot 0 stays empty");
+                assert_eq!(
+                    menu.slot(1),
+                    Some(&ItemStack::new("minecraft:stone", 4)),
+                    "stack moves into eligible slot 1 for {kind:?}"
+                );
+                assert_eq!(menu.slot(9), None);
+
+                let cap_all = CapSlot0 { all_zero: true };
+                let env_all = Env {
+                    slot_rules: Some(&cap_all),
+                    ..*env
+                };
+                let mut blocked = Menu::new(kind);
+                blocked.set_registry_id(Some("test:cap"));
+                blocked.set_slot(&env_all, 9, Some(ItemStack::new("minecraft:stone", 4)));
+                blocked.click(&env_all, 9, 0, Input::QuickMove).unwrap();
+                assert_eq!(blocked.slot(0), None);
+                assert_eq!(blocked.slot(1), None);
+                assert_eq!(
+                    blocked.slot(9),
+                    Some(&ItemStack::new("minecraft:stone", 4)),
+                    "all-zero container terminates without moving for {kind:?}"
+                );
+            }
+        });
     }
 }

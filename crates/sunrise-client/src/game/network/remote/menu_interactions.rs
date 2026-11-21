@@ -44,17 +44,46 @@ impl Game<'_> {
         // Unpredicted: nothing changed, the carried stack as it is.
         let mut prepared = None;
         let mut threw = false;
-        self.menu_session_with_game(|game, m, env, _| {
-            let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
-                // The server throws on it too: nothing is predicted.
-                return Some(false);
-            };
-            let packets = game.prepare_clicks(container, &predicted);
-            let commit = packets.is_ok();
-            prepared = Some(packets.map(|packets| (predicted, packets)));
-            threw = dropped;
-            Some(commit)
-        });
+        if self
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == crate::game::stations::Kind::Anvil)
+        {
+            self.anvil_menu_session(|game, m, _| {
+                let mut predicted = Vec::with_capacity(clicks.len());
+                let mut dropped = false;
+                for &(slot, button, input) in &clicks {
+                    let before = menu_items(m);
+                    let thrown = m.dropped.len();
+                    if game
+                        .run_client_anvil_click(m, i32::from(slot), button, input)
+                        .is_err()
+                    {
+                        return Some(false);
+                    }
+                    dropped |= m.dropped.len() > thrown;
+                    let changed = changed_slots(&before, m);
+                    predicted.push((slot, button, input, changed, m.carried.clone()));
+                }
+                let packets = game.prepare_clicks(container, &predicted);
+                let commit = packets.is_ok();
+                prepared = Some(packets.map(|packets| (predicted, packets)));
+                threw = dropped;
+                Some(commit)
+            });
+        } else {
+            self.menu_session_with_game(|game, m, env, _| {
+                let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
+                    // The server throws on it too: nothing is predicted.
+                    return Some(false);
+                };
+                let packets = game.prepare_clicks(container, &predicted);
+                let commit = packets.is_ok();
+                prepared = Some(packets.map(|packets| (predicted, packets)));
+                threw = dropped;
+                Some(commit)
+            });
+        }
         let result = prepared.unwrap_or_else(|| {
             let unpredicted: Vec<Predicted> = clicks
                 .iter()
@@ -103,22 +132,61 @@ impl Game<'_> {
         let (container, _) = self.remote_menu();
         let mut sent: Vec<Predicted> = Vec::new();
         let mut prepared = None;
-        self.menu_session_with_game(|game, m, env, to_menu| {
-            let clicked = to_menu(slot)?;
-            let mut before = menu_items(m);
-            let mut each = |m: &sunrise_client::menu::Menu, t: usize| {
-                let changed = changed_slots(&before, m);
-                sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
-                before = menu_items(m);
-            };
-            let modeled = m
-                .quick_move_all_each(env, clicked, moved, &mut each)
-                .is_ok();
-            let packets = game.prepare_clicks(container, &sent);
-            let commit = modeled && packets.is_ok();
-            prepared = Some(packets);
-            Some(commit)
-        });
+        if self
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == crate::game::stations::Kind::Anvil)
+        {
+            self.anvil_menu_session(|game, m, to_menu| {
+                let clicked = to_menu(slot)?;
+                let mut before = menu_items(m);
+                let mut modeled = true;
+                if clicked < m.slot_count() && m.can_take_for_pick_all(clicked) {
+                    for t in 0..m.slot_count() {
+                        let eligible = {
+                            let env = sunrise_client::menu::Env {
+                                enchantments: game.item_enchantments(),
+                                ..game.menu_env()
+                            };
+                            m.quick_move_all_accepts(&env, clicked, t, moved)
+                        };
+                        if eligible {
+                            if game
+                                .run_client_anvil_click(m, t as i32, 0, Input::QuickMove)
+                                .is_err()
+                            {
+                                modeled = false;
+                                break;
+                            }
+                            let changed = changed_slots(&before, m);
+                            sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
+                            before = menu_items(m);
+                        }
+                    }
+                }
+                let packets = game.prepare_clicks(container, &sent);
+                let commit = modeled && packets.is_ok();
+                prepared = Some(packets);
+                Some(commit)
+            });
+        } else {
+            self.menu_session_with_game(|game, m, env, to_menu| {
+                let clicked = to_menu(slot)?;
+                let mut before = menu_items(m);
+                let mut each = |m: &sunrise_client::menu::Menu, t: usize| {
+                    let changed = changed_slots(&before, m);
+                    sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
+                    before = menu_items(m);
+                };
+                let modeled = m
+                    .quick_move_all_each(env, clicked, moved, &mut each)
+                    .is_ok();
+                let packets = game.prepare_clicks(container, &sent);
+                let commit = modeled && packets.is_ok();
+                prepared = Some(packets);
+                Some(commit)
+            });
+        }
         match prepared {
             Some(Ok(packets)) => self.send_clicks(&sent, packets),
             Some(Err(error)) => log::warn!("Refused quick move: {error}"),

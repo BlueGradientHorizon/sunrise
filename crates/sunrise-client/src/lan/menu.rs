@@ -933,6 +933,9 @@ fn move_to(
         }
         if view.enabled(i) && view.get(i).is_none() && view.may_place(i, &stack, rules) {
             let moved = stack.count.min(view.slot_max(i, &stack, rules));
+            if moved == 0 {
+                continue;
+            }
             view.set(
                 i,
                 Some(ItemStack {
@@ -1371,20 +1374,23 @@ fn swap(view: &mut View, slot: i32, button: i32, rules: &dyn Rules, drops: &mut 
         {
             return;
         }
-        if let Some(mut source) = off.clone()
-            && source.count > view.slot_max(i, &source, rules)
-        {
+        if let Some(mut source) = off.clone() {
             let max = view.slot_max(i, &source, rules);
-            let mut part = source.clone();
-            part.count = max;
-            source.count -= max;
-            view.set(i, Some(part));
-            view.guest.offhand = Some(source);
-            if let Some(taken) = clicked {
-                add_to_inventory(view, taken, rules, drops);
+            if source.count > max {
+                let mut part = source.clone();
+                part.count = max;
+                source.count -= max;
+                view.set(i, Some(part));
+                view.guest.offhand = Some(source);
+                if let Some(taken) = clicked {
+                    add_to_inventory(view, taken, rules, drops);
+                }
+            } else {
+                view.set(i, Some(source));
+                view.guest.offhand = clicked;
             }
         } else {
-            view.set(i, off);
+            view.set(i, None);
             view.guest.offhand = clicked;
         }
         return;
@@ -1409,20 +1415,23 @@ fn swap(view: &mut View, slot: i32, button: i32, rules: &dyn Rules, drops: &mut 
     {
         return;
     }
-    if let Some(mut source) = b.clone()
-        && source.count > view.slot_max(i, &source, rules)
-    {
+    if let Some(mut source) = b.clone() {
         let max = view.slot_max(i, &source, rules);
-        let mut part = source.clone();
-        part.count = max;
-        source.count -= max;
-        view.set(i, Some(part));
-        view.set(other, Some(source));
-        if let Some(taken) = a {
-            add_to_inventory(view, taken, rules, drops);
+        if source.count > max {
+            let mut part = source.clone();
+            part.count = max;
+            source.count -= max;
+            view.set(i, Some(part));
+            view.set(other, Some(source));
+            if let Some(taken) = a {
+                add_to_inventory(view, taken, rules, drops);
+            }
+        } else {
+            view.set(i, Some(source));
+            view.set(other, a);
         }
     } else {
-        view.set(i, b);
+        view.set(i, None);
         view.set(other, a);
     }
 }
@@ -3495,5 +3504,102 @@ pub(crate) mod tests {
             view.guest.carried,
             Some(ItemStack::new("minecraft:stone", 8))
         );
+    }
+
+    #[test]
+    fn swap_reads_slot_max_once_even_when_rule_limit_grows() {
+        struct GrowingMax(std::cell::Cell<usize>);
+        impl crate::menu::SlotRules for GrowingMax {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:chest"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                _: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                _: &mut bool,
+                max_stack: &mut u32,
+            ) {
+                let call = self.0.get();
+                self.0.set(call + 1);
+                // First two queries (may_place + the single slot_max) cap at 1;
+                // a duplicate slot_max query would return 8 and underflow `4 - 8`.
+                *max_stack = if call < 2 { 1 } else { 8 };
+            }
+        }
+        struct GrowingRules(Items, GrowingMax);
+        impl Rules for GrowingRules {
+            fn items(&self) -> &Items {
+                &self.0
+            }
+            fn enchantments(&self) -> &Enchantments {
+                enchantments()
+            }
+            fn max_stack(&self, _: &str) -> u32 {
+                64
+            }
+            fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+                Some(&self.1)
+            }
+        }
+        for button in [40, 0] {
+            let rules = GrowingRules(
+                Items::for_tests(Default::default()),
+                GrowingMax(std::cell::Cell::new(0)),
+            );
+            let mut g = guest();
+            g.menu = Some(Menu {
+                window: 1,
+                kind: 0,
+                pos: Some((0, 0, 0)),
+                slots: Slots::Block((0, 0, 0)),
+                size: 1,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                blockless_data: Vec::new(),
+                hidden: Vec::new(),
+                mod_type: None,
+                registry_id: "test:chest".into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: false,
+            });
+            if button == 40 {
+                g.offhand = Some(ItemStack::new("minecraft:stone", 4));
+            } else {
+                g.inventory[0] = Some(ItemStack::new("minecraft:stone", 4));
+            }
+            let mut chest = vec![None];
+            let context = crate::test_resources::loop_context(
+                sunrise_world::native_load_context::LoopSide::Server,
+            );
+            let mut view = View {
+                guest: &mut g,
+                container: Some(&mut chest),
+                shulker: false,
+                container_limits: Vec::new(),
+                hidden: &[],
+                loop_context: &context,
+            };
+            let mut drag = None;
+            click(&mut view, &mut drag, 0, button, input::SWAP, &rules);
+            assert_eq!(
+                rules.1.0.get(),
+                2,
+                "may_place + one slot_max for button {button}"
+            );
+            assert_eq!(view.get(0), Some(ItemStack::new("minecraft:stone", 1)));
+            let remainder = if button == 40 {
+                view.guest.offhand.clone()
+            } else {
+                view.guest.inventory[0].clone()
+            };
+            assert_eq!(remainder, Some(ItemStack::new("minecraft:stone", 3)));
+        }
     }
 }

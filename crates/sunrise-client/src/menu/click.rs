@@ -16,9 +16,17 @@ impl ClickContinuation {
 }
 
 enum ClickStep {
+    QuickCraft {
+        slots: Vec<usize>,
+        index: usize,
+        quick_type: i32,
+        source: ItemStack,
+        remaining: i64,
+    },
     QuickMove {
         slot: usize,
         previous: Option<ItemStack>,
+        checked: bool,
     },
     Throw {
         slot: usize,
@@ -102,7 +110,7 @@ impl Menu {
         self.start_click(env, slot_index, button, input).map(|_| ())
     }
 
-    /// Start a click that may suspend at the first take.
+    /// Start a click that may suspend at the first take or `createResult`.
     pub fn start_click(
         &mut self,
         env: &Env,
@@ -111,6 +119,43 @@ impl Menu {
         input: Input,
     ) -> Result<Option<ClickContinuation>, &'static str> {
         self.click_planned(env, slot_index, button, input)
+    }
+
+    /// Start a `QuickMove` whose initial `Slot.mayPickup` check already succeeded.
+    pub fn start_checked_quick_move(
+        &mut self,
+        env: &Env,
+        slot_index: i32,
+        button: i32,
+    ) -> Result<Option<ClickContinuation>, &'static str> {
+        self.touch();
+        let size = self.state.slots.len() as i32;
+        if self.state.quick_status != 0 {
+            self.reset_quick_craft();
+            return Ok(None);
+        }
+        if (0..size).contains(&slot_index)
+            && self.state.slots[slot_index as usize].role == Role::Hidden
+        {
+            return Ok(None);
+        }
+        if button != 0 && button != 1 {
+            return Ok(None);
+        }
+        if slot_index < 0 {
+            return Ok(None);
+        }
+        if !(0..size).contains(&slot_index) {
+            return Err(OUT_OF_BOUNDS);
+        }
+        Ok(self.run_click_step(
+            env,
+            ClickStep::QuickMove {
+                slot: slot_index as usize,
+                previous: None,
+                checked: true,
+            },
+        ))
     }
 
     pub(super) fn click_planned(
@@ -163,7 +208,7 @@ impl Menu {
                         let s = self.state.quick_slots[0] as i32;
                         let ty = self.state.quick_type;
                         self.reset_quick_craft();
-                        return self.click(env, s, ty, Input::Pickup).map(|()| None);
+                        return self.start_click(env, s, ty, Input::Pickup);
                     }
                     let mut source = self.state.carried.clone().expect("checked");
                     let mut remaining = source.count as i64;
@@ -174,6 +219,20 @@ impl Menu {
                             .quick_slots
                             .iter()
                             .any(|slot| matches!(self.state.slots[*slot].role, Role::Armor(_)));
+                    if !observed && self.state.track_results {
+                        let slots = self.state.quick_slots.clone();
+                        let quick_type = self.state.quick_type;
+                        return Ok(self.run_click_step(
+                            env,
+                            ClickStep::QuickCraft {
+                                slots,
+                                index: 0,
+                                quick_type,
+                                source,
+                                remaining,
+                            },
+                        ));
+                    }
                     let mut input = observed.then(|| Some(source.clone()));
                     let mut barrier = input
                         .as_mut()
@@ -266,6 +325,7 @@ impl Menu {
                     ClickStep::QuickMove {
                         slot: s,
                         previous: None,
+                        checked: false,
                     },
                 ));
             } else {
@@ -354,6 +414,26 @@ impl Menu {
         self.takes
             .as_ref()
             .is_some_and(|tracker| tracker.0.is_some())
+    }
+
+    /// Suspend multi-slot clicks whenever `AnvilMenu.createResult` or `GrindstoneMenu.createResult`
+    /// runs so the caller can dispatch live result hooks between slot writes.
+    pub fn track_results(&mut self, track: bool) {
+        self.touch();
+        self.state.track_results = track;
+    }
+
+    pub(super) fn result_pending(&self) -> bool {
+        self.state.track_results
+            && match self.state.kind {
+                Kind::Anvil => self.state.anvil_made,
+                Kind::Grindstone => self.state.grind_made,
+                _ => false,
+            }
+    }
+
+    fn step_pending(&self) -> bool {
+        self.take_pending() || self.result_pending()
     }
 
     fn tracks_take(&self, s: usize) -> bool {
@@ -608,9 +688,10 @@ impl Menu {
         env: &Env,
         slot: usize,
         previous: Option<&ItemStack>,
+        checked: bool,
     ) -> Option<ItemStack> {
         let allowed = match previous {
-            None => self.may_pickup(env, slot),
+            None => checked || self.may_pickup(env, slot),
             Some(previous) => self.slot(slot).is_some_and(|now| same_item(now, previous)),
         };
         allowed.then(|| self.quick_move_noted(env, slot)).flatten()
@@ -649,7 +730,9 @@ impl Menu {
             return None;
         }
         match input {
-            Input::QuickMove if (0..=1).contains(&button) => self.quick_move_step(env, 2, previous),
+            Input::QuickMove if (0..=1).contains(&button) => {
+                self.quick_move_step(env, 2, previous, false)
+            }
             Input::Throw if self.carried.is_none() => {
                 let taken = self.throw_step(env, 2, throw_amount, previous);
                 taken.filter(|_| button == 1)
@@ -689,6 +772,22 @@ impl Menu {
         self.quick_move_all_each(env, clicked, moved, &mut |_, _| {})
     }
 
+    /// Whether slot `t` participates in a Shift double click started on `clicked` for `moved`.
+    pub fn quick_move_all_accepts(
+        &self,
+        env: &Env,
+        clicked: usize,
+        t: usize,
+        moved: &ItemStack,
+    ) -> bool {
+        clicked < self.state.slots.len()
+            && t < self.state.slots.len()
+            && self.has_item(t)
+            && self.state.slots[t].container == self.state.slots[clicked].container
+            && self.quick_replace(t, moved, env)
+            && self.may_pickup(env, t)
+    }
+
     /// `quick_move_all`, calling `each` with the menu and the slot after each
     /// QUICK_MOVE (a server's client sends every one of them).
     pub fn quick_move_all_each(
@@ -702,13 +801,8 @@ impl Menu {
         if clicked >= self.state.slots.len() || !self.can_take_for_pick_all(clicked) {
             return Ok(());
         }
-        let container = self.state.slots[clicked].container;
         for t in 0..self.state.slots.len() {
-            if self.has_item(t)
-                && self.state.slots[t].container == container
-                && self.quick_replace(t, moved, env)
-                && self.may_pickup(env, t)
-            {
+            if self.quick_move_all_accepts(env, clicked, t, moved) {
                 self.click(env, t as i32, 0, Input::QuickMove)?;
                 each(self, t);
             }
@@ -779,11 +873,69 @@ impl Menu {
     /// anew after dispatch, so a listener can change the next step's inputs.
     fn run_click_step(&mut self, env: &Env, step: ClickStep) -> Option<ClickContinuation> {
         match step {
-            ClickStep::QuickMove { slot, mut previous } => {
-                while let Some(now) = self.quick_move_step(env, slot, previous.as_ref()) {
+            ClickStep::QuickCraft {
+                slots,
+                mut index,
+                quick_type,
+                mut source,
+                mut remaining,
+            } => {
+                while index < slots.len() {
+                    let s = slots[index];
+                    index += 1;
+                    let proof = self.equip_placement(env, s, &source);
+                    if self.quick_replace(s, &source, env)
+                        && proof.allowed
+                        && (quick_type == 2 || source.count as usize >= slots.len())
+                        && self.can_drag_to(s)
+                    {
+                        let have = self.slot(s).map_or(0, |c| c.count);
+                        let max = Self::max_stack(env, &source).min(proof.max);
+                        let new_count = quick_craft_count(
+                            quick_type as u8,
+                            source.count,
+                            slots.len(),
+                            have,
+                            max,
+                            Self::max_stack(env, &source),
+                        );
+                        if !proof.can_apply(self, env, &source) {
+                            continue;
+                        }
+                        remaining -= i64::from(new_count) - i64::from(have);
+                        let mut placed = source.clone();
+                        placed.count = new_count;
+                        self.set_by_player(env, s, Some(placed));
+                        if self.result_pending() {
+                            return Some(ClickContinuation(ClickStep::QuickCraft {
+                                slots,
+                                index,
+                                quick_type,
+                                source,
+                                remaining,
+                            }));
+                        }
+                    }
+                }
+                source.count = remaining.max(0) as u32;
+                self.state.carried = Some(source);
+                tidy(&mut self.state.carried);
+                self.reset_quick_craft();
+            }
+            ClickStep::QuickMove {
+                slot,
+                mut previous,
+                mut checked,
+            } => {
+                while let Some(now) = self.quick_move_step(env, slot, previous.as_ref(), checked) {
+                    checked = false;
                     previous = Some(now);
-                    if self.take_pending() {
-                        return Some(ClickContinuation(ClickStep::QuickMove { slot, previous }));
+                    if self.step_pending() {
+                        return Some(ClickContinuation(ClickStep::QuickMove {
+                            slot,
+                            previous,
+                            checked: false,
+                        }));
                     }
                 }
             }
@@ -794,7 +946,7 @@ impl Menu {
             } => {
                 while let Some(now) = self.throw_step(env, slot, amount, previous.as_ref()) {
                     previous = Some(now);
-                    if self.take_pending() {
+                    if self.step_pending() {
                         return Some(ClickContinuation(ClickStep::Throw {
                             slot,
                             amount,
@@ -828,7 +980,7 @@ impl Menu {
                                 && let Some(c) = self.carried.as_mut()
                             {
                                 c.count += removed.count;
-                                if self.take_pending() {
+                                if self.step_pending() {
                                     return Some(ClickContinuation(ClickStep::PickAll {
                                         next,
                                         step,

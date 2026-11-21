@@ -1331,11 +1331,13 @@ impl super::Game<'_> {
             output: None,
             xp: -1,
         };
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let tx_depth = self.transactions.len();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
         }))
-        .is_err()
-        {
+        .is_err();
+        self.abort_abandoned_transactions(tx_depth);
+        if panicked {
             log::error!("grindstone_place: listener panicked at {pos:?}");
             *cancel = false;
             return Default::default();
@@ -1384,11 +1386,13 @@ impl super::Game<'_> {
             new_top: None,
             new_bottom: None,
         };
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let tx_depth = self.transactions.len();
+        let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
         }))
-        .is_err()
-        {
+        .is_err();
+        self.abort_abandoned_transactions(tx_depth);
+        if panicked {
             log::error!("grindstone_take: listener panicked at {pos:?}");
             *cancel = false;
             return crate::menu::GrindstoneTakeEdits::initial(initial_xp);

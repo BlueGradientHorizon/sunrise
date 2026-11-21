@@ -44,6 +44,8 @@ thread_local! {
     static ASKED: RefCell<Vec<(usize, String, u32)>> = const { RefCell::new(Vec::new()) };
     /// The slots `menu_quick_move` was heard for.
     static MOVED: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+    /// Optional per-call `may_pickup` overrides for slot 0 (popped from the front).
+    static SLOT0_PICKUP: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
 
 struct Pot;
@@ -58,6 +60,14 @@ impl MenuPart for Pot {
                 .borrow_mut()
                 .push((event.slot, item, event.stack.count()))
         });
+        if event.slot == 0
+            && let Some(allowed) = SLOT0_PICKUP.with(|seq| {
+                let mut seq = seq.borrow_mut();
+                (!seq.is_empty()).then(|| seq.remove(0))
+            })
+        {
+            event.may_pickup = allowed;
+        }
         if event.slot == SHOWN {
             event.may_pickup = false;
             event.may_place = false;
@@ -417,14 +427,13 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [0]);
         assert_eq!(served(game), predicted(&menu));
         assert_eq!(menu.slot(0), None);
-        // On the server, `lan_mod_quick_move` checks the pickup rule before `menu_quick_move`;
-        // when the hook leaves the move to the game, `lan_machine_click` runs vanilla's live
-        // click routing, matching the client's asks.
+        // On the server, `lan_mod_quick_move` checks the pickup rule once before
+        // `menu_quick_move`; when the hook leaves the move to the game, `lan_machine_click`
+        // resumes with that initial check already settled, matching the client's asks.
         let (menu, client_asks, server_asks) =
             asked_by_both(game, rx, (&[(0, stone(5))], None), (0, 0, Input::QuickMove));
         assert_eq!(served(game), predicted(&menu));
-        assert_eq!(server_asks[0], (0, "minecraft:stone".to_owned(), 5));
-        assert_eq!(server_asks[1..], client_asks);
+        assert_eq!(server_asks, client_asks);
         // Reverse inventory traversal inserts into hotbar slot 8 (inventory index 8).
         assert_eq!(menu.player_item(8).map(|s| s.count), Some(5));
         assert_eq!(
@@ -442,22 +451,48 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         );
         assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [from]);
         assert_eq!(served(game), predicted(&menu));
-        assert_eq!(server_asks[0], (30, "minecraft:stone".to_owned(), 5));
-        assert_eq!(server_asks[1..], client_asks);
+        assert_eq!(server_asks, client_asks);
         assert_eq!(
             times(&server_asks, (30, "minecraft:stone", 5)),
-            2,
+            1,
             "{server_asks:?}"
         );
-        // A refused shift-click refuses before the hook, and the click fallback refuses live too.
+        // A refused shift-click refuses before the hook and consumes the click without re-asking.
         MOVED.with(|moved| moved.borrow_mut().clear());
         let action = (SHOWN as i32, 0, Input::QuickMove);
         let (_, client_asks, server_asks) =
             asked_by_both(game, rx, (&[(SHOWN, stone(5))], None), action);
         assert_eq!(client_asks, [(SHOWN, "minecraft:stone".to_owned(), 5)]);
-        assert_eq!(server_asks[0], (SHOWN, "minecraft:stone".to_owned(), 5));
-        assert_eq!(server_asks[1..], client_asks);
+        assert_eq!(server_asks, client_asks);
         assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+
+        // A stateful pickup rule whose answer flips between calls is still only asked once:
+        // false -> true stays refused; true -> false still completes the fallback move.
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        let menu = prediction(&[(0, stone(5))], None);
+        serve(game, &menu);
+        asked();
+        SLOT0_PICKUP.with(|seq| *seq.borrow_mut() = vec![false, true]);
+        click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
+        assert_eq!(served(game), predicted(&menu));
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        assert_eq!(asked(), [(0, "minecraft:stone".to_owned(), 5)]);
+        assert_eq!(SLOT0_PICKUP.with(|seq| seq.borrow().len()), 1);
+
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        let mut expected = prediction(&[(0, stone(5))], None);
+        serve(game, &expected);
+        SLOT0_PICKUP.with(|seq| *seq.borrow_mut() = vec![true]);
+        expected
+            .click(&game.menu_env(), 0, 0, Input::QuickMove)
+            .unwrap();
+        asked();
+        SLOT0_PICKUP.with(|seq| *seq.borrow_mut() = vec![true, false]);
+        click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
+        assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [0]);
+        assert_eq!(served(game), predicted(&expected));
+        assert_eq!(SLOT0_PICKUP.with(|seq| seq.borrow().len()), 1);
+        SLOT0_PICKUP.with(|seq| seq.borrow_mut().clear());
     });
 }
 

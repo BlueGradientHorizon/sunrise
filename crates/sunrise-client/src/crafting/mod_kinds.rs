@@ -228,7 +228,7 @@ impl Recipes {
         height: usize,
         map_scale: &dyn Fn(i32) -> Option<u8>,
     ) -> Option<(&str, ItemStack)> {
-        let vanilla = Input::of(grid, size);
+        let vanilla = Input::of_rect(grid, size, width, height);
         if vanilla.is_none() && !self.mod_crafting {
             return None;
         }
@@ -298,13 +298,10 @@ impl Recipes {
         let Some(result) = result.filter(|r| r.len() == expected) else {
             return fallback();
         };
-        let Some(placed_len) = size.checked_mul(size) else {
-            return fallback();
-        };
-        if width > 0 && height > 0 && height > size {
+        if height > 0 && (size < width || height.checked_mul(size).is_none_or(|n| n > grid.len())) {
             return fallback();
         }
-        let mut placed = vec![None; placed_len];
+        let mut placed = vec![None; grid.len()];
         for (i, cell) in result.into_iter().enumerate() {
             placed[i / width * size + i % width] = match cell {
                 Some(stack) => match from_api(stack) {

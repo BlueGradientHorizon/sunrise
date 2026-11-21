@@ -881,6 +881,33 @@ impl Game<'_> {
         }
         stack.count != start
     }
+    /// After a live client anvil session (`anvil_menu_session`): copy the final anvil state
+    /// from `menu` into `self.station` and sync the rename box without re-running `createResult`
+    /// or `anvil_update` a second time.
+    pub(super) fn anvil_session_end(&mut self, menu: &sunrise_client::menu::Menu) {
+        let Some(s) = self.station.as_mut() else {
+            return;
+        };
+        if s.kind != Kind::Anvil {
+            return;
+        }
+        s.anvil.cost = menu.data[0];
+        s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+        s.anvil.only_renaming = menu.anvil.only_renaming;
+        s.anvil.result = s.result.clone();
+        if s.inputs[0] != s.anvil_last {
+            s.anvil_last = s.inputs[0].clone();
+            let name = s.inputs[0]
+                .as_ref()
+                .map(|i| {
+                    sunrise_client::lang::returned_to_server(|| {
+                        stations::hover_name(&self.pack.names, i)
+                    })
+                })
+                .unwrap_or_default();
+            anvil::input_changed(s, name);
+        }
+    }
     /// After an anvil or smithing click on the menu engine: the anvil's cost
     /// and state back into the station and the rename box following the
     /// input (`AnvilScreen.slotChanged`), then the rest of a taken result's
@@ -2644,6 +2671,63 @@ mod tests {
                 assert_eq!(calls.load(Ordering::Relaxed), before + 1);
                 game.station_text(None, true);
                 assert_eq!(calls.load(Ordering::Relaxed), before + 2);
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_fires_at_each_create_result_in_multi_slot_drag() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct DragListener(Arc<Mutex<Vec<(u32, Option<u32>)>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for DragListener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0.lock().unwrap().push((
+                    event.inputs.left.count(),
+                    event.inputs.right.map(ApiStack::count),
+                ));
+                if event.inputs.right.is_some() {
+                    let dirt = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                    event.edits.output = StackResult::Set(Some(ApiStack::of(dirt)));
+                    event.edits.xp_cost = 3;
+                }
+                Flow::Continue
+            }
+        }
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "drag-listener",
+            Box::new(DragListener(observed.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilDrag").unwrap();
+                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".to_owned()));
+                game.station = Some(Station::new(Kind::Anvil, [0; 3]));
+                game.carried = Some(ItemStack::new("minecraft:iron_ingot", 2));
+
+                assert!(game.remote_menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(super::INPUT), 1, Input::QuickCraft),
+                    (Some(super::INPUT + 1), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+
+                assert_eq!(*observed.lock().unwrap(), vec![(1, None), (1, Some(1))]);
+                let station = game.station.as_ref().unwrap();
+                assert_eq!(station.result, Some(ItemStack::new("minecraft:dirt", 1)));
+                assert_eq!(station.anvil.cost, 3);
+                assert_eq!(game.carried, None);
             });
         });
     }

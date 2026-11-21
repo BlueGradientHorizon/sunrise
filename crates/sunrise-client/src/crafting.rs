@@ -581,25 +581,43 @@ pub struct Input<'a> {
 impl<'a> Input<'a> {
     /// `CraftingInput.ofPositioned`; None for an empty grid.
     pub fn of(grid: &'a [Option<ItemStack>], size: usize) -> Option<Self> {
-        let occupied: Vec<(usize, usize)> = (0..size * size)
-            .filter(|&i| grid.get(i).is_some_and(|c| c.is_some()))
-            .map(|i| (i % size, i / size))
-            .collect();
-        let (x0, x1) = (
-            occupied.iter().map(|p| p.0).min()?,
-            occupied.iter().map(|p| p.0).max()?,
-        );
-        let (y0, y1) = (
-            occupied.iter().map(|p| p.1).min()?,
-            occupied.iter().map(|p| p.1).max()?,
-        );
-        let (width, height) = (x1 - x0 + 1, y1 - y0 + 1);
-        let cells = (0..width * height)
-            .map(|i| grid[(y0 + i / width) * size + x0 + i % width].as_ref())
+        Self::of_rect(grid, size, size, size)
+    }
+    /// `CraftingInput.ofPositioned` over a `width`x`height` grid laid out with row stride `stride`.
+    pub fn of_rect(
+        grid: &'a [Option<ItemStack>],
+        stride: usize,
+        width: usize,
+        height: usize,
+    ) -> Option<Self> {
+        if width == 0 || height == 0 || stride < width {
+            return None;
+        }
+        let mut bounds: Option<(usize, usize, usize, usize)> = None;
+        for y in 0..height {
+            let Some(row) = y.checked_mul(stride) else {
+                break;
+            };
+            if row >= grid.len() {
+                break;
+            }
+            for x in 0..width {
+                if grid.get(row + x).is_some_and(Option::is_some) {
+                    bounds = Some(match bounds {
+                        None => (x, x, y, y),
+                        Some((x0, x1, y0, y1)) => (x0.min(x), x1.max(x), y0.min(y), y1.max(y)),
+                    });
+                }
+            }
+        }
+        let (x0, x1, y0, y1) = bounds?;
+        let (w, h) = (x1 - x0 + 1, y1 - y0 + 1);
+        let cells = (0..w * h)
+            .map(|i| grid[(y0 + i / w) * stride + x0 + i % w].as_ref())
             .collect();
         Some(Self {
-            width,
-            height,
+            width: w,
+            height: h,
             left: x0,
             top: y0,
             cells,

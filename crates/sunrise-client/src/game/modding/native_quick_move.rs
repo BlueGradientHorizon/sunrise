@@ -152,17 +152,32 @@ impl Game<'_> {
             return false;
         }
         let slot = p.slot as usize;
-        let Some(handled) =
-            self.decided_mod_quick_move(conn, pos, size, menu_type, slot, at, window)
-        else {
-            // The client predicted the game's routing: it gets the menu as it is.
-            if let Some(host) = self.lan.as_mut() {
-                host.hub.resend_menu(conn, window, &self.world);
+        match self.decided_mod_quick_move(conn, pos, size, menu_type, slot, at, window) {
+            QuickMoveOutcome::Handled => {}
+            QuickMoveOutcome::PickupRefused => {
+                // The pickup rule refused before `menu_quick_move`: consume the click so
+                // the fallback path does not re-ask a stateful rule, and sync any mismatched
+                // client prediction back.
+                if let Some(host) = self.lan.as_mut() {
+                    host.hub.inventory_clicked(conn, p, &self.world, &[]);
+                }
+                return true;
             }
-            return true;
-        };
-        if !handled {
-            return false;
+            QuickMoveOutcome::Untaken {
+                pickup_checked: true,
+            } => {
+                return self.lan_machine_click_checked(conn, p, true);
+            }
+            QuickMoveOutcome::Untaken {
+                pickup_checked: false,
+            } => return false,
+            QuickMoveOutcome::Rejected => {
+                // The client predicted the game's routing: it gets the menu as it is.
+                if let Some(host) = self.lan.as_mut() {
+                    host.hub.resend_menu(conn, window, &self.world);
+                }
+                return true;
+            }
         }
         // The mod menu type's engine starts over from the block entity next click.
         let Some(host) = self.lan.as_mut() else {
@@ -351,15 +366,18 @@ impl Game<'_> {
     /// `Slot.mayPickup` of the clicked slot, which `doClick` asks before the menu's
     /// `quickMoveStack`: a slot of a mod menu type its parts refuse (`menu_slot_rules`) asks no
     /// mod, and the game's own routing refuses it too.
+    /// `Slot.mayPickup` before `menu_quick_move`: `Some(allowed)` when a mod menu type's rule
+    /// was asked for a non-empty slot, or `None` when no rule applies (empty slot, vanilla menu
+    /// type, or missing block entity).
     fn mod_menu_quick_move_gives(
         &self,
         pos: Pos,
         menu_type: Option<&'static ModMenuType>,
         slot: usize,
         at: MenuSlot,
-    ) -> bool {
+    ) -> Option<bool> {
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
-            return true;
+            return None;
         };
         let held = match at {
             MenuSlot::Container(k) => m.items.get(k).cloned().flatten(),
@@ -367,18 +385,13 @@ impl Game<'_> {
         };
         match (menu_type, held.filter(|s| s.count > 0)) {
             (Some(t), Some(stack)) => {
-                self.mod_menu_slot_gives(t, slot, &stack, [pos.0, pos.1, pos.2], &m.items)
+                Some(self.mod_menu_slot_gives(t, slot, &stack, [pos.0, pos.1, pos.2], &m.items))
             }
-            _ => true,
+            _ => None,
         }
     }
 
-    /// Route a mod menu quick move as one decided action, after asking the slot rules.
-    /// `Some(handled)`: the decision stood (a mod took the click), or no mod did and the
-    /// action was cancelled with every write of the listeners undone, so the game routes the
-    /// click (`handled` false), or the slot's rules refused the pickup before any mod was asked;
-    /// `None`: it was refused (stale, an invalid answer, a failing listener, a busy menu) and
-    /// nothing changed.
+    /// Route a mod menu quick move as one decided action, after asking the slot rules once.
     #[allow(clippy::too_many_arguments)]
     fn decided_mod_quick_move(
         &mut self,
@@ -389,15 +402,22 @@ impl Game<'_> {
         slot: usize,
         at: MenuSlot,
         window: i32,
-    ) -> Option<bool> {
-        let (actor, route) = (self.guest_actor(conn)?, self.guest_route(conn)?);
-        let gives = self.as_guest(conn, |g| {
+    ) -> QuickMoveOutcome {
+        let (Some(actor), Some(route)) = (self.guest_actor(conn), self.guest_route(conn)) else {
+            return QuickMoveOutcome::Rejected;
+        };
+        let Some(gives) = self.as_guest(conn, |g| {
             g.mod_menu_quick_move_gives(pos, menu_type, slot, at)
-        })?;
-        if !gives {
-            return Some(false);
+        }) else {
+            return QuickMoveOutcome::Rejected;
+        };
+        if gives == Some(false) {
+            return QuickMoveOutcome::PickupRefused;
         }
-        let admitted = Admitted::of(self, conn, pos, size, window)?;
+        let pickup_checked = gives == Some(true);
+        let Some(admitted) = Admitted::of(self, conn, pos, size, window) else {
+            return QuickMoveOutcome::Rejected;
+        };
         let fired = Rc::new(RefCell::new(None));
         let handled = Rc::new(Cell::new(None));
         let untaken = Rc::new(Cell::new(false));
@@ -463,11 +483,29 @@ impl Game<'_> {
             decide(self)
         };
         if applied {
-            Some(handled.get().unwrap_or(false))
+            if handled.get().unwrap_or(false) {
+                QuickMoveOutcome::Handled
+            } else {
+                QuickMoveOutcome::Untaken { pickup_checked }
+            }
+        } else if untaken.get() {
+            QuickMoveOutcome::Untaken { pickup_checked }
         } else {
-            untaken.get().then_some(false)
+            QuickMoveOutcome::Rejected
         }
     }
+}
+
+enum QuickMoveOutcome {
+    /// A mod listener handled the shift-click and its writes stood.
+    Handled,
+    /// `Slot.mayPickup` refused before `menu_quick_move` ran.
+    PickupRefused,
+    /// No mod took the click; route with vanilla's quick-move, carrying whether the initial
+    /// `Slot.mayPickup` check already succeeded so stateful rules are not asked twice.
+    Untaken { pickup_checked: bool },
+    /// The decided action failed validation, panicked, or went stale; resend the menu.
+    Rejected,
 }
 
 /// What `lan_mod_quick_move` admitted the click on, read again before the move is applied: the

@@ -511,3 +511,43 @@ fn registered_kind_matches_and_returns_remainders_for_empty_and_4x4_grids() {
         },
     );
 }
+
+#[test]
+fn extreme_aspect_ratio_rectangular_grids_avoid_square_padding() {
+    let load = crate::test_resources::server_load();
+    let context = load.captured_loop_context(engine::LoopSide::Server);
+    let root = tempfile::tempdir().unwrap();
+    let items = Items::empty();
+    let sources = ResolvedSources::resolve(
+        vec![(
+            "test:planks".into(),
+            serde_json::json!({
+                "type": "minecraft:crafting_shapeless",
+                "ingredients": ["minecraft:oak_log"],
+                "result": {"id": "minecraft:oak_planks", "count": 4}
+            }),
+        )],
+        &load,
+    )
+    .unwrap();
+    let recipes =
+        Recipes::from_resolved(root.path(), &items, &PackOverlay::NONE, &sources).unwrap();
+    let log = ItemStack::new("minecraft:oak_log", 1);
+    let remainder = ItemStack::new("minecraft:stick", 1);
+
+    for (w, h, slot) in [(1, 50_000, 49_999), (50_000, 1, 49_999)] {
+        let mut grid = vec![None; w * h];
+        grid[slot] = Some(log.clone());
+        let (id, output) = recipes
+            .find_with_dimensions(&context, &grid, w, w, h, &|_| None)
+            .unwrap();
+        assert_eq!(id, "test:planks");
+        assert_eq!(output, ItemStack::new("minecraft:oak_planks", 4));
+        let remainders = recipes.remainders_rect(&context, id, &grid, w, w, h, &|s| {
+            (&*s.item == "minecraft:oak_log").then(|| remainder.clone())
+        });
+        assert_eq!(remainders.len(), w * h);
+        assert_eq!(remainders[slot], Some(remainder.clone()));
+        assert_eq!(remainders[0], None);
+    }
+}
