@@ -1,0 +1,1 @@
+sunrise-client game::client_item_extensions::tests::invalid_registrations_do_not_discard_valid_reload_entries lib daily resources

@@ -380,8 +380,9 @@ read and write an optional owned NBT patch; a plain stack has no patch allocatio
 
 `ItemStackView` lends a nonempty stack for read-only inspection. Read `item()`, `count()`,
 `damage()` or `damage_component()` without copying the stack or encoding its components.
-Use `project()` to read the component patch or keep an owned `ItemStack` after the loan ends;
-projection returns `None` if the source cannot be represented as an owned stack.
+Use `get(&component)` to decode one stored component override; it does not consult item
+defaults. Use `project()` to read the whole patch or keep an owned `ItemStack` after the loan
+ends. Projection returns `None` if the source cannot be represented as an owned stack.
 `InventoryView::get(slot)` reads just that slot. `iter()` visits readable nonempty slots lazily,
 in ascending order, and yields each original slot number with its stack view. Neither operation
 projects a stack.

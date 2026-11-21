@@ -98,10 +98,11 @@ event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
 
 Trees are API-owned `ModelPart` trees, built directly or baked from a
 `LayerDefinition`. Register them once per resource load, never during a frame.
-Model names belong to the registering mod's namespace. Duplicate model names,
-non-finite geometry or poses, an unknown texture, an unknown item and two
-providers for one item refuse the resource-load registration by name. A duplicate
-item diagnostic names both providers. Disabling the owning mod stops its Part.
+Model names may use any valid namespace. Duplicate model names, non-finite
+geometry or poses, unknown textures or items, and a second provider for an item
+return an error from that registrar call. Other successful registrations still
+install. A duplicate item error names both providers and leaves the first in
+place. Disabling the owning mod stops its provider.
 A server-only package cannot declare this client registration hook.
 
 The worn stack must first pass the equippable component's asset and matching-slot
@@ -131,11 +132,13 @@ again. Babies do not draw trims. Foil goes on the first drawn material when ther
 is no trim, and on the trim otherwise.
 
 Model and texture references are scoped to the resource load. A stale reference
-returned during drawing uses vanilla's model or the supplied default texture,
-with one diagnostic per provider until reload, never a panic. A failed callback
-discards all of the piece's custom layers, draws the piece with vanilla behaviour,
-and disables that provider until reload, with one diagnostic. A failure discards the custom drawing even if an earlier layer succeeded.
-Callbacks work with references and layer values, not geometry or rebakes.
+uses vanilla's model or the supplied default texture and is logged each time.
+If a callback is refused, the whole piece draws as vanilla for that draw, even
+if an earlier layer succeeded. A later draw can still use that provider. A panic
+also discards the custom draw, logs and shows an error toast naming the mod, and
+disables that mod's callback for that item for the rest of the session. A resource
+reload does not revive it. Callbacks work with references and layer values, not
+geometry or rebakes.
 
 ## Standalone model bakers
 

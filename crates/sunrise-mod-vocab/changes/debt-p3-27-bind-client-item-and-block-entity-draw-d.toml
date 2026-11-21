@@ -1,0 +1,24 @@
+ids = [
+    "hook:register_client_item_extensions",
+    "method:Hooks::register_client_item_extensions",
+    "trait:ClientItemExtensionsRegistrar",
+    "method:ClientItemExtensionsRegistrar::register_model",
+    "method:ClientItemExtensionsRegistrar::register_texture",
+    "method:ClientItemExtensionsRegistrar::client_item_extensions",
+    "trait:ClientItemExtensions",
+    "type:ArmorModelRef",
+    "type:ArmorTextureRef",
+    "handle:Attached::__client_item_extensions",
+    "handle:Attached::enabled",
+    "type:item::item_stack::ItemStackView",
+    "handle:item::item_stack::ItemStackView::get",
+    "handle:item::item_stack::ItemStackView::resident_with_components",
+]
+why = "NeoForge's RegisterClientExtensionsEvent.registerItem and ClientExtensionsManager.register report duplicate providers at the registration call. A failed call now leaves other valid models, textures and providers installed. Model identifiers need not belong to the mod that registers them, and binding a native equipment tree has no depth cap, as in vanilla's EntityModelSet.bakeLayer and ModelPart.render. Worn layers keep the selection order of EquipmentLayerRenderer.renderLayers and NeoForge's IClientItemExtensions. A draw refusal affects only that draw; a panic disables that mod's callback for the item for the session. A borrowed stack can now read a single stored override instead of encoding the full component patch when its source lends individual components."
+migrate = '''
+Rebuild native mods that listen to `register_client_item_extensions` for version 2. Registration method signatures are unchanged. Handle each `Err` from `event.extensions.register_model`, `register_texture` or `client_item_extensions` at that call; do not assume an error undoes earlier successful registrations. Duplicate item registrations name both providers and keep the first. Model names can use a namespace other than the registering mod's.
+
+Keep registering models, textures and providers on each resource load. A stale reference is reported on each use and selects the default for that layer. A refused draw falls back to vanilla for that piece without disabling the provider. If the provider panics, fix the callback and restart the session; reloading resources will not reactivate that mod's provider for that item.
+
+For one typed override, replace `view.project()?.get(&descriptor)` with `view.get(&descriptor)`. The method does not read item defaults; continue using `view.project()` for a full patch or an owned stack. The engine-only `Attached::__client_item_extensions` binding and its `enabled()` method are removed; mods attach providers through `event.extensions.client_item_extensions(item, Arc::new(provider))` as before.
+'''

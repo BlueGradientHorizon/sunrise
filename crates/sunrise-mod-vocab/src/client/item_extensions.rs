@@ -15,7 +15,7 @@ pub enum EquipmentLayerType {
 }
 
 /// A model baked from a registered ModelPart tree on this resource load.
-/// References from a previous load fall back to the vanilla model, with one diagnostic.
+/// References from a previous load fall back to the vanilla model and are reported on each use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: only the engine constructs resource-load references
 pub struct ArmorModelRef {
@@ -43,7 +43,7 @@ impl ArmorModelRef {
 }
 
 /// A texture resolved against this resource load's atlas.
-/// A stale reference falls back to the supplied vanilla/CIT texture, with one diagnostic.
+/// A stale reference falls back to the supplied vanilla/CIT texture and is reported on each use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: only the engine constructs resource-load references
 pub struct ArmorTextureRef {
@@ -100,8 +100,9 @@ impl EquipmentLayer {
 /// The single provider attached to one item for worn equipment rendering.
 /// Only visible equipped pieces which pass the equippable slot/asset gate are queried.
 /// Register trees and textures through the reload registrar and use the references it returns.
-/// If the callback panics, the game discards every layer of the piece, draws it with vanilla
-/// behaviour, and disables the provider until reload.
+/// A refused callback discards all custom layers and draws the piece as vanilla for that draw;
+/// a later draw can still use this provider. A panic also disables this mod's callback for this
+/// item for the rest of the session, even if a subsequent reload registers it again.
 pub trait ClientItemExtensions: Send + Sync + 'static {
     /// Choose the tree for one material layer, after its nonzero tint and texture resolve.
     /// Humanoid pose and slot visibility are copied onto the registered tree.
@@ -176,10 +177,11 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
 }
 
 /// Client resource-load registration. Models, textures and item providers refresh together.
-/// No registration carries over to the next resource load.
+/// No registration carries over to the next resource load. An error refuses only that call;
+/// successful registrations are still installed.
 pub trait ClientItemExtensionsRegistrar {
     /// Register a named ModelPart tree, validated and baked once for this resource load.
-    /// Malformed trees and duplicate names are refused by name.
+    /// Names can use any valid namespace. Malformed trees and duplicate names are refused by name.
     fn register_model(&mut self, name: &str, model: &ModelPart) -> Result<ArmorModelRef, String>;
     /// Bind an atlas sprite by name. An unknown texture refuses registration by name.
     fn register_texture(&mut self, name: &str) -> Result<ArmorTextureRef, String>;
