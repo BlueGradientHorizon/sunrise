@@ -92,9 +92,10 @@ carry over, so add them each time. The event also tells what renderers this load
   as NeoForge's canceled `RenderLivingEvent.Pre` skips them.
 - `submit` returns `Ok(())` to keep what it drew. A layer that returns an `Err` rolls back what it
   drew that frame, logs a warning, and stays active for later draws while the other layers still
-  run. A layer that panics rolls back what it drew that frame and disables only that layer for the
-  rest of the session (including across reloads), with an error log and an in-game error toast
-  naming the mod.
+  run. A layer that panics rolls back what it drew that frame and disables the mod's layer
+  instance for the rest of the session, with an error log and an in-game error toast naming the
+  mod. Re-adding the same `Arc` on reload leaves it disabled, even on another target or at
+  another position. A fresh instance does not inherit the old layer's failure.
 
 ## Where layers draw
 

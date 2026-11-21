@@ -13,7 +13,7 @@ use mod_api::{
 use std::{
     collections::BTreeMap,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     },
 };
@@ -208,11 +208,14 @@ fn a_target_that_is_no_living_entity_type_is_refused_by_name() {
     );
 }
 
-/// The layers the scene's mods add on every load: the first mod `zombie` 100 blocks up, `wide`
+type LayerList = Vec<(LayerTarget, Arc<dyn EntityRenderLayer>)>;
+
+/// The layers the scene's mods initially add: the first mod `zombie` 100 blocks up, `wide`
 /// 300 up, `slim` 400 up, `pig` (refusing its first call) 500 up, and on `sheep` a panicking layer
 /// at 600 up followed by a healthy sibling at 650 up; the second mod `second` on `zombie` 200 up
 /// and `sheep_other` on `sheep` 700 up.
 struct Scene {
+    first_layers: Arc<Mutex<LayerList>>,
     zombie: Arc<Raised>,
     second: Arc<Raised>,
     wide: Arc<Raised>,
@@ -285,6 +288,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
     }
     use mod_api::{Hooks, RegisterEntityLayersEvent, RegistrationContext};
     let scene = Scene {
+        first_layers: Arc::default(),
         zombie: Raised::new(100.0),
         second: Raised::new(200.0),
         wide: Raised::new(300.0),
@@ -295,7 +299,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
         sheep_other: Raised::new(700.0),
     };
     /// A mod adding `layers` on every load.
-    struct Layers(Vec<(LayerTarget, Arc<dyn EntityRenderLayer>)>);
+    struct Layers(Arc<Mutex<LayerList>>);
     #[mod_api::__subscriptions]
     impl Hooks for Layers {
         fn register_entity_layers(
@@ -303,13 +307,15 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
             _: &RegistrationContext,
             event: &mut RegisterEntityLayersEvent<'_>,
         ) {
-            for (target, layer) in &self.0 {
+            for (target, layer) in self.0.lock().unwrap().iter() {
                 event.layers.add(target.clone(), layer.clone()).unwrap();
             }
         }
     }
     let entity = |id: &str| LayerTarget::Entity(id.into());
-    let first = Layers(vec![
+    *scene.first_layers.lock().unwrap() = vec![
+        (entity("minecraft:sheep"), scene.sheep_panic.clone()),
+        (entity("minecraft:sheep"), scene.sheep_sibling.clone()),
         (
             entity("minecraft:zombie"),
             scene.zombie.clone() as Arc<dyn EntityRenderLayer>,
@@ -326,16 +332,9 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
             entity("minecraft:pig"),
             scene.pig.clone() as Arc<dyn EntityRenderLayer>,
         ),
-        (
-            entity("minecraft:sheep"),
-            scene.sheep_panic.clone() as Arc<dyn EntityRenderLayer>,
-        ),
-        (
-            entity("minecraft:sheep"),
-            scene.sheep_sibling.clone() as Arc<dyn EntityRenderLayer>,
-        ),
-    ]);
-    let second = Layers(vec![
+    ];
+    let first = Layers(scene.first_layers.clone());
+    let second = Layers(Arc::new(Mutex::new(vec![
         (
             entity("minecraft:zombie"),
             scene.second.clone() as Arc<dyn EntityRenderLayer>,
@@ -344,7 +343,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
             entity("minecraft:sheep"),
             scene.sheep_other.clone() as Arc<dyn EntityRenderLayer>,
         ),
-    ]);
+    ])));
     let mods = vec![
         mod_api::ModEntry::new("first", Box::new(first)),
         mod_api::ModEntry::new("second", Box::new(second)),
@@ -556,17 +555,35 @@ fn a_panicking_layer_stays_disabled_across_reload_without_affecting_siblings() {
             );
             assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
 
+            // The same callbacks now take each other's slots on the sheep renderer.
+            scene.first_layers.lock().unwrap().swap(0, 1);
             super::model_baking_completed_tests::reload(game);
             assert_eq!(
                 quads(&layer_frame(game, "minecraft:sheep", false)),
                 [650.0, 700.0],
-                "stays disabled across resource reload while siblings keep drawing"
+                "the healthy layer takes the old slot without inheriting poison"
             );
-            assert_eq!(scene.sheep_panic.calls(), 1);
+            assert_eq!(
+                scene.sheep_panic.calls(),
+                1,
+                "the moved callback stays disabled"
+            );
             assert_eq!(
                 (scene.sheep_sibling.calls(), scene.sheep_other.calls()),
                 (3, 3)
             );
+            assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
+
+            let replacement = Raised::new(625.0);
+            scene.first_layers.lock().unwrap()[1].1 = replacement.clone();
+            super::model_baking_completed_tests::reload(game);
+            assert_eq!(
+                quads(&layer_frame(game, "minecraft:sheep", false)),
+                [650.0, 625.0, 700.0],
+                "a fresh callback in the disabled one's slot draws in registration order"
+            );
+            assert_eq!(replacement.calls(), 1);
+            assert_eq!(scene.sheep_panic.calls(), 1);
             assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
         },
     );

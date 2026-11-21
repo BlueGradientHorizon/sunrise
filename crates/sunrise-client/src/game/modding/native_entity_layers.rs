@@ -19,7 +19,7 @@ use mod_api::{
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{
-        Arc, LazyLock, Mutex, PoisonError, RwLock,
+        Arc, LazyLock, Mutex, PoisonError, RwLock, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -37,16 +37,12 @@ const PLAYER_MODELS: [PlayerModel; 2] = [PlayerModel::Wide, PlayerModel::Slim];
 
 /// One registered entity layer and its session callback owner (if added by a mod).
 pub(in crate::game) struct RegisteredLayer {
-    pub(super) layer: Arc<dyn EntityRenderLayer>,
-    pub(super) owner: Option<CallbackOwner>,
+    layer: Arc<dyn EntityRenderLayer>,
+    owner: Option<CallbackOwner>,
 }
 
 impl RegisteredLayer {
-    pub(super) fn new(layer: Arc<dyn EntityRenderLayer>, owner: Option<CallbackOwner>) -> Self {
-        Self { layer, owner }
-    }
-
-    pub(in crate::game) fn is_enabled(&self) -> bool {
+    fn is_enabled(&self) -> bool {
         self.owner.as_ref().is_none_or(CallbackOwner::is_enabled)
     }
 }
@@ -54,32 +50,17 @@ impl RegisteredLayer {
 /// One target's layers, in the order they were added.
 pub(in crate::game) type Layers = Arc<[RegisteredLayer]>;
 
-/// What target a retained layer owner belongs to, for keeping session poison state across reloads.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum LayerOwnerTarget {
-    Entity(String),
-    Player(PlayerModel),
+struct LayerOwner {
+    layer: Weak<dyn EntityRenderLayer>,
+    owner: CallbackOwner,
 }
 
-type LayerOwnerKey = (&'static str, LayerOwnerTarget, usize);
+type LayerOwners = HashMap<(&'static str, usize), LayerOwner>;
 
-/// Session callback owners for entity layers, keyed by `(mod_id, target, per-mod-target ordinal)`.
-/// Keeping these across resource reloads ensures a panicking layer stays disabled for the session
-/// while sibling layers of the same mod and other mods stay active.
-static LAYER_OWNERS: LazyLock<Mutex<HashMap<LayerOwnerKey, CallbackOwner>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-fn session_layer_owner(
-    mod_id: &'static str,
-    target: LayerOwnerTarget,
-    ordinal: usize,
-) -> CallbackOwner {
-    let mut owners = LAYER_OWNERS.lock().unwrap_or_else(PoisonError::into_inner);
-    owners
-        .entry((mod_id, target, ordinal))
-        .or_insert_with(|| CallbackOwner::for_mod(mod_id))
-        .clone()
-}
+/// Session owners keyed by mod and callback allocation, independent of target and layer order.
+/// The weak reference keeps the address from being reused while the entry exists, without
+/// keeping the callback alive after a reload replaces it.
+static LAYER_OWNERS: LazyLock<Mutex<LayerOwners>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Whether the last load resolved any layer: a frame checks only this when none was added.
 static ANY: AtomicBool = AtomicBool::new(false);
@@ -94,7 +75,6 @@ pub(super) struct LayerRegistration<'a> {
     mod_renderers: &'a BTreeMap<String, RegisteredEntityRenderer>,
     /// Whether a living type draws where layers run (as a mob).
     routed: &'a dyn Fn(&str) -> bool,
-    owner_counts: HashMap<(&'static str, LayerOwnerTarget), usize>,
     entity: BTreeMap<String, Vec<RegisteredLayer>>,
     wide: Vec<RegisteredLayer>,
     slim: Vec<RegisteredLayer>,
@@ -110,21 +90,10 @@ impl<'a> LayerRegistration<'a> {
             rows,
             mod_renderers,
             routed,
-            owner_counts: HashMap::new(),
             entity: BTreeMap::new(),
             wide: Vec::new(),
             slim: Vec::new(),
         }
-    }
-
-    fn next_owner(&mut self, target: LayerOwnerTarget) -> Option<CallbackOwner> {
-        let mod_id = mod_api::content::crash::current_native_mod()?;
-        let ordinal = self
-            .owner_counts
-            .entry((mod_id, target.clone()))
-            .and_modify(|count| *count += 1)
-            .or_insert(0);
-        Some(session_layer_owner(mod_id, target, *ordinal))
     }
 
     /// Why `id` can't take a layer; none for a living entity type.
@@ -165,28 +134,30 @@ impl EntityLayers for LayerRegistration<'_> {
         target: LayerTarget,
         layer: Arc<dyn EntityRenderLayer>,
     ) -> Result<(), String> {
-        match target {
-            LayerTarget::Player(PlayerModel::Wide) => {
-                let owner = self.next_owner(LayerOwnerTarget::Player(PlayerModel::Wide));
-                self.wide.push(RegisteredLayer::new(layer, owner));
-            }
-            LayerTarget::Player(PlayerModel::Slim) => {
-                let owner = self.next_owner(LayerOwnerTarget::Player(PlayerModel::Slim));
-                self.slim.push(RegisteredLayer::new(layer, owner));
-            }
+        let layers = match target {
+            LayerTarget::Player(PlayerModel::Wide) => &mut self.wide,
+            LayerTarget::Player(PlayerModel::Slim) => &mut self.slim,
             LayerTarget::Entity(id) => {
                 if let Some(why) = self.refusal(&id) {
                     let why = format!("the entity layer for {id} is refused: {why}");
                     log::warn!("Sunrise: {why}");
                     return Err(why);
                 }
-                let owner = self.next_owner(LayerOwnerTarget::Entity(id.clone()));
-                self.entity
-                    .entry(id)
-                    .or_default()
-                    .push(RegisteredLayer::new(layer, owner));
+                self.entity.entry(id).or_default()
             }
-        }
+        };
+        let owner = mod_api::content::crash::current_native_mod().map(|mod_id| {
+            let mut owners = LAYER_OWNERS.lock().unwrap_or_else(PoisonError::into_inner);
+            owners
+                .entry((mod_id, Arc::as_ptr(&layer).cast::<()>() as usize))
+                .or_insert_with(|| LayerOwner {
+                    layer: Arc::downgrade(&layer),
+                    owner: CallbackOwner::for_mod(mod_id),
+                })
+                .owner
+                .clone()
+        });
+        layers.push(RegisteredLayer { layer, owner });
         Ok(())
     }
 }
@@ -271,6 +242,11 @@ impl Game<'_> {
         let any = !table.is_empty();
         *TABLE.write().unwrap_or_else(PoisonError::into_inner) = Some(table);
         ANY.store(any, Ordering::Relaxed);
+        // Drop stale identities after the previous table releases its layers.
+        LAYER_OWNERS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|_, entry| entry.layer.strong_count() != 0);
     }
 
     /// Draws `layers` over `mob`, told as the entity `id`, each from its frame (at the feet,

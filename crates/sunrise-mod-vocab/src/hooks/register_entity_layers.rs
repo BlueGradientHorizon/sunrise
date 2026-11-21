@@ -10,8 +10,9 @@ pub trait Hooks {
     /// `has_mod_renderer` tell what renderers this load built. A target that is no living entity
     /// type is refused by name. Asked on the client on every resource load, the first one and each
     /// reload, after the renderers resolve (`register_entity_renderers`): layers don't carry over
-    /// from one load to the next, so add them again each time. In the ordered body pass,
-    /// layers submit in level join order, interleaved with general entity renderer submissions.
+    /// from one load to the next, so add them again each time. A mod's panicking layer stays
+    /// disabled when re-added with the same `Arc`. In the ordered body pass, layers submit in
+    /// level join order, interleaved with general entity renderer submissions.
     #[notes = r#"## Entity layers
 
 An entity layer (NeoForge's `EntityRenderersEvent.AddLayers` and `RenderLayer`) draws over a living entity
@@ -78,10 +79,11 @@ nonhumanoids, or `None` if no body pose was produced (such as after a successful
 renderer). Read a named part or follow the hierarchy and compose its parent transforms to attach
 geometry. A layer that returns an `Err` rolls back what it drew that frame, logs a warning, and stays
 active for later draws while the other layers still run. A layer that panics rolls back what it drew that
-frame and disables only that layer for the rest of the session (including across reloads), with an error
-log and an in-game error toast naming the mod. The layers draw on the mobs (vanilla's and the content mods'
-living types) and the players; the armour stand and the ender dragon take them once their own draws run
-layers, in a follow-up of #860, which lifts their refusal."#]
+frame and disables the mod's layer instance for the rest of the session, with an error log and an
+in-game error toast naming the mod. Re-adding the same `Arc` on reload leaves it disabled regardless of
+its target or position. A new instance starts enabled. The layers draw on the mobs (vanilla's and the
+content mods' living types) and the players; the armour stand and the ender dragon take them once
+their own draws run layers, in a follow-up of #860, which lifts their refusal."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

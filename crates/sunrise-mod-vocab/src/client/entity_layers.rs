@@ -51,9 +51,9 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
     /// when its `render_living_pre` or `render_player_pre` was canceled. A frame is drawn afresh:
     /// `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err`, what it drew
     /// this frame is rolled back, the error is logged as a warning, and the layer stays active for
-    /// later draws. On a panic, what it drew this frame is rolled back and only this layer is
-    /// disabled for the rest of the session (including across reloads), with an error log and an
-    /// in-game error toast naming the mod.
+    /// later draws. On a panic, what it drew this frame is rolled back and this mod's layer
+    /// instance is disabled for the rest of the session, with an error log and an in-game error
+    /// toast naming the mod. Re-adding the same `Arc` on reload does not re-enable it.
     fn submit(
         &self,
         entity: &EntityRenderState,
@@ -78,11 +78,12 @@ pub trait EntityLayers {
     /// it being the game's own.
     fn has_mod_renderer(&self, entity_type: &str) -> bool;
     /// `addLayer`: `layer` draws over every entity of `target`, after the layers added to it
-    /// before, whichever mod added them. A target that can't take layers is refused: not an entity
-    /// type, a type whose renderer isn't a living one, `minecraft:player` (whose layers go to a
-    /// player model), and a living type that draws through a route of its own that doesn't run
-    /// layers yet (the armour stand, the ender dragon). The `Err` names it, and the game logs it
-    /// too.
+    /// before, whichever mod added them. Panic disablement follows the mod's `Arc` allocation,
+    /// not its target or order. A new layer instance starts enabled. A target that can't take
+    /// layers is refused: not an entity type, a type whose renderer isn't a living one,
+    /// `minecraft:player` (whose layers go to a player model), and a living type that draws
+    /// through a route of its own that doesn't run layers yet (the armour stand, the ender
+    /// dragon). The `Err` names it, and the game logs it too.
     fn add(&mut self, target: LayerTarget, layer: Arc<dyn EntityRenderLayer>)
     -> Result<(), String>;
 }
