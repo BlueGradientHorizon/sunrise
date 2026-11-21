@@ -2243,6 +2243,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_block_part_changes_the_bounce_restitution_an_entity_reads() {
+        crate::game::in_own_process(
+            "game::native_entity_refs::tests::a_block_part_changes_the_bounce_restitution_an_entity_reads",
+            block_part_bounce_restitution_in_own_process,
+        );
+    }
+
+    fn block_part_bounce_restitution_in_own_process() {
         use sunrise_client::block_contact::{Contact, bounce_restitution};
         use sunrise_core::position::BlockPos;
 

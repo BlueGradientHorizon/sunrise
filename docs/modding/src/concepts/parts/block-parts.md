@@ -162,6 +162,10 @@ This runs on whichever side simulates the move. Keep it a pure read of `LevelSid
 prediction and replay produce the same answer. It does not run for packet interpolation, projectile
 impacts or a piston's direct slime launch.
 
+When the collision actually bounces, the server runs `BlockPart::bounce_on` before it posts
+`BOUNCE` and commits the returned movement. This is a separate callback, with the captured effect
+state and vanilla's movement-affecting position (which can differ from the legacy position).
+
 `BlockPart::fall_on` runs at vanilla's landing moment on a read-only level random host.
 Hook version 2 exposes writable `event.distance` and `event.damage_multiplier`, not calculated
 damage. Vanilla blocks supply their own pair: hay uses 0.2, beds 0.5, slime 0,

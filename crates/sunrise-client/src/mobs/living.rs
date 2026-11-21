@@ -489,7 +489,14 @@ impl TravelTrample {
         events: &mut Vec<MobEvent>,
     ) {
         mob.finish_trample_fall(w, level, events, self.movement.trample);
-        mob.finish_move(w, level, self.movement.wanted, self.movement.moved, events);
+        mob.finish_move(
+            w,
+            level,
+            self.movement.wanted,
+            self.movement.moved,
+            self.movement.effect,
+            events,
+        );
         self.tail.finish(mob, w, level, events);
     }
 }
@@ -498,6 +505,7 @@ struct MoveTrample {
     trample: FarmlandTrample,
     wanted: Vec3,
     moved: Vec3,
+    effect: (BlockPos, BlockStateId),
 }
 
 impl Mob {
@@ -992,14 +1000,16 @@ impl Mob {
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
         self.supporting = self.supporting_block(w, moved);
+        let effect = self.restitution_contact(w);
         if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
             return Some(MoveTrample {
                 trample,
                 wanted,
                 moved,
+                effect,
             });
         }
-        self.finish_move(w, level, wanted, moved, events);
+        self.finish_move(w, level, wanted, moved, effect, events);
         None
     }
 
@@ -1009,15 +1019,22 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
     ) {
-        self.restitute_movement(w, level, wanted, moved);
+        self.restitute_captured(w, level, wanted, moved, effect);
         self.movement_emission(w, moved, events);
         // Entity.move's last step: soul sand, honey and the like slow the
         // horizontal speed of whatever the mob stands in or on.
         let factor = self.block_speed_factor(w);
         self.velocity = sunrise_world::entity_move::scale_by_block_speed(self.velocity, factor);
     }
+    /// Record the normal move's ground for a forced collision.
+    pub fn update_pushed_support(&mut self, w: &MobWorld, wanted: Vec3, moved: Vec3) {
+        self.on_ground = wanted.y < 0.0 && wanted.y != moved.y;
+        self.supporting = self.supporting_block(w, moved);
+    }
+
     /// `Entity.restituteMovementAfterCollisions`, shared by travel and piston pushes.
     pub fn restitute_movement(
         &mut self,
@@ -1025,6 +1042,20 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+    ) {
+        self.restitute_captured(w, level, wanted, moved, self.restitution_contact(w));
+    }
+    fn restitution_contact(&self, w: &MobWorld) -> (BlockPos, BlockStateId) {
+        let [x, y, z] = self.block_on_legacy(w);
+        (BlockPos::new(x, y, z), w.world.block(x, y, z))
+    }
+    fn restitute_captured(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        wanted: Vec3,
+        moved: Vec3,
+        (effect_position, block): (BlockPos, BlockStateId),
     ) {
         let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
         let x_hit = differs(wanted.x, moved.x);
@@ -1035,12 +1066,9 @@ impl Mob {
         // block, a bed), whichever is larger. A mob never sneaks, so nothing
         // suppresses its bounce there.
         if wanted.y.abs() > 0.0 && vertical || x_hit || z_hit {
-            // Entity.getOnPos(0.2F): the block whose bounce this move sees, the supporting
-            // block's column where one holds the mob (a fence or wall's own position).
-            let [x, y, z] = self.block_on_legacy(w);
             let input = RestitutionInput {
-                block: w.world.block(x, y, z),
-                effect_position: BlockPos::new(x, y, z),
+                block,
+                effect_position,
                 collided_x: x_hit,
                 collided_z: z_hit,
                 vertical_collision: vertical,
