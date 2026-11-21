@@ -179,8 +179,13 @@ mod tests {
         }
     }
 
-    fn spawn(e: &mut ParticleEngine, options: &ParticleOptions, x: f64) {
-        let mut p = e.make(options, [x, 0.0, 0.0], [0.0; 3], 1).unwrap();
+    fn spawn(e: &mut ParticleEngine, world: &World, options: &ParticleOptions, x: f64) {
+        let at = [x, 0.0, 0.0];
+        let mut p = match &options.typed_particle {
+            Some((value, _)) => e.make_typed_particle(world, value, at, [0.0; 3], 1),
+            None => e.make(options, at, [0.0; 3], 1),
+        }
+        .unwrap();
         p.lifetime = 2;
         p.size = 0.5;
         p.velocity = [0.0; 3];
@@ -235,18 +240,31 @@ mod tests {
         );
         // A provider's particle is blended on its own, and an orbit type's declaration is opaque:
         // each takes its group's blend.
-        e.providers.insert("mymod:shade".into(), Arc::new(Stay));
+        let [shade] = super::super::native::tests::unit_types(["shade"]);
+        e.set_block_state_source(|| Some(Arc::new(Vec::<mod_api::BlockState>::new())));
+        e.providers.insert(
+            shade.key(),
+            mod_api::__private::bind_particle_provider(Arc::new(Stay)),
+        );
+        let typed = ParticleOptions::typed(shade.options(()).typed().unwrap().clone()).unwrap();
         pack.reload(&mut e);
         // Spawned in the reverse of the order the groups draw in.
-        for (name, x) in [
-            ("mymod:shade", 3.0),
-            ("mymod:glow", 2.0),
-            ("mymod:orbit", 4.0),
-        ] {
-            spawn(&mut e, &ParticleOptions::named(name), x);
+        spawn(&mut e, level.world, &typed, 3.0);
+        for (name, x) in [("mymod:glow", 2.0), ("mymod:orbit", 4.0)] {
+            spawn(&mut e, level.world, &ParticleOptions::named(name), x);
         }
-        spawn(&mut e, &ParticleOptions::named("mymod:plain"), 1.0);
-        spawn(&mut e, &ParticleOptions::simple(ParticleType::Flame), 0.0);
+        spawn(
+            &mut e,
+            level.world,
+            &ParticleOptions::named("mymod:plain"),
+            1.0,
+        );
+        spawn(
+            &mut e,
+            level.world,
+            &ParticleOptions::simple(ParticleType::Flame),
+            0.0,
+        );
         e.tick(&level);
         assert_eq!(
             (
@@ -280,14 +298,21 @@ mod tests {
             group("mymod:glow", ParticleBlend::Translucent, &["mymod:glow"]),
             group("mymod:shade", ParticleBlend::Opaque, &["mymod:shade"]),
         ]);
-        e.providers.insert("mymod:shade".into(), Arc::new(Stay));
+        let [shade] = super::super::native::tests::unit_types(["shade"]);
+        e.set_block_state_source(|| Some(Arc::new(Vec::<mod_api::BlockState>::new())));
+        e.providers.insert(
+            shade.key(),
+            mod_api::__private::bind_particle_provider(Arc::new(Stay)),
+        );
+        let typed = ParticleOptions::typed(shade.options(()).typed().unwrap().clone()).unwrap();
         pack.reload(&mut e);
         let options = ParticleOptions::named("mymod:glow");
         let mut full = e.make(&options, [0.0; 3], [0.0; 3], 1).unwrap();
         full.lifetime = 100;
         e.groups[0].particles = vec![full; MAX_PARTICLES];
-        for name in ["mymod:glow", "mymod:shade", "mymod:plain"] {
-            spawn(&mut e, &ParticleOptions::named(name), 0.0);
+        spawn(&mut e, level.world, &typed, 0.0);
+        for name in ["mymod:glow", "mymod:plain"] {
+            spawn(&mut e, level.world, &ParticleOptions::named(name), 0.0);
         }
         e.tick(&level);
         // Group 0 is full, so its newcomer is refused; the other groups and the built-in one
@@ -310,6 +335,6 @@ mod tests {
             ),
             (MAX_PARTICLES, 0, 1)
         );
-        assert_eq!(e.mod_sets["mymod:shade"].group, Some(1));
+        assert_eq!(e.typed_sets[&shade.key()].group, Some(1));
     }
 }

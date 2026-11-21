@@ -52,6 +52,8 @@ pub trait EffectsClientHost {
     fn clear_particles(&self) -> bool;
     /// Side: client.
     /// ClientLevel.addParticle: submits one local particle through the ordinary provider, camera-distance, setting and population limits. False without a loaded client world, for non-finite input or for an item crumb whose colour has a component outside 0 to 1. True means submitted, not necessarily visible.
+    /// For a registered `ParticleType`, pass `ty.options(value)`; the matching client factory
+    /// receives the value and original auxiliary inputs before the particle is queued.
     #[access(WorldOnly)]
     fn add_particle(&mut self, options: &ParticleOptions, at: [f64; 3], velocity: [f64; 3])
     -> bool;

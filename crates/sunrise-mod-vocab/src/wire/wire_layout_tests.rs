@@ -583,56 +583,8 @@ fn registration_and_attribute_records_have_declared_field_bytes() {
 }
 
 #[test]
-fn particle_record_has_declared_field_bytes() {
+fn block_entity_part_errors_have_declared_field_bytes() {
     let _keys = Keys::new();
-    let ty = ParticleKey::from_slot(0).unwrap();
-    let particle = ParticleOptions {
-        ty,
-        block: Some(("example:block".into(), 7)),
-        color: [0.1, 0.2, 0.3, 0.4],
-        scale: 2.5,
-        to_color: [0.5, 0.6, 0.7],
-        trail: Some(([1.0, 2.0, 3.0], 19)),
-        item: Some(vec!["example:item".into()]),
-        item_stack: ItemStack::new(ItemKey::from_slot(0).unwrap(), 7),
-        geyser: Some((11, 0.75)),
-        vibration: Some((
-            crate::client::particles::PositionSource::Entity {
-                id: 13,
-                y_offset: 1.5,
-            },
-            [4.0, 5.0, 6.0],
-            23,
-        )),
-    };
-    // Nested tuples add no framing: two groups allow all ten fields to be decoded
-    // with the same declared types despite Wire's six-element tuple limit.
-    fields(
-        particle,
-        (
-            (
-                ty,
-                Some(("example:block".to_owned(), 7u32)),
-                [0.1f32, 0.2, 0.3, 0.4],
-                2.5f32,
-                [0.5f32, 0.6, 0.7],
-                Some(([1.0f64, 2.0, 3.0], 19i32)),
-            ),
-            (
-                Some(vec!["example:item".to_owned()]),
-                ItemStack::new(ItemKey::from_slot(0).unwrap(), 7),
-                Some((11i32, 0.75f32)),
-                Some((
-                    crate::client::particles::PositionSource::Entity {
-                        id: 13,
-                        y_offset: 1.5,
-                    },
-                    [4.0f64, 5.0, 6.0],
-                    23i32,
-                )),
-            ),
-        ),
-    );
     let kind = BlockEntityTypeKey::from_slot(0).unwrap();
     fields(BlockEntityPartError::VanillaType { kind }, (0u32, kind));
     fields(

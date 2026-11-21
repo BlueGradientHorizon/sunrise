@@ -149,3 +149,40 @@ fn block_crumble_draws_the_block_it_names() {
     game.particles.tick(&level);
     assert_eq!(game.particles.len(), 1, "the crumble is drawn");
 }
+
+#[test]
+#[ignore = "daily"]
+fn typed_particle_commands_suggest_and_execute_the_decoded_value() {
+    let entries = [mod_api::ModEntry::new(
+        "test",
+        Box::new(crate::game::lan_particles::tests::MeasuredParticle),
+    )];
+    mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
+    crate::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+    let mut resources = None;
+    let mut game = game(&mut resources);
+    let reg = &game.ui.registries;
+    let input = "particle test:meas";
+    let dispatcher = sunrise_command::vanilla::dispatcher();
+    let (_, suggestions) = dispatcher.suggestions(&dispatcher.parse(input, reg), input.len(), reg);
+    assert!(
+        suggestions
+            .iter()
+            .any(|suggestion| suggestion.text == "test:measured")
+    );
+    for invalid in ["test:measured", "test:measured{measure:\"large\"}"] {
+        let error = sunrise_command::args::ArgType::Particle
+            .parse(&mut sunrise_command::Reader::new(invalid), reg)
+            .unwrap_err();
+        assert_eq!(error.key, "particle.invalidOptions");
+    }
+    let measured = drawn(
+        &mut game,
+        "particle test:measured{measure:257} 0.5 100.5 0.5 0 0 0 0 1",
+    );
+    let (value, _) = measured.typed_particle.expect("typed particle requested");
+    assert_eq!(
+        mod_api::__private::encode_particle_stream(&value, 8).unwrap(),
+        [1, 1, 0, 0]
+    );
+}

@@ -20,11 +20,11 @@ use sunrise_core::{
 };
 use sunrise_world::block_collision::BlockCollisionRegistry;
 mod options;
-use mod_api::{ParticleBlend, ParticleProvider};
+use mod_api::{__private::BoundParticleProvider, ParticleBlend, ParticleKey};
 pub use options::ParticleOptions;
 use std::{
     array,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -243,7 +243,7 @@ pub type BlockStates = Arc<dyn AsRef<[mod_api::BlockState]> + Send + Sync>;
 struct ModSet {
     set: u32,
     behaviour: Option<ModBehaviour>,
-    provider: Option<(u32, Arc<dyn ParticleProvider>)>,
+    provider: Option<(u32, Arc<dyn BoundParticleProvider>)>,
     /// The handle of the registered group (`groups::registered`), none for the built-in one.
     group: Option<u32>,
 }
@@ -1114,9 +1114,9 @@ pub struct ParticleEngine {
     sets: HashMap<ParticleType, u32>,
     /// A native mod's sprite sets, by namespaced particle name.
     mod_sets: HashMap<String, ModSet>,
-    /// The code providers of mods' particle types, by name: `register_particle_providers`' registrations as
-    /// this engine was built, applied to `mod_sets` at every load.
-    providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
+    /// Sprite sets with code providers, bound by common registry slot at reload.
+    typed_sets: HashMap<ParticleKey, ModSet>,
+    providers: HashMap<ParticleKey, Arc<dyn BoundParticleProvider>>,
     /// Where the providers' `ParticleLevelView` finds every engine block state as a mod reads
     /// it, asked only when a provider has particles to tick.
     block_state_source: fn() -> Option<BlockStates>,
@@ -1242,6 +1242,7 @@ impl ParticleEngine {
             atlas: HashMap::new(),
             sets: HashMap::new(),
             mod_sets: HashMap::new(),
+            typed_sets: HashMap::new(),
             providers: native::registered().clone(),
             block_state_source: || None,
             provided_live: Arc::default(),
@@ -1307,15 +1308,22 @@ impl ParticleEngine {
             .collect();
         self.sets.clear();
         self.mod_sets.clear();
+        self.typed_sets.clear();
         self.set_sprites.clear();
         self.item_sprites.clear();
         self.load_sprites(root);
-        for name in self.providers.keys() {
-            if !self.mod_sets.contains_key(name) {
-                log::warn!("Particle provider {name} has no particles/<path>.json sprite set");
+        self.resolve_groups();
+        for (&key, provider) in &self.providers {
+            if let Some(name) = mod_api::__private::particle_name(key) {
+                if let Some(mut set) = self.mod_sets.remove(name) {
+                    let slot = mod_api::__private::parts_installation::particle_key_slot(key);
+                    set.provider = Some((slot, provider.clone()));
+                    self.typed_sets.insert(key, set);
+                } else {
+                    log::warn!("Particle provider {name} has no particles/<path>.json sprite set");
+                }
             }
         }
-        self.resolve_groups();
     }
     /// Gives each type a registered group lists the group's handle, once per load. A type no
     /// sprite set matches, or another group lists already, is logged and left out.
@@ -1418,17 +1426,12 @@ impl ParticleEngine {
                 })
                 .unwrap_or_default();
             if !sprites.is_empty() {
-                let provider = self
-                    .providers
-                    .iter()
-                    .position(|(name, _)| *name == key)
-                    .map(|slot| (slot as u32, self.providers[&key].clone()));
                 self.mod_sets.insert(
                     key,
                     ModSet {
                         set: self.set_sprites.len() as u32,
                         behaviour,
-                        provider,
+                        provider: None,
                         group: None,
                     },
                 );
@@ -1582,6 +1585,19 @@ impl ParticleEngine {
         override_limiter: bool,
         always_show: bool,
     ) {
+        self.add_with_world(None, options, p, v, override_limiter, always_show);
+    }
+
+    /// Submit a particle from a client level; typed providers can read that level at creation.
+    pub fn add_with_world(
+        &mut self,
+        world: Option<&World>,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+        override_limiter: bool,
+        always_show: bool,
+    ) {
         let c = self.camera;
         let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
         if let Some(requested) = &mut self.requested {
@@ -1590,8 +1606,12 @@ impl ParticleEngine {
             return;
         }
         let minimal = self.calculate_particle_level(always_show) == 2;
-        if override_limiter || options.ty.override_limiter() || (d2 <= 1024.0 && !minimal) {
-            self.create(options, p, v);
+        let type_override = options
+            .typed_particle
+            .as_ref()
+            .map_or_else(|| options.ty.override_limiter(), |(_, flag)| *flag);
+        if override_limiter || type_override || (d2 <= 1024.0 && !minimal) {
+            self.create_with_world(world, options, p, v);
         }
     }
     /// `NoxiousGasCloudParticle.spawnNoxiousGasParticle`: the gas, as an
@@ -1867,6 +1887,55 @@ impl ParticleEngine {
     fn sprite_from_age(&self, p: &mut Particle) {
         sprite_from_age_in(&self.set_sprites, p);
     }
+    fn make_sprite_particle(
+        &self,
+        entry: &ModSet,
+        p: [f64; 3],
+        v: [f64; 3],
+        seed: i64,
+    ) -> Particle {
+        let (set, behaviour, provider, group) = (
+            entry.set,
+            entry.behaviour,
+            entry.provider.clone(),
+            entry.group,
+        );
+        let mut r = LegacyRandom::new(seed);
+        let mut q = Particle::moving(&mut r, ParticleType::Smoke, p, v);
+        q.ty = ParticleType::Smoke;
+        q.gravity = 0.0;
+        q.rgba = [1.0; 4];
+        q.lifetime = 20 + r.next_int_bound(20).unwrap_or(0);
+        q.set = Some(set);
+        q.group = group;
+        let sprites = &self.set_sprites[set as usize];
+        q.sprite =
+            Sprite::Index(sprites[r.next_int_bound(sprites.len() as i32).unwrap_or(0) as usize]);
+        if let Some(behaviour) = behaviour {
+            behaviour.apply(&mut q, v, &mut r);
+            if behaviour.starts_on_first_sprite() {
+                q.sprite = Sprite::Index(sprites[0]);
+            }
+        }
+        if let Some((slot, provider)) = provider {
+            // The declared values seed the particle; the provider owns its tick from here.
+            // Its sprite is chosen by frame, so the set stays attached.
+            let frame = sprites
+                .iter()
+                .position(|&s| matches!(q.sprite, Sprite::Index(i) if i == s))
+                .unwrap_or(0);
+            q.set = Some(set);
+            q.behaviour = Behaviour::Controlled { translucent: true };
+            q.provided = Some(Box::new(native::Provided::new(
+                provider,
+                slot,
+                frame as u32,
+                &self.provided_live,
+            )));
+        }
+        q
+    }
+
     #[allow(clippy::too_many_lines)]
     /// `ParticleProvider.createParticle`: provider draws use the engine's
     /// random, constructor and tick draws the particle's own (seeded `seed`).
@@ -1903,47 +1972,7 @@ impl ParticleEngine {
         }
         if let Some(name) = &o.mod_particle {
             let entry = self.mod_sets.get(name.as_ref())?;
-            let (set, behaviour, provider, group) = (
-                entry.set,
-                entry.behaviour,
-                entry.provider.clone(),
-                entry.group,
-            );
-            let mut r = LegacyRandom::new(seed);
-            let mut q = Particle::moving(&mut r, ParticleType::Smoke, p, v);
-            q.ty = ParticleType::Smoke;
-            q.gravity = 0.0;
-            q.rgba = [1.0; 4];
-            q.lifetime = 20 + r.next_int_bound(20).unwrap_or(0);
-            q.set = Some(set);
-            q.group = group;
-            let sprites = &self.set_sprites[set as usize];
-            q.sprite = Sprite::Index(
-                sprites[r.next_int_bound(sprites.len() as i32).unwrap_or(0) as usize],
-            );
-            if let Some(behaviour) = behaviour {
-                behaviour.apply(&mut q, v, &mut r);
-                if behaviour.starts_on_first_sprite() {
-                    q.sprite = Sprite::Index(sprites[0]);
-                }
-            }
-            if let Some((slot, provider)) = provider {
-                // The declared values seed the particle; the provider owns its tick from here.
-                // Its sprite is chosen by frame, so the set stays attached.
-                let frame = sprites
-                    .iter()
-                    .position(|&s| matches!(q.sprite, Sprite::Index(i) if i == s))
-                    .unwrap_or(0);
-                q.set = Some(set);
-                q.behaviour = Behaviour::Controlled { translucent: true };
-                q.provided = Some(Box::new(native::Provided::new(
-                    provider,
-                    slot,
-                    frame as u32,
-                    &self.provided_live,
-                )));
-            }
-            return Some(q);
+            return Some(self.make_sprite_particle(entry, p, v, seed));
         }
         let set = self.set_of(ty);
         let mut local = LegacyRandom::new(seed);
@@ -3658,7 +3687,8 @@ impl ParticleEngine {
             && let Some(states) = (self.block_state_source)()
         {
             let view = native::ProviderLevel {
-                level,
+                world: level.world,
+                block: |x, y, z| level.block(x, y, z),
                 states: (*states).as_ref(),
             };
             batch.run(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
@@ -6279,7 +6309,7 @@ mod tests {
         assert_eq!(engine.tracked_explosions.len(), 2);
 
         // In pure air, total particles spawned must be capped at 512.
-        engine.tick_explosions_with(&|_| true);
+        engine.tick_explosions_with(None, &|_| true);
         assert_eq!(engine.pending.len(), 512);
         assert!(engine.tracked_explosions.is_empty());
     }
@@ -6293,7 +6323,7 @@ mod tests {
         engine.track_explosion([0.0, 64.0, 0.0], 4.0, 100, &ExplosionParticle::defaults());
 
         // When no blocks are air, zero debris particles are emitted.
-        engine.tick_explosions_with(&|_| false);
+        engine.tick_explosions_with(None, &|_| false);
         assert_eq!(engine.pending.len(), 0);
         assert!(engine.tracked_explosions.is_empty());
     }

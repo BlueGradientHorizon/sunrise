@@ -1969,6 +1969,7 @@ impl Game<'_> {
         let waiting = c.age < potion.settings.wait_time;
         cloud_client_tick(
             &mut self.particles,
+            &self.world,
             c.at,
             c.radius,
             waiting,

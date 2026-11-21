@@ -2,10 +2,11 @@
 //! particle, its sprite set, interpolation, rendering and total count limits.
 use super::{Particle, ParticleLevel, ParticleOptions};
 use mod_api::{
-    BlockState, LightLayer, ModParticle, ParticleFacing, ParticleLevelView, ParticleProvider,
+    __private::{BoundParticleProvider, TypedParticleOptions},
+    BlockState, LightLayer, ModParticle, ParticleFacing, ParticleKey, ParticleLevelView,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, sync::OnceLock};
 
 /// Requests made by one particle tick, submitted through normal spawn limits.
 #[derive(Default)]
@@ -41,21 +42,58 @@ impl Clone for Box<dyn Controller> {
     }
 }
 
-/// The mods' particle providers by type name: set once at start, before the resources first load,
+/// The mods' particle providers by registered key: set once before the first resource load,
 /// and read by every engine built after.
-static REGISTERED: OnceLock<BTreeMap<String, Arc<dyn ParticleProvider>>> = OnceLock::new();
+static REGISTERED: OnceLock<HashMap<ParticleKey, Arc<dyn BoundParticleProvider>>> = OnceLock::new();
 
 /// Sets the mods' particle providers (`register_particle_providers`), once, before
 /// the resources first load; each engine then resolves its sprite sets' providers at every load.
 /// False when already set.
-pub fn register_particle_providers(providers: BTreeMap<String, Arc<dyn ParticleProvider>>) -> bool {
+pub fn register_particle_providers(
+    providers: HashMap<ParticleKey, Arc<dyn BoundParticleProvider>>,
+) -> bool {
     REGISTERED.set(providers).is_ok()
 }
 
 /// What [`register_particle_providers`] set; none before.
-pub(super) fn registered() -> &'static BTreeMap<String, Arc<dyn ParticleProvider>> {
-    static NONE: BTreeMap<String, Arc<dyn ParticleProvider>> = BTreeMap::new();
+pub(super) fn registered() -> &'static HashMap<ParticleKey, Arc<dyn BoundParticleProvider>> {
+    static NONE: std::sync::LazyLock<HashMap<ParticleKey, Arc<dyn BoundParticleProvider>>> =
+        std::sync::LazyLock::new(HashMap::new);
     REGISTERED.get().unwrap_or(&NONE)
+}
+
+impl super::ParticleEngine {
+    pub(super) fn make_typed_particle(
+        &mut self,
+        world: &super::World,
+        value: &TypedParticleOptions,
+        position: [f64; 3],
+        aux: [f64; 3],
+        seed: i64,
+    ) -> Option<Particle> {
+        let set = self.typed_sets.get(&value.key())?;
+        let (_, provider) = set.provider.as_ref()?;
+        let states = (self.block_state_source)()?;
+        let level = ProviderLevel {
+            world,
+            block: |x, y, z| world.block(x, y, z),
+            states: (*states).as_ref(),
+        };
+        let mut particle = self.make_sprite_particle(set, position, aux, seed);
+        let mut view = particle.provider_view(particle.provided.as_ref()?);
+        provider.create_particle(
+            value,
+            &level,
+            position,
+            aux,
+            &mut mod_api::__private::BorrowedRandom(&mut self.random),
+            &mut view,
+        )?;
+        if let Some(frame) = particle.take(&view) {
+            self.set_sprite_frame(&mut particle, frame);
+        }
+        (!particle.removed).then_some(particle)
+    }
 }
 
 /// How far from the origin a provider may move a particle: the world border's limit. Past it, or
@@ -72,7 +110,7 @@ const ROLL_LIMIT: f32 = f32::MAX / 2.0;
 /// every live particle of the type ([`Batch::run`]). Holds the provider the type resolved to when
 /// its sprite sets loaded, so a tick dispatches straight to it.
 pub(super) struct Provided {
-    provider: Arc<dyn ParticleProvider>,
+    provider: Arc<dyn BoundParticleProvider>,
     /// The provider's dense slot among the registered ones, which its batch is filled by.
     slot: u32,
     /// `ModParticle::state`, kept from one tick to the next.
@@ -123,7 +161,7 @@ impl Debug for Provided {
 }
 impl Provided {
     pub(super) fn new(
-        provider: Arc<dyn ParticleProvider>,
+        provider: Arc<dyn BoundParticleProvider>,
         slot: u32,
         frame: u32,
         live: &Arc<AtomicUsize>,
@@ -240,20 +278,7 @@ impl Batch {
                     .provided
                     .as_ref()
                     .expect("a bucket holds provider particles");
-                self.views.push(ModParticle {
-                    position: p.position,
-                    previous: p.previous,
-                    velocity: p.velocity,
-                    age: p.age,
-                    lifetime: p.lifetime,
-                    size: p.size,
-                    rgba: p.rgba,
-                    frame: provided.frame,
-                    removed: false,
-                    state: provided.state,
-                    facing: p.facing(),
-                    roll: p.roll,
-                });
+                self.views.push(p.provider_view(provided));
             }
             let mut batch =
                 mod_api::__private::particle_batch_from_vec(std::mem::take(&mut self.views));
@@ -275,6 +300,22 @@ impl Batch {
     }
 }
 impl Particle {
+    fn provider_view(&self, provided: &Provided) -> ModParticle {
+        ModParticle {
+            position: self.position,
+            previous: self.previous,
+            velocity: self.velocity,
+            age: self.age,
+            lifetime: self.lifetime,
+            size: self.size,
+            rgba: self.rgba,
+            frame: provided.frame,
+            removed: false,
+            state: provided.state,
+            facing: self.facing(),
+            roll: self.roll,
+        }
+    }
     /// The facing the provider sees.
     fn facing(&self) -> ParticleFacing {
         match self.provided.as_ref().map(|q| q.facing) {
@@ -331,18 +372,21 @@ impl Particle {
 }
 
 /// `ParticleLevelView` over the engine's level: the loaded chunks' states and stored light.
-pub(super) struct ProviderLevel<'a, 'l> {
-    pub(super) level: &'a ParticleLevel<'l>,
+pub(super) struct ProviderLevel<'a, B> {
+    pub(super) world: &'a super::World,
+    pub(super) block: B,
     /// Every engine state as a mod reads it, by state id.
     pub(super) states: &'a [BlockState],
 }
-impl ParticleLevelView for ProviderLevel<'_, '_> {
+impl<B: Fn(i32, i32, i32) -> sunrise_world::registry::BlockStateId> ParticleLevelView
+    for ProviderLevel<'_, B>
+{
     fn block_state(&self, [x, y, z]: [i32; 3]) -> BlockState {
         // The table holds every state the world can: an id outside it is the game's bug.
-        self.states[self.level.block(x, y, z).0 as usize]
+        self.states[(self.block)(x, y, z).0 as usize]
     }
     fn brightness(&self, layer: LightLayer, [x, y, z]: [i32; 3]) -> u8 {
-        let world = self.level.world;
+        let world = self.world;
         match layer {
             LightLayer::Block => world.light(x, y, z) & 15,
             // A dimension without skylight has no sky layer to read.
@@ -357,11 +401,15 @@ pub(super) mod tests {
     use super::super::*;
     use super::ROLL_LIMIT;
     use crate::chunk::{Chunk, Light};
+    use mod_api::__private::bind_particle_provider;
     use mod_api::{
         BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
         ParticleProvider,
     };
-    use std::sync::Arc;
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
     use {
         sunrise_core::nbt::Tag,
         sunrise_world::{
@@ -596,16 +644,153 @@ pub(super) mod tests {
         assert_eq!(calls.0.lock().unwrap().len(), 1);
     }
     fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Particle {
-        e.providers.insert("example:orbit".into(), provider.clone());
-        e.mod_sets.get_mut("example:orbit").unwrap().provider = Some((0, provider));
-        e.make(
-            &ParticleOptions::named("example:orbit"),
-            [1.0; 3],
-            [0.0; 3],
-            5,
-        )
-        .unwrap()
+        let set = e.mod_sets.get_mut("example:orbit").unwrap();
+        set.provider = Some((0, bind_particle_provider(provider)));
+        e.make_sprite_particle(&e.mod_sets["example:orbit"], [1.0; 3], [0.0; 3], 5)
     }
+
+    fn registered_types<T: 'static, const N: usize>(
+        paths: [&'static str; N],
+        register: fn(&mut dyn mod_api::Registrar, &str) -> mod_api::ParticleType<T>,
+    ) -> [mod_api::ParticleType<T>; N] {
+        type Types<T, const N: usize> = Arc<Mutex<Option<[mod_api::ParticleType<T>; N]>>>;
+        struct Register<T, const N: usize> {
+            paths: [&'static str; N],
+            types: Types<T, N>,
+            register: fn(&mut dyn mod_api::Registrar, &str) -> mod_api::ParticleType<T>,
+        }
+        impl<T: 'static, const N: usize> mod_api::Hooks for Register<T, N> {
+            fn subscribed(&self) -> &'static [Option<mod_api::HookId>] {
+                &[]
+            }
+            fn register(
+                &self,
+                registrar: &mut dyn mod_api::Registrar,
+                _: &mod_api::RegistrationContext,
+            ) {
+                *self.types.lock().unwrap() =
+                    Some(self.paths.map(|path| (self.register)(registrar, path)));
+            }
+        }
+        let types: Types<T, N> = Default::default();
+        let entries = [mod_api::ModEntry::new(
+            "mymod",
+            Box::new(Register {
+                paths,
+                types: types.clone(),
+                register,
+            }),
+        )];
+        mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
+        mod_api::__private::resolve_particles([], |_| {
+            Some(mod_api::__private::ParticleKind::Custom)
+        })
+        .unwrap();
+        types.lock().unwrap().take().unwrap()
+    }
+
+    pub(in crate::particles) fn unit_types<const N: usize>(
+        paths: [&'static str; N],
+    ) -> [mod_api::ParticleType<()>; N] {
+        registered_types(paths, |registrar, path| {
+            registrar.register_particle_type(
+                path,
+                false,
+                mod_api::ParticleMapCodec::unit(),
+                mod_api::ParticleStreamCodec::wire(),
+            )
+        })
+    }
+
+    #[test]
+    fn typed_factory_initializes_each_admitted_request_before_tick_and_can_decline() {
+        let [ty] = registered_types(["spark"], |registrar, path| {
+            registrar.register_particle_type(
+                path,
+                true,
+                mod_api::ParticleMapCodec::new(
+                    |fields, _| match fields.get(&"frame".into()) {
+                        Some(mod_api::Tag::Int(frame)) => {
+                            u32::try_from(*frame).map_err(|err| err.to_string())
+                        }
+                        _ => Err("missing frame".into()),
+                    },
+                    |value, _| {
+                        Ok(mod_api::Compound::from([(
+                            "frame".into(),
+                            mod_api::Tag::Int(*value as i32),
+                        )]))
+                    },
+                ),
+                mod_api::ParticleStreamCodec::wire(),
+            )
+        });
+        struct Factory(Arc<Mutex<Vec<u32>>>);
+        impl ParticleProvider<u32> for Factory {
+            fn create_particle(
+                &self,
+                value: &u32,
+                level: &dyn ParticleLevelView,
+                at: [f64; 3],
+                aux: [f64; 3],
+                rng: &mut dyn mod_api::RandomSource,
+                particle: &mut ModParticle,
+            ) -> Option<()> {
+                assert_eq!(at, [1.0, 64.0, 3.0]);
+                assert_eq!(aux, [0.125, 0.25, 0.75]);
+                assert_eq!(level.brightness(LightLayer::Block, [1, 64, 3]), 4);
+                self.0.lock().unwrap().push(*value);
+                let tint = rng.next_float();
+                particle.rgba = [tint, 0.0, 1.0, 1.0];
+                particle.frame = *value;
+                particle.state[0] = f64::from(*value);
+                particle.velocity = aux;
+                (*value != 2).then_some(())
+            }
+            fn tick(&self, _: &mut ParticleBatch, _: &dyn ParticleLevelView) {}
+        }
+        let mut scene = Scene::new();
+        scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+        let mut e = engine();
+        e.camera = [0.0; 3];
+        e.particle_level = 2;
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        e.typed_sets.insert(
+            ty.key(),
+            ModSet {
+                set: 0,
+                behaviour: None,
+                provider: Some((0, bind_particle_provider(Arc::new(Factory(calls.clone()))))),
+                group: None,
+            },
+        );
+        e.seed_randoms(37, 0, 0);
+        let mut expected_provider_rng = LegacyRandom::new(37);
+        let first = expected_provider_rng.next_float();
+        expected_provider_rng.next_float();
+        for value in [1, 2] {
+            let value = ty.options(value);
+            let options = ParticleOptions::typed(value.typed().unwrap().clone()).unwrap();
+            e.add_with_world(
+                Some(&scene.world),
+                &options,
+                [1.0, 64.0, 3.0],
+                [0.125, 0.25, 0.75],
+                false,
+                false,
+            );
+        }
+        assert_eq!(*calls.lock().unwrap(), [1, 2]);
+        assert_eq!(e.pending.len(), 1);
+        let particle = e.pending[0].ordinary().unwrap();
+        assert_eq!(particle.age, 0);
+        assert_eq!(particle.velocity, [0.125, 0.25, 0.75]);
+        assert_eq!(particle.rgba, [first, 0.0, 1.0, 1.0]);
+        assert!(matches!(particle.sprite, Sprite::Index(1)));
+        assert_eq!(particle.provided.as_ref().unwrap().state[0], 1.0);
+        assert_eq!(e.random.next_long(), expected_provider_rng.next_long());
+    }
+
     #[test]
     fn a_providers_particle_moves_changes_frame_and_expires_by_its_tick() {
         let scene = Scene::new();
@@ -936,8 +1121,9 @@ pub(super) mod tests {
         let mut e = engine();
         e.set_block_state_source(counting);
         // A provider is registered, and no particle of it lives.
+        let [ty] = unit_types(["orbit"]);
         e.providers
-            .insert("example:orbit".into(), Arc::new(Probe::default()));
+            .insert(ty.key(), bind_particle_provider(Arc::new(Probe::default())));
         e.tick_providers(&mut [], &level);
         assert_eq!(asked(), 0);
         // One lives and the engine has not aged it.
@@ -974,7 +1160,7 @@ pub(super) mod tests {
         Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(Box::new([0xB4; 4096]));
         chunk
     }
-    fn lights(view: &super::ProviderLevel, pos: [i32; 3]) -> (u8, u8) {
+    fn lights(view: &dyn ParticleLevelView, pos: [i32; 3]) -> (u8, u8) {
         (
             view.brightness(LightLayer::Sky, pos),
             view.brightness(LightLayer::Block, pos),
@@ -991,7 +1177,8 @@ pub(super) mod tests {
             scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
             let level = scene.level();
             let view = super::ProviderLevel {
-                level: &level,
+                world: level.world,
+                block: |x, y, z| level.block(x, y, z),
                 states: &[],
             };
             let full = if sky { 15 } else { 0 };
@@ -1024,7 +1211,8 @@ pub(super) mod tests {
             scene.world.chunks.insert((0, 0), Arc::new(chunk));
             let level = scene.level();
             let view = super::ProviderLevel {
-                level: &level,
+                world: level.world,
+                block: |x, y, z| level.block(x, y, z),
                 states: &states,
             };
             assert_eq!(view.block_state([1, 64, 3]).block(), stone);
@@ -1034,42 +1222,31 @@ pub(super) mod tests {
     }
     #[test]
     fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
-        let dir =
-            std::env::temp_dir().join(format!("sunrise-provider-sets-{}", std::process::id()));
-        let particles = dir.join("assets/mymod/particles");
-        std::fs::create_dir_all(&particles).unwrap();
-        for name in ["orbit", "plain"] {
-            std::fs::write(
-                particles.join(format!("{name}.json")),
-                br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#,
-            )
-            .unwrap();
-        }
+        let resources = ResourceSource::indexed(["orbit", "plain"].map(|name| (
+            format!("assets/mymod/particles/{name}.json"),
+            sunrise_assets::resource_source::Resource::bytes(
+                br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.to_vec(),
+            ),
+        )).into());
+        let [orbit, unmatched] = unit_types(["orbit", "unmatched"]);
         let mut e = engine();
-        e.providers
-            .insert("mymod:orbit".into(), Arc::new(Probe::default()));
-        e.providers
-            .insert("mymod:unmatched".into(), Arc::new(Probe::default()));
-        e.reload(
-            &ResourceSource::directory(dir.clone()),
-            &HashMap::new(),
-            &HashSet::new(),
-        );
-        assert!(e.mod_sets["mymod:orbit"].provider.is_some());
+        for ty in [orbit, unmatched] {
+            e.providers
+                .insert(ty.key(), bind_particle_provider(Arc::new(Probe::default())));
+        }
+        e.reload(&resources, &HashMap::new(), &HashSet::new());
+        assert!(e.typed_sets.contains_key(&orbit.key()));
         assert!(e.mod_sets["mymod:plain"].provider.is_none());
-        assert!(!e.mod_sets.contains_key("mymod:unmatched"));
-        let orbit = e
-            .make(
-                &ParticleOptions::named("mymod:orbit"),
-                [0.0; 3],
-                [0.0; 3],
-                3,
-            )
+        assert!(!e.typed_sets.contains_key(&unmatched.key()));
+        let scene = Scene::new();
+        let value = orbit.options(());
+        let particle = e
+            .make_typed_particle(&scene.world, value.typed().unwrap(), [0.0; 3], [0.0; 3], 3)
             .unwrap();
         // The declared spawn values seed it, and its sprite is drawn by frame from the set.
-        assert!(orbit.provided.is_some());
-        assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
-        assert_eq!(orbit.set, Some(e.mod_sets["mymod:orbit"].set));
+        assert!(particle.provided.is_some());
+        assert_eq!((particle.lifetime, particle.size), (7, 0.3));
+        assert_eq!(particle.set, Some(e.typed_sets[&orbit.key()].set));
         let plain = e
             .make(
                 &ParticleOptions::named("mymod:plain"),
@@ -1080,7 +1257,6 @@ pub(super) mod tests {
             .unwrap();
         assert!(plain.provided.is_none());
         assert!(matches!(plain.behaviour, Behaviour::Mod { .. }));
-        let _ = std::fs::remove_dir_all(dir);
     }
     #[test]
     fn controlled_spawn_respects_distance_settings_and_declared_sprite_sets() {

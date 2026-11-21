@@ -758,7 +758,14 @@ impl Game<'_> {
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
     fn tick_remote_clouds(&mut self) {
         for c in &self.potions.clouds {
-            cloud_client_tick(&mut self.particles, c.at, c.radius, c.waiting, &c.particle);
+            cloud_client_tick(
+                &mut self.particles,
+                &self.world,
+                c.at,
+                c.radius,
+                c.waiting,
+                &c.particle,
+            );
         }
     }
 

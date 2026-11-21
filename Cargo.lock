@@ -4397,6 +4397,7 @@ dependencies = [
  "serde_json",
  "sunrise-assets",
  "sunrise-core",
+ "sunrise-mod-vocab",
  "sunrise-world",
 ]
 
@@ -4568,6 +4569,7 @@ dependencies = [
  "sunrise-client-core",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-vocab",
  "sunrise-protocol",
  "sunrise-world",
 ]
@@ -4672,6 +4674,7 @@ dependencies = [
  "sunrise-client-lib",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-api",
  "sunrise-mod-runtime",
  "sunrise-mod-vocab",
  "sunrise-protocol",

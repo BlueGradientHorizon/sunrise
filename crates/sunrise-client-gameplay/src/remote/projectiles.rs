@@ -25,6 +25,7 @@ pub fn default_cloud_particle() -> ParticleOptions {
 /// (an entity effect stays still).
 pub fn cloud_client_tick(
     particles: &mut ParticleEngine,
+    world: &sunrise_client::world::World,
     at: [f64; 3],
     radius: f32,
     waiting: bool,
@@ -50,26 +51,27 @@ pub fn cloud_client_tick(
             at[1],
             at[2] + f64::from(angle.sin() * distance),
         ];
+        let default;
         let (options, velocity) = if particle.ty == ParticleType::EntityEffect {
-            let default = waiting && r.next_boolean();
-            let options = if default {
-                default_cloud_particle()
+            let options = if waiting && r.next_boolean() {
+                default = default_cloud_particle();
+                &default
             } else {
-                particle.clone()
+                particle
             };
             (options, [0.0; 3])
         } else if waiting {
-            (particle.clone(), [0.0; 3])
+            (particle, [0.0; 3])
         } else {
             let v = [
                 (0.5 - r.next_double()) * 0.15,
                 f64::from(0.01f32),
                 (0.5 - r.next_double()) * 0.15,
             ];
-            (particle.clone(), v)
+            (particle, v)
         };
         // `addAlwaysVisibleParticle`.
-        particles.add_with(&options, at, velocity, false, true);
+        particles.add_with_world(Some(world), options, at, velocity, false, true);
     }
 }
 

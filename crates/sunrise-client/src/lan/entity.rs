@@ -1139,8 +1139,10 @@ fn names_mod_particle(packet: &play::Clientbound) -> bool {
     let play::Clientbound::SetEntityData(data) = packet else {
         return false;
     };
-    (data.values.iter()).any(|(_, _, value)| {
-        matches!(value, Value::Particles(list) if list.iter().any(Particle::sunrise_only))
+    (data.values.iter()).any(|(_, _, value)| match value {
+        Value::Particles(list) => list.iter().any(Particle::sunrise_only),
+        Value::Particle(p) => p.sunrise_only(),
+        _ => false,
     })
 }
 
@@ -1152,6 +1154,7 @@ fn vanilla_body(packet: &play::Clientbound) -> Vec<u8> {
         return packet.encode();
     };
     let mut values = data.values.clone();
+    values.retain(|(_, _, value)| !matches!(value, Value::Particle(p) if p.sunrise_only()));
     for (_, _, value) in &mut values {
         if let Value::Particles(list) = value {
             list.retain(|p| !p.sunrise_only());

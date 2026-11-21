@@ -861,6 +861,24 @@ impl Game<'_> {
             }
         }
         let reg = &mut self.ui.registries;
+        let particles: Vec<_> = mod_api::__private::particle_ids()
+            .map(str::to_owned)
+            .collect();
+        if !particles.is_empty() {
+            reg.by_registry
+                .entry("minecraft:particle_type".into())
+                .or_default()
+                .ids = particles;
+            reg.particle_options = Some(|name, fields| {
+                if let Some(result) = mod_api::__private::decode_particle_map(name, fields) {
+                    return Some(result.map(mod_api::ParticleOptions::from_typed));
+                }
+                let key = mod_api::__private::particle_named_key(name)?;
+                (mod_api::__private::particle_kind(key)
+                    == Some(mod_api::__private::ParticleKind::Custom))
+                .then(|| Ok(mod_api::ParticleOptions::simple(key)))
+            });
+        }
         if reg.entity_types.is_empty() {
             reg.entity_types.clone_from(&reg.summonable);
             reg.entity_types.push("minecraft:player".into());

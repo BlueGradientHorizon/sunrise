@@ -34,12 +34,29 @@ impl ParticleEngine {
     /// `ParticleEngine.createParticle`: always spawned, but `ParticleEngine.add`
     /// drops a spore blossom air particle once `ParticleLimit.SPORE_BLOSSOM` is full.
     pub fn create(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
+        self.create_with_world(None, options, p, v);
+    }
+
+    /// Create a particle directly, with the level used by a typed factory when present.
+    pub fn create_with_world(
+        &mut self,
+        world: Option<&World>,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+    ) {
         if let Some(requests) = &mut self.created_requests {
             requests.push((options.clone(), p, v));
             return;
         }
         let seed = self.seeds.next_long();
-        if let Some(mut particle) = self.make(options, p, v, seed) {
+        let made = match &options.typed_particle {
+            Some((value, _)) => {
+                world.and_then(|world| self.make_typed_particle(world, value, p, v, seed))
+            }
+            None => self.make(options, p, v, seed),
+        };
+        if let Some(mut particle) = made {
             *self.made.entry(options.ty.name()).or_default() += 1;
             // Resource packs' Polytone particle modifiers (#11486), once as it spawns.
             if let Some(registry) = &self.polytone
