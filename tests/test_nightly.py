@@ -221,7 +221,7 @@ class MuslAttachmentTests(unittest.TestCase):
         sign, verify, upload = (step["run"] for step in self.attach["steps"][2:])
         script_root = WORKFLOWS.parents[1]
         archive = "sunrise-linux-musl-x86_64.tar.gz"
-        for kind, tag in (("nightly", "nightly"), ("snapshot", "snapshot-2026-11-04-0123456")):
+        for kind, tag in (("nightly", "nightly"), ("dev", "dev-2026-11-04-0123456")):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
                 root = Path(folder)
                 (root / "musl").mkdir()

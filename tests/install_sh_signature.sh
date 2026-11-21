@@ -164,4 +164,8 @@ done
 d=$W/legacy; make_release "$d" v1.2.3; with_key "$d"; json "$d" v1.2.3 no
 run "$d" "$P" --version v1.2.3; verdict "unsigned release: installs, says so" 0 "no signed checksums" "$d"
 
+# 10. A Dev build is refused by name: servers don't install one.
+d=$W/dev; make_release "$d" dev-2026-11-21-0c02067; with_key "$d"
+run "$d" "$P" --version dev-2026-11-21-0c02067; verdict "a Dev build refused by name" 1 "is a Dev build" "$d"
+
 echo "$fails case(s) failed"; [ "$fails" = 0 ]
