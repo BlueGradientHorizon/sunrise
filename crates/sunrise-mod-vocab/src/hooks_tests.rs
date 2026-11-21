@@ -988,6 +988,85 @@ fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
 }
 
 #[test]
+fn callback_and_registration_contain_panicking_payload_destructors() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Secondary;
+    impl Drop for Secondary {
+        fn drop(&mut self) {
+            panic!("must not drop the secondary panic payload");
+        }
+    }
+
+    struct Payload(Arc<AtomicUsize>);
+    impl Drop for Payload {
+        fn drop(&mut self) {
+            // The real crash hook must still defer to dispatch while the payload drops.
+            self.0.store(
+                crate::runtime::hook_dispatch_depth() as usize,
+                Ordering::Relaxed,
+            );
+            std::panic::panic_any(Secondary);
+        }
+    }
+
+    struct Panicker(Arc<AtomicUsize>);
+    #[crate::__subscriptions]
+    impl Hooks for Panicker {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            std::panic::panic_any(Payload(self.0.clone()));
+        }
+    }
+
+    struct Healthy(Arc<AtomicUsize>);
+    #[crate::__subscriptions]
+    impl Hooks for Healthy {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let drop_depth = Arc::new(AtomicUsize::new(0));
+    let healthy_calls = Arc::new(AtomicUsize::new(0));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("mod_payload", Box::new(Panicker(drop_depth.clone()))),
+            ModEntry::new("mod_healthy", Box::new(Healthy(healthy_calls.clone()))),
+        ]
+        .into(),
+        || {
+            dispatch_client_tick_pre(&mut FakeHost::new());
+            assert_eq!(drop_depth.swap(0, Ordering::Relaxed), 1);
+            assert_eq!(crate::runtime::hook_dispatch_depth(), 0);
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
+
+            assert!(!crate::runtime::invoke_registration("mod_payload", || {
+                std::panic::panic_any(Payload(drop_depth.clone()));
+            }));
+            assert_eq!(drop_depth.load(Ordering::Relaxed), 1);
+            assert_eq!(crate::runtime::hook_dispatch_depth(), 0);
+            assert!(crate::runtime::invoke_registration("mod_healthy", || {
+                healthy_calls.fetch_add(1, Ordering::Relaxed);
+            }));
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [
+                    crate::__private::HookPanicReport {
+                        mod_id: "mod_payload",
+                        hook: "client_tick_pre",
+                    },
+                    crate::__private::HookPanicReport {
+                        mod_id: "mod_payload",
+                        hook: "register",
+                    },
+                ],
+            );
+        },
+    );
+}
+
+#[test]
 fn world_phase_cloned_event_fields_roll_back_on_panic() {
     struct Panicker;
     #[crate::__subscriptions]

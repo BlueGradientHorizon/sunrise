@@ -446,16 +446,14 @@ impl<T> RegistrationMap<T> {
 /// failure, logging the error, and queueing a client error toast so the caller can roll back the
 /// mod's partial registrations and continue with remaining mods.
 pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
-    let outcome = {
-        let _scope = DispatchPanicScope::enter();
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(call))
-    };
-    match outcome {
+    let _scope = DispatchPanicScope::enter();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
         Ok(()) => true,
         Err(payload) => {
             let (entered, trapped) = LISTENER_SERIAL.get();
             LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
             log_and_queue_panic("register", mod_id, &*payload);
+            dispose_panic_payload(payload);
             false
         }
     }

@@ -89,10 +89,10 @@ sends a correction even below the normal distance threshold, for creative player
 and from obstructed starts too. A replacement equal to the request retains the
 normal vanilla distance rules.
 
-A listener panic restores the originally requested
-delta, not an earlier listener's replacement. Later listeners do not run on that
-invocation, and the failed listener is disabled for this hook for the session;
-its other hooks remain enabled.
+If a listener panics or incurs a phase refusal, its proposed delta and any
+change to the cancel flag are discarded. Earlier proposals stand and later
+eligible listeners still run. Only a panic disables that mod's callback for
+this hook for the session; its other hooks remain enabled.
 
 A mod moves an entity through the same moment with `EntityRef::move_by(host, delta, cause)`
 (`Entity.move(cause, delta)`, server only): the collision scan stops it at blocks, the world border and
@@ -114,12 +114,12 @@ Replacement input components must be finite and within [-1, 1]; replacement
 velocity components within ±64 blocks per tick. Untouched vectors are exempt.
 One malformed vector drops that listener's entire result, including its cancel
 flag. The preceding accepted result stands, and the log names the mod and field
-once per tick. An accepted cancellation cannot be cleared. It skips the branch,
+on every refusal. An accepted cancellation cannot be cleared. It skips the branch,
 its nested moves and flying vertical damping, without undoing earlier work such
 as swim steering. If the branch runs and calls `entity_move`, that move can
-still be vetoed. A listener panic restores the originally resolved values, ends
-the dispatch and disables the failed listener for this hook for the session;
-its other hooks remain enabled.
+still be vetoed. A listener panic or phase refusal also leaves earlier proposals
+standing and later eligible listeners running. Only a panic disables the failed
+callback for this hook for the session.
 
 For a player, a veto holds the position accepted at the server's travel boundary;
 it does not rewind reports already accepted before that tick. While the veto

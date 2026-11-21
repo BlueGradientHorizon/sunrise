@@ -14,9 +14,10 @@ pub trait Hooks {
     /// the invocation: no position, velocity, collision-flag or fall change,
     /// and no displacement notice. A replacement component that is not a
     /// finite number, or lies outside ±64 blocks, is refused whole - the move
-    /// stands as the requested delta would. A listener that unwinds keeps the
-    /// requested delta, not a replacement an earlier listener had proposed,
-    /// and is switched off for the session. It takes no Host - the maintainer
+    /// stands as the requested delta would. If a listener panics or incurs a
+    /// phase refusal, its edits and cancel flag are discarded; earlier results
+    /// stand and later eligible listeners still run. Only a panic disables
+    /// this mod's callback for the session. It takes no Host - the maintainer
     /// ruling, like the enderman's teleport: the listener only decides the
     /// delta, and its `context` is the loop `context` of the side that ticks
     /// the body. Server-authoritative: the client does not predict a custom
@@ -27,13 +28,12 @@ pub trait Hooks {
     /// listener written for version 1 hears moves it never heard. `MoveCause` is
     /// `#[non_exhaustive]`: match it with a wildcard arm.
     #[hook(
-        version = 2,
+        version = 3,
         side = "server",
         contract = "cancel",
         out = "canceled",
         context = "loop",
         cancellable = true,
-        isolate = true,
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::move_gate::native_entity_move"
     )]

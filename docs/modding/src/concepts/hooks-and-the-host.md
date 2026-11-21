@@ -32,11 +32,14 @@ transactional host writes are rolled back, and the panic is reported once loudly
 log line and, on a client, a non-vetoable error toast naming the mod and the hook (headless
 dedicated servers log the error and do not drain the client toast queue).
 
-Isolated hooks additionally roll the panicking listener's outputs back to the game's requested
-values and stop the current invocation so no later listener runs on that call.
+Failed listeners do not undo proposals accepted from earlier listeners. The dispatcher discards
+the failed callback's own proposal, including any change to the cancel flag, then continues to
+later listeners under the normal `receive_cancelled` rules. Ordinary refusals, such as a load-phase
+or output-validator refusal, are reported every time without disabling the listener.
 
-Any other failure or refusal — such as a load-phase refusal, an invalid output writeback, or an
-output-validator refusal — is reported each time it happens and is never latched.
+For `farmland_trample`, each listener's writes join the trample transaction only if that
+callback succeeds. A panic is not a veto. A successful veto or stale landing state still
+rolls back the whole trample action; the entity takes its fall damage either way.
 
 ## Player tick hooks
 

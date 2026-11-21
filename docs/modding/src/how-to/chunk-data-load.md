@@ -16,9 +16,12 @@ the callback, or copy it if it must outlive the callback. Neither metadata gette
 The host has no live backend and is not a `ServerHost`. Typed values need a
 persistence codec, not `Wire`. Unknown bounded attachment entries are preserved opaquely.
 
-Codec errors, invalid or over-budget disk NBT, and unwinding panics refuse the entire
-store: none of its edits are kept. The chunk still loads, with the attachments
-exactly as they were stored, so a mod bug leaves no gap in the world. No
+Codec errors, invalid or over-budget disk NBT, and panics refuse publication of
+the job's edits. Later listeners still run on the last accepted envelopes, without
+the failed listener's edits or error state. A phase refusal drops only that
+listener's proposal and is reported each time; only a panic disables a callback
+for this hook for the session. If the job fails, the chunk still loads with the
+attachments exactly as they were stored. No
 `chunk_data_save` listener runs for that chunk for the rest of the session, so
 half-initialised state never replaces the stored record, and the chunk's later
 saves write its stored attachments back unchanged. The failure is logged once

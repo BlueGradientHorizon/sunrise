@@ -68,6 +68,48 @@ enum Flow {
 trait Host {}
 trait ServerHost: Host {}
 trait ClientHost: Host {}
+
+mod item {
+    pub(super) mod transaction {
+        // The game exercises the actual journal; these fixtures have no world state.
+        pub(in crate::tests) fn run_transaction<H: super::super::ServerHost + ?Sized, T, E>(
+            host: &mut H,
+            call: impl FnOnce(&mut H, &()) -> Result<T, E>,
+        ) -> Result<T, E> {
+            call(host, &())
+        }
+    }
+}
+
+fn capture_warnings(call: impl FnOnce()) -> Vec<String> {
+    thread_local! {
+        static WARNINGS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+    }
+    struct WarningLog;
+    impl log::Log for WarningLog {
+        fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+            metadata.level() == log::Level::Warn
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            if self.enabled(record.metadata()) {
+                WARNINGS.with(|warnings| {
+                    if let Some(warnings) = warnings.borrow_mut().as_mut() {
+                        warnings.push(record.args().to_string());
+                    }
+                });
+            }
+        }
+        fn flush(&self) {}
+    }
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        log::set_logger(&WarningLog).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+    });
+    WARNINGS.with(|warnings| *warnings.borrow_mut() = Some(Vec::new()));
+    call();
+    WARNINGS.with(|warnings| warnings.borrow_mut().take().unwrap())
+}
 trait WorldDrawContext {}
 trait DrawContext {
     fn mark(&mut self, value: u32);

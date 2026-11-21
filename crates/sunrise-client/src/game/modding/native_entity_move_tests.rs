@@ -175,11 +175,9 @@ fn a_panicking_listener_keeps_the_requested_move_and_is_disabled() {
     );
 }
 
-/// The requested delta, not an earlier listener's replacement, is what a
-/// later panicking listener leaves behind (#2414 maintainer ruling: «A panic
-/// keeps the requested delta (not a replaced one)»).
+/// A later listener's panic cannot undo an accepted replacement.
 #[test]
-fn a_panic_after_a_replacement_keeps_the_requested_delta() {
+fn a_panic_after_a_replacement_keeps_the_accepted_delta() {
     let mods: mod_api::Mods = vec![
         mod_api::ModEntry::new(
             "replacer",
@@ -208,11 +206,7 @@ fn a_panic_after_a_replacement_keeps_the_requested_delta() {
             Vec3::new(1.0, 0.0, 0.0),
         );
         assert!(!gate.skipped());
-        assert_eq!(
-            gate.delta(),
-            Vec3::new(1.0, 0.0, 0.0),
-            "the requested delta, not the (0, 0, 9) replacement"
-        );
+        assert_eq!(gate.delta(), Vec3::new(0.0, 0.0, 9.0));
     });
 }
 

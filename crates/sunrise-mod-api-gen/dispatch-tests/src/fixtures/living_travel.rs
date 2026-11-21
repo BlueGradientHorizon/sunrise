@@ -1,6 +1,4 @@
-//! The `living_travel` fixture: the isolated dispatch's per-listener output check
-//! (`output_validator`) — a refused pair is dropped alone, the preceding accepted pair
-//! stands for the next listener, and later listeners still run.
+//! The global cancel dispatcher's per-listener output check for `living_travel`.
 
 /// What a fixture listener heard of one travel: the input and velocity it was handed.
 type TravelHeard = Vec<([f64; 3], [f64; 3], bool)>;
@@ -79,15 +77,29 @@ fn a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_re
     let velocity = [3.0, 0.0, 0.0];
     for cancel in [Cancel::Flag, Cancel::Flow] {
         let (_, accepted) = setter("accepted", input, velocity, Cancel::None);
-        let (_, refused) = setter("refused", [2.0, 0.0, 0.0], [7.0, 0.0, 0.0], cancel);
+        let (refused_heard, refused) = setter("refused", [2.0, 0.0, 0.0], [7.0, 0.0, 0.0], cancel);
         let (later_heard, later) = setter("later", input, velocity, Cancel::None);
         install(vec![accepted, refused, later].into());
+        let warnings = capture_warnings(|| {
+            for _ in 0..2 {
+                assert_eq!(
+                    dispatch_travel([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
+                    (input, velocity, false),
+                    "the accepted result stands; the refused one, cancellation included, is gone"
+                );
+            }
+        });
         assert_eq!(
-            dispatch_travel([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
-            (input, velocity, false),
-            "the accepted result stands; the refused one, cancellation included, is gone"
+            warnings,
+            ["mod refused hook living_travel output input refused: its outputs are dropped and the preceding ones stand";
+                2]
         );
-        assert_eq!(*later_heard.lock().unwrap(), vec![(input, velocity, false)]);
+        assert!(!runtime::poisoned(HookId::LivingTravel, "refused"));
+        assert_eq!(
+            *refused_heard.lock().unwrap(),
+            [(input, velocity, false); 2]
+        );
+        assert_eq!(*later_heard.lock().unwrap(), [(input, velocity, false); 2]);
     }
 }
 
@@ -130,17 +142,14 @@ fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
         }
     }
 
-    OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().clear());
     install(vec![ModEntry::new("observe", Box::new(Observe))].into());
-    assert_eq!(
-        dispatch_travel([0.0; 3], [65.0, 0.0, 0.0]),
-        ([0.0; 3], [65.0, 0.0, 0.0], false)
-    );
-    assert!(OUTPUT_REFUSALS.with(|refusals| refusals.borrow().is_empty()));
-}
-
-thread_local! {
-    pub(crate) static OUTPUT_REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+    let warnings = capture_warnings(|| {
+        assert_eq!(
+            dispatch_travel([0.0; 3], [65.0, 0.0, 0.0]),
+            ([0.0; 3], [65.0, 0.0, 0.0], false)
+        );
+    });
+    assert!(warnings.is_empty());
 }
 
 mod crate_root {
@@ -155,14 +164,10 @@ mod crate_root {
                 velocity: &[f64; 3],
             ) -> Result<(), &'static str> {
                 if accepted_input[0].to_bits() != input[0].to_bits() && input[0] > 1.0 {
-                    crate::tests::OUTPUT_REFUSALS
-                        .with(|refusals| refusals.borrow_mut().push("input"));
                     Err("input")
                 } else if accepted_velocity[0].to_bits() != velocity[0].to_bits()
                     && velocity[0] > 64.0
                 {
-                    crate::tests::OUTPUT_REFUSALS
-                        .with(|refusals| refusals.borrow_mut().push("velocity"));
                     Err("velocity")
                 } else {
                     Ok(())

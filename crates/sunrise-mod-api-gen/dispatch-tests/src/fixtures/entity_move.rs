@@ -1,43 +1,54 @@
-//! The `entity_move` fixture: the isolated dispatch a global cancel hook with
-//! `isolate` generates (#2414 ruling) — one listener per `catch_unwind`, the
-//! requested outputs surviving an unwind, and the poison skipping that one
-//! listener on the next dispatch.
+//! The global cancel dispatcher keeps accepted outputs across listener failures.
 
-/// What the fixture listener heard: each requested delta, in dispatch order.
-type Heard = Vec<[f64; 3]>;
+/// What the fixture listener heard: each requested delta and cancel flag.
+type Heard = Vec<([f64; 3], bool)>;
 
 struct Mover {
     answer: Answer,
     heard: Arc<Mutex<Heard>>,
 }
 
-/// What the fixture listener does with one move.
 #[derive(Clone, Copy)]
 enum Answer {
-    /// Replace the delta, then unwind: its writes must not survive it.
-    UnwindAfterReplace,
-    /// Hear the move and leave it alone.
+    Replace([f64; 3]),
+    Panic,
+    Refuse,
+    Cancel,
     Continue,
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for Mover {
     fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
-        self.heard.lock().unwrap().push(*event.delta);
+        self.heard
+            .lock()
+            .unwrap()
+            .push((*event.delta, event.cancelled));
         match self.answer {
-            Answer::UnwindAfterReplace => {
-                *event.delta = [9.0, 9.0, 9.0];
+            Answer::Replace(delta) => *event.delta = delta,
+            Answer::Panic => {
+                *event.delta = [9.0; 3];
+                event.cancelled = true;
                 panic!("the fixture's move listener unwinds")
             }
-            Answer::Continue => Flow::Continue,
+            Answer::Refuse => {
+                *event.delta = [8.0; 3];
+                event.cancelled = true;
+                std::panic::resume_unwind(Box::new(runtime::Refusal(
+                    "unavailable fixture operation",
+                )))
+            }
+            Answer::Cancel => return Flow::Cancel,
+            Answer::Continue => {}
         }
+        Flow::Continue
     }
 }
 
-fn mover(answer: Answer) -> (Arc<Mutex<Heard>>, ModEntry) {
+fn mover(id: &'static str, answer: Answer) -> (Arc<Mutex<Heard>>, ModEntry) {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let entry = ModEntry::new(
-        "mover",
+        id,
         Box::new(Mover {
             answer,
             heard: Arc::clone(&heard),
@@ -46,10 +57,7 @@ fn mover(answer: Answer) -> (Arc<Mutex<Heard>>, ModEntry) {
     (heard, entry)
 }
 
-/// One isolated dispatch of the requested delta: what the game's own `canceled`
-/// and delta are after it.
-fn dispatch(requested: [f64; 3]) -> ([f64; 3], bool) {
-    let mut delta = requested;
+fn dispatch(mut delta: [f64; 3]) -> ([f64; 3], bool) {
     let mut canceled = false;
     mod_api::dispatch_entity_move(
         &Loop("server"),
@@ -62,64 +70,81 @@ fn dispatch(requested: [f64; 3]) -> ([f64; 3], bool) {
     (delta, canceled)
 }
 
-/// A listener that unwinds after replacing the delta keeps the **requested**
-/// delta — its writes die with it — and no later listener runs on that
-/// invocation.
 #[test]
-fn an_unwinding_listener_keeps_the_requested_delta_and_ends_the_walk() {
-    let (replacer_heard, replacer) = mover(Answer::UnwindAfterReplace);
-    let (later_heard, later) = mover(Answer::Continue);
-    install(vec![replacer, later].into());
-    let (delta, canceled) = dispatch([1.0, 0.0, 0.0]);
+fn a_panicking_move_listener_loses_its_proposal_but_the_walk_continues() {
+    let accepted = [3.0, 4.0, 5.0];
+    let (first_heard, first) = mover("accepted", Answer::Replace(accepted));
+    let (panic_heard, panicker) = mover("panicker", Answer::Panic);
+    let (later_heard, later) = mover("later", Answer::Continue);
+    install(vec![first, panicker, later].into());
+
+    assert_eq!(dispatch([1.0, 0.0, 0.0]), (accepted, false));
+    assert_eq!(*later_heard.lock().unwrap(), [(accepted, false)]);
+    assert_eq!(dispatch([2.0, 0.0, 0.0]), (accepted, false));
     assert_eq!(
-        delta,
-        [1.0, 0.0, 0.0],
-        "the replacement died with the unwind"
+        *first_heard.lock().unwrap(),
+        [([1.0, 0.0, 0.0], false), ([2.0, 0.0, 0.0], false)]
     );
-    assert!(!canceled);
-    assert_eq!(replacer_heard.lock().unwrap().len(), 1);
-    assert!(
-        later_heard.lock().unwrap().is_empty(),
-        "no listener after the unwind runs on that invocation"
-    );
+    assert_eq!(*panic_heard.lock().unwrap(), [(accepted, false)]);
+    assert_eq!(*later_heard.lock().unwrap(), [(accepted, false); 2]);
+    assert!(runtime::poisoned(HookId::EntityMove, "panicker"));
+    assert!(!runtime::poisoned(HookId::EntityMove, "accepted"));
+    assert!(!runtime::poisoned(HookId::EntityMove, "later"));
 }
 
-/// The poison skips **this hook** of the mod for the session: the next
-/// dispatch hears nobody, and neither dispatch panics out of the loop.
 #[test]
-fn a_poisoned_listener_is_skipped_by_the_hook_alone() {
-    let (heard, entry) = mover(Answer::UnwindAfterReplace);
-    install(vec![entry].into());
-    dispatch([1.0, 0.0, 0.0]);
-    let (delta, canceled) = dispatch([2.0, 0.0, 0.0]);
-    assert_eq!(delta, [2.0, 0.0, 0.0]);
-    assert!(!canceled);
-    assert_eq!(
-        heard.lock().unwrap().len(),
-        1,
-        "the poisoned listener is not dispatched again"
-    );
+fn a_failed_receiver_cannot_clear_an_accepted_move_veto() {
+    struct ClearThenPanic(Arc<Mutex<Heard>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for ClearThenPanic {
+        #[listener(receive_cancelled)]
+        fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
+            self.0.lock().unwrap().push((*event.delta, event.cancelled));
+            event.cancelled = false;
+            *event.delta = [9.0; 3];
+            panic!("the veto stands")
+        }
+    }
+
+    let (_, veto) = mover("veto", Answer::Cancel);
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let failed = ModEntry::new("failed_receiver", Box::new(ClearThenPanic(heard.clone())));
+    let (skipped_heard, skipped) = mover("skipped", Answer::Continue);
+    install(vec![veto, failed, skipped].into());
+    assert_eq!(dispatch([1.0; 3]), ([1.0; 3], true));
+    assert_eq!(*heard.lock().unwrap(), [([1.0; 3], true)]);
+    assert!(runtime::poisoned(HookId::EntityMove, "failed_receiver"));
+    assert!(skipped_heard.lock().unwrap().is_empty());
 }
 
-/// An ordinary listener is untouched by isolation: it hears the move, and its
-/// replacement stands.
 #[test]
-fn an_ordinary_listener_still_replaces_the_delta() {
-    let (heard, entry) = mover(Answer::Continue);
-    install(vec![entry].into());
-    let (delta, canceled) = dispatch([1.0, 0.0, 0.0]);
-    assert_eq!(delta, [1.0, 0.0, 0.0]);
-    assert!(!canceled);
-    assert_eq!(heard.lock().unwrap().len(), 1);
+fn a_move_phase_refusal_restores_the_proposal_and_is_reported_on_each_call() {
+    let accepted = [3.0, 4.0, 5.0];
+    let (_, first) = mover("accepted", Answer::Replace(accepted));
+    let (refused_heard, refused) = mover("refused", Answer::Refuse);
+    let (later_heard, later) = mover("later", Answer::Continue);
+    install(vec![first, refused, later].into());
+
+    runtime::OUTSIDE_WORLD.set(true);
+    let outputs = [dispatch([1.0; 3]), dispatch([2.0; 3])];
+    runtime::OUTSIDE_WORLD.set(false);
+    assert_eq!(outputs, [(accepted, false); 2]);
+    assert_eq!(*refused_heard.lock().unwrap(), [(accepted, false); 2]);
+    assert_eq!(*later_heard.lock().unwrap(), [(accepted, false); 2]);
+    assert!(!runtime::poisoned(HookId::EntityMove, "refused"));
+    assert_eq!(
+        runtime::REFUSALS.with(|reports| std::mem::take(&mut *reports.borrow_mut())),
+        ["unavailable fixture operation"; 2]
+    );
 }
 
 mod root {
     mod runtime {
-        /// The stand-in for the real runtime's refusal: these fixtures run in `World`, where
-        /// nothing is refused.
-        pub(super) struct Refusal;
+        pub(super) struct Refusal(pub(super) &'static str);
         impl Refusal {
-            pub(super) fn report(&self) {}
+            pub(super) fn report(&self) {
+                REFUSALS.with(|reports| reports.borrow_mut().push(self.0));
+            }
         }
 
         pub(super) enum DispatchOutcome<T> {
@@ -129,10 +154,22 @@ mod root {
         }
 
         pub(super) fn outside_world() -> bool {
-            false
+            OUTSIDE_WORLD.get()
         }
-        pub(super) fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {
-            Ok(call())
+        pub(super) fn refusable<T>(
+            contained: bool,
+            call: impl FnOnce() -> T,
+        ) -> Result<T, Refusal> {
+            if !contained {
+                return Ok(call());
+            }
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
+                Ok(value) => Ok(value),
+                Err(payload) => match payload.downcast::<Refusal>() {
+                    Ok(refusal) => Err(*refusal),
+                    Err(payload) => std::panic::resume_unwind(payload),
+                },
+            }
         }
         pub(super) fn invoke<T>(
             hook: super::HookId,
@@ -177,8 +214,10 @@ mod root {
             }
         }
         thread_local! {
-            /// The listeners the isolated dispatches poisoned, as (hook ordinal, id) pairs — the
-            /// stand-in for the real runtime's per-hook sets.
+            pub(super) static OUTSIDE_WORLD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+            pub(super) static REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
+            /// The listeners dispatch poisoned, as (hook ordinal, id) pairs — the stand-in
+            /// for the real runtime's per-hook sets.
             pub(super) static POISONED: std::cell::RefCell<std::collections::HashSet<(usize, &'static str)>> =
                 std::cell::RefCell::new(std::collections::HashSet::new());
         }

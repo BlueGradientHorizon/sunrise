@@ -177,11 +177,7 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook that, on top of the universal per-`(hook, mod)` panic containment,
-    /// rolls a panicking listener's outputs back to what the game requested and stops the current
-    /// invocation (#2414 ruling).
-    pub isolate: bool,
-    /// An isolated hook's per-listener check of the outputs it wrote: a path to
+    /// A global cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
     /// vector/scalar outputs in declaration order and naming the first refused one. A refused
     /// result, including its cancellation, rolls back; later listeners still run.
@@ -359,7 +355,6 @@ struct ModApiEntry {
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
     staged_surface: Option<String>,
-    isolate: Option<bool>,
     output_validator: Option<String>,
 }
 
@@ -524,21 +519,16 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // Isolation is the cancel loop's own: a listener that unwinds rolls the outputs back
-        // to the requested ones and is skipped for the hook for the session (#2414 ruling).
-        let isolate = api.isolate.unwrap_or(false);
-        if isolate && (api.contract != Contract::Cancel || scope.is_some()) {
-            return Err(CatalogError::InvalidHook {
-                hook: name.clone(),
-                error: "isolate is for a global cancel hook".into(),
-            });
-        }
         if let Some(validator) = &api.output_validator
-            && (!isolate || syn::parse_str::<syn::Path>(validator).is_err())
+            && (api.contract != Contract::Cancel
+                || scope.is_some()
+                || entry.event_per_listener
+                || syn::parse_str::<syn::Path>(validator).is_err())
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on an isolated hook".into(),
+                error: "output_validator is a path on a global cancel hook with shared outputs"
+                    .into(),
             });
         }
         let counterparts = Counterparts {
@@ -561,7 +551,6 @@ impl Hook {
             registration_append: api.registration_append,
             staged_surface: api.staged_surface,
             inert: entry.inert,
-            isolate,
             output_validator: api.output_validator,
             scope,
             host: entry.host,
@@ -850,7 +839,6 @@ impl Declared {
                             "collect_validator",
                             "registration_append",
                             "staged_surface",
-                            "isolate",
                             "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
@@ -1026,7 +1014,6 @@ impl Hook {
             registration_append: None,
             staged_surface: None,
             inert: None,
-            isolate: false,
             output_validator: None,
             scope: None,
             host: None,
