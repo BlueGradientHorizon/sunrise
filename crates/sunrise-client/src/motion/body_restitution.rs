@@ -13,8 +13,9 @@ use sunrise_core::{
 };
 use sunrise_world::{
     block_collision::BlockCollisionRegistry,
-    collision_context::CollisionContext,
+    collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
     entity_move::different,
+    entity_obstruction::EntityIdentity,
     ground_support::GroundState,
     movement_properties::BoundMovementProperties,
     movement_restitution::{RestitutionInput, RestitutionWorld, restitute_movement},
@@ -36,7 +37,7 @@ pub struct BodyMotion<'a> {
 }
 
 /// The legacy effect pair captured from the post-move footprint, and its supporting block.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BodyContact {
     pub position: BlockPos,
     pub state: BlockStateId,
@@ -44,24 +45,39 @@ pub struct BodyContact {
     support: Option<BlockPos>,
 }
 
+/// Wanted and clipped motion, with the state selected before the fall phase.
+#[derive(Clone, Copy, Debug)]
+pub struct BodyMove {
+    pub wanted: Vec3,
+    pub moved: Vec3,
+    pub effect: BodyContact,
+}
+
+/// The numerical response, ready for the owning level's effects before it writes velocity.
+pub struct BodyRestitution {
+    pub velocity: Vec3,
+    pub bounce: Option<BodyBounce>,
+}
+
+pub struct BodyBounce {
+    pub state: BlockStateId,
+    pub position: BlockPos,
+    pub fall_distance: f64,
+}
+
 impl BodyMotion<'_> {
-    /// `Entity.setOnGroundWithMovement`, then capture the one legacy position/state pair.
-    /// Use the moved footprint, including the original horizontal footprint on a support miss.
-    pub fn effect_block(
-        self,
-        position: Vec3,
-        bounds: Aabb,
-        on_ground: bool,
-        moved: Vec3,
-        context: CollisionContext<'_>,
-        subject: Option<PowderSnowSubject<'_>>,
-    ) -> BodyContact {
-        let mut ground = GroundState {
-            on_ground,
-            ..GroundState::default()
-        };
-        self.update_support(&mut ground, position, bounds, Some(moved), context, subject);
-        self.legacy_contact(position, &ground)
+    /// `CollisionContext.of(entity)` for an ordinary nonliving body.
+    pub fn entity_context(id: u32, feet: Vec3) -> CollisionContext<'static> {
+        CollisionContext::for_entity(
+            CollisionEntity {
+                identity: EntityIdentity(u64::from(id)),
+                kind: EntityContextKind::Other,
+                y: feet.y,
+                descending: false,
+                main_hand: None,
+            },
+            false,
+        )
     }
 
     /// Record the collision flags and support selected at the end of `Entity.move`.
@@ -120,64 +136,66 @@ impl BodyMotion<'_> {
         }
     }
 
-    /// The `canSimulateMovement` decision belongs to the caller. Returns whether vanilla
-    /// marked the position for immediate sync, so the owning tracker can observe the bounce.
-    #[allow(clippy::too_many_arguments)]
+    /// Resolve the collision without writing the body's velocity. The owner calls this
+    /// after fall handling, only while the entity is live and can simulate movement.
     pub fn restitute(
         self,
         entity: (u32, &str),
-        living: bool,
-        wanted: Vec3,
-        moved: Vec3,
-        effect: BodyContact,
+        movement: BodyMove,
         gravity: f64,
         drag: f32,
-        velocity: &mut Vec3,
-    ) -> bool {
+        velocity: Vec3,
+        fall_distance: f64,
+    ) -> BodyRestitution {
+        let BodyMove {
+            wanted,
+            moved,
+            effect,
+        } = movement;
         let collided_x = different(wanted.x, moved.x);
         let collided_z = different(wanted.z, moved.z);
         let vertical_collision = wanted.y != moved.y;
-        if !(collided_x || collided_z || (wanted.y.abs() > 0.0 && vertical_collision)) {
-            return false;
-        }
-        let mut body = BodyRestitution {
+        let mut body = BodyResponse {
             motion: self,
             effect,
             entity,
             gravity,
             drag,
-            velocity,
-            sync: false,
-        };
-        let Ok(()) = restitute_movement(
-            &mut body,
-            RestitutionInput {
-                block: effect.state,
-                effect_position: effect.position,
-                collided_x,
-                collided_z,
-                vertical_collision,
-                collision_below: vertical_collision && wanted.y < 0.0,
-                living,
-                resolved_movement: moved,
-                fall_distance: 0.0,
+            result: BodyRestitution {
+                velocity,
+                bounce: None,
             },
-        );
-        body.sync
+        };
+        if collided_x || collided_z || (wanted.y.abs() > 0.0 && vertical_collision) {
+            let Ok(()) = restitute_movement(
+                &mut body,
+                RestitutionInput {
+                    block: effect.state,
+                    effect_position: effect.position,
+                    collided_x,
+                    collided_z,
+                    vertical_collision,
+                    collision_below: vertical_collision && wanted.y < 0.0,
+                    living: false,
+                    resolved_movement: moved,
+                    fall_distance,
+                },
+            );
+        }
+        body.result
     }
 }
 
-struct BodyRestitution<'a, 'v> {
+struct BodyResponse<'a> {
     motion: BodyMotion<'a>,
     effect: BodyContact,
     entity: (u32, &'a str),
     gravity: f64,
     drag: f32,
-    velocity: &'v mut Vec3,
-    sync: bool,
+    result: BodyRestitution,
 }
 
-impl RestitutionWorld for BodyRestitution<'_, '_> {
+impl RestitutionWorld for BodyResponse<'_> {
     type Error = Infallible;
 
     fn suppressing_bounce(&mut self) -> Result<bool, Infallible> {
@@ -187,7 +205,7 @@ impl RestitutionWorld for BodyRestitution<'_, '_> {
         Ok(0.0)
     }
     fn velocity(&mut self) -> Result<Vec3, Infallible> {
-        Ok(*self.velocity)
+        Ok(self.result.velocity)
     }
     fn effective_gravity(&mut self) -> Result<f64, Infallible> {
         Ok(self.gravity)
@@ -236,7 +254,6 @@ impl RestitutionWorld for BodyRestitution<'_, '_> {
         ))
     }
 
-    // Nonliving ticks do not yet expose the separate Block.bounceOn and BOUNCE events.
     fn movement_support_position(&mut self) -> Result<BlockPos, Infallible> {
         Ok(block_support_at(
             self.motion.world,
@@ -248,21 +265,24 @@ impl RestitutionWorld for BodyRestitution<'_, '_> {
     }
     fn bounce_on(
         &mut self,
-        _: BlockStateId,
-        _: BlockPos,
-        _: f64,
+        state: BlockStateId,
+        position: BlockPos,
+        fall_distance: f64,
         movement: Vec3,
     ) -> Result<Vec3, Infallible> {
+        self.result.bounce = Some(BodyBounce {
+            state,
+            position,
+            fall_distance,
+        });
         Ok(movement)
     }
     fn bounce_event(&mut self) -> Result<(), Infallible> {
         Ok(())
     }
-    fn mark_position_for_sync(&mut self) {
-        self.sync = true;
-    }
+    fn mark_position_for_sync(&mut self) {}
     fn set_velocity(&mut self, velocity: Vec3) -> Result<(), Infallible> {
-        *self.velocity = velocity;
+        self.result.velocity = velocity;
         Ok(())
     }
 }

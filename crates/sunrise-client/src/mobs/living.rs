@@ -410,7 +410,14 @@ impl TravelTrample {
         events: &mut Vec<MobEvent>,
     ) {
         mob.finish_trample_fall(w, level, events, self.movement.trample);
-        mob.finish_move(w, level, self.movement.wanted, self.movement.moved, events);
+        mob.finish_move(
+            w,
+            level,
+            self.movement.wanted,
+            self.movement.moved,
+            (self.movement.trample.position, self.movement.trample.state),
+            events,
+        );
         self.tail.finish(mob, w, level, events);
     }
 }
@@ -913,14 +920,17 @@ impl Mob {
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
         self.update_ground_support(w, moved);
-        if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
+        let effect = self.restitution_contact(w);
+        if let Some(trample) =
+            self.species_check_fall_damage(w, level, moved, effect, events, pause)
+        {
             return Some(MoveTrample {
                 trample,
                 wanted,
                 moved,
             });
         }
-        self.finish_move(w, level, wanted, moved, events);
+        self.finish_move(w, level, wanted, moved, effect, events);
         None
     }
 
@@ -930,15 +940,22 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
     ) {
-        self.restitute_movement(w, level, wanted, moved);
+        self.restitute_captured(w, level, wanted, moved, effect);
         self.movement_emission(w, moved, events);
         // Entity.move's last step: soul sand, honey and the like slow the
         // horizontal speed of whatever the mob stands in or on.
         let factor = self.block_speed_factor(w);
         self.velocity = sunrise_world::entity_move::scale_by_block_speed(self.velocity, factor);
     }
+    /// Record the normal move's ground for a forced collision.
+    pub fn update_pushed_support(&mut self, w: &MobWorld, wanted: Vec3, moved: Vec3) {
+        self.ground.on_ground = wanted.y < 0.0 && wanted.y != moved.y;
+        self.update_ground_support(w, moved);
+    }
+
     /// `Entity.restituteMovementAfterCollisions`, shared by travel and piston pushes.
     pub fn restitute_movement(
         &mut self,
@@ -946,6 +963,20 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         wanted: Vec3,
         moved: Vec3,
+    ) {
+        self.restitute_captured(w, level, wanted, moved, self.restitution_contact(w));
+    }
+    fn restitution_contact(&self, w: &MobWorld) -> (BlockPos, BlockStateId) {
+        let [x, y, z] = self.block_on_legacy(w);
+        (BlockPos::new(x, y, z), w.world.block(x, y, z))
+    }
+    fn restitute_captured(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        wanted: Vec3,
+        moved: Vec3,
+        (effect_position, block): (BlockPos, BlockStateId),
     ) {
         let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
         let x_hit = differs(wanted.x, moved.x);
@@ -956,12 +987,9 @@ impl Mob {
         // block, a bed), whichever is larger. A mob never sneaks, so nothing
         // suppresses its bounce there.
         if wanted.y.abs() > 0.0 && vertical || x_hit || z_hit {
-            // Entity.getOnPos(0.2F): the block whose bounce this move sees, the supporting
-            // block's column where one holds the mob (a fence or wall's own position).
-            let [x, y, z] = self.block_on_legacy(w);
             let input = RestitutionInput {
-                block: w.world.block(x, y, z),
-                effect_position: BlockPos::new(x, y, z),
+                block,
+                effect_position,
                 collided_x: x_hit,
                 collided_z: z_hit,
                 vertical_collision: vertical,
@@ -1023,13 +1051,14 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
         if self.kind.flags.lava_walker && self.fluids.in_lava {
             self.fall_distance = 0.0;
         } else if !matches!(self.kind.species, super::Species::Bat | super::Species::Bee) {
-            return self.check_fall_damage(w, level, moved, events, pause);
+            return self.check_fall_damage(w, level, moved, effect, events, pause);
         }
         None
     }
@@ -1047,7 +1076,7 @@ impl Mob {
     ) -> Option<FarmlandTrample> {
         self.ground.on_ground = on_ground;
         self.update_ground_support(w, delta);
-        self.species_check_fall_damage(w, level, delta, events, true)
+        self.species_check_fall_damage(w, level, delta, self.restitution_contact(w), events, true)
     }
     /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
     /// (touching water resets the fall), then Entity.checkFallDamage.
@@ -1056,6 +1085,7 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
+        effect: (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
@@ -1074,8 +1104,8 @@ impl Mob {
         }
         if self.ground.on_ground {
             if self.fall_distance > 0.0 {
-                self.landing_dust(w, events);
-                if let Some(trample) = self.fall_on_block(w, level, events, pause) {
+                self.landing_dust(w, effect, events);
+                if let Some(trample) = self.fall_on_block(w, level, effect, events, pause) {
                     return Some(trample);
                 }
             }
@@ -1085,9 +1115,13 @@ impl Mob {
     }
     /// The block particles `LivingEntity.checkFallDamage` sends up from the
     /// block a mob lands on, by the power of the fall.
-    fn landing_dust(&self, w: &MobWorld, events: &mut Vec<MobEvent>) {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+    fn landing_dust(
+        &self,
+        w: &MobWorld,
+        (position, state): (BlockPos, BlockStateId),
+        events: &mut Vec<MobEvent>,
+    ) {
+        let pos = [position.x, position.y, position.z];
         let Some(count) = landing_dust_count(self.fall_distance, self.safe_fall_distance()) else {
             return;
         };
@@ -1349,11 +1383,11 @@ impl Mob {
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
+        (position, state): (BlockPos, BlockStateId),
         events: &mut Vec<MobEvent>,
         pause: bool,
     ) -> Option<FarmlandTrample> {
-        let pos = self.block_on_legacy(w);
-        let state = w.world.block(pos[0], pos[1], pos[2]);
+        let pos = [position.x, position.y, position.z];
         let species = self.species();
         let entity = if super::doors::is_zombie(species) {
             LandingEntityKind::Zombie
@@ -1374,7 +1408,7 @@ impl Mob {
                 pos,
             },
             state,
-            BlockPos::new(pos[0], pos[1], pos[2]),
+            position,
             entity,
             distance,
             pause,
@@ -3485,7 +3519,14 @@ mod tests {
                 m.fall_distance = 4.5;
                 let mut test_level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
-                m.check_fall_damage(w, &mut test_level.level(), Vec3::ZERO, &mut events, false);
+                m.check_fall_damage(
+                    w,
+                    &mut test_level.level(),
+                    Vec3::ZERO,
+                    m.restitution_contact(w),
+                    &mut events,
+                    false,
+                );
                 let dust: Vec<i32> = events
                     .iter()
                     .filter_map(|e| match e {
@@ -3796,6 +3837,7 @@ mod tests {
                     mob.fall_on_block(
                         w,
                         &mut crate::health::TestLevel::new(0).level(),
+                        mob.restitution_contact(w),
                         &mut events,
                         false,
                     );
@@ -4092,7 +4134,13 @@ mod farmland_event_tests {
                 mob.fall_distance = 5.0;
                 let mut events = Vec::new();
                 let mut damage = crate::health::TestLevel::new(0);
-                mob.fall_on_block(w, &mut damage.level(), &mut events, false);
+                mob.fall_on_block(
+                    w,
+                    &mut damage.level(),
+                    mob.restitution_contact(w),
+                    &mut events,
+                    false,
+                );
                 // The write, then the event the rule posts for it.
                 assert!(
                     matches!(

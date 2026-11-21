@@ -763,6 +763,9 @@ impl Game<'_> {
         // A bare state is never paired: its UUID is never read.
         for e in states.as_mut_slice().iter_mut().filter(|e| !e.bare) {
             e.uuid = ints_uuid(self.uuid_for(e.id as u32));
+            if !self.persist.sync_body_position.is_empty() {
+                e.sync_position |= self.persist.sync_body_position.contains(&(e.id as u32));
+            }
             if let Some(bits) = self.persist.forced_meta.get(&(e.id as u32)) {
                 e.forced_meta = *bits;
             }
@@ -773,6 +776,7 @@ impl Game<'_> {
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
     pub(super) fn lan_syncs_looked(&mut self) {
+        self.persist.sync_body_position.clear();
         for m in &mut self.mobs {
             m.needs_sync = false;
             m.sync_position = false;
@@ -1057,7 +1061,7 @@ impl Game<'_> {
                 "minecraft:trident",
                 at(t.position),
                 t.yaw,
-                t.on_ground,
+                t.ground.on_ground,
             );
             e.pitch = t.pitch;
             e.velocity = at(t.velocity);

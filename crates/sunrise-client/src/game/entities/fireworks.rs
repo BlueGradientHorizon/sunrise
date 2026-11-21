@@ -227,7 +227,17 @@ impl Rocket {
             };
             if let Some((_, wanted, moved, restored)) = self.free_flight(&mut scene, motion.context)
             {
-                self.restitute_flight(motion, wanted, moved);
+                let movement = self.flight_contact(motion, wanted, moved);
+                self.velocity = motion
+                    .restitute(
+                        (self.id, "minecraft:firework_rocket"),
+                        movement,
+                        0.0,
+                        0.98_f32,
+                        self.velocity,
+                        self.fall_distance,
+                    )
+                    .velocity;
                 self.velocity = restored;
             }
         }
@@ -259,10 +269,15 @@ impl Rocket {
         if self.angled {
             self.velocity
         } else {
+            let acceleration = if self.ground.horizontal_collision {
+                1.0
+            } else {
+                1.15
+            };
             Vec3::new(
-                self.velocity.x * 1.15,
+                self.velocity.x * acceleration,
                 self.velocity.y + 0.04,
-                self.velocity.z * 1.15,
+                self.velocity.z * acceleration,
             )
         }
     }
@@ -322,12 +337,12 @@ impl Rocket {
         Some((from, wanted, moved, motion))
     }
 
-    fn restitute_flight(
+    fn flight_contact(
         &mut self,
         motion: sunrise_client::motion::BodyMotion<'_>,
         wanted: Vec3,
         moved: Vec3,
-    ) {
+    ) -> sunrise_client::motion::BodyMove {
         let authoritative =
             motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
         motion.record_move(
@@ -336,22 +351,16 @@ impl Rocket {
             wanted,
             moved,
             authoritative,
-            sunrise_world::collision_context::CollisionContext::empty(false),
+            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             None,
             &mut self.ground,
         );
         let effect = motion.legacy_contact(self.position, &self.ground);
-        // FireworkRocketEntity inherits Entity.getDefaultGravity (zero) and getAirDrag.
-        motion.restitute(
-            (self.id, "minecraft:firework_rocket"),
-            false,
+        sunrise_client::motion::BodyMove {
             wanted,
             moved,
             effect,
-            0.0,
-            0.98_f32,
-            &mut self.velocity,
-        );
+        }
     }
     /// Position and motion (the dispenser parity fixture).
     pub(super) fn motion(&self) -> (Vec3, Vec3) {
@@ -424,6 +433,7 @@ impl Game<'_> {
         (from, wanted, moved, restored): (Vec3, Vec3, Vec3, Vec3),
         water: bool,
     ) {
+        let movement = r.flight_contact(self.body_motion(&game_side!(self)), wanted, moved);
         r.fall_distance = self.vehicle_fall_reset(r.fall_distance, from, moved);
         if !water && moved.y < 0.0 {
             r.fall_distance -= f64::from(moved.y as f32);
@@ -446,7 +456,16 @@ impl Game<'_> {
             }
             r.fall_distance = 0.0;
         }
-        r.restitute_flight(self.body_motion(&game_side!(self)), wanted, moved);
+        let entity = (r.id, "minecraft:firework_rocket");
+        let response = self.body_motion(&game_side!(self)).restitute(
+            entity,
+            movement,
+            0.0,
+            0.98_f32,
+            r.velocity,
+            r.fall_distance,
+        );
+        r.velocity = self.finish_body_restitution(entity, r.position, response);
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());

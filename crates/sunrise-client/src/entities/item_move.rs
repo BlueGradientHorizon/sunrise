@@ -33,7 +33,7 @@ impl ItemEntity {
             blocks,
             context,
         );
-        self.apply_move_restitution(
+        if let Some(response) = self.move_restitution(
             BodyMotion {
                 world,
                 collision,
@@ -43,7 +43,9 @@ impl ItemEntity {
                 side: None,
             },
             step,
-        );
+        ) {
+            self.velocity = response.velocity;
+        }
         self.finish_move_block_effects(world, facts, no_physics, blocks, step, context);
         step
     }
@@ -243,19 +245,24 @@ impl ItemEntity {
     }
 
     /// The remainder of `Entity.move` after the owning side's fall check.
-    pub fn apply_move_restitution(&mut self, motion: BodyMotion<'_>, step: ItemStep) {
-        if let Some((wanted, moved, effect)) = step.restitution {
-            self.needs_sync |= motion.restitute(
-                (self.id, "minecraft:item"),
-                false,
+    pub fn move_restitution(
+        &self,
+        motion: BodyMotion<'_>,
+        step: ItemStep,
+    ) -> Option<crate::motion::BodyRestitution> {
+        let (wanted, moved, effect) = step.restitution?;
+        Some(motion.restitute(
+            (self.id, "minecraft:item"),
+            crate::motion::BodyMove {
                 wanted,
                 moved,
                 effect,
-                self.get_gravity(),
-                0.98_f32,
-                &mut self.velocity,
-            );
-        }
+            },
+            self.get_gravity(),
+            0.98_f32,
+            self.velocity,
+            self.fall_distance,
+        ))
     }
 
     /// Resume the normal block effects after the collision response.
