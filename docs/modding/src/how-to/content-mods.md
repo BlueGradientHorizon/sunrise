@@ -98,18 +98,18 @@ Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owne
 run before resources load. These are load-time declarations, not live registry entries. The game
 admits them with the content-file checks, atomically for each owner.
 A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
-New identifiers from code that check namespace ownership through `owns_namespace`
-or `owned_declaration_id`—including blocks, items, block entity types, recipe
-types and serializers, menu recipe books, menu screen dispatch, mob-effect tick
-ownership (`MobEffectPart`), custom stats,
-game rules, recipe book types, recipe property sets, render pipelines, and
+New identifiers from code across every namespace-owned registration—including
+blocks, items, block entity types, fluids, general entity types, attributes,
+custom stats, game rules, recipe types and serializers, recipe book types, menu
+recipe books, menu screen dispatch, mob-effect tick ownership (`MobEffectPart`),
+recipe property sets, render pipelines, armour models, arm poses, attachment
+types, biome modifiers, datapack registries, client dynamic textures, and
 runtime levels—may use any namespace owned by that mod's manifest, or any
 namespace of an installed content package that delegates to it via `served_by`
 (when the native host opts in with `[native] serves_content = true`; see
-[Manifest reference](../reference/manifest.md#sunrise-modtoml)). Declarations
-that stay strictly scoped to `mod_id` are **not** delegated through `served_by`:
-arm poses, attachment types, biome modifiers, datapack registries, and client
-dynamic textures (plus config file paths). Bare names use the mod ID; an
+[Manifest reference](../reference/manifest.md#sunrise-modtoml)). Only filesystem
+paths keyed strictly by package ID (such as `config/<mod_id>.toml`) stay scoped
+to the host's own ID. Bare names use the mod ID; an
 explicit owned namespace stays unchanged. An unowned namespace refuses
 registration with a diagnostic naming both the mod and namespace. A host cannot
 re-declare a block or item ID that its served content package already declares,
@@ -990,13 +990,13 @@ world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
+`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
 each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
 registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
 the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
+of its own. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
 
 Use the host's `level_datapack_entries(level, registry)` to list sorted entry IDs,
 `level_datapack_handle(level, registry, entry)` to obtain a `DatapackHandle`, and
@@ -1357,7 +1357,7 @@ A code mod declares the same modifiers without a file: `Registrar::declare_biome
 `AddSpawnCosts`, `RemoveSpawnCosts`, `AddCarvers`, `RemoveCarvers` or `ModifyBiome`, whose `Option` fields are the
 values above). `BiomeModifier::json` renders it as the file above, so a declared modifier and
 a shipped one are applied by the same code, in the same order (additions first, then removals, then modifications, mods in dispatch
-order, declarations in registration order). An id outside the mod's namespace or that is not a file path, a repeated
+order, declarations in registration order). An id outside the mod's owned namespaces (or `minecraft`) or that is not a file path, a repeated
 id, an empty list, a name that is not namespaced, an unknown generation step, a spawner of weight 0 or with its
 smallest group above its largest, a spawn cost that is not finite, a climate number that is not finite, a colour above
 0xFFFFFF and a temperature modifier other than `none` or `frozen` refuse the mods at startup, naming the mod.

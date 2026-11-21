@@ -175,30 +175,19 @@ pub fn client_requirement(id: &str) -> Option<String> {
             "attaches the part {part}, which listens to the client hook {hook}"
         ));
     }
-    if let Some(types) = installed.attachment_types.get(id)
-        && let Some(name) = types
-            .iter()
-            .filter(|(_, sync)| **sync)
-            .map(|(name, _)| name)
-            .min()
-    {
-        return Some(format!("declares the synced attachment {id}:{name}"));
+    if let Some(attachment) = installed.first_synced_attachment(id) {
+        return Some(format!("declares the synced attachment {attachment}"));
     }
     let channel = installed.keys.payloads.as_ref()?.client_bound(id)?;
     Some(format!("sends the required payload {channel} to clients"))
 }
 
-/// Every required client-bound payload channel declared by `id`, in sorted channel order.
-pub fn client_bound_payloads(id: &str) -> Vec<String> {
+/// Every client-required declaration registered by `id` during `Hooks::register`
+/// (general entity types, attributes and bounds widenings, custom stats, synced
+/// attachments, datapack registries, and required client-bound payloads).
+pub fn client_required_declarations(id: &str) -> Vec<(&'static str, String)> {
     crate::parts::installed()
-        .and_then(|installed| installed.keys.payloads.as_ref())
-        .map(|payloads| {
-            payloads
-                .client_bound_channels(id)
-                .into_iter()
-                .map(str::to_owned)
-                .collect()
-        })
+        .map(|installed| installed.client_required_declarations(id))
         .unwrap_or_default()
 }
 

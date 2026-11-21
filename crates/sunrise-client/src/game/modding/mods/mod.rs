@@ -1174,22 +1174,42 @@ pub(super) fn content_overlay(
                     .filter(|content| content.served_by.as_deref() == Some(m.id.as_str())),
             )
             .collect();
-        if let Some(batch) = declared.batches.get(m.id.as_str()) {
-            let ids = batch
-                .blocks
-                .iter()
-                .map(|b| ("block", b.get().id.as_str()))
-                .chain(batch.items.iter().map(|i| ("item", i.get().id.as_str())))
-                .chain(
+        let batch_declarations =
+            declared
+                .batches
+                .get(m.id.as_str())
+                .into_iter()
+                .flat_map(|batch| {
                     batch
-                        .types
+                        .blocks
                         .iter()
-                        .map(|t| ("block entity type", t.id.as_str())),
-                )
-                .chain(batch.fluids.iter().map(|f| ("fluid", f.id.as_str())));
-            if let Some(refusal) = m.server_only_declaration_for(&suppliers, ids) {
-                return Err(Box::new(refusal));
-            }
+                        .map(|b| ("block", b.get().id.as_str()))
+                        .chain(batch.items.iter().map(|i| ("item", i.get().id.as_str())))
+                        .chain(
+                            batch
+                                .types
+                                .iter()
+                                .map(|t| ("block entity type", t.id.as_str())),
+                        )
+                        .chain(batch.fluids.iter().map(|f| ("fluid", f.id.as_str())))
+                });
+        let registrar_declarations = mod_api::__private::client_required_declarations(&m.id);
+        let component_declarations = m
+            .native
+            .is_some()
+            .then(sunrise_protocol::item::custom::entries)
+            .into_iter()
+            .flatten()
+            .map(|(_, name)| ("data component", name));
+        let all_declarations = batch_declarations
+            .chain(
+                registrar_declarations
+                    .iter()
+                    .map(|(kind, id)| (*kind, id.as_str())),
+            )
+            .chain(component_declarations);
+        if let Some(refusal) = m.server_only_declaration_for(&suppliers, all_declarations) {
+            return Err(Box::new(refusal));
         }
         if m.side == sunrise_mod_package::manifest::Side::Server
             && let Some(requirement) = mod_api::__private::client_requirement(&m.id)
@@ -1199,15 +1219,6 @@ pub(super) fn content_overlay(
                 m.id
             )
             .into());
-        }
-        let client_payloads = mod_api::__private::client_bound_payloads(&m.id);
-        if let Some(refusal) = m.server_only_declaration_for(
-            &suppliers,
-            client_payloads
-                .iter()
-                .map(|channel| ("payload", channel.as_str())),
-        ) {
-            return Err(Box::new(refusal));
         }
     }
     validate_entity_type_families(&mods, super::general::general_type_catalog())?;
@@ -3082,6 +3093,451 @@ mod tests {
                 );
             });
         });
+    }
+
+    #[test]
+    fn served_by_startup_refuses_general_entity_type_in_server_namespace() {
+        use std::sync::Mutex;
+        const HOST_BUILT: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Both,
+        }];
+        let f = Fixture::new("served-by-entity-type-side");
+        let compiled = f.0.join("host");
+        let pkg = compiled.join(mod_list::NATIVE_DIR).join("horizon_java");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname='horizon_java'\nversion='1.0.0'\n",
+        )
+        .unwrap();
+        std::fs::write(pkg.join("src/lib.rs"), "pub fn hooks() {}").unwrap();
+        std::fs::write(
+            pkg.join("sunrise-mod.toml"),
+            format!(
+                "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
+                "a".repeat(40),
+            ),
+        )
+        .unwrap();
+        let host_runtime =
+            Arc::new(Runtime::load(&compiled.join("sunrise-engine"), HOST_BUILT).unwrap());
+        let make_content = |file_name: &str, id: &str, side: &str| {
+            let path = f.0.join(file_name);
+            let manifest = format!(
+                "id='{id}'\nname='{id}'\nversion='1.0.0'\napi='0.2'\nside='{side}'\ncapabilities=['registries']\nserved_by='horizon_java'\n"
+            );
+            std::fs::write(
+                &path,
+                sunrise_mod_package::Package::write_files(&manifest, &[]).unwrap(),
+            )
+            .unwrap();
+            sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }
+        };
+        let srv_runes = make_content("srv-runes.smod", "srv_runes", "server");
+        let both_runes = make_content("both-runes.smod", "runes", "both");
+        let base = f.0.join("vanilla");
+        let store = f.0.join("jars");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        let server_state = ModsState {
+            native: host_runtime.clone(),
+            selected: vec![srv_runes].into(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        let both_state = ModsState {
+            native: host_runtime,
+            selected: vec![both_runes].into(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        validate_startup_packages(&server_state).unwrap();
+        validate_startup_packages(&both_state).unwrap();
+
+        struct DeclaresEntity {
+            target: &'static str,
+            outcome: Arc<Mutex<Option<Result<(), mod_api::GeneralEntityRegistrationError>>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresEntity {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
+                let result = r.declare_general_entity(
+                    self.target,
+                    mod_api::GeneralEntityCategory::Misc,
+                    0.8,
+                    1.9,
+                    None,
+                    mod_api::GeneralSavePolicy::Save,
+                    true,
+                    false,
+                    None,
+                    8,
+                    3,
+                    1,
+                    &[],
+                );
+                *self.outcome.lock().unwrap() = Some(result);
+            }
+        }
+
+        let inventory = |content_id: &str, content_side: mod_api::Side| {
+            vec![
+                mod_api::PackageInfo::new(
+                    "horizon_java".into(),
+                    "1.0.0".into(),
+                    mod_api::PackageKind::Code,
+                    mod_api::Side::Both,
+                    vec!["horizon_java".into()],
+                    vec![],
+                ),
+                mod_api::PackageInfo::new(
+                    content_id.into(),
+                    "1.0.0".into(),
+                    mod_api::PackageKind::Content,
+                    content_side,
+                    vec![content_id.into()],
+                    vec![],
+                )
+                .with_served_by(Some("horizon_java".into())),
+            ]
+        };
+
+        // 1. Real startup path refuses at admit_parts with GeneralEntityRegistrationError::WrongSide.
+        let outcome = Arc::new(Mutex::new(None));
+        let mods = [mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresEntity {
+                target: "srv_runes:drone",
+                outcome: outcome.clone(),
+            }),
+        )];
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Server),
+            || {
+                assert!(crate::game::part_admission::admit_parts(&mods).is_err());
+            },
+        );
+        assert_eq!(
+            *outcome.lock().unwrap(),
+            Some(Err(mod_api::GeneralEntityRegistrationError::WrongSide))
+        );
+
+        // 2. Defense-in-depth: even if installed without the server-side inventory check,
+        // content_overlay refuses with typed ServerOnlyDeclaration.
+        let outcome_bypass = Arc::new(Mutex::new(None));
+        let mods_bypass: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresEntity {
+                target: "srv_runes:drone",
+                outcome: outcome_bypass.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Both),
+            || {
+                crate::game::part_admission::admit_parts(&mods_bypass).unwrap();
+                assert_eq!(*outcome_bypass.lock().unwrap(), Some(Ok(())));
+                mod_platform::testing::with_mods(mods_bypass, || {
+                    let err = content_overlay(&base, &server_state, &store).err().unwrap();
+                    assert_eq!(
+                        err.downcast_ref::<sunrise_mod_package::manifest::ServerOnlyDeclaration>(),
+                        Some(&sunrise_mod_package::manifest::ServerOnlyDeclaration {
+                            declarer: "horizon_java".into(),
+                            supplier: "srv_runes".into(),
+                            kind: "entity type".into(),
+                            id: "srv_runes:drone".into(),
+                        }),
+                        "{err}"
+                    );
+                });
+            },
+        );
+
+        // 3. Positive control: a side="both" served package passes both admit_parts and content_overlay.
+        let outcome_ok = Arc::new(Mutex::new(None));
+        let mods_ok: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresEntity {
+                target: "runes:drone",
+                outcome: outcome_ok.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("runes", mod_api::Side::Both),
+            || {
+                crate::game::part_admission::admit_parts(&mods_ok).unwrap();
+                assert_eq!(*outcome_ok.lock().unwrap(), Some(Ok(())));
+                mod_platform::testing::with_mods(mods_ok, || {
+                    content_overlay(&base, &both_state, &store).unwrap();
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn served_by_startup_refuses_attribute_and_client_required_declarations_in_server_namespace() {
+        use std::sync::Mutex;
+        const HOST_BUILT: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Both,
+        }];
+        let f = Fixture::new("served-by-attribute-side");
+        let compiled = f.0.join("host");
+        let pkg = compiled.join(mod_list::NATIVE_DIR).join("horizon_java");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname='horizon_java'\nversion='1.0.0'\n",
+        )
+        .unwrap();
+        std::fs::write(pkg.join("src/lib.rs"), "pub fn hooks() {}").unwrap();
+        std::fs::write(
+            pkg.join("sunrise-mod.toml"),
+            format!(
+                "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
+                "a".repeat(40),
+            ),
+        )
+        .unwrap();
+        let host_runtime =
+            Arc::new(Runtime::load(&compiled.join("sunrise-engine"), HOST_BUILT).unwrap());
+        let make_content = |file_name: &str, id: &str, side: &str| {
+            let path = f.0.join(file_name);
+            let manifest = format!(
+                "id='{id}'\nname='{id}'\nversion='1.0.0'\napi='0.2'\nside='{side}'\ncapabilities=['registries']\nserved_by='horizon_java'\n"
+            );
+            std::fs::write(
+                &path,
+                sunrise_mod_package::Package::write_files(&manifest, &[]).unwrap(),
+            )
+            .unwrap();
+            sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }
+        };
+        let srv_runes = make_content("srv-runes.smod", "srv_runes", "server");
+        let both_runes = make_content("both-runes.smod", "runes", "both");
+        let base = f.0.join("vanilla");
+        let store = f.0.join("jars");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+        let server_state = ModsState {
+            native: host_runtime.clone(),
+            selected: vec![srv_runes].into(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        let both_state = ModsState {
+            native: host_runtime,
+            selected: vec![both_runes].into(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        validate_startup_packages(&server_state).unwrap();
+        validate_startup_packages(&both_state).unwrap();
+
+        let inventory = |content_id: &str, content_side: mod_api::Side| {
+            vec![
+                mod_api::PackageInfo::new(
+                    "horizon_java".into(),
+                    "1.0.0".into(),
+                    mod_api::PackageKind::Code,
+                    mod_api::Side::Both,
+                    vec!["horizon_java".into()],
+                    vec![],
+                ),
+                mod_api::PackageInfo::new(
+                    content_id.into(),
+                    "1.0.0".into(),
+                    mod_api::PackageKind::Content,
+                    content_side,
+                    vec![content_id.into()],
+                    vec![],
+                )
+                .with_served_by(Some("horizon_java".into())),
+            ]
+        };
+
+        struct DeclaresAttribute {
+            target: &'static str,
+            outcome: Arc<Mutex<Option<Result<(), mod_api::AttributeRegistrationError>>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresAttribute {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
+                let result = r.declare_attribute(
+                    self.target,
+                    10.0,
+                    0.0,
+                    100.0,
+                    true,
+                    mod_api::Sentiment::Positive,
+                    Default::default(),
+                );
+                *self.outcome.lock().unwrap() = Some(result);
+            }
+        }
+
+        // 1. Real startup path refuses attribute declaration in server served namespace at admit_parts.
+        let outcome = Arc::new(Mutex::new(None));
+        let attr_mods = [mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresAttribute {
+                target: "srv_runes:mana",
+                outcome: outcome.clone(),
+            }),
+        )];
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Server),
+            || {
+                assert!(crate::game::part_admission::admit_parts(&attr_mods).is_err());
+            },
+        );
+        assert_eq!(
+            *outcome.lock().unwrap(),
+            Some(Err(mod_api::AttributeRegistrationError::WrongSide))
+        );
+
+        // 2. Defense-in-depth: content_overlay refuses attribute declaration with ServerOnlyDeclaration.
+        let outcome_bypass = Arc::new(Mutex::new(None));
+        let attr_bypass: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresAttribute {
+                target: "srv_runes:mana",
+                outcome: outcome_bypass.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Both),
+            || {
+                crate::game::part_admission::admit_parts(&attr_bypass).unwrap();
+                assert_eq!(*outcome_bypass.lock().unwrap(), Some(Ok(())));
+                mod_platform::testing::with_mods(attr_bypass, || {
+                    let err = content_overlay(&base, &server_state, &store).err().unwrap();
+                    assert_eq!(
+                        err.downcast_ref::<sunrise_mod_package::manifest::ServerOnlyDeclaration>(),
+                        Some(&sunrise_mod_package::manifest::ServerOnlyDeclaration {
+                            declarer: "horizon_java".into(),
+                            supplier: "srv_runes".into(),
+                            kind: "attribute".into(),
+                            id: "srv_runes:mana".into(),
+                        }),
+                        "{err}"
+                    );
+                });
+            },
+        );
+
+        // 3. Custom stat in a server served namespace passes register and is refused at content_overlay.
+        struct DeclaresCustomStat(&'static str);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresCustomStat {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
+                r.register_custom_stat(self.0).unwrap();
+            }
+        }
+        let stat_mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresCustomStat("srv_runes:casts")),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Server),
+            || {
+                crate::game::part_admission::admit_parts(&stat_mods).unwrap();
+                mod_platform::testing::with_mods(stat_mods, || {
+                    let err = content_overlay(&base, &server_state, &store).err().unwrap();
+                    assert_eq!(
+                        err.downcast_ref::<sunrise_mod_package::manifest::ServerOnlyDeclaration>(),
+                        Some(&sunrise_mod_package::manifest::ServerOnlyDeclaration {
+                            declarer: "horizon_java".into(),
+                            supplier: "srv_runes".into(),
+                            kind: "custom stat".into(),
+                            id: "srv_runes:casts".into(),
+                        }),
+                        "{err}"
+                    );
+                });
+            },
+        );
+
+        // 4. Server-only (unsynced) attachment in a server served namespace is allowed,
+        // while synced attachment and datapack registry are refused.
+        struct DeclaresUnsynced;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresUnsynced {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
+                r.register_attachment_type("srv_runes:internal", false)
+                    .unwrap();
+            }
+        }
+        let unsynced_mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresUnsynced),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("srv_runes", mod_api::Side::Server),
+            || {
+                crate::game::part_admission::admit_parts(&unsynced_mods).unwrap();
+                mod_platform::testing::with_mods(unsynced_mods, || {
+                    content_overlay(&base, &server_state, &store).unwrap();
+                });
+            },
+        );
+
+        // 5. Positive control: all client-required declarations in a side="both" served namespace pass.
+        struct DeclaresAllBoth;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresAllBoth {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
+                r.declare_attribute(
+                    "runes:mana",
+                    10.0,
+                    0.0,
+                    100.0,
+                    true,
+                    mod_api::Sentiment::Positive,
+                    Default::default(),
+                )
+                .unwrap();
+                r.register_custom_stat("runes:casts").unwrap();
+                r.register_attachment_type("runes:charge", true).unwrap();
+                r.declare_datapack_registry(
+                    "runes:spell",
+                    mod_api::DatapackRegistrySync::Required,
+                    vec![mod_api::DatapackField::required(
+                        "power",
+                        mod_api::DatapackFieldKind::Int { min: 0, max: 100 },
+                    )],
+                )
+                .unwrap();
+            }
+        }
+        let ok_mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "horizon_java",
+            Box::new(DeclaresAllBoth),
+        )]
+        .into();
+        mod_platform::__private::with_test_package_inventory(
+            inventory("runes", mod_api::Side::Both),
+            || {
+                crate::game::part_admission::admit_parts(&ok_mods).unwrap();
+                mod_platform::testing::with_mods(ok_mods, || {
+                    content_overlay(&base, &both_state, &store).unwrap();
+                });
+            },
+        );
     }
 
     #[test]

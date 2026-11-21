@@ -7,6 +7,30 @@ impl PartRegistrar {
     pub(crate) fn owned_declaration_id(&self, name: &str) -> Result<String, String> {
         owned_declaration_id(self.mod_id, name)
     }
+
+    /// Whether the declaring package or any package supplying `id`'s namespace in
+    /// `loaded_mods()` has a side other than `Side::Both`.
+    ///
+    /// Used by registrars whose output assigns client-required registry entries or
+    /// network-synced schemas (`declare_general_entity`, `declare_attribute`,
+    /// `widen_attribute_bounds`, `declare_datapack_registry`).
+    pub(crate) fn declaration_side_not_both(&self, id: &str) -> bool {
+        let loaded = mod_vocab::__private::parts_installation::loaded_mods();
+        if loaded
+            .get(self.mod_id)
+            .is_some_and(|package| package.side() != crate::Side::Both)
+        {
+            return true;
+        }
+        let Some((namespace, _)) = id.split_once(':') else {
+            return false;
+        };
+        loaded.iter().any(|package| {
+            package.side() != crate::Side::Both
+                && (package.id() == self.mod_id || package.served_by() == Some(self.mod_id))
+                && package.namespaces().any(|owned| owned == namespace)
+        })
+    }
 }
 
 #[cfg(test)]

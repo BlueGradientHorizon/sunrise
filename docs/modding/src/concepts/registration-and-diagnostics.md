@@ -95,9 +95,9 @@ runtime in with `[native] serves_content = true` and declare
 ([Manifest reference](../reference/manifest.md#sunrise-modtoml)). Because
 `serves_content = true` accepts any installed content package naming the runtime,
 verify that a package in `context.mods()` belongs to your runtime before
-registering declarations for its namespaces. Declarations scoped strictly to
-`mod_id` (arm poses, attachment types, biome modifiers, datapack registries, and
-client dynamic textures) remain non-delegated.
+registering declarations for its namespaces. All namespace-owned registrations
+delegate uniformly through `served_by`; only filesystem paths keyed strictly by
+package ID (such as `config/<mod_id>.toml`) stay scoped to the host's own ID.
 
 The scope adds `in converted package <id>, export <export>, call site <site>` below the runtime's
 `in native mod` line. Nested scopes restore the previous attribution on return and panic unwind.
