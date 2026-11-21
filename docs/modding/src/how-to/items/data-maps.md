@@ -165,8 +165,10 @@ blocks, and those blocks get no scraping step; the lightning walk also stops whe
 back to a block it already passed. Lightning's waxed check, the carved pumpkin and the copper chest
 keep vanilla's own lists. A block the maps don't name keeps vanilla's behaviour.
 
-`generate_block_transform`, `neoforge:transformables` and `block_transform_appenders` are not read
-yet.
+Oxidation and waxing targets must be registered blocks. If `generate_block_transform` is present,
+it must be a boolean. An invalid target or flag skips the whole file layer, even with `replace`.
+Sunrise still derives its axe steps from the inverse maps, not from `generate_block_transform`.
+`neoforge:transformables` and `block_transform_appenders` are not read.
 
 `host.biome_key("minecraft:plains")` resolves a `BiomeKey` in the installed
 server world registry. Its `id(host)` borrows the canonical name from the installed snapshot

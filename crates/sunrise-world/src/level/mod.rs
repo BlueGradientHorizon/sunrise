@@ -103,7 +103,7 @@ use sunrise_core::{
     connection_kind::ConnectionKind, dimension::Dimension, neighbour_update::NeighbourUpdate,
 };
 
-pub use block_maps::BlockMaps;
+pub use block_maps::{BlockMapValue, BlockMaps};
 pub mod classes;
 pub mod data;
 pub mod states;

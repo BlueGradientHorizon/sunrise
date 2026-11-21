@@ -1637,7 +1637,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn block_state_weathering_reverts_after_integrated_session_stops() {
         use mod_api::HostBlockStates;
-        use sunrise_world::level::BlockMaps;
+        use sunrise_world::level::{BlockMapValue, BlockMaps};
 
         super::super::native_entity_refs::tests::with_client_game(|window| {
             window.join_world_rest().unwrap();
@@ -1664,14 +1664,10 @@ pub(super) mod tests {
                     *began = true;
                     // Model publication at open_world_tables, before later steps can fail.
                     let maps = BlockMaps::from_values(
-                        [],
                         [(
                             "minecraft:copper_block",
-                            &serde_json::json!({
-                                "next_oxidation_stage": "minecraft:oxidized_copper"
-                            }),
+                            BlockMapValue::Oxidizable("minecraft:oxidized_copper".into()),
                         )],
-                        [],
                         |_| 0,
                     );
                     server.res.behaviours().set_block_maps(Some(Arc::new(maps)));
