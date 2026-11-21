@@ -12,8 +12,8 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>`, where `<namespace>:<path>` is a valid namespaced
-`Identifier` and `<layer>` is any suffix after the first `#`. Any valid ID that does not collide
+IDs have the form `<namespace>:<path>#<layer>`. Write the model `Identifier` in its full
+`namespace:path` form even when a half is empty; `<layer>` is any suffix after the first `#`. Any valid ID that does not collide
 with an existing vanilla layer definition is accepted; duplicate mod registrations for the same ID
 overwrite earlier suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with
 existing vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` key

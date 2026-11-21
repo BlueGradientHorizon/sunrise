@@ -66,7 +66,8 @@ Any valid `Identifier` is accepted, and there is no per-mod pipeline count cap. 
 checked separately for required and optional pipelines against both vanilla's built-in pipelines
 and earlier mod registrations of the same kind: a same-kind collision fails startup registration,
 while a required and an optional registration may share an id and are resolved separately via
-`PipelineKind`.
+`PipelineKind`. If startup reports missing or invalid `render-pipelines.json`, prepare the client
+resources again.
 
 ### Required or optional
 

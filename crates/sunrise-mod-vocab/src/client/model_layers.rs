@@ -503,8 +503,8 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// The portion before the first `#` must be a valid namespaced `Identifier` and the suffix
-    /// after `#` is unrestricted. Duplicate mod registrations for an ID overwrite earlier
+    /// Write the model `Identifier` before the first `#` in its full `namespace:path` form,
+    /// as in `ModelLayerLocation`. Either half may be empty. The suffix after `#` is unrestricted. Duplicate mod registrations for an ID overwrite earlier
     /// suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with existing
     /// vanilla layer definitions, or an unavailable vanilla layer table fail startup freeze before
     /// any supplier runs or the layer table publishes; overwritten suppliers and registrations

@@ -604,11 +604,14 @@ fn register_special_model_renderers() {
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
 /// renderers.
-pub(super) fn register_client_presentations(role: ExecutionRole) -> sunrise_client::Result<()> {
+pub(super) fn register_client_presentations(
+    role: ExecutionRole,
+    vanilla_root: &Path,
+) -> sunrise_client::Result<()> {
     register_preset_editors(role);
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
-    register_render_pipelines(role)?;
+    register_render_pipelines(role, vanilla_root)?;
     register_entity_renderers(role);
     Ok(())
 }
@@ -644,13 +647,16 @@ pub(super) fn register_preset_editors(role: ExecutionRole) {
 
 /// Keep the mods' render pipeline registrations once at startup, before resources load: every
 /// load builds them from its own shader files.
-pub(super) fn register_render_pipelines(role: ExecutionRole) -> sunrise_client::Result<()> {
+fn register_render_pipelines(
+    role: ExecutionRole,
+    vanilla_root: &Path,
+) -> sunrise_client::Result<()> {
     if !role.is_client() {
         return Ok(());
     }
     let mut pipelines = Vec::new();
     Game::native_register_render_pipelines(&RegistrationContext::new(), &mut pipelines);
-    sunrise_client_render::mod_pipelines::register(pipelines)?;
+    sunrise_client_render::mod_pipelines::register(pipelines, vanilla_root)?;
     Ok(())
 }
 
@@ -3770,6 +3776,12 @@ mod startup_registration_tests {
                 assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
                 std::fs::write(dir.join("entity-models.json"), "{}").unwrap();
                 assert!(register_layer_definitions(ExecutionRole::Client, &dir).is_err());
+                std::fs::write(dir.join("entity-models.json"), r#"{"invalid": {}}"#).unwrap();
+                let err = register_layer_definitions(ExecutionRole::Client, &dir).unwrap_err();
+                assert!(
+                    err.to_string()
+                        .contains("invalid vanilla model layer entry")
+                );
                 assert!(calls.lock().unwrap().is_empty());
                 assert!(
                     sunrise_client::mobs::model_layers::registered("alpha:golem#outer:armor")
@@ -3858,15 +3870,45 @@ mod startup_registration_tests {
             }
         }
 
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-startup-pipeline-reg-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let table = dir.join("render-pipelines.json");
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new(
+                "example",
+                Box::new(PipeMod(&[("example:glow", false)])),
+            )]
+            .into(),
+            || {
+                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                assert!(err.to_string().contains("could not read"));
+                std::fs::write(&table, r#"{"required":["INVALID"],"optional":[]}"#).unwrap();
+                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                assert!(err.to_string().contains("invalid pipeline ID table"));
+                assert!(sunrise_client_render::mod_pipelines::registered().is_empty());
+            },
+        );
+        std::fs::write(
+            table,
+            r#"{"required":["minecraft:pipeline/solid_block"],"optional":["minecraft:pipeline/wireframe"]}"#,
+        )
+        .unwrap();
+
         // Same-kind vanilla collisions (required and optional) fail startup registration.
-        for colliding in [
-            ("minecraft:pipeline/solid_terrain", false),
-            ("minecraft:pipeline/wireframe", true),
-        ] {
+        const VANILLA_COLLISIONS: &[&[(&str, bool)]] = &[
+            &[("minecraft:pipeline/solid_block", false)],
+            &[("minecraft:pipeline/wireframe", true)],
+        ];
+        for &colliding in VANILLA_COLLISIONS {
             mod_platform::testing::with_mods(
-                vec![ModEntry::new("bad", Box::new(PipeMod(&[colliding])))].into(),
+                vec![ModEntry::new("bad", Box::new(PipeMod(colliding)))].into(),
                 || {
-                    assert!(register_render_pipelines(ExecutionRole::Client).is_err());
+                    let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
+                    assert!(err.to_string().contains("collides with vanilla"));
                     assert!(sunrise_client_render::mod_pipelines::registered().is_empty());
                 },
             );
@@ -3880,7 +3922,7 @@ mod startup_registration_tests {
             ]
             .into(),
             || {
-                let err = register_render_pipelines(ExecutionRole::Client).unwrap_err();
+                let err = register_render_pipelines(ExecutionRole::Client, &dir).unwrap_err();
                 assert!(
                     err.to_string()
                         .contains("collides with earlier required registration"),
@@ -3904,18 +3946,19 @@ mod startup_registration_tests {
                     "second",
                     Box::new(PipeMod(&[
                         ("shared:glow", true),
-                        ("minecraft:pipeline/solid_terrain", true),
+                        ("minecraft:pipeline/solid_block", true),
                     ])),
                 ),
             ]
             .into(),
             || {
-                register_render_pipelines(ExecutionRole::Client).unwrap();
+                register_render_pipelines(ExecutionRole::Client, &dir).unwrap();
                 let published = sunrise_client_render::mod_pipelines::registered();
                 assert_eq!(published.len(), 4);
                 assert_eq!(published[0].kind(), PipelineKind::Required);
                 assert_eq!(published[2].kind(), PipelineKind::Optional);
             },
         );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

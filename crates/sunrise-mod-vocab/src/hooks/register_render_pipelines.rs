@@ -7,7 +7,7 @@ pub trait Hooks {
     /// at startup and again on every resource reload. Any valid [`Identifier`] is accepted, and
     /// duplicate IDs are checked separately for required and optional pipelines against both
     /// vanilla's built-in pipelines and earlier mod registrations of the same kind: a same-kind
-    /// collision fails startup registration cleanly, while a required and an optional pipeline may
+    /// collision or an unavailable vanilla pipeline table fails startup registration cleanly. A required and an optional pipeline may
     /// share an ID and are resolved separately by [`PipelineKind`]. A required pipeline whose
     /// shader is missing or doesn't build fails the load: the game does not start, and a reload
     /// fails and keeps the previous resources. An [optional](RenderPipeline::optional()) one is

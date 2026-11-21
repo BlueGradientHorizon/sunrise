@@ -4,11 +4,7 @@ use mod_api::{
     __private::game::{CallbackOwner, LayerDefinitionRegistration},
     Answered, LayerDefinition, ModelPart, ModelPolygon, ModelVertex, PartPose,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-    sync::OnceLock,
-};
+use std::{collections::HashMap, path::Path, sync::OnceLock};
 
 /// A vanilla layer's part tree from `entity-models.json`.
 pub fn from_part(part: &Part) -> ModelPart {
@@ -38,27 +34,6 @@ pub fn from_part(part: &Part) -> ModelPart {
 
 static REGISTERED: OnceLock<HashMap<String, LayerDefinition>> = OnceLock::new();
 
-/// Load the authoritative vanilla model-layer key table from `entity-models.json`
-/// (`LayerDefinitions.createRoots` export). Fails closed when the file is missing, unreadable,
-/// invalid JSON, not a JSON object, or empty.
-fn load_vanilla_layer_keys(vanilla_root: &Path) -> crate::Result<HashSet<String>> {
-    let doc = super::EntityModelDocument::load(vanilla_root).map_err(|error| {
-        format!("register_layer_definitions: failed to load vanilla entity-models.json: {error}")
-    })?;
-    let Some(object) = doc.value().as_object() else {
-        return Err(
-            "register_layer_definitions: vanilla entity-models.json must be a JSON object".into(),
-        );
-    };
-    if object.is_empty() {
-        return Err(
-            "register_layer_definitions: vanilla entity-models.json has no layer definitions"
-                .into(),
-        );
-    }
-    Ok(object.keys().cloned().collect())
-}
-
 /// Validate and stage accepted mod suppliers (last-writer-wins per ID), failing closed on a
 /// missing/invalid vanilla `entity-models.json`, any malformed ID, or any collision with an
 /// existing vanilla layer before invoking any supplier or publishing. Then invoke each winning
@@ -67,7 +42,25 @@ pub fn register(
     layers: Vec<Answered<LayerDefinitionRegistration>>,
     vanilla_root: &Path,
 ) -> crate::Result<()> {
-    let vanilla_keys = load_vanilla_layer_keys(vanilla_root)?;
+    let doc = super::EntityModelDocument::load(vanilla_root).map_err(|error| {
+        format!("register_layer_definitions: failed to load vanilla entity-models.json: {error}")
+    })?;
+    let vanilla_layers = doc
+        .value()
+        .as_object()
+        .filter(|object| !object.is_empty())
+        .ok_or(
+            "register_layer_definitions: vanilla entity-models.json must be a nonempty object",
+        )?;
+    if let Some((id, _)) = vanilla_layers
+        .iter()
+        .find(|(id, part)| !is_layer_id(id) || !part.is_object())
+    {
+        return Err(format!(
+            "register_layer_definitions: invalid vanilla model layer entry {id:?} in entity-models.json"
+        )
+        .into());
+    }
     let mut order: Vec<&str> = Vec::new();
     let mut staged: HashMap<&str, &Answered<LayerDefinitionRegistration>> = HashMap::new();
     for entry in &layers {
@@ -79,7 +72,7 @@ pub fn register(
             )
             .into());
         }
-        if vanilla_keys.contains(id) {
+        if vanilla_layers.contains_key(id) {
             return Err(format!(
                 "register_layer_definitions: mod {mod_id}: model layer {id} collides with an existing vanilla model layer"
             )
@@ -121,8 +114,11 @@ pub fn registered(id: &str) -> Option<&'static LayerDefinition> {
 }
 
 fn is_layer_id(id: &str) -> bool {
+    // ModelLayerLocation.toString uses the fully qualified Identifier (even when either
+    // half is empty). Its layer String may contain any characters, including further '#'.
     id.split_once('#')
-        .is_some_and(|(location, _)| mod_api::Identifier::parse_namespaced(location).is_some())
+        .and_then(|(location, _)| location.split_once(':'))
+        .is_some_and(|(namespace, path)| mod_api::Identifier::from_parts(namespace, path).is_ok())
 }
 
 #[cfg(test)]
@@ -321,13 +317,14 @@ mod tests {
             "mymod:golem#a#b",
             "mymod:golem#Outer Layer",
             "mymod:golem#",
+            "mymod:#main",
+            ":golem#main",
         ] {
             assert!(is_layer_id(good), "{good}");
         }
         for bad in [
             "mymod:golem",
             "golem#main",
-            "mymod:#main",
             "MyMod:golem#main",
             "#main",
             "mymod:bad space#main",

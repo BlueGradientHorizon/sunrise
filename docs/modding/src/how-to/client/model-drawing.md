@@ -66,9 +66,9 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
-inputs, not the event or its registration context. Use any `<namespace>:<path>#<layer>`
-ID whose `<namespace>:<path>` is a valid namespaced `Identifier` (any suffix after `#` is
-preserved) and that does not collide with an existing vanilla layer definition.
+inputs, not the event or its registration context. Write the model `Identifier` as
+`namespace:path` (with `:` even if a half is empty), followed by `#` and the layer name.
+The suffix after the first `#` is preserved verbatim.
 
 Duplicate mod registrations for the same ID overwrite earlier suppliers (last-writer-wins)
 before freeze, so overwritten suppliers never run. Malformed IDs, collisions with existing

@@ -414,7 +414,7 @@ impl ModPipelines {
         {
             return 0;
         }
-        let limit = super::world_primitives::legal_buffer_limit(device);
+        let limit = super::upload::legal_buffer_limit(device);
         let quad_bytes = 4 * std::mem::size_of::<PipelineVertex>() as u64;
         let max_quads = super::world_primitives::max_quads_per_chunk(limit, quad_bytes);
         if max_quads == 0 {
@@ -1178,6 +1178,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn shared_id_required_and_optional_pipelines_both_resolve_and_draw_in_either_order() {
         let _gpu = crate::gfx::test_gpu::lock();
         let Some(gpu) = device() else {
@@ -1249,22 +1250,13 @@ mod tests {
                 },
                 STAGES - 1,
             );
-            assert_near(
-                at(16, 32),
-                [255.0, 0.0, 0.0, 255.0],
-                1.0,
-                "required pipeline",
-            );
-            assert_near(
-                at(48, 32),
-                [0.0, 255.0, 0.0, 255.0],
-                1.0,
-                "optional pipeline",
-            );
+            assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "required pipeline");
+            assert_eq!(at(48, 32), [0.0, 255.0, 0.0, 255.0], "optional pipeline");
         }
     }
 
     #[test]
+    #[ignore = "daily"]
     fn pipeline_quads_chunk_across_small_max_buffer_size_and_preserve_order() {
         let _gpu = crate::gfx::test_gpu::lock();
         let instance = crate::gfx::test_gpu::instance();
@@ -1272,7 +1264,8 @@ mod tests {
             eprintln!("no GPU adapter: skipped");
             return;
         };
-        let limit = 16_384u64.min(adapter.limits().max_buffer_size);
+        // A non-power-of-two limit that still fits the 64 × 64 RGBA readback.
+        let limit = 20 * 1024;
         let Ok(gpu) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: wgpu::Limits {
                 max_buffer_size: limit,
@@ -1298,7 +1291,7 @@ mod tests {
         for _ in 0..first_count {
             vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [255, 0, 0, 255]));
         }
-        vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [0, 255, 0, 255]));
+        vertices.extend_from_slice(&quad([32.0, 0.0, 64.0, 64.0], 2.0, [0, 255, 0, 255]));
         let runs = [
             PipelineRun {
                 slot: 0,
@@ -1331,11 +1324,11 @@ mod tests {
                 .iter()
                 .all(|buffer| buffer.size() <= limit)
         );
-        assert_near(
-            at(32, 32),
+        assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "earlier stage");
+        assert_eq!(
+            at(48, 32),
             [0.0, 255.0, 0.0, 255.0],
-            1.0,
-            "later chunked stage draws over earlier chunked stage",
+            "later stage over earlier stage"
         );
     }
 }

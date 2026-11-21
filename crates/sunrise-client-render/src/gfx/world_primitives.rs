@@ -5,7 +5,10 @@
 //! into the world's targets, so they take the world's reversed depth, its draw resolution and
 //! TAA's jitter; a mod never touches wgpu for them.
 
-use super::Vertex;
+use super::{
+    Vertex,
+    upload::{legal_buffer_limit, legal_buffer_size},
+};
 use glam::Mat4;
 
 /// Initial per-view line and quad limits, shared by CPU submission and GPU setup.
@@ -16,32 +19,15 @@ pub const STAGES: usize = 5;
 
 const QUAD_INDEX_BYTES: u64 = 6 * std::mem::size_of::<u32>() as u64;
 const LINE_INSTANCE_BYTES: u64 = std::mem::size_of::<[f32; 8]>() as u64;
-
-/// Largest legal GPU buffer size `<= max_buffer_size`, aligned to `wgpu::COPY_BUFFER_ALIGNMENT`.
-pub(super) fn legal_buffer_limit(device: &wgpu::Device) -> u64 {
-    let align = wgpu::COPY_BUFFER_ALIGNMENT;
-    let limit = device.limits().max_buffer_size;
-    limit - (limit % align)
-}
-
-/// Buffer size for `bytes` (`<= limit`): grows by powers of two without ever rounding past
-/// `limit`, and stays aligned to `wgpu::COPY_BUFFER_ALIGNMENT`.
-pub(super) fn legal_buffer_size(bytes: u64, limit: u64) -> u64 {
-    if bytes == 0 {
-        return 0;
-    }
-    let align = wgpu::COPY_BUFFER_ALIGNMENT;
-    let aligned = bytes.div_ceil(align).saturating_mul(align);
-    let grown = aligned.checked_next_power_of_two().unwrap_or(limit);
-    grown.min(limit).max(aligned)
-}
+// The end of a draw's index range is a u32, even on devices with larger buffers.
+const MAX_INDEXED_QUADS: u32 = u32::MAX / 6;
 
 /// Maximum number of quads that fit in one vertex chunk and in the shared index buffer under
 /// `limit`.
 pub(super) fn max_quads_per_chunk(limit: u64, quad_vertex_bytes: u64) -> u32 {
     let by_vertex = limit / quad_vertex_bytes;
     let by_index = limit / QUAD_INDEX_BYTES;
-    by_vertex.min(by_index).min(u32::MAX as u64) as u32
+    by_vertex.min(by_index).min(u64::from(MAX_INDEXED_QUADS)) as u32
 }
 
 /// Ensures `chunks[index]` exists and can hold `bytes` (`<= limit`) without exceeding `limit`.
@@ -383,7 +369,7 @@ impl WorldPrimitives {
     /// `device.limits().max_buffer_size`); growth uploads the full array.
     fn reserve_indices(&mut self, device: &wgpu::Device, upload: Upload<'_>, quads: u32) {
         let limit = legal_buffer_limit(device);
-        let max_index_quads = (limit / QUAD_INDEX_BYTES).min(u32::MAX as u64) as u32;
+        let max_index_quads = (limit / QUAD_INDEX_BYTES).min(u64::from(MAX_INDEXED_QUADS)) as u32;
         let needed = quads.min(max_index_quads);
         if needed > self.index_quads {
             let capacity = needed
@@ -449,19 +435,9 @@ impl WorldPrimitives {
                 let mut start_quad = 0u32;
                 let mut chunk_idx = 0usize;
                 while start_quad < total_quads {
-                    let end_quad = (start_quad + max_quads).min(total_quads);
+                    let end_quad = start_quad + (total_quads - start_quad).min(max_quads);
                     let slice = &self.quad_vertices[start_quad as usize * 4..end_quad as usize * 4];
-                    let bytes: &[u8] = bytemuck::cast_slice(slice);
-                    ensure_chunk_buffer(
-                        device,
-                        &mut self.quad_chunks,
-                        chunk_idx,
-                        bytes.len() as u64,
-                        limit,
-                        "World primitive quads",
-                        wgpu::BufferUsages::VERTEX,
-                    );
-                    upload(&self.quad_chunks[chunk_idx], bytes);
+                    upload(&self.quad_chunks[chunk_idx], bytemuck::cast_slice(slice));
                     self.quad_chunk_spans.push(start_quad..end_quad);
                     start_quad = end_quad;
                     chunk_idx += 1;
@@ -478,19 +454,9 @@ impl WorldPrimitives {
                 let mut start_line = 0u32;
                 let mut chunk_idx = 0usize;
                 while start_line < total_lines {
-                    let end_line = (start_line + max_lines).min(total_lines);
+                    let end_line = start_line + (total_lines - start_line).min(max_lines);
                     let slice = &self.line_instances[start_line as usize..end_line as usize];
-                    let bytes: &[u8] = bytemuck::cast_slice(slice);
-                    ensure_chunk_buffer(
-                        device,
-                        &mut self.line_chunks,
-                        chunk_idx,
-                        bytes.len() as u64,
-                        limit,
-                        "World primitive lines",
-                        wgpu::BufferUsages::VERTEX,
-                    );
-                    upload(&self.line_chunks[chunk_idx], bytes);
+                    upload(&self.line_chunks[chunk_idx], bytemuck::cast_slice(slice));
                     self.line_chunk_spans.push(start_line..end_line);
                     start_line = end_line;
                     chunk_idx += 1;
@@ -1129,6 +1095,13 @@ mod tests {
     }
 
     #[test]
+    fn quad_chunks_fit_the_u32_index_draw_range_even_on_large_devices() {
+        let quads = max_quads_per_chunk(1 << 40, 4 * std::mem::size_of::<Vertex>() as u64);
+        assert_eq!(quads.checked_mul(6), Some(4_294_967_292));
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn chunked_uploads_respect_small_max_buffer_size_and_preserve_stage_order() {
         let _gpu = crate::gfx::test_gpu::lock();
         let instance = crate::gfx::test_gpu::instance();
@@ -1136,7 +1109,8 @@ mod tests {
             eprintln!("no GPU adapter: skipped");
             return;
         };
-        let limit = 16_384u64.min(adapter.limits().max_buffer_size);
+        // A non-power-of-two limit that still fits the 64 × 64 RGBA readback.
+        let limit = 20 * 1024;
         let Ok((device, queue)) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
                 required_limits: wgpu::Limits {
@@ -1185,7 +1159,9 @@ mod tests {
         let exact_fit: Vec<Vertex> = (0..max_quads)
             .flat_map(|_| quad(view_proj, [0.0, 0.0, 32.0, 32.0], 2.0, RED))
             .collect();
-        let mut max_seen_buffer = 0u64;
+        assert!(
+            (exact_fit.len() * std::mem::size_of::<Vertex>()).next_power_of_two() as u64 > limit
+        );
         assert!(primitives.prepare(
             &device,
             &mut |buffer, bytes| {
@@ -1195,7 +1171,6 @@ mod tests {
                     buffer.size()
                 );
                 assert!(bytes.len() as u64 <= buffer.size());
-                max_seen_buffer = max_seen_buffer.max(buffer.size());
                 queue.write_buffer(buffer, 0, bytes);
             },
             &Batch {
@@ -1207,7 +1182,6 @@ mod tests {
             &atlas_view,
         ));
         assert_eq!(primitives.quad_chunk_spans.len(), 1);
-        assert!(max_seen_buffer <= limit);
 
         // Multi-chunk upload exceeding `limit`: first chunk draws RED in stage 0, last chunk
         // draws GREEN over the same pixel in stage 4.
@@ -1215,12 +1189,15 @@ mod tests {
         let mut multi_quads = Vec::with_capacity(total * 4);
         for i in 0..total {
             let color = if i + 1 == total { GREEN } else { RED };
-            multi_quads.extend_from_slice(&quad(view_proj, [0.0, 0.0, 64.0, 64.0], 2.0, color));
+            let left = if i + 1 == total { 32.0 } else { 0.0 };
+            multi_quads.extend_from_slice(&quad(view_proj, [left, 0.0, 64.0, 64.0], 2.0, color));
         }
         let mut stage_ends = [[0u32; 4]; STAGES - 1];
         for end in &mut stage_ends {
             end[0] = (total - 1) as u32;
         }
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let mut uploads = crate::gfx::upload::Uploads::with_chunk(&device, 1024);
         assert!(primitives.prepare(
             &device,
             &mut |buffer, bytes| {
@@ -1230,7 +1207,7 @@ mod tests {
                     buffer.size()
                 );
                 assert!(bytes.len() as u64 <= buffer.size());
-                queue.write_buffer(buffer, 0, bytes);
+                uploads.buffer(&mut encoder, buffer, 0, bytes);
             },
             &Batch {
                 quads: &multi_quads,
@@ -1278,7 +1255,6 @@ mod tests {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let mut encoder = device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: None,
@@ -1321,14 +1297,16 @@ mod tests {
                 depth_or_array_layers: 1,
             },
         );
+        uploads.finish(&encoder);
         queue.submit([encoder.finish()]);
         readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         let texels = readback.slice(..).get_mapped_range().unwrap().to_vec();
-        let i = ((32 * SIZE + 32) * 4) as usize;
-        assert_eq!(
-            [texels[i], texels[i + 1], texels[i + 2], texels[i + 3]],
-            [0, 255, 0, 255]
-        );
+        let pixel = |x| {
+            let i = ((32 * SIZE + x) * 4) as usize;
+            &texels[i..i + 4]
+        };
+        assert_eq!(pixel(16), [255, 0, 0, 255]);
+        assert_eq!(pixel(48), [0, 255, 0, 255]);
     }
 }
