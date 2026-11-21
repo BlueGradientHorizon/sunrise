@@ -1646,40 +1646,41 @@ mod player_status_tests {
             flags(game, 0);
             assert!(!game.pack_player_status().glowing, "flag 6 cleared");
 
-            let pig = game
-                .remote
-                .as_ref()
-                .unwrap()
-                .builtin
-                .get("minecraft:entity_type")
-                .unwrap()
-                .id("minecraft:pig")
+            let kind = |game: &Game<'_>, name: &str| {
+                let remote = game.remote.as_ref().unwrap();
+                let types = remote.builtin.get("minecraft:entity_type").unwrap();
+                types.id(name).unwrap()
+            };
+            // A pig, which the client seats as well, and a text display, which servers hang
+            // over a player's head and only the server's list holds.
+            for (id, name) in [(77, "minecraft:pig"), (78, "minecraft:text_display")] {
+                let kind = kind(game, name);
+                game.handle_packet(C::AddEntity(play::AddEntity {
+                    id,
+                    uuid: id as u128,
+                    kind,
+                    position: [0.5, 65.8, 0.5],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
                 .unwrap();
-            game.handle_packet(C::AddEntity(play::AddEntity {
-                id: 77,
-                uuid: 77,
-                kind: pig,
-                position: [0.5, 65.8, 0.5],
-                velocity: [0.0; 3],
-                pitch: 0,
-                yaw: 0,
-                head_yaw: 0,
-                data: 0,
-            }))
-            .unwrap();
-            assert!(!game.pack_player_status().ridden);
-            game.handle_packet(C::SetPassengers(play::SetPassengers {
-                vehicle: own,
-                passengers: vec![77],
-            }))
-            .unwrap();
-            assert!(game.pack_player_status().ridden, "a listed passenger");
-            game.handle_packet(C::SetPassengers(play::SetPassengers {
-                vehicle: own,
-                passengers: Vec::new(),
-            }))
-            .unwrap();
-            assert!(!game.pack_player_status().ridden, "an empty list");
+                assert!(!game.pack_player_status().ridden);
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: own,
+                    passengers: vec![id],
+                }))
+                .unwrap();
+                assert!(game.pack_player_status().ridden, "{name} listed");
+                game.handle_packet(C::SetPassengers(play::SetPassengers {
+                    vehicle: own,
+                    passengers: Vec::new(),
+                }))
+                .unwrap();
+                assert!(!game.pack_player_status().ridden, "an empty list");
+            }
 
             assert!(!game.pack_player_status().wet);
             rain_on_the_player(game, true);
