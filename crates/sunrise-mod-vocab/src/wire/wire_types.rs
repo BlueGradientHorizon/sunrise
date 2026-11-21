@@ -237,17 +237,6 @@ impl Wire for crate::CustomSpawners {
             .map_err(|_| WireError::Invalid("duplicate spawner"))
     }
 }
-impl Wire for crate::FileToIdConverter {
-    layout_fields!("prefix" => String, "extension" => String);
-    const MIN: usize = 8;
-    fn put(&self, out: &mut Writer) {
-        out.put(&<(String, String)>::from(self));
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::try_from(input.take::<(String, String)>()?)
-            .map_err(|_| WireError::Invalid("invalid file converter"))
-    }
-}
 
 impl Wire for crate::BlockStateRange {
     layout_fields!("first" => crate::BlockState, "len" => u32);

@@ -17,7 +17,8 @@ pub struct ReloadResourceError {
     source: Box<dyn std::error::Error + Send + Sync>,
 }
 impl ReloadResourceError {
-    /// Attach the resource ID to a parsing or validation error.
+    /// Attach the resource ID to a parsing or validation error without losing
+    /// its type. For a validation message alone, use `std::io::Error::other(message)`.
     pub fn new(
         resource: Identifier,
         source: impl std::error::Error + Send + Sync + 'static,
@@ -373,7 +374,32 @@ impl ReloadFiles {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::Cell, sync::Mutex, thread};
+    use std::{
+        cell::Cell,
+        num::{IntErrorKind, ParseIntError},
+        sync::Mutex,
+        thread,
+    };
+
+    #[test]
+    fn reload_resource_error_borrows_the_resource_id() {
+        let resource = Identifier::parse("test:machines/press").unwrap();
+        let error =
+            ReloadResourceError::new(resource.clone(), std::io::Error::other("invalid file"));
+
+        assert_eq!(error.resource(), &resource);
+    }
+
+    #[test]
+    fn reload_resource_error_exposes_the_typed_source() {
+        let resource = Identifier::parse("test:machines/press").unwrap();
+        let cause = "invalid".parse::<u32>().unwrap_err();
+        let error = ReloadResourceError::new(resource, cause);
+
+        let source = std::error::Error::source(&error).unwrap();
+        let cause = source.downcast_ref::<ParseIntError>().unwrap();
+        assert_eq!(cause.kind(), &IntErrorKind::InvalidDigit);
+    }
 
     #[test]
     fn reload_moves_send_only_actions_to_the_applying_thread_in_order() {

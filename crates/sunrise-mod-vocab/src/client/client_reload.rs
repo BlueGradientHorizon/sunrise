@@ -18,8 +18,9 @@ use std::sync::{Arc, LazyLock};
 /// the model manager, equipment assets, paletted textures, then the entity and
 /// block-entity render dispatchers, particles, the game renderer, the level
 /// extractor, clouds, the GPU warnlist, regional compliance and the GUI.
+/// Use these methods to obtain IDs for client reload dependencies.
+// no wire: namespace for local reload dependency IDs, not a payload.
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaClientListeners;
 impl VanillaClientListeners {
     /// Boundary before every reload listener.

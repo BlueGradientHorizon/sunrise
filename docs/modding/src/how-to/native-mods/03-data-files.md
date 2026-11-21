@@ -26,12 +26,18 @@ listeners cannot read `assets/`. Client listeners return the same once-only acti
 the game thread after the new packs are published. Packaged assets also participate in the game's
 normal resource packs.
 
+When registering a listener on either side, construct its converter with
+`FileToIdConverter::json("machines")` for JSON or `FileToIdConverter::new("machines", ".bin")`
+for another suffix. Invalid arguments return a `FileToIdConverterError`. Use the IDs returned by
+`VanillaServerListeners` and `VanillaClientListeners` methods to declare dependencies on the
+corresponding side. The converter, ordering helpers, prepare contexts and reload errors all stay
+in-process; they are not `Wire` payloads.
+
 Both prepare contexts lend converted IDs through `context.list()` and bytes through
-`context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
-an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
-its formatted message. If validation produces only a message, define a typed validation error
-or use `std::io::Error::other(message)` as the cause. `error.resource()` borrows the failing
-resource ID, and `std::error::Error::source(&error)` exposes its cause. Registration still returns typed
+`context.read(&id)`. To abort on an invalid file, return `Err(ReloadResourceError::new(id, cause))`
+with the original error. For a validation message without a cause, pass a typed validation error
+or `std::io::Error::other(message)`. `error.resource()` borrows the failing resource ID, and
+`std::error::Error::source(&error)` exposes its cause. Registration returns typed
 `ReloadOrderError` values for dependency and listener failures. No listener applies until every
 prepare succeeds.
 

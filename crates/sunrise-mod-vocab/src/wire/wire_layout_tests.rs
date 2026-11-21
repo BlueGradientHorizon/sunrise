@@ -28,10 +28,6 @@ fn checked_records_have_declared_field_bytes() {
         LevelKey::try_from("example:moon".to_owned()).unwrap(),
         ("example:moon".to_owned(),),
     );
-    fields(
-        FileToIdConverter::new("recipes", ".json").unwrap(),
-        ("recipes".to_owned(), ".json".to_owned()),
-    );
     fields(JavaString(vec![65, 0xd800, 90]), (vec![65u16, 0xd800, 90],));
     let mut nbt = Compound::new();
     nbt.insert("answer".into(), Tag::Int(42));

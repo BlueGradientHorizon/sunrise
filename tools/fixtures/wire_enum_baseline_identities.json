@@ -48,7 +48,6 @@
   "crate::item::types::EquipmentSlotGroup",
   "crate::world::types::ExplosionInteraction",
   "crate::block::types::FakeEffect",
-  "crate::content::file_to_id_converter::FileToIdConverterError",
   "crate::item::recipe_rule::FireworkShape",
   "crate::runtime::Flow",
   "crate::client::fluid_draw::FluidBoxError",
