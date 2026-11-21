@@ -1,7 +1,7 @@
 //! Advisory check of the packaged Cargo requirements against the pinned game's crates.io versions.
 use super::{Entry, Kind, Review, hex64, read_regular};
 use crate::index::MAX_FILE;
-use semver::{Prerelease, Version, VersionReq};
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read, Seek};
@@ -169,7 +169,11 @@ fn manifest_conflicts<R: Read + Seek>(
             }
             let compatible: Vec<_> = game
                 .iter()
-                .filter(|pin| line_has_match(&requirement, pin))
+                .filter(|pin| {
+                    requirement.comparators.iter().any(|cmp| {
+                        cmp.major == pin.major && (pin.major != 0 || cmp.minor == Some(pin.minor))
+                    })
+                })
                 .map(Version::to_string)
                 .collect();
             if !compatible.is_empty() {
@@ -200,48 +204,4 @@ fn local_path(dir: &Path, path: &str) -> Option<PathBuf> {
         }
     }
     Some(inside)
-}
-
-fn line_has_match(requirement: &VersionReq, game: &Version) -> bool {
-    let matches = |version: Version| {
-        version.major == game.major
-            && (game.major != 0 || version.minor == game.minor)
-            && requirement.matches(&version)
-    };
-    let line_start = Version::new(game.major, if game.major == 0 { game.minor } else { 0 }, 0);
-    // If a requirement matches a stable version in the line, it matches either the line start,
-    // a comparator boundary, or the first version after one (partial comparators cover a whole
-    // major/minor). Use semver itself to evaluate the full requirement at those points.
-    matches(line_start)
-        || requirement.comparators.iter().any(|cmp| {
-            let (major, minor, patch) = (cmp.major, cmp.minor.unwrap_or(0), cmp.patch.unwrap_or(0));
-            if matches(Version::new(major, minor, patch)) {
-                return true;
-            }
-            let next = cmp
-                .patch
-                .and_then(|p| p.checked_add(1))
-                .map(|p| Version::new(major, minor, p))
-                .or_else(|| {
-                    cmp.minor
-                        .and_then(|m| m.checked_add(1))
-                        .map(|m| Version::new(major, m, 0))
-                })
-                .or_else(|| major.checked_add(1).map(|m| Version::new(m, 0, 0)));
-            if next.is_some_and(matches) {
-                return true;
-            }
-            // Cargo only allows prereleases at a triple explicitly named with a prerelease.
-            // Test its least prerelease, each explicit boundary, and the immediate successor.
-            !cmp.pre.is_empty()
-                && ["0".into(), cmp.pre.to_string(), format!("{}.0", cmp.pre)]
-                    .iter()
-                    .any(|pre| {
-                        Prerelease::new(pre).is_ok_and(|pre| {
-                            let mut version = Version::new(major, minor, patch);
-                            version.pre = pre;
-                            matches(version)
-                        })
-                    })
-        })
 }

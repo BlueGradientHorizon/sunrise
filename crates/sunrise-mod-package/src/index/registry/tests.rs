@@ -824,7 +824,7 @@ fn native_requirement_review_accepts_game_pins_even_if_the_mod_lock_is_ahead() {
     let entry = package_for_requirement_review(
         files.path(),
         "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\n\
-         serde_json='1'\nsyn='>=4, <5'\nlog='0.5'\nextra='1'\n\
+         serde_json='1'\nsyn='>=4'\nlog='0.5'\nextra='1'\n\
          matching_syn={package='syn',version='>=2.0.119, <3.0.5'}\n\
          upstream={package='serde_json',version='1.0.154',git='https://example.invalid/serde'}\n\
          alternate={package='log',version='0.4.35',registry='other'}\n",

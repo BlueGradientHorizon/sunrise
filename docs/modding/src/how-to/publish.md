@@ -85,7 +85,7 @@ kind, write the row by hand as [the registry reference](../reference/registry-in
   review is refused.
 
 For a native mod, review warns if a crates.io requirement in your packaged Cargo manifests excludes the
-pinned game build's versions of that crate but selects from the same compatible version line. If your mod
+pinned game build's versions of that crate but names the same compatible version line. If your mod
 doesn't need the other version, loosen the requirement before packing so it can use the game's version.
 
 ## 5. A new version
