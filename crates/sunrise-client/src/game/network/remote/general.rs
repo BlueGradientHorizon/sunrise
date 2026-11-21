@@ -11,7 +11,7 @@ use crate::game::general::general_type_catalog;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_mod_runtime::attachments::Attachments;
+use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::general_entity::{self, Message};
 
 /// One general row the server shows the window.
@@ -135,6 +135,15 @@ impl Game<'_> {
             }
             return;
         }
+        let render_attachments = match u32::try_from(id)
+            .ok()
+            .and_then(|id| r.attachments.get(&Holder::Entity(id)))
+        {
+            Some(existing) => mod_api::__private::game::capture_entity_render_attachments(existing),
+            None => {
+                mod_api::__private::game::capture_entity_render_attachments(&Attachments::default())
+            }
+        };
         let row = RemoteGeneral {
             type_slot,
             uuid,
@@ -143,9 +152,7 @@ impl Game<'_> {
             rotation,
             previous_rotation: rotation,
             age: 0,
-            render_attachments: mod_api::__private::game::capture_entity_render_attachments(
-                &Attachments::default(),
-            ),
+            render_attachments,
         };
         r.general.rows.insert(id, row);
         self.persist
@@ -874,6 +881,40 @@ mod tests {
                 assert_eq!(held.keys().collect::<Vec<_>>(), [&15]);
                 assert_eq!(held[&15].position, [1.5, 70.0, 2.5]);
                 assert_eq!(held[&15].render_attachments.get(&FUEL), Ok(Some(&42)));
+            })
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn general_spawn_captures_existing_entity_attachments_or_empty() {
+        mod_platform::__private::initialize().unwrap();
+        let _phase =
+            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
+        mod_platform::testing::with_mods(declare().into(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
+            crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+                // Path 1: no prior Holder::Entity entry -> empty initial snapshot.
+                game.handle_packet(spawn(21, "mymod:missile", [0.0, 70.0, 0.0]))
+                    .unwrap();
+                assert_eq!(rows(game)[&21].render_attachments.get(&FUEL), Ok(None));
+
+                // Path 2: existing Holder::Entity map present before spawn -> captured on spawn.
+                let mut existing = Attachments::default();
+                existing.apply_sync(sunrise_mod_runtime::attachments::AttachmentSync {
+                    namespace: "mymod".into(),
+                    name: "fuel".into(),
+                    value: Some([("n".into(), sunrise_core::nbt::Tag::Int(77))].into()),
+                });
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .attachments
+                    .insert(Holder::Entity(22), existing);
+                game.handle_packet(spawn(22, "mymod:missile", [1.0, 70.0, 0.0]))
+                    .unwrap();
+                assert_eq!(rows(game)[&22].render_attachments.get(&FUEL), Ok(Some(&77)));
             })
         });
     }
