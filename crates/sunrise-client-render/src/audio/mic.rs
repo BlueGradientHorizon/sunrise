@@ -965,7 +965,7 @@ fn enumerated_default<D: BackendDevice>(default: &D, devices: Vec<D>) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{MicDevice, MicRefusal, MicSource, MicSpec, MicSpecFault};
+    use mod_api::{MicDevice, MicRefusal, MicSpec, MicSpecFault};
     use std::sync::Barrier;
     use std::time::{Duration, Instant};
 
