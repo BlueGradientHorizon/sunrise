@@ -103,6 +103,7 @@ pub trait FrameModelEdit: FrameModel {
 /// A read-only view of one part within a [`FrameModel`]. Hierarchy links are indices for
 /// [`FrameModel::part_at`]; a missing link is `None`.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct FrameModelPart<'a> {
     /// This part's index in the model.
     pub index: usize,
@@ -121,6 +122,28 @@ pub struct FrameModelPart<'a> {
     /// is hidden. A visible part can still submit no cubes of its own (an empty part, a part
     /// whose cubes were skipped, or a draw that submitted only layers).
     pub visible: bool,
+}
+
+// hidden: the engine lends a view of a node in its selected frame model.
+#[doc(hidden)]
+pub fn frame_model_part<'a>(
+    index: usize,
+    name: &'a str,
+    parent: Option<usize>,
+    first_child: Option<usize>,
+    next_sibling: Option<usize>,
+    local_pose: &'a [f32; 9],
+    visible: bool,
+) -> FrameModelPart<'a> {
+    FrameModelPart {
+        index,
+        name,
+        parent,
+        first_child,
+        next_sibling,
+        local_pose,
+        visible,
+    }
 }
 
 impl FrameModelPart<'_> {

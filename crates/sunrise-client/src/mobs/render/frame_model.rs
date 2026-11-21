@@ -3,7 +3,7 @@
 use super::{Atlas, body, cem_key, cem_texture};
 use crate::fast_hash::FxHashMap;
 use crate::mobs::{Mob, MobData, MobType, Part, anim, cem};
-use mod_api::{FrameModel, FrameModelEdit, FrameModelPart};
+use mod_api::{__private::frame_model_part, FrameModel, FrameModelEdit, FrameModelPart};
 use std::{borrow::Cow, sync::Arc};
 
 /// The exact body selected for one draw, with an owned pack snapshot rather than a read lock.
@@ -179,13 +179,13 @@ impl FrameModelPose {
             }
             ancestor = current.parent;
         }
-        FrameModelPart {
+        frame_model_part(
             index,
-            name: &node.name,
-            parent: node.parent,
-            first_child: node.first_child,
-            next_sibling: node.next_sibling,
-            local_pose: if self.bind {
+            &node.name,
+            node.parent,
+            node.first_child,
+            node.next_sibling,
+            if self.bind {
                 &node.bind_pose
             } else {
                 self.poses
@@ -193,7 +193,7 @@ impl FrameModelPose {
                     .expect("poses were reset from the baked model's tree")
             },
             visible,
-        }
+        )
     }
 }
 
