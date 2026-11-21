@@ -727,7 +727,7 @@ impl Game<'_> {
             return Ok(());
         }
         let cause = src.cause;
-        if self.serving.is_some() || self.options.dedicated.is_some() {
+        if self.is_logical_server() {
             let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
                 dimension: self.dim.id(),
                 center,
