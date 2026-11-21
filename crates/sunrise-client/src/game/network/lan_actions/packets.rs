@@ -756,16 +756,11 @@ impl Game<'_> {
             }
             S::SetBeacon(p) => self.lan_station_beacon(conn, p.primary, p.secondary),
             S::SelectTrade(p) => self.lan_select_trade(conn, p.item),
-            S::ContainerClose(p) if self.lan_merchant_closed(conn, Some(p.container)) => {
-                self.guest_carried_back(gi);
-            }
             S::ContainerClose(p)
-                if self.lan_crafting_closed(conn, Some(p.container))
+                if self.lan_merchant_closed(conn, Some(p.container))
+                    || self.lan_crafting_closed(conn, Some(p.container))
                     || self.lan_station_closed(conn, Some(p.container))
-                    || self.lan_mount_closed(conn, Some(p.container)) =>
-            {
-                self.guest_carried_back(gi);
-            }
+                    || self.lan_mount_closed(conn, Some(p.container)) => {}
             S::SelectBundleItem(p) => {
                 // ServerGamePacketListenerImpl.handleBundleItemSelectedPacket: the slot
                 // is the open menu's (#4436).
@@ -823,11 +818,11 @@ impl Game<'_> {
                 if let Some(key) = vehicle {
                     self.close_guest_vehicle_menu(conn, key);
                 }
-                let Some(host) = self.lan.as_mut() else {
-                    return;
-                };
-                host.hub.container_closed(conn, p.container);
-                self.guest_carried_back(gi);
+                if let Some(carried) =
+                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, p.container))
+                {
+                    self.lan_place_back(gi, vec![carried]);
+                }
                 if closing {
                     self.player_menu_closing(conn);
                 }

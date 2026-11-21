@@ -434,6 +434,11 @@ pub(super) struct Remote {
     menu_title: Option<sunrise_client::text::Text>,
     menu_title_snapshot: Option<Arc<mod_api::Text>>,
     pub(in crate::game) state_id: i32,
+    /// Window 0's state and carried stack while another menu is active.
+    inventory_state_id: i32,
+    inventory_carried: Option<ItemStack>,
+    inventory_craft_grid: [Option<ItemStack>; 4],
+    inventory_craft_result: Option<ItemStack>,
     use_target: Option<[i32; 3]>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
