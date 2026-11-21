@@ -572,7 +572,7 @@ impl Index {
                 ));
             }
             if let Some(error) = collection
-                .check(|id| {
+                .check(self.project(&collection.id).is_some(), |id| {
                     self.project(id)
                         .filter(|p| !p.versions.is_empty())
                         .map(|p| &p.kind)
@@ -668,7 +668,7 @@ impl Index {
                 ))
             } else {
                 collection
-                    .check(|id| {
+                    .check(false, |id| {
                         self.projects
                             .iter()
                             .find(|p| p.id == id && !p.versions.is_empty())
