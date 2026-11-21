@@ -3,7 +3,7 @@
 //!
 //! - `new <path> [--name "Name"]`: a content mod from the template; with
 //!   `--template native [--sunrise <build>]`, a code mod pinned to the current Nightly's
-//!   SDK unless `--sunrise` names another build (`nightly-<date>` or a sha), with that SDK fetched
+//!   SDK unless `--sunrise` names another build (a release tag such as `nightly-<date>` or `26.3-0.1.0`, or a sha), with that SDK fetched
 //!   into `.sunrise/sdk/` (`sdk_fetch.rs`).
 //! - `update [--sunrise <build>]`: repin a native mod and diff/refresh declared internals.
 //! - `internals sync [--repo <path>]`: sync declarations for native mods.
@@ -426,12 +426,13 @@ fn new(args: &[String], fetch: FetchSdk) -> Result<Option<PathBuf>, String> {
     Ok(None)
 }
 
-/// The build a code mod pins: `--sunrise`'s (a sha or a Nightly name), or the current Nightly's,
-/// the build players have.
-fn pin(sunrise: Option<&str>) -> Result<String, String> {
+/// The build a code mod pins: `--sunrise`'s (a sha or a release tag), or by default the current
+/// Nightly's, the build players have.
+fn pin(sunrise: &str) -> Result<String, String> {
     sdk_fetch::resolve(
         &sdk_fetch::Base::from_env(),
-        sunrise.unwrap_or(sunrise_release_sign::NIGHTLY),
+        &sdk_fetch::release_keys(),
+        sunrise,
     )
 }
 
@@ -454,10 +455,11 @@ fn update(dir: &Path, fetch: FetchSdk, sunrise: Option<&str>) -> Result<(), Stri
             "{MANIFEST}: a content mod pins no game build, so there is nothing to update"
         ));
     };
-    let sunrise = pin(sunrise)?;
+    let requested = sunrise.unwrap_or(sunrise_release_sign::NIGHTLY);
+    let sunrise = pin(requested)?;
     // The new build's SDK must exist and verify before anything is written; the mixins revision
     // is the SDK's own unless the manifest pins one.
-    fetch(dir, &sunrise)?;
+    fetch(dir, &sunrise).map_err(|e| sdk_fetch::named(requested, &sunrise, e))?;
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -497,7 +499,8 @@ fn new_native(
     if id.len() > 64 {
         return Err(format!("mod id {id}: 64 characters at most"));
     }
-    let sunrise = pin(sunrise)?;
+    let requested = sunrise.unwrap_or(sunrise_release_sign::NIGHTLY);
+    let sunrise = pin(requested)?;
     let sunrise = sunrise.as_str();
     // The folder is made exclusively, so anything already at the path (a dangling link included)
     // is refused untouched, and a failed fetch removes only what this run made.
@@ -509,9 +512,11 @@ fn new_native(
         _ => format!("{}: {e}", dir.display()),
     })?;
     // The SDK is fetched now, so a failed pin leaves no folder; the mixins revision is its own.
-    fetch(dir, sunrise).inspect_err(|_| {
-        let _ = std::fs::remove_dir_all(dir);
-    })?;
+    fetch(dir, sunrise)
+        .inspect_err(|_| {
+            let _ = std::fs::remove_dir_all(dir);
+        })
+        .map_err(|e| sdk_fetch::named(requested, sunrise, e))?;
     let manifest = format!(
         "{}\n[native]\ngame = \"26.3\"\nsunrise = \"{sunrise}\"\n",
         include_str!("../template/native/sunrise-mod.toml"),

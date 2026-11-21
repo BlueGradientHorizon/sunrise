@@ -374,8 +374,11 @@ the tick queue; mods do not pass it back to these helpers.
 
 ## Drawing
 
-Frame drawing through `DrawContext`, `BlockEntityDrawContext` and `WorldDrawContext` stays
-in `mod_api`. Raw GPU access is native-only, unstable and outside that API, in
+Frame drawing through `DrawContext`, `BlockEntityDrawContext`, `HandDrawContext` and
+`WorldDrawContext` stays in `mod_api`. In `render_hand`, use `draw.render_arm(MainHand::Left)`
+or `MainHand::Right` to submit the local avatar at the current draw pose, independent of
+the logical hand being rendered. See [Local player skins](../how-to/client/model-drawing.md#local-player-skins).
+Raw GPU access is native-only, unstable and outside that API, in
 `mod_render::render` (`sunrise-mod-render`). Replace its frame functions with native HEAD mixins compiled against the prebuilt game.
 `render_needs` collects requests; `world_drawn` runs before the hand and HUD, and
 `hand_drawn` runs after the hand, on the render thread. Use API draw contexts for API-typed drawing.
