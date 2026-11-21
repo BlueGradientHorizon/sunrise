@@ -36,6 +36,7 @@ pub type ReductionModifier = Box<dyn FnMut(&DamageContainer, f32) -> f32>;
 /// `hurtServer` decides whether the hit is fresh.
 pub struct DamageContainer {
     state: DamageState,
+    live_reductions: bool,
     /// The modifiers registered for this hit, in the order they were added.
     reduction_modifiers: Vec<(Reduction, ReductionModifier)>,
 }
@@ -79,8 +80,17 @@ impl DamageContainer {
                 inflicted: 0.0,
                 health_damage: 0.0,
             },
+            live_reductions: false,
             reduction_modifiers: Vec::new(),
         }
+    }
+    /// Use NeoForge's damage-container accounting for a hit exposed to living damage hooks.
+    pub fn enable_live_reductions(&mut self) {
+        self.live_reductions = true;
+    }
+    /// Whether this hit uses NeoForge's accounting rather than the vanilla arithmetic.
+    pub fn uses_live_reductions(&self) -> bool {
+        self.live_reductions
     }
     /// Move the live hit values into the death continuation, releasing all reduction callbacks.
     pub fn into_state(self) -> DamageState {
@@ -123,14 +133,8 @@ impl DamageContainer {
     /// `Armor` and `Absorption` run at their enclosing `actuallyHurt` sites even with a zero
     /// starting reduction. Modifiers last for this hit.
     pub fn add_reduction_modifier(&mut self, reduction: Reduction, modifier: ReductionModifier) {
+        self.enable_live_reductions();
         self.reduction_modifiers.push((reduction, modifier));
-    }
-    /// The damage sequence: whether a modifier is registered for `reduction`.
-    #[doc(hidden)]
-    pub fn has_reduction_modifier(&self, reduction: Reduction) -> bool {
-        self.reduction_modifiers
-            .iter()
-            .any(|(r, _)| *r == reduction)
     }
     /// The damage sequence: what `reduction` took.
     #[doc(hidden)]
@@ -139,9 +143,12 @@ impl DamageContainer {
     }
     /// The registered modifiers applied in insertion order to `taken`; none when no
     /// modifier is registered for `reduction`.
-    #[doc(hidden)]
-    pub fn modified_reduction(&mut self, reduction: Reduction, taken: f32) -> Option<f32> {
-        if !self.has_reduction_modifier(reduction) {
+    fn modified_reduction(&mut self, reduction: Reduction, taken: f32) -> Option<f32> {
+        if !self
+            .reduction_modifiers
+            .iter()
+            .any(|(r, _)| *r == reduction)
+        {
             return None;
         }
         struct Restore<'a> {
@@ -169,19 +176,39 @@ impl DamageContainer {
     /// The damage sequence: `reduction` took `taken` off `before`, leaving `after`. Records
     /// what it took and returns the damage the sequence goes on with. Call only at a guarded
     /// reduction site that actually ran (matching NeoForge's `DamageContainer.setReduction`);
-    /// without modifiers the vanilla values stand as they came.
+    /// for an unhooked hit the vanilla values stand as they came.
     #[doc(hidden)]
     pub fn reduce(&mut self, reduction: Reduction, before: f32, taken: f32, after: f32) -> f32 {
         self.state.new_damage = before;
-        if let Some(modified) = self.modified_reduction(reduction, taken) {
-            self.record_reduction(reduction, modified);
-            let next = java_max_f32(before - modified, 0.0);
-            self.state.new_damage = next;
-            next
+        let modified = self.modified_reduction(reduction, taken).unwrap_or(taken);
+        self.record_reduction(reduction, modified);
+        let next = if self.live_reductions {
+            java_max_f32(before - modified, 0.0)
         } else {
-            self.record_reduction(reduction, taken);
-            self.state.new_damage = after;
             after
+        };
+        self.state.new_damage = next;
+        next
+    }
+    /// Apply the absorption stage after Pre. Returns (damage to health, damage absorbed,
+    /// remaining hearts). Vanilla computes spent hearts by subtraction; NeoForge takes the
+    /// nominal share directly, even if no modifier was registered at this stage.
+    pub fn absorb(&mut self, damage: f32, hearts: f32) -> (f32, f32, f32) {
+        if self.live_reductions {
+            let remaining = self.reduce(
+                Reduction::Absorption,
+                damage,
+                java_min_f32(hearts, damage),
+                damage,
+            );
+            let absorbed = java_min_f32(damage, self.reduction(Reduction::Absorption));
+            (remaining, absorbed, java_max_f32(hearts - absorbed, 0.0))
+        } else {
+            let remaining = java_max_f32(damage - hearts, 0.0);
+            let absorbed = damage - remaining;
+            self.record_reduction(Reduction::Absorption, absorbed);
+            self.record_new_damage(remaining);
+            (remaining, absorbed, hearts - absorbed)
         }
     }
     /// The damage sequence: capture the damage Pre left, before absorption.
@@ -362,26 +389,8 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
     container.record_new_damage(magic_damage);
     world.damage_pre(container)?;
     let damage = container.capture_inflicted();
-    let has_absorption_modifier = container.has_reduction_modifier(Reduction::Absorption);
-    let (remaining, absorbed) = if has_absorption_modifier {
-        let hearts = world.absorption()?;
-        let modified = container
-            .modified_reduction(Reduction::Absorption, java_min_f32(hearts, damage))
-            .unwrap();
-        container.record_reduction(Reduction::Absorption, modified);
-        let remaining = java_max_f32(damage - modified, 0.0);
-        container.record_new_damage(remaining);
-        let absorbed = java_min_f32(damage, modified);
-        world.set_absorption(java_max_f32(0.0, hearts - absorbed))?;
-        (remaining, absorbed)
-    } else {
-        let remaining = java_max_f32(damage - world.absorption()?, 0.0);
-        let absorbed = damage - remaining;
-        world.set_absorption(world.absorption()? - absorbed)?;
-        container.record_reduction(Reduction::Absorption, absorbed);
-        container.record_new_damage(remaining);
-        (remaining, absorbed)
-    };
+    let (remaining, absorbed, hearts) = container.absorb(damage, world.absorption()?);
+    world.set_absorption(hearts)?;
     if absorbed > 0.0 && absorbed < STAT_LIMIT {
         if player {
             world.award_self(DamageStat::Absorbed, stat_amount(absorbed))?;
@@ -403,7 +412,7 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
         if remaining < STAT_LIMIT {
             world.award_self(DamageStat::Taken, stat_amount(remaining))?;
         }
-    } else if !has_absorption_modifier {
+    } else if !container.uses_live_reductions() {
         let absorption = world.absorption()?;
         world.set_absorption(absorption - remaining)?;
     }
@@ -423,6 +432,7 @@ mod tests {
         armor_wears: usize,
         self_stats: Vec<(DamageStat, i32)>,
         pre_damage: Vec<f32>,
+        pre_override: Option<f32>,
     }
     impl Target {
         fn new(absorption: f32) -> Self {
@@ -433,6 +443,7 @@ mod tests {
                 armor_wears: 0,
                 self_stats: Vec::new(),
                 pre_damage: Vec::new(),
+                pre_override: None,
             }
         }
     }
@@ -505,6 +516,9 @@ mod tests {
         }
         fn damage_pre(&mut self, container: &mut DamageContainer) -> Result<(), ()> {
             self.pre_damage.push(container.new_damage());
+            if let Some(damage) = self.pre_override {
+                container.record_new_damage(damage);
+            }
             Ok(())
         }
     }
@@ -530,6 +544,20 @@ mod tests {
         assert_eq!(c.health_damage(), 3.75);
         assert_eq!(target.health, 96.25);
         assert_eq!(c.original(), 20.0);
+    }
+    #[test]
+    fn live_pre_damage_spends_the_nominal_absorption_without_an_absorption_modifier() {
+        for damage in [33_554_432.0, f32::INFINITY] {
+            let mut target = Target::new(1.0);
+            target.pre_override = Some(damage);
+            let mut container = DamageContainer::new(20.0);
+            container.enable_live_reductions();
+            hit(&mut target, &mut container, 20.0);
+            assert_eq!(container.reduction(Reduction::Absorption), 1.0);
+            assert_eq!(container.health_damage(), damage);
+            assert_eq!(target.absorption, 0.0);
+            assert!(target.self_stats.contains(&(DamageStat::Absorbed, 10)));
+        }
     }
     #[test]
     fn several_modifiers_on_one_reduction_apply_in_the_order_added() {

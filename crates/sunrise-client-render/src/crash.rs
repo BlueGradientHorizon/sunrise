@@ -85,16 +85,26 @@ pub fn contain_outcome<T>(f: impl FnOnce() -> T) -> Contained<T> {
             f,
         )
     }));
-    CONTAINED.with(|c| c.set(c.get() - 1));
-    match result {
+    let outcome = match result {
         Ok(Ok(value)) => Contained::Ok(value),
         Ok(Err(refusal)) => Contained::Refusal(refusal),
-        Err(payload) => Contained::Panic(
-            CAUGHT
+        Err(payload) => {
+            let message = CAUGHT
                 .with(|c| c.borrow_mut().take())
-                .unwrap_or_else(|| payload_text(&*payload)),
-        ),
-    }
+                .unwrap_or_else(|| payload_text(&*payload));
+            // A panic payload can own a destructor supplied by the same mod. Do not let a
+            // second unwind escape the scope, or try dropping another untrusted payload.
+            if let Err(secondary) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                drop(payload);
+            })) {
+                std::mem::forget(secondary);
+                CAUGHT.with(|c| c.borrow_mut().take());
+            }
+            Contained::Panic(message)
+        }
+    };
+    CONTAINED.with(|c| c.set(c.get() - 1));
+    outcome
 }
 
 /// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting

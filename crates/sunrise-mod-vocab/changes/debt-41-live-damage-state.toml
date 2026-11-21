@@ -17,7 +17,6 @@ ids = [
     "type:ReductionChange.Scale",
     "type:ReductionChange.AtLeast",
     "type:ReductionChange.AtMost",
-    "type:Reduction",
     "type:DamageWriteRefusal",
     "type:DamageWriteRefusal.InvalidDamage",
     "type:DamageWriteRefusal.NegativeCooldown",
@@ -69,8 +68,10 @@ the `ReductionChange` command enum. Reduction modifiers are now owned native clo
 `living_incoming_damage` and `living_damage_pre`, executed in registration order at each stage \
 with accurate live container state (`new_damage` and prior reductions updated before each stage). \
 Following `DamageContainer.setNewDamage` and `setPostAttackInvulnerabilityTicks`, live writes are checked before they change the hit. \
-`LivingEntity.getDamageAfterMagicAbsorb` keeps the vanilla local for its enchantment guard and protection computation, \
-while `LivingEntity.hurtServer` uses outer damage for cooldown comparison and hit success. Post follows the death or totem continuation. \
+`LivingEntity.getDamageAfterMagicAbsorb` changes the live damage only at a reduction site that ran, and \
+`Witch.getDamageAfterMagicAbsorb` uses its separate local result for innate resistance. \
+`Wolf.actuallyHurt` uses the outer cooldown difference for armor wear, without replacing the live reduction. \
+Post follows the death or totem continuation. \
 Matching NeoForge's `DamageContainer` and `actuallyHurt` semantics, modified reductions are \
 recorded verbatim without clamping to `[0, limit]` or replacing `NaN` (only resulting damage \
 floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, records the modified \
@@ -112,11 +113,15 @@ and `values.health_damage` with the same-named accessors on `event.container`. I
 `new_damage` on player and mob Post, use `event.container.inflicted()`; use \
 `event.container.health_damage()` for damage sent to health after absorption. For \
 `values.entered_pre`, record `event.container.new_damage()` when your Pre listener is called \
-before making your edits. Installed closures cannot be enumerated; keep your own registration \
-data if needed. For retained or transmitted values, replace the old snapshot, reduction tags and \
-command types in Wire payloads with a mod-owned `#[derive(Wire)]` record of the scalar values \
-and, if needed, a mod-owned enum for reduction tags or adjustments. Build that record inside \
-the hook and use its data to construct native closures locally; callbacks are not serialized. In \
+before making your edits. Read `values.reduction(kind)` as `event.container.reduction(kind)`. \
+Replace `values.set_reduction(kind, amount)` with \
+`event.container.add_reduction_modifier(kind, move |_, _| amount)` before that stage runs. \
+Installed closures cannot be enumerated; keep your own registration data if needed. \
+Replace `DamageValues` and `DamageContainer` in Wire payloads with mod-owned `#[derive(Wire)]` \
+records of the values you need, and replace `ReductionChange` with your own command data. \
+`Reduction` and its compact `u8` Wire tags are unchanged: keep them in your payloads. \
+Build your records inside the hook and use the data to construct native closures locally; \
+callbacks are not serialized. In \
 tests, construct a live hit through the engine or use a live backend rather than building a \
 standalone `DamageContainer::new(...)`.\
 """

@@ -890,23 +890,7 @@ impl Dragon {
         level.damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
         // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
-        let remaining = if container.has_reduction_modifier(Reduction::Absorption) {
-            let modified = container
-                .modified_reduction(
-                    Reduction::Absorption,
-                    sunrise_world::living_damage::java_min_f32(0.0, dealt),
-                )
-                .unwrap();
-            container.record_reduction(Reduction::Absorption, modified);
-            let remaining = sunrise_world::living_damage::java_max_f32(dealt - modified, 0.0);
-            container.record_new_damage(remaining);
-            remaining
-        } else {
-            let remaining = sunrise_world::living_damage::java_max_f32(dealt - 0.0, 0.0);
-            container.record_reduction(Reduction::Absorption, dealt - remaining);
-            container.record_new_damage(remaining);
-            remaining
-        };
+        let (remaining, _, _) = container.absorb(dealt, 0.0);
         if remaining != 0.0 {
             self.health -= remaining;
             container.record_health_damage(remaining);

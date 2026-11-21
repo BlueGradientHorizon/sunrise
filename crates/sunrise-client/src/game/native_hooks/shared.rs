@@ -1805,7 +1805,14 @@ pub(super) fn incoming_damage(
     victim: Victim,
     container: &mut DamageContainer,
 ) -> bool {
-    if !mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage) {
+    let listens_incoming = mod_api::__private::listened(mod_api::HookId::LivingIncomingDamage);
+    if listens_incoming
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePre)
+        || mod_api::__private::listened(mod_api::HookId::LivingDamagePost)
+    {
+        container.enable_live_reductions();
+    }
+    if !listens_incoming {
         return false;
     }
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
@@ -1843,6 +1850,7 @@ pub(super) fn damage_pre(
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
+    container.enable_live_reductions();
     let (entity, kind, source) = hurt_server_args(hurting, level.attack());
     let mut live = LiveDamageContainer(container);
     HitLevel(level).native_living_damage_pre(

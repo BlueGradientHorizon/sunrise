@@ -65,17 +65,16 @@ pub fn after_magic<W: DamageReductionWorld>(
             } else if world.attacker_is_server_player()? {
                 world.award_dealt_resisted(stat_amount(resisted))?;
             }
-        } else {
+        } else if !container.uses_live_reductions() {
             live = damage;
-            container.record_new_damage(live);
         }
     }
     if damage <= 0.0 {
-        if live.to_bits() == damage.to_bits() {
-            live = 0.0;
-            container.record_new_damage(live);
-        }
-        return Ok(live);
+        return Ok(if container.uses_live_reductions() {
+            live
+        } else {
+            0.0
+        });
     }
     if world.bypasses(Bypass::Enchantments)? {
         return Ok(live);

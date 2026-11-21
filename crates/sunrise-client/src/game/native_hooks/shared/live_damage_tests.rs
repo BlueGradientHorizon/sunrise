@@ -675,14 +675,26 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
 
     let panic_runs = Arc::new(AtomicUsize::new(0));
     let refuse_runs = Arc::new(AtomicUsize::new(0));
+    let payload_drops = Arc::new(AtomicUsize::new(0));
     let panic_runs_thread = Arc::clone(&panic_runs);
     let refuse_runs_thread = Arc::clone(&refuse_runs);
+    let payload_drops_thread = Arc::clone(&payload_drops);
     let reports_dir = home.path().join("crash-reports");
 
     let handle = std::thread::Builder::new()
         .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
         .spawn(move || {
-            struct ServerPanicMod(Arc<AtomicUsize>);
+            struct PanicPayload(Arc<AtomicUsize>);
+            impl Drop for PanicPayload {
+                fn drop(&mut self) {
+                    self.0.fetch_add(1, Ordering::Relaxed);
+                    panic!("reduction panic payload destructor");
+                }
+            }
+            struct ServerPanicMod {
+                runs: Arc<AtomicUsize>,
+                payload_drops: Arc<AtomicUsize>,
+            }
             #[mod_api::__subscriptions]
             impl Hooks for ServerPanicMod {
                 fn living_incoming_damage(
@@ -690,12 +702,13 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                     _: &mut dyn HitHost,
                     event: &mut LivingIncomingDamageEvent<'_>,
                 ) -> Flow {
-                    let runs = Arc::clone(&self.0);
+                    let runs = Arc::clone(&self.runs);
+                    let payload_drops = Arc::clone(&self.payload_drops);
                     event
                         .container
                         .add_reduction_modifier(Reduction::Armor, move |_, _| {
                             runs.fetch_add(1, Ordering::Relaxed);
-                            panic!("server reduction boom");
+                            std::panic::panic_any(PanicPayload(Arc::clone(&payload_drops)));
                         });
                     Flow::Continue
                 }
@@ -776,7 +789,10 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                 ModEntry::new("server_drop_mod", Box::new(ServerDropMod)),
                 ModEntry::new(
                     "server_panic_mod",
-                    Box::new(ServerPanicMod(panic_runs_thread)),
+                    Box::new(ServerPanicMod {
+                        runs: panic_runs_thread,
+                        payload_drops: payload_drops_thread,
+                    }),
                 ),
                 ModEntry::new(
                     "server_refuse_mod",
@@ -820,7 +836,7 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                 assert_eq!(faults[0].mod_id, "server_panic_mod");
                 assert_eq!(faults[0].callback, "living_damage_reduction");
                 assert!(
-                    faults[0].message.contains("server reduction boom"),
+                    faults[0].message.contains("Box<dyn Any>"),
                     "unexpected fault message: {}",
                     faults[0].message
                 );
@@ -844,6 +860,7 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
         .expect("spawn integrated server test thread");
 
     handle.join().expect("server thread must not panic");
+    assert_eq!(payload_drops.load(Ordering::Relaxed), 1);
     assert_eq!(panic_runs.load(Ordering::Relaxed), 1);
     assert_eq!(refuse_runs.load(Ordering::Relaxed), 2);
 }
