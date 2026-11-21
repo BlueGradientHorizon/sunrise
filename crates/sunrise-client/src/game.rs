@@ -11648,10 +11648,7 @@ impl Game<'_> {
         {
             let text: String = text.chars().filter(|c| !c.is_control()).collect();
             if !text.is_empty() && self.text_field_focused() && self.types_text() {
-                self.screen_text_each(&text, |game, c| {
-                    // Err only says no box of the screen takes it.
-                    let _ = game.type_chars_into_screen(c);
-                });
+                self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
             }
             return;
         }
@@ -11856,6 +11853,12 @@ impl Game<'_> {
         // carries text closes that screen or moves its focus. The title's
         // screens keep theirs while no box has focus: Space presses a button
         // there, and the box that opens must not take its character.
+        let key_receiver: Option<screen_build::ObservedScreen> =
+            if matches!(&event, WindowEvent::KeyboardInput { .. }) {
+                self.observed_input_screen()
+            } else {
+                None
+            };
         let mut typed: Option<String> = None;
         if let WindowEvent::KeyboardInput {
             event: key_event, ..
@@ -11863,20 +11866,24 @@ impl Game<'_> {
             && key_event.state == ElementState::Pressed
         {
             let title_text = control::title_owns_text(&self.screen, self.title.is_some());
+            let mounted_input = self.mounted_widget_captures_input();
             if self.screen_hooks_open()
-                && self.screen != Screen::Options
-                && (!title_text || self.title.as_mut().is_some_and(|t| t.has_caret_field()))
+                && (mounted_input
+                    || (self.screen != Screen::Options
+                        && (!title_text
+                            || self.title.as_mut().is_some_and(|t| t.has_caret_field()))))
             {
                 typed = key_event.text.take().map(|text| text.to_string());
             }
             let canceled = match key_event.physical_key {
                 PhysicalKey::Code(key) => {
-                    self.screen_key_pressed(key, key_event.repeat)
+                    self.screen_key_pressed_on(key_receiver.as_ref(), key, key_event.repeat)
                         || (!key_event.repeat && self.container_key(key))
                 }
                 PhysicalKey::Unidentified(_) => false,
             };
             if self.screen_hooks_open()
+                && !mounted_input
                 && (self.screen == Screen::Options || (title_text && self.types_text()))
             {
                 // The hook after the key's own, then the text the key path
@@ -11906,6 +11913,27 @@ impl Game<'_> {
                 }
                 return;
             }
+            if let PhysicalKey::Code(key) = key_event.physical_key {
+                // Vanilla `Screen.keyPressed`: `shouldCloseOnEsc` runs before child widgets.
+                if key == KeyCode::Escape
+                    && self.screen == Screen::Mod
+                    && !self.prompt_open()
+                    && !self.dialog_open()
+                {
+                    self.close_mod_screen();
+                    return;
+                }
+                if key_receiver.is_some()
+                    && self.mounted_widget_key_pressed(
+                        key,
+                        key_event.repeat,
+                        glfw_modifiers(self.modifiers),
+                    )
+                {
+                    self.screen_chars_typed(typed.as_deref());
+                    return;
+                }
+            }
         }
         // Screen.keyPressed: Tab, the arrows and Enter move and press the
         // menu's focus, unless the focused widget or the screen keeps them.
@@ -11913,6 +11941,7 @@ impl Game<'_> {
             event: key_event, ..
         } = &event
             && key_event.state == ElementState::Pressed
+            && !self.mounted_widget_captures_input()
             && let PhysicalKey::Code(key) = key_event.physical_key
             && self.key_focus_key(event_loop, key)
         {
@@ -11934,13 +11963,20 @@ impl Game<'_> {
             if let WindowEvent::KeyboardInput { event, .. } = &event
                 && event.state == ElementState::Released
                 && let PhysicalKey::Code(key) = event.physical_key
-                && self.screen_key_released(key)
             {
-                // Screen cancellation must not leave a held keyboard mapping down.
-                self.keys.remove(&key);
-                self.mapped_key_event(key, false, false)?;
-                return Ok(());
+                if self.screen_key_released_on(key_receiver.as_ref(), key) {
+                    // Screen cancellation must not leave a held keyboard mapping down.
+                    self.keys.remove(&key);
+                    self.mapped_key_event(key, false, false)?;
+                    return Ok(());
+                }
+                if key_receiver.is_some()
+                    && self.mounted_widget_key_released(key, glfw_modifiers(self.modifiers))
+                {
+                    return Ok(());
+                }
             }
+            let mut options_key_release_handled = false;
             if let WindowEvent::KeyboardInput { event, .. } = &event
                 && event.state == ElementState::Released
                 && self.screen == Screen::Options
@@ -11948,6 +11984,7 @@ impl Game<'_> {
             {
                 self.ui.options.modifiers = self.modifiers().bits;
                 let events = self.ui.options.key_released(&mut self.settings, key);
+                options_key_release_handled = !events.is_empty();
                 self.handle_option_events(events)?;
             }
             // ScreenEvent.MouseButtonPressed.Pre / MouseButtonReleased.Pre:
@@ -11962,37 +11999,67 @@ impl Game<'_> {
                 && std::mem::take(&mut self.container_owned_up);
             if let WindowEvent::MouseInput { state, button, .. } = &event
                 && !self.pad_synthetic_input()
-                && let Some(screen) = self.screen_view_now()
+                && let Some(receiver) = self.observed_input_screen()
             {
                 let (pressed, winit_button) = (*state == ElementState::Pressed, *button);
-                let (button, modifiers) = (glfw_button(*button), glfw_modifiers(self.modifiers));
+                let (button, modifiers) =
+                    (glfw_button(winit_button), glfw_modifiers(self.modifiers));
+                let double_click = pressed
+                    && self
+                        .screen_state
+                        .is_double_click(Instant::now(), receiver.id, button);
+                let receiver_generation = self.screen_state.widgets.generation;
                 let mut canceled = false;
-                if *state == ElementState::Pressed {
+                if pressed {
                     self.native_screen_mouse_button_pressed_pre(
-                        &screen,
+                        &receiver.view(),
                         button,
                         modifiers,
-                        false,
+                        double_click,
                         &mut canceled,
                     );
                 } else {
                     self.native_screen_mouse_button_released_pre(
-                        &screen,
+                        &receiver.view(),
                         button,
                         modifiers,
                         &mut canceled,
                     );
                 }
                 if canceled {
+                    if pressed && self.screen_state.widgets.generation == receiver_generation {
+                        self.screen_state
+                            .record_click(Instant::now(), receiver.id, button);
+                    }
+                    return Ok(());
+                }
+                mouse_post = Some(native_hooks::ScreenMousePost::new(
+                    receiver,
+                    receiver_generation,
+                    native_hooks::ScreenMousePostKind::Button {
+                        button,
+                        pressed,
+                        double_click,
+                    },
+                ));
+                let mouse = self.cursor();
+                let widget_handled = if pressed {
+                    self.mounted_widget_mouse_clicked(mouse, button, modifiers, double_click)
+                } else {
+                    self.mounted_widget_mouse_released(mouse, button, modifiers)
+                };
+                if widget_handled {
+                    if let Some(post) = mouse_post.as_mut() {
+                        post.handled = true;
+                    }
                     return Ok(());
                 }
                 if self.container_mouse(winit_button, pressed, owned_release) {
+                    if let Some(post) = mouse_post.as_mut() {
+                        post.handled = true;
+                    }
                     return Ok(());
                 }
-                mouse_post = Some(native_hooks::ScreenMousePost::Button {
-                    button,
-                    pressed: *state == ElementState::Pressed,
-                });
             }
             if owned_release {
                 return Ok(());
@@ -12081,54 +12148,78 @@ impl Game<'_> {
                         match self.screen_mouse_dragged(delta) {
                             native_hooks::ScreenMousePre::Canceled => return Ok(()),
                             native_hooks::ScreenMousePre::Passed(post) => {
-                                if self.container_drag() {
+                                let drag_button = match post.kind {
+                                    native_hooks::ScreenMousePostKind::Drag { button, .. } => {
+                                        button
+                                    }
+                                    _ => 0,
+                                };
+                                mouse_post = Some(post);
+                                if self.mounted_widget_mouse_dragged(
+                                    self.cursor(),
+                                    drag_button,
+                                    delta,
+                                    glfw_modifiers(self.modifiers),
+                                ) || self.container_drag()
+                                {
+                                    if let Some(post) = mouse_post.as_mut() {
+                                        post.handled = true;
+                                    }
                                     return Ok(());
                                 }
-                                mouse_post = Some(post);
                             }
                             native_hooks::ScreenMousePre::NotFired => {}
                         }
+                        let mut screen_dragged = false;
                         if self.dialog_open() {
                             self.dialog_drag();
                         }
                         if self.screen == Screen::BlockEditor {
-                            self.block_editor_drag();
+                            screen_dragged |= self.block_editor_drag();
                         }
                         if self.screen == Screen::Advancements {
-                            self.advancements_drag();
+                            screen_dragged |= self.advancements_drag();
                         }
                         if self.screen == Screen::Stats {
-                            self.stats_drag();
+                            screen_dragged |= self.stats_drag();
                         }
                         if self.screen == Screen::DebugOptions {
-                            self.debug_options_drag();
+                            screen_dragged |= self.debug_options_drag();
                         }
                         if self.screen == Screen::HudEditor {
-                            self.hud_editor_drag();
+                            screen_dragged |= self.hud_editor_drag();
                         }
                         if self.screen == Screen::WorldOptions {
-                            self.world_options_drag();
+                            screen_dragged |= self.world_options_drag();
                         }
                         if self.screen == Screen::Creative {
                             let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
                             let (_, oy) = Self::creative_origin(&batch);
-                            self.creative_screen.drag_scrollbar(self.cursor.1 - oy);
+                            screen_dragged |=
+                                self.creative_screen.drag_scrollbar(self.cursor.1 - oy);
                         }
                         if self.screen == Screen::Inventory {
-                            self.station_drag();
-                            self.recipe_book_drag();
+                            screen_dragged |= self.station_drag();
+                            screen_dragged |= self.recipe_book_drag();
                         }
                         if matches!(self.screen, Screen::Inventory | Screen::Creative) {
-                            self.inventory_drag_move();
+                            screen_dragged |= self.inventory_drag_move();
                         }
                         if self.title_input_active()
                             && let Some(title) = &mut self.title
                         {
                             title.drag(self.cursor, (w, h));
                             title.drag_field(&self.gui.atlas, self.cursor.0);
+                            if title.has_caret_field() {
+                                screen_dragged = true;
+                            }
                         }
                         if self.dragging && self.screen == Screen::Options {
                             self.options_drag()?;
+                            screen_dragged = true;
+                        }
+                        if screen_dragged && let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
                         }
                     }
                 }
@@ -12157,26 +12248,35 @@ impl Game<'_> {
                     // playing, which the gate excludes. A wheel the pad or the
                     // keyboard's focus made up is not the mouse: it fires
                     // nothing.
+                    let scroll = [scaled(raw_x), scaled(raw_y)];
                     if !self.pad_synthetic_input()
-                        && let Some(screen) = self.screen_view_now()
+                        && let Some(receiver) = self.observed_input_screen()
                     {
+                        let modifiers = glfw_modifiers(self.modifiers);
                         let mut canceled = false;
                         self.native_screen_mouse_scrolled_pre(
-                            &screen,
-                            [scaled(raw_x), scaled(raw_y)],
-                            glfw_modifiers(self.modifiers),
+                            &receiver.view(),
+                            scroll,
+                            modifiers,
                             &mut canceled,
                         );
                         if canceled {
                             return Ok(());
                         }
-                        if self.container_wheel(scaled(raw_y) as f32) {
+                        let receiver_generation = self.screen_state.widgets.generation;
+                        mouse_post = Some(native_hooks::ScreenMousePost::new(
+                            receiver,
+                            receiver_generation,
+                            native_hooks::ScreenMousePostKind::Scroll(scroll),
+                        ));
+                        if self.mounted_widget_mouse_scrolled(self.cursor(), scroll, modifiers)
+                            || self.container_wheel(d)
+                        {
+                            if let Some(post) = mouse_post.as_mut() {
+                                post.handled = true;
+                            }
                             return Ok(());
                         }
-                        mouse_post = Some(native_hooks::ScreenMousePost::Scroll([
-                            scaled(raw_x),
-                            scaled(raw_y),
-                        ]));
                     }
                     // A prompt is vanilla's `Minecraft.screen`, the only one MouseHandler.onScroll
                     // tells: the top one hears the wheel, as the click arms below pick it, and
@@ -12195,8 +12295,12 @@ impl Game<'_> {
                     // screen underneath (bundle, creative tabs' list, station)
                     // and the Post event hear nothing of that notch.
                     if d != 0.0 && self.mod_browser_wheel(d) {
+                        if let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
+                        }
                         return Ok(());
                     }
+                    let mut screen_scrolled = false;
                     let stick_scroll = self.pad_stick_scroll();
                     let step_scroll = self.pad_step_scroll();
                     if self.title_input_active()
@@ -12213,12 +12317,24 @@ impl Game<'_> {
                             self.settings.gui_scale_inputs(),
                         );
                         let gui = (batch.width, batch.height);
+                        let scrollable_mode = matches!(
+                            title.mode,
+                            sunrise_client::title::Mode::Select { .. }
+                                | sunrise_client::title::Mode::Multiplayer(_)
+                                | sunrise_client::title::Mode::Realms(_)
+                                | sunrise_client::title::Mode::CreateFlat { .. }
+                                | sunrise_client::title::Mode::CreateBuffet { .. }
+                                | sunrise_client::title::Mode::MissingMods { .. }
+                        );
                         if step_scroll {
                             title.step_scroll(d, self.cursor, gui);
+                            screen_scrolled |= d != 0.0 && scrollable_mode;
                         } else if stick_scroll {
                             title.stick_scroll(d, self.cursor, gui);
+                            screen_scrolled |= d != 0.0 && scrollable_mode;
                         } else {
-                            title.scroll_worlds(d, self.cursor, gui);
+                            let cycled = title.scroll_worlds(d, self.cursor, gui);
+                            screen_scrolled |= cycled || (d != 0.0 && scrollable_mode);
                         }
                     }
                     // MouseHandler.onScroll: the hotbar (or the spectator
@@ -12243,48 +12359,70 @@ impl Game<'_> {
                     }
                     if self.screen == Screen::Chat && d != 0.0 {
                         self.chat_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::Social && d != 0.0 {
                         self.social_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::CommandBlock && d != 0.0 {
                         self.command_block_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::Options && d != 0.0 {
                         self.options_scroll(d)?;
+                        screen_scrolled = true;
                     }
                     // AbstractContainerScreen.mouseScrolled: a bundle under the
                     // cursor takes the wheel before the screen's own scrolling.
                     let bundle = bundles::takes_bundle_wheel(self.screen)
                         && d != 0.0
                         && self.bundle_scroll(scaled(raw_x), scaled(raw_y));
-                    if self.screen == Screen::Creative && d != 0.0 && !bundle {
+                    if bundle {
+                        screen_scrolled = true;
+                    }
+                    if self.screen == Screen::Creative
+                        && d != 0.0
+                        && !bundle
+                        && self.creative_screen.can_scroll(&self.pack.names)
+                    {
                         self.creative_screen.wheel(f64::from(d), &self.pack.names);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::Inventory
                         && d != 0.0
                         && !bundle
-                        && !self.tweak_scroll(d, self.inventory_target().0)
+                        && (self.tweak_scroll(d, self.inventory_target().0)
+                            || self.station_scroll(d))
                     {
-                        self.station_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::Stats && d != 0.0 {
                         self.stats_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::WorldOptions && d != 0.0 {
                         self.world_options_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::ServerLinks && d != 0.0 {
                         self.server_links_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::DebugOptions && d != 0.0 {
                         self.debug_options_scroll(d);
+                        screen_scrolled = true;
                     }
                     if self.screen == Screen::HudEditor && d != 0.0 {
                         self.hud_editor_scroll(f64::from(d));
+                        screen_scrolled = true;
                     }
-                    if self.screen == Screen::Advancements {
+                    if self.screen == Screen::Advancements && (scaled(raw_x) != 0.0 || d != 0.0) {
                         self.advancements_scroll(scaled(raw_x) as f32, d);
+                        screen_scrolled = true;
+                    }
+                    if screen_scrolled && let Some(post) = mouse_post.as_mut() {
+                        post.handled = true;
                     }
                 }
                 WindowEvent::MouseInput { state, button, .. } if self.command_prompt.is_some() => {
@@ -12328,11 +12466,17 @@ impl Game<'_> {
                 WindowEvent::MouseInput { state, button, .. } if self.screen == Screen::Options => {
                     if self.options_waiting_for_key() && state == ElementState::Pressed {
                         self.options_bind_mouse(button)?;
-                    } else if matches!(button, MouseButton::Left | MouseButton::Right) {
-                        self.options_mouse(
+                        if let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
+                        }
+                    } else if matches!(button, MouseButton::Left | MouseButton::Right)
+                        && self.options_mouse(
                             state == ElementState::Pressed,
                             button == MouseButton::Right,
-                        )?;
+                        )?
+                        && let Some(post) = mouse_post.as_mut()
+                    {
+                        post.handled = true;
                     }
                 }
                 WindowEvent::MouseInput {
@@ -12364,6 +12508,11 @@ impl Game<'_> {
                         let rules = t.press_rules(atlas, self.cursor, (b.width, b.height));
                         (clicked.0, clicked.1 || rules)
                     });
+                    if (!matches!(action, Action::None) || sound)
+                        && let Some(post) = mouse_post.as_mut()
+                    {
+                        post.handled = true;
+                    }
                     self.save_title_options();
                     if sound {
                         self.audio.play_button_click();
@@ -12386,8 +12535,11 @@ impl Game<'_> {
                         .map(|r| [r.config.width, r.config.height])
                         .unwrap_or([1, 1]);
                     let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    if let Some(title) = self.title.as_mut() {
-                        title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height));
+                    if let Some(title) = self.title.as_mut()
+                        && title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height))
+                        && let Some(post) = mouse_post.as_mut()
+                    {
+                        post.handled = true;
                     }
                 }
                 WindowEvent::MouseInput { .. } if self.title_input_active() => {}
@@ -12414,6 +12566,9 @@ impl Game<'_> {
                 WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = state == ElementState::Pressed;
                     if self.studio_mouse_input(pressed, button) {
+                        if let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
+                        }
                         return Ok(());
                     }
                     if matches!(self.screen, Screen::Inventory | Screen::Creative)
@@ -12425,6 +12580,9 @@ impl Game<'_> {
                         if pressed && self.carried.is_none() {
                             self.inventory_hotkey(key);
                         }
+                        if let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
+                        }
                         // Neither edge of a bound button is an ordinary slot click.
                         return Ok(());
                     }
@@ -12434,8 +12592,12 @@ impl Game<'_> {
                                 button,
                             )))
                     {
+                        if let Some(post) = mouse_post.as_mut() {
+                            post.handled = true;
+                        }
                         return Ok(());
                     }
+                    let mut screen_handled = false;
                     match self.screen {
                         Screen::Playing => {
                             if pressed && !self.captured {
@@ -12461,10 +12623,15 @@ impl Game<'_> {
                         {
                             // AbstractContainerScreen: another button clicks
                             // a slot only as the pick block key (its hotbar
-                            // keys were handled above).
+                            // keys were handled above); mouseClicked always
+                            // returns true.
+                            if pressed {
+                                screen_handled = true;
+                            }
                             if self.settings.keys.get("key.pickItem")
                                 == sunrise_client::keybinds::mouse_name(button)
                             {
+                                screen_handled = true;
                                 if pressed {
                                     self.inventory_pick_press();
                                 } else {
@@ -12480,74 +12647,96 @@ impl Game<'_> {
                             if let Some(key) = self.container {
                                 self.container_changed(key);
                             }
+                            screen_handled = true;
                         }
                         Screen::Inventory => {
-                            self.inventory_mouse_release(button == MouseButton::Right);
-                            self.station_release();
-                            self.recipe_book_release();
+                            screen_handled |=
+                                self.inventory_mouse_release(button == MouseButton::Right);
+                            screen_handled |= self.station_release();
+                            screen_handled |= self.recipe_book_release();
                         }
-                        Screen::Chat if pressed && button == MouseButton::Left => self.chat_click(),
+                        Screen::Chat if pressed && button == MouseButton::Left => {
+                            screen_handled = self.chat_click();
+                        }
                         Screen::Creative if pressed => {
                             self.click_creative(button == MouseButton::Right);
+                            screen_handled = true;
                         }
                         Screen::Creative => {
+                            let scrollbar =
+                                button == MouseButton::Left && self.creative_screen.scrolling;
                             if button == MouseButton::Left {
                                 self.creative_screen.release();
                             }
-                            self.inventory_mouse_release(button == MouseButton::Right);
+                            screen_handled = scrollbar
+                                || self.inventory_mouse_release(button == MouseButton::Right);
                         }
                         Screen::Paused
                             if pressed && button == MouseButton::Left && self.pause_menu =>
                         {
-                            self.pause_click()?
+                            screen_handled = self.pause_click()?;
                         }
                         Screen::WorldOptions if pressed && button == MouseButton::Left => {
-                            self.world_options_click()
+                            self.world_options_click();
+                            screen_handled = true;
                         }
                         Screen::ServerLinks if pressed && button == MouseButton::Left => {
-                            self.server_links_click()?
+                            self.server_links_click()?;
+                            screen_handled = true;
                         }
                         Screen::DebugOptions if pressed && button == MouseButton::Left => {
-                            self.debug_options_click()
+                            self.debug_options_click();
+                            screen_handled = true;
                         }
                         Screen::DebugOptions if button == MouseButton::Left => {
-                            self.debug_options_release()
+                            self.debug_options_release();
+                            screen_handled = true;
                         }
                         Screen::HudEditor
                             if pressed
                                 && matches!(button, MouseButton::Left | MouseButton::Right) =>
                         {
-                            self.hud_editor_press(button == MouseButton::Right)
+                            self.hud_editor_press(button == MouseButton::Right);
+                            screen_handled = true;
                         }
                         Screen::HudEditor if button == MouseButton::Left => {
-                            self.hud_editor_release()
+                            self.hud_editor_release();
+                            screen_handled = true;
                         }
                         Screen::ConfirmLink if pressed && button == MouseButton::Left => {
-                            self.confirm_link_click()
+                            self.confirm_link_click();
+                            screen_handled = true;
                         }
                         Screen::DialogWarning if pressed && button == MouseButton::Left => {
-                            self.dialog_warning_click()?
+                            self.dialog_warning_click()?;
+                            screen_handled = true;
                         }
                         Screen::WorldOptions if button == MouseButton::Left => {
-                            self.world_options_release()
+                            self.world_options_release();
+                            screen_handled = true;
                         }
                         Screen::Friends if pressed && button == MouseButton::Left => {
-                            self.friends_screen_click()
+                            self.friends_screen_click();
+                            screen_handled = true;
                         }
                         Screen::Social if pressed && button == MouseButton::Left => {
-                            self.social_click()
+                            self.social_click();
+                            screen_handled = true;
                         }
                         Screen::CommandBlock if pressed && button == MouseButton::Left => {
-                            self.command_block_click()
+                            self.command_block_click();
+                            screen_handled = true;
                         }
                         Screen::BlockEditor if pressed && button == MouseButton::Left => {
-                            self.block_editor_click()
+                            self.block_editor_click();
+                            screen_handled = true;
                         }
                         Screen::BlockEditor if button == MouseButton::Left => {
-                            self.block_editor_release()
+                            self.block_editor_release();
+                            screen_handled = true;
                         }
                         Screen::Dead if pressed && button == MouseButton::Left => {
-                            self.death_click()?
+                            screen_handled = self.death_click()?;
                         }
                         Screen::Advancements if button == MouseButton::Left => {
                             let size = self
@@ -12555,6 +12744,7 @@ impl Game<'_> {
                                 .as_ref()
                                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
                             self.advancements_mouse(pressed, size);
+                            screen_handled = true;
                         }
                         Screen::Stats if pressed && button == MouseButton::Left => {
                             let size = self
@@ -12562,10 +12752,20 @@ impl Game<'_> {
                                 .as_ref()
                                 .map_or([1, 1], |r| [r.config.width, r.config.height]);
                             self.stats_click(size);
+                            screen_handled = true;
                         }
-                        Screen::Stats if button == MouseButton::Left => self.stats_release(),
-                        Screen::GameModeSwitcher if !pressed => self.switcher_release(button),
+                        Screen::Stats if button == MouseButton::Left => {
+                            self.stats_release();
+                            screen_handled = true;
+                        }
+                        Screen::GameModeSwitcher if !pressed => {
+                            self.switcher_release(button);
+                            screen_handled = true;
+                        }
                         _ => {}
+                    }
+                    if screen_handled && let Some(post) = mouse_post.as_mut() {
+                        post.handled = true;
                     }
                 }
                 // ConfirmScreen.keyPressed: Escape answers no, once its delay is over.
@@ -12605,6 +12805,16 @@ impl Game<'_> {
                     {
                         self.answer_pack_prompt(false)?;
                     }
+                }
+                WindowEvent::KeyboardInput { event, .. }
+                    if self.mounted_widget_captures_input()
+                        && event.state == ElementState::Pressed
+                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
+                {
+                    // A focused mounted text field (or input-capturing custom
+                    // widget) takes non-Escape key presses so vanilla screen
+                    // and inventory bindings do not fire while typing
+                    // (`EditBox.capturesInput`).
                 }
                 WindowEvent::KeyboardInput { event, .. } if self.dialog_open() => {
                     let shortcut = self.edit_shortcut(&event);
@@ -12873,7 +13083,13 @@ impl Game<'_> {
                     // took the key, so the open screen's `keyPressed` returned
                     // false; a cancel marks it handled and the game's own key
                     // handling never sees it.
-                    if self.screen_key_post(key, event.state == ElementState::Pressed, event.repeat)
+                    if !(options_key_release_handled && !pressed)
+                        && self.screen_key_post_on(
+                            key_receiver.as_ref(),
+                            key,
+                            event.state == ElementState::Pressed,
+                            event.repeat,
+                        )
                     {
                         return Ok(());
                     }

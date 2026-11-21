@@ -1391,7 +1391,7 @@ impl Game<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.ui.chat.scroll_by(amount as i32, true);
     }
-    pub(super) fn chat_click(&mut self) {
+    pub(super) fn chat_click(&mut self) -> bool {
         let cursor = self.cursor;
         let height = self.renderer.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1418,7 +1418,7 @@ impl Game<'_> {
                 .map_or_else(|| Self::leave_bed_button(width, height), |l| l.leave_bed);
             if sunrise_client::screen_draw::inside((cursor.0 as i32, cursor.1 as i32), x, y, w, h) {
                 self.wake_up(false, true);
-                return;
+                return true;
             }
         }
         if let Some(screen) = self.ui.chat_screen.as_mut() {
@@ -1426,10 +1426,10 @@ impl Game<'_> {
             let double_click = screen.live_double_click(x, y);
             if screen.click(&m, &c, x, y, double_click) {
                 self.notify_chat_suggestion_completion();
-                return;
+                return true;
             }
         } else {
-            return;
+            return false;
         }
         let style = self
             .ui
@@ -1462,10 +1462,10 @@ impl Game<'_> {
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
             self.titles.set_overlay(copied, false);
-            return;
+            return true;
         }
         let Some(style) = style else {
-            return;
+            return false;
         };
         // ChatScreen.handleComponentClicked: with Shift held only an
         // insertion acts, else only the click event.
@@ -1474,24 +1474,34 @@ impl Game<'_> {
                 && let Some(screen) = self.ui.chat_screen.as_mut()
             {
                 screen.type_text(&m, &c, &insertion);
+                return true;
             }
-            return;
+            return false;
         }
         match style.click {
             Some(ClickEvent::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
                 self.clipboard.set(&value);
+                true
             }
             Some(ClickEvent::OpenFile(path)) => {
                 super::packs::open_folder(std::path::Path::new(&path));
+                true
             }
-            Some(ClickEvent::OpenUrl(url)) => self.click_url(url),
+            Some(ClickEvent::OpenUrl(url)) => {
+                self.click_url(url);
+                true
+            }
             Some(ClickEvent::SuggestCommand(command)) => {
                 if let Some(screen) = self.ui.chat_screen.as_mut() {
                     screen.suggest_command(&m, &c, &command);
                 }
+                true
             }
-            Some(ClickEvent::RunCommand(command)) => self.click_command(&command),
+            Some(ClickEvent::RunCommand(command)) => {
+                self.click_command(&command);
+                true
+            }
             Some(ClickEvent::Profiler(command)) => {
                 if let Some(args) = command
                     .strip_prefix('/')
@@ -1499,15 +1509,20 @@ impl Game<'_> {
                 {
                     self.profiler_chat(args);
                 }
+                true
             }
             // Screen.defaultHandleGameClickEvent: the dialog opens over the
             // screen, and closes back to it.
-            Some(ClickEvent::ShowDialog(dialog)) => self.show_dialog_ref(&dialog),
+            Some(ClickEvent::ShowDialog(dialog)) => {
+                self.show_dialog_ref(&dialog);
+                true
+            }
             // Screen.defaultHandleGameClickEvent: custom actions retain chat.
             // ChatScreen.handleComponentClicked: the queue row's internal id
             // shows the next held-back message; other custom ids go on.
             Some(ClickEvent::Custom { id, .. }) if id == QUEUE_EXPAND_ID => {
                 self.accept_next_delayed_message();
+                true
             }
             Some(ClickEvent::Custom { id, payload }) => {
                 if let Some(remote) = &self.remote {
@@ -1515,9 +1530,10 @@ impl Game<'_> {
                         .session
                         .send_custom_click(&id, payload.map(std::sync::Arc::unwrap_or_clone));
                 }
+                true
             }
             // Screen.defaultHandleClickEvent: a page link means nothing in chat.
-            Some(ClickEvent::ChangePage(_)) | None => {}
+            Some(ClickEvent::ChangePage(_)) | None => false,
         }
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link

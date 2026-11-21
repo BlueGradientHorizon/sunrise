@@ -1160,14 +1160,16 @@ impl Game<'_> {
 
     /// The pointer moved while a list's scrollbar is held: the game rules'
     /// list follows it (AbstractSelectionList.mouseDragged).
-    pub(super) fn world_options_drag(&mut self) {
+    pub(super) fn world_options_drag(&mut self) -> bool {
         let h = self.gui_size().1;
         if let Some(o) = self.world_options.as_mut()
             && o.view == View::GameRules
             && let Some(rules) = o.rules.as_mut()
         {
             rules.drag(self.cursor.1, h);
+            return true;
         }
+        false
     }
 
     /// The button came up: a held scrollbar lets go (onRelease).

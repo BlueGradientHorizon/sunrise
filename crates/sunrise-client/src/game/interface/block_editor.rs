@@ -503,13 +503,15 @@ impl Game<'_> {
     }
 
     /// The cursor moved with a slider held (`AbstractSliderButton.onDrag`).
-    pub(super) fn block_editor_drag(&mut self) {
+    pub(super) fn block_editor_drag(&mut self) -> bool {
         let x = self.cursor.0;
         if let Some(screen) = self.block_editor.as_mut()
             && let Some((id, sx, sw)) = screen.dragging
         {
             screen.editor.slide(id, ui::slider_value(sx, sw, x) as f32);
+            return true;
         }
+        false
     }
 
     /// The left button released: a held slider lets go.

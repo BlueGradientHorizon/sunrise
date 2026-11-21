@@ -1283,29 +1283,30 @@ impl Game<'_> {
         shown(self) != before
     }
     /// `StonecutterScreen.mouseScrolled`.
-    pub(super) fn station_scroll(&mut self, d: f32) {
-        self.merchant_scroll(d);
-        self.loom_scroll(d);
+    pub(super) fn station_scroll(&mut self, d: f32) -> bool {
+        let mut handled = self.merchant_scroll(d);
+        handled |= self.loom_scroll(d);
         let Some(s) = self.station.as_mut() else {
-            return;
+            return handled;
         };
         if s.kind != Kind::Stonecutter || !s.stonecutter_scrolls() {
-            return;
+            return handled;
         }
         let rows = stonecutter_offscreen_rows(s.stone.recipes.len());
         s.stonecutter_scroll_to(s.scroll - d / rows as f32);
+        true
     }
     /// The mouse moved with a button held on a station: the loom's,
     /// stonecutter's and merchant's scrollers follow it.
-    pub(super) fn station_drag(&mut self) {
-        self.loom_drag();
-        self.merchant_drag();
+    pub(super) fn station_drag(&mut self) -> bool {
+        let mut handled = self.loom_drag();
+        handled |= self.merchant_drag();
         let Some(size) = self
             .renderer
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return handled;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
         let y = self.cursor.1 - oy;
@@ -1316,17 +1317,20 @@ impl Game<'_> {
             && s.stonecutter_scrolls()
         {
             s.stonecutter_scroll_to(stonecutter_drag_offs(y));
+            return true;
         }
+        handled
     }
     /// A mouse button let go: no scroller is held any more.
-    pub(super) fn station_release(&mut self) {
-        self.loom_release();
+    pub(super) fn station_release(&mut self) -> bool {
+        let mut released = self.loom_release();
         if let Some(s) = self.station.as_mut() {
-            s.scrolling = false;
+            released |= std::mem::replace(&mut s.scrolling, false);
             if let Some(m) = s.merchant.as_mut() {
-                m.dragging = false;
+                released |= std::mem::replace(&mut m.dragging, false);
             }
         }
+        released
     }
     /// Whether keyboard text goes to the anvil rename box.
     pub(super) fn station_typing(&self) -> bool {

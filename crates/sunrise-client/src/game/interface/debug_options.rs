@@ -445,7 +445,7 @@ impl Game<'_> {
         }
     }
     /// The pointer moved while the list's scrollbar is held.
-    pub(super) fn debug_options_drag(&mut self) {
+    pub(super) fn debug_options_drag(&mut self) -> bool {
         let (_, h) = self.gui_size();
         let y = self.cursor.1;
         if let Some(s) = &mut self.debug_options
@@ -454,7 +454,9 @@ impl Game<'_> {
             let content =
                 content_height(rows(&self.registered_debug_entries, &s.search.value).len());
             s.scroll.drag(y, HEADER, h - FOOTER, content);
+            return true;
         }
+        false
     }
     /// The button came up: the scrollbar lets go.
     pub(super) fn debug_options_release(&mut self) {

@@ -315,6 +315,7 @@ impl Game<'_> {
     /// Clear and dispose all mounted widgets for the current screen.
     pub(super) fn clear_screen_widgets(&mut self) {
         self.screen_state.widgets.clear();
+        self.screen_state.last_click = None;
     }
 
     /// Remove focus from any currently focused mounted widget.

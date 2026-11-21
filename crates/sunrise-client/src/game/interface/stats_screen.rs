@@ -819,15 +819,16 @@ impl Game<'_> {
             .press(self.cursor, Self::stats_bar(w), TAB_H, h - FOOTER, content)
     }
     /// The pointer moved while the scrollbar is held.
-    pub(super) fn stats_drag(&mut self) {
+    pub(super) fn stats_drag(&mut self) -> bool {
         if !self.stats_ui.scroll.held() {
-            return;
+            return false;
         }
         let h = self.gui_size().1;
         let content = self.stats_content();
         self.stats_ui
             .scroll
             .drag(self.cursor.1, TAB_H, h - FOOTER, content);
+        true
     }
     /// The button came up: the scrollbar lets go.
     pub(super) fn stats_release(&mut self) {

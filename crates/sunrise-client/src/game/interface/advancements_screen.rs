@@ -822,18 +822,19 @@ impl Game<'_> {
     }
     /// `mouseDragged` with the left button: the first step starts
     /// scrolling, later ones move the tree.
-    pub(super) fn advancements_drag(&mut self) {
+    pub(super) fn advancements_drag(&mut self) -> bool {
         let Some(last) = self.adv_ui.drag else {
-            return;
+            return false;
         };
         let (dx, dy) = (self.cursor.0 - last.0, self.cursor.1 - last.1);
         self.adv_ui.drag = Some(self.cursor);
         if !self.adv_ui.scrolling {
             self.adv_ui.scrolling = true;
-            return;
+            return true;
         }
         let view = self.adv_view();
         self.adv_scroll_by(&view, f64::from(dx), f64::from(dy));
+        true
     }
     pub(super) fn advancements_scroll(&mut self, x: f32, y: f32) {
         let view = self.adv_view();

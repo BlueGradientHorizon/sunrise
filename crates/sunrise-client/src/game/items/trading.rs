@@ -718,13 +718,13 @@ impl Game<'_> {
             .collect()
     }
     /// `MerchantScreen.mouseDragged`: the held scroller follows the cursor.
-    pub(super) fn merchant_drag(&mut self) {
+    pub(super) fn merchant_drag(&mut self) -> bool {
         let Some(size) = self
             .renderer
             .as_ref()
             .map(|r| [r.config.width, r.config.height])
         else {
-            return;
+            return false;
         };
         let (_, oy) = self.inventory_origin(&HudBatch::new(size, self.settings.gui_scale_inputs()));
         let y = self.cursor.1 - oy;
@@ -732,16 +732,20 @@ impl Game<'_> {
             && m.dragging
         {
             m.scroll = drag_scroll(y, m.session.offers.len());
+            return true;
         }
+        false
     }
-    pub(super) fn merchant_scroll(&mut self, d: f32) {
+    pub(super) fn merchant_scroll(&mut self, d: f32) -> bool {
         let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
-            return;
+            return false;
         };
         if m.session.offers.len() > 7 {
             let max = m.session.offers.len() - 7;
             m.scroll = scrolled(m.scroll, max, d);
+            return true;
         }
+        false
     }
     /// `MerchantScreen` rendering.
     pub(super) fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {

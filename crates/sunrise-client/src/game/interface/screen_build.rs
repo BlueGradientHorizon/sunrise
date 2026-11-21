@@ -293,6 +293,16 @@ impl ScreenBuild {
     }
 }
 
+/// The last handled mouse press on a screen, for vanilla's 250ms double-click
+/// detection (`MouseHandler.LastClick`, `MouseHandler.java:101-106`).
+#[derive(Clone, Copy, Debug)]
+pub(super) struct LastScreenClick {
+    pub(super) time: std::time::Instant,
+    pub(super) generation: u64,
+    pub(super) screen_id: &'static str,
+    pub(super) button: i32,
+}
+
 /// What the game knows about the screen showing: the snapshot the native hooks
 /// see (`ObservedScreen`) and the build the screen's drawing will read.
 #[derive(Default)]
@@ -300,6 +310,8 @@ pub(super) struct ScreenState {
     pub(super) observed: Option<ObservedScreen>,
     pub(super) build: ScreenBuildState,
     pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
+    /// Last handled screen mouse press for 250ms double-click detection.
+    pub(super) last_click: Option<LastScreenClick>,
     /// A mod's `ScreenOpening::Vanilla` answer is opening its screen: that
     /// change fires no screen hook again.
     pub(super) replacing: bool,
@@ -307,6 +319,41 @@ pub(super) struct ScreenState {
     /// (a mod's `Cancel`, `ModScreen` or `Vanilla`): a caller's grab after it
     /// leaves the screen that shows its pointer. Never set with no listener.
     pub(super) answered: std::cell::Cell<bool>,
+}
+
+impl ScreenState {
+    /// Whether a press at `now` on `screen_id` with `button` is a vanilla
+    /// double-click (within 250ms on the same screen instance and button,
+    /// `MouseHandler.java:101-106`).
+    pub(super) fn is_double_click(
+        &self,
+        now: std::time::Instant,
+        screen_id: &'static str,
+        button: i32,
+    ) -> bool {
+        self.last_click.is_some_and(|last| {
+            now.checked_duration_since(last.time)
+                .is_some_and(|elapsed| elapsed < std::time::Duration::from_millis(250))
+                && last.generation == self.widgets.generation
+                && last.screen_id == screen_id
+                && last.button == button
+        })
+    }
+
+    /// Record a handled mouse press for subsequent double-click detection.
+    pub(super) fn record_click(
+        &mut self,
+        now: std::time::Instant,
+        screen_id: &'static str,
+        button: i32,
+    ) {
+        self.last_click = Some(LastScreenClick {
+            time: now,
+            generation: self.widgets.generation,
+            screen_id,
+            button,
+        });
+    }
 }
 
 /// One frame's `RenderInventoryMobEffects` answer and what it was taken for.

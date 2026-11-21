@@ -278,14 +278,16 @@ impl Game<'_> {
             _ => {}
         }
     }
-    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<()> {
+    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<bool> {
         if !pressed {
             if right {
-                return Ok(());
+                return Ok(false);
             }
             let events = self.ui.options.release();
             self.dragging = false;
-            return self.handle_option_events(events);
+            let handled = !events.is_empty();
+            self.handle_option_events(events)?;
+            return Ok(handled);
         }
         if !right {
             self.dragging = true;
@@ -306,8 +308,10 @@ impl Game<'_> {
             false,
             right,
         );
+        let handled = !events.is_empty() || ui.selected_key.is_some() || ui.typing();
         self.ui.options = ui;
-        self.handle_option_events(events)
+        self.handle_option_events(events)?;
+        Ok(handled)
     }
     pub(super) fn options_drag(&mut self) -> Result<()> {
         let size = self.gui_size();

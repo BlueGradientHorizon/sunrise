@@ -2,7 +2,7 @@
 //! field through the same sinks the keyboard and `sunrise-ctl type` use.
 //! The window only asks the OS for an input method while such a field has
 //! focus, so movement keys keep arriving as plain key events.
-use super::{Game, Screen, books::BookScreen};
+use super::{Game, Screen, books::BookScreen, screen_build::ObservedScreen};
 use sunrise_client::{
     hud::HudBatch,
     preedit::{self, PreeditEvent},
@@ -97,28 +97,38 @@ impl Game<'_> {
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
     pub(super) fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
-        let taken = self.text_field_focused();
+        let preedit_receiver = (mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
+            || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
+        .then(|| self.observed_now())
+        .flatten();
         let event = PreeditEvent::from_winit(text, cursor);
         // ScreenEvent.Preedit.Pre, then the screen's handler (the focused
-        // field takes it), then Preedit.Post when no field did.
+        // field takes it), then Preedit.Post on the captured receiver when no
+        // field did.
         let shown = event.clone().unwrap_or_default();
-        if self.dispatch_preedit_pre_hook(&shown) {
+        if self.dispatch_preedit_pre_hook(preedit_receiver.as_ref(), &shown) {
             return;
         }
+        let taken = self.text_field_focused();
         preedit::set_preedit(event.filter(|_| taken));
         if !taken {
-            self.dispatch_preedit_post_hook(&shown);
+            self.dispatch_preedit_post_hook(preedit_receiver.as_ref(), &shown);
         }
     }
 
-    /// `native_screen_preedit_pre` for the open screen: whether it cancelled.
-    /// An empty `event` is a composition that ended. Nothing fires with no
-    /// mod listening or no screen open.
-    fn dispatch_preedit_pre_hook(&self, event: &PreeditEvent) -> bool {
+    /// `native_screen_preedit_pre` for the captured receiving screen: whether
+    /// it cancelled. An empty `event` is a composition that ended. Nothing
+    /// fires with no mod listening or no screen open.
+    fn dispatch_preedit_pre_hook(
+        &self,
+        receiver: Option<&ObservedScreen>,
+        event: &PreeditEvent,
+    ) -> bool {
         let mut canceled = false;
         if mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
-            && let Some(view) = self.observed_screen_view()
+            && let Some(receiver) = receiver
         {
+            let view = receiver.view();
             self.native_screen_preedit_pre(
                 &view,
                 &event.full_text,
@@ -131,11 +141,12 @@ impl Game<'_> {
         canceled
     }
 
-    /// `native_screen_preedit_post` for the open screen, as the Pre.
-    fn dispatch_preedit_post_hook(&self, event: &PreeditEvent) {
+    /// `native_screen_preedit_post` for the captured receiving screen, as the Pre.
+    fn dispatch_preedit_post_hook(&self, receiver: Option<&ObservedScreen>, event: &PreeditEvent) {
         if mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost)
-            && let Some(view) = self.observed_screen_view()
+            && let Some(receiver) = receiver
         {
+            let view = receiver.view();
             self.native_screen_preedit_post(
                 &view,
                 &event.full_text,
@@ -185,34 +196,34 @@ impl Game<'_> {
             return;
         }
         let text: String = text.chars().filter(|c| !c.is_control()).collect();
-        // ScreenEvent.CharacterTyped.Pre: the input method's committed text
-        // reaches a text box by characters, as a key's own text does, so the
-        // open screen hears of each of them first and a cancelled one never
-        // reaches the box.
-        self.screen_text_each(&text, |game, c| game.ime_type(c));
+        if text.is_empty() {
+            return;
+        }
+        // ScreenEvent.CharacterTyped.Pre, mounted widgets, focused vanilla
+        // field, and CharacterTyped.Post on the captured receiving screen when
+        // unhandled.
+        self.screen_chars_dispatch(&text, |game, c| game.ime_type(c));
     }
 
-    /// A committed character into the focused text box.
-    fn ime_type(&mut self, text: &str) {
-        if !self.text_field_focused() {
-            return;
-        }
-        if self.mounted_widget_captures_input() {
-            let modifiers = super::glfw_modifiers(self.modifiers);
-            for c in text.chars() {
-                let _ = self.mounted_widget_char_typed(c, modifiers);
-            }
-            return;
+    /// A committed character into the focused vanilla text box (mounted
+    /// widgets are offered first by `screen_chars_dispatch`). Returns whether
+    /// a text box handled the character.
+    fn ime_type(&mut self, text: &str) -> bool {
+        if !self.text_field_focused() || self.mounted_widget_captures_input() {
+            return false;
         }
         if self.dialog_type(text) {
-            return;
+            return true;
         }
         if self.title_input_active() {
             self.title_edit(Some(text), false);
+            return true;
         } else if self.book.is_some() {
             self.book_input(None, Some(text));
+            return true;
         } else if self.sign_edit.is_some() {
             self.sign_input(None, Some(text));
+            return true;
         } else {
             match self.screen {
                 Screen::Chat => self.chat_type(text),
@@ -230,8 +241,9 @@ impl Game<'_> {
                     self.recipe_text(Some(text), false)
                 }
                 Screen::Inventory => self.station_text(Some(text), false),
-                _ => {}
+                _ => return false,
             }
+            true
         }
     }
 }

@@ -81,7 +81,8 @@ impl Game<'_> {
     /// fields, the LAN port, a dialog's input, the command box and the edit
     /// screens of the jigsaw, structure and test blocks.
     pub(super) fn text_input_focused(&self) -> bool {
-        (self.screen == Screen::Chat && self.title.is_none())
+        self.mounted_widget_captures_input()
+            || (self.screen == Screen::Chat && self.title.is_none())
             || self.sign_edit.is_some()
             || matches!(self.book, Some(super::books::BookScreen::Edit { .. }))
             || (self.screen == Screen::Creative && self.creative_screen.tab().search)

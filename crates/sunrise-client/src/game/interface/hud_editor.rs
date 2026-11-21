@@ -191,12 +191,12 @@ impl Game<'_> {
         }
     }
     /// The cursor moved: the held widget follows, snapping to edges near it.
-    pub(super) fn hud_editor_drag(&mut self) {
+    pub(super) fn hud_editor_drag(&mut self) -> bool {
         let Some((id, dx, dy)) = self.pvp.editor.as_ref().and_then(|e| e.drag) else {
-            return;
+            return false;
         };
         let Some(&(_, [_, _, w, h])) = self.pvp.boxes.iter().find(|(b, _)| *b == id) else {
-            return;
+            return false;
         };
         let screen = self.gui_size();
         let others = || self.pvp.boxes.iter().filter(|(b, _)| *b != id);
@@ -209,6 +209,7 @@ impl Game<'_> {
         if let Some(e) = &mut self.pvp.editor {
             e.guides = (gx, gy);
         }
+        true
     }
     pub(super) fn hud_editor_release(&mut self) {
         if let Some(e) = &mut self.pvp.editor

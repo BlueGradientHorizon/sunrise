@@ -293,6 +293,9 @@ impl Game<'_> {
     /// Nothing here is a key — the caller drops control characters. `Err` when
     /// no text box of the screen takes them.
     pub(super) fn type_chars_into_screen(&mut self, text: &str) -> Result<()> {
+        if self.mounted_widget_captures_input() {
+            return Err("focused mounted widget owns character input".into());
+        }
         if self.book.is_some() {
             self.book_type(text);
             return Ok(());
@@ -782,9 +785,50 @@ impl Game<'_> {
                     }
                 }
                 let action = arg(2)?;
+                let key_receiver = self.observed_input_screen();
                 // ScreenEvent.KeyPressed.Pre: the open screen hears of the
                 // press before it acts on it. A cancelled press goes no further.
-                if action != "up" && self.screen_key_pressed(physical, action == "repeat") {
+                if action != "up"
+                    && self.screen_key_pressed_on(
+                        key_receiver.as_ref(),
+                        physical,
+                        action == "repeat",
+                    )
+                {
+                    if action == "tap" {
+                        self.physical_keys.remove(&physical);
+                    }
+                    return ok();
+                }
+                if action != "up"
+                    && physical == KeyCode::Escape
+                    && self.screen == Screen::Mod
+                    && !self.prompt_open()
+                    && !self.dialog_open()
+                {
+                    self.close_mod_screen();
+                    if action == "tap" {
+                        self.physical_keys.remove(&physical);
+                    }
+                    return ok();
+                }
+                if action != "up"
+                    && key_receiver.is_some()
+                    && self.mounted_widget_key_pressed(
+                        physical,
+                        action == "repeat",
+                        super::glfw_modifiers(self.modifiers),
+                    )
+                {
+                    if action == "tap" {
+                        self.physical_keys.remove(&physical);
+                    }
+                    return ok();
+                }
+                if action != "up"
+                    && physical != KeyCode::Escape
+                    && self.mounted_widget_captures_input()
+                {
                     if action == "tap" {
                         self.physical_keys.remove(&physical);
                     }
@@ -808,7 +852,12 @@ impl Game<'_> {
                 // cancel keeps it from the key bindings.
                 if !typing
                     && arg(2)? != "up"
-                    && self.screen_key_post(physical, true, arg(2)? == "repeat")
+                    && self.screen_key_post_on(
+                        key_receiver.as_ref(),
+                        physical,
+                        true,
+                        arg(2)? == "repeat",
+                    )
                 {
                     if arg(2)? == "tap" {
                         self.physical_keys.remove(&physical);
@@ -1167,8 +1216,15 @@ impl Game<'_> {
                     return ok();
                 }
                 let mut typed = Ok(());
+                let modifiers = super::glfw_modifiers(self.modifiers);
                 self.screen_text_each(text, |game, c| {
                     if typed.is_ok() {
+                        if let Some(ch) = c.chars().next()
+                            && !ch.is_control()
+                            && game.mounted_widget_char_typed(ch, modifiers)
+                        {
+                            return;
+                        }
                         typed = game.type_into_screen(c);
                     }
                 });

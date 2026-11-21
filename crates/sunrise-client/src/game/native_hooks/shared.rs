@@ -475,10 +475,17 @@ impl Game<'_> {
     }
 
     /// What `observe_screen` compares with the last frame's.
-    fn observed_now(&self) -> Option<ObservedScreen> {
+    pub(super) fn observed_now(&self) -> Option<ObservedScreen> {
         // Only the title's screens and the overlays show over `Screen::Playing`.
         self.observed_screen_view()
             .map(|view| self.observe_view(view))
+    }
+
+    /// Snapshot of the open screen for screen input hooks (`screen_hooks_open` gate).
+    pub(super) fn observed_input_screen(&self) -> Option<ObservedScreen> {
+        self.screen_hooks_open()
+            .then(|| self.observed_now())
+            .flatten()
     }
 
     /// Runs close cleanup for any screen or overlay being replaced by
@@ -1095,12 +1102,43 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The Post a mouse input owes once the screen has handled it, built when
-/// its Pre let the input through (`Game::screen_mouse_post`).
-pub(super) enum ScreenMousePost {
-    Button { button: i32, pressed: bool },
+/// Which mouse Post hook owes dispatch (`ScreenMousePost`).
+pub(super) enum ScreenMousePostKind {
+    Button {
+        button: i32,
+        pressed: bool,
+        double_click: bool,
+    },
     Scroll([f64; 2]),
-    Drag { button: i32, delta: [f32; 2] },
+    Drag {
+        button: i32,
+        delta: [f32; 2],
+    },
+}
+
+/// The Post a mouse input owes once the screen has handled it, built when
+/// its Pre let the input through (`Game::screen_mouse_post`), carrying the
+/// receiving screen snapshot captured at Pre time.
+pub(super) struct ScreenMousePost {
+    pub(super) receiver: ObservedScreen,
+    pub(super) receiver_generation: u64,
+    pub(super) kind: ScreenMousePostKind,
+    pub(super) handled: bool,
+}
+
+impl ScreenMousePost {
+    pub(super) fn new(
+        receiver: ObservedScreen,
+        receiver_generation: u64,
+        kind: ScreenMousePostKind,
+    ) -> Self {
+        Self {
+            receiver,
+            receiver_generation,
+            kind,
+            handled: false,
+        }
+    }
 }
 
 /// What a drag's Pre decided (`Game::screen_mouse_dragged`).
@@ -1335,13 +1373,13 @@ impl Game<'_> {
         else {
             return ScreenMousePre::NotFired;
         };
-        let Some(screen) = self.screen_view_now() else {
+        let Some(receiver) = self.observed_input_screen() else {
             return ScreenMousePre::NotFired;
         };
         let button = super::glfw_button(button);
         let mut canceled = false;
         self.native_screen_mouse_dragged_pre(
-            &screen,
+            &receiver.view(),
             button,
             delta,
             super::glfw_modifiers(self.modifiers),
@@ -1350,53 +1388,90 @@ impl Game<'_> {
         if canceled {
             ScreenMousePre::Canceled
         } else {
-            ScreenMousePre::Passed(ScreenMousePost::Drag { button, delta })
+            ScreenMousePre::Passed(ScreenMousePost::new(
+                receiver,
+                self.screen_state.widgets.generation,
+                ScreenMousePostKind::Drag { button, delta },
+            ))
         }
     }
-    /// The Post of a mouse input whose Pre let it through, once the screen's
-    /// own handling has run. The screen is the one open then (none, and no
-    /// Post, when the input closed it). Nothing is built with no subscriber.
-    pub(super) fn screen_mouse_post(&self, post: ScreenMousePost) {
+    /// The Post of a mouse input whose Pre let it through, once mounted widgets
+    /// and the screen's own handling have run. Always fires on `post.receiver`
+    /// (the screen that received the event, captured at Pre time before any
+    /// handler could close or switch screens).
+    pub(super) fn screen_mouse_post(&mut self, mut post: ScreenMousePost) {
         use mod_api::HookId;
-        let hook = match post {
-            ScreenMousePost::Button { pressed: true, .. } => HookId::ScreenMouseButtonPressedPost,
-            ScreenMousePost::Button { pressed: false, .. } => HookId::ScreenMouseButtonReleasedPost,
-            ScreenMousePost::Scroll(_) => HookId::ScreenMouseScrolledPost,
-            ScreenMousePost::Drag { .. } => HookId::ScreenMouseDraggedPost,
-        };
-        if !mod_api::__private::listened(hook) {
-            return;
-        }
-        let Some(screen) = self.screen_view_now() else {
-            return;
-        };
         let modifiers = super::glfw_modifiers(self.modifiers);
-        match post {
-            ScreenMousePost::Button {
+        match post.kind {
+            ScreenMousePostKind::Button {
                 button,
                 pressed: true,
-            } => self.native_screen_mouse_button_pressed_post(
-                &screen, button, modifiers, false, &mut false,
-            ),
-            ScreenMousePost::Button {
+                double_click,
+            } => {
+                if mod_api::__private::listened(HookId::ScreenMouseButtonPressedPost) {
+                    let was_handled = post.handled;
+                    let screen = post.receiver.view();
+                    self.native_screen_mouse_button_pressed_post(
+                        &screen,
+                        button,
+                        modifiers,
+                        double_click,
+                        &mut post.handled,
+                    );
+                    post.handled |= was_handled;
+                }
+                if post.handled && self.screen_state.widgets.generation == post.receiver_generation
+                {
+                    self.screen_state.record_click(
+                        std::time::Instant::now(),
+                        post.receiver.id,
+                        button,
+                    );
+                }
+            }
+            ScreenMousePostKind::Button {
                 button,
                 pressed: false,
-            } => self
-                .native_screen_mouse_button_released_post(&screen, button, modifiers, &mut false),
-            ScreenMousePost::Scroll(scroll) => {
-                self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers)
+                ..
+            } => {
+                if mod_api::__private::listened(HookId::ScreenMouseButtonReleasedPost) {
+                    let was_handled = post.handled;
+                    let screen = post.receiver.view();
+                    self.native_screen_mouse_button_released_post(
+                        &screen,
+                        button,
+                        modifiers,
+                        &mut post.handled,
+                    );
+                    post.handled |= was_handled;
+                }
             }
-            ScreenMousePost::Drag { button, delta } => {
-                self.native_screen_mouse_dragged_post(&screen, button, delta, modifiers)
+            ScreenMousePostKind::Scroll(scroll) => {
+                if !post.handled && mod_api::__private::listened(HookId::ScreenMouseScrolledPost) {
+                    let screen = post.receiver.view();
+                    self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers);
+                }
+            }
+            ScreenMousePostKind::Drag { button, delta } => {
+                if !post.handled && mod_api::__private::listened(HookId::ScreenMouseDraggedPost) {
+                    let screen = post.receiver.view();
+                    self.native_screen_mouse_dragged_post(&screen, button, delta, modifiers);
+                }
             }
         }
     }
-    /// Whether a Post of the key `key` over the open screen cancelled it
-    /// (`ScreenEvent.KeyPressed.Post` / `KeyReleased.Post`): asked where the
-    /// key no screen arm took reaches the game's own key handling, which a
-    /// cancel then skips. False with no subscriber, no screen of the hooks'
-    /// open, or a key with no vanilla name.
-    pub(super) fn screen_key_post(&self, key: KeyCode, pressed: bool, repeat: bool) -> bool {
+    /// Whether a Post of the key `key` over the receiving screen `receiver`
+    /// cancelled it (`ScreenEvent.KeyPressed.Post` / `KeyReleased.Post`): asked
+    /// where the key neither mounted widgets nor screen arms took reaches the
+    /// game's own key handling, which a cancel then skips. False with no
+    /// subscriber, no receiving screen, or a key with no vanilla name.
+    pub(super) fn screen_key_post_on(
+        &self,
+        receiver: Option<&ObservedScreen>,
+        key: KeyCode,
+        pressed: bool,
+        repeat: bool,
+    ) -> bool {
         let hook = if pressed {
             mod_api::HookId::ScreenKeyPressedPost
         } else {
@@ -1405,11 +1480,12 @@ impl Game<'_> {
         if !mod_api::__private::listened(hook) {
             return false;
         }
-        let (Some(name), Some(screen)) = (keybinds::key_name(key), self.screen_view_now()) else {
+        let (Some(name), Some(receiver)) = (keybinds::key_name(key), receiver) else {
             return false;
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
         let mut canceled = false;
+        let screen = receiver.view();
         if pressed {
             self.native_screen_key_pressed_post(&screen, name, repeat, modifiers, &mut canceled);
         } else {
@@ -1417,19 +1493,17 @@ impl Game<'_> {
         }
         canceled
     }
-    /// `ScreenEvent.CharacterTyped.Post` for each character of `text` that no
-    /// text box took.
-    fn screen_chars_post(&self, text: &str) {
+    /// `ScreenEvent.CharacterTyped.Post` for a character that neither mounted
+    /// widgets nor any text box took, on the captured receiving screen.
+    fn screen_chars_post_on(&self, receiver: Option<&ObservedScreen>, c: char) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPost) {
             return;
         }
-        let Some(screen) = self.screen_view_now() else {
+        let Some(receiver) = receiver else {
             return;
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
-        for c in text.chars() {
-            self.native_screen_char_typed_post(&screen, c, modifiers);
-        }
+        self.native_screen_char_typed_post(&receiver.view(), c, modifiers);
     }
     /// A screen the native mods' input hooks are for is open: the window has a
     /// renderer, either the title's own (`title`, `world_select`,
@@ -1463,21 +1537,22 @@ impl Game<'_> {
         }
         self.title_screen_view(&batch)
     }
-    /// Whether the key press `key` over the open screen went no further
+    /// Whether the key press `key` over the receiving screen went no further
     /// (`native_screen_key_pressed_pre`): what `handle_window_event` and the
     /// control socket's `key` command both ask before a screen acts on a key.
-    /// False when no screen of the hooks' is open, and for a key with no
-    /// vanilla name.
-    pub(super) fn screen_key_pressed(&self, key: KeyCode, repeat: bool) -> bool {
-        let Some(name) = keybinds::key_name(key) else {
-            return false;
-        };
-        let Some(screen) = self.screen_view_now() else {
+    /// False when no receiving screen is open, and for a key with no vanilla name.
+    pub(super) fn screen_key_pressed_on(
+        &self,
+        receiver: Option<&ObservedScreen>,
+        key: KeyCode,
+        repeat: bool,
+    ) -> bool {
+        let (Some(name), Some(receiver)) = (keybinds::key_name(key), receiver) else {
             return false;
         };
         let mut canceled = false;
         self.native_screen_key_pressed_pre(
-            &screen,
+            &receiver.view(),
             name,
             repeat,
             super::glfw_modifiers(self.modifiers),
@@ -1485,36 +1560,36 @@ impl Game<'_> {
         );
         canceled
     }
-    pub(super) fn screen_key_released(&self, key: KeyCode) -> bool {
-        let Some(name) = keybinds::key_name(key) else {
-            return false;
-        };
-        let Some(screen) = self.screen_view_now() else {
+    pub(super) fn screen_key_released_on(
+        &self,
+        receiver: Option<&ObservedScreen>,
+        key: KeyCode,
+    ) -> bool {
+        let (Some(name), Some(receiver)) = (keybinds::key_name(key), receiver) else {
             return false;
         };
         let mut canceled = false;
         self.native_screen_key_released_pre(
-            &screen,
+            &receiver.view(),
             name,
             super::glfw_modifiers(self.modifiers),
             &mut canceled,
         );
         canceled
     }
-    /// `native_screen_char_typed_pre` for one character, with the focused
-    /// box's edit: what the listeners leave of `field` goes back to the box
-    /// before the character does. Whether they cancelled the character.
-    fn screen_char_canceled(&mut self, c: char) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPre)
-            || !self.screen_hooks_open()
-        {
+    /// `native_screen_char_typed_pre` for one character on `receiver`, with
+    /// the focused box's edit: what the listeners leave of `field` goes back
+    /// to the box before the character does. Whether they cancelled the character.
+    fn screen_char_canceled_on(&mut self, receiver: Option<&ObservedScreen>, c: char) -> bool {
+        if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPre) {
             return false;
         }
+        let Some(receiver) = receiver else {
+            return false;
+        };
         let modifiers = super::glfw_modifiers(self.modifiers);
         self.with_focused_text_edit(|game, field| {
-            let Some(screen) = game.screen_view_now() else {
-                return false;
-            };
+            let screen = receiver.view();
             let mut canceled = false;
             game.native_screen_char_typed_pre(&screen, c, modifiers, field, &mut canceled);
             canceled
@@ -1527,17 +1602,46 @@ impl Game<'_> {
     /// `None` when none of them is left to type. For a key's text that stays
     /// on the key, which no box with a `field` takes.
     pub(super) fn screen_text_typed(&mut self, text: &str) -> Option<String> {
-        screen_text_hooked(text, |c| self.screen_char_canceled(c))
+        let receiver = self.observed_input_screen();
+        screen_text_hooked(text, |c| self.screen_char_canceled_on(receiver.as_ref(), c))
     }
     /// Text into a text box a character at a time (`Screen.charTyped`): each
-    /// printable one is offered to `native_screen_char_typed_pre`, and `take`
-    /// gets it unless cancelled, before the next is offered. A control
-    /// character goes straight to `take`: a text box reads it as a key.
+    /// printable one is offered to `native_screen_char_typed_pre` on the
+    /// captured receiving screen, and `take` gets it unless cancelled, before
+    /// the next is offered. A control character goes straight to `take`.
     pub(super) fn screen_text_each(&mut self, text: &str, mut take: impl FnMut(&mut Self, &str)) {
+        let receiver = self.observed_input_screen();
         let mut encoded = [0; 4];
         for c in text.chars() {
-            if c.is_control() || !self.screen_char_canceled(c) {
+            if c.is_control() || !self.screen_char_canceled_on(receiver.as_ref(), c) {
                 take(self, c.encode_utf8(&mut encoded));
+            }
+        }
+    }
+    /// Deliver each printable character of `text` through `CharacterTyped.Pre`,
+    /// mounted screen widgets first, then `take` (the vanilla text box sink,
+    /// returning whether it handled the character), and finally
+    /// `CharacterTyped.Post` on the captured receiving screen ONLY when
+    /// unhandled.
+    pub(super) fn screen_chars_dispatch(
+        &mut self,
+        text: &str,
+        mut take: impl FnMut(&mut Self, &str) -> bool,
+    ) {
+        let receiver = self.observed_input_screen();
+        let modifiers = super::glfw_modifiers(self.modifiers);
+        let mut encoded = [0; 4];
+        for c in text.chars() {
+            if c.is_control() {
+                continue;
+            }
+            if self.screen_char_canceled_on(receiver.as_ref(), c) {
+                continue;
+            }
+            let handled = self.mounted_widget_char_typed(c, modifiers)
+                || take(self, c.encode_utf8(&mut encoded));
+            if !handled {
+                self.screen_chars_post_on(receiver.as_ref(), c);
             }
         }
     }
@@ -1548,7 +1652,9 @@ impl Game<'_> {
     /// screen leaves none to hear them, as vanilla's closed screen hears
     /// nothing, and one that moved the focus types into the box it moved to.
     /// Each printable one is offered to `native_screen_char_typed_pre`; the
-    /// survivors go to the focused text box, control characters (keys) gone.
+    /// survivors go to mounted widgets first, then the focused text box, and
+    /// unhandled characters fire `native_screen_char_typed_post` on the
+    /// captured receiving screen.
     pub(super) fn screen_chars_typed(&mut self, text: Option<&str>) {
         let Some(text) = text else {
             return;
@@ -1558,12 +1664,10 @@ impl Game<'_> {
         }
         // A held edit modifier makes a shortcut of the key, not text.
         let text = chars_to_type(text, self.types_text());
-        self.screen_text_each(&text, |game, c| {
-            // `Err` only says no text box of the screen takes the character.
-            if game.type_chars_into_screen(c).is_err() {
-                game.screen_chars_post(c);
-            }
-        });
+        if text.is_empty() {
+            return;
+        }
+        self.screen_chars_dispatch(&text, |game, c| game.type_chars_into_screen(c).is_ok());
     }
     pub(super) fn observe_client_packet(
         &mut self,

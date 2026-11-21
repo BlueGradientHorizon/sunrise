@@ -262,15 +262,15 @@ impl Game<'_> {
         self.click_inventory(right);
     }
     /// Mouse movement while a quick craft drag is running.
-    pub(super) fn inventory_drag_move(&mut self) {
+    pub(super) fn inventory_drag_move(&mut self) -> bool {
         if self.tweaks_on() && self.tweak_drag_move(self.inventory_target().0) {
-            return;
+            return true;
         }
         let Some((ty, slots)) = self.inv_drag.clone() else {
-            return;
+            return self.carried.is_some();
         };
         let Some(r) = self.renderer.as_ref() else {
-            return;
+            return true;
         };
         let batch = HudBatch::new(
             [r.config.width, r.config.height],
@@ -285,6 +285,7 @@ impl Game<'_> {
         {
             slots.push(slot);
         }
+        true
     }
     /// `AbstractContainerMenu.canTakeItemForPickAll` for Sunrise slot `slot`
     /// of the open menu: false for a crafting result (a mod menu type's too),
@@ -446,11 +447,12 @@ impl Game<'_> {
     }
     /// Mouse release over an inventory screen: `mouseReleased` ends or
     /// cancels the drag, drops a stack released outside, or clicks.
-    pub(super) fn inventory_mouse_release(&mut self, right: bool) {
+    pub(super) fn inventory_mouse_release(&mut self, right: bool) -> bool {
         use sunrise_client::container_screen::{Release, Target};
         self.tweak_release();
         let (slot, outside) = self.inventory_target();
         let dragged = self.inv_drag.as_ref().is_some_and(|(_, s)| !s.is_empty());
+        let had_drag = self.inv_drag.is_some();
         let release = self.inv_clicks.release(
             &Target::of(slot, outside),
             Self::screen_button(right),
@@ -460,12 +462,16 @@ impl Game<'_> {
             false,
         );
         match (release, Target::of(slot, outside)) {
-            (Release::QuickCraft, _) => self.inventory_release(),
+            (Release::QuickCraft, _) => {
+                self.inventory_release();
+                true
+            }
             (Release::Click(input), Target::Outside) => {
                 self.inv_drag = None;
                 self.throw_click(right, input);
+                true
             }
-            (Release::Click(input), Target::Slot(slot)) if self.inv_drag.is_some() => {
+            (Release::Click(input), Target::Slot(slot)) if had_drag => {
                 // The drag never reached a slot: a plain click where it ends.
                 self.inv_drag = None;
                 if !self.click_open_inventory(Some(slot), i32::from(right), input) {
@@ -474,8 +480,12 @@ impl Game<'_> {
                 if let Some(key) = self.container {
                     self.container_changed(key);
                 }
+                true
             }
-            _ => self.inv_drag = None,
+            _ => {
+                self.inv_drag = None;
+                !matches!(release, Release::Nothing)
+            }
         }
     }
     /// A press of the pick block button (`keyPickItem`, the middle button by
