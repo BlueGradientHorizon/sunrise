@@ -11,7 +11,7 @@ use super::{
     monster_brain,
     path::PathType,
 };
-use crate::{containers::BlockEntity, world::World};
+use crate::containers::BlockEntity;
 use std::collections::HashMap;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -183,11 +183,14 @@ pub fn entity_event(m: &mut Mob, event: u8) {
 }
 /// The heart this creaking is bound to protects it (`isProtector`); a link
 /// read from a save is trusted until the heart resolves it.
-fn protected(m: &Mob, world: &World) -> bool {
-    let Some(home) = m.extra.home else {
+fn protected(m: &Mob, w: &MobWorld) -> bool {
+    let Some([x, y, z]) = m.extra.home else {
         return true;
     };
-    match world.block_entities.get(&(home[0], home[1], home[2])) {
+    if w.block_name(x, y, z) != "minecraft:creaking_heart" {
+        return false;
+    }
+    match w.world.block_entities.get(&(x, y, z)) {
         Some(BlockEntity::CreakingHeart(h)) => match h.creaking {
             Some((Some(id), _)) => id == m.id,
             Some((None, _)) => true,
@@ -196,20 +199,15 @@ fn protected(m: &Mob, world: &World) -> bool {
         _ => false,
     }
 }
-/// `Creaking.tick` and the start of `aiStep`: protection, timers, freezing.
-pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    // Creaking.tick: without its heart's protection it dies.
-    if heart_bound(m) && m.alive() && !protected(m, w.world) {
+/// `Creaking.tick` checks its protection before invoking the living tick.
+pub(super) fn check_protection(m: &mut Mob, w: &MobWorld) {
+    if heart_bound(m) && m.alive() && !protected(m, w) {
         m.health = 0.0;
     }
-    // The borrowed tick still delivers its hurt effects through the event pass.
-    if let Some((home, by_player)) = take_hurt(m, events) {
-        events.push(MobEvent::CreakingHurt {
-            home,
-            by_player,
-            id: m.id,
-        });
-    }
+}
+
+/// `Creaking.aiStep`: countdown and the gaze's freeze/unfreeze transition.
+pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     animate(m);
     if !m.alive() {
         return;

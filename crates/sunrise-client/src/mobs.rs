@@ -2624,12 +2624,6 @@ pub enum MobEvent {
         at: [f64; 3],
         radius: f64,
     },
-    /// A tick's Creaking hit, delivered after the borrowed mob pass.
-    CreakingHurt {
-        home: [i32; 3],
-        by_player: bool,
-        id: u32,
-    },
     /// `Creaking.tearDown`: crumbling particles around the creaking.
     CreakingTearDown {
         center: [f64; 3],
@@ -3083,6 +3077,48 @@ pub fn apply_brain_events(
     events: &mut Vec<MobEvent>,
     from: usize,
 ) {
+    apply_brain_events_until_hurt(mobs, level, events, from, false);
+}
+
+/// The part of `Pufferfish.touch` after `hurtServer` returns successfully.
+/// The borrowed pass gives the owning game the victim before applying this.
+pub struct PufferfishReaction {
+    pub target: u32,
+    pub fish: u32,
+    pub at: usize,
+    target_join: crate::join_seq::JoinSeq,
+    fish_join: Option<crate::join_seq::JoinSeq>,
+    poison_ticks: i32,
+    sound: Option<MobEvent>,
+}
+
+impl PufferfishReaction {
+    pub fn same_target(&self, mob: &Mob) -> bool {
+        mob.id == self.target && mob.join == self.target_join && !mob.removed
+    }
+
+    pub fn same_fish(&self, mob: &Mob) -> bool {
+        mob.id == self.fish && Some(mob.join) == self.fish_join && !mob.removed
+    }
+
+    pub fn finish(self, target: Option<&mut Mob>) -> impl Iterator<Item = MobEvent> + use<> {
+        let raised = if let Some(target) = target.filter(|m| self.same_target(m)) {
+            target.add_effect("minecraft:poison", self.poison_ticks, 0);
+            std::mem::take(&mut target.outbox)
+        } else {
+            Vec::new()
+        };
+        self.sound.into_iter().chain(raised)
+    }
+}
+
+pub fn apply_brain_events_until_hurt(
+    mobs: &mut crate::join_seq::JoinList<Mob>,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    from: usize,
+    can_pause: bool,
+) -> Option<PufferfishReaction> {
     let mut i = from;
     while i < events.len() {
         match events[i] {
@@ -3142,9 +3178,8 @@ pub fn apply_brain_events(
                 mut source,
                 poison_ticks,
             } => {
-                let mut sound = None;
-                let mut raised = Vec::new();
                 let fish = mobs.iter().find(|m| m.id == mob);
+                let fish_join = fish.map(|m| m.join);
                 if source.attacker_species.is_none() {
                     source.attacker_species = fish.map(Mob::species);
                 }
@@ -3177,28 +3212,34 @@ pub fn apply_brain_events(
                     .map(|(aim, pos, silent)| (Some(aim), Some(pos), silent))
                     .unwrap_or((None, None, true));
                 let mut hit_level = level.reborrow().attacked_by(&attack);
+                events.remove(i);
                 if let Some(t) = mobs.iter_mut().find(|m| m.id == target)
                     && t.damage_aimed(&mut hit_level, amount, source, aim)
                 {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                    raised = std::mem::take(&mut t.outbox);
-                    if !fish_silent && let Some(at) = fish_pos {
-                        sound = Some(MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0));
+                    let tail = PufferfishReaction {
+                        target,
+                        fish: mob,
+                        at: i,
+                        target_join: t.join,
+                        fish_join,
+                        poison_ticks,
+                        sound: fish_pos
+                            .filter(|_| !fish_silent)
+                            .map(|at| MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0)),
+                    };
+                    if can_pause && creaking::has_pending_hurt(t) {
+                        return Some(tail);
                     }
-                }
-                events.remove(i);
-                if let Some(s) = sound {
-                    events.insert(i, s);
-                    i += 1;
-                }
-                for e in raised {
-                    events.insert(i, e);
-                    i += 1;
+                    for e in tail.finish(Some(t)) {
+                        events.insert(i, e);
+                        i += 1;
+                    }
                 }
             }
             _ => i += 1,
         }
     }
+    None
 }
 /// The player as mobs see it.
 #[derive(Clone, Debug)]
@@ -3424,18 +3465,23 @@ pub struct MobWorld<'a> {
     pub border: Option<&'a sunrise_core::geometry::border::BorderGeometry>,
     pub section_writer: Option<living::section_writes::Observer>,
 }
-/// `MobEffectInstance.tickServer` for a content mod's effect: its
-/// `shouldApplyEffectTickThisTick` and `applyEffectTick`, which the game's
-/// native mods answer. False removes the effect.
+/// A resolved write from a registered mob effect's tick.
+#[derive(Debug)]
+pub enum MobEffectChange {
+    Heal(f32),
+    Hurt(DamageKind, f32),
+}
+
+/// Decide a content mod effect's tick once; apply its writes in order in the
+/// borrowed tick. A false answer removes the effect after applying its writes.
 pub trait ModEffectTicks {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool;
+    ) -> (bool, Vec<MobEffectChange>);
     /// `MobEffectEvent.Expired`: `mob`'s `effect` (`amplifier` from 0)
     /// counted down to nothing. A mod that cancels refuses the expiry: the
     /// effect stays at no ticks and asks again next tick.
@@ -4474,7 +4520,7 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-        trample: &mut Option<ai::MobTrample>,
+        trample: &mut Option<ai::MobContinuation>,
     ) -> ai::TickProgress {
         self.prepare_tick();
         neutral_anger::tick_until_consumption(self, w, level, events, trample)

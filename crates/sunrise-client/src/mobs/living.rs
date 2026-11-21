@@ -463,39 +463,57 @@ impl TravelTail {
 }
 
 /// An authoritative move stopped inside `Entity.move`, and the remaining travel.
-pub struct TravelTrample {
-    movement: MoveTrample,
+pub struct TravelPause {
+    // Only a suspended move pays for this storage; ordinary travel returns `Ok(())`.
+    movement: Box<MovePause>,
     tail: TravelTail,
 }
 
-impl std::fmt::Debug for TravelTrample {
+impl std::fmt::Debug for TravelPause {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fmt.debug_tuple("TravelTrample")
-            .field(&self.decision())
+        fmt.debug_tuple("TravelPause")
+            .field(&self.movement.landing)
             .finish()
     }
 }
 
-impl TravelTrample {
-    pub fn decision(&self) -> FarmlandTrample {
-        self.movement.trample
+impl TravelPause {
+    pub fn trample(&self) -> Option<FarmlandTrample> {
+        match self.movement.landing {
+            LandingPause::Trample(decision) => Some(decision),
+            LandingPause::Hurt => None,
+        }
     }
 
     pub(super) fn resume(
-        self,
+        mut self,
         mob: &mut Mob,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-    ) {
-        mob.finish_trample_fall(w, level, events, self.movement.trample);
+    ) -> Result<(), Self> {
+        if let LandingPause::Trample(trample) = self.movement.landing {
+            mob.apply_trample_fall_damage(w, level, events, trample);
+            if super::creaking::has_pending_hurt(mob) {
+                self.movement.landing = LandingPause::Hurt;
+                return Err(self);
+            }
+        }
+        mob.fall_distance = 0.0;
         mob.finish_move(w, level, self.movement.wanted, self.movement.moved, events);
         self.tail.finish(mob, w, level, events);
+        Ok(())
     }
 }
 
-struct MoveTrample {
-    trample: FarmlandTrample,
+#[derive(Debug)]
+enum LandingPause {
+    Trample(FarmlandTrample),
+    Hurt,
+}
+
+struct MovePause {
+    landing: LandingPause,
     wanted: Vec3,
     moved: Vec3,
 }
@@ -899,17 +917,17 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         gate: &mut MoveGate,
     ) {
-        self.move_until_trample(w, level, events, gate, false);
+        self.move_until_pause(w, level, events, gate, false);
     }
 
-    fn move_until_trample(
+    fn move_until_pause(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         gate: &mut MoveGate,
         pause: bool,
-    ) -> Option<MoveTrample> {
+    ) -> Option<MovePause> {
         crate::move_gate::arm(
             gate,
             w.loop_context,
@@ -992,9 +1010,10 @@ impl Mob {
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
         self.supporting = self.supporting_block(w, moved);
-        if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
-            return Some(MoveTrample {
-                trample,
+        if let Some(landing) = self.species_check_fall_damage(w, level, moved, events, pause, pause)
+        {
+            return Some(MovePause {
+                landing,
                 wanted,
                 moved,
             });
@@ -1104,12 +1123,20 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         moved: Vec3,
         events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Option<FarmlandTrample> {
+        pause_trample: bool,
+        pause_hurt: bool,
+    ) -> Option<LandingPause> {
         if self.kind.flags.lava_walker && self.fluids.in_lava {
             self.fall_distance = 0.0;
         } else if !matches!(self.kind.species, super::Species::Bat | super::Species::Bee) {
-            return self.check_fall_damage(w, level, moved, events, pause);
+            return self.check_fall_damage_until_pause(
+                w,
+                level,
+                moved,
+                events,
+                pause_trample,
+                pause_hurt,
+            );
         }
         None
     }
@@ -1127,18 +1154,33 @@ impl Mob {
     ) -> Option<FarmlandTrample> {
         self.on_ground = on_ground;
         self.supporting = self.supporting_block(w, delta);
-        self.species_check_fall_damage(w, level, delta, events, true)
+        match self.species_check_fall_damage(w, level, delta, events, true, false) {
+            Some(LandingPause::Trample(trample)) => Some(trample),
+            _ => None,
+        }
     }
-    /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
-    /// (touching water resets the fall), then Entity.checkFallDamage.
+    #[cfg(test)]
     fn check_fall_damage(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         moved: Vec3,
         events: &mut Vec<MobEvent>,
-        pause: bool,
-    ) -> Option<FarmlandTrample> {
+        pause_trample: bool,
+    ) {
+        self.check_fall_damage_until_pause(w, level, moved, events, pause_trample, false);
+    }
+    /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
+    /// (touching water resets the fall), then Entity.checkFallDamage.
+    fn check_fall_damage_until_pause(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        moved: Vec3,
+        events: &mut Vec<MobEvent>,
+        pause_trample: bool,
+        pause_hurt: bool,
+    ) -> Option<LandingPause> {
         if !self.fluids.in_water {
             self.update_fluids(w, events);
         }
@@ -1155,8 +1197,11 @@ impl Mob {
         if self.on_ground {
             if self.fall_distance > 0.0 {
                 self.landing_dust(w, events);
-                if let Some(trample) = self.fall_on_block(w, level, events, pause) {
-                    return Some(trample);
+                if let Some(trample) = self.fall_on_block(w, level, events, pause_trample) {
+                    return Some(LandingPause::Trample(trample));
+                }
+                if pause_hurt && super::creaking::has_pending_hurt(self) {
+                    return Some(LandingPause::Hurt);
                 }
             }
             self.fall_distance = 0.0;
@@ -1498,6 +1543,17 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         trample: FarmlandTrample,
     ) {
+        self.apply_trample_fall_damage(w, level, events, trample);
+        self.fall_distance = 0.0;
+    }
+
+    fn apply_trample_fall_damage(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        trample: FarmlandTrample,
+    ) {
         let p = trample.position;
         let _ = trample.finish_fall(&mut super::landing::MobLanding {
             mob: self,
@@ -1506,7 +1562,6 @@ impl Mob {
             events,
             pos: [p.x, p.y, p.z],
         });
-        self.fall_distance = 0.0;
     }
     fn mod_block_fall(
         &self,
@@ -1755,7 +1810,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
     ) {
-        let _ = self.travel_until_trample(w, level, input, events, false);
+        let _ = self.travel_until_pause(w, level, input, events, false);
     }
 
     /// `LivingEntity.travelFallFlying`: use the mob's existing authoritative move
@@ -1766,7 +1821,7 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
         self.velocity = crate::motion::fall_flying_movement(
             self.velocity,
@@ -1787,7 +1842,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let (fluid_speed, air_speed) = if self.species() == super::Species::HappyGhast {
             let speed = super::happy_ghast::travel_speed(self);
             (speed, speed)
@@ -1818,7 +1873,7 @@ impl Mob {
         lava_speed: f32,
         air_speed: f32,
         pause: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let (speed, drag) = if self.fluids.in_water {
             (water_speed, f64::from(0.8_f32))
         } else if self.fluids.in_lava {
@@ -1839,7 +1894,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelFinish,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
     }
 
@@ -1850,11 +1905,13 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelTail,
-    ) -> Result<(), TravelTrample> {
-        if let Some(movement) =
-            self.move_until_trample(w, level, events, &mut MoveGate::new(), pause)
+    ) -> Result<(), TravelPause> {
+        if let Some(movement) = self.move_until_pause(w, level, events, &mut MoveGate::new(), pause)
         {
-            return Err(TravelTrample { movement, tail });
+            return Err(TravelPause {
+                movement: Box::new(movement),
+                tail,
+            });
         }
         tail.finish(self, w, level, events);
         Ok(())
@@ -1917,7 +1974,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         stop_gliding: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let friction = if self.on_ground {
             // FRICTION_MODIFIER scales the block's slipperiness.
             let modifier = super::sulfur_cube::physics(self)
@@ -1994,7 +2051,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         water: bool,
-    ) -> Result<(), TravelTrample> {
+    ) -> Result<(), TravelPause> {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();

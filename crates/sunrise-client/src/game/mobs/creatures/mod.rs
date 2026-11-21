@@ -2213,12 +2213,16 @@ impl Game<'_> {
     }
 
     fn finish_creaking_hurt(&mut self, index: usize) {
-        let id = self.mobs[index].id;
+        let mob = &mut self.mobs[index];
+        let (id, join) = (mob.id, mob.join);
         let mut events = Vec::new();
-        let reaction =
-            sunrise_client::mobs::creaking::take_hurt(&mut self.mobs[index], &mut events);
+        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
         let _ = self.handle_mob_events(events);
-        if let Some((home, by_player)) = reaction {
+        if let Some((home, by_player)) = reaction
+            && self
+                .mob_object(id)
+                .is_some_and(|mob| mob.join == join && !mob.removed)
+        {
             self.creaking_hurt(home, id, by_player);
         }
     }
@@ -3698,11 +3702,6 @@ impl Game<'_> {
                     self.level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id,
-                } => self.creaking_hurt(home, id, by_player),
                 MobEvent::CreakingTearDown { center, spread } => {
                     self.creaking_tear_down(center, spread)
                 }
