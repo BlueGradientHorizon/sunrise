@@ -54,7 +54,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.KeyPressed.Post",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn screen_key_pressed_post(
         screen: &ScreenView<'_>,
@@ -79,7 +80,7 @@ pub trait Hooks {
         modifiers: u32,
         canceled: &mut bool,
     );
-    /// A typed character that no text box took (`ScreenEvent.CharacterTyped.Post`, vanilla's `Screen.charTyped` returning false), once per printable character that `screen_char_typed_pre` let through: `c` and `modifiers` as there. Set `canceled` and it counts as handled (nothing further reads it, so it changes nothing). It does not fire for text a box took, nor on Options and the title's own screens, where the key's text is routed in place between their boxes. A held edit modifier makes the key a shortcut, so its character is not taken and fires it. Same screens as the key press. Fires on the window only, while a screen of the game's or the title's is open (the screens the `_pre` input hooks cover), for real mouse or keyboard input and not a pad's or the keyboard focus's, and only when the matching Pre did not cancel it. It fires on the screen open after the key acted, as for the Pre.
+    /// A typed character that no text box took (`ScreenEvent.CharacterTyped.Post`, vanilla's `Screen.charTyped` returning false), once per printable character that `screen_char_typed_pre` let through: `c` and `modifiers` as there. Set `canceled` and it counts as handled (nothing further reads it, so it changes nothing). It does not fire for text a box took, nor on Options and ordinary title screens, where the key's text is routed in place between their boxes. A bound `world_preset_editor` also fires it for unhandled input-method and control-socket text. A held edit modifier makes the key a shortcut, so its character is not taken and never fires it. Same screens as the key press. Fires on the window only, while a screen of the game's or the title's is open (the screens the `_pre` input hooks cover), for real mouse or keyboard input and not a pad's or the keyboard focus's, and only when the matching Pre did not cancel it. It fires on the screen open after the key acted, as for the Pre.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -87,7 +88,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.CharacterTyped.Post",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn screen_char_typed_post(
         screen: &ScreenView<'_>,

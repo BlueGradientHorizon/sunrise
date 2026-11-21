@@ -198,52 +198,47 @@ mod texture_atlas_stitched_tests {
             _: &mod_api::RegistrationContext,
             event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
         ) {
-            event.sources.push("marker:own".into());
-        }
-        fn sprite_source(
-            &self,
-            _: &mod_api::RegistrationContext,
-            event: &mut mod_api::SpriteSourceEvent<'_>,
-        ) {
-            if event.source != "marker:own" {
-                return;
-            }
-            let mut marker = self.0.lock().unwrap();
-            match event.atlas.to_string().as_str() {
-                "minecraft:blocks" => event.output.push(mod_api::SpriteSourceOutput::Pixels {
-                    sprite: id("marker:block/own"),
-                    width: 2,
-                    height: 2,
-                    rgba: [32, 64, 96, 255].repeat(4),
-                }),
-                "minecraft:gui" => {
-                    marker.gui_asks += 1;
-                    let width = 2 + marker.gui_asks;
-                    event.output.push(mod_api::SpriteSourceOutput::Pixels {
-                        sprite: id("marker:own"),
-                        width,
-                        height: 3,
-                        rgba: [64, 96, 32, 255].repeat((width * 3) as usize),
-                    });
-                    // A sprite the first load publishes and the reload no longer does.
-                    if marker.gui_asks == 1 {
-                        event.output.push(mod_api::SpriteSourceOutput::Pixels {
-                            sprite: id("marker:first_only"),
-                            width: 2,
-                            height: 2,
-                            rgba: [9, 9, 9, 255].repeat(4),
+            let marker = Arc::clone(&self.0);
+            event.register(id("marker:own"), move |input| {
+                let mut marker = marker.lock().unwrap();
+                let mut output = Vec::new();
+                match input.atlas.to_string().as_str() {
+                    "minecraft:blocks" => output.push(mod_api::SpriteSourceOutput::Pixels {
+                        sprite: id("marker:block/own"),
+                        width: 2,
+                        height: 2,
+                        rgba: [32, 64, 96, 255].repeat(4),
+                    }),
+                    "minecraft:gui" => {
+                        marker.gui_asks += 1;
+                        let width = 2 + marker.gui_asks;
+                        output.push(mod_api::SpriteSourceOutput::Pixels {
+                            sprite: id("marker:own"),
+                            width,
+                            height: 3,
+                            rgba: [64, 96, 32, 255].repeat((width * 3) as usize),
+                        });
+                        // A sprite the first load publishes and the reload no longer does.
+                        if marker.gui_asks == 1 {
+                            output.push(mod_api::SpriteSourceOutput::Pixels {
+                                sprite: id("marker:first_only"),
+                                width: 2,
+                                height: 2,
+                                rgba: [9, 9, 9, 255].repeat(4),
+                            });
+                        }
+                        // The replacement of a walked vanilla sprite, of another size.
+                        output.push(mod_api::SpriteSourceOutput::Pixels {
+                            sprite: id("container/slot"),
+                            width: 5,
+                            height: 5,
+                            rgba: [255, 0, 255, 255].repeat(25),
                         });
                     }
-                    // The replacement of a walked vanilla sprite, of another size.
-                    event.output.push(mod_api::SpriteSourceOutput::Pixels {
-                        sprite: id("container/slot"),
-                        width: 5,
-                        height: 5,
-                        rgba: [255, 0, 255, 255].repeat(25),
-                    });
+                    _ => {}
                 }
-                _ => {}
-            }
+                Ok(output)
+            });
         }
         fn texture_atlas_stitched(
             &self,
@@ -331,6 +326,13 @@ mod texture_atlas_stitched_tests {
         )]
         .into();
         with_mods(mods, || {
+            use mod_api::__private::game::RegistrationContextNew;
+            let mut sources = Vec::new();
+            super::Game::native_register_sprite_sources(
+                &mod_api::RegistrationContext::new(),
+                &mut sources,
+            );
+            sunrise_client_render::mod_sprite_sources::register(sources);
             super::super::native_entity_refs::tests::with_game_role(
                 root.path().to_owned(),
                 crate::game::execution_role::ExecutionRole::Client,

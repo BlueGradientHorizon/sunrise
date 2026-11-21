@@ -14,6 +14,7 @@ mod glint_atlas;
 #[cfg(test)]
 mod glint_tests;
 pub mod gui;
+mod registered_providers;
 mod registered_special;
 mod special;
 #[cfg(test)]
@@ -28,6 +29,16 @@ use crate::{
 };
 use glam::{Mat3, Mat4, Vec3};
 use mod_api::{ClientHost, ItemDisplayContext, ItemKey, SpecialModelContext, SpecialModelTints};
+use registered_providers::ActiveItemProviders;
+pub use registered_providers::{
+    BoundItemModel, BoundRangeProperty, BoundSelectProperty, BoundTintSource, ItemModelFactories,
+    ItemProviderEntry, ItemProviderTables, ItemTintFactories, RangePropertyFactories,
+    SelectPropertyFactories, bind_item_model_factories, bind_item_tint_factories,
+    bind_range_property_factories, bind_select_property_factories, decode_item_model,
+    decode_range_property, decode_select_property, decode_tint_source,
+    install_item_model_factories, install_item_tint_factories, install_range_property_factories,
+    install_select_property_factories,
+};
 pub use registered_special::{
     BakedSpecialGeometry, OwnedSpecialModelFactory, SpecialModelFactories,
     install_special_model_factories,
@@ -956,8 +967,10 @@ impl ItemRenderer {
             cit,
         };
         if drawn {
+            let active = ActiveItemProviders::current();
+            let providers = active.tables(factories);
             renderer.models.definitions = load_definitions(root.source(), |text| {
-                renderer.decode_definition(text, factories)
+                renderer.decode_definition(text, &providers)
             });
         }
         Ok(renderer)
@@ -1584,32 +1597,76 @@ mod tests {
     }
     #[test]
     fn a_registered_item_model_type_is_read_again_on_each_load() {
+        use mod_api::{
+            __private::game::RegistrationContextNew, Hooks, Identifier, ModEntry,
+            RegisterItemModelsEvent, RegistrationContext,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
         use sunrise_assets::resource_source::Resource;
-        sunrise_assets::item_model::register_item_models(vec!["loadtest:cell".into()]);
-        let source = |full: &str| {
-            let cell = format!(
-                r#"{{"model":{{"type":"loadtest:cell","models":{{"full":{{"type":"minecraft:model","model":"{full}"}}}}}}}}"#
-            );
-            ResourceSource::indexed(BTreeMap::from([
-                (
-                    "assets/loadtest/items/cell.json".to_owned(),
-                    Resource::bytes(cell.into_bytes()),
-                ),
-                (
-                    "assets/loadtest/items/other.json".to_owned(),
-                    Resource::bytes(br#"{"model":{"type":"loadtest:unregistered"}}"#.to_vec()),
-                ),
-            ]))
-        };
-        let models = |full: &str| {
-            let loaded = load_definitions(&source(full), ClientItem::from_json);
-            assert!(!loaded.contains_key("loadtest:other"));
-            let mut models = Vec::new();
-            loaded["loadtest:cell"].model.dependencies(&mut models);
-            models
-        };
-        assert_eq!(models("loadtest:item/a"), ["loadtest:item/a"]);
-        assert_eq!(models("loadtest:item/b"), ["loadtest:item/b"]);
+
+        struct CellMod(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl Hooks for CellMod {
+            fn register_item_models(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterItemModelsEvent<'_>,
+            ) {
+                let decodes = Arc::clone(&self.0);
+                event.register(
+                    Identifier::parse("loadtest:cell").unwrap(),
+                    move |_, children| {
+                        decodes.fetch_add(1, Ordering::Relaxed);
+                        children.add_named_models()?;
+                        Ok(|_, _, _| {})
+                    },
+                );
+            }
+        }
+
+        let decodes = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "loadtest",
+            Box::new(CellMod(Arc::clone(&decodes))),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let mut registered = Vec::new();
+            mod_api::dispatch_register_item_models(&RegistrationContext::new(), &mut registered);
+            let (_fixture, kept) =
+                registered_providers::ItemProvidersFixture::item_models(registered);
+            assert_eq!(kept, ["loadtest:cell"]);
+
+            let source = |full: &str| {
+                let cell = format!(
+                    r#"{{"model":{{"type":"loadtest:cell","models":{{"full":{{"type":"minecraft:model","model":"{full}"}}}}}}}}"#
+                );
+                ResourceSource::indexed(BTreeMap::from([
+                    (
+                        "assets/loadtest/items/cell.json".to_owned(),
+                        Resource::bytes(cell.into_bytes()),
+                    ),
+                    (
+                        "assets/loadtest/items/other.json".to_owned(),
+                        Resource::bytes(br#"{"model":{"type":"loadtest:unregistered"}}"#.to_vec()),
+                    ),
+                ]))
+            };
+            let models = |full: &str| {
+                let active = ActiveItemProviders::current();
+                let providers = active.tables(None);
+                let loaded = load_definitions(&source(full), |text| {
+                    registered_providers::decode_definition_without_specials(text, &providers)
+                });
+                assert!(!loaded.contains_key("loadtest:other"));
+                let mut models = Vec::new();
+                loaded["loadtest:cell"].model.dependencies(&mut models);
+                models
+            };
+            assert_eq!(models("loadtest:item/a"), ["loadtest:item/a"]);
+            assert_eq!(models("loadtest:item/b"), ["loadtest:item/b"]);
+            assert_eq!(decodes.load(Ordering::Relaxed), 2);
+        });
     }
 
     #[test]

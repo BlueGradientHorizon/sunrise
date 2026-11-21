@@ -27,7 +27,10 @@ use super::{
     native_panel_recipes::RecipePage,
 };
 use mod_api::__private::game::{
-    LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
+    BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
+    JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
+    ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
+    SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
 };
 use mod_api::GameMode;
 use mod_api::GameTests;
@@ -38,11 +41,10 @@ use mod_api::{
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
     EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt, InteractionKey,
-    ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
-    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
-    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
-    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
-    VillagerProfessions, WorldPhase,
+    ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
+    PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId,
+    ScreenOpening, ScreenTarget, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
+    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -323,14 +325,10 @@ mod item_crafted;
 mod item_fished;
 mod item_interact_mob;
 mod item_model_property;
-mod item_model_range_property;
-mod item_model_select_property;
-mod item_model_update;
 mod item_picked_up;
 mod item_picked_up_tests;
 mod item_smelted;
 mod item_stacked_on_other;
-mod item_tint_source;
 mod item_tooltip;
 mod item_toss;
 mod key_mapping_pre;

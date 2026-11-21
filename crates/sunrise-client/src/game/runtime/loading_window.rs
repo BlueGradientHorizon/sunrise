@@ -319,6 +319,7 @@ pub(super) fn start_game<'a>(
                 pack.source.clone(),
             ),
             entity_models.as_deref(),
+            pack.render.model_library.as_deref().ok(),
         )?),
     };
     let mut game = Game::new(res, pack, gui, options, settings, audio, prepared)?;

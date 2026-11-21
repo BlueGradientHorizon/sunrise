@@ -1,46 +1,106 @@
 //! The atlas sprite source types native mods register (NeoForge's `RegisterSpriteSourcesEvent`),
-//! kept once at start, and the hook point that asks a mod's source for its sprites.
-use crate::atlas_sources::ModSources;
-use mod_api::{HookId, Identifier, RegistrationContext, ResourceReader, SpriteSourceOutput};
+//! bound once at start so a resource load invokes each type's provider directly when listing an
+//! atlas definition.
+use crate::atlas_sources::{ModSources, is_builtin_type};
+use mod_api::{
+    __private::game::{CallbackOwner, SpriteSourceRegistration},
+    Answered, Identifier, ResourceReader, SpriteSourceFn, SpriteSourceInput, SpriteSourceOutput,
+};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     sync::{Arc, RwLock},
 };
 use sunrise_core::nbt::Tag;
 
-static TYPES: RwLock<BTreeSet<String>> = RwLock::new(BTreeSet::new());
-
-/// Keeps the sprite source types native mods registered, before resources load. An id that is not
-/// `<namespace>:<path>` in a namespace other than vanilla's, or one registered already, is logged
-/// and left out. Returns the ids kept, in registration order.
-pub fn register(ids: Vec<String>) -> Vec<String> {
-    sunrise_assets::item_model::keep_mod_ids(&TYPES, "sprite source type", ids)
+struct BoundSpriteSource {
+    owner: CallbackOwner,
+    list: Arc<SpriteSourceFn>,
 }
 
-/// Hook point for native mods (docs/modding/src/how-to/native-mods.md, declared in `hooks/` with
-/// the game's): an atlas definition's entry of a type a mod registered (`SpriteSource.run`).
-/// `config` is the entry's object and `resources` the load's resources; the mod that owns
-/// `source` pushes its sprites to `output`.
-#[inline(never)]
-pub fn native_sprite_source(
-    context: &RegistrationContext,
-    source: &str,
-    atlas: &Identifier,
-    config: &Tag,
-    resources: &Arc<dyn ResourceReader>,
-    output: &mut Vec<SpriteSourceOutput>,
-) {
-    if !mod_api::__private::listened(HookId::SpriteSource) {
-        return;
+static SOURCES: RwLock<BTreeMap<String, Arc<BoundSpriteSource>>> = RwLock::new(BTreeMap::new());
+
+#[cfg(test)]
+static SOURCES_FIXTURE: std::sync::Mutex<Option<BTreeMap<String, Arc<BoundSpriteSource>>>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
+
+fn bind_into(
+    bound: &mut BTreeMap<String, Arc<BoundSpriteSource>>,
+    sources: Vec<Answered<SpriteSourceRegistration>>,
+) -> Vec<String> {
+    let mut kept = Vec::new();
+    let mut seen = BTreeSet::new();
+    for Answered { answer, mod_id, .. } in sources {
+        let id = answer.id;
+        let Some(owner) = CallbackOwner::new(mod_id) else {
+            log::warn!("Sprite source type {id} has no installed owner {mod_id}");
+            continue;
+        };
+        let key = id.to_string();
+        let entry = Arc::new(BoundSpriteSource {
+            owner,
+            list: answer.list,
+        });
+        if let Some(earlier) = bound.insert(key.clone(), entry) {
+            log::warn!(
+                "Sunrise: sprite source type {key} registered by {} is replaced by {mod_id}'s registration",
+                earlier.owner.id()
+            );
+        } else if is_builtin_type(&key) {
+            log::warn!(
+                "Sunrise: sprite source type {key} registered by the game is replaced by {mod_id}'s registration"
+            );
+        }
+        if seen.insert(key.clone()) {
+            kept.push(key);
+        }
     }
-    mod_api::dispatch_sprite_source(context, source, atlas, config, resources, output);
+    kept
+}
+
+/// Binds the sprite source providers native mods registered once at start, before resources load.
+/// Any valid `Identifier` (including `minecraft:` and empty-path ids) is accepted; a later
+/// registration for the same id replaces the earlier one (last-writer-wins) with a warning naming
+/// both mods, and overriding a built-in vanilla source type logs a warning naming the mod.
+/// Returns the unique ids kept in this batch, in first-registration order.
+pub fn register(sources: Vec<Answered<SpriteSourceRegistration>>) -> Vec<String> {
+    let mut bound = SOURCES
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    bind_into(&mut bound, sources)
+}
+
+fn lookup(kind: &str) -> Option<Arc<BoundSpriteSource>> {
+    #[cfg(test)]
+    if let Some(fixture) = SOURCES_FIXTURE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+    {
+        return fixture.get(kind).cloned();
+    }
+    SOURCES
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(kind)
+        .cloned()
 }
 
 fn is_registered(kind: &str) -> bool {
-    TYPES
+    #[cfg(test)]
+    if let Some(fixture) = SOURCES_FIXTURE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+    {
+        return fixture.contains_key(kind);
+    }
+    SOURCES
         .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .contains(kind)
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .contains_key(kind)
 }
 
 /// The native mods' source types, declared but never answered: for a load that draws nothing.
@@ -60,7 +120,7 @@ impl ModSources for Declared {
     }
 }
 
-/// The native mods' source types, answered on the resource loader as registrations.
+/// The native mods' bound sprite source providers, invoked on the resource loader as registrations.
 pub struct Registered;
 impl ModSources for Registered {
     fn is_registered(&self, kind: &str) -> bool {
@@ -73,26 +133,78 @@ impl ModSources for Registered {
         config: &Tag,
         resources: &Arc<dyn ResourceReader>,
     ) -> Vec<SpriteSourceOutput> {
-        use mod_api::__private::game::RegistrationContextNew;
+        let Some(entry) = lookup(kind) else {
+            return Vec::new();
+        };
         let _phase =
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-        let mut output = Vec::new();
-        native_sprite_source(
-            &RegistrationContext::new(),
-            kind,
+        let input = SpriteSourceInput {
             atlas,
             config,
-            resources,
-            &mut output,
-        );
-        output
+            resources: resources.as_ref(),
+        };
+        match entry
+            .owner
+            .call("sprite source", "sprite_source", || (entry.list)(&input))
+        {
+            Ok(Ok(outputs)) => outputs,
+            Ok(Err(reason)) => {
+                log::warn!(
+                    "atlas {atlas}: mod {} sprite source {kind} failed: {reason}",
+                    entry.owner.id()
+                );
+                Vec::new()
+            }
+            Err(error) => {
+                log::warn!("atlas {atlas}: sprite source {kind}: {error}");
+                Vec::new()
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::atlas_sources::{SpriteOrigin, SpriteSource, decode, list, test_mods::Mods};
+    use crate::atlas_sources::{
+        Listing, SpriteOrigin, SpriteSource, decode, list, test_mods::Mods,
+    };
+    use mod_api::{
+        __private::game::{RegistrationContextNew, take_callback_panic_notices},
+        RegistrationContext,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct SourcesFixture;
+
+    impl SourcesFixture {
+        fn from_registrations(
+            sources: Vec<Answered<SpriteSourceRegistration>>,
+        ) -> (Self, Vec<String>) {
+            let mut bound = BTreeMap::new();
+            let kept = bind_into(&mut bound, sources);
+            let mut fixture = SOURCES_FIXTURE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            while fixture.is_some() {
+                fixture = FIXTURE_CHANGED
+                    .wait(fixture)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+            *fixture = Some(bound);
+            (Self, kept)
+        }
+    }
+
+    impl Drop for SourcesFixture {
+        fn drop(&mut self) {
+            let mut fixture = SOURCES_FIXTURE
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *fixture = None;
+            FIXTURE_CHANGED.notify_all();
+        }
+    }
 
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
@@ -128,23 +240,227 @@ mod tests {
     }
 
     #[test]
-    fn registration_keeps_only_new_ids_in_a_mods_namespace() {
-        assert_eq!(
-            register(vec![
-                "srcreg:one".into(),
-                "srcreg:one".into(),
-                "minecraft:mine".into(),
-                "no_namespace".into(),
-                "srcreg:two".into(),
-            ]),
-            ["srcreg:one", "srcreg:two"]
-        );
-        assert!(is_registered("srcreg:one") && is_registered("srcreg:two"));
-        assert!(!is_registered("minecraft:mine") && !is_registered("no_namespace"));
-        assert!(
-            register(vec!["srcreg:one".into()]).is_empty(),
-            "already registered"
-        );
+    fn registration_accepts_minecraft_namespace_overrides_builtins_and_last_writer_wins() {
+        struct Earlier;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Earlier {
+            fn register_sprite_sources(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
+            ) {
+                event.register(id("srcreg:shared"), |_| {
+                    Ok(vec![pixels("srcreg:from_earlier", 1, 1, vec![1; 4])])
+                });
+                event.register(id("minecraft:single"), |_| {
+                    Ok(vec![pixels("srcreg:single_earlier", 1, 1, vec![2; 4])])
+                });
+            }
+        }
+        struct Later;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Later {
+            fn register_sprite_sources(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
+            ) {
+                event.register(id("srcreg:shared"), |_| {
+                    Ok(vec![pixels("srcreg:from_later", 1, 1, vec![3; 4])])
+                });
+                event.register(id("minecraft:single"), |_| {
+                    Ok(vec![pixels("srcreg:single_override", 1, 1, vec![4; 4])])
+                });
+                event.register(id("minecraft:custom"), |_| {
+                    Ok(vec![pixels("srcreg:mc_custom", 1, 1, vec![5; 4])])
+                });
+            }
+        }
+
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new("earlier_src", Box::new(Earlier)),
+            mod_api::ModEntry::new("later_src", Box::new(Later)),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let mut registrations = Vec::new();
+            mod_api::dispatch_register_sprite_sources(
+                &RegistrationContext::new(),
+                &mut registrations,
+            );
+            let (_fixture, kept) = SourcesFixture::from_registrations(registrations);
+            assert_eq!(
+                kept,
+                ["srcreg:shared", "minecraft:single", "minecraft:custom"]
+            );
+            assert!(
+                Declared.is_registered("srcreg:shared")
+                    && Declared.is_registered("minecraft:single")
+                    && Declared.is_registered("minecraft:custom")
+            );
+            let source = crate::resource_source::ResourceSource::indexed(
+                [
+                    (
+                        "assets/minecraft/atlases/blocks.json".to_owned(),
+                        sunrise_assets::resource_source::Resource::bytes(
+                            br#"{"sources":[
+                                {"type":"srcreg:shared"},
+                                {"type":"single","resource":"srctest:item/apple"},
+                                {"type":"minecraft:custom"}
+                            ]}"#
+                            .to_vec(),
+                        ),
+                    ),
+                    (
+                        "assets/srctest/textures/item/apple.png".to_owned(),
+                        sunrise_assets::resource_source::Resource::bytes(b"png".to_vec()),
+                    ),
+                ]
+                .into(),
+            );
+            let listing = Listing::build(&source, &Registered);
+            assert_eq!(
+                listing
+                    .sprites("minecraft:blocks")
+                    .keys()
+                    .collect::<Vec<_>>(),
+                [
+                    "srcreg:from_later",
+                    "srcreg:mc_custom",
+                    "srcreg:single_override"
+                ],
+                "later registration replaces earlier one and overrides built-in minecraft:single"
+            );
+        });
+    }
+
+    #[test]
+    fn panic_disables_only_that_provider_with_notice_and_non_panic_err_does_not_latch() {
+        let _notice_lock = crate::mod_model_loaders::PANIC_NOTICE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let panic_calls = Arc::new(AtomicUsize::new(0));
+        let flaky_calls = Arc::new(AtomicUsize::new(0));
+        let healthy_calls = Arc::new(AtomicUsize::new(0));
+
+        struct Panicker(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Panicker {
+            fn register_sprite_sources(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
+            ) {
+                let calls = Arc::clone(&self.0);
+                event.register(id("srctest:panics"), move |_| {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    panic!("sprite source boom");
+                });
+            }
+        }
+        struct Flaky(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Flaky {
+            fn register_sprite_sources(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
+            ) {
+                let calls = Arc::clone(&self.0);
+                event.register(id("srctest:flaky"), move |_| {
+                    if calls.fetch_add(1, Ordering::Relaxed) == 0 {
+                        Err("missing palette".into())
+                    } else {
+                        Ok(vec![pixels("srctest:recovered", 1, 1, vec![7; 4])])
+                    }
+                });
+            }
+        }
+        struct Healthy(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Healthy {
+            fn register_sprite_sources(
+                &self,
+                _: &RegistrationContext,
+                event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
+            ) {
+                let calls = Arc::clone(&self.0);
+                event.register(id("srctest:healthy"), move |_| {
+                    calls.fetch_add(1, Ordering::Relaxed);
+                    Ok(vec![pixels("srctest:ok", 1, 1, vec![8; 4])])
+                });
+            }
+        }
+
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new("src_panicker", Box::new(Panicker(Arc::clone(&panic_calls)))),
+            mod_api::ModEntry::new("src_flaky", Box::new(Flaky(Arc::clone(&flaky_calls)))),
+            mod_api::ModEntry::new("src_healthy", Box::new(Healthy(Arc::clone(&healthy_calls)))),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let mut registrations = Vec::new();
+            mod_api::dispatch_register_sprite_sources(
+                &RegistrationContext::new(),
+                &mut registrations,
+            );
+            let (_fixture, kept) = SourcesFixture::from_registrations(registrations);
+            assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
+
+            let atlas_source = |kind: &str| {
+                crate::resource_source::ResourceSource::indexed(
+                    [(
+                        "assets/minecraft/atlases/blocks.json".to_owned(),
+                        sunrise_assets::resource_source::Resource::bytes(
+                            format!(r#"{{"sources":[{{"type":"{kind}"}}]}}"#).into_bytes(),
+                        ),
+                    )]
+                    .into(),
+                )
+            };
+
+            let _ = take_callback_panic_notices();
+            let first_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+            assert!(first_panic.sprites("minecraft:blocks").is_empty());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+            let notices = take_callback_panic_notices();
+            assert!(
+                notices.iter().any(|notice| notice.mod_id == "src_panicker" && notice.kind == "sprite source"),
+                "expected panic notice, got {notices:?}"
+            );
+
+            // Disabled after panic: a second load does not invoke the panicking callback again.
+            let second_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+            assert!(second_panic.sprites("minecraft:blocks").is_empty());
+            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+            // Non-panic Err does not latch or queue a panic notice.
+            let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+            assert!(first_flaky.sprites("minecraft:blocks").is_empty());
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+            assert!(take_callback_panic_notices().is_empty());
+
+            let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+            assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                second_flaky
+                    .sprites("minecraft:blocks")
+                    .keys()
+                    .collect::<Vec<_>>(),
+                ["srctest:recovered"]
+            );
+
+            // Another mod's provider is unaffected by the panic.
+            let healthy = Listing::build(&atlas_source("srctest:healthy"), &Registered);
+            assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                healthy
+                    .sprites("minecraft:blocks")
+                    .keys()
+                    .collect::<Vec<_>>(),
+                ["srctest:ok"]
+            );
+        });
     }
 
     #[test]
@@ -154,10 +470,22 @@ mod tests {
             decode(text, &Mods::none()).unwrap_err().to_string(),
             "sources[1]: unknown sprite source type srcfree:nobody"
         );
-        let registered = Mods::new(&["srcfree:nobody"], |_, _, _, _| Vec::new());
+        let registered = Mods::new(&["srcfree:nobody", "srcfree:"], |_, _, _, _| Vec::new());
         assert!(matches!(
             decode(text, &registered).unwrap().as_slice(),
             [_, SpriteSource::Registered { kind, .. }] if kind == "srcfree:nobody"
+        ));
+        // Leading colon resolves into minecraft:, and valid empty-path ids are accepted.
+        let leading_and_empty = r#"{"sources":[
+            {"type":":single","resource":":item/stick"},
+            {"type":"srcfree:"}
+        ]}"#;
+        assert!(matches!(
+            decode(leading_and_empty, &registered).unwrap().as_slice(),
+            [
+                SpriteSource::Single { resource, .. },
+                SpriteSource::Registered { kind, .. },
+            ] if resource == "minecraft:item/stick" && kind == "srcfree:"
         ));
     }
 

@@ -175,10 +175,12 @@ arrow on the top turns east without UV locking and retains its world orientation
 Quads are appended in call order, retaining each part's positions, materials and quad
 metadata in one model. The particle is the first available part particle, and model-level
 ambient occlusion is enabled only if every appended part enables it. Declare all the model
-files the callback may append. Dependencies, including their parents and loader references,
-load through the normal model library; they are not automatically registered as results.
-An undeclared append, a missing dependency, a bake error or a refused callback discards
-the whole model and logs the registering mod. Ignoring an append error still discards it.
+files the callback may append. Dependencies load through the normal model library; they are
+not automatically registered as results. As with blockstate and item models, a missing or rejected
+parent uses the missing model at that link, and the child's own geometry still wins. This also
+applies to files registered with `register_model`.
+An undeclared append, a missing or rejected declared file, a bake error or a refused callback
+discards the whole model and logs the registering mod. Ignoring an append error still discards it.
 
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;

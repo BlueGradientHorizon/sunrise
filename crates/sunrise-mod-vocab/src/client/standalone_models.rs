@@ -4,6 +4,7 @@ use std::fmt;
 
 impl StandaloneModelsEvent<'_> {
     /// Register an unturned, namespaced model file such as `mymod:block/shaft`.
+    /// If a parent is missing or rejected, the missing model takes that parent's place.
     /// A successfully baked file takes precedence over a baker for the same ID.
     pub fn register_model(&mut self, id: impl Into<String>) {
         self.registrations
@@ -14,8 +15,10 @@ impl StandaloneModelsEvent<'_> {
     /// the baker may append. The result ID need not use the registering mod's namespace.
     ///
     /// At each resource load, the game runs bakers in registration order after loading
-    /// their dependencies. A baker runs only if the ID is still unfilled and its
-    /// dependencies load. Capture owned data; the baker can run on a resource worker.
+    /// their dependencies. A baker runs only if the ID is still unfilled and every declared
+    /// file loads. Like blockstate models, a missing or rejected parent uses the missing model
+    /// at that link; it does not invalidate the loaded file. Capture owned data; the baker can
+    /// run on a resource worker.
     /// Returning an error or failing any append discards the whole result, even if the
     /// callback ignores the append's error.
     pub fn register(

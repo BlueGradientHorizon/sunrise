@@ -527,7 +527,7 @@ pub(super) fn buttons(
                 gy,
                 150.0,
                 tr("selectWorld.customizeType"),
-                (editors_ready && super::preset_editors::editor(o.preset_id()).is_some())
+                (editors_ready && super::preset_editors::has_editor(o.preset_id()))
                     || (o.custom_preset.is_none()
                         && matches!(
                             o.world_type,

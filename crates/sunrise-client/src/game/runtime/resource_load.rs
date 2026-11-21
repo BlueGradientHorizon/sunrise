@@ -895,7 +895,11 @@ pub(super) fn load_resources_for_mods(
                 })
             });
             let game_cpu = startup::time("handoff.game_cpu", || {
-                GameCpuResources::load(&resolved, entity_models.as_deref())
+                GameCpuResources::load(
+                    &resolved,
+                    entity_models.as_deref(),
+                    pack.render.model_library.as_deref().ok(),
+                )
             });
             (game_cpu, textures.map(Step::join))
         });

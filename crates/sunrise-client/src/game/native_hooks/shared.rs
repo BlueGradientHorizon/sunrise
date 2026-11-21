@@ -1487,14 +1487,18 @@ impl Game<'_> {
         let Some(text) = text else {
             return;
         };
+        // A held edit modifier makes a shortcut of the key, not text.
+        let text = chars_to_type(text, self.types_text());
+        self.screen_committed_chars(&text);
+    }
+
+    /// Characters already committed by the input method or the control socket are not shortcuts.
+    pub(in crate::game) fn screen_committed_chars(&mut self, text: &str) {
         if !self.screen_hooks_open() {
             return;
         }
-        // A held edit modifier makes a shortcut of the key, not text.
-        let text = chars_to_type(text, self.types_text());
-        self.screen_text_each(&text, |game, c| {
-            // `Err` only says no text box of the screen takes the character.
-            if game.type_chars_into_screen(c).is_err() {
+        self.screen_text_each(text, |game, c| {
+            if !c.starts_with(char::is_control) && game.type_chars_into_screen(c).is_err() {
                 game.screen_chars_post(c);
             }
         });

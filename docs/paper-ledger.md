@@ -1040,9 +1040,6 @@ one of these moments has to move that logic into a client native mod.
 | `hand_drawn.rs` | `hand_drawn` |
 | `input_key.rs` | `input_key` |
 | `item_model_property.rs` | `item_model_property` |
-| `item_model_range_property.rs` | `item_model_range_property` |
-| `item_model_select_property.rs` | `item_model_select_property` |
-| `item_tint_source.rs` | `item_tint_source` |
 | `item_tooltip.rs` | `item_tooltip` |
 | `key_mapping_pre.rs` | `key_mapping_pre` |
 | `left_click_empty.rs` | `left_click_empty` |

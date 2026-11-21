@@ -2,7 +2,7 @@
 use crate::{
     json::*,
     model::*,
-    model_loaders::{LoaderGeometry, LoaderQuad},
+    model_loaders::{LoaderQuad, LoaderSchema},
     obj::{ObjModel, parse_mtl, parse_obj},
 };
 use std::{
@@ -27,13 +27,12 @@ pub struct ModelLibrary {
     assets: Option<Arc<dyn AssetReader>>,
     /// Keyed by obj and mtl override; `None` is a file that failed, already warned about.
     objs: Mutex<BTreeMap<(String, Option<String>), Option<Arc<ObjModel>>>>,
-    /// What registered loaders add ([`crate::model_loaders`]).
-    loaders: Option<Arc<dyn LoaderGeometry>>,
-    /// A registered loader's quads, keyed by the loader data they were asked for.
-    loader_quads: Mutex<BTreeMap<(String, usize), Arc<[LoaderQuad]>>>,
-    /// Models whose unknown loader was already logged.
-    unknown_loaders: Mutex<BTreeSet<String>>,
 }
+enum ResolveFailure {
+    Structure(crate::DecodeError),
+    Loader(crate::DecodeError),
+}
+
 /// What a model's loader adds to its own elements.
 #[derive(Clone, Debug)]
 pub enum ResolvedLoader {
@@ -65,7 +64,7 @@ pub struct ResolvedCuboidModel {
     loader: Option<ResolvedLoader>,
 }
 impl ResolvedCuboidModel {
-    /// Geometry from a custom loader, baked after the elements.
+    /// Geometry supplied by the selected loader.
     pub fn loader(&self) -> Option<&ResolvedLoader> {
         self.loader.as_ref()
     }
@@ -148,15 +147,7 @@ impl ModelLibrary {
             missing,
             assets: None,
             objs: Mutex::default(),
-            loaders: None,
-            loader_quads: Mutex::default(),
-            unknown_loaders: Mutex::default(),
         })
-    }
-    /// What answers the models whose `loader` a mod registered.
-    pub fn with_loaders(mut self, loaders: Arc<dyn LoaderGeometry>) -> Self {
-        self.loaders = Some(loaders);
-        self
     }
     /// Where `neoforge:obj` models find their files.
     pub fn with_assets(mut self, assets: Arc<dyn AssetReader>) -> Self {
@@ -185,9 +176,6 @@ impl ModelLibrary {
             missing: Arc::clone(&self.missing),
             assets: self.assets.clone(),
             objs: Mutex::default(),
-            loaders: self.loaders.clone(),
-            loader_quads: Mutex::default(),
-            unknown_loaders: Mutex::default(),
         })
     }
     /// Follow the complete parent chain. A missing resource uses the built-in
@@ -242,14 +230,21 @@ impl ModelLibrary {
         required: bool,
     ) -> Result<ResolvedCuboidModel> {
         let next = Some(identifier(name)?);
-        self.resolve_chain(
+        match self.resolve_chain(
             Vec::new(),
             Vec::new(),
             next,
             &BTreeMap::new(),
             child,
             (0, required),
-        )
+        ) {
+            Ok(model) => Ok(model),
+            Err(ResolveFailure::Loader(reason)) if !required => {
+                log::error!("model {name}: {reason}");
+                self.resolve_name(MISSING_MODEL, None, true)
+            }
+            Err(ResolveFailure::Structure(reason) | ResolveFailure::Loader(reason)) => Err(reason),
+        }
     }
     /// `chain` and `names` start with models that are not in the library (a
     /// composite child); `next` is the parent to follow. `fallback` slots lose
@@ -262,18 +257,24 @@ impl ModelLibrary {
         fallback: &BTreeMap<String, TextureSlot>,
         child: Option<&BTreeMap<String, TextureSlot>>,
         (depth, required): (u8, bool),
-    ) -> Result<ResolvedCuboidModel> {
+    ) -> std::result::Result<ResolvedCuboidModel, ResolveFailure> {
         if depth > MAX_LOADER_DEPTH {
-            return Err(error("composite models nest too deeply"));
+            return Err(ResolveFailure::Structure(error(
+                "composite models nest too deeply",
+            )));
         }
         let mut visited = BTreeSet::new();
         while let Some(name) = next.take() {
             if !visited.insert(name.clone()) {
-                return Err(error("cyclic model parent"));
+                return Err(ResolveFailure::Structure(error("cyclic model parent")));
             }
             let model = match self.models.get(&name) {
                 Some(model) => model,
-                None if required => return Err(error(&format!("unknown model {name}"))),
+                None if required => {
+                    return Err(ResolveFailure::Structure(error(&format!(
+                        "unknown model {name}"
+                    ))));
+                }
                 None => &self.missing,
             };
             chain.push(Arc::clone(model));
@@ -289,12 +290,14 @@ impl ModelLibrary {
             .find_map(|m| m.gui_light)
             .unwrap_or(GuiLight::Side);
         let render_type = chain.iter().find_map(|m| m.render_type.clone());
-        let geometry = chain.iter().find(|m| m.elements.is_some()).map(Arc::clone);
-        let generated = chain
+        let top_geometry = chain
             .iter()
             .zip(&names)
-            .find(|(m, name)| m.elements.is_some() || *name == GENERATED_MODEL)
-            .is_some_and(|(_, name)| name == GENERATED_MODEL);
+            .position(|(m, name)| m.elements.is_some() || name == GENERATED_MODEL);
+        let mut generated = top_geometry.is_some_and(|index| names[index] == GENERATED_MODEL);
+        let mut geometry = top_geometry
+            .filter(|_| !generated)
+            .map(|index| Arc::clone(&chain[index]));
         let display = ItemTransforms {
             contexts: std::array::from_fn(|index| {
                 chain
@@ -316,76 +319,6 @@ impl ModelLibrary {
         if let Some(child) = child {
             slots.extend(child.iter().map(|(k, v)| (k.clone(), v)));
         }
-        let loader = match chain.iter().find_map(|m| m.loader.as_ref()) {
-            Some(Loader::Composite {
-                children,
-                visibility,
-            }) => {
-                let inherited: BTreeMap<String, TextureSlot> = slots
-                    .iter()
-                    .map(|(k, v)| (k.clone(), (*v).clone()))
-                    .collect();
-                // A model closer to the leaf overrides the loader's own map.
-                let mut visibility = visibility.clone();
-                for model in chain.iter().rev() {
-                    visibility.extend(model.visibility.iter().map(|(k, v)| (k.clone(), *v)));
-                }
-                let mut resolved = Vec::new();
-                for (child_name, child_model) in children {
-                    if visibility.get(child_name) == Some(&false) {
-                        continue;
-                    }
-                    resolved.push(self.resolve_chain(
-                        vec![Arc::clone(child_model)],
-                        vec![format!("{}#{child_name}", names[0])],
-                        child_model.parent.clone(),
-                        &inherited,
-                        None,
-                        (depth + 1, required),
-                    )?);
-                }
-                Some(ResolvedLoader::Composite(resolved))
-            }
-            Some(Loader::Obj {
-                model,
-                flip_v,
-                shade_quads,
-                mtl_override,
-            }) => {
-                // Leaf wins: a model closer to the leaf overrides its parents' entries.
-                let mut visibility = BTreeMap::new();
-                for model in chain.iter().rev() {
-                    visibility.extend(model.visibility.iter().map(|(k, v)| (k.clone(), *v)));
-                }
-                Some(ResolvedLoader::Obj {
-                    model: self.load_obj(&names[0], model, mtl_override.as_deref()),
-                    flip_v: *flip_v,
-                    shade: shade_quads.unwrap_or(true),
-                    hidden: visibility
-                        .into_iter()
-                        .filter(|(_, shown)| !shown)
-                        .map(|(name, _)| name)
-                        .collect(),
-                })
-            }
-            Some(Loader::Registered { kind, config }) => Some(ResolvedLoader::Registered(
-                self.loader_quads(&names[0], kind, config),
-            )),
-            Some(Loader::Unknown(kind)) => {
-                let mut logged = self
-                    .unknown_loaders
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                if logged.insert(names[0].clone()) {
-                    log::error!(
-                        "model {}: unknown loader {kind}; only its elements are drawn",
-                        names[0]
-                    );
-                }
-                None
-            }
-            None => None,
-        };
         let mut textures = BTreeMap::<String, Material>::new();
         let mut unresolved_textures = BTreeSet::<String>::new();
         for start in slots.keys() {
@@ -421,6 +354,87 @@ impl ModelLibrary {
                 }
             }
         }
+        let loader = match chain
+            .iter()
+            .enumerate()
+            .find_map(|(index, model)| model.loader.as_ref().map(|loader| (index, loader)))
+        {
+            Some((
+                _,
+                Loader::Composite {
+                    children,
+                    visibility,
+                },
+            )) => {
+                let inherited: BTreeMap<String, TextureSlot> = slots
+                    .iter()
+                    .map(|(k, v)| (k.clone(), (*v).clone()))
+                    .collect();
+                // A model closer to the leaf overrides the loader's own map.
+                let mut visibility = visibility.clone();
+                for model in chain.iter().rev() {
+                    visibility.extend(model.visibility.iter().map(|(k, v)| (k.clone(), *v)));
+                }
+                let mut resolved = Vec::new();
+                for (child_name, child_model) in children {
+                    if visibility.get(child_name) == Some(&false) {
+                        continue;
+                    }
+                    resolved.push(self.resolve_chain(
+                        vec![Arc::clone(child_model)],
+                        vec![format!("{}#{child_name}", names[0])],
+                        child_model.parent.clone(),
+                        &inherited,
+                        None,
+                        (depth + 1, required),
+                    )?);
+                }
+                Some(ResolvedLoader::Composite(resolved))
+            }
+            Some((
+                _,
+                Loader::Obj {
+                    model,
+                    flip_v,
+                    shade_quads,
+                    mtl_override,
+                },
+            )) => {
+                // Leaf wins: a model closer to the leaf overrides its parents' entries.
+                let mut visibility = BTreeMap::new();
+                for model in chain.iter().rev() {
+                    visibility.extend(model.visibility.iter().map(|(k, v)| (k.clone(), *v)));
+                }
+                Some(ResolvedLoader::Obj {
+                    model: self.load_obj(&names[0], model, mtl_override.as_deref()),
+                    flip_v: *flip_v,
+                    shade: shade_quads.unwrap_or(true),
+                    hidden: visibility
+                        .into_iter()
+                        .filter(|(_, shown)| !shown)
+                        .map(|(name, _)| name)
+                        .collect(),
+                })
+            }
+            // ResolvedModel.findTopGeometry: a descendant's explicit geometry takes
+            // precedence over its parent's model geometry.
+            Some((index, Loader::Registered(_))) if top_geometry.is_some_and(|i| i < index) => None,
+            Some((_, Loader::Registered(registered))) => {
+                if registered.schema() != LoaderSchema::Cuboids {
+                    geometry = None;
+                    generated = false;
+                }
+                let resolved = textures
+                    .iter()
+                    .map(|(slot, material)| (slot.clone(), material.sprite.clone()))
+                    .collect();
+                let quads = registered
+                    .quads(&names[0], resolved)
+                    .map_err(|reason| ResolveFailure::Loader(error(&reason)))?;
+                Some(ResolvedLoader::Registered(quads))
+            }
+            Some((_, Loader::Fusion)) | None => None,
+        };
         Ok(ResolvedCuboidModel {
             ambient_occlusion,
             gui_light,
@@ -432,29 +446,6 @@ impl ModelLibrary {
             generated,
             loader,
         })
-    }
-    /// A registered loader's quads for `config`, asked once per library.
-    fn loader_quads(
-        &self,
-        model: &str,
-        kind: &str,
-        config: &Arc<serde_json::Value>,
-    ) -> Arc<[LoaderQuad]> {
-        let key = (model.to_owned(), Arc::as_ptr(config) as usize);
-        let cache = self.loader_quads.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(found) = cache.get(&key) {
-            return Arc::clone(found);
-        }
-        drop(cache);
-        let quads: Arc<[LoaderQuad]> = match &self.loaders {
-            Some(loaders) => loaders.quads(kind, model, config).into(),
-            None => Arc::new([]),
-        };
-        self.loader_quads
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(key, Arc::clone(&quads));
-        quads
     }
     /// Parse an obj and its materials once; a failure warns once and yields no geometry.
     fn load_obj(&self, label: &str, model: &str, mtl: Option<&str>) -> Option<Arc<ObjModel>> {

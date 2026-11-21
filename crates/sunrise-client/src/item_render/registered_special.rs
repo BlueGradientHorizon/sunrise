@@ -1,7 +1,12 @@
 //! Baking special model nodes at load and writing their layers atomically at draw time.
 use super::{
     ItemDrawEnv, ItemLayerOutput, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners,
-    glam_matrix, sprite_name,
+    glam_matrix,
+    registered_providers::{
+        ItemProviderTables, decode_item_model, decode_range_property, decode_select_property,
+        decode_tint_source,
+    },
+    sprite_name,
 };
 use glam::{Mat4, Vec3};
 use mod_api::{
@@ -10,6 +15,7 @@ use mod_api::{
     SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry, SpecialModelQuad,
     SpecialModelStack, SpecialModelTints,
 };
+use serde_json::{Map, Value};
 use std::{
     collections::BTreeMap,
     ops::ControlFlow,
@@ -20,8 +26,9 @@ use sunrise_assets::{
     bake::{ModelQuad, facing},
     item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
     item_model::{
-        ClientItem, Context, FoilType, LayerTransform, RegisteredSpecialModel, StackView,
-        identifier,
+        ClientItem, Context, FoilType, ItemModelDecoders, ItemModelLoader, LayerTransform,
+        RangePropertyLoader, RegisteredSpecialModel, SelectPropertyLoader, SpecialModelLoader,
+        StackView, TintSourceLoader, identifier,
     },
     math::Mat4 as AssetMatrix,
     model::Material,
@@ -162,15 +169,16 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
 }
 
 impl ItemRenderer {
-    /// Decode an item definition, baking its registered special nodes against this renderer's
-    /// selected models and sprites. Any failed decode or bake refuses the enclosing definition.
+    /// Decode an item definition, binding its registered tint sources, item model types,
+    /// range/select properties, and special model renderers against this renderer's selected
+    /// models and sprites. Any failed decode or bake refuses the enclosing definition.
     pub fn decode_definition(
         &self,
         text: &str,
-        factories: Option<&SpecialModelFactories>,
+        providers: &ItemProviderTables<'_>,
     ) -> Result<ClientItem, DecodeError> {
-        ClientItem::from_json_with_specials(text, &|kind, base, fields| {
-            let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
+        let special = |kind: &str, base: &str, fields: &Map<String, Value>| {
+            let Some(factory) = providers.special.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };
             // A disabled winner still owns this type. Only a missing registration
@@ -197,7 +205,44 @@ impl ItemRenderer {
                 },
                 owner: factory.draw_owner.clone(),
             }))))
-        })
+        };
+        let tint = |kind: &str, fields: &Map<String, Value>| {
+            decode_tint_source(providers.tint, kind, fields)
+        };
+        let item_model =
+            |kind: &str,
+             fields: &Map<String, Value>,
+             decode_child: &dyn Fn(
+                &Value,
+            ) -> Result<
+                sunrise_assets::item_model::ItemModelNode,
+                DecodeError,
+            >| { decode_item_model(providers.item_model, kind, fields, decode_child) };
+        let range_property = |kind: &str, fields: &Map<String, Value>| {
+            decode_range_property(providers.range_property, kind, fields)
+        };
+        let select_property = |kind: &str, fields: &Map<String, Value>| {
+            decode_select_property(providers.select_property, kind, fields)
+        };
+        let special_ref: &SpecialModelLoader<'_> = &special;
+        let tint_ref: &TintSourceLoader<'_> = &tint;
+        let item_model_ref: &ItemModelLoader<'_> = &item_model;
+        let range_property_ref: &RangePropertyLoader<'_> = &range_property;
+        let select_property_ref: &SelectPropertyLoader<'_> = &select_property;
+        let decoders = ItemModelDecoders {
+            special: providers.special.is_some().then_some(special_ref),
+            tint: providers.tint.is_some().then_some(tint_ref),
+            item_model: providers.item_model.is_some().then_some(item_model_ref),
+            range_property: providers
+                .range_property
+                .is_some()
+                .then_some(range_property_ref),
+            select_property: providers
+                .select_property
+                .is_some()
+                .then_some(select_property_ref),
+        };
+        ClientItem::from_json_with_decoders(text, &decoders)
     }
 
     /// Append one registered layer, with no committed writes until its callback succeeds.

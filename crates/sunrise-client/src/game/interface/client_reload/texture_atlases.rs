@@ -609,42 +609,42 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut mod_api::RegisterSpriteSourcesEvent<'_>,
         ) {
-            event.sources.push("checker_mod:checker".into());
-        }
-        fn sprite_source(
-            &self,
-            _: &mod_api::RegistrationContext,
-            event: &mut mod_api::SpriteSourceEvent<'_>,
-        ) {
-            if event.source != "checker_mod:checker" || event.atlas.path() != "icons" {
-                return;
-            }
-            let shade = match event.config.get("shade") {
-                Some(sunrise_core::nbt::Tag::Byte(shade)) => *shade as u8,
-                _ => 0,
-            };
-            event.output.push(mod_api::SpriteSourceOutput::Pixels {
-                sprite: Identifier::parse("icons_mod:checker").unwrap(),
-                width: 2,
-                height: 2,
-                rgba: [shade, shade, shade, 255].repeat(4),
+            event.register(Identifier::parse("checker_mod:checker").unwrap(), |input| {
+                if input.atlas.path() != "icons" {
+                    return Ok(Vec::new());
+                }
+                let shade = match input.config.get("shade") {
+                    Some(sunrise_core::nbt::Tag::Byte(shade)) => *shade as u8,
+                    _ => 0,
+                };
+                Ok(vec![
+                    mod_api::SpriteSourceOutput::Pixels {
+                        sprite: Identifier::parse("icons_mod:checker").unwrap(),
+                        width: 2,
+                        height: 2,
+                        rgba: [shade, shade, shade, 255].repeat(4),
+                    },
+                    mod_api::SpriteSourceOutput::Remove {
+                        sprite: Identifier::parse("icons_mod:icons/star").unwrap(),
+                    },
+                ])
             });
-            event.output.push(mod_api::SpriteSourceOutput::Remove {
-                sprite: Identifier::parse("icons_mod:icons/star").unwrap(),
+            event.register(Identifier::parse("checker_mod:empty").unwrap(), |_| {
+                Ok(Vec::new())
             });
         }
     }
 
     /// A registered source type lists the mod's sprites where its entry stands, a reload asks
-    /// again with the definition as the packs now give it, and with no mod answering the entry
-    /// lists nothing.
+    /// again with the definition as the packs now give it, and a provider returning no outputs
+    /// leaves earlier sources intact.
     #[test]
     fn a_mods_sprite_source_lists_its_sprites_and_answers_again_on_reload() {
-        let stage = |shade: u8| {
+        let stage = |kind: &str, shade: u8| {
             let definition = format!(
                 r#"{{"sources":[
                     {{"type":"directory","source":"icons","prefix":"icons/"}},
-                    {{"type":"checker_mod:checker","shade":{shade}}}
+                    {{"type":"{kind}","shade":{shade}}}
                 ]}}"#
             );
             stage_texture_atlases(
@@ -681,22 +681,20 @@ mod tests {
             Game::native_register_sprite_sources(&mod_api::RegistrationContext::new(), &mut types);
             assert_eq!(
                 sunrise_client_render::mod_sprite_sources::register(types),
-                ["checker_mod:checker"]
+                ["checker_mod:checker", "checker_mod:empty"]
             );
-            let first = stage(40);
+            let first = stage("checker_mod:checker", 40);
             assert_eq!(checker_pixels(&first), (2, 2, [40, 40, 40, 255].repeat(4)));
             assert!(first.source().contains(&heart));
             assert!(
                 !first.source().contains(&star),
                 "the source removed the star"
             );
-            let reloaded = stage(90);
+            let reloaded = stage("checker_mod:checker", 90);
             assert_eq!(checker_pixels(&reloaded).2[..4], [90, 90, 90, 255]);
-        });
-        mod_platform::testing::with_mods(Vec::new().into(), || {
-            let unanswered = stage(40);
-            assert!(!unanswered.source().contains(&checker));
-            assert!(unanswered.source().contains(&star) && unanswered.source().contains(&heart));
+            let empty = stage("checker_mod:empty", 40);
+            assert!(!empty.source().contains(&checker));
+            assert!(empty.source().contains(&star) && empty.source().contains(&heart));
         });
     }
 }

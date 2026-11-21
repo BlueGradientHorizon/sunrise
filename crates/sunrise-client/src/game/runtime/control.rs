@@ -301,13 +301,21 @@ impl Game<'_> {
             self.sign_input(None, Some(text));
             return Ok(());
         }
-        // The title's screens: the world name, the seed, a server's address.
-        // A screen opened over the title (Options, say) keeps its own text.
-        if title_owns_text(&self.screen, self.title.is_some())
-            && let Some(title) = &mut self.title
-        {
-            title.type_text(text);
-            return Ok(());
+        // The title's screens: the world name, the seed, a server's address,
+        // or an open bound preset editor. A screen opened over the title
+        // (Options, say) keeps its own text.
+        if title_owns_text(&self.screen, self.title.is_some()) {
+            if self.preset_editor_title().is_some() {
+                return if self.preset_editor_type_text(text) {
+                    Ok(())
+                } else {
+                    Err("preset editor did not consume character".into())
+                };
+            }
+            if let Some(title) = &mut self.title {
+                title.type_text(text);
+                return Ok(());
+            }
         }
         match self.screen {
             Screen::Chat => self.chat_type(text),
@@ -344,7 +352,7 @@ impl Game<'_> {
         Ok(())
     }
 
-    fn control_command(
+    pub(super) fn control_command(
         &mut self,
         line: &str,
         reply: &Sender<String>,
@@ -705,45 +713,70 @@ impl Game<'_> {
             "pad" => Ok(Some(self.pad_command(&words)?)),
             "key" => {
                 let key = key_code(arg(1)?).ok_or_else(|| format!("unknown key {}", words[1]))?;
-                let action = arg(2)?;
+                let mut action = arg(2)?;
                 if !matches!(action, "down" | "up" | "tap" | "repeat") {
                     return Err(format!(
                         "key action must be down, up, tap or repeat, not {action}"
                     )
                     .into());
                 }
-                if arg(2)? != "up" {
+                let mut preset_press = Ok(());
+                if action != "up" {
                     self.input_keyboard_used();
                     // As a window's key press: the radial menu closes, and the key goes on.
                     self.pad_radial_cancel();
-                }
-                // The command confirmation takes the keys; none go past it.
-                if self.command_prompt.is_some() {
-                    if arg(2)? != "up" {
+                    // The command confirmation and server dialog take the keys, even in configuration.
+                    if self.command_prompt.is_some() {
                         self.command_prompt_key(key);
+                        return ok();
                     }
-                    return ok();
-                }
-                // A server's dialog takes the keys, in configuration too.
-                if self.dialog_open() {
-                    if arg(2)? != "up" {
+                    if self.dialog_open() {
                         self.dialog_key(key, None, None)?;
+                        return ok();
                     }
-                    return ok();
+                    // A bound world preset editor handles keys even when no world is loaded.
+                    if self.preset_editor_title().is_some() {
+                        self.press_modifier_key(key, true);
+                        self.physical_keys.insert(key);
+                        preset_press =
+                            self.preset_editor_key_pressed(event_loop, key, action == "repeat");
+                        if action != "tap" {
+                            preset_press?;
+                            return ok();
+                        }
+                        // The press may have requested a different title screen. Resolve that
+                        // transition before sending the second event, as for separate down and up.
+                        self.settle_title_mode();
+                        action = "up";
+                    }
+                }
+                if action == "up" {
+                    // The physical release happens regardless of which screen receives the event.
+                    self.press_modifier_key(key, false);
+                    self.physical_keys.remove(&key);
+                    let intercepted = self.command_prompt.is_some() || self.dialog_open();
+                    let title = self.title.is_some();
+                    if title && !intercepted {
+                        self.screen_key_released(key);
+                    }
+                    preset_press?;
+                    if title || intercepted {
+                        return ok();
+                    }
                 }
                 self.require_world()?;
                 // KeyboardHandler.keyPress: the open screen's narration hears it.
-                super::narrator::narrate_key(&mut self.narration, key, arg(2)? != "up");
+                super::narrator::narrate_key(&mut self.narration, key, action != "up");
                 // The sign editor takes raw presses (Enter, arrows, Backspace, Escape).
                 if self.sign_edit.is_some() {
-                    if arg(2)? != "up" {
+                    if action != "up" {
                         self.sign_input(Some(key), None);
                     }
                     return ok();
                 }
                 // A held edit modifier (`key super down`) and A/C/V/X: the
                 // open book's Select All, Copy, Paste or Cut.
-                if self.book.is_some() && arg(2)? != "up" {
+                if self.book.is_some() && action != "up" {
                     let held = |k: [KeyCode; 2]| k.iter().any(|k| self.keys.raw(k));
                     let edit = if cfg!(target_os = "macos") {
                         held([KeyCode::SuperLeft, KeyCode::SuperRight])
@@ -764,9 +797,10 @@ impl Game<'_> {
                 let physical = key;
                 {
                     use sunrise_client::debug_keys::KeyAction;
-                    let action = arg(2)?;
-                    self.press_modifier_key(key, action != "up");
-                    if action != "up" {
+                    if action == "up" {
+                        self.debug_key(key, KeyAction::Release);
+                    } else {
+                        self.press_modifier_key(key, true);
                         self.physical_keys.insert(key);
                         if self.debug_key(key, KeyAction::Press) {
                             if action == "tap" {
@@ -776,12 +810,7 @@ impl Game<'_> {
                             return ok();
                         }
                     }
-                    if action == "up" {
-                        self.physical_keys.remove(&key);
-                        self.debug_key(key, KeyAction::Release);
-                    }
                 }
-                let action = arg(2)?;
                 // ScreenEvent.KeyPressed.Pre: the open screen hears of the
                 // press before it acts on it. A cancelled press goes no further.
                 if action != "up" && self.screen_key_pressed(physical, action == "repeat") {
@@ -807,21 +836,20 @@ impl Game<'_> {
                 // ScreenEvent.KeyPressed.Post: no screen arm took the press; a
                 // cancel keeps it from the key bindings.
                 if !typing
-                    && arg(2)? != "up"
-                    && self.screen_key_post(physical, true, arg(2)? == "repeat")
+                    && action != "up"
+                    && self.screen_key_post(physical, true, action == "repeat")
                 {
-                    if arg(2)? == "tap" {
+                    if action == "tap" {
                         self.physical_keys.remove(&physical);
                     }
                     return ok();
                 }
-                let key = if typing && arg(2)? != "up" {
+                let key = if typing && action != "up" {
                     key
                 } else {
                     match self.settings.keys.translate(key) {
                         Some(Ok(k)) => k,
                         Some(Err(button)) => {
-                            let action = arg(2)?;
                             if self.screen == Screen::Playing
                                 && self.shared_default_acts(
                                     button,
@@ -844,7 +872,7 @@ impl Game<'_> {
                         None => return ok(),
                     }
                 };
-                match arg(2)? {
+                match action {
                     "down" => self.control_key_down(key, physical)?,
                     "up" => {
                         self.control_key_up(key);
@@ -1152,6 +1180,15 @@ impl Game<'_> {
                     .unwrap_or("");
                 // A server's dialog, in configuration too.
                 if self.dialog_type(text) {
+                    return ok();
+                }
+                if self.preset_editor_title().is_some() {
+                    self.narration.keyboard_action();
+                    if text == "\\b" {
+                        self.preset_editor_key_pressed(event_loop, KeyCode::Backspace, false)?;
+                    } else {
+                        self.screen_committed_chars(text);
+                    }
                     return ok();
                 }
                 self.require_world()?;
