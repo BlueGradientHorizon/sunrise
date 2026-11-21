@@ -652,7 +652,9 @@ pub(crate) fn build(
 ) -> Result<Export, String> {
     // The facade crate is indexed for this walk only.
     index.add_crate("sunrise_mod_api", "crates/sunrise-mod-api/src");
-    // The API crates' own macro calls, expanded before anything reads their modules.
+    let outside = OutsideSeam::read(root)?;
+    outside.add_to_index(index)?;
+    // The API crates' own macro calls, expanded in the default build before the public walk.
     let mut notes = Vec::new();
     let mut expanded = Vec::new();
     {
@@ -664,8 +666,6 @@ pub(crate) fn build(
         }
     }
     notes.extend(expand::expand_modules(index, &expanded));
-    let outside = OutsideSeam::read(root)?;
-    outside.add_to_index(index)?;
     let mut walker = walk::Walker::new(index);
     let public = walker.public(&outside)?;
     notes.extend(public.notes.iter().cloned());

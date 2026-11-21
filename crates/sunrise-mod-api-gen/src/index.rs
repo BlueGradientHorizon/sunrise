@@ -25,6 +25,7 @@ pub(crate) struct OutsideSeam {
     indexed: Vec<WorkspaceCrate>,
     /// Dependency names as Rust spells them, keyed by the indexed crate that declares them.
     dependencies: HashMap<String, HashMap<String, String>>,
+    unsupported_edges: HashMap<String, String>,
     default_features: HashMap<String, HashSet<String>>,
 }
 
@@ -124,8 +125,10 @@ impl OutsideSeam {
         }
 
         let mut dependencies = HashMap::new();
+        let mut unsupported_edges = HashMap::new();
         let mut default_features = HashMap::new();
-        for (indexed_name, package) in member_manifests {
+        for (owner, package) in member_manifests {
+            let mut forwarded = HashMap::new();
             if let Some(features) = package.get("features").and_then(toml::Value::as_table)
                 && features.contains_key("default")
             {
@@ -135,32 +138,29 @@ impl OutsideSeam {
                     if enabled.insert(feature.to_owned())
                         && let Some(edges) = features.get(feature).and_then(toml::Value::as_array)
                     {
-                        pending.extend(
-                            edges
-                                .iter()
-                                .filter_map(toml::Value::as_str)
-                                .filter(|edge| !edge.starts_with("dep:") && !edge.contains('/')),
-                        );
+                        for edge in edges.iter().filter_map(toml::Value::as_str) {
+                            if let Some((dependency, _)) = edge.split_once('/') {
+                                forwarded.insert(dependency.trim_end_matches('?'), edge);
+                            } else if !edge.starts_with("dep:") {
+                                pending.push(edge);
+                            }
+                        }
                     }
                 }
-                default_features.insert(indexed_name.clone(), enabled);
+                default_features.insert(owner.clone(), enabled);
             }
             let mut aliases = HashMap::new();
             let mut add = |table: Option<&toml::map::Map<String, toml::Value>>| {
                 let Some(table) = table else { return };
-                for (alias, spec) in table {
-                    let inherited = spec
-                        .as_table()
-                        .and_then(|table| table.get("workspace"))
-                        .and_then(toml::Value::as_bool)
-                        == Some(true);
-                    let spec = if inherited {
-                        workspace_dependencies
-                            .and_then(|workspace| workspace.get(alias))
-                            .unwrap_or(spec)
-                    } else {
-                        spec
-                    };
+                for (alias, declared) in table {
+                    let spec =
+                        if declared.get("workspace").and_then(toml::Value::as_bool) == Some(true) {
+                            workspace_dependencies
+                                .and_then(|workspace| workspace.get(alias))
+                                .unwrap_or(declared)
+                        } else {
+                            declared
+                        };
                     let package = spec
                         .as_table()
                         .and_then(|table| table.get("package"))
@@ -175,6 +175,37 @@ impl OutsideSeam {
                             alias.replace('-', "_")
                         };
                         aliases.insert(written, indexed_name.clone());
+                        if let Some(edge) = forwarded.get(alias.as_str()) {
+                            unsupported_edges.entry(owner.clone()).or_insert_with(|| {
+                                format!("dependency `{alias}` (default feature forwards `{edge}`)")
+                            });
+                        }
+                        // Registry crates remain opaque. For indexed dependency source we must
+                        // know which items are active; the package's defaults aren't enough here.
+                        for config in [spec, declared] {
+                            let reason = if config.get("optional").and_then(toml::Value::as_bool)
+                                == Some(true)
+                            {
+                                "optional = true"
+                            } else if config
+                                .get("default-features")
+                                .and_then(toml::Value::as_bool)
+                                == Some(false)
+                            {
+                                "default-features = false"
+                            } else if config
+                                .get("features")
+                                .and_then(toml::Value::as_array)
+                                .is_some_and(|features| !features.is_empty())
+                            {
+                                "features"
+                            } else {
+                                continue;
+                            };
+                            unsupported_edges
+                                .entry(owner.clone())
+                                .or_insert_with(|| format!("dependency `{alias}` ({reason})"));
+                        }
                     }
                 }
             };
@@ -187,13 +218,14 @@ impl OutsideSeam {
                 }
             }
             if !aliases.is_empty() {
-                dependencies.insert(indexed_name.clone(), aliases);
+                dependencies.insert(owner, aliases);
             }
         }
         Ok(Self {
             crates,
             indexed,
             dependencies,
+            unsupported_edges,
             default_features,
         })
     }
@@ -224,6 +256,11 @@ impl OutsideSeam {
             .collect::<VecDeque<_>>();
         while let Some(name) = crates.pop_front() {
             if reachable.insert(name.clone()) {
+                if let Some(edge) = self.unsupported_edges.get(&name) {
+                    return Err(format!(
+                        "{name}: unsupported default API build configuration for {edge}"
+                    ));
+                }
                 crates.extend(
                     self.dependencies
                         .get(&name)

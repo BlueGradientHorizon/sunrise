@@ -888,6 +888,38 @@ fn workspace_globs_see_transitive_default_features_but_not_optional_ones() {
 }
 
 #[test]
+fn unsupported_workspace_dependency_feature_configurations_name_the_edge() {
+    let path = "crates/sunrise-mod-vocab/Cargo.toml";
+    let dep = "engine = { package = \"engine-package\", path = \"../../engine-fixture\" }";
+    for option in [
+        "features = [\"extra\"]",
+        "default-features = false",
+        "optional = true",
+    ] {
+        let configured = format!("{}, {option} }}", dep.trim_end_matches(" }"));
+        let error = try_export_fixture(&[(path, dep, &configured)], HOOKS)
+            .err()
+            .expect("an unsupported workspace edge must fail the audit");
+        assert!(
+            error.contains("mod_api") && error.contains("`engine`"),
+            "{error}"
+        );
+        assert!(
+            error.contains(option.split(" = ").next().unwrap()),
+            "{error}"
+        );
+    }
+    let forwarded = format!("{dep}\n[features]\ndefault = [\"engine/extra\"]");
+    let error = try_export_fixture(&[(path, dep, &forwarded)], HOOKS)
+        .err()
+        .expect("forwarding a Cargo feature must fail the audit");
+    assert!(
+        error.contains("`engine`") && error.contains("engine/extra"),
+        "{error}"
+    );
+}
+
+#[test]
 fn preflight_reads_only_dependencies_for_the_current_target() {
     for (selector, active) in [
         ("cfg(all())", true),
