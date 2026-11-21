@@ -495,39 +495,44 @@ mod tests {
     fn a_mapping_on_the_sixth_mouse_button_hears_it() {
         let mut keys = ModKeys::default();
         keys.bind([binding("dash", "key.mouse.6", 0, MappingContext::Universal)]);
+        let dash = keys.resolve("m", "dash").unwrap();
         let sixth = winit::event::MouseButton::Other(5);
         keys.button(sixth, KeyAction::Press, false, 0);
-        assert!(keys.is_down("m", "dash", 0, false));
+        assert!(keys.is_down(dash, 0, false).unwrap());
         keys.button(sixth, KeyAction::Release, false, 0);
-        assert!(!keys.is_down("m", "dash", 0, false));
-        assert!(keys.consume_click("m", "dash"));
+        assert!(!keys.is_down(dash, 0, false).unwrap());
+        assert!(keys.consume_click(dash, false).unwrap());
     }
     /// A tap is one click, consumed once.
     #[test]
     fn a_tap_adds_one_click() {
         let mut keys = keys();
+        let zoom = keys.resolve("m", "zoom").unwrap();
+        let boost = keys.resolve("m", "boost").unwrap();
+        let grab = keys.resolve("m", "grab").unwrap();
         keys.input("key.keyboard.z", KeyAction::Press, false, false, 0);
-        assert!(keys.is_down("m", "zoom", 0, false));
+        assert!(keys.is_down(zoom, 0, false).unwrap());
         keys.input("key.keyboard.z", KeyAction::Release, false, false, 0);
-        assert!(!keys.is_down("m", "zoom", 0, false));
-        assert!(keys.consume_click("m", "zoom"));
-        assert!(!keys.consume_click("m", "zoom"));
-        assert!(!keys.consume_click("m", "boost"), "shift was up");
-        assert!(!keys.consume_click("m", "grab"));
+        assert!(!keys.is_down(zoom, 0, false).unwrap());
+        assert!(keys.consume_click(zoom, false).unwrap());
+        assert!(!keys.consume_click(zoom, false).unwrap());
+        assert!(!keys.consume_click(boost, false).unwrap(), "shift was up");
+        assert!(!keys.consume_click(grab, false).unwrap());
         assert!(!keys.consume_click("other", "zoom"));
     }
     /// Each auto-repeat of a held key is one more click, as its press.
     #[test]
     fn a_held_key_adds_one_click_per_repeat() {
         let mut keys = keys();
+        let boost = keys.resolve("m", "boost").unwrap();
         keys.input("key.keyboard.z", KeyAction::Press, false, false, 1);
         keys.input("key.keyboard.z", KeyAction::Repeat, false, false, 1);
         keys.input("key.keyboard.z", KeyAction::Repeat, false, false, 1);
-        assert!(keys.is_down("m", "boost", 1, false));
-        assert!(!keys.is_down("m", "boost", 0, false), "shift let go");
+        assert!(keys.is_down(boost, 1, false).unwrap());
+        assert!(!keys.is_down(boost, 0, false).unwrap(), "shift let go");
         assert_eq!(
             (0..4)
-                .map(|_| keys.consume_click("m", "boost"))
+                .map(|_| keys.consume_click(boost, false).unwrap())
                 .collect::<Vec<_>>(),
             [true, true, true, false]
         );
@@ -537,15 +542,21 @@ mod tests {
     #[test]
     fn a_screen_opening_zeroes_the_clicks() {
         let mut keys = keys();
+        let zoom = keys.resolve("m", "zoom").unwrap();
+        let grab = keys.resolve("m", "grab").unwrap();
         keys.input("key.keyboard.z", KeyAction::Press, false, false, 0);
         keys.input("key.keyboard.z", KeyAction::Repeat, false, false, 0);
         keys.input("key.mouse.left", KeyAction::Press, true, false, 0);
         keys.release_all();
-        assert!(!keys.is_down("m", "zoom", 0, true) && !keys.is_down("m", "grab", 0, true));
-        assert!(!keys.consume_click("m", "zoom") && !keys.consume_click("m", "grab"));
+        assert!(!keys.is_down(zoom, 0, true).unwrap() && !keys.is_down(grab, 0, true).unwrap());
+        assert!(
+            !keys.consume_click(zoom, false).unwrap() && !keys.consume_click(grab, false).unwrap()
+        );
         keys.input("key.keyboard.z", KeyAction::Press, false, true, 0);
         keys.input("key.mouse.left", KeyAction::Press, true, true, 0);
-        assert!(!keys.consume_click("m", "zoom") && !keys.consume_click("m", "grab"));
+        assert!(
+            !keys.consume_click(zoom, false).unwrap() && !keys.consume_click(grab, false).unwrap()
+        );
     }
     /// A rebinding moves a mapping to its new key and keeps its pending clicks.
     #[test]
