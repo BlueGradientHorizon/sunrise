@@ -374,21 +374,8 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             );
             let at = game.lan.as_ref().unwrap().hub.guests[0].position;
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.inbox.push_back(InboxItem::Packet(
-                    S::PlayerLoaded(sunrise_protocol::packets::Empty),
-                    None,
-                ));
-                guest.inbox.push_back(InboxItem::Packet(
-                    S::AcceptTeleportation(play::AcceptTeleportation {
-                        id: guest.teleport_counter,
-                        x: at[0],
-                        y: at[1],
-                        z: at[2],
-                        yaw: guest.yaw,
-                        pitch: guest.pitch,
-                    }),
-                    None,
-                ));
+                // The old body is still present. There's no teleport to acknowledge yet.
+                assert!(guest.awaiting_teleport.is_none());
                 guest.inbox.push_back(InboxItem::Packet(
                     S::MovePlayerPos(play::MovePlayerPos {
                         x: at[0] + 1.0,
@@ -400,11 +387,9 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
                 ));
             });
             drain_packets(&mut game);
-            assert_eq!(
-                game.lan.as_ref().unwrap().hub.guests[0].position,
-                at,
-                "cannot abandon the respawn destination"
-            );
+            let guest = game.command_guest(CONN).unwrap();
+            assert!(guest.left_reason.is_empty());
+            assert_eq!(guest.position, at, "cannot abandon the respawn destination");
             // A second pass must preserve the respawn search, even if its eventual stand-up spot
             // differs from the original target; it must not turn into an ordinary teleport hold.
             game.tick_server_travel();
@@ -425,22 +410,26 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
                     "PlayerList respawn restarts the client load timer"
                 );
                 let [x, y, z] = g.position;
+                let (id, _) = g.awaiting_teleport.expect("the replacement was placed");
                 for packet in [
-                    S::PlayerLoaded(sunrise_protocol::packets::Empty),
                     S::AcceptTeleportation(play::AcceptTeleportation {
-                        id: g.teleport_counter,
+                        id,
                         x,
                         y,
                         z,
                         yaw: g.yaw,
                         pitch: g.pitch,
                     }),
+                    S::PlayerLoaded(sunrise_protocol::packets::Empty),
                 ] {
                     g.inbox.push_back(InboxItem::Packet(packet, None));
                 }
                 g.position
             });
-            drain_packets(&mut game);
+            game.tick_lan_packets();
+            let guest = game.command_guest(CONN).unwrap();
+            assert!(guest.awaiting_teleport.is_none());
+            assert!(guest.client_loaded());
             let hit =
                 |game: &mut Game<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
             assert_eq!(game.as_guest(CONN, hit), Some(true));
