@@ -285,8 +285,7 @@ mod tests {
         let mods: Mods = vec![ModEntry::new("porter", Box::new(Declares))].into();
         crate::testing::with_mods(mods, || {
             with_porter(|| {
-                let _registration =
-                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+                let _registration = crate::__private::RegistrationGuard::open();
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();

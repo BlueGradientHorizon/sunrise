@@ -40,11 +40,7 @@ pub trait ClientSession {
     /// a logged-in client world. External display names are not retained; memory
     /// connections have no address. Friend-invite secrets are redacted.
     fn client_server(&self) -> Option<ClientServer<'_>> {
-        crate::world::phase::unprovided(
-            "ClientSession::client_server",
-            "client_server",
-            crate::world::phase::LoadAccess::ClientSetup,
-        )
+        unimplemented!("ClientSession::client_server")
     }
     /// Side: client.
     /// A shared snapshot of the applied language code, not a pending options selection.
@@ -52,11 +48,7 @@ pub trait ClientSession {
     /// and does not change when a different language is applied. Read `ClientHost::is_paused`
     /// for the applied pause state.
     fn client_language(&self) -> Option<Arc<str>> {
-        crate::world::phase::unprovided(
-            "ClientSession::client_language",
-            "client_language",
-            crate::world::phase::LoadAccess::ClientSetup,
-        )
+        unimplemented!("ClientSession::client_language")
     }
     /// Side: client.
     /// The local player's latency in milliseconds as the tab list draws it
@@ -64,11 +56,7 @@ pub trait ClientSession {
     /// broadcast. 0 before the server's first measurement, as vanilla; None outside a logged-in
     /// client world or before the server lists this player. Sends nothing.
     fn client_latency(&self) -> Option<u32> {
-        crate::world::phase::unprovided(
-            "ClientSession::client_latency",
-            "client_latency",
-            crate::world::phase::LoadAccess::ClientSetup,
-        )
+        unimplemented!("ClientSession::client_latency")
     }
     /// Side: client.
     /// The player list as the Tab overlay draws it: each listed player's drawn name, profile
@@ -76,21 +64,13 @@ pub trait ClientSession {
     /// header and footer. What this client has been sent; None outside a logged-in client
     /// world. Sends nothing.
     fn client_tab_list(&self) -> Option<ClientTabList> {
-        crate::world::phase::unprovided(
-            "ClientSession::client_tab_list",
-            "client_tab_list",
-            crate::world::phase::LoadAccess::ClientSetup,
-        )
+        unimplemented!("ClientSession::client_tab_list")
     }
     /// Side: client.
     /// Existing local frame counters; None outside a logged-in client world.
     /// This read collects no history and sends nothing anywhere.
     fn client_frame_stats(&self) -> Option<ClientFrameStats> {
-        crate::world::phase::unprovided(
-            "ClientSession::client_frame_stats",
-            "client_frame_stats",
-            crate::world::phase::LoadAccess::ClientSetup,
-        )
+        unimplemented!("ClientSession::client_frame_stats")
     }
 }
 /// The commands service, reached through its host.
@@ -103,22 +83,14 @@ pub trait Commands {
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     fn refresh_commands(&mut self) {
-        crate::world::phase::unprovided(
-            "Commands::refresh_commands",
-            "refresh_commands",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Commands::refresh_commands")
     }
     /// Side: server.
     /// A command's success feedback, routed to its originating source using
     /// vanilla's silence, send-command-feedback and block/cart track-output rules.
     /// Refuses text deeper than 512 component nodes before applying any changes.
     fn feedback(&mut self, line: Text) -> Result<(), TextFormError> {
-        crate::world::phase::unprovided(
-            "Commands::feedback",
-            "feedback",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Commands::feedback")
     }
     /// Side: server.
     /// Runs `line` (no slash) as the server's console does: permission
@@ -129,11 +101,7 @@ pub trait Commands {
     /// acting player) are reachable; displaced outer players are excluded
     /// from name, UUID and selector resolution on this path only.
     fn run_command(&mut self, line: &str) -> bool {
-        crate::world::phase::unprovided(
-            "Commands::run_command",
-            "run_command",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Commands::run_command")
     }
     /// Side: server.
     /// `run_command` with its feedback kept: the same line, source and run
@@ -154,11 +122,7 @@ pub trait Commands {
     /// dedicated console's own commands (`stop`, `op`, `whitelist`, `ban`...)
     /// are not reached: they answer as an unknown command.
     fn run_command_with_output(&mut self, line: &str) -> CommandResult {
-        crate::world::phase::unprovided(
-            "Commands::run_command_with_output",
-            "run_command_with_output",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Commands::run_command_with_output")
     }
 }
 /// The levels service, reached through its host.
@@ -166,11 +130,7 @@ pub trait Levels {
     /// Side: server.
     /// Loaded server levels, in vanilla dimension order. Empty without a server world.
     fn list_levels(&self) -> Vec<LevelRef> {
-        crate::world::phase::unprovided(
-            "Levels::list_levels",
-            "list_levels",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Levels::list_levels")
     }
 }
 /// The messages service, reached through its host.
@@ -179,11 +139,7 @@ pub trait Messages {
     /// A system line in every player's chat and the server's log.
     /// Refuses text deeper than 512 component nodes before applying any changes.
     fn broadcast(&self, line: Text) -> Result<(), TextFormError> {
-        crate::world::phase::unprovided(
-            "Messages::broadcast",
-            "broadcast",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Messages::broadcast")
     }
 }
 /// The players service, reached through its host.
@@ -192,21 +148,13 @@ pub trait Players {
     /// The real players on this server, in join order, including an integrated
     /// server's own player even when the world is not open to LAN. Empty on a client.
     fn server_players(&self) -> Vec<PlayerRef> {
-        crate::world::phase::unprovided(
-            "Players::server_players",
-            "server_players",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Players::server_players")
     }
     /// Side: server.
     /// Find a connected player by their account name, case-insensitively,
     /// including an integrated server's own player.
     fn player_by_name(&self, name: &str) -> Option<PlayerRef> {
-        crate::world::phase::unprovided(
-            "Players::player_by_name",
-            "player_by_name",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Players::player_by_name")
     }
     /// Side: server.
     /// The player whose action or command a hook hears, as their state is
@@ -214,11 +162,7 @@ pub trait Players {
     /// `native_use_on`, `break_block`...): None outside such a
     /// hook.
     fn acting_player(&self) -> Option<PlayerRef> {
-        crate::world::phase::unprovided(
-            "Players::acting_player",
-            "acting_player",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("Players::acting_player")
     }
 }
 /// The runtime_levels service, reached through its host.
@@ -236,11 +180,7 @@ pub trait RuntimeLevels {
     /// open or waiting, an unknown dimension type or generator, a noise generator, and when
     /// the server's cap of open runtime levels (`sunrise-max-runtime-levels`, 64) is reached.
     fn open(&mut self, id: &str, level: RuntimeLevel) -> Result<LevelRef, RuntimeLevelError> {
-        crate::world::phase::unprovided(
-            "RuntimeLevels::open",
-            "open",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("RuntimeLevels::open")
     }
     /// Side: server.
     /// Save and close the level `id` the calling mod opened, keeping its folder, once this server
@@ -249,11 +189,7 @@ pub trait RuntimeLevels {
     /// level, now and again when it is applied: the mod moves its players out first
     /// (`entity_teleport_to_level`).
     fn unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
-        crate::world::phase::unprovided(
-            "RuntimeLevels::unload",
-            "unload",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("RuntimeLevels::unload")
     }
     /// Side: server.
     /// Remove the level `id` the calling mod owns, folder and all, once this server tick's levels
@@ -273,22 +209,14 @@ pub trait RuntimeLevels {
     /// `is_open` is false, `open` of the id is [`RuntimeLevelError::Removing`] and an `open`
     /// already queued is dropped with a log line, until a second `delete` has removed them.
     fn delete(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
-        crate::world::phase::unprovided(
-            "RuntimeLevels::delete",
-            "delete",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("RuntimeLevels::delete")
     }
     /// Side: server.
     /// Whether the level `id` is open: false until a queued `open` is applied, true until a
     /// queued `unload` or `delete` is. Takes `&mut self` as the service's other methods do: a frame
     /// resource is reached one way.
     fn is_open(&mut self, id: &str) -> bool {
-        crate::world::phase::unprovided(
-            "RuntimeLevels::is_open",
-            "is_open",
-            crate::world::phase::LoadAccess::WorldOnly,
-        )
+        unimplemented!("RuntimeLevels::is_open")
     }
 }
 /// The render_assets service, reached through its host.
@@ -299,11 +227,7 @@ pub trait RenderAssets {
     /// `client_resources_reloaded`, not each frame. Resource-pack overrides and other
     /// namespaces use the normal shared model store; no resource is read or baked here.
     fn model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
-        crate::world::phase::unprovided(
-            "RenderAssets::model",
-            "model",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::model")
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
@@ -312,11 +236,7 @@ pub trait RenderAssets {
     /// registered, `Invalid` for one whose shader the current resources don't give or that
     /// didn't compile. Nothing is read or compiled here.
     fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
-        crate::world::phase::unprovided(
-            "RenderAssets::render_pipeline",
-            "render_pipeline",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::render_pipeline")
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
@@ -326,11 +246,7 @@ pub trait RenderAssets {
     /// [`AnimationHolder::bake`] it (or [`AnimationHolder::bake_with`] when it names registered
     /// types) once in `client_setup` and again in `client_resources_reloaded`, not each frame.
     fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
-        crate::world::phase::unprovided(
-            "RenderAssets::animation",
-            "animation",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::animation")
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
@@ -346,11 +262,7 @@ pub trait RenderAssets {
     /// Resolve once per distinct state in `client_setup` and again in `client_resources_reloaded`,
     /// not each frame; the handle goes stale on a reload.
     fn block_state_model(&self, state: BlockState) -> Result<ModelRef, ModelError> {
-        crate::world::phase::unprovided(
-            "RenderAssets::block_state_model",
-            "block_state_model",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::block_state_model")
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
@@ -361,11 +273,7 @@ pub trait RenderAssets {
     /// (a block it does not hold, or an ordinal past the block's states) returns
     /// `ModelError::UnknownModel`. Retain the keys until the next `model_baking_completed`.
     fn block_state_models(&self, state: BlockState) -> Result<BakedModelKeys<'_>, ModelError> {
-        crate::world::phase::unprovided(
-            "RenderAssets::block_state_models",
-            "block_state_models",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::block_state_models")
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
@@ -374,11 +282,7 @@ pub trait RenderAssets {
     /// reload supersedes the key's generation; `ModelError::UnknownModel` for a slot the store
     /// lacks. Retain the key and borrow the model when reading its quads, without copying them.
     fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
-        crate::world::phase::unprovided(
-            "RenderAssets::baked_model",
-            "baked_model",
-            crate::world::phase::LoadAccess::PublishedResources,
-        )
+        unimplemented!("RenderAssets::baked_model")
     }
 }
 

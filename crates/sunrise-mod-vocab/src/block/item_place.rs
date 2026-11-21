@@ -303,12 +303,6 @@ impl crate::NoBackend for ItemPlaceEditError {
     }
 }
 
-impl crate::AccessRefusal for ItemPlaceEditError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 /// A mod's own places ([`ItemPlace::Mod`]), registered with
 /// [`Registrar::place_provider`](crate::ItemsRegistrar::place_provider): NeoForge's own `ItemAccess`s.
 /// Like a handler, it holds no borrow: its stacks live where the mod keeps them (a player's

@@ -374,10 +374,6 @@ pub(super) fn emit<'a>(
         // The fields an isolated dispatch rolls back to the requested values on a listener's
         // unwind (#2414 ruling), each with whether the event holds it behind a `&mut`.
         let mut rollback: Vec<(String, bool)> = Vec::new();
-        // The rolled-back fields a snapshot copies by `Clone` rather than by `Copy`.
-        let mut cloned: Vec<String> = Vec::new();
-        // The `&mut dyn Trait` fields: registrars and draw surfaces, with no value to snapshot.
-        let mut surfaces: Vec<String> = Vec::new();
         let stack_outputs: Vec<_> = args
             .iter()
             .chain(output.as_ref().filter(|_| contract == Contract::Collect))
@@ -457,10 +453,6 @@ pub(super) fn emit<'a>(
             } else if !task_registration
                 && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
-                if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
-                {
-                    surfaces.push(name.clone());
-                }
                 if hook.isolate && !rollback_pointee_is_copy(&field_ty) {
                     return Err(format!(
                         "{}: isolate rolls a listener's writes back to the requested values; \
@@ -468,9 +460,6 @@ pub(super) fn emit<'a>(
                          of them",
                         hook.name
                     ));
-                }
-                if !rollback_pointee_is_copy(&field_ty) {
-                    cloned.push(name.clone());
                 }
                 rollback.push((name.clone(), true));
             }
@@ -849,8 +838,7 @@ pub(super) fn emit<'a>(
             let entry = entry.to_token_stream();
             dispatch.push_str(&format!(
                 "impl{impl_params} {event_type}{event_params} {{\n\
-                 /// Stage one entry for registration. If the phase gate refuses this listener,\n\
-                 /// its entries are discarded and earlier registrations stand.\n\
+                 /// Stage one entry for registration.\n\
                  pub fn register(&mut self, entry: {entry}) {{ self.{out}.push(entry); }}\n}}\n"
             ));
         }
@@ -920,96 +908,16 @@ pub(super) fn emit<'a>(
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
         };
-        // A listener refused by the phase gate restores event fields from a
-        // snapshot taken before its call. Outside `World` only (`contained`); in `World` the
-        // call is the plain one.
-        let snapshot = fresh_name("snapshot", &mut used);
-        let saved = fresh_name("saved", &mut used);
-        let mut snaps: Vec<String> = Vec::new();
-        let mut restores: Vec<String> = Vec::new();
-        // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
-        // surface has no whole value to copy.
-        for (field, by_reference) in rollback
-            .iter()
-            .filter(|(field, _)| !surfaces.contains(field))
-        {
-            if hook.owned_answer_batch && Some(field.as_str()) == out {
-                continue;
-            }
-            let index = snaps.len();
-            if registration_append.is_some() && Some(field.as_str()) == out {
-                // Only the tail is writable; never clone or restore earlier registrations.
-                snaps.push(format!("{event}.{field}.len()"));
-                restores.push(format!("{event}.{field}.truncate({saved}.{index});"));
-                continue;
-            }
-            snaps.push(if cloned.contains(field) {
-                // `to_owned`, not `clone`: this generator cannot tell a `Copy` field type from an
-                // owned one, and `clippy::clone_on_copy` would flag a `clone` of the first.
-                format!("ToOwned::to_owned(&*{event}.{field})")
-            } else if *by_reference {
-                format!("*{event}.{field}")
-            } else {
-                format!("{event}.{field}")
-            });
-            restores.push(format!(
-                "{}{event}.{field} = {saved}.{index};",
-                if *by_reference { "*" } else { "" }
-            ));
-        }
-        if mod_cancel {
-            restores.push(format!("{event}.cancelled = {saved}.{};", snaps.len()));
-            snaps.push(format!("{event}.cancelled"));
-        }
-        let snapshot_statement = if snaps.is_empty() {
-            String::new()
-        } else {
-            // A snapshot that only copies is no work to defer: `then_some`.
-            let (then, arm) = if !snaps.iter().any(|snap| snap.starts_with("ToOwned")) {
-                ("then_some", "")
-            } else {
-                ("then", "|| ")
-            };
-            format!(
-                "let {snapshot} = contained.{then}({arm}({},)); ",
-                snaps.join(", ")
-            )
-        };
-        let restore_statement = if snaps.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "if let Some({saved}) = {snapshot} {{ {} }} ",
-                restores.join(" ")
-            )
-        };
-        // Answered collectors drain this private batch after each mod. The refused mod has
-        // no earlier entries to restore, and its callback objects need not be Clone.
-        let clear_batch = if hook.owned_answer_batch {
-            format!("{event}.{}.clear(); ", out.unwrap())
-        } else {
-            String::new()
-        };
-        let refused_value = if result.trim() == "-> Flow" {
-            "Flow::Continue"
-        } else {
-            "Default::default()"
-        };
-        let run = |expression: &str| {
-            format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
-            )
-        };
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, exit: &str| {
             // Early exits must validate while the listener still owns the scope.
             let exit = format!("{stack_after} {exit}");
             let answer_call = if scoped_write_replace {
-                run(&format!("{invoke_part}({callee}, &mut {event})"))
+                format!("{invoke_part}({callee}, &mut {event})")
             } else {
-                run(&format!("{callee}.{name}({invoke})"))
+                format!("{callee}.{name}({invoke})")
             };
-            let plain_call = run(&format!("{callee}.{name}({invoke})"));
+            let plain_call = format!("{callee}.{name}({invoke})");
             let invocation = match contract {
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",
@@ -1036,9 +944,7 @@ pub(super) fn emit<'a>(
                 }
                 _ => format!("{plain_call};"),
             };
-            format!(
-                "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
-            )
+            format!("{local_event} {invocation} {local_write_back} {stack_after}")
         };
         let binding = if answered || hook.collect_validator.is_some() {
             format!("(mod_id, {mod_item})")
@@ -1081,8 +987,7 @@ pub(super) fn emit<'a>(
         // generated `if` is never read as the start of an `else if`.
         let cancel_step = {
             let cancel = format!(
-                "{snapshot_statement}if matches!({}, Flow::Cancel) {{ {event}.cancelled = true; }}",
-                run(&format!("{mod_item}.{name}({invoke})"))
+                "if matches!({mod_item}.{name}({invoke}), Flow::Cancel) {{ {event}.cancelled = true; }}"
             );
             if stack_after.is_empty() {
                 cancel
@@ -1134,15 +1039,13 @@ pub(super) fn emit<'a>(
                 (
                     format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
                     format!(
-                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
+                        "Ok(__flow) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
                     ),
                 )
             }
             _ => (
                 String::new(),
-                format!(
-                    "Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} "
-                ),
+                format!("Ok(Flow::Cancel) => {{ {event}.cancelled = true; }} Ok(_) => {{}} "),
             ),
         };
         let inert_owner = fresh_name("disabled_owner", &mut used);
@@ -1180,7 +1083,7 @@ pub(super) fn emit<'a>(
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
-                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
+                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {mod_item}.{name}({invoke}))) {{ {validated_arms}Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
                     o = out.unwrap()
                 ),
             ),
@@ -1258,12 +1161,6 @@ pub(super) fn emit<'a>(
             String::new()
         } else {
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
-        };
-        // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
-            format!("{early_return} let contained = super::runtime::outside_world();")
-        } else {
-            early_return
         };
         let unpack = if !uses_carrier {
             String::new()
@@ -2374,10 +2271,6 @@ static OWNERS: [Owner; 2] = [Owner {{ id: "a" }}, Owner {{ id: "b" }}];
 fn listened(_: generated::HookId) -> bool {{ true }}
 fn listening(_: generated::HookId) -> impl Iterator<Item=(bool, &'static Owner)> {{ OWNERS.iter().map(|m| (false, m)) }}
 mod runtime {{
-    pub struct Refusal;
-    impl Refusal {{ pub fn report(&self) {{}} }}
-    pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
     pub struct ListenerScope;
     impl ListenerScope {{
         pub fn new() -> Self {{ Self }}
@@ -2627,12 +2520,6 @@ struct Gatherer {{ pushes: &'static [u32] }}
 static MODS: [(&str, Gatherer); 3] = [("a", Gatherer {{ pushes: &[1, 2] }}), ("quiet", Gatherer {{ pushes: &[] }}), ("b", Gatherer {{ pushes: &[3] }})];
 fn listened(_: generated::HookId) -> bool {{ true }}
 fn entered_with_id(_: generated::HookId, _: &str) -> impl Iterator<Item = (&'static str, &'static Gatherer)> {{ MODS.iter().map(|(id, m)| (*id, m)) }}
-mod runtime {{
-    pub struct Refusal;
-    impl Refusal {{ pub fn report(&self) {{}} }}
-    pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
-}}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{
 pub trait ServerHost {{}}

@@ -4,9 +4,8 @@
 //! files with `syn` and builds the `Hooks` trait, its dispatch, the game's entry points and the
 //! rustdoc from them. Lint checks these files directly with `rustfmt`. What the game does for a mod, the host
 //! methods and the handles', is not declared here but written by hand, one file per area, in `../host/<area>.rs`.
-//! Each host method has one `#[access(Level)]` declaration; its default and the game's forwarder
-//! are generated. Implement the same-named inherent `Game` method, without a `native_` prefix.
-//! Hook entry points keep their `native_` names.
+//! Each host method's default and the game's forwarder are generated. Implement the same-named
+//! inherent `Game` method, without a `native_` prefix. Hook entry points keep their `native_` names.
 //!
 //! Each hook has its own file: a bodiless `fn name(parameters);` with its rustdoc. List the
 //! parameters in vocabulary types, before they become event fields, a reply, or a cancellation.

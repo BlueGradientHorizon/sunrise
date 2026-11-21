@@ -38,7 +38,6 @@ or connect screens."#]
         out = "renderers",
         context = "registration",
         answered_by = "mod",
-        owned_answer_batch = true,
         neoforge = "RegisterDebugRenderersEvent",
         version = 2
     )]

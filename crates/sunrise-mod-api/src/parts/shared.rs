@@ -237,10 +237,9 @@ pub(crate) fn register_all(
         }
     }
     let _active = ActiveRegistration::enter();
-    // `register` runs in the registration phase and nowhere else: a declaration of a frozen registry
-    // (a general entity type) is refused after it. Production enters it already; a test thread's
-    // default phase is World.
-    let _phase = crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+    // `register` runs with startup registration open: a declaration of a frozen registry
+    // (a general entity type) is refused once it closes.
+    let _registration = crate::__private::RegistrationGuard::open();
     let _scope = RestoreKeys(REGISTERING_KEYS.replace(Some(registrar.registry_keys.clone())));
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);

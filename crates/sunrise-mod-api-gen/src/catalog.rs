@@ -163,8 +163,6 @@ pub struct Hook {
     /// A replace hook whose output also names the mod that answered, or a collect hook whose
     /// entries each name the mod that pushed it.
     pub answered_by_mod: bool,
-    /// Clear an answered collector's private batch on refusal without cloning its owned entries.
-    pub owned_answer_batch: bool,
     /// A listener about one mod's own things: the event field naming that mod, whose
     /// subscription alone is told.
     pub owner: Option<String>,
@@ -351,8 +349,6 @@ struct ModApiEntry {
     scope: Option<PartKind>,
     key: Option<String>,
     answered_by: Option<AnsweredBy>,
-    #[serde(default)]
-    owned_answer_batch: bool,
     owner: Option<String>,
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
@@ -487,16 +483,6 @@ impl Hook {
         {
             return Err(CatalogError::AnsweredNeedsGlobalOutput(name));
         }
-        if api.owned_answer_batch
-            && (!answered_by_mod
-                || api.contract != Contract::Collect
-                || api.registration_append.is_some())
-        {
-            return Err(CatalogError::InvalidHook {
-                hook: name.clone(),
-                error: "owned_answer_batch requires a private answered collect batch without registration_append".into(),
-            });
-        }
         if api.owner.is_some() && (api.contract != Contract::Listen || scope.is_some()) {
             return Err(CatalogError::OwnerNeedsGlobalListener(name));
         }
@@ -541,7 +527,6 @@ impl Hook {
             contract: api.contract,
             out: api.out,
             answered_by_mod,
-            owned_answer_batch: api.owned_answer_batch,
             owner: api.owner,
             collect_validator: api.collect_validator,
             registration_append: api.registration_append,
@@ -830,7 +815,6 @@ impl Declared {
                             "scope",
                             "key",
                             "answered_by",
-                            "owned_answer_batch",
                             "owner",
                             "collect_validator",
                             "registration_append",
@@ -1004,7 +988,6 @@ impl Hook {
             contract: Contract::Listen,
             out: None,
             answered_by_mod: false,
-            owned_answer_batch: false,
             owner: None,
             collect_validator: None,
             registration_append: None,

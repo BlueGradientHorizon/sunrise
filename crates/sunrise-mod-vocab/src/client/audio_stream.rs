@@ -216,11 +216,6 @@ impl std::fmt::Display for AudioRefusal {
     }
 }
 impl std::error::Error for AudioRefusal {}
-impl crate::AccessRefusal for AudioRefusal {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
 impl std::fmt::Display for SpecFault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {

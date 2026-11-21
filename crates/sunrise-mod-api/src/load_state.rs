@@ -1,25 +1,44 @@
-//! Platform-owned phase machine and load snapshots.
+//! Platform-owned startup registration state and load snapshots.
 use crate::__private::game::Fields;
 #[cfg(test)]
 use crate::__private::game::{RegistrationContextNew, ServerReloadListenersOrder};
 use crate::*;
-#[cfg(test)]
-use mod_vocab::__private::{LoadAccess, check_access};
-use mod_vocab::__private::{ModPhase, PhaseState, RegistrationData};
-#[cfg(test)]
-use mod_vocab::__private::{PhaseError, PhaseOwner};
+use mod_vocab::__private::RegistrationData;
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::sync::{Arc, OnceLock};
+
 thread_local! {
-    static PHASE: std::cell::Cell<PhaseState> = const { std::cell::Cell::new(PhaseState {
-        phase: if cfg!(test) { ModPhase::World } else { ModPhase::Packages }, resume: None,
-    }) };
+    static REGISTRATION_OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// The phase of this thread, used in refusal diagnostics.
-pub fn current_phase() -> ModPhase {
-    PHASE.with(|cell| cell.get().phase)
+/// Whether startup registration is currently open on this thread.
+pub(crate) fn is_registration_open() -> bool {
+    REGISTRATION_OPEN.with(std::cell::Cell::get)
+}
+
+/// Thread-local guard marking startup registration open until dropped, including on unwind.
+pub struct RegistrationGuard {
+    previous: bool,
+    _thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+
+impl RegistrationGuard {
+    /// Opens startup registration on the current thread until the returned guard is dropped.
+    pub fn open() -> Self {
+        let _ = crate::__private::initialize();
+        let previous = REGISTRATION_OPEN.replace(true);
+        Self {
+            previous,
+            _thread: std::marker::PhantomData,
+        }
+    }
+}
+
+impl Drop for RegistrationGuard {
+    fn drop(&mut self) {
+        REGISTRATION_OPEN.set(self.previous);
+    }
 }
 
 static PACKAGES: OnceLock<Arc<[PackageInfo]>> = OnceLock::new();
@@ -170,12 +189,6 @@ pub(crate) fn current_packages() -> Arc<[PackageInfo]> {
     }
     PACKAGES.get().cloned().unwrap_or_else(|| Arc::from([]))
 }
-pub(crate) fn phase_snapshot() -> PhaseState {
-    PHASE.with(std::cell::Cell::get)
-}
-pub(crate) fn set_phase(state: PhaseState) {
-    PHASE.set(state);
-}
 
 #[cfg(test)]
 #[derive(Default)]
@@ -221,11 +234,11 @@ mod tests {
         #[crate::__subscriptions]
         impl Hooks for Trace {
             fn register(&self, _: &mut dyn Registrar, _: &RegistrationContext) {
-                assert_eq!(current_phase(), ModPhase::Registration);
+                assert!(crate::registration_open());
                 self.calls.lock().unwrap().push(("register", self.id));
             }
             fn config_loading(&self, _: HostSide<'_>, _: &mut ConfigLoadingEvent<'_>) {
-                assert_eq!(current_phase(), ModPhase::Config);
+                assert!(!crate::registration_open());
                 self.calls.lock().unwrap().push(("config", self.id));
             }
             fn add_server_reload_listeners(
@@ -233,7 +246,7 @@ mod tests {
                 _: &dyn Host,
                 _: &mut AddServerReloadListenersEvent<'_>,
             ) {
-                assert_eq!(current_phase(), ModPhase::Reloading);
+                assert!(!crate::registration_open());
                 self.calls.lock().unwrap().push(("reload", self.id));
             }
         }
@@ -242,7 +255,7 @@ mod tests {
         mod_api::impl_host_areas!(Server);
         impl ServerHost for Server {}
         mod_api::impl_server_host_areas!(Server);
-        // The loader supplies a dependency-resolved slice; phase dispatch must retain it.
+        // The loader supplies a dependency-resolved slice; dispatch must retain it.
         let order = [1, 0, 2];
         let calls = Arc::new(Mutex::new(Vec::new()));
         let ids = ["z", "lib", "a"];
@@ -260,32 +273,27 @@ mod tests {
             .collect::<Vec<_>>()
             .into();
         crate::__private::install(mods.clone());
-        let owner = PhaseOwner::new(ModPhase::Packages);
-        owner.advance(ModPhase::Registration).unwrap();
+        assert!(!crate::registration_open());
         crate::__private::install_parts(
             &mods,
             &crate::__private::part_tests::rule_schema(),
             |_| false,
         )
         .unwrap();
-        owner.advance(ModPhase::Setup).unwrap();
+        assert!(!crate::registration_open());
         let mut host = Server;
         for _world in 0..2 {
-            {
-                let _config = owner.config().unwrap();
-                dispatch_config_loading(
-                    HostSide::Server(&mut host),
-                    &crate::__private::built::ConfigFile {
-                        mod_id: "lib".into(),
-                        kind: ConfigKind::Server,
-                        file: "lib-server.toml".into(),
-                        text: String::new(),
-                    }
-                    .into(),
-                );
-            }
+            dispatch_config_loading(
+                HostSide::Server(&mut host),
+                &crate::__private::built::ConfigFile {
+                    mod_id: "lib".into(),
+                    kind: ConfigKind::Server,
+                    file: "lib-server.toml".into(),
+                    text: String::new(),
+                }
+                .into(),
+            );
             for _reload in 0..2 {
-                let _reload = owner.reloading().unwrap();
                 dispatch_add_server_reload_listeners(&host, &mut ServerListenerRegistry::new());
             }
         }
@@ -296,150 +304,6 @@ mod tests {
         .flat_map(|moment| ["lib", "z", "a"].map(|id| (moment, id)))
         .collect::<Vec<_>>();
         assert_eq!(*calls.lock().unwrap(), expected);
-    }
-
-    #[test]
-    fn phase_edges_are_exhaustive_and_refusal_leaves_state_unchanged() {
-        crate::__private::initialize().unwrap();
-        use ModPhase::*;
-        let phases = [Packages, Registration, Setup, Config, World, Reloading];
-        let edges = [
-            (Packages, Registration),
-            (Registration, Setup),
-            (Setup, Config),
-            (Config, World),
-            (World, Config),
-            (Setup, Reloading),
-            (World, Reloading),
-        ];
-        for from in phases {
-            for to in phases {
-                let owner = PhaseOwner::new(from);
-                let result = owner.advance(to);
-                assert_eq!(
-                    result.is_ok(),
-                    edges.contains(&(from, to)),
-                    "{from:?} -> {to:?}"
-                );
-                assert_eq!(current_phase(), if result.is_ok() { to } else { from });
-            }
-        }
-        let owner = PhaseOwner::new(Packages);
-        let other = owner.clone();
-        assert_eq!(
-            std::thread::spawn(move || other.advance(Registration))
-                .join()
-                .unwrap(),
-            Err(PhaseError::WrongThread)
-        );
-        assert_eq!(current_phase(), Packages);
-    }
-
-    #[test]
-    fn reloads_restore_setup_or_world_and_world_config_can_repeat() {
-        crate::__private::initialize().unwrap();
-        use ModPhase::*;
-        let owner = PhaseOwner::new(Packages);
-        owner.advance(Registration).unwrap();
-        owner.advance(Setup).unwrap();
-        {
-            let _reload = owner.reloading().unwrap();
-            assert_eq!(current_phase(), Reloading);
-            assert!(owner.reloading().is_err());
-        }
-        assert_eq!(current_phase(), Setup);
-        assert!(owner.advance(Registration).is_err());
-        for _world in 0..2 {
-            {
-                let _config = owner.config().unwrap();
-                assert_eq!(current_phase(), Config);
-                check_access("setting", LoadAccess::WorldOnly);
-            }
-            assert_eq!(current_phase(), World);
-            for _reload in 0..2 {
-                let _ = std::panic::catch_unwind(|| {
-                    let _reload = owner.reloading().unwrap();
-                    assert_eq!(current_phase(), Reloading);
-                    check_access("block_state_default", LoadAccess::Metadata);
-                    panic!("failed prepare");
-                });
-                assert_eq!(current_phase(), World);
-            }
-        }
-        {
-            let _loader = PhaseOwner::scope(Setup);
-            assert_eq!(current_phase(), Setup);
-        }
-        assert_eq!(current_phase(), World);
-    }
-
-    #[test]
-    fn fluid_state_facts_follow_metadata_access() {
-        crate::__private::initialize().unwrap();
-        use ModPhase::*;
-        for phase in [Packages, Registration, Setup, Config, Reloading, World] {
-            let _owner = PhaseOwner::new(phase);
-            for operation in [
-                "fluid_legacy_block",
-                "fluid_state_definition",
-                "fluid_state_validate",
-                "fluid_type_properties",
-            ] {
-                let result = std::panic::catch_unwind(|| {
-                    check_access(operation, LoadAccess::Metadata);
-                });
-                assert_eq!(result.is_ok(), matches!(phase, Setup | Reloading | World));
-            }
-        }
-    }
-
-    #[test]
-    fn early_world_handle_and_transaction_calls_panic_naming_the_phase() {
-        crate::__private::initialize().unwrap();
-        use crate::{Host, HostTransaction, ServerHost, prelude::*};
-        struct HostDouble;
-        impl Host for HostDouble {}
-        mod_api::impl_host_areas!(HostDouble);
-        impl ServerHost for HostDouble {}
-        mod_api::impl_server_host_areas!(HostDouble);
-        for phase in [
-            ModPhase::Registration,
-            ModPhase::Config,
-            ModPhase::Reloading,
-            ModPhase::Setup,
-        ] {
-            let _owner = PhaseOwner::new(phase);
-            for action in [0, 1, 2, 3] {
-                let panic = std::panic::catch_unwind(|| {
-                    let mut host = HostDouble;
-                    match action {
-                        0 => {
-                            let _ = host.entity(1);
-                        }
-                        1 => {
-                            let _ = host.level("minecraft:overworld");
-                        }
-                        2 => {
-                            let _ = host.player(1);
-                        }
-                        _ => {
-                            let _: Result<(), ()> = host.transaction(|_, _| Ok(()));
-                        }
-                    }
-                })
-                .expect_err("early access must panic, not return a refusal");
-                let message = panic.downcast_ref::<String>().unwrap();
-                assert!(message.contains(&format!("{phase:?}")), "{message}");
-            }
-        }
-        let _owner = PhaseOwner::new(ModPhase::Registration);
-        let refused = std::panic::catch_unwind(|| HostDouble.block_state_id("stone")).unwrap_err();
-        assert!(
-            refused
-                .downcast_ref::<String>()
-                .unwrap()
-                .contains("Registration")
-        );
     }
 
     #[test]
@@ -553,44 +417,6 @@ mod tests {
             assert_eq!(context.setting("one", "mode"), None);
             assert_eq!(context.mods().ids().collect::<Vec<_>>(), ["one", "two"]);
         });
-    }
-
-    #[test]
-    fn refused_component_listener_discards_only_its_appends() {
-        crate::__private::initialize().unwrap();
-
-        struct Component(&'static str, bool);
-        #[crate::__subscriptions]
-        impl Hooks for Component {
-            fn component_types(
-                &self,
-                _: &RegistrationContext,
-                event: &mut ComponentTypesEvent<'_>,
-            ) {
-                event.register(self.0.into());
-                if self.1 {
-                    check_access("level", LoadAccess::WorldOnly);
-                }
-            }
-        }
-
-        let _phase = PhaseOwner::new(ModPhase::Registration);
-        let mods = vec![
-            ModEntry::new("z_first", Box::new(Component("z_first:component", false))),
-            ModEntry::new(
-                "a_refused",
-                Box::new(Component("a_refused:component", true)),
-            ),
-            ModEntry::new("m_last", Box::new(Component("m_last:component", false))),
-        ];
-        let mut types = vec!["game:seeded".to_owned()];
-        crate::testing::with_dispatch(mods.into(), || {
-            dispatch_component_types(&RegistrationContext::new(), &mut types);
-        });
-        assert_eq!(
-            types,
-            ["game:seeded", "z_first:component", "m_last:component"]
-        );
     }
 
     #[test]

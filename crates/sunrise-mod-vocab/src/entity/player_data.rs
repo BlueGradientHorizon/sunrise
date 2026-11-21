@@ -54,12 +54,6 @@ pub enum PlayerPersistentDataError {
     InvalidNbt,
 }
 
-impl crate::AccessRefusal for PlayerPersistentDataError {
-    fn unavailable() -> Self {
-        Self::Stale
-    }
-}
-
 impl crate::NoBackend for PlayerPersistentDataError {
     fn no_backend() -> Self {
         Self::Stale
