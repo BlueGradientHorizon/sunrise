@@ -1768,7 +1768,9 @@ impl Game<'_> {
     }
     pub(super) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.gui_layer(VanillaGuiLayer::Chat, batch, |g, batch| g.draw_chat(batch));
+        self.gui_layer(VanillaGuiLayer::Chat, batch, &mut |g, batch| {
+            g.draw_chat(batch)
+        });
         let Some(mut screen) = self.ui.chat_screen.take() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;

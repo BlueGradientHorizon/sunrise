@@ -81,7 +81,9 @@ impl Hooks for Hider {
 
 /// One vanilla layer through `gui_layer`, as the HUD pass draws it.
 fn vanilla(game: &mut super::Game<'_>, batch: &mut HudBatch, layer: VanillaGuiLayer) {
-    game.gui_layer(layer, batch, |_, _| log(format!("vanilla {}", layer.id())));
+    game.gui_layer(layer, batch, &mut |_, _| {
+        log(format!("vanilla {}", layer.id()))
+    });
 }
 
 fn take() -> Vec<String> {

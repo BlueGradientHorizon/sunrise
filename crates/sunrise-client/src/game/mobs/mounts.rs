@@ -1011,7 +1011,7 @@ impl Game<'_> {
         let hearts = sunrise_client::hud_layout::vehicle_max_hearts(m.attrs.max_health);
         let draws = sunrise_client::hud_layout::vehicle_health(w, h, hearts, m.health);
         self.keep_status_rows(&draws, w, h);
-        self.gui_layer(VanillaGuiLayer::VehicleHealth, batch, |g, batch| {
+        self.gui_layer(VanillaGuiLayer::VehicleHealth, batch, &mut |g, batch| {
             sunrise_client::hud_layout::paint(batch, &g.gui.atlas, &draws);
         });
         hearts

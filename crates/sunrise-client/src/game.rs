@@ -5048,7 +5048,7 @@ impl Game<'_> {
                     hud_layout::full_attack_indicator(a, delay, self.crosshair_living())
                 });
                 let draws = hud_layout::crosshair(wi, hi, attack, full);
-                self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, |g, batch| {
+                self.gui_layer(VanillaGuiLayer::Crosshair, &mut batch, &mut |g, batch| {
                     // The custom crosshair takes the sprite's place (the first draw); the
                     // attack indicator stays.
                     if g.custom_crosshair() {
@@ -5059,7 +5059,7 @@ impl Game<'_> {
                     }
                 });
             }
-            self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, |g, batch| {
+            self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
                 if spectator {
                     g.draw_spectator_hotbar(batch);
                 } else {
@@ -5082,14 +5082,14 @@ impl Game<'_> {
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });
-            self.gui_layer(VanillaGuiLayer::Effects, &mut batch, |g, batch| {
+            self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
                 // The PvP & HUD effects widget takes the icons' place.
                 if !g.pvp_effects_shown() {
                     g.draw_effect_icons(batch);
                 }
             });
             // Hud: the action bar and titles draw over the hotbar (nextStratum).
-            self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, |g, batch| {
+            self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, &mut |g, batch| {
                 g.draw_boss_bars(batch);
             });
             self.draw_extras(&mut batch);
@@ -5157,9 +5157,13 @@ impl Game<'_> {
                 self.keep_status_rows(&draws, wi, hi);
                 // The rows draw in one pass here, so a mod's `player_health`
                 // layer stands for the armor, food and air rows too.
-                self.gui_layer(VanillaGuiLayer::PlayerHealth, &mut batch, |g, batch| {
-                    hud_layout::paint(batch, &g.gui.atlas, &draws);
-                });
+                self.gui_layer(
+                    VanillaGuiLayer::PlayerHealth,
+                    &mut batch,
+                    &mut |g, batch| {
+                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    },
+                );
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
                 // by this client only.
                 if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
@@ -5177,7 +5181,7 @@ impl Game<'_> {
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,
                 &mut batch,
-                |g, batch| {
+                &mut |g, batch| {
                     if contextual == ContextualBar::JumpableVehicle {
                         g.draw_jump_bar(batch, wi, hi);
                     }
@@ -5216,40 +5220,60 @@ impl Game<'_> {
                 },
             );
             if !spectator {
-                self.gui_layer(VanillaGuiLayer::SelectedItemName, &mut batch, |g, batch| {
-                    g.draw_selected_name(batch, !g.creative);
-                });
+                self.gui_layer(
+                    VanillaGuiLayer::SelectedItemName,
+                    &mut batch,
+                    &mut |g, batch| {
+                        g.draw_selected_name(batch, !g.creative);
+                    },
+                );
             }
         }
         // Hud.extractSleepOverlay: over all health/food bars, under titles and chat.
         let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
-        self.gui_layer(VanillaGuiLayer::SleepOverlay, &mut batch, |g, batch| {
-            hud_layout::paint(batch, &g.gui.atlas, &draws);
-        });
+        self.gui_layer(
+            VanillaGuiLayer::SleepOverlay,
+            &mut batch,
+            &mut |g, batch| {
+                hud_layout::paint(batch, &g.gui.atlas, &draws);
+            },
+        );
         if show_hud {
-            self.gui_layer(VanillaGuiLayer::OverlayMessage, &mut batch, |g, batch| {
-                g.draw_overlay_message(batch);
-            });
-            self.gui_layer(VanillaGuiLayer::Title, &mut batch, |g, batch| {
+            self.gui_layer(
+                VanillaGuiLayer::OverlayMessage,
+                &mut batch,
+                &mut |g, batch| {
+                    g.draw_overlay_message(batch);
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::Title, &mut batch, &mut |g, batch| {
                 g.draw_title(batch);
             });
             self.gui_layer(
                 VanillaGuiLayer::ScoreboardSidebar,
                 &mut batch,
-                |g, batch| {
+                &mut |g, batch| {
                     g.draw_scoreboard(batch);
                 },
             );
             if subtitles != Subtitles::Hidden {
-                self.gui_layer(VanillaGuiLayer::SubtitleOverlay, &mut batch, |g, batch| {
-                    g.draw_subtitles(batch);
-                });
+                self.gui_layer(
+                    VanillaGuiLayer::SubtitleOverlay,
+                    &mut batch,
+                    &mut |g, batch| {
+                        g.draw_subtitles(batch);
+                    },
+                );
             }
         } else if subtitles == Subtitles::Deferred {
             // F1 hid the HUD, but an in-game screen still shows the subtitles.
-            self.gui_layer(VanillaGuiLayer::SubtitleOverlay, &mut batch, |g, batch| {
-                g.draw_subtitles(batch);
-            });
+            self.gui_layer(
+                VanillaGuiLayer::SubtitleOverlay,
+                &mut batch,
+                &mut |g, batch| {
+                    g.draw_subtitles(batch);
+                },
+            );
         }
         let atlas = &self.gui.atlas;
         if show_hud
@@ -5265,11 +5289,11 @@ impl Game<'_> {
             self.draw_mod_gui_layers(Some(VanillaGuiLayer::Chat), &mut batch);
         } else if show_hud {
             if !self.overlay_holds_view() {
-                self.gui_layer(VanillaGuiLayer::Chat, &mut batch, |g, batch| {
+                self.gui_layer(VanillaGuiLayer::Chat, &mut batch, &mut |g, batch| {
                     g.draw_chat(batch)
                 });
             }
-            self.gui_layer(VanillaGuiLayer::TabList, &mut batch, |g, batch| {
+            self.gui_layer(VanillaGuiLayer::TabList, &mut batch, &mut |g, batch| {
                 g.draw_tab_list(batch);
             });
         }

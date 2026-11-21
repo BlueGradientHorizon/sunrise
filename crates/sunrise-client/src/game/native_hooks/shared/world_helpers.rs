@@ -4,7 +4,7 @@ use mod_api::content::crash::{ModCall, enter_native_mod};
 use sunrise_client::gui_layers::{self, GuiLayerSlot, VanillaGuiLayer};
 
 #[allow(dead_code)]
-impl Game<'_> {
+impl<'g> Game<'g> {
     /// Sets a block in the current authoritative level through `Level.setBlock`.
     /// Returns false for another dimension, an invalid state, or no change.
     /// `flags` selects vanilla's neighbour, shape and client updates. A block
@@ -111,21 +111,21 @@ impl Game<'_> {
     }
     /// Draws one vanilla HUD layer between the mods' hooks: first the mods' layers
     /// placed below it (`draw_mod_gui_layers`), then `native_gui_layer_pre` (which
-    /// may hide it), the layer, then `native_gui_layer_post`. `None` when a mod hid
-    /// the layer.
-    pub(in crate::game) fn gui_layer<R>(
+    /// may hide it), the layer, then `native_gui_layer_post`.
+    pub(in crate::game) fn gui_layer(
         &mut self,
         layer: VanillaGuiLayer,
         batch: &mut HudBatch,
-        draw: impl FnOnce(&mut Self, &mut HudBatch) -> R,
-    ) -> Option<R> {
+        draw: &mut dyn FnMut(&mut Game<'g>, &mut HudBatch),
+    ) {
         self.draw_mod_gui_layers(Some(layer), batch);
         let layer = layer.id();
         let mut canceled = false;
         self.native_gui_layer_pre(layer, batch, &mut canceled);
-        let drawn = (!canceled).then(|| draw(self, batch));
+        if !canceled {
+            draw(self, batch);
+        }
         self.native_gui_layer_post(layer, batch);
-        drawn
     }
     /// `GuiLayerManager.renderInner` for the mods' layers (`native_register_gui_layers`) not
     /// drawn yet this frame and placed below vanilla layer `until`, or for all that are left
