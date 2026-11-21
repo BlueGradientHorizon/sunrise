@@ -711,7 +711,11 @@ impl Game<'_> {
                     }
                 }
                 self.start_server_trip(conn, target, None, true);
-                self.trip_respawn(conn, respawn);
+                if respawn.is_some() {
+                    self.trip_respawn(conn, respawn);
+                } else {
+                    self.mark_credits_world_spawn(conn);
+                }
                 self.portals.player.cooldown = 10;
             }
             return;
@@ -1083,6 +1087,28 @@ impl Game<'_> {
             hold: false,
             left: None,
         });
+    }
+
+    /// A credits return without a player respawn point uses the destination
+    /// world's spawn search, while retaining the credit-respawn reason on the trip.
+    fn mark_credits_world_spawn(&mut self, conn: u32) {
+        let Some((source, target)) = self
+            .server_trips
+            .iter()
+            .find(|trip| trip.is(conn))
+            .map(|trip| (trip.source, trip.dim))
+        else {
+            return;
+        };
+        if self.enter_level(target).is_err() {
+            return;
+        }
+        let spawn = self.world_spawn_position();
+        let _ = self.enter_level(source);
+        if let Some(trip) = self.server_trips.iter_mut().find(|trip| trip.is(conn)) {
+            trip.target = Vec3::new(spawn[0], spawn[1], spawn[2]);
+            trip.world_spawn = true;
+        }
     }
 
     /// `findRespawnAndUseSpawnBlock` for the player in place, at its point
