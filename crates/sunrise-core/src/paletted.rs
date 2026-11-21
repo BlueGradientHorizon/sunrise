@@ -545,6 +545,65 @@ impl PalettedContainer {
             }
         }
     }
+    /// One bit per entry in `out`, entry `i` in bit `i` of `out`, from the
+    /// stored ids in one pass: `out[i] = candidate(value of entry i)`.
+    /// `out.len() * 64` must be the number of entries. A single-value palette
+    /// costs one call and fills `out` at once; a list palette resolves
+    /// `candidate` once per palette entry and then sets the bits as it reads
+    /// the words, without an unpacked copy of the section.
+    #[inline]
+    pub fn candidate_bits(&self, out: &mut [u64], mut candidate: impl FnMut(u32) -> bool) {
+        let entries = self.strategy.entries();
+        assert_eq!(out.len() * 64, entries);
+        match &self.palette {
+            Palette::Single(value) => {
+                out.fill(if candidate(*value) { u64::MAX } else { 0 });
+            }
+            Palette::List(list) => {
+                let mut candidates = [false; 256];
+                for (i, &value) in list.iter().enumerate() {
+                    candidates[i] = candidate(value);
+                }
+                let bits = usize::from(self.bits);
+                let per = 64 / bits;
+                let m = mask(self.bits);
+                let mut entry = 0;
+                for &word in &self.words {
+                    for slot in 0..per.min(entries - entry) {
+                        let id = ((word >> (slot * bits)) & m) as usize;
+                        if candidates[id] {
+                            out[entry >> 6] |= 1 << (entry & 63);
+                        }
+                        entry += 1;
+                    }
+                }
+            }
+            Palette::Global => {
+                let bits = usize::from(self.bits);
+                let per = 64 / bits;
+                let m = mask(self.bits);
+                let mut entry = 0;
+                let mut last: Option<(u32, bool)> = None;
+                for &word in &self.words {
+                    for slot in 0..per.min(entries - entry) {
+                        let value = ((word >> (slot * bits)) & m) as u32;
+                        let hit = match last {
+                            Some((seen, hit)) if seen == value => hit,
+                            _ => {
+                                let hit = candidate(value);
+                                last = Some((value, hit));
+                                hit
+                            }
+                        };
+                        if hit {
+                            out[entry >> 6] |= 1 << (entry & 63);
+                        }
+                        entry += 1;
+                    }
+                }
+            }
+        }
+    }
     /// The palette id of every entry in index order, and the list palette
     /// they index (`get(i)` is `list[ids[i]]`), without looking the values
     /// up; `None` (and `ids` untouched) for a single-value or global palette.

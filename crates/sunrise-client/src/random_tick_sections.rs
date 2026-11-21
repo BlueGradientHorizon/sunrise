@@ -41,11 +41,7 @@ impl Sections {
     /// The minimum Y of the lowest section in the set from block `min_y` up.
     pub fn from(self, min_y: i32) -> Option<i32> {
         let index = ((min_y - self.base) >> 4).max(0) as usize;
-        Sections {
-            mask: self.mask.from(index),
-            ..self
-        }
-        .next()
+        Some(self.base + self.mask.first_from(index)? as i32 * 16)
     }
 }
 impl Iterator for Sections {
@@ -62,6 +58,7 @@ impl Iterator for Sections {
 }
 impl ExactSizeIterator for Sections {}
 
+#[derive(Default)]
 struct Cached {
     chunk: Weak<Chunk>,
     /// The section each bit of `sections` was read from.
@@ -85,14 +82,32 @@ struct Cached {
 /// change (including resource reload).
 #[derive(Default)]
 pub struct RandomTickSections {
-    chunks: FxHashMap<(i32, i32), Cached>,
+    /// Where each chunk's entry is in `entries`.
+    keys: FxHashMap<(i32, i32), usize>,
+    /// The per-chunk answers, in the order `keys` hands them out. An index
+    /// stays valid while the chunk is loaded, so the next call for the same
+    /// chunk skips the map.
+    entries: Vec<Option<Cached>>,
+    free: Vec<usize>,
+    /// The chunk last asked for, so its sections don't each pay a map lookup.
+    last: Option<((i32, i32), usize)>,
 }
 impl RandomTickSections {
     pub fn clear(&mut self) {
-        self.chunks.clear();
+        self.keys.clear();
+        self.entries.clear();
+        self.free.clear();
+        self.last = None;
     }
     pub fn remove(&mut self, key: &(i32, i32)) {
-        self.chunks.remove(key);
+        let Some(index) = self.keys.remove(key) else {
+            return;
+        };
+        self.entries[index] = None;
+        self.free.push(index);
+        if self.last.is_some_and(|(last, _)| last == *key) {
+            self.last = None;
+        }
     }
     /// The sections of `chunk` holding a randomly ticking block or fluid.
     pub fn get(&mut self, key: (i32, i32), chunk: &Arc<Chunk>, facts: &BlockFacts) -> Sections {
@@ -104,7 +119,7 @@ impl RandomTickSections {
         chunk: &Arc<Chunk>,
         mut random: impl FnMut(u32) -> bool,
     ) -> Sections {
-        Self::refresh(&mut self.chunks, key, chunk, &mut random).sections
+        self.refresh(key, chunk, &mut random).sections
     }
     /// The lowest ticking section of `chunk` ([`Self::get`]) from block
     /// `from_y` up: its minimum Y and its mask of the blocks a random tick can
@@ -119,7 +134,7 @@ impl RandomTickSections {
         mut candidate: impl FnMut(u32) -> bool,
         from_y: i32,
     ) -> Option<(i32, Rc<RandomTickMask>)> {
-        let cached = Self::refresh(&mut self.chunks, key, chunk, &mut |id| {
+        let cached = self.refresh(key, chunk, &mut |id| {
             facts.get(BlockStateId(id)).random_ticks
         });
         let y = cached.sections.from(from_y)?;
@@ -146,7 +161,7 @@ impl RandomTickSections {
             let Some(chunk) = chunk_of(key) else {
                 continue;
             };
-            let cached = Self::refresh(&mut self.chunks, key, &chunk, &mut |id| {
+            let cached = self.refresh(key, &chunk, &mut |id| {
                 facts.get(BlockStateId(id)).random_ticks
             });
             for i in cached.sections.mask.iter() {
@@ -168,45 +183,58 @@ impl RandomTickSections {
             },
         );
         for ((key, i, _), mask) in todo.into_iter().zip(masks) {
-            if let Some(cached) = self.chunks.get_mut(&key) {
+            if let Some(cached) = self.existing(&key) {
                 cached.masks[i] = Some(Rc::new(mask));
             }
         }
     }
-    fn candidate_mask(section: &Section, mut candidate: impl FnMut(u32) -> bool) -> RandomTickMask {
-        let blocks = &section.blocks;
-        let mut ids = [0u16; 4096];
-        if let Some(palette) = blocks.unpack_ids(&mut ids) {
-            // ServerLevel.tickChunk's per-state eligibility is constant
-            // across a section: resolve it once per palette entry, not
-            // once per block when an edited section rebuilds its mask.
-            let mut candidates = [false; 256];
-            for (i, &state) in palette.iter().enumerate() {
-                candidates[i] = candidate(state);
-            }
-            let mut bits = [0u64; 64];
-            for (i, &id) in ids.iter().enumerate() {
-                bits[i >> 6] |= u64::from(candidates[id as usize]) << (i & 63);
-            }
-            RandomTickMask(bits)
-        } else {
-            let mut states = [0u32; 4096];
-            blocks.unpack(&mut states);
-            RandomTickMask::of(&states, candidate)
+    fn candidate_mask(section: &Section, candidate: impl FnMut(u32) -> bool) -> RandomTickMask {
+        let mut bits = [0u64; 64];
+        // ServerLevel.tickChunk's per-state eligibility is constant across a
+        // section: `candidate_bits` resolves it once per palette entry, not
+        // once per block when an edited section rebuilds its mask.
+        section.blocks.candidate_bits(&mut bits, candidate);
+        RandomTickMask(bits)
+    }
+    /// The chunk's entry index, without touching the map when it is the one
+    /// the last call returned.
+    fn entry_index(&mut self, key: (i32, i32)) -> usize {
+        if let Some((last, index)) = self.last
+            && last == key
+            && self.entries[index].is_some()
+        {
+            return index;
         }
+        let index = match self.keys.get(&key) {
+            Some(&index) => index,
+            None => {
+                let index = self.free.pop().unwrap_or_else(|| {
+                    self.entries.push(None);
+                    self.entries.len() - 1
+                });
+                self.entries[index] = Some(Cached::default());
+                self.keys.insert(key, index);
+                index
+            }
+        };
+        self.last = Some((key, index));
+        index
+    }
+    fn cached(&mut self, key: (i32, i32)) -> &mut Cached {
+        let index = self.entry_index(key);
+        self.entries[index].as_mut().unwrap()
+    }
+    fn existing(&mut self, key: &(i32, i32)) -> Option<&mut Cached> {
+        let index = *self.keys.get(key)?;
+        self.entries[index].as_mut()
     }
     fn refresh<'a>(
-        chunks: &'a mut FxHashMap<(i32, i32), Cached>,
+        &'a mut self,
         key: (i32, i32),
         chunk: &Arc<Chunk>,
         random: &mut impl FnMut(u32) -> bool,
     ) -> &'a mut Cached {
-        let cached = chunks.entry(key).or_insert_with(|| Cached {
-            chunk: Weak::new(),
-            read: Vec::new(),
-            sections: Sections::default(),
-            masks: Vec::new(),
-        });
+        let cached = self.cached(key);
         if cached.chunk.as_ptr() != Arc::as_ptr(chunk) {
             if cached.read.len() != chunk.sections.len() || cached.sections.base != chunk.min_y() {
                 cached.read = chunk.sections.iter().map(|_| Weak::new()).collect();
@@ -249,13 +277,13 @@ mod tests {
 
         // Alternating states defeat the old mask builder's consecutive-state
         // shortcut. Include single, local and global palettes and unused IDs.
-        for distinct in [1, 2, 256, 300] {
+        for distinct in [1, 2, 3, 16, 256, 300] {
             let states = std::array::from_fn::<_, 4096, _>(|i| (i % distinct) as u32);
             let mut section = Section {
                 blocks: Section::from_blocks(&states),
                 ..Default::default()
             };
-            if distinct == 2 {
+            if distinct > 1 {
                 section.set(0, 999);
                 section.set(0, states[0]);
             }
@@ -315,6 +343,27 @@ mod tests {
     }
 
     #[test]
+    fn a_single_value_section_is_all_or_nothing() {
+        let section = Section {
+            blocks: Section::from_blocks(&[7; 4096]),
+            ..Default::default()
+        };
+        for answer in [false, true] {
+            let mut calls = 0;
+            let mask = RandomTickSections::candidate_mask(&section, |id| {
+                assert_eq!(id, 7);
+                calls += 1;
+                answer
+            });
+            assert_eq!(calls, 1);
+            assert_eq!(
+                mask,
+                RandomTickMask(if answer { [u64::MAX; 64] } else { [0; 64] })
+            );
+        }
+    }
+
+    #[test]
     fn a_tall_chunk_ticks_its_sections_near_the_top() {
         let layout = crate::chunk::ColumnLayout::new(-64, 2096).unwrap();
         let mut cache = RandomTickSections::default();
@@ -366,7 +415,7 @@ mod tests {
         cache.clear(); // resource reload, with changed facts for the same state IDs
         assert_eq!(cache.get_with((0, 0), &chunk, |id| id == 0).len(), SECTIONS);
         cache.remove(&(0, 0));
-        assert!(cache.chunks.is_empty());
+        assert!(cache.keys.is_empty() && cache.last.is_none());
     }
 
     #[test]
@@ -451,6 +500,24 @@ mod tick_parity {
         time: i64,
         speed: i32,
     }
+    fn resources_root() -> PathBuf {
+        std::env::var_os("SUNRISE_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let local = manifest
+                    .join("../../.local/sunrise-client")
+                    .join(sunrise_core::VANILLA_VERSION);
+                if local.join("gameplay-facts.json").exists() {
+                    local
+                } else {
+                    // The branch worktree lives below the main checkout.
+                    manifest
+                        .join("../../../../.local/sunrise-client")
+                        .join(sunrise_core::VANILLA_VERSION)
+                }
+            })
+    }
     impl sunrise_world::level::BlockEntityNeighbors for Level {}
     impl LevelAccess for Level {
         fn block_state(&self, pos: BlockPos) -> BlockStateId {
@@ -487,22 +554,7 @@ mod tick_parity {
 
     #[test]
     fn actual_random_ticks_match_a_block_scan() {
-        let root = std::env::var_os("SUNRISE_RESOURCES")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let local = manifest
-                    .join("../../.local/sunrise-client")
-                    .join(sunrise_core::VANILLA_VERSION);
-                if local.join("gameplay-facts.json").exists() {
-                    local
-                } else {
-                    // The branch worktree lives below the main checkout.
-                    manifest
-                        .join("../../../../.local/sunrise-client")
-                        .join(sunrise_core::VANILLA_VERSION)
-                }
-            });
+        let root = resources_root();
         if !root.join("gameplay-facts.json").exists() {
             eprintln!(
                 "skipping resource-backed random-tick parity: {}",
@@ -762,5 +814,68 @@ mod tick_parity {
                 assert_eq!(s.blocks, t.blocks);
             }
         }
+    }
+
+    #[test]
+    fn an_edit_between_ticks_rebuilds_its_mask_and_shared_masks_stay() {
+        let root = resources_root();
+        if !root.join("gameplay-facts.json").exists() {
+            eprintln!(
+                "skipping resource-backed random-tick mask refresh: {}",
+                root.display()
+            );
+            return;
+        }
+        let registry = data::load_registry(&root).unwrap();
+        let (facts, behaviours) = BlockFacts::load_pair(&root, &registry).unwrap();
+        let grass = registry.default_state("minecraft:grass_block").unwrap();
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let candidate = |id| behaviours.random_tick_candidate(BlockStateId(id));
+        let mut chunk = Chunk::empty(0, 0);
+        Arc::make_mut(&mut chunk.sections[0]).blocks =
+            crate::chunk::Section::from_blocks(&[grass.0; 4096]);
+        let mut chunk = Arc::new(chunk);
+        let mut cache = RandomTickSections::default();
+        let (_, mask) = cache
+            .next_masked((0, 0), &chunk, &facts, candidate, MIN_Y)
+            .unwrap();
+        let kept = mask.clone();
+        let edited_pos = BlockPos::new(0, MIN_Y + 5, 0);
+        assert!(mask.may_tick(edited_pos));
+        // The loop's repeated ask for the same section and chunk is answered
+        // from the last answer, without reading the cache again.
+        let (_, repeated) = cache
+            .next_masked((0, 0), &chunk, &facts, candidate, MIN_Y)
+            .unwrap();
+        assert!(Rc::ptr_eq(&mask, &repeated));
+        // An edit replaces the section's Arc; its mask has to be read again.
+        Arc::make_mut(&mut chunk).set(0, MIN_Y + 5, 0, stone.0);
+        let (y, edited) = cache
+            .next_masked((0, 0), &chunk, &facts, candidate, MIN_Y)
+            .unwrap();
+        assert_eq!(y, MIN_Y);
+        assert!(!edited.may_tick(edited_pos));
+        assert!(edited.may_tick(BlockPos::new(1, MIN_Y + 5, 0)));
+        assert!(!Rc::ptr_eq(&kept, &edited));
+        // The mask handed to the loop before the rebuild still answers for
+        // the blocks it was built from.
+        assert!(kept.may_tick(edited_pos));
+        // Rebuilding another section must not change the first one's mask.
+        Arc::make_mut(&mut chunk).sections[1] = Arc::new(crate::chunk::Section {
+            blocks: crate::chunk::Section::from_blocks(&[grass.0; 4096]),
+            ..Default::default()
+        });
+        let (y, other) = cache
+            .next_masked((0, 0), &chunk, &facts, candidate, MIN_Y + 16)
+            .unwrap();
+        assert_eq!(y, MIN_Y + 16);
+        assert!(other.may_tick(BlockPos::new(0, MIN_Y + 16, 0)));
+        assert!(kept.may_tick(edited_pos));
+        // Edited back, the rebuilt mask admits the block again.
+        Arc::make_mut(&mut chunk).set(0, MIN_Y + 5, 0, grass.0);
+        let (_, again) = cache
+            .next_masked((0, 0), &chunk, &facts, candidate, MIN_Y)
+            .unwrap();
+        assert!(again.may_tick(edited_pos));
     }
 }
