@@ -103,6 +103,9 @@ pub(super) enum SpawnAction {
 struct SpawnTrip {
     action: SpawnAction,
     waiting_for: Option<(i32, i32)>,
+    /// A saved personal column without a block respawn config. An End exit lands on
+    /// its surface after it loads and retains the player's facing.
+    legacy_personal_point: bool,
 }
 
 /// A vehicle a player rides: an animal, a boat or a minecart. It travels
@@ -993,17 +996,23 @@ impl Game<'_> {
             .respawn_elsewhere
             .as_ref()
             .and_then(RespawnConfig::from_saved);
-        let (dim, target, world_spawn) = if let Some(c) = config {
+        let (dim, target, world_spawn, legacy_personal_point) = if let Some(c) = config {
             let [x, y, z] = c.pos.map(f64::from);
-            (c.dim, Vec3::new(x + 0.5, y, z + 0.5), false)
+            (c.dim, Vec3::new(x + 0.5, y, z + 0.5), false, false)
         } else if let Some([x, y, z]) = guest.spawn {
-            (Dim::Overworld, Vec3::new(x, y, z), false)
+            (
+                Dim::Overworld,
+                Vec3::new(x, y, z),
+                false,
+                matches!(action, SpawnAction::EndExit),
+            )
         } else {
             let [x, y, z] = self.world_spawn_position();
             (
                 self.world_spawn_level(),
                 Vec3::new(x, y, z),
                 self.level.world_spawn.is_some(),
+                false,
             )
         };
         let return_to = self.dim;
@@ -1026,6 +1035,7 @@ impl Game<'_> {
             spawn_search: Some(SpawnTrip {
                 action,
                 waiting_for: None,
+                legacy_personal_point,
             }),
             world_spawn,
             missing: None,
@@ -1034,7 +1044,9 @@ impl Game<'_> {
             hold: false,
             left: None,
         };
-        if (config.is_none() && !world_spawn) || self.trip_destination_ready(&trip) {
+        if (config.is_none() && !world_spawn && !legacy_personal_point)
+            || self.trip_destination_ready(&trip)
+        {
             if let Some(pending) = self.resolve_spawn_trip(trip, action) {
                 self.server_trips.push(pending);
             }
@@ -1059,6 +1071,10 @@ impl Game<'_> {
     fn resolve_spawn_trip(&mut self, mut trip: Trip, action: SpawnAction) -> Option<Trip> {
         let before = self.dim;
         let consume = matches!(action, SpawnAction::Replace { was_death: true });
+        let legacy_personal_point = trip
+            .spawn_search
+            .as_ref()
+            .is_some_and(|search| search.legacy_personal_point);
         let result = (|| -> sunrise_client::Result<Option<Trip>> {
             let own = if let Some(config) = trip.respawn {
                 if let Some(found) = self.find_respawn_and_use(config, consume)? {
@@ -1084,9 +1100,17 @@ impl Game<'_> {
             let (at, yaw, pitch) = if let Some(found) = own {
                 found
             } else {
-                let at = if trip.world_spawn {
-                    let suggestion =
-                        [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
+                let [x, y, z] =
+                    [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
+                let suggestion = if legacy_personal_point {
+                    // As in end_arrival, use the shared spawn search only if this is its column.
+                    self.level
+                        .world_spawn
+                        .filter(|&[wx, _, wz]| (wx, wz) == (x, z))
+                } else {
+                    trip.world_spawn.then_some([x, y, z])
+                };
+                let at = if let Some(suggestion) = suggestion {
                     match self.search_spawn(suggestion, &mut trip.finder) {
                         Ok(at) => at,
                         Err(chunk) => {
@@ -1096,6 +1120,9 @@ impl Game<'_> {
                             return Ok(Some(trip));
                         }
                     }
+                } else if legacy_personal_point {
+                    let y = self.land_column(x, z).map_or(trip.target.y, f64::from);
+                    Vec3::new(trip.target.x, y, trip.target.z)
                 } else {
                     trip.target
                 };
@@ -1142,7 +1169,8 @@ impl Game<'_> {
                                 conn: trip.conn,
                                 dim: found.dim,
                                 at: [found.at.x, found.at.y, found.at.z],
-                                rotation: Some([found.yaw, found.pitch]),
+                                rotation: (!legacy_personal_point)
+                                    .then_some([found.yaw, found.pitch]),
                                 vehicle: None,
                             },
                             LevelTeleportKind::EndExit {

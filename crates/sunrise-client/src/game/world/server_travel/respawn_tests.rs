@@ -360,6 +360,66 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
 
 #[test]
 #[ignore = "daily"]
+fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
+    with_end_travel(None, |game, rx, heard| {
+        game.level.world_spawn_angle = [20.0, 5.0];
+        assert!(!game.streaming.is_lit(0, 0));
+        put_guest_in_end_exit(game);
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.respawn_elsewhere = None;
+            g.spawn = Some([9.5, 64.0, 9.5]);
+            (g.yaw, g.pitch) = (-67.0, 27.0);
+        });
+
+        game.handle_server_portal(2);
+        assert_eq!(game.command_guest(2).unwrap().dimension, Dim::End.id());
+        assert!(heard.lock().unwrap().is_empty());
+        assert!(
+            !received_packets(rx)
+                .any(|packet| matches!(packet, C::Respawn(_) | C::PlayerPosition(_)))
+        );
+
+        game.enter_level(Dim::Overworld).unwrap();
+        light_spawn_chunks(game);
+        assert!(
+            game.set_state_named([9, 112, 9], "minecraft:stone", &[])
+                .unwrap()
+        );
+        game.tick_server_travel();
+        game.tick_server_travel();
+
+        let player = game.command_guest(2).unwrap();
+        assert_eq!(player.dimension, Dim::Overworld.id());
+        assert_eq!(player.position, [9.5, 113.0, 9.5]);
+        assert_eq!([player.yaw, player.pitch], [-67.0, 27.0]);
+        let packets: Vec<_> = received_packets(rx).collect();
+        assert_eq!(
+            packets
+                .iter()
+                .filter(|p| matches!(p, C::Respawn(_)))
+                .count(),
+            1
+        );
+        let positions: Vec<_> = packets
+            .iter()
+            .filter_map(|p| match p {
+                C::PlayerPosition(p) => Some((p.position, p.yaw, p.pitch)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(positions, [([9.5, 113.0, 9.5], -67.0, 27.0)]);
+        assert_eq!(
+            *heard.lock().unwrap(),
+            [
+                EndHook::Travel("end_portal".into(), Dim::Overworld.id().into()),
+                EndHook::Changed(Dim::End.id().into(), Dim::Overworld.id().into()),
+            ]
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn an_end_exit_to_a_point_in_the_end_sends_no_respawn_packet() {
     with_end_travel(None, |game, rx, heard| {
         game.enter_level(Dim::End).unwrap();
