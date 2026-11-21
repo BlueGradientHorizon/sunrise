@@ -102,34 +102,50 @@ fn a_summoned_orb_keeps_the_position_it_was_asked_for() {
     });
 }
 
-/// `SummonCommand.spawnEntity` replies with `Entity.getDisplayName`, the
-/// `CustomName` when there is one (#2694).
+/// Vanilla 26.3 witness: `/summon` replies with `Entity.getDisplayName`, using `CustomName` when set (#2694).
 #[test]
 #[ignore = "daily"]
 fn summon_replies_with_the_custom_name_of_every_kind() {
+    let witness: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/fixtures/26.3/summon_custom_name_replies.json"
+    )))
+    .unwrap();
+    assert_eq!(witness["minecraft"], "26.3");
+    let records = witness["records"].as_array().unwrap();
+    assert!(!records.is_empty());
+
     with_game(|game| {
-        for (i, kind) in [
-            "evoker_fangs",
-            "experience_orb",
-            "area_effect_cloud",
-            "ender_dragon",
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let command = format!(
-                "summon {kind} {}.5 200 4.5 {{CustomName:\"fz\"}}",
-                2 + 3 * i
-            );
-            assert!(
-                game.run_command(&command),
-                "{command}: {:?}",
-                game.ui.chat.recent_lines(3)
+        for record in records {
+            let cmd = record["cmd"].as_str().unwrap();
+            let line = cmd.strip_prefix('/').unwrap_or(cmd);
+            game.chat_capture = Some(Vec::new());
+            game.cmds.results = Some(Vec::new());
+            game.run_command(line);
+            let messages: Vec<serde_json::Value> = game
+                .chat_capture
+                .take()
+                .unwrap_or_default()
+                .iter()
+                .map(super::super::command_harness::spans)
+                .collect();
+            let results: Vec<serde_json::Value> = game
+                .cmds
+                .results
+                .take()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(success, value)| serde_json::json!([success, value]))
+                .collect();
+            assert_eq!(
+                serde_json::Value::Array(messages),
+                record["messages"],
+                "{cmd}"
             );
             assert_eq!(
-                game.ui.chat.recent_lines(1),
-                ["Summoned new fz"],
-                "{command}"
+                serde_json::Value::Array(results),
+                record["results"],
+                "{cmd}"
             );
         }
     });

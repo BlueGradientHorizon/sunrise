@@ -1,0 +1,570 @@
+{
+  "minecraft": "26.3",
+  "oracle": "dev.sunriselab.parity.VanillaCommandExecOracle",
+  "groups": [
+    "summon custom name replies"
+  ],
+  "records": [
+    {
+      "cmd": "/summon evoker_fangs 2.5 200 4.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon experience_orb 5.5 200 4.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon area_effect_cloud 8.5 200 4.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon ender_dragon 11.5 200 4.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon evoker_fangs 2.5 200 6.5 {CustomName:{text:\"fz\",color:\"gold\",bold:true}}",
+      "messages": [
+        [
+          [
+            "Summoned new ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "fz",
+            [
+              16755200,
+              true,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon experience_orb 5.5 200 6.5 {CustomName:{text:\"fz\",color:\"gold\",bold:true}}",
+      "messages": [
+        [
+          [
+            "Summoned new ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "fz",
+            [
+              16755200,
+              true,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon area_effect_cloud 8.5 200 6.5 {CustomName:{text:\"fz\",color:\"gold\",bold:true}}",
+      "messages": [
+        [
+          [
+            "Summoned new ",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ],
+          [
+            "fz",
+            [
+              16755200,
+              true,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon evoker_fangs 2.5 200 8.5 {}",
+      "messages": [
+        [
+          [
+            "Summoned new Evoker Fangs",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon experience_orb 5.5 200 8.5 {}",
+      "messages": [
+        [
+          [
+            "Summoned new Experience Orb",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon area_effect_cloud 8.5 200 8.5 {}",
+      "messages": [
+        [
+          [
+            "Summoned new Area Effect Cloud",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon pig 2.5 200 10.5 {NoAI:1b,NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon armor_stand 5.5 200 10.5 {NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon tnt 8.5 200 10.5 {NoGravity:1b,fuse:2000s,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon end_crystal 11.5 200 10.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon falling_block 2.5 200 12.5 {NoGravity:1b,BlockState:{Name:\"minecraft:sand\"},CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon firework_rocket 5.5 200 12.5 {NoGravity:1b,LifeTime:2000,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon trident 8.5 200 12.5 {NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon snowball 11.5 200 12.5 {NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon oak_boat 14.5 200 4.5 {NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon minecart 14.5 200 8.5 {NoGravity:1b,CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon marker 14.5 200 12.5 {CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    },
+    {
+      "cmd": "/summon item 2.5 200 14.5 {NoGravity:1b,Item:{id:\"minecraft:stone\",count:1},CustomName:\"fz\"}",
+      "messages": [
+        [
+          [
+            "Summoned new fz",
+            [
+              null,
+              false,
+              false,
+              false,
+              false,
+              false
+            ]
+          ]
+        ]
+      ],
+      "results": [
+        [
+          true,
+          1
+        ]
+      ]
+    }
+  ]
+}

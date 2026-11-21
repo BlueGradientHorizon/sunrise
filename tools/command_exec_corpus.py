@@ -778,6 +778,35 @@ def entities():
     ]
 
 
+def summon_custom_name_replies():
+    # SummonCommand replies with Entity.getDisplayName across entity kinds (26.3, #2694).
+    cases = [
+        ('evoker_fangs', 2.5, 4.5, '{CustomName:"fz"}'),
+        ('experience_orb', 5.5, 4.5, '{CustomName:"fz"}'),
+        ('area_effect_cloud', 8.5, 4.5, '{CustomName:"fz"}'),
+        ('ender_dragon', 11.5, 4.5, '{CustomName:"fz"}'),
+        ('evoker_fangs', 2.5, 6.5, '{CustomName:{text:"fz",color:"gold",bold:true}}'),
+        ('experience_orb', 5.5, 6.5, '{CustomName:{text:"fz",color:"gold",bold:true}}'),
+        ('area_effect_cloud', 8.5, 6.5, '{CustomName:{text:"fz",color:"gold",bold:true}}'),
+        ('evoker_fangs', 2.5, 8.5, '{}'),
+        ('experience_orb', 5.5, 8.5, '{}'),
+        ('area_effect_cloud', 8.5, 8.5, '{}'),
+        ('pig', 2.5, 10.5, '{NoAI:1b,NoGravity:1b,CustomName:"fz"}'),
+        ('armor_stand', 5.5, 10.5, '{NoGravity:1b,CustomName:"fz"}'),
+        ('tnt', 8.5, 10.5, '{NoGravity:1b,fuse:2000s,CustomName:"fz"}'),
+        ('end_crystal', 11.5, 10.5, '{CustomName:"fz"}'),
+        ('falling_block', 2.5, 12.5, '{NoGravity:1b,BlockState:{Name:"minecraft:sand"},CustomName:"fz"}'),
+        ('firework_rocket', 5.5, 12.5, '{NoGravity:1b,LifeTime:2000,CustomName:"fz"}'),
+        ('trident', 8.5, 12.5, '{NoGravity:1b,CustomName:"fz"}'),
+        ('snowball', 11.5, 12.5, '{NoGravity:1b,CustomName:"fz"}'),
+        ('oak_boat', 14.5, 4.5, '{NoGravity:1b,CustomName:"fz"}'),
+        ('minecart', 14.5, 8.5, '{NoGravity:1b,CustomName:"fz"}'),
+        ('marker', 14.5, 12.5, '{CustomName:"fz"}'),
+        ('item', 2.5, 14.5, '{NoGravity:1b,Item:{id:"minecraft:stone",count:1},CustomName:"fz"}'),
+    ]
+    return [cmd(f'/summon {kind} {x} 200 {z} {nbt}') for kind, x, z, nbt in cases]
+
+
 def wither_spawn():
     """A wither charging up (`Invul`) neither moves toward its target nor is hurt by
     the blast that ends the charge (#3322): `WitherBoss.customServerAiStep` sets no
@@ -8612,6 +8641,7 @@ def groups():
         ('vehicle ground and fall', vehicle_ground_and_fall()),
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
+        ('summon custom name replies', summon_custom_name_replies()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]
