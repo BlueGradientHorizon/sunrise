@@ -5,19 +5,26 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-// Files defining workspace types used in declaration inputs, and the paths by which
-// the reader names them (including re-exports). Registry crates such as semver,
-// serde_json and toml are out of scope.
-#[rustfmt::skip]
-const EXTERNAL_DECLARATIONS: &[(&str, &[&str])] = &[
-    ("../sunrise-core/src/arm_pose.rs", &["sunrise_core::arm_pose::ArmPose"]),
-    ("../sunrise-mod-vocab/src/content/package_side.rs", &["mod_vocab::Side"]),
-    ("../sunrise-mod-vocab/src/world/package_details.rs", &["mod_vocab::DependencyOrder", "mod_vocab::DependencyOrder::After"]),
+// Workspace types used in declaration inputs, by the paths the reader names them with
+// (re-exports included). The guard finds the files that define each type itself.
+// Registry crates such as semver, serde_json and toml are out of scope.
+const EXTERNAL_DECLARATIONS: &[&str] = &[
+    "sunrise_core::arm_pose::ArmPose",
+    "mod_vocab::Side",
+    "mod_vocab::DependencyOrder",
+    "mod_vocab::DependencyOrder::After",
     // The field's custom deserializer maps names to this vocabulary instead of deriving Serde.
-    ("../sunrise-mod-vocab/src/client/types.rs", &["mod_vocab::NoteInstrument", "mod_vocab::NoteInstrument::ALL"]),
+    "mod_vocab::NoteInstrument",
+    "mod_vocab::NoteInstrument::ALL",
+];
+
+// Where each such crate keeps its sources.
+const EXTERNAL_CRATES: &[(&str, &str)] = &[
+    ("sunrise_core", "../sunrise-core/src"),
+    ("mod_vocab", "../sunrise-mod-vocab/src"),
 ];
 
 #[rustfmt::skip]
@@ -87,20 +94,21 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
     let mut files = Vec::new();
     for stem in ["manifest", "content"] {
         files.push(format!("{stem}.rs"));
-        sources(Path::new(stem), &mut files);
+        sources(Path::new("src"), Path::new(stem), &mut files);
     }
     files.sort();
-    let paths = files
+    let mut paths: Vec<_> = files
         .iter()
-        .map(|file| (file.as_str(), Path::new("src").join(file)))
-        .chain(
-            EXTERNAL_DECLARATIONS
-                .iter()
-                .map(|&(file, _)| (file, PathBuf::from(file))),
-        );
+        .map(|file| (file.clone(), Path::new("src").join(file)))
+        .collect();
+    let mut external = BTreeSet::new();
+    for path in EXTERNAL_DECLARATIONS {
+        external.extend(defining_files(path));
+    }
+    paths.extend(external.into_iter().map(|file| (file.clone(), file.into())));
     let known_paths: BTreeSet<_> = EXTERNAL_DECLARATIONS
         .iter()
-        .flat_map(|&(_, paths)| paths.iter().copied())
+        .copied()
         .chain(NOT_DECLARATIONS.iter().map(|&(path, _reason)| path))
         .collect();
     let corpus = crate::corpus::entries();
@@ -116,7 +124,7 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
         }
         for (item, feature) in blind_spots(&source_tokens) {
             if let Some(fixtures) =
-                reviewed.remove(&[file.to_owned(), item.to_owned(), feature.clone()])
+                reviewed.remove(&[file.clone(), item.to_owned(), feature.clone()])
             {
                 assert!(
                     !fixtures.is_empty(),
@@ -163,16 +171,58 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
     );
 }
 
-fn sources(dir: &Path, files: &mut Vec<String>) {
-    for entry in fs::read_dir(Path::new("src").join(dir)).unwrap() {
+fn sources(root: &Path, dir: &Path, files: &mut Vec<String>) {
+    for entry in fs::read_dir(root.join(dir)).unwrap() {
         let entry = entry.unwrap();
         let path = dir.join(entry.file_name());
         if entry.file_type().unwrap().is_dir() {
-            sources(&path, files);
+            sources(root, &path, files);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             files.push(path.to_str().unwrap().replace('\\', "/"));
         }
     }
+}
+
+/// The files that define the type a path names. A re-export says nothing about where its type
+/// lives, and `mod_vocab`'s root is assembled by its build script, so this does not follow the
+/// path: it takes every file of the crate that defines a type of that name, at any depth. Two
+/// types of one name are both audited. A type no file defines by name (a macro's, a build
+/// script's, a renamed re-export's) fails here instead of going unaudited.
+fn defining_files(path: &str) -> Vec<String> {
+    let (krate, rest) = path.split_once("::").expect("crate::Type");
+    let root = EXTERNAL_CRATES
+        .iter()
+        .find(|&&(name, _)| name == krate)
+        .unwrap_or_else(|| panic!("{path}: no source folder listed for {krate}"))
+        .1;
+    let mut files = Vec::new();
+    sources(Path::new(root), Path::new(""), &mut files);
+    let sources: Vec<_> = files
+        .into_iter()
+        .map(|file| {
+            let file = format!("{root}/{file}");
+            let text = fs::read_to_string(&file).unwrap_or_else(|e| panic!("{file}: {e}"));
+            (file, text)
+        })
+        .collect();
+    // Modules lead, then the type; a variant or associated item may follow it.
+    for name in rest.split("::") {
+        let mut found: Vec<_> = sources
+            .iter()
+            .filter(|(_, text)| {
+                text.contains(name)
+                    && tokens(text).windows(2).any(|pair| {
+                        matches!(pair[0], "struct" | "enum" | "union" | "type") && pair[1] == name
+                    })
+            })
+            .map(|(file, _)| file.clone())
+            .collect();
+        if !found.is_empty() {
+            found.sort();
+            return found;
+        }
+    }
+    panic!("{path}: no file under {root} defines this type, so its Serde form can't be audited")
 }
 
 fn workspace_paths(tokens: &[&str]) -> BTreeSet<String> {
