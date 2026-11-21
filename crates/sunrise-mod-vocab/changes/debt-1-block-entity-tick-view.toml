@@ -24,7 +24,8 @@ uses the row as it stood at replacement, and Containers.dropItemStack joins the 
 (before removeBlockEntity and neighbor notifications), at NeoForge's EntityJoinLevelEvent site in
 PersistentEntitySectionManager.addEntity. In keeping with NeoForge's SnapshotJournal.onClose,
 only abort restores the first-write snapshot. Bulk edits keep FillCommand.fillBlocks' strict rules:
-no container drops or neighbor updates, with whole changed chunks published on commit.
+no container drops or neighbor updates, with whole changed chunks published on commit. At a cell
+where ordinary and strict writes are mixed, replay follows their call order and keeps their rows distinct.
 ItemEntityRef::set_stack still uses ItemEntity.setItem. Its write and block replacement join the
 journal of the level in place, not a journal in a different level (ExecuteCommand's in branch).
 """

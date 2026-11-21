@@ -2,7 +2,10 @@
 //! filters compile to the command matcher, its heights read, and its runs made
 //! at once through `World::edit_runs`, with what `fill ... strict` does for
 //! the block entities and the watched blocks of each block changed.
-use super::Game;
+use super::{
+    Game,
+    transactions::{StrictBlockStep, StrictBlockSteps, take_replay_row},
+};
 use mod_api::BlockEdit;
 use mod_api::ColumnBlocks;
 use mod_api::Heightmap;
@@ -61,11 +64,17 @@ impl Game<'_> {
                 || stateful.get(s as usize).copied().unwrap_or(false)
                 || BlockEntity::for_block(&f.name).is_some()
         };
+        let mut steps = StrictBlockSteps::new();
         let (out, publication) = if let Some(frame) = self.transactions.level_frame(self.dim) {
             let (out, publication) =
                 self.world
-                    .stage_edit_runs(&runs, matches, track, |pos, old| {
+                    .stage_edit_runs(&runs, matches, track, |pos, old, new| {
                         frame.keep_bulk_block(pos, old);
+                        let to = BlockStateId(new);
+                        steps
+                            .entry(pos)
+                            .and_modify(|step| step.to = to)
+                            .or_insert(StrictBlockStep { to, row: None });
                     });
             if out.changed != 0 {
                 self.transactions.advance_block_writes();
@@ -116,13 +125,14 @@ impl Game<'_> {
             &out.tracked,
             |s| facts.get(BlockStateId(s)).name.clone(),
             |_| made.next().flatten(),
-            publication.is_none(),
+            publication.as_ref().map(|_| &mut steps),
         );
         if let Some(publication) = publication {
             self.after_commit(super::transactions::After::BulkBlocks(
                 publication,
                 out.tracked,
                 removed,
+                steps,
             ));
         } else {
             for pos in removed {
@@ -445,11 +455,11 @@ fn replace_block_entities(
     tracked: &[Tracked],
     name: impl Fn(u32) -> Arc<str>,
     mut new_entity: impl FnMut(&str) -> Option<BlockEntity>,
-    publish: bool,
+    mut staged: Option<&mut StrictBlockSteps>,
 ) -> Vec<[i32; 3]> {
     let mut replaced = Vec::new();
     for &((x, y, z), old, new) in tracked {
-        if publish {
+        if staged.is_none() {
             publish_tracked(world, (x, y, z), old, new);
         }
         let (was, now) = (name(old), name(new));
@@ -466,7 +476,14 @@ fn replace_block_entities(
                 .get(&(x, y, z))
                 .is_some_and(|e| e.fits(&now))
         {
-            world.block_entities.remove(&(x, y, z));
+            let pos = (x, y, z);
+            if let Some(step) = staged.as_deref_mut().and_then(|steps| steps.get_mut(&pos))
+                && step.row.is_none()
+            {
+                step.row = Some(take_replay_row(world, pos));
+            } else {
+                world.block_entities.remove(&pos);
+            }
             if let Some(entity) = new_entity(&now) {
                 world.block_entities.insert((x, y, z), entity);
             }
@@ -667,7 +684,7 @@ mod tests {
         );
         assert_eq!(out.tracked, [((1, 5, 1), 2, 1)]);
         let replaced =
-            replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, true);
+            replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, None);
         assert_eq!(replaced, [[1, 5, 1]]);
         assert!(w.block_entities.get(&(1, 5, 1)).is_none());
         assert_eq!(w.block(1, 5, 1).0, 1);
@@ -711,7 +728,7 @@ mod tests {
                 )))
             })
         };
-        replace_block_entities(&mut w, &out.tracked, names, made, true);
+        replace_block_entities(&mut w, &out.tracked, names, made, None);
         assert!(w.block_entities.get(&(1, 5, 1)).is_none());
     }
 
@@ -739,7 +756,7 @@ mod tests {
                 )))
             })
         };
-        replace_block_entities(&mut w, &out.tracked, names, made, true);
+        replace_block_entities(&mut w, &out.tracked, names, made, None);
         assert!(matches!(
             w.block_entities.get(&(3, 10, 3)),
             Some(BlockEntity::Mod(e)) if e.id() == "machines:press"
@@ -775,7 +792,7 @@ mod tests {
             |_| true,
         );
         assert_eq!(out.tracked, [((1, 5, 1), 2, 4)]);
-        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, true);
+        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, None);
         assert!(
             matches!(
                 w.block_entities.get(&(1, 5, 1)),
@@ -799,7 +816,7 @@ mod tests {
             |_| true,
         );
         assert_eq!(out.tracked, [((2, 5, 1), 2, 4)]);
-        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, true);
+        replace_block_entities(&mut w, &out.tracked, names, BlockEntity::for_block, None);
         assert!(matches!(
             w.block_entities.get(&(2, 5, 1)),
             Some(BlockEntity::Chest(_))

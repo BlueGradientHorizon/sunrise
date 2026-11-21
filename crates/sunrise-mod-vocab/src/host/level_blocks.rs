@@ -81,8 +81,9 @@ pub trait LevelBlocksBackendMut {
     /// unloaded or out-of-height write. Notification follows the supplied update flags.
     /// Inside a transaction in this level, replacement effects wait for that level's
     /// outermost commit. The server uses the block entity as it was at replacement,
-    /// including earlier edits, and joins its drops before removing it and notifying
-    /// neighbors. Aborting restores the original state and undoes those edits.
+    /// including earlier edits, and joins its drops before removing it and notifying neighbors.
+    /// A strict bulk edit at the same position does not change which row this write removes.
+    /// Aborting restores the original state and undoes those edits.
     #[access(WorldOnly)]
     fn level_set_block(
         &mut self,

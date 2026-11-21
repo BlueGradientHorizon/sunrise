@@ -17,6 +17,8 @@ out-of-height portions of runs are skipped. Edits preserve strict block-entity b
 drop no contents from replaced block entities, notify no neighbors and send whole changed chunks.
 Inside a transaction in the level in place, the new states and entities are visible immediately.
 Abort restores both; only the outermost commit in that level publishes the changed chunks.
+When a bulk edit and a `LevelRef::set_block` write touch the same position, they replay in
+call order. Only the ordinary write can spill contents or notify neighbors.
 
 ## Read column palettes
 

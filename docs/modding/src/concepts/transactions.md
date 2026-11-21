@@ -64,7 +64,9 @@ any edits made before the replacement. Its drops join before the row is removed 
 before neighbor notifications. On abort, the journal restores the original entity
 and undoes those edits. `host.edit_blocks` also restores the original blocks and
 block entities on abort; it publishes whole chunks on commit without drops or
-neighbor updates. `LevelRef::destroy_block` returns `Ok(None)` while a transaction
+neighbor updates. If both kinds of write touch one position, they replay in call
+order; a later bulk edit cannot substitute its new block entity for the ordinary
+removal's old one. `LevelRef::destroy_block` returns `Ok(None)` while a transaction
 is open, before running loot, experience or break effects.
 
 `ItemEntityRef::set_stack` writes the replacement stack immediately and joins the

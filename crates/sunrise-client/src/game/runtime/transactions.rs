@@ -39,7 +39,7 @@ use sunrise_client::{
     lan::configuration_tasks::ConfigurationCompletion,
     living_attributes::ModifierChanges,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
-    world::BlockEntityExtras,
+    world::{BlockEntityExtras, World},
 };
 use sunrise_core::{position::BlockPos, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
@@ -211,7 +211,35 @@ impl Drop for ClosingPhase<'_, '_> {
 struct KeptBlock {
     state: BlockStateId,
     replay: Option<BlockReplay>,
+    strict: bool,
 }
+
+pub(super) type RemovedRow = (Box<BlockEntity>, u64);
+
+pub(super) fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
+    let generation = world.block_entities.generation(&pos);
+    world
+        .block_entities
+        .remove(&pos)
+        .zip(generation)
+        .map(|(row, generation)| (Box::new(row), generation))
+}
+
+pub(super) struct BlockStep {
+    pos: Pos,
+    to: BlockStateId,
+    replay: BlockReplay,
+    // Some means staging took the resident row out (even if it was already absent).
+    removed: Option<Option<RemovedRow>>,
+}
+
+pub(super) struct StrictBlockStep {
+    pub(super) to: BlockStateId,
+    // Before the first replacement on this cell; swapped for the new row at commit.
+    pub(super) row: Option<Option<RemovedRow>>,
+}
+
+pub(super) type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
 
 #[derive(Clone, Copy)]
 struct BlockReplay {
@@ -255,7 +283,7 @@ pub(super) struct Level {
     /// Rows moved out of storage when their block was tentatively replaced. Commit replays
     /// removal with the row as it was then; abort uses the first write in `block_entities`.
     /// A removal without a resident row still marks the position for abort.
-    removed_block_entities: HashMap<Pos, Option<(BlockEntity, u64)>>,
+    removed_block_entities: HashMap<Pos, Option<RemovedRow>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -492,13 +520,14 @@ pub(super) enum After {
 
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
-    /// The block's final state, set with the combined update flags.
-    Block(Pos),
+    /// Replay a block write (coalesced by position unless a strict edit shares the cell).
+    Block(BlockStep),
     /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
     BulkBlocks(
         sunrise_client::block_edit::BulkPublication,
         Vec<super::block_edits::Tracked>,
         Vec<[i32; 3]>,
+        StrictBlockSteps,
     ),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
@@ -608,10 +637,14 @@ fn frame_token() -> u64 {
 
 impl Level {
     pub(super) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
-        self.blocks.entry(pos).or_insert(KeptBlock {
-            state: BlockStateId(state),
-            replay: None,
-        });
+        self.blocks
+            .entry(pos)
+            .and_modify(|kept| kept.strict = true)
+            .or_insert(KeptBlock {
+                state: BlockStateId(state),
+                replay: None,
+                strict: true,
+            });
     }
 
     fn merge_level_writes(&mut self, child: &mut Self) {
@@ -636,6 +669,7 @@ impl Level {
             self.blocks
                 .entry(pos)
                 .and_modify(|kept| {
+                    kept.strict |= block.strict;
                     if let Some(replay) = block.replay {
                         if let Some(earlier) = &mut kept.replay {
                             earlier.flags = merge_block_update_flags(earlier.flags, replay.flags);
@@ -1193,16 +1227,20 @@ impl Game<'_> {
     /// the removed row itself still contains the edits that matter to removal at commit.
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
-        let entities = &mut self.world.block_entities;
         let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
-            entities.remove(&pos);
+            self.world.block_entities.remove(&pos);
             return;
         };
-        let generation = entities.generation(&pos);
-        let removed = entities.remove(&pos).zip(generation);
-        let first = level.removed_block_entities.entry(pos).or_default();
-        if first.is_none() {
-            *first = removed;
+        let removed = take_replay_row(&mut self.world, pos);
+        if let Some(After::Block(step)) = level.after.last_mut()
+            && step.pos == pos
+        {
+            step.removed = Some(removed);
+        } else {
+            let first = level.removed_block_entities.entry(pos).or_default();
+            if first.is_none() {
+                *first = removed;
+            }
         }
     }
     /// How many block entities the open transactions keep whole, and how many single slots:
@@ -1566,22 +1604,29 @@ impl Game<'_> {
         };
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
+        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
+            return false;
+        }
         let block = level.blocks.entry(key).or_insert(KeptBlock {
             state: old,
             replay: None,
+            strict: false,
         });
-        let replay = block.replay.get_or_insert(BlockReplay {
+        let step = BlockReplay {
             state: old,
             flags,
             level_host,
             replay_removal: false,
-        });
+        };
+        let replay = block.replay.get_or_insert(step);
         replay.flags = merge_block_update_flags(replay.flags, flags);
         replay.level_host = level_host;
-        level.after.push(After::Block(key));
-        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
-            return false;
-        }
+        level.after.push(After::Block(BlockStep {
+            pos: key,
+            to: state,
+            replay: step,
+            removed: None,
+        }));
         self.transactions.advance_block_writes();
         true
     }
@@ -1590,11 +1635,18 @@ impl Game<'_> {
     /// drops against the old entity before journalling the removal.
     pub(super) fn journal_block_replacement(&mut self, pos: Pos) {
         self.journal_remove_block_entity(pos);
-        if let Some(block) = entities::open_in(&mut self.transactions, self.dim)
-            .and_then(|level| level.blocks.get_mut(&pos))
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
+            return;
+        };
+        if let Some(After::Block(step)) = level.after.last_mut() {
+            step.replay.replay_removal = true;
+        }
+        if let Some(replay) = level
+            .blocks
+            .get_mut(&pos)
             .and_then(|block| block.replay.as_mut())
         {
-            block.replay_removal = true;
+            replay.replay_removal = true;
         }
     }
     pub(super) fn journal_level_random(&mut self) {
@@ -1735,7 +1787,7 @@ impl Game<'_> {
             },
             // Only reached through a root commit, which sets the block itself.
             After::Block(_) => {}
-            After::BulkBlocks(publication, tracked, removed) => {
+            After::BulkBlocks(publication, tracked, removed, _) => {
                 self.publish_bulk_edit(publication, tracked, removed);
             }
             After::Drop(pos, stack) => {
@@ -1893,13 +1945,100 @@ impl Game<'_> {
                 _ => None,
             })
             .collect();
+        // For a mixed cell, work back from its final staged row to the row before its
+        // first edit. A strict step takes the row it installed from the next retirement,
+        // or from storage if it survived. Ordinary removal then observes its own row,
+        // never a row from a later strict edit. Other cells stay in final staged storage.
+        let mixed: indexmap::IndexSet<_> = level
+            .after
+            .iter()
+            .filter_map(|after| match after {
+                After::Block(step) if level.blocks[&step.pos].strict => Some(step.pos),
+                _ => None,
+            })
+            .collect();
+        let mut rows = HashMap::new();
+        for after in level.after.iter_mut().rev() {
+            match after {
+                After::Block(step) if mixed.contains(&step.pos) => {
+                    if let Some(removed) = &mut step.removed {
+                        let slot = rows
+                            .entry(step.pos)
+                            .or_insert_with(|| take_replay_row(&mut self.world, step.pos));
+                        *slot = removed.take();
+                    }
+                }
+                After::BulkBlocks(_, _, _, writes) if !mixed.is_empty() => {
+                    for (&pos, step) in writes {
+                        if mixed.contains(&pos)
+                            && let Some(removed) = &mut step.row
+                        {
+                            let slot = rows
+                                .entry(pos)
+                                .or_insert_with(|| take_replay_row(&mut self.world, pos));
+                            std::mem::swap(removed, slot);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for &pos in &mixed {
+            let (x, y, z) = pos;
+            self.world.set_stored(x, y, z, level.blocks[&pos].state);
+            if let Some((row, generation)) = rows.remove(&pos).flatten() {
+                self.restore_removed_block_entity(pos, *row, generation);
+            }
+        }
+        for after in &mut level.after {
+            if let After::Block(step) = after
+                && !mixed.contains(&step.pos)
+                && let Some(Some(row)) = step.removed.take()
+            {
+                let first = level.removed_block_entities.entry(step.pos).or_default();
+                if first.is_none() {
+                    *first = Some(row);
+                }
+            }
+        }
         let mut told = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
                 After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
-                After::Block(pos) => {
+                After::Block(step) if mixed.contains(&step.pos) => {
+                    let (x, y, z) = step.pos;
+                    if step.removed.is_some()
+                        && (!step.replay.replay_removal || detached.contains(&step.pos))
+                    {
+                        self.world.block_entities.remove(&step.pos);
+                    }
+                    self.set_block_live(
+                        [x, y, z],
+                        step.to,
+                        step.replay.flags,
+                        step.replay.level_host,
+                    );
+                    let _ = self.process_level_events();
+                }
+                After::BulkBlocks(publication, tracked, removed, steps) => {
+                    for (pos, step) in steps {
+                        if mixed.contains(&pos) {
+                            let (x, y, z) = pos;
+                            self.world.set_stored(x, y, z, step.to);
+                            if let Some(row) = step.row {
+                                self.world.block_entities.remove(&pos);
+                                if let Some((row, generation)) = row {
+                                    self.restore_removed_block_entity(pos, *row, generation);
+                                }
+                            }
+                        }
+                    }
+                    self.publish_bulk_edit(publication, tracked, removed);
+                }
+                After::Block(step) => {
+                    let pos = step.pos;
                     if !told.insert(Err(pos)) {
                         continue;
                     }
@@ -1922,7 +2061,7 @@ impl Game<'_> {
                         && let Some((entity, generation)) =
                             level.removed_block_entities.remove(&pos).flatten()
                     {
-                        self.restore_removed_block_entity(pos, entity, generation);
+                        self.restore_removed_block_entity(pos, *entity, generation);
                     }
                     if now != was {
                         // The stored state back, so the one real write sees the change.

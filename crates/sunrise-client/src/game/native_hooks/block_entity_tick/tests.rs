@@ -456,6 +456,97 @@ fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
 
 #[test]
 #[ignore = "daily"]
+fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
+    for strict_first in [false, true] {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            let subject = place_subject(game, KIND);
+            let original = game.world.block(POS.0, POS.1, POS.2);
+            let registry = game.pack.assets.registry;
+            let chest = registry.default_state("minecraft:chest").unwrap();
+            let glass = registry.default_state("minecraft:glass").unwrap();
+            let level = game.level("minecraft:overworld").unwrap();
+            let edit = BlockEdit {
+                palette: vec![chest.try_into_api().unwrap()],
+                filters: Vec::new(),
+                runs: vec![BlockRun {
+                    x: POS.0,
+                    y: POS.1,
+                    z: POS.2,
+                    height: 1,
+                    surface: None,
+                    block: 0,
+                    only: None,
+                }],
+            };
+            game.world.block_entities.set_mod_containers(
+                [(
+                    original.0,
+                    Arc::new(ModContainer {
+                        slots: 1,
+                        ..Default::default()
+                    }),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            let original_stack = ItemStack::new("minecraft:diamond", 1);
+            let chest_stack = ItemStack::new("minecraft:iron_ingot", 1);
+            let BlockEntity::Mod(row) = game.world.block_entities.get_mut(&POS).unwrap() else {
+                panic!("expected mod container");
+            };
+            row.items = vec![Some(original_stack.clone())];
+            game.world.block_log = Some(Vec::new());
+
+            let seal = game.transaction_open();
+            if strict_first {
+                assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
+                    Some(chest_stack.clone());
+            }
+            assert_eq!(
+                game.level_set_block(
+                    level,
+                    AT,
+                    glass.try_into_api().unwrap(),
+                    BlockUpdateFlags::KNOWN_SHAPE
+                ),
+                Ok(true)
+            );
+            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+            let last_chest = game.block_entity(level, AT).unwrap();
+            assert_ne!(last_chest, subject);
+            game.transaction_close(&seal, true);
+
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
+            assert_eq!(game.block_entity(level, AT), Some(last_chest));
+            assert!(
+                game.world
+                    .block_entities
+                    .get(&POS)
+                    .unwrap()
+                    .slots()
+                    .iter()
+                    .all(Option::is_none)
+            );
+            assert!(game.world.bulk_log.contains(&CHUNK));
+            let [drop] = game.dropped.as_slice() else {
+                panic!("one ordinary spill, none from strict")
+            };
+            assert_eq!(
+                drop.stack,
+                if strict_first {
+                    chest_stack
+                } else {
+                    original_stack
+                }
+            );
+        });
+    }
+}
+
+#[test]
+#[ignore = "daily"]
 fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
     let scratch = tempfile::tempdir().unwrap();
     with_game(|game| {

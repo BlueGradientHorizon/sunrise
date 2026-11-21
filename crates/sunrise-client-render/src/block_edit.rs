@@ -74,18 +74,18 @@ impl World {
         matches: impl FnMut(u16, u32) -> bool,
         tracked: impl FnMut(u32) -> bool,
     ) -> Outcome {
-        self.write_runs::<false>(runs, matches, tracked, |_, _| {})
+        self.write_runs::<false>(runs, matches, tracked, |_, _, _| {})
             .0
     }
 
-    /// The same bulk storage write without publishing; `keep` records the previous state
-    /// of each write in the caller's transaction.
+    /// The same bulk storage write without publishing; `keep` records each transition
+    /// in the caller's transaction.
     pub fn stage_edit_runs(
         &mut self,
         runs: &[Run],
         matches: impl FnMut(u16, u32) -> bool,
         tracked: impl FnMut(u32) -> bool,
-        keep: impl FnMut((i32, i32, i32), u32),
+        keep: impl FnMut((i32, i32, i32), u32, u32),
     ) -> (Outcome, BulkPublication) {
         self.write_runs::<true>(runs, matches, tracked, keep)
     }
@@ -95,7 +95,7 @@ impl World {
         runs: &[Run],
         mut matches: impl FnMut(u16, u32) -> bool,
         mut tracked: impl FnMut(u32) -> bool,
-        mut keep: impl FnMut((i32, i32, i32), u32),
+        mut keep: impl FnMut((i32, i32, i32), u32, u32),
     ) -> (Outcome, BulkPublication) {
         let mut out = Outcome::default();
         let mut publication = BulkPublication::default();
@@ -160,7 +160,7 @@ impl World {
                             }
                         }
                         if STAGED {
-                            keep((r.x, yy, r.z), old);
+                            keep((r.x, yy, r.z), old, r.state);
                         }
                         vals[at] = r.state;
                         changed[s] = true;
