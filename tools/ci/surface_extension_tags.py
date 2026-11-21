@@ -65,6 +65,8 @@ def main() -> None:
             rows = json.loads(path.read_text())
             if isinstance(rows, str):
                 rows = json.loads((ROOT / rows).read_text())
+            if not isinstance(rows, list):
+                raise ValueError(f'{path}: expected a JSON array of extension tags')
             declarations.append((path, rows))
     rust = catalog(declarations)
     for _, rows in declarations:
