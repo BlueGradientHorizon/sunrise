@@ -9,7 +9,7 @@ use crate::{
     items::ItemStack,
     world::World,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::{
@@ -18,6 +18,7 @@ use sunrise_protocol::{
         configuration::CustomPayload,
         play::{self, Clientbound as C},
     },
+    registry::SyncedNames,
 };
 
 /// Encode a captured level sound and its broadcast radius without a live hub.
@@ -674,11 +675,44 @@ impl Hub {
     }
 
     fn hashed_matches(&mut self, claimed: &Option<Hashed>, mine: &Option<ItemStack>) -> bool {
-        match (claimed, mine) {
-            (None, None) => true,
-            (Some(h), Some(s)) => h.item == self.item_id(&s.item) && h.count == s.count as i32,
-            _ => false,
+        let (Some(claimed), Some(_)) = (claimed, mine) else {
+            return claimed.is_none() && mine.is_none();
+        };
+        let Some(net) = self.stack(mine) else {
+            return false;
+        };
+        if claimed.item != net.item || claimed.count != net.count {
+            return false;
         }
+        let names = SyncedNames {
+            builtin: &self.sync.builtin,
+            dynamic: &self.sync.dynamic,
+        };
+        let Ok(expected) = Hashed::create(&net, &names) else {
+            return false;
+        };
+        if claimed.added.is_empty()
+            && expected.added.is_empty()
+            && claimed.removed.is_empty()
+            && expected.removed.is_empty()
+        {
+            return true;
+        }
+        let claimed_removed: HashSet<i32> = claimed.removed.iter().copied().collect();
+        if claimed_removed.len() != expected.removed.len()
+            || !expected
+                .removed
+                .iter()
+                .all(|id| claimed_removed.contains(id))
+        {
+            return false;
+        }
+        let claimed_added: HashMap<i32, i32> = claimed.added.iter().copied().collect();
+        claimed_added.len() == expected.added.len()
+            && expected
+                .added
+                .iter()
+                .all(|(id, hash)| claimed_added.get(id) == Some(hash))
     }
 
     /// The live storage value the server presents in this menu slot.

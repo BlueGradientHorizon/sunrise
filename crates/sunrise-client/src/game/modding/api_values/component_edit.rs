@@ -143,3 +143,40 @@ pub(in crate::game) fn prepare_component_edit(
     };
     Ok(Some((PreparedComponentEdit { fields, edits }, gear)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolved_edit_accepts_positive_short_max_damage() {
+        let items = super::super::stack_limit_tests::catalog();
+        let definition = items.items.get("minecraft:iron_sword").unwrap();
+        let mut resident = EngineStack::new("minecraft:iron_sword", 1);
+        let (prepared, _) =
+            prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
+                editor
+                    .apply_components(
+                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(10))].into(),
+                    )
+                    .unwrap();
+            })
+            .unwrap()
+            .expect("max_damage edit should be staged");
+        prepared.apply(&mut resident);
+        assert_eq!(resident.max_damage(Some(definition)), 10);
+
+        let zero =
+            prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
+                editor
+                    .apply_components(
+                        &[(JavaString::from("minecraft:max_damage"), Tag::Short(0))].into(),
+                    )
+                    .unwrap();
+            });
+        assert!(matches!(
+            zero,
+            Err(ItemPlaceEditError::Stack(StackWriteError::InvalidMaximum))
+        ));
+    }
+}

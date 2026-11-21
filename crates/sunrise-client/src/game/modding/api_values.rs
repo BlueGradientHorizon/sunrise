@@ -2272,17 +2272,24 @@ mod stack_limit_tests {
         assert_eq!(engine.max_damage(Some(definition)), 5);
         assert_eq!(engine.effective_damage(Some(definition)), 7);
 
-        for invalid in [0, -1] {
+        let mut short_max = inherited.clone();
+        short_max
+            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Short(10))].into())
+            .unwrap();
+        let engine = short_max.try_into_engine(&items).unwrap();
+        assert_eq!(engine.max_damage(Some(definition)), 10);
+
+        for invalid in [Tag::Int(0), Tag::Int(-1), Tag::Short(0), Tag::Short(-1)] {
             let mut bad_max = inherited.clone();
             bad_max
                 .set_components(
-                    [(JavaString::from("minecraft:max_damage"), Tag::Int(invalid))].into(),
+                    [(JavaString::from("minecraft:max_damage"), invalid.clone())].into(),
                 )
                 .unwrap();
             assert_eq!(
                 bad_max.try_into_engine(&items),
                 Err(StackWriteError::InvalidMaximum),
-                "max_damage {invalid}"
+                "max_damage {invalid:?}"
             );
         }
 

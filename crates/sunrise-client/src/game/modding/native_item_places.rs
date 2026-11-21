@@ -1947,6 +1947,222 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn cursor_edit_interleaved_with_stale_component_hash_click_still_syncs() {
+        use mod_api::{BlockUpdateFlags, Tag};
+        use sunrise_client::{chunk::Chunk, lan::Out};
+        use sunrise_protocol::{
+            buf::Reader,
+            item::Hashed,
+            packets::play::{Clientbound as C, ContainerClick, Serverbound as S},
+            registry::SyncedNames,
+        };
+
+        fn drain_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    _ => Vec::new(),
+                })
+                .map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    C::decode(id, reader.rest()).unwrap()
+                })
+                .collect()
+        }
+
+        fn cursor_updates(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
+            drain_packets(rx)
+                .into_iter()
+                .filter_map(|packet| match packet {
+                    C::SetCursorItem(update) => Some(update.item),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn hash_stack(game: &mut super::Game<'_>, stack: &Option<ItemStack>) -> Option<Hashed> {
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let net = hub.stack(stack)?;
+            let names = SyncedNames {
+                builtin: &hub.sync.builtin,
+                dynamic: &hub.sync.dynamic,
+            };
+            Some(Hashed::create(&net, &names).unwrap())
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level("minecraft:overworld").unwrap();
+            let table = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:crafting_table")
+                .unwrap();
+            assert_eq!(
+                game.level_set_block(level, [1, 64, 0], table, BlockUpdateFlags::NEIGHBORS),
+                Ok(true)
+            );
+
+            let (tx, rx) = mpsc::channel();
+            let mut player_guest = guest(1);
+            player_guest.position = [1.5, 64.0, 0.5];
+            player_guest.sender = PlayerSender::new(tx, Arc::default());
+            let plain_paper = Some(ItemStack::new("minecraft:paper", 4));
+            player_guest.carried = plain_paper.clone();
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            let _ = drain_packets(&rx);
+
+            // Answer-click path: mod renames the carried paper (same item and count), then a
+            // click arrives carrying the pre-edit component hash. The server must reject the
+            // stale prediction and send SetCursorItem instead of caching the renamed stack.
+            let stale_inv_hash = hash_stack(game, &plain_paper);
+            let player = game.player(123).unwrap();
+            let inv_menu = game.player_container_menu(player).unwrap();
+            let renamed_tag = Tag::String("renamed paper".into());
+            let mut renamed_paper = ItemStack::new("minecraft:paper", 4);
+            renamed_paper.data_mut().custom_name = Some(renamed_tag.clone());
+            game.transaction(|host, tx| {
+                inv_menu.cursor().edit(host, tx, |stack| {
+                    stack
+                        .apply_components(&[("minecraft:custom_name".into(), renamed_tag)].into())
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: 0,
+                    state: inv_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: stale_inv_hash,
+                }),
+            );
+            let renamed_net = game
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .stack(&Some(renamed_paper.clone()));
+            assert_eq!(cursor_updates(&rx), vec![renamed_net]);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // A follow-up click with the exact current component hash agrees silently.
+            let fresh_inv_hash = hash_stack(game, &Some(renamed_paper.clone()));
+            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: 0,
+                    state: inv_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_inv_hash.clone(),
+                }),
+            );
+            assert!(cursor_updates(&rx).is_empty());
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // Crafting-table path: open table (syncing renamed_paper), then change carried's
+            // custom_name (same item and count) before a click with the stale component hash.
+            game.lan_open_crafting(1, [1, 64, 0]);
+            let _ = drain_packets(&rx);
+            let table_tag = Tag::String("table renamed paper".into());
+            let mut table_paper = ItemStack::new("minecraft:paper", 4);
+            table_paper.data_mut().custom_name = Some(table_tag);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(table_paper.clone());
+            });
+            let (table_window, table_state) = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .menus
+                .get(&1)
+                .and_then(|play| play.crafting.table.as_ref())
+                .map(|t| (t.0, t.1))
+                .unwrap();
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: table_window,
+                    state: table_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_inv_hash,
+                }),
+            );
+            let table_net = game
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .stack(&Some(table_paper.clone()));
+            let content_carried: Vec<_> = drain_packets(&rx)
+                .into_iter()
+                .filter_map(|packet| match packet {
+                    C::ContainerSetContent(content) if content.container == table_window => {
+                        Some(content.carried)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(content_carried, vec![table_net]);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // A crafting click with the exact component hash agrees and sends no resync.
+            let fresh_table_hash = hash_stack(game, &Some(table_paper));
+            let (table_window, table_state) = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .menus
+                .get(&1)
+                .and_then(|play| play.crafting.table.as_ref())
+                .map(|t| (t.0, t.1))
+                .unwrap();
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: table_window,
+                    state: table_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_table_hash,
+                }),
+            );
+            let resyncs: Vec<_> = drain_packets(&rx)
+                .into_iter()
+                .filter(|packet| matches!(packet, C::SetCursorItem(_) | C::ContainerSetContent(_)))
+                .collect();
+            assert!(resyncs.is_empty());
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn component_edit_preserves_live_nested_data_and_applies_a_removal() {
         use mod_api::Tag;
 

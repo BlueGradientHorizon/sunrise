@@ -75,10 +75,9 @@ pub(super) fn validate_stack_limits(
 ) -> Result<(), StackWriteError> {
     let effective = |name: &str, default: u32| -> Result<u32, StackWriteError> {
         match stack.data().and_then(|data| data.other(name)) {
-            Some(Tag::Int(value)) => {
-                u32::try_from(*value).map_err(|_| StackWriteError::InvalidMaximum)
-            }
-            Some(_) => Err(StackWriteError::InvalidMaximum),
+            Some(value) => sunrise_items::properties::component_int(value)
+                .and_then(|value| u32::try_from(value).ok())
+                .ok_or(StackWriteError::InvalidMaximum),
             None => Ok(default),
         }
     };
