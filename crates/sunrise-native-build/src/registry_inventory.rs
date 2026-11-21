@@ -233,6 +233,7 @@ impl Metadata {
             .filter(|package| {
                 package.name == "log"
                     && package.version.starts_with("0.4.")
+                    && package.source.as_deref() == Some(sunrise_addresses::CARGO_CRATES_IO_SOURCE)
                     && runtime.contains(package.id.as_str())
             })
             .map(|package| Used {

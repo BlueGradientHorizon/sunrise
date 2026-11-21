@@ -373,6 +373,9 @@ mod tests {
         graph.registry("helper", "helper", "1.0.0", "lib");
         graph.registry("runtime-log", "log", "0.4.34", "lib");
         graph.registry("dev-log", "log", "0.4.11", "lib");
+        graph.local("local-log", "log", "native-api/root/local-log", "lib");
+        graph.packages.last_mut().unwrap()["version"] = "0.4.12".into();
+        graph.edge("root", "local-log", None, None);
         graph.edge("root", "helper", None, None);
         graph.edge("helper", "runtime-log", None, None);
         graph.edge("root", "dev-log", Some("dev"), None);
