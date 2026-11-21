@@ -1,10 +1,4 @@
-//! Port-pack's download agents and redirect checks.
-
-/// An agent for downloading `url`: through the proxy when one is set, unless `url` is a host that
-/// must be reached directly.
-pub(crate) fn agent(url: &str) -> Result<ureq::Agent, sunrise_proxy::ProxyError> {
-    sunrise_proxy::agent("port-pack", url, std::convert::identity)
-}
+//! Port-pack's allowlisted downloads.
 
 /// GET from allowed HTTPS hosts, validating every redirect before contacting it.
 pub(crate) fn get_from_hosts(url: &str, hosts: &[&str]) -> Result<Option<ureq::Response>, String> {
