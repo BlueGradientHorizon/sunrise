@@ -485,6 +485,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn server_ai_step_counts_down_without_drawing_for_eye_flicker() {
         assert!(crate::mobs::world::with_test_world(&[], |w, _| {
             let mut m = creaking();
