@@ -19,7 +19,7 @@ pub trait Hooks {
         dispatch = "api_carrier",
         side = "client",
         contract = "listen",
-        version = 3,
+        version = 4,
         event_per_listener = true,
         neoforge = "none (vanilla HumanoidModel.setupAnim; NeoForge has no mid-setupAnim event)"
     )]

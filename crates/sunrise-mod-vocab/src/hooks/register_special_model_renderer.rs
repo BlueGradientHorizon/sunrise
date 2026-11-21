@@ -30,7 +30,7 @@ refused layer draws the missing model."#]
         contract = "listen",
         context = "registration",
         neoforge = "RegisterSpecialModelRendererEvent",
-        version = 2
+        version = 3
     )]
     fn register_special_model_renderer(renderers: &mut dyn SpecialModelRenderers);
 }
