@@ -880,36 +880,26 @@ impl Game<'_> {
     ) {
         Self::fire_component_types(context, types);
     }
-    /// Blocks this mod adds, declared in code rather than one file each
-    /// (NeoForge's `DeferredRegister.Blocks` drained by `RegisterEvent`):
-    /// push a `mod_api::Block` per block, the same declaration
-    /// a content mod's `data/<id>/sunrise/block/<path>.json` holds (a
-    /// vanilla `template`, `properties`, `state_properties`, `shapes`...),
-    /// with its id in your mod's namespace. It has a block item, as a file's
-    /// does, unless `item` is false (`Block::with_item(false)`). They join the content mods' blocks: the one whose
-    /// id is that namespace when it is on (your models, textures, loot and
-    /// recipes are its files), else one of their own, with the template's
-    /// look. Ids, saves and the check that a joining client has the same
-    /// blocks are the files' (docs/modding/src/how-to/content-mods.md). Asked once at start, on every
-    /// side, before any resource loads: push the same ones every time, from
-    /// nothing but your code. Declarations that don't pass the files' checks
-    /// are logged and that namespace's are left out.
+    /// Collect blocks from native mods once at startup on each side, before resources load.
+    /// Each declaration belongs to the submitting package and joins the content declarations
+    /// used by saves and the join check. The event's `register` call returns a typed error for
+    /// invalid IDs or fields. Refusals stop startup even if the caller ignores the error.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut Vec<mod_api::Block>,
+        blocks: &mut dyn FnMut(
+            mod_api::Answered<mod_api::Block>,
+        ) -> Result<(), mod_api::DeclarationError>,
     ) {
         Self::fire_blocks(context, blocks);
     }
-    /// Items this mod adds, declared in code (NeoForge's
-    /// `DeferredRegister.Items`), as `native_blocks` declares blocks: a
-    /// `mod_api::Item` per item, a content mod's
-    /// `data/<id>/sunrise/item/<path>.json` (a vanilla `template`,
-    /// `max_stack_size`, `rarity`, `components`, `crafting_remainder`). A
-    /// block's item comes with its block (`item: true`), not from here.
-    /// Asked once at start, on every side.
+    /// Collect items from native mods at the same startup cutoff as `native_blocks`,
+    /// with the same ownership and refusal rules. A block's item is declared with its block,
+    /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut Vec<mod_api::Item>,
+        items: &mut dyn FnMut(
+            mod_api::Answered<mod_api::Item>,
+        ) -> Result<(), mod_api::DeclarationError>,
     ) {
         Self::fire_items(context, items);
     }
@@ -1347,16 +1337,30 @@ impl Game<'_> {
     ) {
         self.fire_screen_tooltip(call);
     }
-    /// A player pressed a mod container's button (`clickMenuButton`), on
-    /// the server. The block entity is out of the world during the call;
-    /// mods may change it and the clicking player's carried stack.
+    /// A player pressed a mod menu's button (`clickMenuButton`), on the
+    /// server. The block entity is out of the world during the call when the
+    /// menu has one; blockless menus pass None. Mods may change it and the
+    /// clicking player's carried stack.
     pub(in crate::game) fn native_menu_button(
         &mut self,
+        menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: &mut ModBlockEntity,
+        entity: Option<&mut ModBlockEntity>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(context, entity, carried);
+        self.fire_menu_button(menu, block, context, entity, carried);
+    }
+    /// Whether the owner of this menu accepts button `id`. The active menu's owner
+    /// decides its own IDs; the game does not impose a shared numeric range.
+    pub(in crate::game) fn native_menu_button_valid(
+        &self,
+        menu: &str,
+        block: Option<&str>,
+        id: i32,
+        accepted: &mut bool,
+    ) {
+        self.fire_menu_button_valid(menu, block, id, accepted);
     }
     /// A player shift-clicked slot `slot` of the menu of the mod block
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
@@ -2275,23 +2279,35 @@ impl Game<'_> {
     ) {
         self.fire_player_trade(player, name, entity_id);
     }
-    /// A server player traded with a villager or a wandering trader
-    /// (NeoForge's `TradeWithVillagerEvent`, at vanilla's
-    /// `MerchantResultSlot.onTake` once the offer is taken): `merchant` is
-    /// the trader's entity id and `kind` its type (`minecraft:villager`,
-    /// `minecraft:wandering_trader`), `offer` the trade as it is after this
-    /// one (its `uses` counted, `result` what the player got). Once per
-    /// trade, so a shift-click that trades several times is heard for each,
-    /// after the trade's statistic and `villager_trade` trigger. Listen
-    /// only: the trade is made. The player's state is swapped in
-    /// (`native_acting_player`).
+    /// Non-cancellable collect for one villager or wandering-trader take. True when a
+    /// validated answer changed the offer; observing alone leaves the input untouched.
     pub(in crate::game) fn native_trade_with_villager(
         &mut self,
         merchant: u32,
         kind: &str,
         offer: &mut MerchantOffer,
-    ) {
-        self.fire_trade_with_villager(merchant, kind, offer);
+    ) -> Result<bool, crate::game::transactions::decision::InvalidReason> {
+        use crate::game::api_values::{OfferWriteError, TryIntoApi, checked_merchant_offer};
+        use crate::game::transactions::decision::InvalidReason;
+        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
+            return Ok(false);
+        }
+        let original = offer.try_into_api().map_err(|_| InvalidReason::Plan)?;
+        let mut answer = original.clone();
+        mod_api::dispatch_trade_with_villager(self, merchant, kind, &mut answer);
+        if answer == original
+            && answer.price_multiplier.to_bits() == original.price_multiplier.to_bits()
+        {
+            return Ok(false);
+        }
+        *offer = checked_merchant_offer(&answer, self.items()).map_err(|reason| {
+            log::warn!("trade_with_villager: invalid offer answer: {reason:?}");
+            match reason {
+                OfferWriteError::NonFinitePrice => InvalidReason::Numeric,
+                OfferWriteError::Stack(_) => InvalidReason::Plan,
+            }
+        })?;
+        Ok(true)
     }
     /// A server player's shield was disabled by a blocked melee hit. The
     /// shield cooldown is set immediately after this call. Helpers looking up
@@ -3237,19 +3253,21 @@ impl Game<'_> {
         self.fire_use_animation(stack, animation);
     }
     /// `Player.canEat` for a food `stack`, or None for cake and candle cake
-    /// regardless of the held item. Cake uses `can_always_eat = false`;
-    /// `vanilla_can_eat` is vanilla's answer (creative, `can_always_eat`, or hungry).
+    /// regardless of the held item. `player` is the eater on either side.
+    /// Vanilla uses always-eat false for cake or the food component for a stack;
+    /// `vanilla_can_eat` is that answer (creative, always-eat, or hungry).
     /// Answer `Some(false)` to refuse the food,
     /// `Some(true)` to let a full player eat; `can_eat` left `None` keeps
     /// `vanilla_can_eat`. Both sides (the client starts eating as the
     /// server does), so answer from the stack and the player alone.
     pub(in crate::game) fn native_can_eat(
         &self,
+        player: PlayerRef,
         stack: Option<&ItemStack>,
         vanilla_can_eat: bool,
         can_eat: &mut Option<bool>,
     ) {
-        self.fire_can_eat(stack, vanilla_can_eat, can_eat);
+        self.fire_can_eat(player, stack, vanilla_can_eat, can_eat);
     }
     /// NeoForge's `LivingEntityUseItemEvent.Start`: `entity` starts using
     /// `stack` in `hand` (`LivingEntity.startUsingItem`), for `duration`
@@ -3486,9 +3504,11 @@ impl Game<'_> {
     /// `dimension`'s level opened on the server (NeoForge's `LevelEvent.Load`,
     /// posted in `MinecraftServer.createLevels`): before any of its chunks
     /// (`native_chunk_load`), so a mod sets up what it keeps for the level
-    /// here. The level the world opens in comes before `WorldOpenReady`; the
-    /// others open when someone first goes there (a player, a portal, an
-    /// `execute in` command), with the level in place. Once for each open:
+    /// here. At startup the Overworld, Nether and End are published and
+    /// announced in that order, before `server_started`, with each level in
+    /// place. A level closed while idle fires this again when it reopens.
+    /// An explicitly opened runtime level can fire while parked: `dimension`
+    /// names that level, not the Host's current one. Once for each open;
     /// `native_level_unload` follows. Server-side.
     pub(in crate::game) fn native_level_load(&mut self, dimension: &str) {
         self.fire_level_load(dimension);
@@ -3691,7 +3711,7 @@ impl Game<'_> {
     /// tracking the other entities the same pass paired. The engine is still
     /// walking its tracker: read the game and send payloads, but don't spawn,
     /// remove or teleport entities from here. No player's state is swapped in.
-    /// Server-side. Named injections request `hook_version = 2`.
+    /// Server-side.
     pub(in crate::game) fn native_player_start_tracking(
         &mut self,
         player: u128,
@@ -3715,8 +3735,7 @@ impl Game<'_> {
     /// next tracking pass. The entity is not necessarily still there, and a
     /// player who left is gone. As in `player_start_tracking`, the engine is
     /// walking its tracker: don't spawn, remove or teleport entities from
-    /// here. No player's state is swapped in. Server-side. Named injections
-    /// request `hook_version = 2`.
+    /// here. No player's state is swapped in. Server-side.
     pub(in crate::game) fn native_player_stop_tracking(
         &mut self,
         player: u128,
@@ -3916,21 +3935,6 @@ impl Game<'_> {
     /// not heard.
     pub(in crate::game) fn native_player_totem(&mut self, player: u128, name: &str) {
         self.fire_player_totem(player, name);
-    }
-    /// The item `item` of the server player `player` (`name`) broke in `slot`
-    /// (`mainhand`, `offhand`, `head`, `chest`, `legs`, `feet`, `body` or
-    /// `saddle`): `LivingEntity.onEquippedItemBroken`, Bukkit's
-    /// `PlayerItemBreakEvent`. Listen only; armour has a slot, not a hand.
-    /// The player's state is swapped in. Once for each break, on a server; a
-    /// creative player and the host of a LAN world are not heard.
-    pub(in crate::game) fn native_player_destroy_item(
-        &mut self,
-        player: u128,
-        name: &str,
-        item: &str,
-        slot: &str,
-    ) {
-        self.fire_player_destroy_item(player, name, item, slot);
     }
     /// `player`'s melee blow killed the mob `entity` of `kind` (other deaths
     /// aren't told yet). It only hears, after the blow landed. Server-side.
@@ -4351,8 +4355,10 @@ impl Game<'_> {
     /// fading with distance (`volume` past 1 carries farther, 16 blocks times the volume), as
     /// thunder heard after the flash or a blast heard when its shock wave arrives. Its
     /// `SoundRef` follows and controls this play: `state`, `stop` and `fade`. None, with nothing
-    /// played, on a server or for a value out of range; an event the resources don't have plays
-    /// nothing, as vanilla's, and its handle reads `Stopped` once the update has tried it.
+    /// played, on a server or for a value out of range (`SoundPlay::effects` included, by
+    /// `SoundEffects::valid`); an event the resources don't have plays nothing, as vanilla's,
+    /// and its handle reads `Stopped` once the update has tried it. Its effects stay as given
+    /// unless the sound ticks: a `play_sound` listener can change them on each live refresh.
     pub(in crate::game) fn play_local_sound(
         &self,
         sound: &SoundPlay,
@@ -4612,9 +4618,6 @@ impl Game<'_> {
     /// `datapacks/` is in that world's folder (`saves/<world>/datapacks`).
     /// The folder the game runs in (`--player-dir` moves a player's options
     /// and servers only, not the instance). Nothing is created.
-    ///
-    /// Not on wasm: a path in the game's file system, which a wasm mod has none of; a wasm mod
-    /// reads its own data and assets through reload listeners.
     pub(in crate::game) fn instance_dir(&self) -> PathBuf {
         Self::game_dir()
     }

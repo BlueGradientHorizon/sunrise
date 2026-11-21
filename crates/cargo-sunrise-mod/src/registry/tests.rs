@@ -1,12 +1,21 @@
 use std::io::{Cursor, Write};
 use sunrise_mod_package::index::{Index, resolve::RequestResult, sha256};
 
+/// A 320x180 PNG header: all the screenshot check reads of an image's size.
+const SHOT: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\x01\x40\0\0\0\xb4\x08\x06\0\0\0";
+
 struct Registry(tempfile::TempDir);
 
 impl Registry {
     fn new() -> Self {
         let r = Self(tempfile::tempdir().unwrap());
-        for dir in ["head/mods", "head/icons", "files"] {
+        for dir in [
+            "base/mods",
+            "head/mods",
+            "head/icons",
+            "head/screenshots",
+            "files",
+        ] {
             std::fs::create_dir_all(r.0.path().join(dir)).unwrap();
         }
         r
@@ -33,11 +42,13 @@ impl Registry {
         } else {
             let icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x80\0\0\0\x80\x08\x06\0\0\0";
             std::fs::write(self.0.path().join(format!("head/icons/{id}.png")), icon).unwrap();
+            self.screenshot(id, SHOT);
             format!(
                 "id='{id}'\nkind='mod'\nname='{id}'\nsummary='A content mod for registry validation.'\n\
                  description='An example package for testing version selection and registry policy.'\n\
                  owners=['author']\nlicense='MIT'\nsource='https://example.test/{id}'\n\
-                 icon='icons/{id}.png'\ncategories=['utility']\n"
+                 icon='icons/{id}.png'\ncategories=['utility']\n\
+                 screenshots=['screenshots/{id}/one.png']\n"
             )
         };
         entry.push_str(&format!(
@@ -45,6 +56,47 @@ impl Registry {
         ));
         std::fs::write(path, entry).unwrap();
         hash
+    }
+
+    fn screenshot(&self, id: &str, bytes: &[u8]) {
+        let dir = self.0.path().join(format!("head/screenshots/{id}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("one.png"), bytes).unwrap();
+    }
+
+    /// Edits the head entry's text.
+    fn edit(&self, id: &str, edit: impl Fn(String) -> String) {
+        let path = self.0.path().join(format!("head/mods/{id}.toml"));
+        std::fs::write(&path, edit(std::fs::read_to_string(&path).unwrap())).unwrap();
+    }
+
+    /// The head's mods as they are now become the base.
+    fn make_base(&self) {
+        let base = self.0.path().join("base/mods");
+        std::fs::create_dir_all(&base).unwrap();
+        for entry in std::fs::read_dir(self.0.path().join("head/mods")).unwrap() {
+            let entry = entry.unwrap().path();
+            std::fs::copy(&entry, base.join(entry.file_name().unwrap())).unwrap();
+        }
+    }
+
+    fn review(&self) -> Result<(), String> {
+        self.run(
+            "review",
+            &["base", "head"],
+            &["--author", "author", "--json"],
+        )
+    }
+
+    fn bare_review(&self) -> Result<(), String> {
+        let path = |p| self.0.path().join(p).to_str().unwrap().to_owned();
+        super::main(&[
+            "review".into(),
+            path("base"),
+            path("head"),
+            "--author".into(),
+            "author".into(),
+        ])
     }
 
     fn run(&self, command: &str, paths: &[&str], flags: &[&str]) -> Result<(), String> {
@@ -205,4 +257,143 @@ fn a_refused_repo_cache_fails_build_check_and_review_without_any_collection() {
     fs::create_dir(&cache_path).unwrap();
     let error = build().unwrap_err();
     assert!(error.contains("following.json"), "{error}");
+}
+
+#[test]
+fn a_registry_command_reads_its_own_options_and_refuses_others() {
+    let args = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
+    // Each is refused before the checkout is read, naming the option.
+    for line in [
+        "build repo --files f --out o --relase",
+        "review a b --author x --jsno",
+        "check a b --files f --jsno",
+        "list repo --files f",
+        "release repo id file --tag t --published d --nope",
+        "page repo id file --nope",
+    ] {
+        let error = super::main(&args(line)).unwrap_err();
+        let option = line.rsplit(' ').find(|w| w.starts_with("--")).unwrap();
+        assert!(error.contains(option), "{line}: {error}");
+        assert!(error.contains("does not take"), "{line}: {error}");
+    }
+    // Every option a parser reads is taken, `release --name` among them: the command goes on to
+    // the checkout, which is not there.
+    for line in [
+        "build repo --files f --out o --release r --site s --generated g --counts c",
+        "review a b --author x --files f --json",
+        "check a b --files f --json",
+        "release repo id file --tag t --published d --notes n --signature s --name n --game 26.3",
+    ] {
+        let error = super::main(&args(line)).unwrap_err();
+        assert!(!error.contains("does not take"), "{line}: {error}");
+    }
+}
+
+#[test]
+fn check_refuses_a_malformed_base_checkout() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    let base = r.0.path().join("base/mods/broken.toml");
+    std::fs::write(base, "id = [").unwrap();
+    let error = r.check().unwrap_err();
+    assert!(error.contains("mods/broken.toml"), "{error}");
+}
+
+const NEEDS: &str = "needs at least one screenshot";
+
+#[test]
+fn a_new_project_needs_a_screenshot_image_in_the_checkout() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+    assert_eq!(r.bare_review(), Ok(()));
+    // Listed but missing, empty or remote: refused by check and review alike.
+    for (what, edit) in [
+        ("missing", None),
+        ("empty", Some(&b""[..])),
+        ("not an image", Some(&b"text"[..])),
+    ] {
+        let r = Registry::new();
+        r.add("coords", "1.0.0", "26.3", "");
+        let file = r.0.path().join("head/screenshots/coords/one.png");
+        match edit {
+            None => std::fs::remove_file(&file).unwrap(),
+            Some(bytes) => std::fs::write(&file, bytes).unwrap(),
+        }
+        assert!(r.check().unwrap_err().contains(NEEDS), "{what}");
+        assert!(r.bare_review().is_err(), "{what}");
+    }
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    r.edit("coords", |t| {
+        t.replace("screenshots/coords/one.png", "https://example.test/one.png")
+    });
+    assert!(r.check().unwrap_err().contains(NEEDS));
+    assert!(r.bare_review().is_err());
+}
+
+#[test]
+fn an_existing_listing_without_screenshots_needs_one_only_for_a_new_version() {
+    let r = Registry::new();
+    for id in ["coords", "second"] {
+        r.add(id, "1.0.0", "26.3", "");
+        r.edit(id, |t| {
+            t.replace(&format!("screenshots=['screenshots/{id}/one.png']\n"), "")
+        });
+    }
+    r.make_base();
+    // Untouched: still valid.
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+    // A new version of it is refused until it has a screenshot.
+    r.add("coords", "1.1.0", "26.3", "");
+    assert!(r.check().unwrap_err().contains(NEEDS));
+    assert!(r.bare_review().is_err());
+    r.edit("coords", |t| {
+        t.replacen(
+            "\n[[versions]]",
+            "screenshots=['screenshots/coords/one.png']\n\n[[versions]]",
+            1,
+        )
+    });
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+}
+
+#[test]
+fn a_library_mod_and_a_collection_need_no_screenshot() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    r.edit("coords", |t| {
+        t.replace("screenshots=['screenshots/coords/one.png']\n", "")
+            .replace("['utility']", "['library']")
+    });
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+    // The category must be `library`: another one with no screenshot is refused.
+    r.edit("coords", |t| t.replace("['library']", "['utility']"));
+    assert!(r.check().unwrap_err().contains(NEEDS));
+    // A collection of mods that are already listed.
+    let r = Registry::new();
+    for id in ["coords", "second"] {
+        r.add(id, "1.0.0", "26.3", "");
+        r.edit(id, |t| {
+            t.replace(&format!("screenshots=['screenshots/{id}/one.png']\n"), "")
+        });
+    }
+    r.make_base();
+    std::fs::create_dir_all(r.0.path().join("head/collections")).unwrap();
+    std::fs::write(
+        r.0.path().join("head/collections/pack.toml"),
+        "id='pack'\nname='Pack'\nsummary='Some mods together.'\nowners=['author']\nicon='icons/pack.png'\nmembers=[{id='coords'},{id='second'}]\n",
+    )
+    .unwrap();
+    std::fs::copy(
+        r.0.path().join("head/icons/coords.png"),
+        r.0.path().join("head/icons/pack.png"),
+    )
+    .unwrap();
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
 }

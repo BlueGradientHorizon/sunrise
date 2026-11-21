@@ -1,15 +1,21 @@
-//! The chunk-unload sweep of `entity_chunks` (`remove`): every family's
-//! rows of the unloaded chunks leave — each was saved above — and their
-//! ids are forgotten with them.
+//! The chunk-unload sweep: rows leave with their chunks independently
+//! of whether they wrote records to the world snapshot.
 use super::*;
 
 impl Game<'_> {
-    /// Remove the entities of chunks that unloaded: their records were
-    /// written into `out` above, so the rows themselves now go, and what
-    /// each family keeps (a ridden boat, an unsaved projectile) stays.
-    /// `keys` are the chunks leaving.
+    /// Remove entities with the chunks in `keys`, except for a family's
+    /// normal exceptions (such as a boat the player is riding).
     pub(super) fn unload_removed_entities(&mut self, keys: &HashSet<(i32, i32)>) {
         let gone = |p: Vec3| keys.contains(&chunk_of(p));
+        // Clear just the opt-out for rows that don't use `forget_entity` here.
+        let keep_row = |id, at, transient: &mut HashSet<u32>| {
+            if gone(at) {
+                transient.remove(&id);
+                false
+            } else {
+                true
+            }
+        };
         let mut removed: Vec<u32> = Vec::new();
         let riding = self.riding;
         let ridden_roots: HashSet<_> = self
@@ -49,7 +55,8 @@ impl Game<'_> {
             }
             keep
         });
-        self.crystals.retain(|c| !gone(c.position));
+        self.crystals
+            .retain(|c| keep_row(c.id, c.position, &mut self.persist.transient));
         self.ominous_spawners.retain(|s| {
             let keep = !gone(Vec3::new(s.position[0], s.position[1], s.position[2]));
             if !keep {
@@ -168,7 +175,8 @@ impl Game<'_> {
             }
             keep
         });
-        self.orbs.retain(|o| !gone(o.position));
+        self.orbs
+            .retain(|o| keep_row(o.id, o.position, &mut self.persist.transient));
         // Unloaded with their chunk: PersistentEntitySectionManager.stopTracking.
         self.native_leaves_flush();
         // the ones saved with the chunk go with it (a trident too, unsaved).
@@ -180,10 +188,14 @@ impl Game<'_> {
             }
             keep
         });
-        self.falling.retain(|f| !gone(f.position));
-        self.rockets.retain(|r| !gone(r.position));
-        self.tridents.retain(|t| !gone(t.position));
-        self.tnts.retain(|t| !gone(t.position));
+        self.falling
+            .retain(|f| keep_row(f.id, f.position, &mut self.persist.transient));
+        self.rockets
+            .retain(|r| keep_row(r.id, r.position, &mut self.persist.transient));
+        self.tridents
+            .retain(|t| keep_row(t.id, t.position, &mut self.persist.transient));
+        self.tnts
+            .retain(|t| keep_row(t.id, t.position, &mut self.persist.transient));
         self.resident_entities.general.rows.retain(|row| {
             let keep = !leaving.contains(&row.id);
             if !keep {

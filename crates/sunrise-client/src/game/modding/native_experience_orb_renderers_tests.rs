@@ -135,7 +135,8 @@ fn orb_frame_from(game: &mut Game<'_>, id: u32, previous: Vec3) -> Vec<Vertex> {
         (o, at, ALPHA)
     });
     let mut out = Vec::new();
-    game.orb_geometry(CAMERA, live, None, &mut out);
+    let frame = game.orb_frame();
+    game.orb_geometry(CAMERA, &frame, live, None, &mut out);
     out
 }
 

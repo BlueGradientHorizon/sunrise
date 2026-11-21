@@ -232,16 +232,8 @@ pub fn faded_text_alpha(chat_only: bool, opacity: f64, default: f32) -> u32 {
     as8(((a + 0.75) / 2.0).max(0.5))
 }
 
-/// `Mth.floor`.
-pub fn floor(x: f32) -> i32 {
-    let i = x as i32;
-    if x < i as f32 { i - 1 } else { i }
-}
-/// `Mth.ceil`.
-pub fn ceil(x: f32) -> i32 {
-    let i = x as i32;
-    if x > i as f32 { i + 1 } else { i }
-}
+/// `Mth.floor(float)` and `Mth.ceil(float)`.
+pub use sunrise_core::mth::{ceil_f32 as ceil, floor_f32 as floor};
 /// `ARGB.as8BitChannel`.
 pub fn as8(v: f32) -> u32 {
     floor(v * 255.0) as u32

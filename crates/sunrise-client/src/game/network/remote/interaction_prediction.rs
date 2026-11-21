@@ -4,7 +4,7 @@ impl Game<'_> {
     /// `Minecraft.startUseItem`'s entity turn for `hand`: Interact goes to
     /// the server, and whether the click ends there is what this client's
     /// copy of the entity answers (`MultiPlayerGameMode.interact`).
-    pub(super) fn remote_use_entity(&mut self, hand: Hand) -> bool {
+    pub(in crate::game) fn remote_use_entity(&mut self, hand: Hand) -> bool {
         // A menu this use opens (a chest minecart's) is no clicked block's.
         if let Some(r) = self.remote.as_mut() {
             r.use_target = None;
@@ -92,7 +92,8 @@ impl Game<'_> {
             // EndCrystal and EnderDragonPart keep Entity.interact's PASS.
             let crystal_passes = self.crystals.iter().any(|c| c.id as i32 == hit.id)
                 || self.level_dragon_part(hit.id as u32).is_some();
-            let passes = is_painting
+            let passes = self.shown_remote_general(hit.id).is_some()
+                || is_painting
                 || frame_passes
                 || boat_passes
                 || cart_passes
@@ -178,7 +179,7 @@ impl Game<'_> {
     }
     /// MultiPlayerGameMode.useItemOn for `hand`: whether the click ends there
     /// (the block reacts, or a block item is placed).
-    pub(super) fn remote_use_item_on(&mut self, hand: Hand) -> bool {
+    pub(in crate::game) fn remote_use_item_on(&mut self, hand: Hand) -> bool {
         let held = self.with_hand(hand, |g| g.held().cloned());
         let held_block = held
             .as_ref()

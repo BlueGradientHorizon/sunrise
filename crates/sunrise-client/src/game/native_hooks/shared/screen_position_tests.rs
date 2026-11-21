@@ -105,8 +105,8 @@ impl mod_api::Hooks for CrateMod {
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
-            .blocks
-            .push(mod_api::Block::new("test:crate", "minecraft:barrel").with_item(false));
+            .register(mod_api::Block::new("test:crate", "minecraft:barrel").with_item(false))
+            .unwrap();
     }
 }
 /// A mod block whose container opens a vanilla menu type: the client's screen is the type's
@@ -225,7 +225,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
 #[ignore = "daily"]
 fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
     sunrise_client::containers::with_mod_menu_types(
-        [(PACK.into(), 9, 0, Vec::new(), None, None)],
+        [(PACK.into(), 9, 0, Vec::new(), Vec::new(), None, None)],
         || {
             with_listener(|game, seen| {
                 let key = (i32::MIN, 0, 0);
@@ -314,8 +314,8 @@ impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         let id = format!("{}:machine", self.0.owner);
         event
-            .blocks
-            .push(mod_api::Block::new(&id, "minecraft:barrel").with_item(false));
+            .register(mod_api::Block::new(&id, "minecraft:barrel").with_item(false))
+            .unwrap();
     }
 }
 /// Two mods' machines opening vanilla's hopper menu each get only their own mod's screen:

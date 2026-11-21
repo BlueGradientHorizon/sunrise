@@ -71,6 +71,7 @@ impl Hooks for StateMod {
             None,
             mod_api::GeneralSavePolicy::Save,
             true,
+            false,
             8,
             3,
             1,

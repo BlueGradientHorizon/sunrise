@@ -28,12 +28,13 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
   change), none for a fix. Agents never add `release-now`: the maintainer decides it. Merges reach players through the
   nightly, published by the daily run when every leg is green ([docs/release-flow.md](docs/release-flow.md#daily-run)).
 - **CI tiers** ([CONTRIBUTING.md](CONTRIBUTING.md#ci-tiers)): every PR push runs `format` and `verify-static`; rollups,
-  syncs and main pushes add `lint`, `verify` (unit tests only) and `launcher`; the ignored-test shards, the wasm
-  fixture, `fn-replace-check`, the SDK build and its linkage probe and the machine-sample build run once a day (`daily.yml`). A new test that needs prepared
-  resources, boots the game, starts a child process, uses the network or a compiled wasm fixture, or takes 2 s or
-  more is `#[ignore]`d with a row in `tools/ci/ignored-tests/`; say in the PR when you could not run it. A daily red
-  becomes an issue listing the suspect PRs, fixed by an ordinary PR. `tools/ci/move_to_daily.py` moves an existing
-  `verify` test that needs resources, a child process or the network. Builds: snapshot (a commit of main, gate green; published as
+  syncs and main pushes add `lint`, `verify` (unit tests only) and `launcher`; the ignored-test shards,
+  `fn-replace-check`, the SDK build and its linkage probe, the machine-sample build and the modding book's
+  quickstart run once a day (`daily.yml`). A new test that needs prepared resources, boots the game, starts a
+  child process, uses the network or takes 2 s or more is `#[ignore]`d with a row in `tools/ci/ignored-tests/`;
+  say in the PR when you could not run it. A daily red becomes an issue listing the suspect PRs, fixed by an
+  ordinary PR. `tools/ci/move_to_daily.py` moves a `verify` test that needs resources, a child process or the
+  network. Builds: snapshot (a commit of main, gate green; published as
   `snapshot-<date>-<short>`, which no launcher offers), nightly (published by a fully green daily run), release (cut from a nightly).
 - **No hardcoded user-facing strings.** Keep UI translation-ready from the start. In the launcher ([sunrise-org/sunrise-launcher](https://github.com/sunrise-org/sunrise-launcher)), wrap visible text with `tr("...")` or `trf("... {arg} ...", &[("arg", &val)])` from `crate::i18n` instead of raw string literals or `format!`. In the game, use translation keys (`Text::tr`, `lang::get`), never hardcoded English strings.
 - **Claim before you start**: comment `/claim` on the issue (no issue yet: open one, then claim it). An assigned
@@ -74,15 +75,12 @@ break**, and every change to it follows these rules. Reviews block a PR that bre
   hooks. Items, fluids and energy go through Parts under transactions. Commands, players, messages and
   scheduling are small service traits reached from `Host`; attachments live on handles. Don't add a
   method to `Host` that has a natural receiver.
-- **One dependency model, two build targets.** Native and wasm mods share exactly the same dependency
-  model; the only difference is the build target. `[dependencies]` in `sunrise-mod.toml` (required and
-  optional, semver on `sunrise-mod.toml` versions, dependency-ordered dispatch, a mod publishing functions
-  and statics its dependents call) means the same for both: native links through Cargo, wasm through the
-  runtime's linker, and one copy of a library is shared by its dependents. No wasm-only packaging unit or
-  multi-mod bundle, and no rule that holds for one target only. A change to the dependency model lands
-  for both targets in the same PR.
-- **Versions are the exact build for native mods.** A native mod is built against one game build and the
-  loader checks that build id; a wasm mod links by interface instead. `.smod` is the one package format.
+- **One dependency model.** Mods declare required and optional dependencies in `[dependencies]` in
+  `sunrise-mod.toml`, using semver constraints on manifest versions. The game dispatches in dependency
+  order. Native mods link through Cargo; a library mod can publish functions and statics to its
+  dependents, which share one copy of the library.
+- **Native binaries target the exact game build.** The loader checks the build ID a native mod was built
+  against. `.smod` is the one package format for both native and content-only mods.
 - **DRY.** One implementation per behaviour: reuse the existing helper, write path or generator rule, and
   let the catalog and generator own repetition instead of hand-written match arms.
 - **SOLID.** Each module, trait and handle has one job; traits stay small and split by side and concern;
@@ -125,8 +123,8 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 |---|---|
 | `sunrise-client` | Gameplay library (`src/lib.rs`: `game.rs` + `game/`, `entry.rs`) and thin executable (`src/main.rs`). Also the dedicated server (`--dedicated`). Re-exports `sunrise-client-lib` for existing mod paths. |
 | `sunrise-client-lib` | Reusable client systems, `sunrise-ctl`, probes and their tests. Its manifest points to the existing sources under `crates/sunrise-client/`; the library root is `src/client_lib.rs`. It never depends on gameplay. |
-| `sunrise-gameplay` | Vanilla's logical side, what the server jar holds (common code included), moved out of `sunrise-client` module by module ([#2210](https://github.com/sunrise-org/sunrise/issues/2210)). Engine layer, not yet portable: `portable.pending` lets it take `sunrise-client-lib` until the types it needs move down. Never depends on `sunrise-client-gameplay` |
-| `sunrise-client-gameplay` | Client-only gameplay moved out of `sunrise-client`: depends on `sunrise-client-lib` and portable crates, never on `sunrise-gameplay`. Engine layer, desktop |
+| `sunrise-gameplay` | Vanilla's logical side, what the server jar holds (common code included), moved out of `sunrise-client` module by module ([#2210](https://github.com/sunrise-org/sunrise/issues/2210)). Holds the `MobLevel` service trait and the mob families on it (`allays.rs`, `foxes.rs`, `mob_looting.rs`), the cat spawner's clock and picks (`cat_spawner.rs`) and the wandering trader spawner's state (`wandering_trader.rs`), `mob_index.rs`, `trident.rs`, `stats.rs`, the block-entity ticker helpers (`block_entity_ticks.rs`), `item_areas.rs`, `interaction_shapes.rs`, `tick_profile.rs`, and the server-side halves of `lan/` and `dedicated/`. `LanHost`, `World`, `ChunkMap`, `Mob`, `ItemEntity`, the level-event dispatchers, the custom spawners' dispatch (`G/mobs/custom_spawners.rs`), the village siege (`G/mobs/raids/mod.rs`) and the block-entity tick loop (`G/blocks/block_entity_ticks.rs`) have not moved. Engine layer, not yet portable: `portable.pending` lets it take `sunrise-client-lib` until the types it needs move down. Never depends on `sunrise-client-gameplay` |
+| `sunrise-client-gameplay` | Client-only gameplay moved out of `sunrise-client`: occlusion and entity culling (`occlusion_culling/`, `entity_occlusion.rs`, `particle_culling.rs`), `section_scene.rs` and `transient_blocks.rs`. Depends on `sunrise-client-lib` and portable crates, never on `sunrise-gameplay`. Engine layer, desktop |
 | `sunrise-items` | Blocks and items below gameplay: `blocks.rs` (block facts), `items.rs`, `item_data.rs` (components), `enchant.rs`, `cooldowns.rs`, `bundle.rs`, `item_nbt.rs`. Re-exported as `sunrise_client::items`... |
 | `sunrise-command` | Command parsing (Brigadier): the vanilla tree, argument types, selectors, suggestions, the tree's network form. Re-exported as `sunrise_client::command` |
 | `sunrise-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`sunrise_client::text`...) |
@@ -140,7 +138,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-prepare` | Builds `.local/sunrise-client/26.3` from the player's own Minecraft install (runs the Java exporters) |
 | `sunrise-server` | `sunrise-server`: `server.toml`, CLI, supervisor of the headless game ([docs/hosting.md](docs/hosting.md)) |
 | `sunrise-server-files` | `server.properties`, eula, ops/whitelist/bans, usercache |
-| `sunrise-java-properties` | `java.util.Properties` load/store and the JDK date text, standard library only: shared by `sunrise-server-files` and the wasm runtime |
+| `sunrise-java-properties` | `java.util.Properties` load/store and the JDK date text, standard library only; used by `sunrise-server-files` |
 | `sunrise-friends`, `sunrise-relay` | Play with Friends: invite codes, encrypted tunnel, the relay ([docs/play-with-friends.md](docs/play-with-friends.md)) |
 | `sunrise-mod-package`, `cargo-sunrise-mod` | Content mods (`.smod`: manifest, content fence, no code), the registry index and `.spack`, and `cargo sunrise-mod` (`new`, `build`, `run`, `check`, `publish`, `registry`, `native-build`) ([docs/modding/](docs/modding/src/introduction.md)). Code mods are native, built by the launcher ([docs/modding/src/how-to/native-mods.md](docs/modding/src/how-to/native-mods.md)) |
 | `sunrise-native-build` | Native mods compiled against a signed prebuilt SDK: the launcher's build, and `cargo sunrise-mod native-build`'s JSON contract that every `sdk-<build id>` ships ([docs/modding/src/reference/sdk/08-native-build.md](docs/modding/src/reference/sdk/08-native-build.md)) |
@@ -245,7 +243,10 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
 
 `L:` = lib (`crates/sunrise-client/src/`, or `crates/sunrise-client-render/src/` for the modules that crate holds, under
 the same `sunrise_client::<module>` paths), `G:` = gameplay (`crates/sunrise-client/src/game/`), also in the lib in normal builds.
-Gameplay keeps its `sunrise_client::<module>` imports through a self-crate alias. The executable
+Gameplay keeps its `sunrise_client::<module>` imports through a self-crate alias.
+Gameplay code that needs no `Game` lives in the side crate of its side: `crates/sunrise-gameplay/src/` (SG) for the
+server's logic, `crates/sunrise-client-gameplay/src/` (SCG) for client-only code. `G:` keeps the `impl Game` glue
+under the old names, and the two side crates never depend on each other (the `sides` in `tools/layers.json`). The executable
 contains only the allocator, mod API marker and a call to `entry::main`. For unit tests, the lib
 excludes `entry` and `game`, and the executable test target owns `game` so its process-wide test
 state stays separate from the library tests. This compiles gameplay twice for executable tests.
@@ -277,6 +278,10 @@ state stays separate from the library tests. This compiles gameplay twice for ex
 
 ## How `Game` is organised
 
+- A module that needs no `Game` moves to `sunrise-gameplay` or `sunrise-client-gameplay` (#2210), and its `game/` file
+  keeps the `impl Game` glue under the old name. A service trait (`MobLevel`) carries a family's
+  level calls, statically dispatched because it runs per mob per tick. `tools/layers.json` forbids any dependency
+  between the two side crates.
 - `struct Game` (game.rs) keeps the core loop and fields. Each `game/<area>/<feature>.rs` (or
   `<feature>/mod.rs`) adds an `impl Game<'_>` block and state types. Logical modules remain direct
   children of `game`; an area's `.game-area` marker enables build-derived declarations.

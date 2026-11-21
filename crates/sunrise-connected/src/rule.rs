@@ -54,6 +54,55 @@ pub enum Connect {
     Blocks,
     /// The same block, with the same values of the state properties in `connect_properties`.
     Properties,
+    /// By the collision height of the neighbour's block state (`max Y` of its shape).
+    Height(HeightJoin),
+}
+
+/// The clauses of [`Connect::Height`]: a neighbour joins when any clause that is on holds.
+/// Heights are the highest collision point of a block state's shape; an empty shape has none, so
+/// it is below every height and its cell above never has a top.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HeightJoin {
+    /// The neighbour is as high as this block, and in `Rule::connect_blocks` when that is not
+    /// empty.
+    pub same: bool,
+    /// The neighbour is higher than this block.
+    pub higher: bool,
+    /// The neighbour is lower than this block.
+    pub lower: bool,
+    /// The cell above the neighbour has a collision top.
+    pub above: bool,
+    /// A neighbour on an edge of the face also joins when `higher` or `above` holds for either
+    /// cell beside this block along the face's other axis.
+    pub side: bool,
+}
+
+impl HeightJoin {
+    /// Whether the rule says anything: a rule with no clause on joins nothing.
+    pub fn any(self) -> bool {
+        self.same || self.higher || self.lower || self.above
+    }
+
+    /// Whether a neighbour at `height` joins a block at `own`, `above` being the height of the
+    /// cell above the neighbour and `listed` whether the neighbour is a block `same` compares:
+    /// the one comparison, for the neighbour and for the cells beside this block (`side`, with
+    /// `same` and `lower` off).
+    pub fn joins(self, own: f64, height: f64, above: f64, listed: bool) -> bool {
+        (self.same && listed && height == own)
+            || (self.higher && height > own)
+            || (self.lower && height < own)
+            || (self.above && above > 0.0)
+    }
+
+    /// [`Self::joins`] as `side` asks it of a cell beside this block: only `higher` and `above`.
+    pub fn joins_beside(self, own: f64, height: f64, above: f64) -> bool {
+        Self {
+            same: false,
+            lower: false,
+            ..self
+        }
+        .joins(own, height, above, false)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

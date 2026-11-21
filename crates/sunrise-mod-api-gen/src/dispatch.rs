@@ -310,7 +310,12 @@ pub(super) fn emit<'a>(
                     format!(" -> Option<{}>", answer.to_token_stream())
                 }
                 Contract::Replace => format!(" -> {}", reference.elem.to_token_stream()),
-                Contract::Collect if answered && answered_batch(&reference.elem).is_none() => {
+                Contract::Collect
+                    if answered
+                        && answered_batch(&reference.elem).is_none()
+                        && !(matches!(name, "blocks" | "items")
+                            && declaration_sink(&reference.elem).is_some()) =>
+                {
                     return Err(format!("{name}: output must be Vec<Answered<T>>"));
                 }
                 Contract::Collect => String::new(),
@@ -442,6 +447,16 @@ pub(super) fn emit<'a>(
         let event = fresh_name("event", &mut used);
         let event_type = format!("{}Event", hook_id(name));
         let hook_id = event_type.strip_suffix("Event").unwrap();
+        // The checked declaration view replaces the old plain collect output.
+        // Surface export reads the input tree's types, including older trees.
+        let declaration = match (name, output.as_ref()) {
+            ("blocks" | "items", Some((_, Type::Reference(output)))) => {
+                declaration_sink(&output.elem)
+                    .or_else(|| answered_batch(&output.elem))
+                    .map(ToTokens::to_token_stream)
+            }
+            _ => None,
+        };
         if !is_render {
             hook_ids.push_str(&format!("{hook_id},\n"));
             hook_constants.push_str(&format!(
@@ -552,7 +567,17 @@ pub(super) fn emit<'a>(
             if collect_cancel && name == "cancel" {
                 continue;
             }
-            let mutable_entity = ty.to_token_stream().to_string() == "& mut ModBlockEntity";
+            if declaration.is_some() && Some(name.as_str()) == out {
+                lifetimes.a = true;
+                fields.push_str(&format!(
+                    "mod_id: &'static str,\ncontext: &'a RegistrationContext,\n{name}: {},\n",
+                    lifetimes.field(ty).0.to_token_stream()
+                ));
+                continue;
+            }
+            let ty_tokens = ty.to_token_stream().to_string();
+            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
+            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -564,6 +589,8 @@ pub(super) fn emit<'a>(
                     .flatten();
             let field_ty = if mutable_entity {
                 syn::parse_quote!(ModBlockEntityView<'_>)
+            } else if optional_mutable_entity {
+                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
             } else if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
@@ -605,6 +632,8 @@ pub(super) fn emit<'a>(
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
             } else if mutable_entity {
                 inits.push(format!("{name}: ModBlockEntityView::new({name})"));
+            } else if optional_mutable_entity {
+                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else if hook.event_per_listener
@@ -658,15 +687,11 @@ pub(super) fn emit<'a>(
         } else {
             "// no wire: borrowed event crosses as call arguments."
         };
-        let non_exhaustive = if hook.non_exhaustive {
-            "#[non_exhaustive]\n"
-        } else {
-            ""
-        };
+        let event_struct = format!(
+            "/// Built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+        );
         if is_render {
-            render_dispatch.push_str(&format!(
-                "{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
-            ));
+            render_dispatch.push_str(&event_struct);
             continue;
         }
         trait_params.push(format!("{event}: &mut {event_type}{elided}"));
@@ -681,8 +706,12 @@ pub(super) fn emit<'a>(
             Contract::Replace => "None",
             _ => "",
         };
-        // Reuse the exact host and drawing conversions for generated game-side calls.
-        if in_game && !declaration_only {
+        // A call site that dispatches directly owns its conversion. Emit the game-side adapter
+        // only for placeholders and call sites that delegate to it.
+        if in_game
+            && !declaration_only
+            && (fill || super::has_call(&method.block, &format!("fire_{name}")))
+        {
             // A scoped read hook can run against either the game or a borrowed
             // tick view. Its native receiver carries the selected host.
             let scoped_read_host = target.contains("::NativeHookHost<");
@@ -908,6 +937,9 @@ pub(super) fn emit<'a>(
         // A scoped hook is its part's method alone: a global moment beside it is its own hook.
         let callee = if scoped.is_some() { "part" } else { "mod" };
         match (contract, out) {
+            (Contract::Cancel, Some(out)) if mod_cancel && hook.output_validator.is_some() => method_source.push_str(&format!(
+                "///\n/// Return `Flow::Cancel` to propose setting `{out}`. Once accepted, a cancellation cannot be\n/// cleared; only mods registered with `#[listener(receive_cancelled)]` still run.\n"
+            )),
             (Contract::Cancel, Some(out)) if mod_cancel => method_source.push_str(&format!(
                 "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later mods are skipped unless they\n/// listen with `#[listener(receive_cancelled)]`; those see `{event}.cancelled` and may set it back to\n/// `false`.\n"
             )),
@@ -917,9 +949,7 @@ pub(super) fn emit<'a>(
             (Contract::Replace, Some(out)) => method_source.push_str(&format!(
                 "///\n/// Return `Some` to set `{out}`; the first {callee} returning `Some` wins.\n"
             )),
-            (Contract::Collect, Some(out)) if matches!(name, "blocks" | "items") => method_source.push_str(&format!(
-                "///\n/// Each mod receives its own empty `{event}.{out}` batch. A bare name, in an identifier or\n/// in `block_item`, `pick_item`, `wall_block`, `base_block`, `crafting_remainder` or `Item::block`,\n/// is that mod's own; declared identifiers must belong to\n/// that mod's manifest-owned namespaces, and unowned identifiers refuse registration.\n"
-            )),
+            (Contract::Collect, _) if declaration.is_some() => (),
             (Contract::Collect, Some(out)) if answered => method_source.push_str(&format!(
                 "///\n/// Each mod receives its own empty `{event}.{out}` batch; every entry it adds is recorded\n/// as that mod's.\n"
             )),
@@ -942,25 +972,37 @@ pub(super) fn emit<'a>(
             .as_ref()
             .map_or(trait_name, |(part_trait, _)| part_trait);
         dispatch.push_str(&format!(
-            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n///\n{event_struct}"
         ));
+        if let Some(entry) = &declaration {
+            let out = out.unwrap();
+            dispatch.push_str(&format!(
+                "impl {event_type}<'_> {{\n\
+                 /// Submit a declaration in a manifest-owned namespace. A bare name or reference\n\
+                 /// uses the mod's ID as its namespace. A locally invalid declaration returns\n\
+                 /// a [`DeclarationError`] and is also reported at startup if ignored. Collisions\n\
+                 /// and checks needing other declarations or resources run after collection.\n\
+                 pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
+                     super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
+                 }}\n}}\n"
+            ));
+        }
         if declaration_only {
             continue;
         }
-        let build = format!(
-            "{stack_snapshots}{}let {}{event} = {event_type} {{ {} }};",
-            if answered && contract == Contract::Collect {
-                format!("let mut {batch} = Vec::new(); ")
-            } else {
-                String::new()
-            },
-            if matches!(name, "blocks" | "items") {
-                ""
-            } else {
-                "mut "
-            },
-            inits.join(", "),
-        );
+        let build = if declaration.is_some() {
+            String::new()
+        } else {
+            format!(
+                "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
+                if answered && contract == Contract::Collect {
+                    format!("let mut {batch} = Vec::new(); ")
+                } else {
+                    String::new()
+                },
+                inits.join(", "),
+            )
+        };
         let write_back = if name == "block_entity_tick" {
             format!(
                 "*{event}.reply = if tick_changed {{ BlockEntityTickReply::Changed }} else {{ BlockEntityTickReply::Unchanged }}; {write_back}"
@@ -972,18 +1014,19 @@ pub(super) fn emit<'a>(
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
         let (build, local_event) = if hook.event_per_listener {
-            // A regular collect output is a mutable borrow of one slot, reborrowed
-            // for each listener above. Answered batches and cancellation have
-            // separate dispatch state and do not use this mode.
+            // A replace answer is returned outside the event. A regular collect
+            // output borrows one slot, reborrowed for each listener above. Answered
+            // collect batches and cancellation do not use this mode.
+            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace);
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
-            if (contract != Contract::Listen && !shared_collect_output)
+            if (!reply_outside_event && !shared_collect_output)
                 || (!write_back.is_empty() && name == "block_entity_tick")
                 || !stack_outputs.is_empty()
                 || hook.owner.is_some()
                 || hook.context == Some(PhaseContext::ChunkDisk)
             {
                 return Err(format!(
-                    "{name}: event_per_listener requires a listen hook or a collect hook with a shared borrowed output, without stack writeback or other shared event state"
+                    "{name}: event_per_listener requires a listen or replace hook, or a collect hook with a shared borrowed output, without scalar or stack writeback or other shared event state"
                 ));
             }
             (String::new(), build)
@@ -1010,8 +1053,7 @@ pub(super) fn emit<'a>(
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
         };
-        // A listener refused by the phase gate (#3123) answers what a refused wasm call answers
-        // (`wire::refusal_value`), and the event fields it may have written are put back from a
+        // A listener refused by the phase gate restores event fields from a
         // snapshot taken before its call. Outside `World` only (`contained`); in `World` the
         // call is the plain one.
         let snapshot = fresh_name("snapshot", &mut used);
@@ -1019,7 +1061,7 @@ pub(super) fn emit<'a>(
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
         // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
-        // effects of a refused wasm listener's earlier calls do, and it has no value to copy.
+        // surface has no whole value to copy.
         for (field, by_reference) in rollback
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
@@ -1065,11 +1107,11 @@ pub(super) fn emit<'a>(
                 restores.join(" ")
             )
         };
-        let refused_value = crate::wire::refusal_value(
-            result.trim() == "-> Flow",
-            "Flow::Continue",
-            "Default::default()",
-        );
+        let refused_value = if result.trim() == "-> Flow" {
+            "Flow::Continue"
+        } else {
+            "Default::default()"
+        };
         let run = |expression: &str| {
             format!(
                 "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}refusal.report(); {refused_value} }} }}"
@@ -1168,12 +1210,67 @@ pub(super) fn emit<'a>(
                 format!("{cancel}; {stack_after}")
             }
         };
-        let inert_owner = fresh_name("disabled_owner", &mut used);
-        let (lookup, calls) = match &scoped {
-            None if matches!(name, "blocks" | "items") => (
+        // A hook with an `output_validator` checks each listener's outputs as that listener
+        // returns: a refused set is rolled back to the last accepted one (the requested values
+        // before any listener), the refusal names the mod and the field, and later listeners
+        // run on the accepted values.
+        let (validated_start, validated_arms) = match &hook.output_validator {
+            Some(validator) if hook.isolate => {
+                let accepted = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "let mut __accepted_{name} = {}{event}.{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                let arguments = rollback
+                    .iter()
+                    .map(|(name, _)| format!("&__accepted_{name}"))
+                    .chain(rollback.iter().map(|(name, by_reference)| {
+                        format!("&{}{event}.{name}", if *by_reference { "*" } else { "" })
+                    }))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let keep = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "__accepted_{name} = {}{event}.{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                let undo = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "{}{event}.{name} = __accepted_{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                (
+                    format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
+                    format!(
+                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
+                    ),
+                )
+            }
+            _ => (
                 String::new(),
                 format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut local = Vec::new(); {{ let mut {event} = {event_type} {{ {name}: &mut local }}; {mod_item}.{name}(context, &mut {event}); }} for declaration in &mut local {{ if let Err(reason) = super::parts::own_declaration(mod_id, declaration) {{ context.refuse_declaration(reason); }} }} {event}.{name}.extend(local); }}"
+                    "Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} "
+                ),
+            ),
+        };
+        let inert_owner = fresh_name("disabled_owner", &mut used);
+        let (lookup, calls) = match &scoped {
+            None if declaration.is_some() => (
+                String::new(),
+                format!(
+                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id, context, {name} }}; {mod_item}.{name}(context, &mut {event}); }}"
                 ),
             ),
             None if hook.context == Some(PhaseContext::ChunkDisk) => (
@@ -1203,7 +1300,7 @@ pub(super) fn emit<'a>(
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
-                    "{{ {isolate_snapshot} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
+                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
                     o = out.unwrap()
                 ),
             ),
@@ -2296,6 +2393,21 @@ fn answered_type(ty: &Type) -> Option<&Type> {
 /// `T` of a `Vec<Answered<T>>` output, if that is its type.
 fn answered_batch(ty: &Type) -> Option<&Type> {
     generic_of(generic_of(ty, "Vec")?, "Answered")
+}
+
+/// `T` of the engine callback that validates and stages an `Answered<T>`.
+fn declaration_sink(ty: &Type) -> Option<&Type> {
+    let Type::TraitObject(object) = ty else {
+        return None;
+    };
+    let syn::TypeParamBound::Trait(bound) = object.bounds.first()? else {
+        return None;
+    };
+    let segment = bound.path.segments.last().filter(|s| s.ident == "FnMut")?;
+    let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
+        return None;
+    };
+    generic_of(args.inputs.first()?, "Answered")
 }
 
 /// `T` of a `name<T>` type.

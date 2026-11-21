@@ -38,7 +38,7 @@ use, an interact, a release, a drop and a continued block break (not before a bl
 selection made earlier in the same tick goes out before the action. One packet goes per change. A slot
 above 8 is `OutOfRange { slot }`, a client with no world or player is `NoWorld`, and a spectator is
 `Refused` (its number keys open the spectator menu); each leaves the selection unchanged. Read the slot
-back with `player_selected_slot` on the local player. Native and wasm mods use the same call.
+back with `player_selected_slot` on the local player.
 
 `ClientHost::clipboard_text()` reads the system clipboard (`KeyboardHandler.getClipboard`, empty text when it
 holds none) and `ClientHost::set_clipboard_text(text)` writes it (`setClipboard`; empty text copies nothing). Both
@@ -149,7 +149,6 @@ into another level replaces the client level: the old handle stays stale for goo
 `host.level` again once the server reopens the level. A respawn in the same level drops the viewed
 levels too, but keeps the client level, so the old handle reads again after the reopen. Writes,
 server-only reads, the other level reads and the entity reads (`entities_in`) refuse a viewed level.
-Native and wasm mods use the same handle methods.
 
 ## Crosshair reads
 
@@ -203,9 +202,6 @@ These read the local player as the client sees it. They take no mod-controlled n
   (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`, `getUseItemRemainingTicks`).
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world
   is open.
-- `ClientHost::hover_name(&stack)` is `ItemStack.getHoverName()` as plain text: the custom name, else
-  a written book's non-blank title, else the item's name in the client's language, without rarity
-  colour or italics. An invalid stack reads an empty string.
 - `ClientHost::creative_search_items()` returns the built creative search tab's display order,
   for ranking stacks in inventory sorters. It requests the catalog with the local player's permission
   and Operator Items Tab option. A cache miss can fire the creative build hook, so this read needs a
@@ -267,4 +263,4 @@ and client occlusion policy. Additional targets are checked
 against live handles, attackability, reach, held-item range and ordinary block occlusion. Clearing an entity hit
 does not mine the block behind it; an empty list on a block or miss keeps the ordinary
 path. Each accepted hit uses normal attack packets and prediction. Server validation
-and cooldowns apply. Native and wasm mods use the same typed API.
+and cooldowns apply.
