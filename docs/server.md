@@ -470,7 +470,8 @@ comes out of the headless-engine work.
   The script picks the release archive for the OS and architecture (on Linux x86_64 the server archive,
   on macOS arm64 the game's), downloads it from GitHub Releases, and checks it against the release's signed
   `SHA256SUMS` when OpenSSL 3 is installed, else against the SHA-256 GitHub publishes for each asset
-  (docs/security.md). It never asks for sudo. Options: `--version vX.Y.Z`, `--dir` (default
+  (docs/security.md). It installs the Nightly unless told otherwise. It never asks for sudo. Options: `--version`
+  (`stable` for the newest stable release, or a release's tag such as `26.3-0.1.0`), `--dir` (default
   `~/.local/share/sunrise`), `--bin` (default `~/.local/bin`), and `--archive FILE` to install an archive
   already on the machine (a build of your own; no download and no checksum).
   A Linux release from before the server archive installs the full game, which links ALSA's and udev's
@@ -617,7 +618,7 @@ sunrise-server import <server.properties>
 sunrise-server config [--json]           config set KEY=VALUE... [--json]
 sunrise-server service install|uninstall|print [--system]
 sunrise-server panel                     the panel's address and a one-time login link
-sunrise-server update [--check [--json]] [--version vX.Y.Z] [--timeout S]     rollback [--timeout S]
+sunrise-server update [--check [--json]] [--version TAG] [--timeout S]     rollback [--timeout S]
 sunrise-server update --archive FILE --version NAME     an archive you have (your own build)
 sunrise-server mcp                       MCP server on stdio (section 8)
 sunrise-server import-resources <dir>    copy game files prepared elsewhere into place (checked first)
@@ -705,11 +706,14 @@ runtime or new dependency. Server-sent events can replace the polling later if a
   newer release a minute after it starts and then every 6 hours, and only says so, in its log, in `status`
   and in the panel (`SUNRISE_NO_UPDATE_CHECK=1` turns the check off). `update --check` asks GitHub once.
   `update`:
-  1. downloads the current Nightly's archive for this computer (the only build Sunrise ships since 2026-10-28;
-     GitHub's latest release while there is none; on Linux the server build; `--version` picks another: a
-     `vX.Y.Z` release, or a `nightly-<date>` of the last 7 days) and checks it against its SHA256SUMS, whose Ed25519
+  1. downloads the newest build of the server's channel for this computer: on a stable release (`26.3-0.1.0`), the
+     newest published stable release of its line (the same Minecraft version and Sunrise major, `26.3-0.x`: never
+     a Nightly, whose mod API may differ, nor the next major, which a server moves to with `--version`); on any
+     other build, the current Nightly (GitHub's latest release while there is none). On Linux it takes the server
+     build. `--version` picks another: a stable release's tag, a `vX.Y.Z` release, or a `nightly-<date>` of the
+     last 7 days; a Dev build (`dev-<date>-<commit>`) is refused. It checks the archive against its SHA256SUMS, whose Ed25519
      signature must check with a key built into `sunrise-server` (docs/release-flow.md, "Signed checksums"),
-     signed for the Nightly channel: an unsigned or tampered build is refused. A Nightly installs as
+     signed for the Nightly's own version or the stable release's tag: an unsigned or tampered build is refused. A Nightly installs as
      `nightly-<date>-<commit>`, newer than every `vX.Y.Z`; another build of the same day is an update too;
   2. unpacks it into `<dir>/releases/<tag>`, beside the others, with its game files linked to
      `<dir>/game-files` as the installers do;

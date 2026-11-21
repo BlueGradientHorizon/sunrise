@@ -4,7 +4,8 @@
 # GitHub publishes for it. OpenSSL is looked for on the PATH and in Git for Windows, which ships it.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version v0.5.0 -Dir D:\Sunrise
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version stable    (the newest stable release, which updates then follow)
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own
@@ -46,13 +47,43 @@ switch ($Architecture) {
 function Get-Release([string]$Path) {
     Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/$Path" -Headers @{ Accept = "application/vnd.github+json" }
 }
+# The newest stable release, `<Minecraft version>-<semver>` (docs/release-flow.md, "Release branches"), from every page
+# of the release list: a full release, never a pre-release. Its line is what `sunrise-server update` follows.
+function Get-NewestStable {
+    $Stable = @()
+    for ($Page = 1; ; $Page++) {
+        # Not wrapped in @(): Windows PowerShell 5.1 writes the whole JSON array as one object.
+        $List = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$Page" `
+            -Headers @{ Accept = "application/vnd.github+json" }
+        if ($null -eq $List -or $List.Count -eq 0) { break }
+        $Stable += $List | ForEach-Object {
+            if ($_.prerelease -or $_.tag_name -cnotmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+                return
+            }
+            $Third = if ($Matches[3]) { [long]$Matches[3] + 1 } else { 0 }
+            [pscustomobject]@{
+                Tag = $_.tag_name
+                Key = '{0:D9}.{1:D9}.{2:D9}.{3:D9}.{4:D9}.{5:D9}' -f [long]$Matches[1], [long]$Matches[2], $Third,
+                    [long]$Matches[4], [long]$Matches[5], [long]$Matches[6]
+            }
+        }
+    }
+    ($Stable | Sort-Object Key | Select-Object -Last 1).Tag
+}
 if ($Version -eq "latest") {
     try { $Release = Get-Release "tags/nightly" } catch { $Release = Get-Release "latest" }
+} elseif ($Version -eq "stable") {
+    $Newest = Get-NewestStable
+    if (-not $Newest) { throw "No stable release on GitHub yet: install the Nightly (-Version latest)" }
+    $Release = Get-Release "tags/$Newest"
 } else {
     $Release = Get-Release "tags/$Version"
 }
 $Tag = $Release.tag_name
 $RawTag = $Tag
+if ($Tag -ceq "dev" -or $Tag.StartsWith("dev-")) {
+    throw "$Tag is a Dev build, made to test main: servers don't install it. Install the Nightly (-Version latest) or a stable release (-Version stable)."
+}
 # A Nightly installs under its date and commit, as `sunrise-server update` names it:
 # "Nightly 2026-10-28 <middle dot> 0c02067" is nightly-2026-10-28-0c02067 ([char]0xB7: this file stays ASCII).
 # Its signature is checked for exactly that version, so the title must name it (as
