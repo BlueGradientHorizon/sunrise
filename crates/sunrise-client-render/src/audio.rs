@@ -5,6 +5,7 @@
 //! (streams on a worker thread) and OpenAL Soft's mixing: mono sources panned
 //! and attenuated, multi-channel buffers (stereo music and records) played
 //! direct as OpenAL does.
+mod mic;
 mod streams;
 use crate::Result;
 use crate::sound_engine::{
@@ -461,6 +462,7 @@ pub struct Audio {
     device_name: String,
     pub engine: SoundEngine,
     backend: MixerBackend,
+    mics: Arc<mic::MicPool>,
     /// Record `Heard` sounds (the subtitle overlay is listening).
     pub record_heard: bool,
     pub listener: [f64; 3],
@@ -1530,6 +1532,10 @@ impl Audio {
         } else {
             Vec::new()
         };
+        #[cfg(feature = "audio")]
+        let mics_enabled = output && output_disabled(|k| std::env::var_os(k)).is_none();
+        #[cfg(not(feature = "audio"))]
+        let mics_enabled = false;
         Self {
             _stream: stream,
             device_name: target_device.to_owned(),
@@ -1546,6 +1552,7 @@ impl Audio {
                 world: 0,
                 shares: Arc::default(),
             },
+            mics: Arc::new(mic::MicPool::new(mics_enabled)),
             record_heard: false,
             listener: [0.0; 3],
             listener_yaw: 0.0,
@@ -1727,6 +1734,7 @@ impl Audio {
                 world: self.backend.world,
                 shares: self.backend.shares.clone(),
             },
+            mics: self.mics.clone(),
             record_heard: false,
             listener: [0.0; 3],
             listener_yaw: 0.0,
@@ -1900,6 +1908,17 @@ impl Audio {
         self.backend
             .streams
             .open(&self.backend.mixer, owner, spec, source)
+    }
+    /// Lists available microphone input device names on this client.
+    pub fn microphone_devices(&self) -> std::result::Result<Vec<String>, mod_api::MicRefusal> {
+        self.mics.devices()
+    }
+    /// Opens a live microphone capture stream on this client.
+    pub fn open_microphone(
+        &self,
+        spec: &mod_api::MicSpec,
+    ) -> std::result::Result<Arc<dyn mod_api::MicSource>, mod_api::MicRefusal> {
+        self.mics.open(spec)
     }
     /// Places each entity-placed stream at its entity's position as `resolve` finds it now, or
     /// leaves it unplaced where it finds none. Called once a frame; it does nothing, and locks
