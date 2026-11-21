@@ -743,6 +743,7 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|host| host.hub.guests.as_slice().iter().any(|g| g.dimension == id))
             || !self.arrival_chunks(dim).is_empty()
+            || self.death_respawn_chunks(dim).next().is_some()
             || (self.options.dedicated.is_none() && self.player.is_some() && self.dim == dim)
     }
 

@@ -653,7 +653,8 @@ impl ItemPlace {
     /// server-side menu take does. This awards the player's `crafted` statistic, applies item
     /// post-processing such as a filled map's pending scale or lock, and runs the normal stat
     /// hook. Only a [`MenuSlot`](Self::MenuSlot) or [`PlayerCursor`](Self::PlayerCursor) is
-    /// accepted; the changed stack and statistic are part of `tx`.
+    /// accepted; the changed stack and statistic are part of `tx`. A dead player whose
+    /// record is available can still be the owner of the place; this is not a menu click.
     pub fn on_crafted_by(
         &self,
         host: &mut dyn ServerHost,

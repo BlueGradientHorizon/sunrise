@@ -3,51 +3,18 @@ ids = [
     "type:PlayerDataRefusal.Dead",
     "type:PlayerWorldRefusal",
     "type:PlayerWorldRefusal.Dead",
-    "handle:PlayerRef",
-    "handle:PlayerRef::set_inventory_slot",
-    "handle:PlayerRef::set_ender_chest_slot",
-    "handle:PlayerRef::give_stack",
-    "handle:PlayerRef::drop_stack",
-    "handle:PlayerRef::set_selected_slot",
-    "handle:PlayerRef::set_last_death_location",
-    "handle:PlayerRef::set_respawn_config",
-    "handle:PlayerRef::set_item_cooldown",
-    "handle:PlayerRef::remove_item_cooldown",
-    "handle:PlayerRef::set_exp_cooldown",
-    "handle:PlayerRef::set_warden_warning_cooldown",
-    "handle:PlayerRef::set_game_mode",
-    "handle:PlayerRef::set_abilities",
-    "handle:PlayerRef::feed",
-    "handle:PlayerRef::add_exhaustion",
-    "handle:PlayerRef::set_food_level",
-    "handle:PlayerRef::set_saturation",
-    "handle:PlayerRef::set_exhaustion",
-    "handle:PlayerRef::set_experience_points",
-    "handle:PlayerRef::set_experience_levels",
-    "handle:PlayerRef::set_total_experience",
-    "handle:PlayerRef::give_experience_points",
-    "handle:PlayerRef::give_levels",
-    "handle:PlayerRef::award_stat",
-    "handle:PlayerRef::reset_stat",
-    "handle:PlayerRef::award_recipes",
-    "handle:PlayerRef::reset_recipes",
-    "handle:PlayerRef::set_recipe_book_settings",
-    "handle:PlayerRef::has_correct_tool_for_drops",
-    "handle:PlayerRef::destroy_block",
-    "handle:PlayerRef::place_block",
-    "handle:PlayerRef::respawn",
-    "handle:LivingRef::swing",
-    "handle:LivingRef::start_using_item",
-    "handle:LivingRef::release_using_item",
-    "handle:LivingRef::set_riptiding",
-    "handle:LivingRef::drop",
-    "type:ItemPlace.PlayerSlot",
-    "type:ItemPlace.PlayerHand",
-    "type:ItemPlace.PlayerCursor",
+    "hook:player_respawn_position",
+    "hook:player_respawned",
 ]
-why = "Vanilla 26.3 Player.setLastDeathLocation and getEnderChestInventory, Inventory.setItem and setSelectedSlot, LivingEntity.setItemInHand, ItemCooldowns.addCooldown and removeCooldown, GiveCommand.giveItem and ServerPlayer.setRespawnPosition operate on the player without a liveness check. NeoForge's LivingEntity.setItemSlot and ServerPlayer.setRespawnPosition retain their equip and spawn callbacks. A resident player can be edited during death while real action checks such as ServerGamePacketListenerImpl.handleContainerClick still apply. ServerPlayer.restoreFrom copies last-death location and the ender chest, and copies inventory only with keepInventory or for a spectator; the replacement player starts with fresh cooldowns. The borrow now checks availability, not health."
-migrate = """
-Remove `PlayerDataRefusal::Dead` and `PlayerWorldRefusal::Dead` match arms. Keep handling `Stale` for missing, stale or temporarily unavailable players; death alone is not a refusal. `PlayerDataRefusal` is in-process only: if your own payload encoded it directly, define a Wire type for the fields and cases you want to send and convert to it explicitly.
+why = """
+Vanilla 26.3 Player.setLastDeathLocation and getEnderChestInventory, Inventory.setItem and setSelectedSlot, LivingEntity.setItemInHand, ItemCooldowns.addCooldown and removeCooldown, GiveCommand.giveItem and ServerPlayer.setRespawnPosition operate on the resident player without a liveness check. NeoForge's LivingEntity.setItemSlot and ServerPlayer.setRespawnPosition retain their equip and spawn callbacks. The shared borrow now checks availability, not health. EntityRef::game_event and LevelRef::game_event can emit with a dead resident player as source (Entity.gameEvent and ServerLevel.gameEvent); ItemPlace::on_crafted_by can write a processed map back to that player's menu slot or cursor (ItemStack.onCraftedBy). Actual menu clicks still check liveness at ServerGamePacketListenerImpl.handleContainerClick.
 
-Use the same setter calls (including `set_last_death_location(host, Some(pos))` or `None` to clear) on the current player; do not wait for respawn just to bypass the former dead-player refusal. Use `with_inventory` or `with_ender_chest` to observe the edit; writes to a hand are writes to the selected hotbar slot or offhand. To set an item or a cooldown on the replacement regardless of death's copy policy, write it in `player_respawned` instead. Remove any reliance on `false` or `None` to detect death from these methods; check liveness separately when your own action needs it. Real gameplay admission and player identity checks still apply.
+Vanilla PlayerList.respawn and NeoForge's PlayerRespawnPositionEvent decide the destination with the old player before installing the replacement. ServerPlayer.restoreFrom keeps last-death location and the ender chest, and copies the inventory and its selection only with keepInventory or in spectator mode. The replacement starts with fresh item cooldowns and no experience pickup delay. ClientPacketListener.handleRespawn creates a new local inventory, and the carried-slot packet synchronizes it with the server. NeoForge's PlayerRespawnEvent runs after the death Respawn packet for the final destination, including a redirect across levels.
+"""
+migrate = """
+Remove `PlayerDataRefusal::Dead` and `PlayerWorldRefusal::Dead` match arms. Keep handling `Stale` for missing, stale or temporarily unavailable players. If a payload encoded `PlayerDataRefusal` directly, replace it with a mod-defined Wire type and convert explicitly. If you encode `PlayerWorldRefusal` in a payload, rebuild both sides for its new shape without `Dead`.
+
+Keep calling the same setters and operations on the resident player, including `set_last_death_location(host, Some(pos))` or `None`, hand and inventory writes, `give_stack`, and the cooldown setters. Death no longer causes these calls to refuse. `EntityRef::game_event`, `LevelRef::game_event` with a player source, and `ItemPlace::on_crafted_by` also no longer refuse just because that player is dead. If you used a false, empty or refused result as a liveness check, first require `player.living().alive(host) == Some(true)` before performing your own action.
+
+Use `player_respawn_position` to choose the destination; it always sees the old body on death, even if chunks had to load. Move writes intended for the replacement (such as an inventory slot, item cooldown or experience pickup delay) from `player_respawn_position` to `player_respawned`. The latter runs once the final destination is in place and sent, so a redirect no longer delivers a second respawn that clears the new cooldown. If your manifest pins either hook, request `hook_version = 2` for that hook. `PlayerRef::respawn` still requests a respawn; observe its completion in `player_respawned` rather than assuming the destination was already loaded when the request returned.
 """

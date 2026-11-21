@@ -15,8 +15,9 @@ such as sculk sensors and wardens hear the event through the normal game path.
   the vibration when supplied as the affected state.
 
 Use `GameEventContext::default()` when neither field applies. An unknown event, invalid position,
-stale or foreign source, invalid state or inactive level returns `false` without
-emitting an event. A source must belong to the level in place.
+stale, foreign or unavailable source, invalid state or inactive level returns
+`false` without emitting an event. A source must belong to the level in place;
+a resident player can be the source even while dead.
 
 `EntityRef::game_event(host, event)` is the convenience operation for an event at
 the entity's position with that entity as source and no affected state. It calls

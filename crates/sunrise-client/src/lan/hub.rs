@@ -4932,7 +4932,16 @@ impl Hub {
             g.center_sent = Some((cx, cz));
             // ServerPlayer.initInventoryMenu.
         });
+        self.send_inventory_and_selection(i);
+    }
+
+    /// PlayerList.sendAllPlayerInfo: the inventory and the held slot.
+    fn send_inventory_and_selection(&mut self, i: usize) {
         self.send_inventory(i);
+        let g = &self.guests[i];
+        g.send(&C::SetHeldSlot(play::SetHeldSlot {
+            slot: g.selected as i32,
+        }));
     }
 
     /// The level the players are in: the server holds one at a time, and the
@@ -5040,12 +5049,7 @@ impl Hub {
         let g = &self.guests[i];
         g.send(&g.abilities_packet());
         self.send_level_info(i, ctx, !portal);
-        // PlayerList.sendAllPlayerInfo: the inventory and the held slot.
-        self.send_inventory(i);
-        let g = &self.guests[i];
-        g.send(&C::SetHeldSlot(play::SetHeldSlot {
-            slot: g.selected as i32,
-        }));
+        self.send_inventory_and_selection(i);
         self.send_active_effects(i);
         self.guests.update(i, |g| {
             // ServerPlayer.sendPostEffects.

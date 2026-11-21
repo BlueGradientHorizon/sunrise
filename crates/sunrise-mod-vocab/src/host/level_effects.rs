@@ -95,7 +95,8 @@ pub trait LevelEffectsBackendMut {
     /// `Level.gameEvent(event, at, context)` does: sculk sensors, shriekers,
     /// wardens and allays receive the optional source and affected state.
     /// Returns false without emitting for an unknown event, invalid position,
-    /// stale or foreign source, unregistered state, client or inactive level.
+    /// stale, foreign or unavailable source, unregistered state, client or inactive level.
+    /// A resident dead player can still be the source.
     #[access(WorldOnly)]
     fn level_game_event(
         &mut self,

@@ -357,7 +357,7 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
                 guest.respawn_elsewhere = Some(elsewhere);
             }
         });
-        // The client can render its immediate surroundings before all 5x5 arrival chunks are lit.
+        // A few chunks are available, but the server has not found the final destination.
         for x in chunk - 1..=chunk + 1 {
             for z in chunk - 1..=chunk + 1 {
                 game.streaming
@@ -367,27 +367,13 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
         game.guest_respawn(CONN);
         game.tick_server_travel();
         assert!(game.on_server_trip(CONN));
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
         assert!(
-            landing(game.lan.as_ref().unwrap()),
-            "respawn must hold movement while loading"
+            guest.dead,
+            "the old body remains while the destination loads"
         );
-        let at = game.lan.as_ref().unwrap().hub.guests[0].position;
+        let at = guest.position;
         game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.inbox.push_back(InboxItem::Packet(
-                S::PlayerLoaded(sunrise_protocol::packets::Empty),
-                None,
-            ));
-            guest.inbox.push_back(InboxItem::Packet(
-                S::AcceptTeleportation(play::AcceptTeleportation {
-                    id: guest.teleport_counter,
-                    x: at[0],
-                    y: at[1],
-                    z: at[2],
-                    yaw: guest.yaw,
-                    pitch: guest.pitch,
-                }),
-                None,
-            ));
             guest.inbox.push_back(InboxItem::Packet(
                 S::MovePlayerPos(play::MovePlayerPos {
                     x: at[0] + 1.0,
@@ -402,12 +388,10 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
         assert_eq!(
             game.lan.as_ref().unwrap().hub.guests[0].position,
             at,
-            "cannot abandon the respawn destination"
+            "a move cannot take the dead player away while the server finds a spawn"
         );
-        // A second pass must preserve the respawn search, even if its eventual stand-up spot
-        // differs from the original target; it must not turn into an ordinary teleport hold.
         game.tick_server_travel();
-        assert!(landing(game.lan.as_ref().unwrap()));
+        assert!(game.on_server_trip(CONN));
         light(&mut game, chunk);
         game.tick_server_travel();
         assert!(!game.on_server_trip(CONN));
@@ -418,6 +402,24 @@ fn respawn_arrivals_hold_movement_then_resume_damage_and_pickups() {
             assert_eq!([guest.yaw, guest.pitch], [93.0, 12.0]);
         }
         let at = game.lan.as_ref().unwrap().hub.guests[0].position;
+        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+            guest.inbox.push_back(InboxItem::Packet(
+                S::AcceptTeleportation(play::AcceptTeleportation {
+                    id: guest.teleport_counter,
+                    x: at[0],
+                    y: at[1],
+                    z: at[2],
+                    yaw: guest.yaw,
+                    pitch: guest.pitch,
+                }),
+                None,
+            ));
+            guest.inbox.push_back(InboxItem::Packet(
+                S::PlayerLoaded(sunrise_protocol::packets::Empty),
+                None,
+            ));
+        });
+        drain_packets(&mut game);
         let hit = |game: &mut Game<'_>| game.mob_hits_player(6.0, at, "minecraft:player_attack");
         assert_eq!(game.as_guest(CONN, hit), Some(true));
         let health = game.lan.as_ref().unwrap().hub.guests[0].health;
@@ -449,7 +451,7 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
     let mut resources = None;
     let (mut game, _rx) = server(&mut resources);
     game.level.world_spawn = Some([0, 100, 0]);
-    game.world_spawn_trip(CONN, None);
+    assert!(game.respawn_trip(CONN, None, None, false));
     // A deterministic search starts at (-64, -64), outside the lit 5x5. This is the
     // same search state a previous arrival pass keeps when a candidate is missing.
     game.server_trips[0].finder = Some(PlayerSpawnFinder::new([0, 100, 0], 64, |_| 0));

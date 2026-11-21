@@ -83,8 +83,8 @@ pub trait EntityActionsBackendMut {
     /// at the entity's position with the entity as its source, which sculk
     /// sensors, shriekers, wardens and allays in range hear. A player or mob
     /// is the event's source entity; other entities retain their own id.
-    /// False for an event vanilla doesn't have, a dead guest and a guest while
-    /// another one acts.
+    /// False for an unknown event or an unavailable source. Death alone does
+    /// not refuse a resident source.
     #[access(WorldOnly)]
     fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool;
     /// Side: server.

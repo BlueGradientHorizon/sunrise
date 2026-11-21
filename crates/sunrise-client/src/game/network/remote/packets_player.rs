@@ -91,8 +91,10 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_ref() {
             self.audio.remove_sound_entity(r.entity_id as u32);
         }
-        // ClientPacketListener.handleRespawn creates a new LocalPlayer with fresh
-        // ItemCooldowns, no effects (the server sends them again), and no item in use.
+        // ClientPacketListener.handleRespawn creates a new LocalPlayer with a fresh
+        // inventory selection, ItemCooldowns, no effects, and no item in use.
+        // SetHeldSlot sends the server's selection; the carried-index cache stays with the game mode.
+        self.selected = 0;
         self.cooldowns = Default::default();
         self.potions.effects.clear();
         // Every synced attachment but the player's is sent again; the viewed

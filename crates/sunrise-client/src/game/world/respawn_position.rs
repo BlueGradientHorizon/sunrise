@@ -1,8 +1,7 @@
 //! `player_respawn_position` (NeoForge's `PlayerRespawnPositionEvent`): where
-//! a respawning server player ends up. Vanilla finds the point inside
-//! `PlayerList.respawn`, loading chunks as it goes. Sunrise places the player
-//! first and finds the point once its level has loaded around it (the respawn
-//! and world-spawn trips of `server_travel.rs`), so the mods hear it there.
+//! a respawning server player ends up. A death respawn fires it after the point
+//! is found (waiting for its chunks on a server trip if needed), with the old
+//! player still available and before creating the replacement.
 use super::respawn_anchor::RespawnConfig;
 use super::server_travel::LevelTeleport;
 use super::{Dim, Game};
@@ -106,7 +105,7 @@ impl Game<'_> {
         })
     }
 
-    /// The deferred respawns' side of a decision: the found point's copy
+    /// The End exit's side of a decision: the found point's copy
     /// already happened (`copyRespawnPosition` for a found bed or anchor,
     /// the point forgotten for a missing one), so a mod's other choice
     /// forgets the point or gives the lost one back.
@@ -128,9 +127,8 @@ impl Game<'_> {
         });
     }
 
-    /// Sends a guest whose deferred respawn the mods moved into another
-    /// level there: a level change, the one extra Respawn packet a moved
-    /// respawn costs.
+    /// Sends the guest to a redirected destination when the End exit's
+    /// stand-up point is found. Death respawns instead start in their final level.
     pub(super) fn respawn_into_other_level(&mut self, conn: u32, to: Respawn) {
         self.level_teleports.push(LevelTeleport {
             conn,

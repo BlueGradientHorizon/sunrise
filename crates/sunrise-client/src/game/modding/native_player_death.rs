@@ -263,10 +263,73 @@ pub(in crate::game) mod tests {
         });
     }
 
+    /// The respawn and player-data packets from the real guest connection, in send order.
+    pub(in crate::game) fn respawn_packets(
+        receiver: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+    ) -> Vec<sunrise_protocol::packets::play::Clientbound> {
+        use sunrise_client::lan::Out;
+        use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+
+        receiver
+            .try_iter()
+            .flat_map(|out| match out {
+                Out::Packet(bytes) => vec![bytes],
+                Out::Packets(packets) => packets,
+                Out::Disconnect(reason) => panic!("unexpected disconnect: {reason:?}"),
+            })
+            .filter_map(|bytes| {
+                let mut reader = Reader::new(&bytes);
+                let id = reader.varint().unwrap();
+                use sunrise_protocol::ids::play::clientbound::{COOLDOWN, RESPAWN, SET_HELD_SLOT};
+                matches!(id, COOLDOWN | RESPAWN | SET_HELD_SLOT)
+                    .then(|| C::decode(id, reader.rest()).unwrap())
+            })
+            .collect()
+    }
+
+    pub(in crate::game) fn with_respawn_client(test: impl FnOnce(&mut Game<'_>)) {
+        use crate::game::{execution_role::ExecutionRole, remote::RemoteDimensionEntry};
+        use sunrise_client::level_loading::Reason;
+        use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};
+
+        with_game(|game| {
+            game.options.execution_role = ExecutionRole::Client;
+            let (client, _server) = Pipe::pair();
+            game.connect_local(client, "RespawnCopyTest").unwrap();
+            game.enter_remote_dimension(
+                &SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:overworld".into(),
+                    seed: 0,
+                    game_type: 0,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: false,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 63,
+                },
+                RemoteDimensionEntry::Login,
+                Reason::Other,
+            );
+            game.remote.as_mut().unwrap().logged_in = true;
+            test(game);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn edits_to_the_dead_players_record_follow_the_respawn_copy_policy() {
+        use std::sync::{Arc, mpsc};
+        use sunrise_client::lan::PlayerSender;
+        use sunrise_protocol::packets::play::Clientbound as C;
+
+        let mut replies = Vec::new();
         super::super::native_guest_turn_tests::with_guests(|game| {
+            let (sender, receiver) = mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
+                guest.sender = PlayerSender::new(sender, Arc::default());
+            });
             let player = game.player(13).unwrap();
             let other = game.player(12).unwrap();
             let pearl = "minecraft:ender_pearl";
@@ -318,7 +381,14 @@ pub(in crate::game) mod tests {
                     player.with_inventory(game, |view| view.get(5).map(|s| s.count())),
                     Some(Some(3))
                 );
+                let while_dead = respawn_packets(&receiver);
                 game.guest_respawn(13);
+                let selected = if spectator { 5 } else { 0 };
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guest(13).unwrap().selected,
+                    selected
+                );
+                replies.push((selected, while_dead, respawn_packets(&receiver)));
                 assert_eq!(
                     player.with_inventory(game, |view| view.get(5).map(|s| s.count())),
                     Some(copied_count)
@@ -331,6 +401,28 @@ pub(in crate::game) mod tests {
                 assert_eq!(game.player_food(player).unwrap().level, 20);
                 assert_eq!(game.player_exp_cooldown(player), Some(0));
                 assert_eq!(game.player_has_item_cooldown(player, pearl), Some(false));
+            }
+        });
+        with_respawn_client(|client| {
+            for (selected, while_dead, after) in replies {
+                client.set_screen(crate::game::Screen::Dead);
+                for packet in while_dead {
+                    client.handle_packet(packet).unwrap();
+                }
+                assert_eq!(client.selected, 5);
+                let mut sent_slot = None;
+                for packet in after {
+                    let reset = matches!(&packet, C::Respawn(_));
+                    if let C::SetHeldSlot(slot) = &packet {
+                        sent_slot = Some(slot.slot as usize);
+                    }
+                    client.handle_packet(packet).unwrap();
+                    if reset {
+                        assert_eq!(client.selected, 0, "the fresh LocalPlayer starts at slot 0");
+                    }
+                }
+                assert_eq!(sent_slot, Some(selected));
+                assert_eq!(client.selected, selected);
             }
         });
     }

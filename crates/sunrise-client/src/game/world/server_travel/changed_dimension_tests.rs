@@ -789,6 +789,205 @@ fn death_respawn_starts_a_new_player_tick_count() {
     });
 }
 
+const OLD_COOLDOWN: &str = "minecraft:ender_pearl";
+const NEW_COOLDOWN: &str = "minecraft:chorus_fruit";
+
+type PositionSeen = Arc<Mutex<Vec<(Option<bool>, bool, bool)>>>;
+
+struct EditDeathRespawn {
+    redirect: bool,
+    position_seen: PositionSeen,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for EditDeathRespawn {
+    fn player_respawn_position(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut PlayerRespawnPositionEvent,
+    ) {
+        let player = event.player;
+        let alive = player.living().alive(host);
+        let item_edited = player.set_item_cooldown(host, OLD_COOLDOWN, 18);
+        let xp_edited = player.set_exp_cooldown(host, 8);
+        self.position_seen
+            .lock()
+            .unwrap()
+            .push((alive, item_edited, xp_edited));
+        if self.redirect {
+            *event.level = LevelDimension::Nether;
+            *event.position = [8.5, 70.0, 8.5];
+        }
+    }
+
+    fn player_respawned(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::PlayerRespawnedEvent<'_>,
+    ) {
+        if self.redirect
+            && let Some(player) = host.player(event.player)
+        {
+            player.set_item_cooldown(host, NEW_COOLDOWN, 37);
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_forced_respawn_does_not_copy_cooldowns_written_in_the_position_hook() {
+    let position_seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "edit-dead-player",
+        Box::new(EditDeathRespawn {
+            redirect: false,
+            position_seen: position_seen.clone(),
+        }),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let player = game.player(UUID).unwrap();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+                guest.spawn = Some([5.5, 72.0, 5.5]);
+                guest.dead = true;
+                guest.health = 0.0;
+            });
+            game.guest_respawn(CONN);
+            assert_eq!(*position_seen.lock().unwrap(), [(Some(false), true, true)]);
+            assert_eq!(player.living().alive(game), Some(true));
+            assert_eq!(player.has_item_cooldown(game, OLD_COOLDOWN), Some(false));
+            assert_eq!(player.exp_cooldown(game), Some(0));
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_unopenable_death_respawn_level_leaves_the_old_player_in_place() {
+    use crate::game::native_player_death::tests::respawn_packets;
+    use sunrise_protocol::packets::play::Clientbound as C;
+
+    let position_seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "redirect-death-respawn",
+        Box::new(EditDeathRespawn {
+            redirect: true,
+            position_seen: position_seen.clone(),
+        }),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let world = tempfile::tempdir().unwrap();
+            game.world_root = world.path().to_path_buf();
+            let record = world.path().join("data/sunrise/biome_regions.dat");
+            std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+            std::fs::write(record, b"not a biome layout").unwrap();
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.spawn = Some([5.5, 72.0, 5.5]);
+                guest.dead = true;
+                guest.health = 0.0;
+            });
+            let player = game.player(UUID).unwrap();
+            assert!(player.set_item_cooldown(game, "minecraft:shield", 23));
+            game.guest_respawn(CONN);
+
+            assert_eq!(*position_seen.lock().unwrap(), [(Some(false), true, true)]);
+            assert_eq!(player.living().alive(game), Some(false));
+            assert_eq!(
+                player.has_item_cooldown(game, "minecraft:shield"),
+                Some(true)
+            );
+            assert_eq!(player.has_item_cooldown(game, OLD_COOLDOWN), Some(true));
+            assert_eq!(player.has_item_cooldown(game, NEW_COOLDOWN), Some(false));
+            assert_eq!(player.exp_cooldown(game), Some(8));
+            assert!(
+                !respawn_packets(&rx)
+                    .iter()
+                    .any(|packet| matches!(packet, C::Respawn(_)))
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_deferred_cross_level_death_respawn_keeps_the_replacements_cooldown() {
+    use crate::game::native_player_death::tests::{respawn_packets, with_respawn_client};
+    use sunrise_protocol::packets::play::Clientbound as C;
+
+    let position_seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "redirect-death-respawn",
+        Box::new(EditDeathRespawn {
+            redirect: true,
+            position_seen: position_seen.clone(),
+        }),
+    )];
+    let mut packets = Vec::new();
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            // The destination chunks for the world spawn are not lit yet. The old body
+            // has to remain available until the server finds the column and asks the mod.
+            game.level.world_spawn = Some([96, 80, 96]);
+            assert!(game.ui.rules.set_string("respawn_radius", "0"));
+            let (tx, rx) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.dead = true;
+                guest.health = 0.0;
+            });
+            let player = game.player(UUID).unwrap();
+            game.guest_respawn(CONN);
+            game.tick_server_travel();
+            assert!(game.on_server_trip(CONN));
+            assert_eq!(player.living().alive(game), Some(false));
+            assert!(position_seen.lock().unwrap().is_empty());
+            assert!(respawn_packets(&rx).is_empty());
+
+            finish_trip(game, Dim::Overworld);
+            let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+            assert_eq!(guest.dimension, Dim::Nether.id());
+            assert_eq!(guest.position, [8.5, 70.0, 8.5]);
+            assert_eq!(*position_seen.lock().unwrap(), [(Some(false), true, true)]);
+            assert_eq!(player.has_item_cooldown(game, OLD_COOLDOWN), Some(false));
+            let cooldowns = player.item_cooldowns(game).unwrap();
+            assert_eq!(cooldowns.len(), 1);
+            assert_eq!(
+                (cooldowns[0].group.as_str(), cooldowns[0].ticks_left),
+                (NEW_COOLDOWN, 37)
+            );
+            packets = respawn_packets(&rx);
+        });
+    });
+
+    let respawns: Vec<_> = packets
+        .iter()
+        .filter_map(|packet| match packet {
+            C::Respawn(packet) => Some((packet.spawn.dimension.as_str(), packet.keep)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(respawns, [(Dim::Nether.id(), 0)]);
+    with_respawn_client(|client| {
+        client.set_screen(crate::game::Screen::Dead);
+        for packet in packets {
+            client.handle_packet(packet).unwrap();
+        }
+        assert!(!client.cooldowns.is_on_cooldown(OLD_COOLDOWN));
+        assert_eq!(
+            client
+                .cooldowns
+                .remaining()
+                .map(|(group, ticks)| (group.as_ref(), ticks))
+                .collect::<Vec<_>>(),
+            [(NEW_COOLDOWN, 37)],
+        );
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn an_end_gateway_jump_within_the_level_is_not_heard_on_any_server() {

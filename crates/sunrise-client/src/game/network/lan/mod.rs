@@ -3473,6 +3473,11 @@ impl Game<'_> {
                     // `resolve_arrivals` checks), where it then ticks without a player.
                     .map(|chunk| (chunk, 1)),
             )
+            // Respawn chunks load before the replacement player can hold them.
+            .chain(
+                self.death_respawn_chunks(self.dim)
+                    .map(|chunk| (chunk, radius)),
+            )
             .chain(self.portal_ticket_areas())
             .chain(self.viewed_extra())
             .collect();

@@ -148,11 +148,9 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   UUID reach nobody inside this hook: answer through `replies`. Commands may carry secrets (`/msg`, a login plugin's
   password), so don't log them carelessly.
 - **`player_respawned(player, name)`**: a dead player came back, once per respawn, on a server: after
-  `PlayerList.respawn` reset their health, food and experience and placed them at their bed, anchor or the world spawn
-  (NeoForge's `PlayerRespawnEvent`). The player's state is swapped in for the call, as for their other actions, so
-  `native_player` and the other helpers reach them. A respawn at an anchor in another dimension, or
-  at the world spawn's free column, may still move them on a later tick, once that level has loaded round them; the
-  End-exit respawn (after the credits) does not fire it.
+  `PlayerList.respawn` installed the replacement, placed it in its final level and sent the respawn packet
+  (NeoForge's `PlayerRespawnEvent`). The replacement's state is swapped in for the call; the End-exit
+  respawn (after the credits) does not fire it.
 - **`player_login(player, name, cancel, reason)`**: a player the server has accepted (their name, the whitelist,
   bans and the player limit are checked) and who holds a place, heard before their saved state is loaded and before they
   are placed in a level (NeoForge's `PlayerNegotiationEvent`). Set `cancel` and they are disconnected with `reason` (a
@@ -2204,8 +2202,8 @@ registration path.
 
 - `mouse_button_pre(button, pressed, modifiers, canceled)` sees real button events on any screen, before normal dispatch. Button and modifiers use the screen hooks' GLFW encoding. Physical button bookkeeping already ran. Cancellation skips normal dispatch and Post. Accepted events call `mouse_button_post(button, pressed, modifiers)` after dispatch, including screen handlers' early returns. Synthetic pad/focus clicks skip both hooks. Existing screen-specific hooks remain.
 
-- A player respawning: `player_respawned(player, name)` is heard once at the end of `PlayerList.respawn`, with the player placed and their health, food and experience reset (NeoForge's `PlayerRespawnEvent`), on a server, with their state swapped in so the helpers reach them.
-- Where a player respawns (`PlayerRespawnPositionEvent`): `native_player_respawn_position(player, original_level, original_position, missing_respawn_block, level, position, yaw, pitch, copy_original_spawn_position)`, on a server, once the respawn point is found. `player` is the player's handle. The mods may change the level, the position, the facing and whether the fresh player keeps its respawn point (default: yes, unless the bed or anchor was missing). Vanilla finds the point inside `PlayerList.respawn`. Sunrise places the player first and finds a bed or anchor's spot, or the world spawn's free column, once its chunks have loaded, so for those the hook fires then, after `player_respawned`. There a new point in the same level is a teleport, and another level is a level change: one extra Respawn packet, heard as `player_teleported`. An Overworld forced point needs no block: the hook fires at once, before the Respawn packet, and a changed level, point or facing is simply where the player respawns. The point the mods choose is not block-checked and the hook doesn't fire again. Not for the End exit, which isn't a respawn here.
+- A player respawning: `player_respawned(player, name)` is heard once at the end of `PlayerList.respawn`, after the replacement has been placed in its final level and its Respawn packet sent (NeoForge's `PlayerRespawnEvent`), with its state swapped in so the helpers reach it.
+- Where a player respawns (`PlayerRespawnPositionEvent`): `native_player_respawn_position(player, original_level, original_position, missing_respawn_block, level, position, yaw, pitch, copy_original_spawn_position)`, on a server, once the respawn point is found. On death `player` is the old player, still available even when the server had to load chunks to find the point. Mods may change the level, position, facing, and whether the replacement keeps its respawn point (default: yes, unless the bed or anchor was missing). A redirect is part of the same death respawn and does not cause a second one.
 
 - A client mod's view: `native_raycast(distance)` and `native_view_hit()` (the first block along the view, up to 1024 blocks, in the loaded chunks).
 - A client mod's main-hand input: `register_client_item_use` binds a single `ClientItemUseBehavior` to an item key at startup. It consumes the input before the crosshair target, without a use or release packet or a change to living-item use or blocking. Each callback receives the original typed `ItemStack` and hotbar slot; `release_using` and `on_stop_using` also receive elapsed held ticks. Only a valid input release calls `release_using`, then `on_stop_using`; a reset calls `on_stop_using` alone. Disabled owners are not called. Ordinary item use still goes through `ItemPart::use_item` and `ItemPart::release_using` on both sides.

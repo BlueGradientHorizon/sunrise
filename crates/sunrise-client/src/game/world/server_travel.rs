@@ -51,8 +51,8 @@ impl TravelCause {
     }
 }
 
-/// A trip under way: the player is in the destination's level, whose
-/// chunks are loading around `target`.
+/// A trip under way, whose destination loads around `target`. A dead player
+/// remains in the source level until the server finds its respawn point.
 pub(super) struct Trip {
     conn: u32,
     dim: Dim,
@@ -80,10 +80,9 @@ pub(super) struct Trip {
     /// A respawn at this point outside the Overworld, resolved through its
     /// block on arrival.
     respawn: Option<RespawnConfig>,
-    /// Whether that point's block is used up (`findRespawnAndUseSpawnBlock`'s
-    /// `consumeSpawnBlock`): a death does, the credits and an End portal
-    /// leave it as it is.
-    consume: bool,
+    /// A death respawn resolves the destination before replacing the old player;
+    /// it consumes an anchor's charge, unlike the credits or an End portal.
+    death_respawn: bool,
     /// A respawn at the world spawn, moved onto a free column within the
     /// respawn radius once the chunks around it have loaded.
     world_spawn: bool,
@@ -292,7 +291,7 @@ impl Game<'_> {
             gateway: None,
             respawn: None,
             credits_respawn: false,
-            consume: false,
+            death_respawn: false,
             world_spawn: false,
             finder: None,
             placed: false,
@@ -1034,7 +1033,7 @@ impl Game<'_> {
             gateway: None,
             respawn: None,
             credits_respawn,
-            consume: false,
+            death_respawn: false,
             world_spawn: false,
             missing: None,
             finder: None,
@@ -1070,30 +1069,73 @@ impl Game<'_> {
         false
     }
 
-    /// A respawned player waits at its point outside the Overworld for the
-    /// level to load around it.
-    pub(super) fn respawn_trip(&mut self, conn: u32, config: RespawnConfig) {
-        let [x, y, z] = config.pos;
+    pub(super) fn death_respawn_pending(&self, conn: u32) -> bool {
+        self.server_trips
+            .iter()
+            .any(|trip| trip.is(conn) && trip.death_respawn)
+    }
+
+    /// Chunks needed to find a respawn before there is a player in the destination.
+    pub(super) fn death_respawn_chunks(&self, dim: Dim) -> impl Iterator<Item = (i32, i32)> + '_ {
+        self.server_trips
+            .iter()
+            .filter(move |trip| trip.dim == dim && trip.death_respawn)
+            .map(|trip| Self::chunk_of(trip.target))
+    }
+
+    /// Queue a bed or anchor lookup, or a search for a free column at the world spawn.
+    /// False only when there is no world spawn search to queue.
+    pub(super) fn respawn_trip(
+        &mut self,
+        conn: u32,
+        config: Option<RespawnConfig>,
+        missing: Option<RespawnConfig>,
+        death_respawn: bool,
+    ) -> bool {
+        let (dim, [x, y, z]) = if let Some(c) = config {
+            (c.dim, c.pos)
+        } else if let Some(pos) = self.level.world_spawn {
+            (self.world_spawn_level(), pos)
+        } else {
+            return false;
+        };
+        let source = self.dim;
+        self.server_trips.retain(|t| !t.is(conn));
+        if death_respawn && dim != source {
+            // A failed open must not leave a pending respawn on the next server tick.
+            if let Err(e) = self.enter_level(dim) {
+                log::error!(
+                    "could not open {} for player {conn}'s respawn: {e}",
+                    dim.id()
+                );
+                return true;
+            }
+            if let Err(e) = self.enter_level(source) {
+                log::error!("could not reopen {}: {e}", source.id());
+                return true;
+            }
+        }
         self.server_trips.push(Trip {
             conn,
-            dim: config.dim,
-            source: self.dim,
+            dim,
+            source,
             target: Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
             end: false,
             entering: false,
             plan: None,
             vehicle: None,
             gateway: None,
-            respawn: Some(config),
+            respawn: config,
             credits_respawn: false,
-            consume: true,
-            world_spawn: false,
-            missing: None,
+            death_respawn,
+            world_spawn: config.is_none(),
+            missing,
             finder: None,
             placed: false,
             hold: false,
             left: None,
         });
+        true
     }
 
     /// A credits return without a player respawn point uses the destination
@@ -1118,78 +1160,20 @@ impl Game<'_> {
         }
     }
 
-    /// `findRespawnAndUseSpawnBlock` for the player in place, at its point
-    /// in the level in place: where it stands up, facing the anchor (with
-    /// the deplete sound, `PlayerList.respawn`'s, when the block is used up)
-    /// or the bed; else the point is forgotten, and the caller tells the
-    /// player (`Hub::missing_respawn_block`).
-    pub(super) fn resolve_server_respawn(
-        &mut self,
-        config: RespawnConfig,
-        consume: bool,
-    ) -> Option<(Vec3, f32, f32)> {
-        let [x, y, z] = config.pos;
-        let anchor = self.is_anchor(self.world.block(x, y, z));
-        match self.find_respawn_and_use(config, consume) {
-            Ok(Some((at, yaw, pitch))) => {
-                if consume && anchor {
-                    // PlayerList.respawn: the deplete sound has no `forced`
-                    // test, so a point `/spawnpoint` kept plays it too; a
-                    // return from the End credits keeps all data and skips it.
-                    let [x, y, z] = config.pos.map(f64::from);
-                    self.audio.play(
-                        "minecraft:block.respawn_anchor.deplete",
-                        Some([x, y, z]),
-                        1.0,
-                        1.0,
-                    );
-                }
-                // PlayerList.respawn: the block was found, so the new player
-                // copies the respawn point (`copyRespawnPosition`). A cancel
-                // leaves it with none.
+    /// Resolve the End exit's point without consuming the block, then copy the point.
+    fn resolve_server_respawn(&mut self, config: RespawnConfig) -> Option<(Vec3, f32, f32)> {
+        match self.find_respawn_and_use(config, false) {
+            Ok(Some(pose)) => {
                 if self.spawn_point_change(config.dim, Some(config.pos), config.forced) {
                     self.respawn_config = None;
                 }
-                Some((at, yaw, pitch))
+                Some(pose)
             }
             Ok(None) | Err(_) => {
-                // The block is gone: `PlayerList.respawn` skips
-                // `copyRespawnPosition`, so the new player has no point and
-                // no `setRespawnPosition` call is made.
                 self.respawn_config = None;
                 None
             }
         }
-    }
-
-    /// TeleportTransition.createDefault and missingRespawnBlock: the player
-    /// waits at the world spawn for its chunks, then PlayerSpawnFinder puts
-    /// it on a free column within the respawn radius.
-    pub(super) fn world_spawn_trip(&mut self, conn: u32, missing: Option<RespawnConfig>) {
-        let Some([x, y, z]) = self.level.world_spawn else {
-            return;
-        };
-        self.server_trips.retain(|t| !t.is(conn));
-        self.server_trips.push(Trip {
-            conn,
-            dim: self.world_spawn_level(),
-            source: self.dim,
-            target: Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
-            end: false,
-            entering: false,
-            plan: None,
-            vehicle: None,
-            gateway: None,
-            respawn: None,
-            credits_respawn: false,
-            consume: false,
-            world_spawn: true,
-            missing,
-            finder: None,
-            placed: false,
-            hold: false,
-            left: None,
-        });
     }
 
     /// TeleportTransition.missingRespawnBlock: the world spawn, in its level
@@ -1211,7 +1195,7 @@ impl Game<'_> {
         if credits_respawn && let Some(host) = self.lan.as_mut() {
             let _ = host.hub.update_guest(conn, Self::finish_credits_body);
         }
-        self.world_spawn_trip(conn, Some(missing));
+        self.respawn_trip(conn, None, Some(missing), false);
     }
 
     /// `TheEndGatewayBlockEntity.getPortalPosition` and the teleport within
@@ -1247,7 +1231,7 @@ impl Game<'_> {
             gateway: Some(job),
             respawn: None,
             credits_respawn: false,
-            consume: false,
+            death_respawn: false,
             world_spawn: false,
             missing: None,
             finder: None,
@@ -1273,10 +1257,7 @@ impl Game<'_> {
                 self.server_trips.remove(k);
                 continue;
             };
-            let (cx, cz) = (
-                (trip.target.x.floor() as i32) >> 4,
-                (trip.target.z.floor() as i32) >> 4,
-            );
+            let (cx, cz) = Self::chunk_of(trip.target);
             if trip.holds_movement() {
                 self.lan.as_mut().unwrap().hub.guests.update(i, |g| {
                     g.landing = true;
@@ -1304,18 +1285,66 @@ impl Game<'_> {
             let Some(host) = self.lan.as_ref() else {
                 return;
             };
+            let Some(i) = host.hub.guests.connection_index(trip.conn) else {
+                continue;
+            };
+            if trip.death_respawn && !host.hub.guests[i].dead {
+                continue;
+            }
             let yaw = host.hub.guests[i].yaw;
             let (position, yaw) = if let Some(config) = trip.respawn {
-                let (conn, consume) = (trip.conn, trip.consume);
-                let found = self.as_guest(conn, |g| g.resolve_server_respawn(config, consume));
+                let found = if trip.death_respawn {
+                    let [x, y, z] = config.pos;
+                    let anchor = self.is_anchor(self.world.block(x, y, z));
+                    match self.find_respawn_and_use(config, true) {
+                        Ok(pose) => {
+                            if pose.is_some() && anchor {
+                                self.audio.play(
+                                    "minecraft:block.respawn_anchor.deplete",
+                                    Some([f64::from(x), f64::from(y), f64::from(z)]),
+                                    1.0,
+                                    1.0,
+                                );
+                            }
+                            pose
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "could not resolve respawn point for player {}: {e}",
+                                trip.conn
+                            );
+                            continue;
+                        }
+                    }
+                } else {
+                    self.as_guest(trip.conn, |g| g.resolve_server_respawn(config))
+                        .flatten()
+                };
                 match found {
-                    Some(Some((at, yaw, pitch))) => {
+                    Some((at, yaw, pitch)) if trip.death_respawn => {
+                        let found = Respawn {
+                            dim: trip.dim,
+                            at,
+                            yaw,
+                            pitch,
+                        };
+                        self.finish_guest_respawn(trip.conn, found, None);
+                        continue;
+                    }
+                    Some((at, yaw, pitch)) => {
                         if let Some(host) = self.lan.as_mut() {
                             host.hub.guests.update(i, |guest| guest.pitch = pitch);
                         }
                         (at, yaw)
                     }
-                    _ => {
+                    None if trip.death_respawn => {
+                        if !self.respawn_trip(trip.conn, None, Some(config), true) {
+                            let found = self.world_respawn();
+                            self.finish_guest_respawn(trip.conn, found, Some(config));
+                        }
+                        continue;
+                    }
+                    None => {
                         if let Some(host) = self.lan.as_mut() {
                             host.hub.missing_respawn_block(trip.conn);
                         }
@@ -1338,9 +1367,10 @@ impl Game<'_> {
                     // The respawn already put the player on this column:
                     // vanilla teleports once, so no second move.
                     Ok(at)
-                        if self.lan.as_ref().is_some_and(|host| {
-                            host.hub.guests[i].position == [at.x, at.y, at.z]
-                        }) =>
+                        if !trip.death_respawn
+                            && self.lan.as_ref().is_some_and(|host| {
+                                host.hub.guests[i].position == [at.x, at.y, at.z]
+                            }) =>
                     {
                         self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                         // PlayerRespawnPositionEvent: the column is the point.
@@ -1438,7 +1468,15 @@ impl Game<'_> {
                     _ => (trip.target, yaw),
                 }
             };
-            // PlayerRespawnPositionEvent: a deferred respawn's point is found.
+            if trip.death_respawn {
+                let found = Respawn {
+                    at: position,
+                    ..self.world_respawn()
+                };
+                self.finish_guest_respawn(trip.conn, found, trip.missing);
+                continue;
+            }
+            // End exits and credits use the existing travel path.
             let mut pitch = None;
             let (position, yaw) = if trip.respawn.is_some() || trip.world_spawn {
                 let pitch_now = self.lan.as_ref().map_or(0.0, |h| h.hub.guests[i].pitch);
@@ -1700,7 +1738,7 @@ impl Game<'_> {
                 gateway: None,
                 respawn: None,
                 credits_respawn: false,
-                consume: false,
+                death_respawn: false,
                 world_spawn: false,
                 missing: None,
                 finder: None,

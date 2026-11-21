@@ -94,7 +94,9 @@ mod tests {
             || {
                 with_game(|game| {
                     open_to_lan(game);
-                    let (guest, _receiver) = guest(7, 99, [2.5, 64.0, 1.5]);
+                    let (mut guest, _receiver) = guest(7, 99, [2.5, 64.0, 1.5]);
+                    guest.dead = true;
+                    guest.health = 0.0;
                     let id = guest.entity_id as u32;
                     game.lan.as_mut().unwrap().hub.guests.push(guest);
                     let source = game.entity(id).unwrap();
@@ -114,7 +116,8 @@ mod tests {
                         game.lan_acting_entity.is_none(),
                         "guest scope must be restored"
                     );
-                    assert_eq!(*heard.lock().unwrap(), [Some(id)]);
+                    assert!(game.entity_game_event(source, "minecraft:step"));
+                    assert_eq!(*heard.lock().unwrap(), [Some(id), Some(id)]);
                 });
             },
         );

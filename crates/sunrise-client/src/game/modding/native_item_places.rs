@@ -2426,12 +2426,11 @@ pub(super) mod tests {
             let mut map = ItemStack::new("minecraft:filled_map", 1);
             map.data_mut().map_id = Some(source);
             map.data_mut().map_post_processing = Some(1);
-            game.lan
-                .as_mut()
-                .unwrap()
-                .hub
-                .guests
-                .update(0, |guest| guest.carried = Some(map.clone()));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.dead = true;
+                guest.health = 0.0;
+                guest.carried = Some(map.clone());
+            });
             let menu = game
                 .player_container_menu(game.player(12).unwrap())
                 .unwrap();

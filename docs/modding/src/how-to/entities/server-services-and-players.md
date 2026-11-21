@@ -108,9 +108,13 @@ and also covers `/say` and `/me`. With no listener nothing is asked or allocated
 `chat_recipient` fails instead of reentering the hook or sending an unchecked line. The server's log keeps every
 broadcast line, hidden or not.
 
-`player.respawn(host)` presses the Respawn button for a dead player, as their client's does (`PERFORM_RESPAWN`): they
-are placed at their respawn point or the world spawn and `player_respawned` is heard. Call it outside every player's
-hook (from `server_tick`, say). It returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
+`player.respawn(host)` presses the Respawn button for a dead player, as their client's does (`PERFORM_RESPAWN`).
+The server finds their respawn point or the world spawn (after loading its chunks if necessary), then
+`player_respawn_position` can redirect the replacement while the old player is still available. Use `player_respawned`
+to edit the replacement: it runs once the server has placed it and sent its respawn packet for the final destination.
+Inventory and the selected slot copy only with `keep_inventory` or in spectator mode; item cooldowns and the
+experience pickup delay start fresh. Call `respawn` outside every player's hook (from `server_tick`, say).
+It returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
 this order: `Client`, `InPlayerHook` (a player's state is swapped in), `Stale` (no player on this server behind the
 handle), `NoConnection` (a fake player, or the world's own player in a single-player world, which respawns through its
 own screen) and `Alive` (health above 0 and the game not won: the case the button ignores; a player who has won the game and is watching the End poem is respawned even alive, on the next server tick, as the button does).
