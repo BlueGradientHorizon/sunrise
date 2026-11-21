@@ -281,9 +281,16 @@ mod tests {
         };
         seat.connecting(&server);
         seat.ended(&Ended::new("Server closed", None, By::Server), &clock);
-        assert!(matches!(seat.retry(&clock), Some(Retry::Wait(_))));
-        let due = FixedClock(start + Duration::from_secs(policy::DELAYS[0]));
-        assert_eq!(seat.retry(&due), Some(Retry::Now(server)));
+        assert_eq!(
+            seat.retry(&clock),
+            Some(Retry::Wait("Reconnecting in 5 s (attempt 1 of 5)".into()))
+        );
+        let due = start + Duration::from_secs(5);
+        assert_eq!(
+            seat.retry(&FixedClock(due - Duration::from_nanos(1))),
+            Some(Retry::Wait("Reconnecting in 1 s (attempt 1 of 5)".into()))
+        );
+        assert_eq!(seat.retry(&FixedClock(due)), Some(Retry::Now(server)));
     }
 
     #[test]
