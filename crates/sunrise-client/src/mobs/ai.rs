@@ -70,10 +70,7 @@ mod inside_walk_tests {
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
             staged.run_after(
                 mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt {
-                    source: None,
-                    amount: 1000.0,
-                },
+                mod_api::EntityWrite::Hurt { amount: 1000.0 },
             );
         }
         staged.run_after(
@@ -1725,7 +1722,7 @@ fn apply_entity_write(
             m.fall_distance = 0.0;
             m.stuck_multiplier = triple(v);
         }
-        mod_api::EntityWrite::Hurt { amount, .. } => {
+        mod_api::EntityWrite::Hurt { amount } => {
             m.damage(level, amount, Damage::of(DamageKind::Generic));
             // The hurt's own teleport, inside it (#1697).
             hurt_teleports(m, w, events);

@@ -1746,9 +1746,7 @@ impl MotionWorld<'_, '_, '_> {
             mod_api::EntityWrite::StuckIn(v) => {
                 self.make_stuck_in_block(triple(v));
             }
-            // The damage source's entity row is the game's to resolve when the
-            // write applies; the player's own hurt takes the amount.
-            mod_api::EntityWrite::Hurt { amount, .. } => {
+            mod_api::EntityWrite::Hurt { amount } => {
                 self.environment_hurt("minecraft:generic", amount)?;
             }
             mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
