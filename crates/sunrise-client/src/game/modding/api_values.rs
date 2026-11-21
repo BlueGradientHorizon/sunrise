@@ -1162,11 +1162,12 @@ pub(crate) fn menu_still_valid(
     menu: &str,
     pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<mod_api::MenuOpeningItem>,
     valid: &mut bool,
 ) {
     let reader = sunrise_client_render::api_context::LoopReader(context);
     let context = reader.context();
-    mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, valid);
+    mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, opening_item, valid);
 }
 
 impl TryIntoApi for crate::stations::AnvilResult {

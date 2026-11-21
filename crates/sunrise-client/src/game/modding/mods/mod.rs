@@ -1476,6 +1476,7 @@ fn register_menu_types(
             crafting,
             links,
             m.player_inventory,
+            m.owned_slots.clone(),
         )
     }));
     if !set

@@ -1227,6 +1227,10 @@ impl ProfileProperty {
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
+    /// A menu with `owned_slots` also declares a take-only or crafting result.
+    OwnedSlotsWithResults,
+    /// Opening a new window is not possible during the active menu click action.
+    ClickInProgress,
     /// The player is stale, dead, disconnecting, has no supported client, or their turn
     /// is unavailable for the open veto. Also returned by a host without a game.
     PlayerUnavailable,
@@ -1243,6 +1247,12 @@ pub enum OpenMenuError {
 impl From<crate::text::TextFormError> for OpenMenuError {
     fn from(error: crate::text::TextFormError) -> Self {
         Self::Title(error)
+    }
+}
+
+impl crate::AccessRefusal for OpenMenuError {
+    fn unavailable() -> Self {
+        Self::PlayerUnavailable
     }
 }
 
@@ -1295,6 +1305,8 @@ pub enum MenuItemsRefusal {
     /// One of the stacks was refused at the game's item conversion boundary: an item the world
     /// lacks, a count or damage the item does not allow.
     Stack(StackWriteError),
+    /// The window owns its slots. Write them through [`ItemPlace::MenuSlot`](crate::ItemPlace::MenuSlot).
+    OwnedSlots,
 }
 
 impl From<StackWriteError> for MenuItemsRefusal {

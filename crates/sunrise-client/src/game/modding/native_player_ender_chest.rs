@@ -89,7 +89,7 @@ impl Game<'_> {
             .filter(|g| g.participates_online() && !g.dead)
             .ok_or(OpenMenuError::PlayerUnavailable)?
             .conn;
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return Ok(false);
         }
         let title = component_nbt(&title.component());

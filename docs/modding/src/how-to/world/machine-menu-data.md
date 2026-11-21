@@ -251,11 +251,14 @@ does not resolve. It never opens a replacement through an old handle.
 ## Blockless status menus
 
 To open a content mod menu type with no block (from an item, an entity or a command),
-call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoForge's
+call `player.open_mod_menu(host, request)` with a `ModMenuOpen` request (NeoForge's
 `openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
 32 KiB, is one-time context available through the client's `host.screen_extra_data()`;
 `pos` is an optional hint returned by `screen_pos()`. Neither is live data or block backing.
-The menu's declared container slots, if any, start empty. Opening returns the window id or
+Pass `Some(hand)` from an item's use to let `menu_still_valid` compare that hand's current
+stack with the one at open. Other openers pass `None`. The menu's declared container slots,
+if any, start empty; [`owned_slots`](../../concepts/capabilities/menu-slots.md#menu-owned-slots)
+declares a temporary container that belongs to the window. Opening returns the window id or
 `Ok(None)` when vetoed. Invalid type, connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
@@ -264,10 +267,9 @@ For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 to `mymod:status`. Open it with two signed values, in index order:
 
 ```rust,ignore
-player.open_mod_menu(
-    host, status, Text::translate("mymod.status", vec![]),
-    vec![], vec![-80_000, 7], None, MenuReplace::CloseFirst,
-)?;
+let mut request = ModMenuOpen::new(status, Text::translate("mymod.status", vec![]));
+request.data = vec![-80_000, 7];
+player.open_mod_menu(host, request)?;
 ```
 
 The initial values are sent after the new window opens. In `screen_draw`, read

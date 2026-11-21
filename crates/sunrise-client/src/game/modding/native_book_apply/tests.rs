@@ -18,6 +18,7 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
         slots: 3,
         player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![2],
         inputs: Vec::new(),
         crafting: None,
@@ -63,6 +64,7 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
             craft: None,
             links: vec![],
             asks_still_valid: false,
+            opening_item: None,
         });
     });
     let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();

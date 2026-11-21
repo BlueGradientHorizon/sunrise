@@ -4173,6 +4173,7 @@ pub(crate) mod tests {
             slots: 2,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,
@@ -4211,6 +4212,7 @@ pub(crate) mod tests {
             slots: 1,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,
@@ -4495,6 +4497,7 @@ pub(crate) mod tests {
                 slots: 27,
                 player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -4529,6 +4532,7 @@ pub(crate) mod tests {
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(mod_type, registry_id),
+                opening_item: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4597,6 +4601,7 @@ pub(crate) mod tests {
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(Some(mod_type), "test:rules"),
+                opening_item: None,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4698,6 +4703,7 @@ pub(crate) mod tests {
             slots: 4,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![3],
             inputs: Vec::new(),
             links: None,
@@ -4808,6 +4814,7 @@ pub(crate) mod tests {
             slots: 10,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![],
             inputs: Vec::new(),
             links: None,

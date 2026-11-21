@@ -757,7 +757,7 @@ impl Game<'_> {
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),
     ) -> bool {
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return false;
         }
         let done = self.lan_merchant_op(conn, None, false, |menu, env| {
