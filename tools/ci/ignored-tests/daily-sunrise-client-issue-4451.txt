@@ -854,7 +854,7 @@ sunrise-client game::lan_actions::boat_holder_movement_tests::walking_then_still
 sunrise-client game::lan_actions::crack_feedback_tests::crack_packets_follow_start_clock_and_strict_observer_radius lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::accepted_hit_moves_through_teleport_restore_but_not_respawn lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::co_located_guests_own_distinct_streams_and_restore_the_saved_body lib daily resources
-sunrise-client game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall lib daily resources
+sunrise-client game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall lib daily child-process
 sunrise-client game::lan_actions::guest_close_listener_tests::ordinary_guest_final_close_posts_to_actual_listener lib daily resources
 sunrise-client game::lan_actions::hotbar_tests::a_hotbar_switch_fires_pre_then_post_and_pre_can_keep_the_slot lib daily resources
 sunrise-client game::lan_actions::item_on_block_cooldown_tests::actual_guest_placement_starts_its_cooldown lib daily resources
@@ -884,8 +884,8 @@ sunrise-client game::lan_actions::tests::replacing_empty_note_block_use_does_not
 sunrise-client game::lan_actions::tick::building_cache_tests::a_guest_killed_mid_tick_no_longer_blocks lib daily resources
 sunrise-client game::lan_actions::tick::building_cache_tests::a_guest_put_in_spectator_mid_tick_no_longer_blocks lib daily resources
 sunrise-client game::lan_actions::tick::building_cache_tests::a_teleported_guest_blocks_where_it_went_not_where_the_tick_began lib daily resources
-sunrise-client game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest lib daily resources
-sunrise-client game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound lib daily resources
+sunrise-client game::lan_actions::tick::fall_sound_tests::five_block_fall_sends_stone_once_except_guest lib daily child-process
+sunrise-client game::lan_actions::tick::fall_sound_tests::three_block_fall_sends_no_stone_sound lib daily child-process
 sunrise-client game::lan_crafting::empty_ingredient_placement_tests::server_packet_refuses_retained_empty_ingredient_recipes lib daily resources
 sunrise-client game::lan_crafting::lending_tests::inventory_menu_does_not_ask_recipe_sources lib daily resources
 sunrise-client game::lan_crafting::lending_tests::lent_chest_supplies_transfer_and_placement_and_is_written_back lib daily resources
