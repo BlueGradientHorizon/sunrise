@@ -246,7 +246,9 @@ you are ready to publish a stable version from GitHub:
 A tag build verifies Sunrise's rolling signed [`mod-tool`](../start/install-tool.md#newest-tool-from-main), then
 plans against the tag's independently signed SDK. All jobs require the same authenticated tool commit. A
 standalone API mod builds an archive for each host in that SDK. Other valid native mods get a signed source
-package only. A failed check or binary build stops the release; it does not publish a source-only substitute.
+package only. Tagged releases do not yet build mods with required `[dependencies]`: publish those by hand
+with `cargo sunrise-mod build` and `cargo sunrise-mod publish`. Optional mod dependencies are allowed for
+source-only releases. A failed check or binary build stops the release; it does not publish a source-only substitute.
 
 The workflow keeps the verified signed batch as a run artifact before uploading. If an upload stops partway,
 rerun the failed jobs of that run while the original signed batch is available. Identical assets are reused;

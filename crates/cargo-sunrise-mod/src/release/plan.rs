@@ -163,6 +163,16 @@ fn initial<'a>(
             "tag {tag:?} must match the manifest version: v{version}"
         ));
     }
+    if let Some((id, _)) = bundle
+        .manifest
+        .dependencies
+        .iter()
+        .find(|(_, dep)| !dep.details().optional)
+    {
+        return Err(format!(
+            "{id}: tagged releases don't yet build mods with required [dependencies]; publish this mod by hand with `cargo sunrise-mod build` and `cargo sunrise-mod publish`"
+        ));
+    }
     let native = bundle.native();
     let mut named = releases.iter().filter(|r| {
         r.commit == native.sunrise
