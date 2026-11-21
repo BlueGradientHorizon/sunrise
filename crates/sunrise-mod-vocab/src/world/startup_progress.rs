@@ -58,6 +58,11 @@ pub trait ProgressMeter: Send + Sync + 'static {
 
 static SCREEN: OnceLock<Arc<dyn StartupScreen>> = OnceLock::new();
 
+#[cfg(any(test, feature = "testing"))]
+std::thread_local! {
+    pub(crate) static TEST_SCREEN: std::cell::RefCell<Option<Arc<dyn StartupScreen>>> = const { std::cell::RefCell::new(None) };
+}
+
 /// Install the game's startup screen, once, before mods register.
 // hidden: engine plumbing, re-exported through __private for the game.
 #[doc(hidden)]
@@ -68,6 +73,10 @@ pub fn install_startup_screen(screen: Arc<dyn StartupScreen>) -> Result<(), Star
 }
 
 pub(crate) fn installed() -> Option<Arc<dyn StartupScreen>> {
+    #[cfg(any(test, feature = "testing"))]
+    if let Some(screen) = TEST_SCREEN.with_borrow(Clone::clone) {
+        return Some(screen);
+    }
     SCREEN.get().cloned()
 }
 

@@ -247,26 +247,41 @@ mod tests {
 
     #[test]
     fn sixty_fifth_bar_is_refused_per_mod_even_from_a_scoped_worker() {
+        use mod_api::__private::game::RegistrationContextNew;
         use mod_api::{
-            ComponentTypesEvent, Hooks, ModEntry, RegistrationContext, StartupProgress,
-            StartupProgressError,
+            BlocksEvent, ComponentTypesEvent, Hooks, ModEntry, Registrar, RegistrationContext,
+            StartupProgress, StartupProgressError,
         };
 
         struct OpensBars(&'static str, Arc<Mutex<Vec<StartupProgress>>>);
+        impl OpensBars {
+            fn open_batch(&self, context: &RegistrationContext) {
+                self.1
+                    .lock()
+                    .unwrap()
+                    .extend((0..16).map(|_| context.progress(self.0, 1).unwrap()));
+            }
+        }
         #[mod_api::__subscriptions]
         impl Hooks for OpensBars {
+            fn register(&self, _: &mut dyn Registrar, context: &RegistrationContext) {
+                self.open_batch(context);
+            }
+
+            fn blocks(&self, context: &RegistrationContext, _: &mut BlocksEvent<'_>) {
+                self.open_batch(context);
+            }
+
             fn component_types(
                 &self,
                 context: &RegistrationContext,
                 _: &mut ComponentTypesEvent<'_>,
             ) {
-                let mut bars: Vec<_> = (0..32)
-                    .map(|_| context.progress(self.0, 1).unwrap())
-                    .collect();
+                self.open_batch(context);
                 std::thread::scope(|scope| {
                     scope
                         .spawn(|| {
-                            bars.extend((0..32).map(|_| context.progress(self.0, 1).unwrap()));
+                            self.open_batch(context);
                             assert!(matches!(
                                 context.progress("worker refused", 1),
                                 Err(StartupProgressError::TooManyBars)
@@ -279,21 +294,26 @@ mod tests {
                     context.progress("listener refused", 1),
                     Err(StartupProgressError::TooManyBars)
                 ));
+                let mut bars = self.1.lock().unwrap();
                 drop(bars.pop());
                 bars.push(context.progress(self.0, 1).unwrap());
-                self.1.lock().unwrap().extend(bars);
             }
         }
 
         let screen = Arc::new(ModProgress::new(false));
         let opened = Arc::new(Mutex::new(Vec::new()));
-        let context = mod_api::testing::registration_context_with_startup_screen(screen.clone());
         let mods =
             ["alpha", "beta"].map(|id| ModEntry::new(id, Box::new(OpensBars(id, opened.clone()))));
-        mod_api::testing::with_dispatch(Vec::from(mods).into(), || {
-            mod_api::dispatch_component_types(&context, &mut Vec::new());
+        mod_api::testing::with_startup_screen(screen.clone(), || {
+            // This fixture runs the real Registrar path before starting generated dispatch.
+            mod_platform::testing::with_mods(Vec::from(mods).into(), || {
+                let _registration = mod_platform::__private::RegistrationGuard::open();
+                let context = <RegistrationContext as RegistrationContextNew>::new();
+                mod_api::dispatch_blocks(&context, &mut |_| panic!("no blocks declared"));
+                mod_api::dispatch_component_types(&context, &mut Vec::new());
+            });
         });
-        assert_eq!(opened.lock().unwrap().len(), 128);
+        assert_eq!(screen.state().bars.len(), 128);
         opened.lock().unwrap().clear();
         assert!(screen.shown(Instant::now()).0.is_empty());
     }
