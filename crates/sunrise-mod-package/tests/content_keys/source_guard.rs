@@ -208,24 +208,47 @@ fn defining_file(src: &Path, path: &[&str]) -> Result<PathBuf, String> {
 }
 
 fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, String> {
+    let read = |file: &Path| {
+        fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
+    };
+    // The root's scope is `lib.rs` and the export fragments included into it.
+    let mut root = read(&src.join("lib.rs"));
+    if let Ok(entries) = fs::read_dir(src.join("exports")) {
+        for entry in entries {
+            root.push('\n');
+            root.push_str(&read(&entry.unwrap().path()));
+        }
+    }
     let (mut module, mut file, mut rest) = (src.to_path_buf(), src.join("lib.rs"), path);
+    let mut text = read(&file);
     while let [name, tail @ ..] = rest {
+        let scope = top_level(&tokens(if module == src { &root } else { &text }));
+        let Some(declared) = scope.windows(3).position(|decl| decl == ["mod", name, ";"]) else {
+            break;
+        };
+        let attributes = scope[..declared]
+            .rsplit(|token| matches!(*token, ";" | "}"))
+            .next()
+            .unwrap();
+        if attributes.windows(2).any(|pair| pair == ["path", "="]) {
+            return Err(format!(
+                "{} gives `mod {name}` a #[path], which this guard does not follow",
+                file.display()
+            ));
+        }
         let inner = [format!("{name}.rs"), format!("{name}/mod.rs")]
             .into_iter()
             .map(|file| module.join(file))
-            .find(|file| file.is_file());
-        let Some(inner) = inner else { break };
+            .find(|file| file.is_file())
+            .ok_or_else(|| format!("no file for `mod {name}` of {}", file.display()))?;
         (module, file, rest) = (module.join(name), inner, tail);
+        text = read(&file);
     }
     let Some(&name) = rest.first() else {
         return Err(format!("{} is a module", file.display()));
     };
-    let read = |file: &Path| {
-        fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
-    };
-    let text = read(&file);
-    let source_tokens = tokens(&text);
-    for pair in source_tokens.windows(2) {
+    // A type declared inside a nested module or a function body is another type.
+    for pair in top_level(&tokens(&text)).windows(2) {
         match pair {
             ["struct" | "enum" | "union", found] if *found == name => return Ok(file),
             ["type", found] if *found == name => {
@@ -241,14 +264,8 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
     if module != src || !at_root {
         return Err(format!("{} does not define {name}", file.display()));
     }
-    let mut fragments = vec![text];
-    if let Ok(entries) = fs::read_dir(src.join("exports")) {
-        fragments.extend(entries.map(|entry| read(&entry.unwrap().path())));
-    }
     let mut exports = Vec::new();
-    for fragment in &fragments {
-        root_exports(&tokens(fragment), &mut exports);
-    }
+    root_exports(&tokens(&root), &mut exports);
     let named: BTreeSet<_> = exports
         .iter()
         .filter(|(exported, target)| *exported == name && target.len() > 1)
@@ -274,6 +291,24 @@ fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, Strin
             "the crate root neither defines nor traceably re-exports {name}"
         )),
     }
+}
+
+/// The tokens outside every brace pair: a file's own items, without their bodies.
+fn top_level<'a>(tokens: &[&'a str]) -> Vec<&'a str> {
+    let mut depth = 0;
+    let mut out = Vec::new();
+    for &token in tokens {
+        if token == "}" {
+            depth -= 1;
+        }
+        if depth == 0 {
+            out.push(token);
+        }
+        if token == "{" {
+            depth += 1;
+        }
+    }
+    out
 }
 
 /// What a file's own `use` items bring into its scope: the name each binds (`*` for a glob) and
@@ -353,6 +388,13 @@ fn a_same_named_type_elsewhere_is_not_the_declaration() {
     fs::write(&side, "pub use elsewhere::Side;").unwrap();
     assert!(defining_file(&src, &["Side"]).is_err());
     fs::write(&side, "pub type Side = crate::decoy::Side;").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(&side, "mod tests { pub enum Side {} }").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    // A stale file beside a redirected module is not that module.
+    fs::write(&side, "pub enum Side {}").unwrap();
+    let redirected = "#[path = \"moved/side.rs\"] pub(crate) mod side;";
+    fs::write(src.join("content/mod.rs"), redirected).unwrap();
     assert!(defining_file(&src, &["Side"]).is_err());
 }
 
