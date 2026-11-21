@@ -12,7 +12,7 @@
 //! sends a client whose `minecraft:brand` is Sunrise's [`query`]
 //! (`[QUERY, REVISION]`). A client that knows this revision answers with
 //! [`answer`] (`[ANSWER, revision]`); the server sends it the layout above.
-//! Revision 2 adds blockless menu data updates without changing the opening payload.
+//! Revision 3 carries blockless menu data indices as VarLongs without changing the opening payload.
 //! A client that answers nothing (an older Sunrise build) is sent
 //! [`encode_legacy`]'s layout instead (the window, then the three axes —
 //! never `None` — then the bytes), and no menu is opened without a block
@@ -24,8 +24,8 @@ use sunrise_core::vanilla_bytes::Writer;
 pub const CHANNEL: &str = "sunrise:menu_extra";
 /// Play payload for the current blockless window's live, full-width data slots.
 pub const DATA_CHANNEL: &str = "sunrise:menu_data";
-/// First revision that supports the live data payload and slotless menus.
-pub const LIVE_DATA_REVISION: u8 = 2;
+/// Revision for the live data payload with wide indices and for slotless menus.
+pub const LIVE_DATA_REVISION: u8 = 3;
 /// Latest supported menu revision. Revision 1 introduced optional opening positions.
 pub const REVISION: u8 = LIVE_DATA_REVISION;
 /// Bytes a mod may write at most.
@@ -49,7 +49,13 @@ pub fn read_query(data: &[u8]) -> Result<u8> {
     if offered <= REVISION && r.remaining() > 0 {
         return Err(Error::new("menu extra revision: trailing bytes"));
     }
-    Ok(offered.min(REVISION))
+    // Revision 2 used a narrower live-data layout. Negotiate the shared opening
+    // layout only; neither peer should send a live-data packet the other cannot read.
+    Ok(if offered == 2 {
+        1
+    } else {
+        offered.min(REVISION)
+    })
 }
 
 /// The client's answer, configuration serverbound: it reads this revision's layout.
@@ -79,7 +85,7 @@ pub fn read_answer(data: &[u8]) -> Result<u8> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DataSlot {
     pub window: i32,
-    pub index: u16,
+    pub index: usize,
     pub value: i32,
 }
 
@@ -87,7 +93,7 @@ impl DataSlot {
     pub fn encode(self) -> Vec<u8> {
         let mut w = Writer::new();
         w.varint(self.window);
-        w.u16(self.index);
+        w.varlong(self.index as i64);
         w.i32(self.value);
         w.data
     }
@@ -96,7 +102,8 @@ impl DataSlot {
         let mut r = Reader::new(data);
         let slot = Self {
             window: r.varint()?,
-            index: r.u16()?,
+            index: usize::try_from(r.varlong()? as u64)
+                .map_err(|_| Error::new("menu data: index out of range"))?,
             value: r.i32()?,
         };
         if r.remaining() > 0 {
@@ -185,15 +192,15 @@ mod tests {
 
     #[test]
     fn live_data_keeps_all_bits_and_rejects_trailing_bytes() {
-        let bytes = [7, 0, 1, 0x80, 0, 0, 0];
+        let bytes = [7, 0x80, 0x80, 0x04, 0x80, 0, 0, 0];
         let slot = DataSlot {
             window: 7,
-            index: 1,
+            index: 65_536,
             value: i32::MIN,
         };
         assert_eq!(slot.encode(), bytes);
         assert_eq!(DataSlot::decode(&bytes).unwrap(), slot);
-        assert!(DataSlot::decode(&bytes[..6]).is_err());
+        assert!(DataSlot::decode(&bytes[..bytes.len() - 1]).is_err());
         assert!(DataSlot::decode(&[&bytes[..], &[0]].concat()).is_err());
     }
 
@@ -245,6 +252,7 @@ mod tests {
         assert_eq!(read_query(&query()).unwrap(), REVISION);
         assert_eq!(read_answer(&answer(REVISION)).unwrap(), REVISION);
         assert_eq!(read_query(&[QUERY, 1]).unwrap(), 1);
+        assert_eq!(read_query(&[QUERY, 2]).unwrap(), 1);
         assert_eq!(read_answer(&answer(1)).unwrap(), 1);
         // Another revision's exchange is still answered, and reads as none.
         let other = [QUERY, REVISION + 1, 9];

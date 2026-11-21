@@ -39,9 +39,10 @@ same silent storage write target and journal. Because menu data is transient and
 serialized, writes do not mark the chunk unsaved, send a block update, or emit a
 neighbor notice; call `set_changed` explicitly when persisted state changes. Transactions retain their
 ordinary behavior; an aborted outer transaction restores the vector that existed
-before its first write, including writes committed by children. The normal menu
-broadcast delivers committed changes to viewers. To draw those values on the client, see
-[Draw a progress bar and a fuel gauge](../client/menu-gauges.md).
+before its first write, including writes committed by children. Block-backed menu
+broadcast sends committed values at indices 0 through 32,767 as signed shorts, as
+vanilla does. Larger indices remain in memory but are not sent by `ContainerSetData`.
+To draw those values on the client, see [Draw a progress bar and a fuel gauge](../client/menu-gauges.md).
 
 The public handle resolves one entity's lifecycle generation as well as its level
 and position. Removal, replacement and chunk reload make it stale; in-place data
@@ -302,8 +303,11 @@ player.open_mod_menu(
 )?;
 ```
 
-The initial values are sent after the new window opens. In the draw callback, read
-`frame.data.get(index)`; the values are not available before they arrive. The owning mod
+The initial `i32` values are sent in index order after the new window opens. Unlike the
+signed-short packet for block-backed menus, the blockless stream carries every declared
+index, including indices above 65,535. A client without this layout is refused with
+`OpenMenuError::PlayerUnavailable`. In the draw callback, read `frame.data.get(index)`;
+the values are not available before they arrive. The owning mod
 gets the live `MenuRef` from `player.container_menu(host)` or the open event and calls, for
 example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a changed value,
 `false` for a repeat, and refuses unsupported, stale or foreign menus and undeclared indices.

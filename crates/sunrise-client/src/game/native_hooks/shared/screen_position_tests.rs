@@ -210,10 +210,11 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     .menu
                     .set(Some((2, PACK.into())));
                 assert!(game.shown_native_screen().is_none());
-                assert!(!game.native_screen_data(2, 0, 8));
+                assert!(!game.native_screen_data(2, 0, 8, true));
                 open(game, 2, 1); // Same id, new opening.
                 assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
                 receive(game, 3, 0, 8);
+                receive(game, 2, 1, 8); // A gap cannot grow the ordered data stream.
                 draw(game);
                 receive(game, 2, 0, -17);
                 receive(game, 2, 1, i32::MIN);

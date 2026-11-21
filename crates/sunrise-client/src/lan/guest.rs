@@ -910,20 +910,8 @@ impl Guest {
     /// Send the complete committed data of this guest's current blockless menu.
     pub fn send_menu_data_snapshot(&self) {
         let Some(menu) = &self.menu else { return };
-        let max_syncable = usize::from(u16::MAX) + 1;
-        let sync_len = menu.blockless_data.len().min(max_syncable);
-        for (index, &value) in menu.blockless_data[..sync_len].iter().enumerate() {
-            let wire_index = u16::try_from(index).expect("sync_len is bounded by u16::MAX + 1");
-            self.send_menu_data(menu.window, wire_index, value);
-        }
-        if menu.blockless_data.len() > sync_len {
-            log::warn!(
-                "Sunrise: blockless menu window {} cannot sync {} data slot(s) at indices {sync_len}..{} (DataSlot index max is {})",
-                menu.window,
-                menu.blockless_data.len() - sync_len,
-                menu.blockless_data.len(),
-                u16::MAX,
-            );
+        for (index, &value) in menu.blockless_data.iter().enumerate() {
+            self.send_menu_data(menu.window, index, value);
         }
     }
 
@@ -935,18 +923,11 @@ impl Guest {
         if *slot != value {
             *slot = value;
             let window = menu.window;
-            if let Ok(wire_index) = u16::try_from(index) {
-                self.send_menu_data(window, wire_index, value);
-            } else {
-                log::warn!(
-                    "Sunrise: blockless menu window {window} cannot sync data slot {index} (DataSlot index max is {})",
-                    u16::MAX,
-                );
-            }
+            self.send_menu_data(window, index, value);
         }
     }
 
-    fn send_menu_data(&self, window: i32, index: u16, value: i32) {
+    fn send_menu_data(&self, window: i32, index: usize, value: i32) {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
         self.send(&play::Clientbound::CustomPayload(CustomPayload {
             channel: DATA_CHANNEL.into(),

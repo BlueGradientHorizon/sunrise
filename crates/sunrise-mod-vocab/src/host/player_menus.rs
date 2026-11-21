@@ -41,16 +41,17 @@ pub trait PlayerMenusBackendMut {
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
     /// (at most 32 KiB) is available only during construction in [`crate::MenuScreenOpen::extra`].
     /// `pos`, when given, is offered to the factory and available later through `screen_pos`.
-    /// `data` has exactly the menu type's `data_slots` values; they arrive after opening and
-    /// are read through [`crate::MenuScreenFrame::data`]. The menu's owning mod can change
-    /// them with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
+    /// `data` has exactly the menu type's `data_slots` signed `i32` values. Every index is
+    /// sent in order after opening and is read through [`crate::MenuScreenFrame::data`]. The
+    /// menu's owning mod can change them with [`MenuRef::set_data_slot`]. The old menu closes
+    /// on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
     /// a mod cancelled the open or a registered exclusion is out of range. Errors:
-    /// `NotModMenu`, `PlayerUnavailable` (including a
-    /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
+    /// `NotModMenu`, `PlayerUnavailable` (including a client that does not support the
+    /// blockless layout, a disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
     #[access(WorldOnly)]

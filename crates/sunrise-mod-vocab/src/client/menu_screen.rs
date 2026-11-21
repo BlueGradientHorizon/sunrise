@@ -82,9 +82,9 @@ pub struct MenuScreenFrame<'a> {
     pub gui_size: [i32; 2],
     /// Pointer position relative to `origin`, without integer truncation.
     pub at: [f32; 2],
-    /// Live data slots. Block-backed menus carry signed shorts as in vanilla;
-    /// blockless mod menus carry full `i32` values. Use `get`: slots have not
-    /// necessarily arrived yet.
+    /// Live data slots. Block-backed menus carry signed shorts as in vanilla, with
+    /// indices `0..=i16::MAX`. Blockless mod menus carry `i32` values at all their
+    /// declared indices. Use `get`: slots have not necessarily arrived yet.
     pub data: &'a [i32],
 }
 
@@ -227,7 +227,8 @@ pub struct MenuScreenOpen<'a> {
     /// The number of appended player inventory slots, including the hotbar.
     pub player_slots: usize,
     /// The declared live data slot count for a mod menu type, or `0` for a stock
-    /// menu whose data slots arrive dynamically. This does not count opening bytes.
+    /// menu whose data slots arrive dynamically. This is not the number received:
+    /// consult [`MenuScreenFrame::data`] for the available values and wire range.
     pub data_slots: usize,
     /// Permanent container backing indices left empty by the layout. Indices do not move.
     pub excluded_slots: &'a [u16],

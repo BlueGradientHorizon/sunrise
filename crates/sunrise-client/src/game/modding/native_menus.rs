@@ -2113,6 +2113,91 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "daily"]
+    fn blockless_menu_sends_snapshot_and_commit_above_unsigned_short_range() {
+        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot, LIVE_DATA_REVISION};
+
+        const INDEX: usize = 65_536;
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                MOD_MENU.into(),
+                "status_package".into(),
+                0,
+                INDEX + 1,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                false,
+            )],
+            || {
+                with_game(|game| {
+                    let (rx, key) = mod_menu_guest(game);
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update(0, |g| g.sender.menu_extra_rev = LIVE_DATA_REVISION);
+                    let player = game.player(123).unwrap();
+                    let mut data = vec![0; INDEX + 1];
+                    data[INDEX] = -80_000;
+                    let window = player
+                        .open_mod_menu(
+                            game,
+                            key,
+                            mod_api::Text::literal("status"),
+                            vec![],
+                            data,
+                            None,
+                            MenuReplace::CloseFirst,
+                        )
+                        .unwrap()
+                        .unwrap();
+                    let updates = || {
+                        sent(&rx).into_iter().filter_map(|packet| match packet {
+                            C::CustomPayload(p) if p.channel == DATA_CHANNEL => {
+                                Some(DataSlot::decode(&p.data).unwrap())
+                            }
+                            _ => None,
+                        })
+                    };
+                    let snapshot = updates().collect::<Vec<_>>();
+                    assert_eq!(snapshot.len(), INDEX + 1);
+                    assert_eq!(
+                        snapshot[INDEX],
+                        DataSlot {
+                            window,
+                            index: INDEX,
+                            value: -80_000,
+                        }
+                    );
+                    let _guard = mod_api::content::crash::enter_native_mod(
+                        mod_api::content::crash::ModCall {
+                            id: "status_package",
+                            hook: "test",
+                            part: None,
+                        },
+                    );
+                    let menu = player.container_menu(game).unwrap();
+                    let host: &mut dyn ServerHost = game;
+                    let committed: Result<(), ()> = host.transaction(|host, _| {
+                        assert_eq!(menu.set_data_slot(host, INDEX, i32::MAX), Ok(true));
+                        assert!(sent(&rx).is_empty());
+                        Ok(())
+                    });
+                    assert_eq!(committed, Ok(()));
+                    assert!(updates().eq([DataSlot {
+                        window,
+                        index: INDEX,
+                        value: i32::MAX,
+                    }]));
+                })
+            },
+        );
+    }
+
+    #[test]
     fn menu_clicks_map_to_the_inventory_below() {
         // A 6-row chest: 54 slots, then the inventory's 27, then the hotbar.
         assert_eq!(native_menu_inventory_slot(54, 3), None);

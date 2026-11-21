@@ -838,8 +838,13 @@ impl OpenNativeScreen {
     }
     /// Data slot `index` of window `window`'s menu: false for another window.
     /// The caller resolves the shown opening before passing it a packet.
-    fn set_data(&mut self, window: i32, index: usize, value: i32) -> bool {
+    fn set_data(&mut self, window: i32, index: usize, value: i32, blockless: bool) -> bool {
         if window != self.menu.window {
+            return false;
+        }
+        // The blockless snapshot sends every index in order before any deltas.
+        // A packet cannot reserve memory for a gap in that stream.
+        if blockless && (self.menu.mod_type.is_none() || index > self.menu.data.len()) {
             return false;
         }
         if self
@@ -2709,15 +2714,21 @@ impl Game<'_> {
         let c = self.world.block_entities.mod_container(state)?;
         mod_menu(c.menu.as_deref()?).map(|(menu, _)| menu)
     }
-    /// A data slot of window `window`'s menu (`ContainerSetData`); false
-    /// when no mod screen is showing for that window.
-    pub(super) fn native_screen_data(&mut self, window: i32, index: usize, value: i32) -> bool {
+    /// A data slot of window `window`'s shown mod screen, from `ContainerSetData`
+    /// or the ordered blockless data stream.
+    pub(super) fn native_screen_data(
+        &mut self,
+        window: i32,
+        index: usize,
+        value: i32,
+        blockless: bool,
+    ) -> bool {
         if self.shown_native_screen().is_none() {
             return false;
         }
         self.mod_screen
             .as_mut()
-            .is_some_and(|s| s.set_data(window, index, value))
+            .is_some_and(|s| s.set_data(window, index, value, blockless))
     }
     /// Where the open mod screen puts container slot `slot` this frame: where
     /// a mod last moved it, else where the screen declared it; None once a mod

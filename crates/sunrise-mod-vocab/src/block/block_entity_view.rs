@@ -68,8 +68,8 @@ impl<'a> BlockEntityView<'a> {
         self.data.set_data_slots(data)
     }
 
-    /// The resident saved compound. Modeled item slots are separate; `Items`, when
-    /// present, holds opaque saved data that has not been decoded into item slots.
+    /// The resident saved compound. Modeled item slots are separate. On a slotless
+    /// holder, `Items` is mod-owned NBT, even if it looks like an inventory list.
     pub fn nbt(&self) -> &Compound {
         self.data.nbt()
     }
@@ -78,7 +78,8 @@ impl<'a> BlockEntityView<'a> {
     /// excessive nesting, engine-owned identity or shape fields, or `"Items"` when the
     /// block entity's block has engine-managed container slots (`item_slots() > 0`).
     /// For slotless block entities (`item_slots() == 0`), `"Items"` writes the NBT field
-    /// directly and clears any disk-decoded fallback item slots.
+    /// directly and clears any disk-decoded item slots. Chunk saves preserve the
+    /// field as written, including list order.
     pub fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
         self.data.set_nbt(key, value)
     }
@@ -99,6 +100,7 @@ impl<'a> BlockEntityView<'a> {
     }
     /// Replace a declared internal slot. An explicit write claims any opaque saved row at
     /// that index. Rejected stacks leave storage alone; untouched slots are not normalized.
+    /// Call [`BlockEntityRef::set_changed`] explicitly to mark the chunk unsaved.
     pub fn set_item_slot(
         &mut self,
         slot: u32,
