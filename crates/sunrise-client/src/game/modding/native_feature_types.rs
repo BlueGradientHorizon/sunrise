@@ -163,7 +163,7 @@ impl ModFeatureType for Adapter {
         };
         self.inner
             .place(&mut context, origin)
-            .map_err(|error| error.0)
+            .map_err(|error| error.to_string())
     }
 }
 

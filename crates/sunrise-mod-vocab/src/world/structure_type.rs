@@ -23,19 +23,29 @@ use sunrise_core::{
 
 /// A piece's placement failed; the generation of that piece stops there, as a
 /// piece's own `Result` does in the engine.
+// no wire: retains the native source chain for this in-process callback.
 #[derive(Debug)]
-// exhaustive: mods build it themselves as a piece's error answer
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct StructureError(pub String);
-impl std::fmt::Display for StructureError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+// exhaustive: its field is private, so mods cannot build or destructure it
+pub struct StructureError {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+impl StructureError {
+    /// Preserve the original error for [`std::error::Error::source`].
+    /// For a standalone message, use `std::io::Error::other(message)`.
+    pub fn new(cause: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self {
+            source: Box::new(cause),
+        }
     }
 }
-impl std::error::Error for StructureError {}
-impl From<(crate::Identifier, String)> for StructureError {
-    fn from((source, reason): (crate::Identifier, String)) -> Self {
-        Self(format!("{source}: {reason}"))
+impl std::fmt::Display for StructureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.source, f)
+    }
+}
+impl std::error::Error for StructureError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
     }
 }
 

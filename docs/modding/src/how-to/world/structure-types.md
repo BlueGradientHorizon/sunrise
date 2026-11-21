@@ -48,7 +48,10 @@ Implement `StructurePiece` (`Debug + Send + Sync`) with these methods:
 | `beardifier` | Optional `Option<PieceBeardifier>`, default `None`: override the terrain box, adjustment and ground-level delta. |
 
 After the start's pieces place, `StructureType::after_place` runs once per chunk with every
-piece's current bounding box. Its default implementation does nothing.
+piece's current bounding box. Its default implementation does nothing. To report a placement or
+loading failure, return `Err(StructureError::new(cause))`. Pass the original error with
+`.map_err(StructureError::new)?`, or use `std::io::Error::other(message)` for a plain message.
+`std::error::Error::source` exposes the original cause; `StructureError` is not a `Wire` value.
 
 Construct an override with `PieceBeardifier::new(bounds, TerrainAdjustment::BeardThin, 2)`.
 The bounds are independent of the placement box; the ground is `bounds.min[1] + ground_level_delta`.

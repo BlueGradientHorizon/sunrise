@@ -52,7 +52,10 @@ twice is placed twice.
 - `Ok(true)` when the feature placed.
 - `Ok(false)` when it didn't, for example a tree with no room. Blocks written before that are
   kept, as vanilla keeps them.
-- `Err(FeatureError(reason))` for a failure: a fault, below.
+- `Err(FeatureError::new(cause))` for a failure: a fault, below. Pass the original error
+  with `.map_err(FeatureError::new)?`, or use `std::io::Error::other(message)` for a plain
+  message. `std::error::Error::source` exposes the original cause; `FeatureError` is not a
+  `Wire` value.
 
 Your writes are staged: `context.block` reads them back, and when `place` answers `Ok(true)` or
 `Ok(false)` they reach the level at once, in order, so the steps after you (the game's own

@@ -363,7 +363,7 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
         let mut context = Placing::new(context)?;
         self.piece
             .post_process(&mut context)
-            .map_err(|e| PlacementQueryError::Failed(e.0))
+            .map_err(|e| PlacementQueryError::Failed(e.to_string()))
     }
     /// The engine runs the first piece's `afterPlace`; it is the type's
     /// [`StructureType::after_place`] the call reaches, with every piece's
@@ -376,7 +376,7 @@ impl sunrise_world::worldgen::structure::legacy::LegacyPiece for ModPiece {
         let mut context = Placing::new(context)?;
         self.ty
             .after_place(&mut context, pieces)
-            .map_err(|e| PlacementQueryError::Failed(e.0))
+            .map_err(|e| PlacementQueryError::Failed(e.to_string()))
     }
 }
 impl std::fmt::Debug for ModPiece {

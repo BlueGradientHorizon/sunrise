@@ -27,7 +27,9 @@ pub mod tests {
                 _: &mod_api::Compound,
             ) -> Result<std::sync::Arc<dyn mod_api::StructurePiece>, mod_api::StructureError>
             {
-                Err(mod_api::StructureError("fixture has no pieces".into()))
+                Err(mod_api::StructureError::new(std::io::Error::other(
+                    "fixture has no pieces",
+                )))
             }
         }
         struct Valid;

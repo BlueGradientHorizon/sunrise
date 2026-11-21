@@ -1,0 +1,31 @@
+ids = [
+  "type:FeatureError",
+  "type:FeatureError.0",
+  "handle:FeatureError::new",
+  "type:StructureError",
+  "type:StructureError.0",
+  "handle:StructureError::new",
+  "type:BlockStateError",
+]
+why = """
+`Feature.place`, `StructureStart.placeInChunk`, and `PiecesContainer.load` call generation and
+piece-loading code in-process. NeoForge uses the worldgen registries for type dispatch, including
+`DeferredRegister` for features and the `STRUCTURE_TYPE` and `STRUCTURE_PIECE` registries for
+structures and pieces. The callback errors now keep their original typed causes instead of encoding
+strings. This change leaves `WorldGenRegion.ensureCanWrite` and `Structure.findValidGenerationPoint`
+semantics, feature config codecs, and structure save codecs untouched.
+"""
+migrate = """
+Replace `FeatureError(message)` with `FeatureError::new(std::io::Error::other(message))` and
+`StructureError(message)` with `StructureError::new(std::io::Error::other(message))`. If you
+already have a typed error, use `.map_err(FeatureError::new)?` or
+`.map_err(StructureError::new)?` instead of formatting it. `BlockStateError` now implements
+`std::error::Error` and can be passed directly. Its variants and encoding are unchanged.
+
+Replace `FeatureError::from((id, reason))` with
+`FeatureError::new(std::io::Error::other(format!("{id}: {reason}")))`, or pass your own typed
+cause that carries the ID. Make the same replacement with `StructureError::new` for structures.
+Replace `.0` or tuple destructuring with `error.to_string()` for diagnostics or
+`std::error::Error::source(&error)` to inspect or downcast the cause. Return the native error
+from the callback; neither wrapper supports `Wire` encoding or decoding anymore.
+"""

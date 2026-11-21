@@ -27,19 +27,29 @@ use sunrise_core::nbt::Compound;
 /// A feature's placement failed: a fault. The game discards that call's writes, logs it with
 /// the feature's id and disables the type for the session. A feature that merely did not place
 /// (a tree with no room) answers `Ok(false)` instead.
+// no wire: retains the native source chain for this in-process callback.
 #[derive(Debug)]
-// exhaustive: mods build it themselves as a feature's error answer
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct FeatureError(pub String);
-impl std::fmt::Display for FeatureError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+// exhaustive: its field is private, so mods cannot build or destructure it
+pub struct FeatureError {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+impl FeatureError {
+    /// Preserve the original error for [`std::error::Error::source`].
+    /// For a standalone message, use `std::io::Error::other(message)`.
+    pub fn new(cause: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self {
+            source: Box::new(cause),
+        }
     }
 }
-impl std::error::Error for FeatureError {}
-impl From<(crate::Identifier, String)> for FeatureError {
-    fn from((source, reason): (crate::Identifier, String)) -> Self {
-        Self(format!("{source}: {reason}"))
+impl std::fmt::Display for FeatureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.source, f)
+    }
+}
+impl std::error::Error for FeatureError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
     }
 }
 
@@ -146,4 +156,26 @@ pub fn decode_feature_config(
     };
     crate::world::datapack_registry::decode_record(schema, object, &["type"])
         .map_err(|error| format!("config: {error:?}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FeatureError;
+    use crate::{BlockStateError, StructureError};
+    use std::error::Error;
+
+    #[test]
+    fn worldgen_errors_retain_typed_sources() {
+        let feature = FeatureError::new(BlockStateError::UnknownProperty(2));
+        let structure = StructureError::new(BlockStateError::InvalidValue(3));
+        let cases: [(&dyn Error, BlockStateError); 2] = [
+            (&feature, BlockStateError::UnknownProperty(2)),
+            (&structure, BlockStateError::InvalidValue(3)),
+        ];
+
+        for (error, expected) in cases {
+            let source = error.source().unwrap();
+            assert_eq!(source.downcast_ref::<BlockStateError>(), Some(&expected));
+        }
+    }
 }

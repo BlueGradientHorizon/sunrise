@@ -47,7 +47,9 @@ impl StructureType for Boxes {
     ) -> Result<Arc<dyn StructurePiece>, StructureError> {
         let ints = |key: &str| match tag.get(&key.into()) {
             Some(Tag::IntArray(a)) if a.len() == 3 => Ok([a[0], a[1], a[2]]),
-            _ => Err(StructureError(format!("invalid saved {key}"))),
+            _ => Err(StructureError::new(std::io::Error::other(format!(
+                "invalid saved {key}"
+            )))),
         };
         Ok(Arc::new(BoxPiece {
             min: ints("Min")?,
@@ -148,7 +150,9 @@ fn the_engines_after_place_call_reaches_the_type() {
             _: &dyn BlockMetadata,
             _: &Compound,
         ) -> Result<Arc<dyn StructurePiece>, StructureError> {
-            Err(StructureError("fixture has no saved pieces".into()))
+            Err(StructureError::new(std::io::Error::other(
+                "fixture has no saved pieces",
+            )))
         }
         fn after_place(
             &self,
@@ -565,7 +569,9 @@ impl StructureType for ConfigObserver {
         _: &dyn BlockMetadata,
         _: &Compound,
     ) -> Result<Arc<dyn StructurePiece>, StructureError> {
-        Err(StructureError("fixture has no saved pieces".into()))
+        Err(StructureError::new(std::io::Error::other(
+            "fixture has no saved pieces",
+        )))
     }
 }
 
@@ -819,7 +825,9 @@ fn piece_beardifier_shapes_terrain_and_is_resolved_once() {
             tag: &Compound,
         ) -> Result<Arc<dyn StructurePiece>, StructureError> {
             let Some(Tag::Int(mode)) = tag.get(&"Mode".into()) else {
-                return Err(StructureError("missing fixture mode".into()));
+                return Err(StructureError::new(std::io::Error::other(
+                    "missing fixture mode",
+                )));
             };
             Ok(Arc::new(TerrainPiece {
                 mode: *mode,
