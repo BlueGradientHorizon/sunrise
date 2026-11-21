@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Compare the client ticks of spawners, trial spawners and vaults with vanilla 26.3.
+"""Compare the client ticks of spawners, trial spawners, vaults, campfires, conduits, beacons and potent
+sulfur with vanilla 26.3.
 
 The Java oracle (VanillaBlockEntityClientTickOracle) runs BaseSpawner.clientTick,
 TrialSpawner.tickClient and VaultBlockEntity.Client.tick as ClientLevel.tickBlockEntities does:
@@ -10,7 +11,8 @@ server's client: chunk packets (`remote_chunk`), forgotten columns, level events
 `tick_client_block_entities`. Each tick compares one ordered stream of particles and local sounds
 (with each sound's seed), each block entity's spin and the level random's state, bit for bit.
 
-Cases: a spawner at its required range's edge (inside, on, outside), with a dead or spectating
+Cases: campfires, a conduit, a beacon and potent sulfur mixed with the rest in one packet order, through
+`tick_client_block_entities` and through `tick_remote_block_entities`; a spawner at its required range's edge (inside, on, outside), with a dead or spectating
 player; every trial spawner state, ominous or not, around a spawn and a 20-tick boundary; vaults
 with and without a display item and a connected player around the particle range; each kind at
 Chebyshev distance 63, 64 and 65 and far beyond, several sharing the level random, a mixed column
@@ -64,11 +66,15 @@ def vault(pos, facing='north', ominous=False, display=True, connected=True, stat
 def cases():
     out = []
 
-    def add(name, entities, who, ticks=24, game_time=1000, events=None):
+    def add(name, entities, who, ticks=24, game_time=1000, events=None, fills=None, path=None):
         case = {'name': name, 'seed': 0x5EED0000 + len(out), 'gameTime': game_time, 'ticks': ticks,
                 'player': who, 'entities': entities}
         if events:
             case['events'] = events
+        if fills:
+            case['fills'] = fills
+        if path:
+            case['path'] = path
         out.append(case)
 
     # BaseSpawner.isNearPlayer: strictly closer than the range to the block's centre.
@@ -124,6 +130,47 @@ def cases():
                     [3020, at, 1], [3021, at, 0], [3015, vault_at, 1], [3012, at, 0]]
     add('level events', [vault(vault_at), trial(at, 'active')], player(9.5, 64.0, 10.5), ticks=len(level_events) + 2,
         game_time=1000, events={str(t): [['event', *e]] for t, e in enumerate(level_events)})
+    # Campfires, a conduit, a beacon and potent sulfur in one ticker list with spawners, a vault and a
+    # trial spawner: vanilla ticks them all from Level.blockEntityTickers in packet order, so their
+    # particles, sounds and level random draws interleave. The conduit's shape (water around it and
+    # prismarine on its frame) and a geyser's water column are the level's blocks. `path: remote`
+    # runs the client's whole block entity phase (tick_remote_block_entities), not only its list.
+    water = {'from': [5, 61, 5], 'to': [11, 67, 11], 'block': 'minecraft:water'}
+    # ConduitBlockEntity.updateShape's frame positions.
+    ring = [[ox, oy, oz] for ox in range(-2, 3) for oy in range(-2, 3) for oz in range(-2, 3)
+            if (abs(ox) > 1 or abs(oy) > 1 or abs(oz) > 1)
+            and (ox == 0 and 2 in (abs(oy), abs(oz)) or oy == 0 and 2 in (abs(ox), abs(oz))
+                 or oz == 0 and 2 in (abs(ox), abs(oy)))]
+    assert len(ring) == 42, len(ring)
+
+    def frame(n, block='minecraft:prismarine'):
+        return [{'from': [8 + dx, 64 + dy, 8 + dz], 'to': [8 + dx, 64 + dy, 8 + dz], 'block': block}
+                for dx, dy, dz in ring[:n]]
+
+    def campfire(pos, items, lit=True, signal=False, facing='north'):
+        return {'kind': 'campfire', 'pos': pos, 'items': items, 'lit': lit, 'signal': signal, 'facing': facing}
+
+    def sulfur(pos, state):
+        return {'kind': 'potent_sulfur', 'pos': pos, 'state': state}
+
+    column_water = [{'from': [x, 65, z], 'to': [x, 67, z], 'block': 'minecraft:water'} for x, z in ((13, 13), (3, 13))]
+    who = player(6.5, 64.0, 2.5)
+    for n, label in ((20, 'active'), (42, 'hunting')):
+        mix = [campfire([1, 64, 1], [True, False, True, False]), spawner([5, 64, 1]),
+               {'kind': 'conduit', 'pos': [8, 64, 8]}, vault([3, 64, 1]), sulfur([13, 64, 13], 'erupting'),
+               {'kind': 'beacon', 'pos': [14, 64, 2]}, trial([1, 64, 5], 'waiting_for_players'),
+               campfire([14, 64, 6], [False, True, True, True], signal=True, facing='east'),
+               campfire([12, 64, 1], [True, True, False, False], lit=False), sulfur([3, 64, 13], 'wet'),
+               campfire([2, 64, 10], [False, False, False, True], facing='west'), sulfur([14, 64, 10], 'dormant')]
+        fills = [water, *frame(n), *column_water, {'from': [14, 65, 10], 'to': [14, 66, 10], 'block': 'minecraft:water'}]
+        for path in (None, 'remote'):
+            add(f'mixed list {label} {path or "list"}', mix, who, ticks=45, game_time=1000, fills=fills, path=path)
+    add('campfires lit and unlit', [campfire([1, 64, 1], [True] * 4), campfire([3, 64, 1], [True] * 4, lit=False),
+                                    campfire([5, 64, 1], [True, False, True, False], signal=True, facing='south'),
+                                    spawner([7, 64, 1], range_=-1), campfire([9, 64, 1], [False] * 4)],
+        who, ticks=30, path='remote')
+    add('continuous geyser', [sulfur([13, 64, 13], 'continuous'), spawner([5, 64, 1], range_=-1)], who, ticks=50,
+        fills=column_water[:1], path='remote')
     return out
 
 

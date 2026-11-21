@@ -872,7 +872,8 @@ impl Game<'_> {
                     }
                 }
             }
-            if let Some(r) = &self.renderer {
+            // A client of a server ticks its campfires with the other block entities.
+            if let Some(r) = self.renderer.as_ref().filter(|_| self.remote.is_none()) {
                 campfire_particles(
                     self.res.animate(),
                     &mut self.particles,

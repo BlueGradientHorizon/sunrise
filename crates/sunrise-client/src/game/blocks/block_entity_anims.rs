@@ -30,6 +30,14 @@ const PLAYER: u64 = u64::MAX;
 
 pub(super) use sunrise_gameplay::container_openers::recheck_opener_count;
 
+/// What a client tick of the animated block entities shares between them.
+pub(super) struct AnimTick {
+    players: Vec<[f64; 3]>,
+    raiders: std::collections::HashSet<String>,
+    frames: std::collections::HashSet<String>,
+    shulker_pushes: Vec<super::piston_push::ShulkerPush>,
+}
+
 impl Game<'_> {
     /// `BlockEntity.triggerEvent(a, b)` on the client copy of the block entity at `pos`.
     pub(super) fn block_entity_event(&mut self, pos: [i32; 3], a: i32, b: i32) {
@@ -360,58 +368,61 @@ impl Game<'_> {
         self.tick_bell_servers();
     }
 
-    /// The client tickers of the loaded animated block entities, once per client tick
-    /// (`ClientLevel.tickBlockEntities`).
-    pub(super) fn tick_block_entity_anims(&mut self) {
-        // A server has no window, but its bells, gateways and conduits still run
-        // their server tickers; a client of one only animates what it is sent.
-        if self.remote.is_none() {
-            self.tick_block_entity_servers();
+    /// What one client tick of the animated block entities reads and collects across them:
+    /// the player, the tags of bells and conduits and the lids' pushes. First it forgets the
+    /// state of animated block entities that are gone or changed kind (a block entity made again
+    /// at their position starts fresh), by the tickers in `list`.
+    pub(super) fn begin_block_entity_anims(&mut self, list: &[((i32, i32, i32), u32)]) -> AnimTick {
+        let mut present: Vec<_> = list
+            .iter()
+            .filter(|&&ticker| self.world.block_entities.is_live(ticker))
+            .filter_map(|&((x, y, z), _)| Some(([x, y, z], self.be_anims.ticker(self.world.block(x, y, z).0)?)))
+            .collect();
+        present.sort_unstable_by_key(|(p, _)| *p);
+        self.be_anims.retain_present(&present);
+        AnimTick {
+            players: match &self.player {
+                Some(p) if !self.spectator() => {
+                    vec![[p.position.x, p.position.y, p.position.z]]
+                }
+                _ => Vec::new(),
+            },
+            raiders: self
+                .res
+                .stations()
+                .enchantments
+                .entity_tags
+                .get("minecraft:raiders")
+                .cloned()
+                .unwrap_or_default(),
+            frames: self
+                .res
+                .items()
+                .block_tags
+                .get("minecraft:conduit_effect_block")
+                .cloned()
+                .unwrap_or_default(),
+            // The lids this tick swept (`moveCollidedEntities`), for the player this client
+            // moves itself.
+            shulker_pushes: Vec::new(),
         }
-        let Some(r) = &self.renderer else {
-            return;
-        };
-        // Sorted by position: the order they tick in, and a quick lookup.
-        // Read again only when the drawn block entities changed.
-        let revision = r.block_entity_revision();
-        if self.be_anims.present_revision != Some(revision) {
-            let mut present: Vec<([i32; 3], Ticker)> = r
-                .block_entities()
-                .filter_map(|(p, s)| Some((*p, self.be_anims.ticker(*s)?)))
-                .collect();
-            present.sort_unstable_by_key(|(p, _)| *p);
-            if self.remote.is_none() {
-                self.be_anims.retain_present_preserving_bells(&present);
-            } else {
-                self.be_anims.retain_present(&present);
-            }
-            self.be_anims.present = present;
-            self.be_anims.present_revision = Some(revision);
-        }
-        let positions = std::mem::take(&mut self.be_anims.present);
-        let players: Vec<[f64; 3]> = match &self.player {
-            Some(p) if !self.spectator() => vec![[p.position.x, p.position.y, p.position.z]],
-            _ => Vec::new(),
-        };
-        let raiders = self
-            .res
-            .stations()
-            .enchantments
-            .entity_tags
-            .get("minecraft:raiders")
-            .cloned()
-            .unwrap_or_default();
-        let frames = self
-            .res
-            .items()
-            .block_tags
-            .get("minecraft:conduit_effect_block")
-            .cloned()
-            .unwrap_or_default();
-        // The lids this tick swept (`moveCollidedEntities`), for the player
-        // this client moves itself.
-        let mut shulker_pushes = Vec::new();
-        for &(pos, ticker) in &positions {
+    }
+    /// The client ticker of the animated block entity at `pos` (`ClientLevel.tickBlockEntities`),
+    /// in the ticker list's order with every other client ticker.
+    pub(super) fn tick_block_entity_anim(
+        &mut self,
+        pos: [i32; 3],
+        ticker: Ticker,
+        anim: &mut AnimTick,
+    ) {
+        let AnimTick {
+            players,
+            raiders,
+            frames,
+            shulker_pushes,
+            ..
+        } = anim;
+        {
             match ticker {
                 Ticker::Lid => self.tick_chest_lid(pos),
                 Ticker::Book => {
@@ -420,7 +431,7 @@ impl Game<'_> {
                         .books
                         .entry(pos)
                         .or_default()
-                        .tick(pos, &players, &mut anims.book_random);
+                        .tick(pos, players, &mut anims.book_random);
                 }
                 Ticker::Shulker { facing } => {
                     // `ShulkerBoxBlockEntity.tick` runs on both sides: the
@@ -445,7 +456,7 @@ impl Game<'_> {
                     // Integrated servers already ticked this state above, independently
                     // of drawn block entities. Remote clients only animate their copy.
                     if self.remote.is_some() {
-                        self.tick_bell(pos, &raiders);
+                        self.tick_bell(pos, raiders);
                     }
                 }
                 Ticker::Conduit => {
@@ -470,7 +481,7 @@ impl Game<'_> {
                         is_water,
                         is_frame,
                         target,
-                        self.particles.random(),
+                        self.particles.level_random(),
                     );
                     let nautilus = ParticleOptions::simple(ParticleType::Nautilus);
                     for (p, v) in particles {
@@ -486,7 +497,10 @@ impl Game<'_> {
                 }
             }
         }
-        self.be_anims.present = positions;
+    }
+    /// The end of the tick: the lids' push.
+    pub(super) fn finish_block_entity_anims(&mut self, anim: AnimTick) {
+        let shulker_pushes = anim.shulker_pushes;
         // The lid's grown box collides and pushes here too: a client of a
         // server owns its own player's position, so the server's
         // `moveCollidedEntities` alone would be undone by the client's next

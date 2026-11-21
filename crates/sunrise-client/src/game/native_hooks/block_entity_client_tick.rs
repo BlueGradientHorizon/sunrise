@@ -3,6 +3,7 @@
 use super::*;
 use mod_api::ModBlockEntity;
 use sunrise_client::block_entities::{ClientSnapshot, Ticking};
+use sunrise_client::animate_tick::campfire_particle_tick;
 use sunrise_client::containers::BlockEntity;
 
 /// How many client tick snapshots were made, for the tests of their reuse.
@@ -43,7 +44,8 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// `ClientLevel.tickBlockEntities` on a server's client, for the block entities with a client
-    /// ticker: spawners, trial spawners, vaults and mod ones. The client's ticker list
+    /// ticker: spawners, trial spawners, vaults, the animated ones, campfires, beacons, potent
+    /// sulfur and mod ones. The client's ticker list
     /// (`Level.blockEntityTickers`, kept in its world's block entities as a server keeps its own)
     /// is taken once, at the tick's start, so a ticker made during the tick waits for the next;
     /// each live one inside the world border then ticks in its order, as they all draw from the
@@ -64,16 +66,26 @@ impl Game<'_> {
             Some(_) => self.world.block_entities.take_client_snapshots(),
             None => Default::default(),
         };
+        let mut anim = self.begin_block_entity_anims(&tickers);
         for &ticker in tickers.iter() {
-            let key @ (x, _, z) = ticker.0;
-            // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`), and one
-            // outside the border waits (`LevelChunk.isTicking`).
-            if !self.world.block_entities.is_live(ticker)
-                || !self.border.contains(f64::from(x), f64::from(z))
-            {
+            let key @ (x, y, z) = ticker.0;
+            // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`).
+            if !self.world.block_entities.is_live(ticker) {
+                continue;
+            }
+            let animated = self.be_anims.ticker(self.world.block(x, y, z).0);
+            // One outside the border waits (`LevelChunk.isTicking`).
+            if !self.border.contains(f64::from(x), f64::from(z)) {
+                continue;
+            }
+            if let Some(kind) = animated {
+                self.tick_block_entity_anim([x, y, z], kind, &mut anim);
                 continue;
             }
             match self.world.block_entities.get(&key) {
+                Some(BlockEntity::Beacon(_)) => self.client_tick_beacon(key),
+                Some(BlockEntity::Campfire(_)) => self.client_tick_campfire(key),
+                Some(BlockEntity::PotentSulfur(_)) => self.client_tick_potent_sulfur(key),
                 Some(BlockEntity::Spawner(_)) => self.client_tick_spawner(key),
                 Some(BlockEntity::TrialSpawner(_)) => self.client_tick_trial_spawner(key),
                 // VaultBlock.getTicker on the client: VaultBlockEntity.Client.tick.
@@ -86,10 +98,27 @@ impl Game<'_> {
                 _ => {}
             }
         }
+        self.finish_block_entity_anims(anim);
         if level.is_some() {
             self.world.block_entities.keep_client_snapshots(snapshots);
         }
         self.forget_spawner_displays();
+    }
+    /// `CampfireBlockEntity.particleTick` of the campfire at `key`.
+    fn client_tick_campfire(&mut self, (x, y, z): (i32, i32, i32)) {
+        let cooking = match self.world.block_entities.get(&(x, y, z)) {
+            Some(BlockEntity::Campfire(c)) => c.items.each_ref().map(Option::is_some),
+            _ => return,
+        };
+        let state = self.world.block(x, y, z).0;
+        campfire_particle_tick(
+            self.res.animate(),
+            &mut self.particles,
+            self.pack.assets.registry,
+            [x, y, z],
+            state,
+            cooking,
+        );
     }
     /// The client tick of the mod copy at `pos`, with its snapshot from `snapshots`, made again
     /// when its revision changed.
@@ -148,10 +177,36 @@ impl Game<'_> {
             .map(|i| {
                 let name: &str = &self.res.facts().get(BlockStateId(i as u32)).name;
                 if name.starts_with("minecraft:") {
+                    let property = |key| {
+                        registry
+                            .state(BlockStateId(i as u32))
+                            .and_then(|s| s.properties.get(key))
+                            .map(String::as_str)
+                    };
                     return match name {
-                        "minecraft:spawner" | "minecraft:trial_spawner" | "minecraft:vault" => {
-                            Ticking::Yes
+                        "minecraft:spawner"
+                        | "minecraft:trial_spawner"
+                        | "minecraft:vault"
+                        | "minecraft:beacon" => Ticking::Yes,
+                        // CampfireBlock.getTicker: the particles of a lit one.
+                        "minecraft:campfire" | "minecraft:soul_campfire" => {
+                            if property("lit") == Some("true") {
+                                Ticking::Yes
+                            } else {
+                                Ticking::Idle
+                            }
                         }
+                        // Every state but dry has a ticker.
+                        "minecraft:potent_sulfur" => {
+                            if property("potent_sulfur_state") == Some("dry") {
+                                Ticking::Idle
+                            } else {
+                                Ticking::Yes
+                            }
+                        }
+                        // Chests, shulker boxes, bells, conduits, the enchanting table, the
+                        // gateway and dragon and piglin heads.
+                        _ if self.be_anims.ticker(i as u32).is_some() => Ticking::Yes,
                         _ => Ticking::No,
                     };
                 }

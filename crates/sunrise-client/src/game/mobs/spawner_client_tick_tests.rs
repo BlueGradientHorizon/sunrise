@@ -18,10 +18,14 @@ use sunrise_world::registry::BlockStateId;
 /// makes them).
 const COMMITTED: &str = include_str!("../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
-const TYPES: [&str; 3] = [
+const TYPES: [&str; 7] = [
     "minecraft:mob_spawner",
     "minecraft:trial_spawner",
     "minecraft:vault",
+    "minecraft:campfire",
+    "minecraft:conduit",
+    "minecraft:beacon",
+    "minecraft:potent_sulfur",
 ];
 const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 
@@ -148,6 +152,42 @@ fn client_tick_entity(game: &Game<'_>, e: &serde_json::Value) -> (BlockStateId, 
                 ..Default::default()
             })),
         ),
+        "campfire" => (
+            "minecraft:campfire",
+            3,
+            vec![
+                ("facing", text("facing")),
+                ("lit", flag("lit")),
+                ("signal_fire", flag("signal")),
+            ],
+            BlockEntity::Campfire(Box::new(sunrise_client::chunk::block_entity::Campfire {
+                items: std::array::from_fn(|i| {
+                    e["items"][i]
+                        .as_bool()
+                        .unwrap()
+                        .then(|| sunrise_client::items::ItemStack::new("minecraft:porkchop", 1))
+                }),
+                ..Default::default()
+            })),
+        ),
+        "conduit" => (
+            "minecraft:conduit",
+            4,
+            vec![("waterlogged", "true".to_owned())],
+            BlockEntity::Conduit(None),
+        ),
+        "beacon" => (
+            "minecraft:beacon",
+            5,
+            vec![],
+            BlockEntity::Beacon(Default::default()),
+        ),
+        "potent_sulfur" => (
+            "minecraft:potent_sulfur",
+            6,
+            vec![("potent_sulfur_state", text("state"))],
+            BlockEntity::PotentSulfur(Default::default()),
+        ),
         _ => (
             "minecraft:vault",
             2,
@@ -191,8 +231,28 @@ fn send_column(
     entities: &[(Pos, BlockStateId, i32, BlockEntity)],
     at: (i32, i32),
     listed: &[usize],
+    fills: &serde_json::Value,
 ) -> bool {
     let mut chunk = sunrise_client::chunk::Chunk::empty(at.0, at.1);
+    // The case's fills over this column, then its block entities' own states.
+    for fill in fills.as_array().into_iter().flatten() {
+        let corner = |k: &str, i: usize| int(&fill[k][i]);
+        let block = game
+            .pack
+            .assets
+            .registry
+            .default_state(fill["block"].as_str().unwrap())
+            .unwrap();
+        for x in corner("from", 0)..=corner("to", 0) {
+            for y in corner("from", 1)..=corner("to", 1) {
+                for z in corner("from", 2)..=corner("to", 2) {
+                    if column((x, y, z)) == at {
+                        chunk.set(x & 15, y, z & 15, block.0);
+                    }
+                }
+            }
+        }
+    }
     let mut infos = Vec::new();
     for &i in listed {
         let (k, state, kind, entity) = &entities[i];
@@ -282,6 +342,8 @@ fn client_tick_case(
     reordered: &mut bool,
 ) -> serde_json::Value {
     game.forget_all_remote_columns();
+    // The last case's animation state: a level starts with none.
+    game.be_anims.retain_present(&[]);
     let entities: Vec<_> = case["entities"]
         .as_array()
         .unwrap()
@@ -317,7 +379,7 @@ fn client_tick_case(
         }
     }
     for (at, listed) in &columns {
-        *reordered |= send_column(game, &entities, *at, listed);
+        *reordered |= send_column(game, &entities, *at, listed, &case["fills"]);
     }
     game.particles.requested = Some(Vec::new());
     game.audio.capture = Some(Vec::new());
@@ -342,7 +404,13 @@ fn client_tick_case(
                         .iter()
                         .map(|i| i.as_u64().unwrap() as usize)
                         .collect();
-                    *reordered |= send_column(game, &entities, (int(&op[1]), int(&op[2])), &listed);
+                    *reordered |= send_column(
+                        game,
+                        &entities,
+                        (int(&op[1]), int(&op[2])),
+                        &listed,
+                        &case["fills"],
+                    );
                 }
                 "event" => {
                     let pos = [int(&op[2][0]), int(&op[2][1]), int(&op[2][2])];
@@ -351,7 +419,12 @@ fn client_tick_case(
                 other => panic!("unknown case event {other}"),
             }
         }
-        game.tick_client_block_entities();
+        // `path: remote` runs the whole phase, so a pass outside the ticker list shows.
+        if case["path"] == "remote" {
+            game.tick_remote_block_entities();
+        } else {
+            game.tick_client_block_entities();
+        }
         let events = event_stream(game, particles_at_start);
         // Vec3i.compareTo: y, then z, then x.
         let mut spins: Vec<_> = (&game.world.block_entities)

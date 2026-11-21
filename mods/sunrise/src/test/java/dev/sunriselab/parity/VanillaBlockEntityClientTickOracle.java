@@ -87,6 +87,7 @@ public final class VanillaBlockEntityClientTickOracle {
         long gameTime;
         List<AbstractClientPlayer> casePlayers;
         Map<BlockPos, BlockEntity> loaded;
+        Map<BlockPos, BlockState> blocks;
         JsonArray events;
         CaseLevel() { super(null, null, null, null, 0, 0, null, false, 0L, 0); }
         @Override public RandomSource getRandom() { return random; }
@@ -97,6 +98,15 @@ public final class VanillaBlockEntityClientTickOracle {
             return null;
         }
         @Override public BlockEntity getBlockEntity(BlockPos pos) { return loaded.get(pos); }
+        // The blocks the case fills, air elsewhere: what the conduit, beacon and geyser ticks read.
+        @Override public BlockState getBlockState(BlockPos pos) {
+            return blocks.getOrDefault(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+        }
+        @Override public net.minecraft.world.level.material.FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
+        @Override public int getHeight(net.minecraft.world.level.levelgen.Heightmap.Types type, int x, int z) { return 70; }
+        @Override public int getMinY() { return -64; }
+        @Override public boolean isClientSide() { return true; }
+        @Override public <T extends net.minecraft.world.entity.Entity> List<T> getEntitiesOfClass(Class<T> type, net.minecraft.world.phys.AABB box, java.util.function.Predicate<? super T> selector) { return List.of(); }
         void particle(ParticleOptions options, double x, double y, double z, double vx, double vy, double vz) {
             var e = new JsonArray();
             e.add("particle");
@@ -131,6 +141,11 @@ public final class VanillaBlockEntityClientTickOracle {
                 + ",ominous=" + e.get("ominous").getAsBoolean() + "]";
             case "vault" -> "minecraft:vault[facing=" + e.get("facing").getAsString() + ",ominous="
                 + e.get("ominous").getAsBoolean() + ",vault_state=" + e.get("state").getAsString() + "]";
+            case "campfire" -> "minecraft:campfire[facing=" + e.get("facing").getAsString() + ",lit=" + e.get("lit").getAsBoolean()
+                + ",signal_fire=" + e.get("signal").getAsBoolean() + "]";
+            case "conduit" -> "minecraft:conduit[waterlogged=true]";
+            case "beacon" -> "minecraft:beacon";
+            case "potent_sulfur" -> "minecraft:potent_sulfur[potent_sulfur_state=" + e.get("state").getAsString() + "]";
             default -> throw new IllegalArgumentException(e.get("kind").getAsString());
         };
         return BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, spec, false).blockState();
@@ -160,6 +175,11 @@ public final class VanillaBlockEntityClientTickOracle {
                 set(VaultSharedData.class, shared, "connectedPlayers", connected);
                 set(VaultSharedData.class, shared, "connectedParticlesRange", e.get("particlesRange").getAsDouble());
             }
+            case "campfire" -> {
+                var items = ((net.minecraft.world.level.block.entity.CampfireBlockEntity) be).getItems();
+                for (int i = 0; i < 4; i++) if (e.getAsJsonArray("items").get(i).getAsBoolean()) items.set(i, new ItemStack(Items.PORKCHOP));
+            }
+            case "conduit", "beacon", "potent_sulfur" -> { }
             default -> throw new IllegalArgumentException();
         }
         return be;
@@ -180,6 +200,8 @@ public final class VanillaBlockEntityClientTickOracle {
             set(net.minecraft.world.level.BaseSpawner.class, s.getSpawner(), "displayEntity",
                 allocate(net.minecraft.world.entity.animal.pig.Pig.class));
         }
+        // addAndRegisterBlockEntity: setLevel (a geyser stamps its eruption from it).
+        if (be instanceof net.minecraft.world.level.block.entity.PotentSulfurBlockEntity) be.setLevel(level);
         return be;
     }
 
@@ -192,7 +214,17 @@ public final class VanillaBlockEntityClientTickOracle {
             t.getTrialSpawner().tickClient(level, p, state.getValue(BlockStateProperties.OMINOUS));
         } else if (be instanceof VaultBlockEntity v) {
             VaultBlockEntity.Client.tick(level, p, state, v.getClientData(), v.getSharedData());
+        } else {
+            // BlockState.getTicker with the client level: campfire particles, conduit, beacon, geyser.
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            net.minecraft.world.level.block.entity.BlockEntityTicker<BlockEntity> ticker =
+                (net.minecraft.world.level.block.entity.BlockEntityTicker) ((EntityBlock) state.getBlock()).getTicker(level, state, be.getType());
+            if (ticker != null) ticker.tick(level, p, state, be);
         }
+    }
+
+    static boolean spins(BlockEntity be) {
+        return be instanceof SpawnerBlockEntity || be instanceof TrialSpawnerBlockEntity || be instanceof VaultBlockEntity;
     }
 
     static JsonArray spin(BlockEntity be) {
@@ -262,6 +294,16 @@ public final class VanillaBlockEntityClientTickOracle {
                 player.spectator = pc.get("spectator").getAsBoolean();
                 level.casePlayers = List.of(player);
                 level.loaded = new HashMap<>();
+                level.blocks = new HashMap<>();
+                // The blocks around: each fill's block over its box, then the block entities' own states.
+                if (c.has("fills")) for (var f : c.getAsJsonArray("fills")) {
+                    var fill = f.getAsJsonObject();
+                    var lo = pos(fill.getAsJsonArray("from"));
+                    var hi = pos(fill.getAsJsonArray("to"));
+                    var block = BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, fill.get("block").getAsString(), false).blockState();
+                    for (BlockPos q : BlockPos.betweenClosed(lo, hi)) level.blocks.put(q.immutable(), block);
+                }
+                for (var e : c.getAsJsonArray("entities")) level.blocks.put(pos(e.getAsJsonObject().getAsJsonArray("pos")), state(e.getAsJsonObject()));
                 var handler = allocate(LevelEventHandler.class);
                 set(LevelEventHandler.class, handler, "level", level);
                 // The level's tickers, and the case's block entities with the column of each.
@@ -299,7 +341,7 @@ public final class VanillaBlockEntityClientTickOracle {
                     }
                     for (var be : tickers) tick(be, level);
                     var spins = new JsonArray();
-                    tickers.stream().sorted(Comparator.comparing(BlockEntity::getBlockPos)).forEach(be -> spins.add(spin(be)));
+                    tickers.stream().filter(VanillaBlockEntityClientTickOracle::spins).sorted(Comparator.comparing(BlockEntity::getBlockPos)).forEach(be -> spins.add(spin(be)));
                     var row = new JsonObject();
                     row.add("events", level.events);
                     // The level random's 48-bit state after the tick: every draw, sounds' seeds too.

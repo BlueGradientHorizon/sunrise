@@ -888,10 +888,6 @@ pub struct BlockEntityAnims {
     pub random: LegacyRandom,
     /// [`Ticker`] by block state id (see [`BlockEntityAnims::classify`]).
     pub kinds: Vec<Option<Ticker>>,
-    /// The drawn block entities with a ticker, sorted by position, and the
-    /// renderer's block entity revision they were read at.
-    pub present: Vec<([i32; 3], Ticker)>,
-    pub present_revision: Option<u64>,
 }
 impl Default for BlockEntityAnims {
     fn default() -> Self {
@@ -909,8 +905,6 @@ impl Default for BlockEntityAnims {
             conduit_servers: FxHashMap::default(),
             random: LegacyRandom::new(0x6c6576656c),
             kinds: Vec::new(),
-            present: Vec::new(),
-            present_revision: None,
         }
     }
 }
@@ -924,7 +918,6 @@ impl BlockEntityAnims {
                     .and_then(|s| ticker(&s.name, |k| s.properties.get(k).cloned()))
             })
             .collect();
-        self.present_revision = None;
     }
     /// The ticker of a block state.
     pub fn ticker(&self, state: u32) -> Option<Ticker> {
