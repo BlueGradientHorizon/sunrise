@@ -37,7 +37,7 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandRender, InsideEffects,
+    EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
     InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType, LifecycleContext,
     LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
     PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
