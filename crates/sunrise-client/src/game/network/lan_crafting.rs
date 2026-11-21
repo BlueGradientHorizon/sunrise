@@ -2398,6 +2398,7 @@ mod recipe_check_tests {
                 sent: vec![None; 46],
                 drag: None,
                 sent_data: Vec::new(),
+                reported_unsent_data_len: None,
                 blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type: Some(station),

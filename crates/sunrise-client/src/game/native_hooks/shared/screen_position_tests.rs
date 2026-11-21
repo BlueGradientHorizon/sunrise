@@ -840,6 +840,7 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    reported_unsent_data_len: None,
                     blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: None,
