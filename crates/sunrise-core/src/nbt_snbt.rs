@@ -222,7 +222,7 @@ impl<'a> Parser<'a> {
                     format!("out of range: {value}")
                 }
             }
-            Some(value) if !signed && kind == 2 && value <= i64::MAX as u64 => {
+            _ if !signed && kind == 2 => {
                 format!("String value {text} exceeds range of unsigned int.")
             }
             None if !signed && kind == 3 => {
@@ -726,6 +726,7 @@ impl<'a> Parser<'a> {
     }
     fn word(&mut self) -> Result<Tag, Failure> {
         let word = self.unquoted()?;
+        let mark = self.cursor;
         let arguments = self.optional(|parser| {
             parser.expect("(")?;
             parser.descend(|parser| {
@@ -735,8 +736,10 @@ impl<'a> Parser<'a> {
                     Ok(())
                 });
                 if let Err(error) = parser.expect(")") {
-                    super::discard_tag(Tag::List(arguments));
-                    return Err(error);
+                    // The optional sequence rewinds the reader, but the named
+                    // argument list is already in the enclosing rule's scope.
+                    parser.defer(error);
+                    parser.cursor = mark;
                 }
                 Ok(arguments)
             })
@@ -943,16 +946,41 @@ mod tests {
         assert_eq!(suggestions, ["B", "I", "L", "S", "b", "i", "l", "s"]);
     }
 
-    /// `FloatLiteral | IntegerLiteral`: a malformed or out-of-range float falls back to the
-    /// integer reading, an optional exponent after a dot is dropped, and the furthest failed
-    /// alternative is still what a later failure reports.
     #[test]
-    fn failed_float_alternatives_fall_back() {
+    fn an_unclosed_builtin_rewinds_but_keeps_its_arguments() {
+        assert_eq!(parse_snbt_argument("bool(1"), Ok((Tag::Byte(1), 4)));
+        let error = parse_snbt_argument("foo(").unwrap_err();
+        assert_eq!(error.key, "snbt.parser.expected_unquoted_string");
+        assert_eq!(error.cursor, 4);
+    }
+
+    #[test]
+    fn unsigned_int_overflow_reports_the_unsigned_range_error() {
+        for (digits, cursor) in [("9223372036854775808", 21), ("18446744073709551616", 22)] {
+            let error = parse_snbt_argument(&format!("{digits}ui")).unwrap_err();
+            assert_eq!(error.key, "snbt.parser.number_parse_failure");
+            assert_eq!(error.cursor, cursor);
+            assert_eq!(
+                error.args,
+                [format!(
+                    "String value {digits} exceeds range of unsigned int."
+                )]
+            );
+        }
+    }
+
+    /// `FloatLiteral | IntegerLiteral`: a malformed or out-of-range float falls back to the
+    /// integer reading, optional numeric terms rewind, and the furthest failed alternative
+    /// is still what a later failure reports.
+    #[test]
+    fn failed_numeric_alternatives_rewind() {
         let double = |value: f64| Tag::Double(value.to_bits());
         assert_eq!(parse_snbt_argument("1e").unwrap(), (Tag::Int(1), 1));
         assert_eq!(parse_snbt_argument("1e309").unwrap(), (Tag::Int(1), 1));
         assert_eq!(parse_snbt_argument("1.5e").unwrap(), (double(1.5), 3));
         assert_eq!(parse_snbt_argument("1e5").unwrap(), (double(1e5), 3));
+        assert_eq!(parse_snbt_argument("1._").unwrap(), (double(1.0), 2));
+        assert_eq!(parse_snbt_argument("0b_").unwrap(), (Tag::Byte(0), 2));
         let error = parse_snbt_argument("[1e309]").unwrap_err();
         // The optional float suffix fails before semantic conversion detects infinity.
         assert_eq!((error.key, error.cursor), ("argument.literal.incorrect", 6));
