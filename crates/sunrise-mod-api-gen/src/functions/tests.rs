@@ -281,6 +281,43 @@ fn target() { provider::helper(); }
 }
 
 #[test]
+fn restricted_imports_do_not_shadow_public_globs_in_another_namespace() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod types { pub type helper = (); }
+mod values { pub fn helper() {} }
+mod private_type {
+    pub(crate) use super::types::helper;
+    pub use super::values::*;
+}
+mod private_value {
+    pub use super::types::*;
+    pub(crate) use super::values::helper;
+}
+fn calls_public_value() { private_type::helper(); }
+fn uses_public_type() { let _: private_value::helper = (); }
+fn calls_private_value() { private_value::helper(); }
+fn uses_private_type() { let _: private_type::helper = (); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    check("calls_public_value").unwrap();
+    check("uses_public_type").unwrap();
+    for (target, path) in [
+        ("calls_private_value", "private_value::helper"),
+        ("uses_private_type", "private_type::helper"),
+    ] {
+        let (code, why) = check(target).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(why.contains(path), "{why}");
+    }
+}
+
+#[test]
 fn a_bare_reference_follows_the_mirrors_import_to_its_provider() {
     let root = fixture();
     fs::write(

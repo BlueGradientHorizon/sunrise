@@ -9,9 +9,15 @@ use syn::{Attribute, ItemUse, UseTree, Visibility};
 
 pub(super) type Scopes = HashMap<String, Rc<Scope>>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Namespace {
+    Type,
+    Value,
+}
+
 #[derive(Default)]
 pub(super) struct Scope {
-    items: HashMap<String, Binding>,
+    items: [HashMap<String, Binding>; 2],
     conditional_modules: HashSet<String>,
     imports: HashMap<String, Option<Import>>,
     globs: Vec<Import>,
@@ -182,14 +188,25 @@ impl Scope {
                     scope.conditional_modules.insert(name);
                     continue;
                 }
-                scope.items.insert(
-                    name.clone(),
-                    Binding {
-                        module: matches!(item, Item::Mod(_)).then(|| format!("{module}::{name}")),
-                        limit: limit(module, vis),
-                        blocked: None,
-                    },
-                );
+                let binding = Binding {
+                    module: matches!(item, Item::Mod(_)).then(|| format!("{module}::{name}")),
+                    limit: limit(module, vis),
+                    blocked: None,
+                };
+                match item {
+                    Item::Fn(_) | Item::Const(_) | Item::Static(_) => {
+                        scope.items[Namespace::Value as usize].insert(name, binding);
+                    }
+                    _ => {
+                        // A tuple or unit struct has a constructor in the value namespace too.
+                        if matches!(item, Item::Struct(item) if !matches!(item.fields, syn::Fields::Named(_)))
+                        {
+                            scope.items[Namespace::Value as usize]
+                                .insert(name.clone(), binding.clone());
+                        }
+                        scope.items[Namespace::Type as usize].insert(name, binding);
+                    }
+                }
             }
         }
         scope
@@ -204,7 +221,7 @@ struct Walk<'a> {
     source: &'a mut Source,
     origin: &'a str,
     // `use super::*` and sibling globs can reach the very name already being looked up.
-    active: HashSet<(String, String)>,
+    active: HashSet<(String, String, Namespace)>,
 }
 
 impl Walk<'_> {
@@ -220,33 +237,35 @@ impl Walk<'_> {
         Some(scope)
     }
 
-    fn import_path(&mut self, module: &str, import: &Import, follow: bool) -> Option<Binding> {
+    fn import_path(&mut self, module: &str, import: &Import, space: Namespace) -> Lookup {
         if import.external || import.conditional {
-            return None;
+            return Err(Unresolved);
         }
-        self.path(module, &import.path, follow).ok().flatten()
+        self.path(module, &import.path, space)
     }
 
     fn import_block(&self, module: &str, import: &Import) -> Option<String> {
         (import.limit.is_some() && !within(self.origin, module)).then(|| module.to_owned())
     }
 
-    fn binding(&mut self, module: &str, name: &str, follow: bool) -> Lookup {
+    fn binding(&mut self, module: &str, name: &str, space: Namespace) -> Lookup {
         let scope = self.scope(module).ok_or(Unresolved)?;
-        if scope.conditional_modules.contains(name) {
-            return Err(Unresolved);
-        }
-        if let Some(item) = scope.items.get(name) {
+        if let Some(item) = scope.items[space as usize].get(name) {
             return Ok(Some(item.clone()));
         }
-        // The game module walker knows about build-generated declarations too.
-        let child = format!("{module}::{name}");
-        if self.source.files.contains_key(&child) {
-            return Ok(Some(Binding {
-                module: Some(child),
-                limit: Some(module.to_owned()),
-                blocked: None,
-            }));
+        if space == Namespace::Type {
+            if scope.conditional_modules.contains(name) {
+                return Err(Unresolved);
+            }
+            // The game module walker knows about build-generated declarations too.
+            let child = format!("{module}::{name}");
+            if self.source.files.contains_key(&child) {
+                return Ok(Some(Binding {
+                    module: Some(child),
+                    limit: Some(module.to_owned()),
+                    blocked: None,
+                }));
+            }
         }
         if scope.imports.is_empty() && scope.globs.is_empty() {
             return if scope.opaque {
@@ -255,35 +274,37 @@ impl Walk<'_> {
                 Ok(None)
             };
         }
-        let key = (module.to_owned(), name.to_owned());
+        let key = (module.to_owned(), name.to_owned(), space);
         if !self.active.insert(key.clone()) {
             return Ok(None);
         }
-        let binding = self.import_binding(&scope, module, name, follow);
+        let binding = self.import_binding(&scope, module, name, space);
         self.active.remove(&key);
         binding
     }
 
-    fn import_binding(&mut self, scope: &Scope, module: &str, name: &str, follow: bool) -> Lookup {
+    fn import_binding(
+        &mut self,
+        scope: &Scope,
+        module: &str,
+        name: &str,
+        space: Namespace,
+    ) -> Lookup {
         if let Some(import) = scope.imports.get(name) {
             let import = import.as_ref().ok_or(Unresolved)?;
-            // A mirror writes this import out again, so its original destination must resolve
-            // from the mirror too. An external public alias is already usable as-is.
-            let mirrored = within(self.origin, module);
-            let destination = (mirrored || follow)
-                .then(|| self.import_path(module, import, follow))
-                .flatten();
-            return Ok(Some(Binding {
-                blocked: if mirrored {
-                    destination
-                        .as_ref()
-                        .and_then(|target| target.blocked.clone())
-                } else {
-                    self.import_block(module, import)
-                },
-                module: destination.and_then(|target| target.module),
-                limit: import.limit.clone(),
-            }));
+            // An explicit import shadows globs only in the namespaces it actually binds.
+            if let Some(destination) = self.import_path(module, import, space)? {
+                return Ok(Some(Binding {
+                    blocked: if within(self.origin, module) {
+                        // The mirror repeats its import, so that import must also be reachable.
+                        destination.blocked
+                    } else {
+                        self.import_block(module, import)
+                    },
+                    module: destination.module,
+                    limit: import.limit.clone(),
+                }));
+            }
         }
         if scope.opaque {
             return Err(Unresolved);
@@ -291,9 +312,11 @@ impl Walk<'_> {
         let mut found = None;
         for import in &scope.globs {
             // A glob we cannot read (including an external crate) might provide this name too.
-            let from = self.import_path(module, import, true).ok_or(Unresolved)?;
+            let from = self
+                .import_path(module, import, Namespace::Type)?
+                .ok_or(Unresolved)?;
             let from_module = from.module.as_deref().ok_or(Unresolved)?;
-            if let Some(mut binding) = self.binding(from_module, name, follow)?
+            if let Some(mut binding) = self.binding(from_module, name, space)?
                 && binding
                     .limit
                     .as_ref()
@@ -320,13 +343,18 @@ impl Walk<'_> {
         Ok(found)
     }
 
-    fn path(&mut self, written_in: &str, path: &[String], follow: bool) -> Lookup {
+    fn path(&mut self, written_in: &str, path: &[String], space: Namespace) -> Lookup {
         let (module, tail) = relative(written_in, path);
         let mut module = module.to_owned();
         let mut blocked = None;
         for (index, name) in tail.iter().enumerate() {
             let last = index + 1 == tail.len();
-            let Some(mut binding) = self.binding(&module, name, !last || follow)? else {
+            let needed = if last { space } else { Namespace::Type };
+            let Some(mut binding) = self.binding(&module, name, needed)? else {
+                // An unqualified initial type name may be a crate from the extern prelude.
+                if index == 0 && tail.len() == path.len() && needed == Namespace::Type {
+                    return Err(Unresolved);
+                }
                 return Ok(None);
             };
             if binding
@@ -343,12 +371,16 @@ impl Walk<'_> {
             let Some(next) = binding.module else {
                 // This can be an associated-item path. A known restriction on the prefix
                 // already makes it unusable in the copy.
-                return Ok(binding.blocked.is_some().then_some(binding));
+                return if binding.blocked.is_some() {
+                    Ok(Some(binding))
+                } else {
+                    Err(Unresolved)
+                };
             };
             module = next;
             blocked = binding.blocked;
         }
-        Ok(Some(Binding {
+        Ok((space == Namespace::Type).then_some(Binding {
             module: Some(module),
             limit: None,
             blocked,
@@ -390,31 +422,49 @@ pub(super) fn check_body(
         refusal: Option<String>,
     }
     impl Check<'_> {
-        fn path(&mut self, parts: &[String]) {
-            if self.refusal.is_some() || parts.is_empty() {
-                return;
-            }
-            let first = &parts[0];
+        fn binding(&mut self, parts: &[String], space: Namespace) -> Lookup {
+            let Some(first) = parts.first().filter(|_| self.refusal.is_none()) else {
+                return Err(Unresolved);
+            };
+            let head = if parts.len() == 1 {
+                space
+            } else {
+                Namespace::Type
+            };
             if !matches!(first.as_str(), "crate" | "self" | "super")
-                && ((parts.len() == 1 && self.values.contains(first))
+                && ((head == Namespace::Value && self.values.contains(first))
                     || self.local.iter().any(|scope| {
                         scope.opaque
                             || !scope.globs.is_empty()
-                            || scope.items.contains_key(first)
-                            || scope.conditional_modules.contains(first)
+                            || scope.items[head as usize].contains_key(first)
+                            || (head == Namespace::Type
+                                && scope.conditional_modules.contains(first))
                             || scope.imports.contains_key(first)
                     }))
             {
                 // A block-local binding can shadow the module's name. Don't guess its target.
-                return;
+                return Err(Unresolved);
             }
-            if let Ok(Some(binding)) = self.walk.path(self.walk.origin, parts, false)
-                && let Some(module) = binding.blocked
-            {
+            self.walk.path(self.walk.origin, parts, space)
+        }
+
+        fn note(&mut self, parts: &[String], binding: Binding) {
+            if let Some(module) = binding.blocked {
                 self.refusal = Some(format!(
                     "its body names `{}`, which crosses a non-public `use` in `{module}`",
                     parts.join("::")
                 ));
+            }
+        }
+
+        fn path(&mut self, path: &syn::Path, space: Namespace) {
+            if path.leading_colon.is_none()
+                && (space == Namespace::Value || path.segments.len() > 1)
+            {
+                let parts: Vec<_> = path.segments.iter().map(|s| unraw(&s.ident)).collect();
+                if let Ok(Some(binding)) = self.binding(&parts, space) {
+                    self.note(&parts, binding);
+                }
             }
         }
     }
@@ -483,29 +533,65 @@ pub(super) fn check_body(
         }
 
         fn visit_expr_path(&mut self, expr: &'ast syn::ExprPath) {
-            if expr.qself.is_none()
-                && expr.path.leading_colon.is_none()
-                && expr.path.segments.len() == 1
-            {
-                self.path(&[unraw(&expr.path.segments[0].ident)]);
+            if expr.qself.is_none() {
+                self.path(&expr.path, Namespace::Value);
             }
             syn::visit::visit_expr_path(self, expr);
         }
 
-        fn visit_path(&mut self, path: &'ast syn::Path) {
-            if self.refusal.is_some() {
-                return;
+        fn visit_type_path(&mut self, ty: &'ast syn::TypePath) {
+            if ty.qself.is_none() {
+                self.path(&ty.path, Namespace::Type);
             }
-            if path.leading_colon.is_none() && path.segments.len() > 1 {
-                let parts: Vec<_> = path.segments.iter().map(|s| unraw(&s.ident)).collect();
-                self.path(&parts);
+            syn::visit::visit_type_path(self, ty);
+        }
+
+        fn visit_trait_bound(&mut self, bound: &'ast syn::TraitBound) {
+            self.path(&bound.path, Namespace::Type);
+            syn::visit::visit_trait_bound(self, bound);
+        }
+
+        fn visit_expr_struct(&mut self, expr: &'ast syn::ExprStruct) {
+            if expr.qself.is_none() {
+                self.path(&expr.path, Namespace::Type);
             }
-            syn::visit::visit_path(self, path);
+            syn::visit::visit_expr_struct(self, expr);
+        }
+
+        fn visit_pat_struct(&mut self, pat: &'ast syn::PatStruct) {
+            if pat.qself.is_none() {
+                self.path(&pat.path, Namespace::Type);
+            }
+            syn::visit::visit_pat_struct(self, pat);
+        }
+
+        fn visit_pat_tuple_struct(&mut self, pat: &'ast syn::PatTupleStruct) {
+            if pat.qself.is_none() {
+                self.path(&pat.path, Namespace::Value);
+            }
+            syn::visit::visit_pat_tuple_struct(self, pat);
         }
 
         fn visit_item_use(&mut self, item: &'ast ItemUse) {
             if item.leading_colon.is_none() {
-                imports(item, |_, parts| self.path(&parts));
+                imports(item, |name, parts| {
+                    let types = self.binding(&parts, Namespace::Type);
+                    // A glob names a module; a single import can name both a type and a value.
+                    let values = if name.is_some() {
+                        self.binding(&parts, Namespace::Value)
+                    } else {
+                        Ok(None)
+                    };
+                    match (types, values) {
+                        (Ok(Some(binding)), Ok(None)) | (Ok(None), Ok(Some(binding))) => {
+                            self.note(&parts, binding);
+                        }
+                        (Ok(Some(ty)), Ok(Some(value))) if value.blocked.is_some() => {
+                            self.note(&parts, ty);
+                        }
+                        _ => {}
+                    }
+                });
             }
         }
 
