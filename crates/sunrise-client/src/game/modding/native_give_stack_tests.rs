@@ -1,8 +1,12 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
-use super::{api_values::TryIntoApi, native_guest_turn_tests::with_guests};
+use super::{
+    api_values::TryIntoApi, native_entity_refs::tests::with_game,
+    native_guest_turn_tests::with_guests,
+};
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;
+use sunrise_items::item_nbt;
 
 fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
     let host: &dyn Host = game;
@@ -21,9 +25,7 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
             r#"{id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:strong_healing"}}}"#,
             r#"{id:"minecraft:written_book",count:1,components:{"minecraft:written_book_content":{title:{raw:"Log"},author:"guest13",pages:[{raw:"one"}]}}}"#,
         ] {
-            let engine = game
-                .item_from_snbt(snbt)
-                .unwrap_or_else(|| panic!("{snbt}"));
+            let engine = item_nbt::item_from_snbt(snbt).unwrap_or_else(|error| panic!("{error}"));
             let api = api_item(game, snbt).unwrap();
             assert_eq!(
                 Some(&api),
@@ -31,18 +33,12 @@ fn an_snbt_item_goes_through_the_api_unchanged() {
                 "{snbt}"
             );
             let (tag, _) = parse_snbt(snbt).unwrap();
-            assert_eq!(
-                sunrise_items::item_nbt::item_to_nbt(&engine, game.items()),
-                tag,
-                "{snbt}"
-            );
+            assert_eq!(item_nbt::item_to_nbt(&engine, game.items()), tag, "{snbt}");
         }
     });
 }
 
-/// This API refuses with None: text that is not one compound, text with anything but
-/// whitespace after the compound, text over 2 MiB, nesting past 512 levels, air and an item
-/// the world lacks, and a count outside 1 to 99.
+/// This API refuses with None when the grammar or saved-item codec refuses the input.
 #[test]
 #[ignore = "daily"]
 fn item_from_snbt_refuses_what_is_not_one_item_compound() {
@@ -64,7 +60,7 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
         assert_eq!(count(r#"{id:"minecraft:stone",count:0}"#), None);
         assert_eq!(count(r#"{id:"minecraft:stone",count:-1}"#), None);
         assert_eq!(count(r#"{id:"minecraft:stone",count:"5"}"#), None);
-        assert_eq!(count("  {id:\"minecraft:stone\"} \n"), Some(1));
+        assert_eq!(count("  {id:\"minecraft:stone\"} \n\u{3000}"), Some(1));
         assert_eq!(count("stone"), None, "no compound");
         assert_eq!(count("-"), None, "no item");
         assert_eq!(count(r#"[{id:"minecraft:stone"}]"#), None);
@@ -80,13 +76,10 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
         assert_eq!(count(r#"{id:"minecraft:air",count:1}"#), None);
         assert_eq!(count(r#"{id:"nomod:thing",count:1}"#), None);
         assert_eq!(count(r#"{count:1}"#), None);
-        let item = r#"{id:"minecraft:stone"}"#;
-        let padded = |len: usize| format!("{item}{}", " ".repeat(len - item.len()));
-        assert_eq!(count(&padded(2 * 1024 * 1024)), Some(1), "2 MiB is read");
+        assert_eq!(count(r#"{id:"stone",components:1}"#), None);
         assert_eq!(
-            count(&padded(2 * 1024 * 1024 + 1)),
-            None,
-            "one byte more is not"
+            count(r#"{id:"stone",components:{"minecraft:creative_slot_lock":{}}}"#),
+            None
         );
         let nested = |levels: usize| {
             format!(
@@ -100,6 +93,28 @@ fn item_from_snbt_refuses_what_is_not_one_item_compound() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn item_from_snbt_keeps_custom_data_larger_than_the_binary_quota() {
+    with_game(|game| {
+        let payload = "x".repeat(2 * 1024 * 1024 + 1);
+        let snbt = format!(
+            r#"{{id:"minecraft:stone",count:3,components:{{"minecraft:custom_data":{{data:"{payload}"}}}}}}"#
+        );
+        let stack = api_item(game, &snbt).expect("in-memory text may exceed the binary quota");
+        assert_eq!(stack.count(), 3);
+        let data = stack
+            .components()
+            .and_then(|patch| patch.as_nbt().get(&"minecraft:custom_data".into()))
+            .and_then(|tag| tag.get("data"));
+        let Some(mod_api::Tag::String(data)) = data else {
+            panic!("the item must retain its custom data");
+        };
+        assert_eq!(data.0.len(), payload.len());
+        assert!(data.0.iter().copied().eq(payload.encode_utf16()));
+    });
+}
+
 /// A given stack goes into the inventory where it fits, components and all; the rest is
 /// thrown for the player alone, with no pickup delay.
 #[test]
@@ -109,7 +124,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         let b = game.players().server_players()[1];
         let rock = r#"{id:"minecraft:stone",count:10,components:{"minecraft:custom_name":"Rock"}}"#;
         let named = api_item(game, rock).unwrap();
-        let engine = game.item_from_snbt(rock).unwrap();
+        let engine = item_nbt::item_from_snbt(rock).unwrap();
         game.lan
             .as_mut()
             .unwrap()

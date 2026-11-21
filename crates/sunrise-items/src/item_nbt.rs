@@ -2,7 +2,7 @@
 //! slot lists.
 use std::sync::Arc;
 use sunrise_client_core::nbt_value::{number, string, text};
-use sunrise_core::nbt::Tag;
+use sunrise_core::nbt::{Tag, parse_snbt, snbt_whitespace};
 
 /// The two measured saved forms of `BlockPredicate.CODEC`, and the `Identifier`s
 /// of `attribute_modifiers` written whole. Operate only on
@@ -85,13 +85,47 @@ pub fn encode_item(
 pub fn item_to_nbt(stack: &crate::items::ItemStack, items: &crate::items::Items) -> Tag {
     Tag::compound(encode_item(stack, items))
 }
-/// A stack from a command or data file: a `components` patch naming a transient
-/// component (`DataComponentPatch.PatchKey`'s codec) makes no stack.
-pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
-    if let Some(components) = tag.get("components") {
-        sunrise_world::item_defaults::validate_component_map_tag(components).ok()?;
+/// Read one `TagParser.parseCompoundFully` compound as an `ItemStack.CODEC` item.
+/// The SNBT grammar and saved-item decoder report their own errors; binary NBT quotas
+/// are not part of this text boundary.
+pub fn item_from_snbt(snbt: &str) -> Result<crate::items::ItemStack, String> {
+    let (tag, end) = parse_snbt(snbt)?;
+    if let Some((pos, _)) = snbt[end..]
+        .char_indices()
+        .find(|&(_, ch)| !snbt_whitespace(ch.into()))
+    {
+        return Err(format!("argument.nbt.trailing at {}", end + pos));
     }
-    item_from_nbt(tag)
+    item_from_persistent_nbt(&tag)
+}
+
+/// Decode an `ItemStack.CODEC` compound at a strict input boundary. Unlike the save
+/// reader, refuse an invalid count or component patch and preserve the diagnostic.
+pub fn item_from_persistent_nbt(tag: &Tag) -> Result<crate::items::ItemStack, String> {
+    if !matches!(tag, Tag::Compound(_)) {
+        return Err("argument.nbt.expected.compound".into());
+    }
+    let id = saved_item_id(tag).ok_or("id must name a non-air item")?;
+    let count = match tag.get("count") {
+        None => 1,
+        Some(value) => number(Some(value))
+            .filter(|count| (1..=99).contains(count))
+            .ok_or("count must be a number in 1..=99")? as u32,
+    };
+    let components = tag.get("components");
+    if let Some(components) = components {
+        if !matches!(components, Tag::Compound(_)) {
+            return Err("components must be a compound".into());
+        }
+        sunrise_world::item_defaults::validate_component_map_tag(components)?;
+    }
+    Ok(decode_item_fields(&id, count, components))
+}
+
+fn saved_item_id(tag: &Tag) -> Option<String> {
+    let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
+    let id = format!("{namespace}:{path}");
+    (id != "minecraft:air").then_some(id)
 }
 /// A stack read from a save. Earlier Sunrise saves can hold transient components
 /// (`creative_slot_lock`, `additional_trade_cost`, `map_post_processing`), so only
@@ -105,11 +139,7 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
 /// command's NBT often leaves the namespace out), and an id that is no valid
 /// identifier makes no stack.
 pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
-    let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
-    let id = format!("{namespace}:{path}");
-    if id == "minecraft:air" {
-        return None;
-    }
+    let id = saved_item_id(tag)?;
     let count = number(tag.get("count"))
         .or_else(|| number(tag.get("Count")))
         .filter(|count| (1..=99).contains(count))
@@ -125,13 +155,17 @@ pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
         }
         components => components,
     };
+    Some(decode_item_fields(&id, count, components))
+}
+
+fn decode_item_fields(id: &str, count: u32, components: Option<&Tag>) -> crate::items::ItemStack {
     let (damage, extra) = crate::item_data::decode_components(components);
-    Some(crate::items::ItemStack {
-        item: Arc::from(id.as_str()),
+    crate::items::ItemStack {
+        item: Arc::from(id),
         count,
         damage,
         extra,
-    })
+    }
 }
 pub fn encode_items(slots: &[Option<crate::items::ItemStack>], items: &crate::items::Items) -> Tag {
     Tag::List(encode_items_using(slots, |stack| item_to_nbt(stack, items)))
@@ -209,6 +243,14 @@ impl TryFrom<Tag> for crate::item_data::StackData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn item_snbt_reports_the_trailing_data_cursor() {
+        assert_eq!(
+            item_from_snbt("{id:stone} x").unwrap_err(),
+            "argument.nbt.trailing at 11"
+        );
+    }
 
     #[test]
     fn nbt_count_defaults_to_one_outside_codec_range() {
@@ -290,8 +332,11 @@ mod tests {
             let live = crate::item_data::components_tag(stack.damage, stack.data()).unwrap();
             assert_eq!(live.get(transient), None);
             assert_eq!(live.get("minecraft:repair_cost"), Some(&Tag::Int(2)));
-            // Commands and data files keep the strict refusal.
-            assert!(item_from_persistent_nbt(&saved).is_none());
+            // Strict input keeps the component codec's reason instead of stripping it.
+            assert_eq!(
+                item_from_persistent_nbt(&saved).unwrap_err(),
+                format!("'{transient}' is not a persistent component")
+            );
         }
     }
 }
