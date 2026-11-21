@@ -1287,30 +1287,39 @@ impl Game<'_> {
             return;
         }
         let id = stand.id;
-        let told: Vec<_> = (0..changed.len())
-            .filter(|&i| changed[i])
-            .map(|i| {
-                let slot = sunrise_items::equipment::SLOT_NAMES[i];
-                (
-                    slot,
-                    stand.enchantment_equipment[i].clone(),
-                    stand.equipment[i].clone(),
-                )
-            })
-            .collect();
-        stand.enchantment_equipment.clone_from(&stand.equipment);
-        if self.remote.is_none() && !self.options.execution_role.is_client() {
-            for (slot, from, to) in told {
-                self.native_living_equipment_change(
-                    id,
-                    "minecraft:armor_stand",
-                    slot,
-                    from.as_ref(),
-                    to.as_ref(),
-                );
+        let notify_epoch = (self.remote.is_none()
+            && !self.options.execution_role.is_client()
+            && mod_api::__private::listened(mod_api::HookId::LivingEquipmentChange))
+        .then(|| self.native_lifecycle.epoch())
+        .flatten();
+        if let Some(epoch) = notify_epoch {
+            let living = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, id));
+            for slot in sunrise_core::equipment_slot::EquipmentSlot::ALL {
+                let i = slot as usize;
+                if !changed[i] {
+                    continue;
+                }
+                let Some(stand) = self.armor_stands.get_mut(index).filter(|s| s.id == id) else {
+                    break;
+                };
+                let to = stand.equipment[i].clone();
+                let from = stand.enchantment_equipment[i].take();
+                self.dispatch_living_equipment_change(living, slot, from.as_ref(), to.as_ref());
+                if let Some(stand) = self.armor_stands.get_mut(index).filter(|s| s.id == id) {
+                    stand.enchantment_equipment[i] = to;
+                }
+            }
+        } else {
+            let stand = &mut self.armor_stands[index];
+            for (i, is_changed) in changed.iter().enumerate() {
+                if *is_changed {
+                    stand.enchantment_equipment[i] = stand.equipment[i].clone();
+                }
             }
         }
-        let stand = &self.armor_stands[index];
+        let Some(stand) = self.armor_stands.get(index).filter(|s| s.id == id) else {
+            return;
+        };
         let at = [stand.position.x, stand.position.y, stand.position.z];
         let who = Who::Mob(stand.id);
         let equipment = stand

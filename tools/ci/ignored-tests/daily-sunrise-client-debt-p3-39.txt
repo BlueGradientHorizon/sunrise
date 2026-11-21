@@ -1,0 +1,1 @@
+sunrise-client game::player_equipment_change_tests::mobs_compare_equipment_by_borrow_and_retain_only_changed_slots lib daily resources
