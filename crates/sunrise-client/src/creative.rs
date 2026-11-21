@@ -1026,8 +1026,8 @@ impl Creative {
         true
     }
     /// mouseReleased.
-    pub fn release(&mut self) {
-        self.scrolling = false;
+    pub fn release(&mut self) -> bool {
+        std::mem::take(&mut self.scrolling)
     }
     /// mouseScrolled: ItemPickerMenu.subtractInputFromScroll.
     pub fn wheel(&mut self, amount: f64, names: &Names) {

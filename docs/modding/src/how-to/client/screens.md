@@ -56,6 +56,10 @@ is open, keys consumed by the input method during composition do not reach `Pres
 or the editor's Done and Cancel buttons. Committed characters go through the usual character hooks
 and `PresetEditor::char_typed`, separately from key presses.
 
+The editor's Done and Cancel buttons take a left click before `PresetEditor::mouse_clicked`.
+The mouse button Post hook still sees `world_preset_editor` for that click, even when Create World
+is already open again. A cancelled mouse Pre reaches neither the editor nor its Post hook.
+
 The control socket sends `screen_key_released_pre` to the currently open title screen, even if
 that screen did not receive the matching press. For example, when Escape closes the preset editor,
 its release goes to Create World, including when Escape is sent as a single tap. The released key

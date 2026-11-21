@@ -447,7 +447,7 @@ impl Game<'_> {
             .map(|view| self.observe_view(view))
     }
 
-    fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
+    pub(super) fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
         ObservedScreen {
             id: view.id,
             overlay: self.screen == Screen::Playing,
@@ -1024,10 +1024,16 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The Post a mouse input owes once the screen has handled it, built when
-/// its Pre let the input through (`Game::screen_mouse_post`).
+/// The button event and its original receiver, retained across a handler that may replace it.
+pub(super) struct ScreenButtonPost {
+    pub(super) screen: ObservedScreen,
+    pub(super) button: i32,
+    pub(super) pressed: bool,
+    pub(super) modifiers: u32,
+}
+
+/// A scroll/drag notice owed after its Pre let the input through.
 pub(super) enum ScreenMousePost {
-    Button { button: i32, pressed: bool },
     Scroll([f64; 2]),
     Drag { button: i32, delta: [f32; 2] },
 }
@@ -1290,14 +1296,20 @@ impl Game<'_> {
             ScreenMousePre::Passed(ScreenMousePost::Drag { button, delta })
         }
     }
-    /// The Post of a mouse input whose Pre let it through, once the screen's
-    /// own handling has run. The screen is the one open then (none, and no
-    /// Post, when the input closed it). Nothing is built with no subscriber.
+    /// Button Post goes to the event's original receiver, even if it was closed by the event.
+    pub(super) fn screen_button_post(&self, post: &ScreenButtonPost) {
+        let screen = post.screen.view();
+        if post.pressed {
+            self.native_screen_mouse_button_pressed_post(&screen, post.button, post.modifiers);
+        } else {
+            self.native_screen_mouse_button_released_post(&screen, post.button, post.modifiers);
+        }
+    }
+
+    /// Scroll/drag Post is a notice to the screen still open after the input.
     pub(super) fn screen_mouse_post(&self, post: ScreenMousePost) {
         use mod_api::HookId;
         let hook = match post {
-            ScreenMousePost::Button { pressed: true, .. } => HookId::ScreenMouseButtonPressedPost,
-            ScreenMousePost::Button { pressed: false, .. } => HookId::ScreenMouseButtonReleasedPost,
             ScreenMousePost::Scroll(_) => HookId::ScreenMouseScrolledPost,
             ScreenMousePost::Drag { .. } => HookId::ScreenMouseDraggedPost,
         };
@@ -1309,14 +1321,6 @@ impl Game<'_> {
         };
         let modifiers = super::glfw_modifiers(self.modifiers);
         match post {
-            ScreenMousePost::Button {
-                button,
-                pressed: true,
-            } => self.native_screen_mouse_button_pressed_post(&screen, button, modifiers),
-            ScreenMousePost::Button {
-                button,
-                pressed: false,
-            } => self.native_screen_mouse_button_released_post(&screen, button, modifiers),
             ScreenMousePost::Scroll(scroll) => {
                 self.native_screen_mouse_scrolled_post(&screen, scroll, modifiers)
             }

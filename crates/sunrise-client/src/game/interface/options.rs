@@ -274,14 +274,15 @@ impl Game<'_> {
             _ => {}
         }
     }
-    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<()> {
+    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<bool> {
         if !pressed {
             if right {
-                return Ok(());
+                return Ok(false);
             }
-            let events = self.ui.options.release();
+            let (events, handled) = self.ui.options.release_with_outcome();
             self.dragging = false;
-            return self.handle_option_events(events);
+            self.handle_option_events(events)?;
+            return Ok(handled);
         }
         if !right {
             self.dragging = true;
@@ -292,7 +293,7 @@ impl Game<'_> {
         });
         let mut ui = std::mem::take(&mut self.ui.options);
         ui.shift = self.modifiers.shift_key();
-        let events = ui.click(
+        let (events, handled) = ui.click_with_outcome(
             &mut self.settings,
             &self.gui.atlas,
             self.cursor.0,
@@ -303,7 +304,8 @@ impl Game<'_> {
             right,
         );
         self.ui.options = ui;
-        self.handle_option_events(events)
+        self.handle_option_events(events)?;
+        Ok(handled)
     }
     pub(super) fn options_drag(&mut self) -> Result<()> {
         let size = self.gui_size();

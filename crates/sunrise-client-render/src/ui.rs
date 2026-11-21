@@ -1300,8 +1300,8 @@ impl Caret {
         }
     }
     /// The button was released: drags no longer select.
-    pub fn release(&mut self) {
-        self.held = false;
+    pub fn release(&mut self) -> bool {
+        std::mem::take(&mut self.held)
     }
     /// Draw field `id` at `rect`: the focused one with its caret, the others
     /// showing the end of their text.

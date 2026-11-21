@@ -1,7 +1,7 @@
 //! The `screen_input_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// A mouse button went down over the open screen and the screen has handled it (`ScreenEvent.MouseButtonPressed.Post`, vanilla's `Screen.mouseClicked` returning): `screen`, `button` and `modifiers` as in `screen_mouse_button_pressed_pre`. Not cancellable. NeoForge's event also carries `wasClickHandled` / `wasReleaseHandled`; this one has no such field, because Sunrise's screens take their input in their own arms and report nothing back. There is no double-click flag: Sunrise does not track double clicks. Fires on the window only, while a screen of the game's or the title's is open (the screens the `_pre` input hooks cover), for real mouse or keyboard input and not a pad's or the keyboard focus's, and only when the matching Pre did not cancel it. It fires on the screen open after the screen's arms ran, so a press that closed the screen fires nothing.
+    /// A real mouse press after the receiving screen handled or declined it (`ScreenEvent.MouseButtonPressed.Post`). `screen`, `button` and `modifiers` are the original Pre values, even if the press opened or closed a screen. Fires only if the matching Pre let the press through, including when a container hook took it. It is a notice and does not change handling.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -11,7 +11,7 @@ pub trait Hooks {
         cancellable = false
     )]
     fn screen_mouse_button_pressed_post(screen: &ScreenView<'_>, button: i32, modifiers: u32);
-    /// A mouse button went up over the open screen and the screen has handled it (`ScreenEvent.MouseButtonReleased.Post`, vanilla's `Screen.mouseReleased` returning), with the fields of `screen_mouse_button_released_pre`. Not cancellable. NeoForge's event also carries `wasClickHandled` / `wasReleaseHandled`; this one has no such field, because Sunrise's screens take their input in their own arms and report nothing back. Fires on the window only, while a screen of the game's or the title's is open (the screens the `_pre` input hooks cover), for real mouse or keyboard input and not a pad's or the keyboard focus's, and only when the matching Pre did not cancel it. It fires on the screen open after the screen's arms ran, so a release that closed the screen fires nothing.
+    /// A real mouse release after the receiving screen handled or declined it (`ScreenEvent.MouseButtonReleased.Post`). `screen`, `button` and `modifiers` are the original Pre values for this release, not those of its matching press, even if the release opened or closed a screen. Fires only if the matching Pre let the release through, including when a container hook took it. It is a notice and does not change handling.
     #[hook(
         receiver = "read",
         dispatch = "flat",

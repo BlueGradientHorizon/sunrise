@@ -1392,7 +1392,7 @@ impl Game<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.ui.chat.scroll_by(amount as i32, true);
     }
-    pub(super) fn chat_click(&mut self) {
+    pub(super) fn chat_click(&mut self) -> bool {
         let cursor = self.cursor;
         let height = self.renderer.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1419,7 +1419,7 @@ impl Game<'_> {
                 .map_or_else(|| Self::leave_bed_button(width, height), |l| l.leave_bed);
             if sunrise_client::screen_draw::inside((cursor.0 as i32, cursor.1 as i32), x, y, w, h) {
                 self.wake_up(false, true);
-                return;
+                return true;
             }
         }
         if let Some(screen) = self.ui.chat_screen.as_mut() {
@@ -1427,10 +1427,10 @@ impl Game<'_> {
             let double_click = screen.live_double_click(x, y);
             if screen.click(&m, &c, x, y, double_click) {
                 self.notify_chat_suggestion_completion();
-                return;
+                return true;
             }
         } else {
-            return;
+            return false;
         }
         let style = self
             .ui
@@ -1463,10 +1463,10 @@ impl Game<'_> {
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
             self.titles.set_overlay(copied, false);
-            return;
+            return true;
         }
         let Some(style) = style else {
-            return;
+            return false;
         };
         // ChatScreen.handleComponentClicked: with Shift held only an
         // insertion acts, else only the click event.
@@ -1475,8 +1475,9 @@ impl Game<'_> {
                 && let Some(screen) = self.ui.chat_screen.as_mut()
             {
                 screen.type_text(&m, &c, &insertion);
+                return true;
             }
-            return;
+            return false;
         }
         match style.click {
             Some(ClickEvent::CopyToClipboard(value)) => {
@@ -1499,6 +1500,8 @@ impl Game<'_> {
                     .and_then(super::profile_capture::profiler_args)
                 {
                     self.profiler_chat(args);
+                } else {
+                    return false;
                 }
             }
             // Screen.defaultHandleGameClickEvent: the dialog opens over the
@@ -1515,11 +1518,14 @@ impl Game<'_> {
                     remote
                         .session
                         .send_custom_click(&id, payload.map(std::sync::Arc::unwrap_or_clone));
+                } else {
+                    return false;
                 }
             }
             // Screen.defaultHandleClickEvent: a page link means nothing in chat.
-            Some(ClickEvent::ChangePage(_)) | None => {}
+            Some(ClickEvent::ChangePage(_)) | None => return false,
         }
+        true
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
@@ -1588,9 +1594,9 @@ impl Game<'_> {
             super::packs::open_uri(&url);
         }
     }
-    pub(super) fn link_prompt_click(&mut self) {
+    pub(super) fn link_prompt_click(&mut self) -> bool {
         let Some(url) = self.link_prompt.clone() else {
-            return;
+            return false;
         };
         let pressed = self
             .link_prompt_layout(&url, self.gui_size())
@@ -1604,6 +1610,7 @@ impl Game<'_> {
             }
             self.answer_link_prompt(button == LINK_YES);
         }
+        pressed.is_some()
     }
     /// `Screen.clickCommandAction`: run a clicked command as the player
     /// without adding it to the chat history. A client mod's command goes

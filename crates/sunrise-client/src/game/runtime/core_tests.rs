@@ -973,7 +973,7 @@ fn selecting_creative_tabs_does_not_drop_the_carried_stack_on_release() {
                     false,
                     false
                 ),
-                Release::Nothing
+                Release::Swallowed
             );
         }
     }

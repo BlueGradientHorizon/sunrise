@@ -1,0 +1,10 @@
+ids = [
+    "hook:screen_mouse_button_pressed_post",
+    "method:Hooks::screen_mouse_button_pressed_post",
+    "type:ScreenMouseButtonPressedPostEvent",
+    "hook:screen_mouse_button_released_post",
+    "method:Hooks::screen_mouse_button_released_post",
+    "type:ScreenMouseButtonReleasedPostEvent",
+]
+why = "Vanilla MouseHandler.onButton and ContainerEventHandler.mouseClicked/mouseReleased dispatch to one receiving screen and return whether it took the input. NeoForge's MouseHandler patch sends button Post for that same receiver when Pre passes, even if the click closes it. Sunrise now carries that original view and uses the screen's handled result to gate gameplay input."
+migrate = "The two Post callbacks keep the same parameters in this routing change. Read event.screen as the press or release's original screen, not the screen left open afterward. Done/Cancel now reach Post as world_preset_editor, and a container hook taking the edge no longer suppresses Post. A cancelled Pre still skips the screen and Post. Keyboard Post is unchanged."
