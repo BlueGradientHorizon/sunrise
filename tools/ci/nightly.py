@@ -55,6 +55,7 @@ import json
 import os
 import re
 import subprocess
+import string
 import sys
 import tarfile
 import tempfile
@@ -305,15 +306,6 @@ def sdk_ready(sha: str) -> bool:
     return sha in ready_sdk_shas()
 
 
-def listed(name: str, data: bytes, sums: str) -> bool:
-    """Whether `data` is the `name` that a `sha256sum` listing `sums` names."""
-    for line in sums.splitlines():
-        digest, _, file = line.partition(" ")
-        if file.strip().lstrip("*") == name:
-            return digest == hashlib.sha256(data).hexdigest()
-    return False
-
-
 REPOSITORY = Path(__file__).resolve().parents[2]
 # What a cargo build or a built tool never inherits from the job: its tokens and the files that change later steps
 # (a build script or proc macro runs whatever its crate says), another target folder, or a wrapper that would run in
@@ -331,8 +323,6 @@ def isolated_env() -> dict[str, str]:
 # The release keys launchers trust, read from main, never from the checkout a release builds: a candidate's own copy
 # could list a key of its own.
 KEYS_FILE = "crates/sunrise-release-sign/release-keys.txt"
-# A SHA256SUMS row as sha256sum writes it (text or binary mode), as sunrise-release-sign's parse_sums reads it.
-SUMS_ROW = re.compile(r"([0-9A-Fa-f]{64}) [ *]?(\S.*)")
 # An Ed25519 public key's DER: this SubjectPublicKeyInfo header, then its 32 bytes.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 
@@ -348,25 +338,48 @@ def release_keys() -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
+def sums_rows(tag: str, sums: bytes) -> list[tuple[str, str]]:
+    """The `(file, sha256)` rows of a SHA256SUMS, read as sunrise-release-sign's parse_sums reads them: UTF-8 text,
+    blank lines skipped, each line `<64 hex digits> <file>` with one ` ` or `*` before the file stripped. A file is a
+    name in the release's folder: one with a `/` or `\\`, or `.` or `..`, refuses."""
+    try:
+        text = sums.decode()
+    except UnicodeDecodeError:
+        raise SystemExit(f"::error::{tag}'s SHA256SUMS is not UTF-8 text")
+    rows = []
+    for line in text.split("\n"):
+        line = line.removesuffix("\r")
+        if not line.strip():
+            continue
+        digest, space, name = line.partition(" ")
+        name = name[1:] if name[:1] in (" ", "*") else name
+        if (not space or len(digest) != 64 or not all(c in string.hexdigits for c in digest) or not name
+                or "/" in name or "\\" in name or name in (".", "..")):
+            raise SystemExit(f"::error::{tag}'s SHA256SUMS row {line!r} is not `<sha256>  <file>`")
+        rows.append((name, digest.lower()))
+    return rows
+
+
 def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.sig", keys=None,
                 publishing: bool = False) -> None:
     """Checks a release folder as launchers do (sunrise-release-sign's `verify`), with only the runner's OpenSSL and
     no code of the checkout: a key of `keys` (main's release-keys.txt by default) signed SHA256SUMS for `tag` (the
     message `horizon release <tag>` and a newline, then SHA256SUMS), and each file of `only` (every file SHA256SUMS
     lists when empty) is listed and matches. `publishing`: while no key is listed, an unsigned release goes out with
-    a warning, as before any key existed. Every SHA256SUMS row must be `<sha256> <file>` or `<sha256> *<file>`, and
-    every signature line one base64 Ed25519 signature; a repeated name is checked against each of its rows. Reports
-    on stderr (stdout is its callers' result), and exits naming what failed."""
+    a warning, as before any key existed. The signature file holds one base64 signature per line, and one line that
+    verifies is enough, as for the native verifier: a line that is no canonical base64 is skipped. A repeated name
+    is checked against each of its rows. Reports on stderr (stdout is its callers' result), and exits naming what
+    failed."""
     keys = release_keys() if keys is None else list(keys)
+    if "/" in signature or "\\" in signature:
+        raise SystemExit(f"::error::--signature names a file of the folder, not {signature!r}")
     sums = (folder / "SHA256SUMS").read_bytes()
-    rows = []
-    for line in sums.decode(errors="replace").splitlines():
-        if not line.strip():
-            continue
-        if not (match := SUMS_ROW.fullmatch(line)):
-            raise SystemExit(f"::error::{tag}'s SHA256SUMS row {line!r} is not `<sha256>  <file>`")
-        rows.append((match[2], match[1].lower()))
-    if "/" in signature or not (folder / signature).is_file():
+    rows = sums_rows(tag, sums)
+    try:
+        lines = (folder / signature).read_text(encoding="utf-8").split("\n")
+    except (OSError, UnicodeDecodeError):
+        lines = None
+    if lines is None:
         if publishing and not keys:
             print(f"::warning::{tag}: published with SHA256SUMS but unsigned: release-keys.txt lists no key yet",
                   file=sys.stderr)
@@ -383,13 +396,13 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
             message = work / "message"
             message.write_bytes(f"horizon release {tag}\n".encode() + sums)
             signed = False
-            for line in (folder / signature).read_text().split():
+            for line in (line.strip() for line in lines):
                 try:
                     decoded = base64.b64decode(line, validate=True)
                 except ValueError:
-                    decoded = b""
-                if len(decoded) != 64:
-                    raise SystemExit(f"::error::{tag}'s {signature} line {line!r} is not a base64 Ed25519 signature")
+                    continue
+                if len(decoded) != 64 or base64.b64encode(decoded).decode() != line:
+                    continue
                 (work / "signature").write_bytes(decoded)
                 for key in keys:
                     (work / "key.der").write_bytes(ED25519_SPKI + base64.b64decode(key))
