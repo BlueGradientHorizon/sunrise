@@ -871,7 +871,8 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
-        let item = s.as_ref()?.item.clone();
+        let source = s.as_ref()?;
+        let item = source.item.clone();
         let id = self.item_id(&item);
         let sync = self.sync.clone();
         // The stacks inside it (a bundle's contents, a crossbow's projectiles)
@@ -885,7 +886,14 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        stack_to_network(item_id, |registry, name| sync.id(registry, name), s)
+        let mut wire = stack_to_network(item_id, |registry, name| sync.id(registry, name), s)?;
+        super::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            &self.encoder.items,
+            &sync.builtin,
+        );
+        Some(wire)
     }
 
     /// `PlayerList.broadcastAll`: send a packet to every placed player.
@@ -2037,19 +2045,30 @@ impl Hub {
         self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
-    /// A rider's own teleport when its vehicle is teleported
-    /// (`Entity.teleportSameDimension`'s passenger transition): the position,
-    /// the rotation the vehicle turned it by (absolute, as
-    /// `ServerPlayer.teleport` sends it), and its motion kept
-    /// (`Relative.DELTA`).
-    pub fn teleport_rider(&mut self, i: usize, position: [f64; 3]) {
+    /// A rider's own teleport when its vehicle is teleported (`Entity.teleportSameDimension`'s passenger transition): a `delta` axis keeps its motion, `keep_look` the look.
+    pub fn teleport_rider(
+        &mut self,
+        i: usize,
+        position: [f64; 3],
+        delta: [bool; 3],
+        keep_look: bool,
+    ) {
         {
             let value = 0;
             self.guests
                 .update(i, |guest| guest.above_ground_ticks = value);
         }
-        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z};
-        self.teleport_relative(i, Some(position), DELTA_X | DELTA_Y | DELTA_Z, [0.0; 3]);
+        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z, X_ROT, Y_ROT};
+        let mut relatives = 0;
+        for (flag, bit) in delta.into_iter().zip([DELTA_X, DELTA_Y, DELTA_Z]) {
+            if flag {
+                relatives |= bit;
+            }
+        }
+        if keep_look {
+            relatives |= Y_ROT | X_ROT;
+        }
+        self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
     /// A displacement of the player by `by` to `target`, made on its server copy by the caller
@@ -2348,19 +2367,12 @@ impl Hub {
     }
     pub fn send_inventory(&mut self, i: usize) {
         let items: Vec<Option<ItemStack>> = (0..46).map(|s| self.guests[i].menu_slot(s)).collect();
-        let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
-        self.guests.update(i, |g| {
+        let state = self.guests.update(i, |g| {
             g.menu_state = (g.menu_state + 1) & 0x7FFF;
-            g.send(&C::ContainerSetContent(play::ContainerSetContent {
-                container: 0,
-                state: g.menu_state,
-                items: net,
-                carried,
-            }));
-            g.menu_sent = items;
-        })
+            g.menu_state
+        });
+        self.send_menu_snapshot(i, 0, state, &items);
+        self.guests.update(i, |g| g.menu_sent = items);
     }
 
     // ---- per tick ------------------------------------------------------
@@ -2656,17 +2668,11 @@ impl Hub {
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
         let mut g = self.guests.remove(i);
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        if let Some(m) = g
+        let closed = g
             .menu
             .as_ref()
-            .filter(|m| m.slots == super::menu::Slots::Native)
-        {
-            self.native_menu_events
-                .push(super::menu::NativeMenuEvent::Closed {
-                    uuid: g.uuid,
-                    window: m.window,
-                });
-        }
+            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
+        self.native_menu_events.extend(closed);
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -3659,6 +3665,11 @@ impl Hub {
                 }));
                 g.menu_sent[slot] = now;
             });
+        }
+        // Hub-owned open menus broadcast their cursor after their own slots.
+        // Menus owned by Game also use the guest's cursor, so cover them here.
+        if self.guests[i].menu.is_none() {
+            self.sync_carried(i, None);
         }
     }
 
@@ -6170,8 +6181,11 @@ mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:kept",
+                owner: "test",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -6215,12 +6229,14 @@ mod tests {
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: Some(mod_type),
                     registry_id: "test:kept".into(),
                     craft: None,
                     links: Vec::new(),
                     asks_still_valid: true,
+                    opening_item: None,
                 });
             });
         };

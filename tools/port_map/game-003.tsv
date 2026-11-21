@@ -134,7 +134,7 @@ ServerClockManager.getInstance	port	crates/sunrise-client/src/game/administratio
 ServerClockManager.setTotalTicks	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time set <ticks>
 ServerClockManager.moveToTimeMarker	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time set <marker>: not found, already there, or moved
 ServerClockManager.addTicks	inline	crates/sunrise-client/src/game/administration/commands/mod.rs::Game::cmd_time	/time add, floored at 0
-ServerClockManager.isAtTimeMarker	inline	crates/sunrise-client/src/game/mobs/raids/mod.rs::Game::tick_village_siege	ROLL_VILLAGE_SIEGE marker as tick 18000 of the day
+ServerClockManager.isAtTimeMarker	inline	crates/sunrise-gameplay/src/village_siege.rs::VillageSiege::tick	ROLL_VILLAGE_SIEGE marker as tick 18000 of the day
 ServerClockManager.commandTimeMarkersForClock	inline	crates/sunrise-client/src/game/interface/chat.rs::Game::build_registries	markers with show_in_commands go to the command suggestions
 ServerClockManager.ServerClockInstance.loadFrom	port	crates/sunrise-client/src/game/interface/chat.rs::Game::load_world_state	total ticks come from level data; rate, partial tick and paused are read from world_clocks.dat
 ServerClockManager.ServerClockInstance.packState	port	crates/sunrise-client/src/game/interface/chat.rs::Game::save_world_state

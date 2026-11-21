@@ -648,8 +648,11 @@ mod tests {
                 game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
                 let menu_type = Box::leak(Box::new(ModMenuType {
                     id: "test:menu",
+                    owner: "test",
                     slots: 27,
+                    player_inventory: true,
                     data_slots: 0,
+                    owned_slots: None,
                     results: Vec::new(),
                     inputs: Vec::new(),
                     crafting: None,
