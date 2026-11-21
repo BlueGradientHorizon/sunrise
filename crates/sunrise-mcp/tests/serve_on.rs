@@ -1,6 +1,7 @@
 //! The stdio line loop (`Server::serve_on`), on injected streams so no child process is needed.
 
 use serde_json::{Value, json};
+use std::cell::RefCell;
 use std::io::{self, Cursor, Write};
 use sunrise_mcp::Server;
 
@@ -104,38 +105,86 @@ fn a_write_error_is_returned() {
 }
 
 #[test]
-fn each_reply_is_flushed() {
-    #[derive(Default)]
-    struct Recorder {
-        bytes: Vec<u8>,
-        flushes: usize,
-    }
+fn a_flush_error_is_returned() {
+    struct FailingFlush;
 
-    impl Write for Recorder {
+    impl Write for FailingFlush {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.bytes.extend_from_slice(buf);
             Ok(buf.len())
         }
 
         fn flush(&mut self) -> io::Result<()> {
-            self.flushes += 1;
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "flush failed"))
+        }
+    }
+
+    let err = SERVER
+        .serve_on(
+            Cursor::new(format!("{}\n", request(1))),
+            &mut FailingFlush,
+            app,
+        )
+        .unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::BrokenPipe);
+}
+
+#[test]
+fn each_reply_is_flushed_before_the_next_request_is_handled() {
+    struct Recorder<'a> {
+        pending: Vec<u8>,
+        flushed: &'a RefCell<Vec<Vec<u8>>>,
+    }
+
+    impl Write for Recorder<'_> {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.pending.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushed
+                .borrow_mut()
+                .push(std::mem::take(&mut self.pending));
             Ok(())
         }
     }
 
-    let mut recorder = Recorder::default();
+    let flushed = RefCell::new(Vec::new());
+    let mut recorder = Recorder {
+        pending: Vec::new(),
+        flushed: &flushed,
+    };
     let input = format!("{}\n{}\n", request(1), request(2));
+    let mut handled = 0;
     SERVER
-        .serve_on(Cursor::new(input.as_bytes()), &mut recorder, app)
+        .serve_on(
+            Cursor::new(input.as_bytes()),
+            &mut recorder,
+            |method, params| {
+                assert_eq!(
+                    flushed.borrow().len(),
+                    handled,
+                    "prior replies must already be visible"
+                );
+                handled += 1;
+                app(method, params)
+            },
+        )
         .unwrap();
-    assert_eq!(recorder.flushes, 2);
-    assert_eq!(
-        std::str::from_utf8(&recorder.bytes)
-            .unwrap()
-            .lines()
-            .count(),
-        2
-    );
+
+    let flushed = flushed.borrow();
+    assert_eq!(flushed.len(), 2);
+    for (bytes, id) in flushed.iter().zip([1, 2]) {
+        let body = bytes
+            .strip_suffix(b"\n")
+            .expect("a complete reply at each flush");
+        let reply: Value = serde_json::from_slice(body).expect("one reply per flush");
+        assert_eq!(
+            reply,
+            json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": [{ "name": "state" }] } })
+        );
+    }
+    assert!(recorder.pending.is_empty(), "unflushed output");
 }
 
 #[test]
