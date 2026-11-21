@@ -117,7 +117,8 @@ impl std::error::Error for GetError {}
 pub type UrlCheck<'a> = dyn Fn(&Url) -> Result<(), String> + 'a;
 
 /// GET with a fresh proxy decision per hop, including `NO_PROXY`. Only `Accept` and
-/// `User-Agent` from `headers` are carried to a redirect destination.
+/// `User-Agent` from `headers` are carried to a redirect destination. Only 301, 302, 303,
+/// 307 and 308 are followed; other 3xx responses are returned unchanged.
 pub fn get(
     url: &str,
     headers: &[(&str, &str)],
@@ -173,7 +174,7 @@ fn follow(
             return Err(GetError::Request("Refused non-HTTP URL".into()));
         }
         let response = request(&current, hop == 0)?;
-        if !(300..400).contains(&response.status()) {
+        if !matches!(response.status(), 301 | 302 | 303 | 307 | 308) {
             return Ok(response);
         }
         if hop == MAX_REDIRECTS {
@@ -635,6 +636,20 @@ mod tests {
                 "https://assets.invalid/release"
             ]
         );
+    }
+
+    #[test]
+    fn not_modified_does_not_follow_location() {
+        let mut requests = 0;
+        let response = follow("https://assets.invalid/file", None, |_, _| {
+            requests += 1;
+            Ok("HTTP/1.1 304 Not Modified\r\nLocation: /other\r\n\r\n"
+                .parse()
+                .unwrap())
+        })
+        .unwrap();
+        assert_eq!(response.status(), 304);
+        assert_eq!(requests, 1);
     }
 
     #[test]
