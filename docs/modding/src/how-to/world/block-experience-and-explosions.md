@@ -29,14 +29,14 @@ validated per edit with `StackWriteError`, so one invalid edit leaves all other
 drops, `experience` and cancel state intact. `breaker_entity` is not set when no
 entity broke the block (a piston, water, a neighbour update, `/setblock destroy`)
 or for explosions. `block_entity` is `Option<BlockEntityRef>` only while the
-block entity is still genuinely resident in the world (level-side and mob
-breaks); it is `None` for explosions, blocks without one, and a player's break
-whose removal has already taken the block entity out of the world. On a player's
-break, `block_entity_data` is `Option<&Compound>` carrying the removed block
-entity's read-only payload, without its identity or position. This includes
-entities stored only in the chunk, such as decorated pots, and preserves
-`CustomName` so a listener can copy a chest's name onto its drop. Copy anything
-you need to retain past the event.
+original entity is resident. `block_entity_data` is `Option<&Compound>` carrying
+the original entity's read-only payload when no resident handle is available:
+for a player break after removal, for a level-side or mob break of an entity
+stored only in the chunk (such as a decorated pot), or for a mob break after a
+`loot_drops` listener removes or replaces the original entity. A replacement's
+handle is never passed. The payload preserves `CustomName` but excludes identity
+and position. Explosions and breaks of blocks without a block entity provide
+neither field. Copy any data you need to retain past the event.
 
 With the `block_drops` rule off, the level still draws the drop positions, but
 no item entities are constructed, so the hook starts with an empty list. No
@@ -54,6 +54,15 @@ The engine writes air after the callback, including when the callback
 replaced the block. Vanilla's separate `wasExploded` behavior follows removal.
 Air, spared blocks, canceled explosions and explosions that keep blocks produce
 no callback. The initial explosion experience amount is zero.
+
+An explosion's `block_drops` list contains only that block's shares of merged
+stacks. Unchanged shares rejoin one entity per group. Without edits or reads of
+random fields, each group draws its position and motion and joins before the
+next group starts. Reading a position or velocity prepares that field through
+its group in vanilla order. A drop or experience edit prepares the original
+captures before items join. Compatible order edits across blocks all apply; an
+earlier block wins only when a later order would conflict, and otherwise ready
+groups join in vanilla order.
 
 `explosion_resistance(level, event)` answers `Some(resistance)` to replace the
 block's own explosion resistance against `event.explosion`, as a ray of the

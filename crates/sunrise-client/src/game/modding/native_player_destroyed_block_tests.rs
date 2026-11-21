@@ -570,41 +570,119 @@ fn block_drops_lends_the_saved_only_pot_payload() {
             GameMode::Survival,
             Some(ItemStack::new("minecraft:diamond_pickaxe", 1)),
         );
-        let [x, y, z] = [7, 64, 4];
-        let pot = [x, y, z];
-        place(game, pot, "minecraft:decorated_pot");
         let item = Tag::compound([
             ("id", Tag::String("minecraft:diamond".into())),
             ("count", Tag::Int(3)),
         ]);
-        spill::put_saved_entity(
-            &mut game.world,
-            pot,
-            Tag::compound([
-                ("id", Tag::String("minecraft:decorated_pot".into())),
-                ("x", Tag::Int(x)),
-                ("y", Tag::Int(y)),
-                ("z", Tag::Int(z)),
-                ("keepPacked", Tag::Byte(0)),
-                ("item", item.clone()),
-            ]),
-        );
-        assert!(game.world.block_entities.get(&(x, y, z)).is_none());
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new(
-                "pot-probe",
-                Box::new(Observe(seen.clone())),
-            )]
-            .into(),
-            || assert!(game.player_destroy_block(player, pot, false)),
-        );
-        assert_eq!(block(game, pot), "minecraft:air");
-        assert!(spill::saved_entity(&game.world, pot).is_none());
-        let mut payload = Compound::new();
-        payload.insert("item".into(), item);
-        assert_eq!(*seen.lock().unwrap(), [(false, Some(payload))]);
+        for (pot, player_break) in [([7, 64, 4], true), ([8, 64, 4], false)] {
+            let [x, y, z] = pot;
+            place(game, pot, "minecraft:decorated_pot");
+            spill::put_saved_entity(
+                &mut game.world,
+                pot,
+                Tag::compound([
+                    ("id", Tag::String("minecraft:decorated_pot".into())),
+                    ("x", Tag::Int(x)),
+                    ("y", Tag::Int(y)),
+                    ("z", Tag::Int(z)),
+                    ("keepPacked", Tag::Byte(0)),
+                    ("item", item.clone()),
+                ]),
+            );
+            assert!(game.world.block_entities.get(&(x, y, z)).is_none());
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "pot-probe",
+                    Box::new(Observe(seen.clone())),
+                )]
+                .into(),
+                || {
+                    if player_break {
+                        assert!(game.player_destroy_block(player, pot, false));
+                    } else {
+                        // The level destroy path shared with `/setblock ... destroy`.
+                        game.destroy_block_dropping(pot).unwrap();
+                    }
+                },
+            );
+            assert_eq!(block(game, pot), "minecraft:air");
+            assert!(spill::saved_entity(&game.world, pot).is_none());
+            let payload = Compound::from([("item".into(), item.clone())]);
+            assert_eq!(*seen.lock().unwrap(), [(false, Some(payload))]);
+        }
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn mob_block_drops_lend_the_original_entity_after_a_loot_listener_replaces_it() {
+    use sunrise_client::mobs::MobEvent;
+
+    struct Replace(Arc<Mutex<Option<mod_api::BlockEntityRef>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Replace {
+        fn loot_drops(&self, host: &mut dyn ServerHost, event: &mut mod_api::LootDropsEvent<'_>) {
+            let Some((pos, _)) = event.context.block else {
+                return;
+            };
+            let level = host.level("minecraft:overworld").unwrap();
+            let before = host.block_entity(level, pos).unwrap();
+            set(host, pos, "minecraft:air");
+            set(host, pos, "minecraft:chest");
+            let after = host.block_entity(level, pos).unwrap();
+            assert_ne!(before, after);
+            *self.0.lock().unwrap() = Some(after);
+        }
+    }
+
+    let replacement = Arc::new(Mutex::new(None));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let handle = Arc::new(Mutex::new(None));
+    mod_platform::testing::with_mods(
+        vec![
+            mod_api::ModEntry::new("replace", Box::new(Replace(replacement.clone()))),
+            mod_api::ModEntry::new(
+                "drops-probe",
+                Box::new(DropsProbe {
+                    seen: seen.clone(),
+                    handle: handle.clone(),
+                    panic: false,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            with_game(|game| {
+                let _ = with_player(game, GameMode::Survival, None);
+                let chest = [7, 64, 4];
+                put_chest(game, chest);
+                let name = mod_api::Tag::String("Original Chest".into());
+                game.world.block_names.insert((7, 64, 4), name.clone());
+                let wither = game
+                    .spawn_mob_raw("minecraft:wither", [4.5, 64.0, 4.5], false)
+                    .unwrap();
+                game.handle_mob_events(vec![MobEvent::BreakBlock {
+                    pos: chest,
+                    drop: true,
+                    by: Some(wither),
+                    breaker: None,
+                }])
+                .unwrap();
+                assert!(
+                    replacement.lock().unwrap().is_some(),
+                    "a different chest stood during the event"
+                );
+                let seen = seen.lock().unwrap();
+                assert_eq!(seen.len(), 1);
+                assert_eq!(seen[0].items, Some(1));
+                assert_eq!(seen[0].custom_name, Some(name));
+                assert!(seen[0].has_block_entity_data);
+                assert!(!seen[0].has_block_entity);
+                assert_eq!(*handle.lock().unwrap(), None);
+            })
+        },
+    );
 }
 
 /// A player's survival break names the player as `breaker` and `breaker_entity`, lends the
@@ -773,9 +851,10 @@ fn block_drops_names_the_mob_that_broke_the_block() {
                 .default_state("minecraft:oak_leaves")
                 .unwrap();
             game.world.set(9, 64, 4, leaves).unwrap();
-            game.entity_block_dropped([9, 64, 4], leaves, Some(51), Vec::new());
+            let no_entity = super::spill::BlockDropEntity::None;
+            game.entity_block_dropped([9, 64, 4], leaves, Some(51), no_entity, Vec::new());
             game.world.set(10, 64, 4, leaves).unwrap();
-            game.entity_block_dropped([10, 64, 4], leaves, None, Vec::new());
+            game.entity_block_dropped([10, 64, 4], leaves, None, no_entity, Vec::new());
             let heard = std::mem::take(&mut *seen.lock().unwrap());
             assert_eq!(heard.len(), 2);
             assert_eq!(

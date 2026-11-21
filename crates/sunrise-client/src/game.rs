@@ -6565,10 +6565,8 @@ impl Game<'_> {
                     // this is still the original entity the break is about to remove.
                     if self.native_authoritative()
                         && mod_api::__private::listened(mod_api::HookId::BlockDrops)
-                        && let sunrise_core::nbt::Tag::Compound(mut data) = tag
                     {
-                        data.remove(&"keepPacked".into());
-                        saved_data = Some(native_block_entity_refs::block_entity_payload(data));
+                        saved_data = spill::packed_block_entity_payload(tag);
                     }
                 }
                 None

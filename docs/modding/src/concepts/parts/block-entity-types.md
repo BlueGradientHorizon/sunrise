@@ -160,7 +160,9 @@ During unload or a removed block's loot roll, the entity
 may no longer be readable through the host; the event still carries its payload, identity and its
 position and level (`event.pos`, `event.level`), so a mod that keeps live state per dimension and
 position can look it up and write it into `event.tag`.
-`block_drops` (via `block_entity_data` on a player's break, or a resident `block_entity` handle on level-side and mob breaks) and `player_destroyed_block` read the stored data, not the loot copy.
+`block_drops` and `player_destroyed_block` read the original entity's stored data, not the loot copy.
+`block_drops` supplies a resident `block_entity` handle while the original is still in the level,
+or lends `block_entity_data` if the original was removed or stored only in the chunk.
 Changing output does not mark a chunk dirty: mark the entity changed when the live state changes.
 
 `block_entity_on_load` is the separate once-per-instance attachment notice. It runs after the entity

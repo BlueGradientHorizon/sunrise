@@ -6,7 +6,7 @@
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, GameLevel, Screen};
 use mod_api::EntityRef;
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap};
 use sunrise_client::{
     block_entity_item, block_entity_nbt,
     containers::BlockEntity,
@@ -14,7 +14,7 @@ use sunrise_client::{
     items::{BlockLootRoll, ItemStack, Items},
 };
 use sunrise_core::position::BlockPos;
-use sunrise_core::random::RandomSource;
+use sunrise_core::random::{LevelRandom, RandomSource};
 use {
     sunrise_core::nbt::{Compound, Tag},
     sunrise_world::{
@@ -245,20 +245,36 @@ pub(in crate::game) enum BlockDropEntity<'a> {
     /// A block entity that was resident at `pos` with this exact generation when the break
     /// started. Resolves to a live `BlockEntityRef` only while that same generation remains
     /// resident at `pos`.
-    Resident(u64),
-    /// Read-only saved data (including `CustomName`) of a block entity already removed by a
-    /// player's break. Never resolves a resident handle at `pos`.
-    Removed(&'a Compound),
+    Resident(u64, Option<&'a Compound>),
+    /// Read-only saved data (including `CustomName`) of a removed or packed block entity.
+    /// Never resolves a resident handle at `pos`.
+    Saved(&'a Compound),
+}
+
+impl<'a> BlockDropEntity<'a> {
+    pub(super) fn at(
+        world: &sunrise_client::world::World,
+        key: (i32, i32, i32),
+        data: Option<&'a Compound>,
+    ) -> Self {
+        if world.block_entities.get(&key).is_some()
+            && let Some(generation) = world.block_entities.generation(&key)
+        {
+            Self::Resident(generation, data)
+        } else {
+            data.map_or(Self::None, Self::Saved)
+        }
+    }
 }
 
 /// What a broken block spawns (`GameLevel::block_dropped`).
 /// Prepared engine item entity; API snapshots exist only while a listener runs.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct BlockItemDrop {
+pub(crate) struct BlockItemDrop<P = [f64; 3]> {
     pub(super) random: Option<ItemRandom>,
     pub(super) stack: ItemStack,
-    pub(super) position: [f64; 3],
-    pub(super) velocity: [f64; 3],
+    pub(super) position: P,
+    pub(super) velocity: P,
     pub(super) pickup_delay: u32,
     /// The item-entity state a drop hook set.
     pub(super) state: DropState,
@@ -267,19 +283,22 @@ pub(crate) struct BlockItemDrop {
     pub(super) origin_group: Option<usize>,
 }
 
-impl BlockItemDrop {
+impl<P: From<[f64; 3]>> BlockItemDrop<P> {
     /// The drop as the mods hear and edit it.
     pub(super) fn from_api(drop: &mod_api::ItemDrop, stack: ItemStack) -> Self {
         Self {
             random: None,
             stack,
-            position: drop.position,
-            velocity: drop.velocity,
+            position: drop.position.into(),
+            velocity: drop.velocity.into(),
             pickup_delay: drop.pickup_delay,
             state: DropState::of(drop),
             origin_group: None,
         }
     }
+}
+
+impl BlockItemDrop {
     /// The constructor random the item entity joins with, carrying the state a hook set. A drop
     /// with no state set keeps its random as it was (none: drawn when it joins).
     pub(super) fn random_with_state(&self) -> Option<ItemRandom> {
@@ -294,12 +313,66 @@ impl BlockItemDrop {
     }
 }
 
-struct EnginePreparedDrops<'a> {
-    items: &'a mut Vec<BlockItemDrop>,
-    items_registry: &'a Items,
+/// Explosion shares defer their inherited position and motion until read or joined. Each
+/// observed field materializes the vanilla prefix of its own random stream, only once.
+pub(super) struct ExplosionDropCaptures {
+    anchors: Vec<[i32; 3]>,
+    positions: Vec<[f64; 3]>,
+    constructors: Vec<ItemRandom>,
 }
 
-impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
+impl ExplosionDropCaptures {
+    pub(super) fn new(anchors: Vec<[i32; 3]>) -> Self {
+        Self {
+            anchors,
+            positions: Vec::new(),
+            constructors: Vec::new(),
+        }
+    }
+
+    pub(super) fn started(&self) -> bool {
+        !self.positions.is_empty() || !self.constructors.is_empty()
+    }
+
+    pub(super) fn position(&mut self, group: usize, random: &mut LevelRandom) -> [f64; 3] {
+        while self.positions.len() <= group {
+            self.positions
+                .push(pop_position(random, self.anchors[self.positions.len()]));
+        }
+        self.positions[group]
+    }
+
+    pub(super) fn constructor(&mut self, group: usize) -> ItemRandom {
+        while self.constructors.len() <= group {
+            self.constructors.push(prepare_item_random(None));
+        }
+        self.constructors[group]
+    }
+}
+
+pub(super) trait DropCoordinates: Copy + From<[f64; 3]> + Into<Option<[f64; 3]>> {}
+impl DropCoordinates for [f64; 3] {}
+impl DropCoordinates for Option<[f64; 3]> {}
+
+struct EnginePreparedDrops<'a, P> {
+    items: &'a mut Vec<BlockItemDrop<P>>,
+    items_registry: &'a Items,
+    // The read-only level host does not lend its RNG. Write the offset draws made by
+    // this scoped view back to the level before any subsequent world action.
+    explosion: Option<RefCell<(&'a mut ExplosionDropCaptures, LevelRandom)>>,
+}
+
+impl<P: DropCoordinates> EnginePreparedDrops<'_, P> {
+    fn convert(
+        &self,
+        drop: &mod_api::ItemDrop,
+    ) -> Result<BlockItemDrop<P>, mod_api::StackWriteError> {
+        let stack = drop.stack.try_into_engine(self.items_registry)?;
+        Ok(BlockItemDrop::from_api(drop, stack))
+    }
+}
+
+impl<P: DropCoordinates> mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_, P> {
     fn len(&self) -> usize {
         self.items.len()
     }
@@ -320,11 +393,21 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
     }
 
     fn position(&self, index: usize) -> Option<[f64; 3]> {
-        self.items.get(index).map(|item| item.position)
+        let item = self.items.get(index)?;
+        let position: Option<_> = item.position.into();
+        position.or_else(|| {
+            let (captures, random) = &mut *self.explosion.as_ref()?.borrow_mut();
+            Some(captures.position(item.origin_group?, random))
+        })
     }
 
     fn velocity(&self, index: usize) -> Option<[f64; 3]> {
-        self.items.get(index).map(|item| item.velocity)
+        let item = self.items.get(index)?;
+        let velocity: Option<_> = item.velocity.into();
+        velocity.or_else(|| {
+            let (captures, _) = &mut *self.explosion.as_ref()?.borrow_mut();
+            Some(captures.constructor(item.origin_group?).velocity)
+        })
     }
 
     fn pickup_delay(&self, index: usize) -> Option<u32> {
@@ -364,7 +447,7 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
         let Some(item) = self.items.get_mut(index) else {
             return false;
         };
-        item.position = position;
+        item.position = position.into();
         true
     }
 
@@ -372,7 +455,7 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
         let Some(item) = self.items.get_mut(index) else {
             return false;
         };
-        item.velocity = velocity;
+        item.velocity = velocity.into();
         true
     }
 
@@ -417,7 +500,7 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
     }
 
     fn push(&mut self, drop: mod_api::ItemDrop) -> Result<(), mod_api::StackWriteError> {
-        let converted = drop.try_into_engine(self.items_registry)?;
+        let converted = self.convert(&drop)?;
         self.items.push(converted);
         Ok(())
     }
@@ -430,7 +513,7 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
         if index > self.items.len() {
             return Ok(false);
         }
-        let converted = drop.try_into_engine(self.items_registry)?;
+        let converted = self.convert(&drop)?;
         self.items.insert(index, converted);
         Ok(true)
     }
@@ -443,7 +526,7 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
         if index >= self.items.len() {
             return Ok(false);
         }
-        let converted = drop.try_into_engine(self.items_registry)?;
+        let converted = self.convert(&drop)?;
         self.items[index] = converted;
         Ok(true)
     }
@@ -473,9 +556,9 @@ impl mod_api::PreparedBlockDropsAccess for EnginePreparedDrops<'_> {
     }
 }
 
-pub(super) struct BlockDrops {
+pub(super) struct BlockDrops<P = [f64; 3]> {
     /// The item entities to add, as the mods left them.
-    pub(super) items: Vec<BlockItemDrop>,
+    pub(super) items: Vec<BlockItemDrop<P>>,
     /// The experience points to award at the block's centre.
     pub(super) experience: u32,
     /// A mod canceled the break's drops: `spawnAfterBreak` doesn't run.
@@ -646,6 +729,15 @@ pub(super) fn saved_entity(
         .cloned()
 }
 
+/// The read-only payload of an entity kept in packed chunk data, not its loader metadata.
+pub(super) fn packed_block_entity_payload(tag: Tag) -> Option<Compound> {
+    let Tag::Compound(mut data) = tag else {
+        return None;
+    };
+    data.remove(&"keepPacked".into());
+    Some(super::native_block_entity_refs::block_entity_payload(data))
+}
+
 /// Keep `tag` as the block entity at its position Sunrise does not model,
 /// replacing the one there.
 pub(super) fn put_saved_entity(
@@ -799,13 +891,23 @@ impl GameLevel<'_> {
         let key = (pos.x, pos.y, pos.z);
         let at = [pos.x, pos.y, pos.z];
         self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
-        if let Some(entity) = self.world.block_entities.get(&key) {
+        let packed_data = if let Some(entity) = self.world.block_entities.get(&key) {
             let saved = self.encode_live_block_entity(key, entity, &self.facts.get(state).name);
             self.pending.record_from(self.world, at, saved);
-        } else if let Some(tag) = saved_entity(self.world, [pos.x, pos.y, pos.z]) {
+            None
+        } else if let Some(tag) = saved_entity(self.world, at) {
             self.pending.record_saved(at, &tag);
-        }
-        let block_entity = self.resident_block_entity(pos);
+            if self.native_authoritative
+                && mod_api::__private::listened(mod_api::HookId::BlockDrops)
+            {
+                packed_block_entity_payload(tag)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        let block_entity = BlockDropEntity::at(self.world, key, packed_data.as_ref());
         let dynamic = self.pending.dynamic(at);
         let machine = self
             .drop_tool
@@ -935,6 +1037,7 @@ impl GameLevel<'_> {
                 experience,
                 canceled: false,
             },
+            None,
         )
     }
     /// Capture the item entity only if `Block.popResource` would construct it.
@@ -958,15 +1061,16 @@ impl GameLevel<'_> {
     /// The one event/filter boundary for prepared block item entities and XP.
     /// Explosions supply their merged entities, keeping that caller's zero
     /// initial experience; the event may still award it.
-    pub(super) fn block_drops_ready(
+    pub(super) fn block_drops_ready<P: DropCoordinates>(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
         block_entity: BlockDropEntity<'_>,
-        dropped: BlockDrops,
-    ) -> BlockDrops {
+        dropped: BlockDrops<P>,
+        explosion: Option<&mut ExplosionDropCaptures>,
+    ) -> BlockDrops<P> {
         let BlockDrops {
             mut items,
             mut experience,
@@ -992,12 +1096,13 @@ impl GameLevel<'_> {
                     }
                 }
             });
-            let block_entity_data = match block_entity {
-                BlockDropEntity::Removed(data) => Some(data),
-                BlockDropEntity::None | BlockDropEntity::Resident(_) => None,
-            };
             let (block_entity_ref, breaker_entity) =
                 self.drop_event_refs(pos, breaker, block_entity);
+            let block_entity_data = match block_entity {
+                BlockDropEntity::Saved(data) => Some(data),
+                BlockDropEntity::Resident(_, data) if block_entity_ref.is_none() => data,
+                BlockDropEntity::None | BlockDropEntity::Resident(..) => None,
+            };
             let project_tool = |metadata| {
                 tool.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
             };
@@ -1007,6 +1112,8 @@ impl GameLevel<'_> {
             let mut drops_access = EnginePreparedDrops {
                 items: &mut items,
                 items_registry,
+                explosion: explosion
+                    .map(|captures| RefCell::new((captures, self.world.random.clone()))),
             };
             self.native_block_drops(mod_api::__private::BlockDropsCall {
                 dimension: self.dimension,
@@ -1021,6 +1128,9 @@ impl GameLevel<'_> {
                 experience: &mut experience,
                 cancel: &mut canceled,
             });
+            if let Some(explosion) = drops_access.explosion {
+                self.world.random = explosion.into_inner().1;
+            }
         }
         if canceled || !self.rules.block_drops {
             items.clear();

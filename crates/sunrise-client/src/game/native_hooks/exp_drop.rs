@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::spill::{BlockDropEntity, BlockDrops};
 impl GameLevel<'_> {
     pub(in crate::game) fn native_exp_drop(&self, call: super::fire::ExpDropCall<'_>) {
         self.fire_exp_drop(call);
@@ -11,14 +12,7 @@ impl GameLevel<'_> {
         &self,
         pos: BlockPos,
     ) -> crate::game::spill::BlockDropEntity<'static> {
-        let key = (pos.x, pos.y, pos.z);
-        if self.world.block_entities.get(&key).is_some()
-            && let Some(generation) = self.world.block_entities.generation(&key)
-        {
-            crate::game::spill::BlockDropEntity::Resident(generation)
-        } else {
-            crate::game::spill::BlockDropEntity::None
-        }
+        BlockDropEntity::at(self.world, (pos.x, pos.y, pos.z), None)
     }
 
     pub(in crate::game) fn part_break_experience(
@@ -63,17 +57,14 @@ impl GameLevel<'_> {
     ) -> (Option<mod_api::BlockEntityRef>, Option<mod_api::EntityRef>) {
         let at = [pos.x, pos.y, pos.z];
         let block_entity = match entity {
-            crate::game::spill::BlockDropEntity::Resident(expected_generation) => {
-                self.api_level.and_then(|level| {
-                    let key = (pos.x, pos.y, pos.z);
-                    self.world.block_entities.get(&key)?;
-                    let generation = self.world.block_entities.generation(&key)?;
-                    (generation == expected_generation)
-                        .then(|| mod_api::__private::game::block_entity_ref(level, at, generation))
-                })
-            }
-            crate::game::spill::BlockDropEntity::None
-            | crate::game::spill::BlockDropEntity::Removed(_) => None,
+            BlockDropEntity::Resident(expected_generation, _) => self.api_level.and_then(|level| {
+                let key = (pos.x, pos.y, pos.z);
+                self.world.block_entities.get(&key)?;
+                let generation = self.world.block_entities.generation(&key)?;
+                (generation == expected_generation)
+                    .then(|| mod_api::__private::game::block_entity_ref(level, at, generation))
+            }),
+            BlockDropEntity::None | BlockDropEntity::Saved(_) => None,
         };
         let breaker = if breaker.is_some() {
             self.api_level
@@ -134,8 +125,9 @@ impl Game<'_> {
         pos: [i32; 3],
         state: BlockStateId,
         breaker: Option<u32>,
+        block_entity: BlockDropEntity<'_>,
         drops: Vec<ItemStack>,
-    ) -> crate::game::spill::BlockDrops {
+    ) -> BlockDrops {
         let breaker =
             if crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
                 || mod_api::__private::listened(mod_api::HookId::BlockDrops)
@@ -149,7 +141,6 @@ impl Game<'_> {
             // with_level rebuilds GameLevel with both fields None on every call.
             level.drop_entity = breaker;
             level.drop_breaker_at = Some(pos);
-            let block_entity = level.resident_block_entity(pos);
             level.block_dropped(pos, state, None, None, block_entity, drops, None)
         })
     }
@@ -189,8 +180,8 @@ impl Game<'_> {
         let ([x, y, z], state) = at;
         let (breaker, tool, block_entity_data) = who;
         let block_entity = match block_entity_data {
-            Some(data) => crate::game::spill::BlockDropEntity::Removed(data),
-            None => crate::game::spill::BlockDropEntity::None,
+            Some(data) => BlockDropEntity::Saved(data),
+            None => BlockDropEntity::None,
         };
         self.with_level(|_, level, _| {
             level.block_dropped(
