@@ -22,8 +22,16 @@ impl Game<'_> {
         if !self.rockets.store_back(index, r) {
             return None;
         }
+        // Listeners resolve the rocket by id: it is not held out while they read it.
+        let held = self.held_out.iter().rposition(|&held| held == id);
+        if let Some(at) = held {
+            self.held_out.remove(at);
+        }
         let canceled =
             self.native_separate_projectile_impact(id, "minecraft:firework_rocket", owner, hit);
+        if held.is_some() {
+            self.held_out.push(id);
+        }
         let at = self.rockets.locate(join)?;
         if self
             .persist
