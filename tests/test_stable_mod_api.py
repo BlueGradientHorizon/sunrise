@@ -211,6 +211,28 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "does not descend from"):
                 nightly.require_stable_lineage(unrelated, tag, previous, PREVIOUS)
 
+    def test_same_line_accepts_backport_already_merged_back_into_main(self):
+        repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
+        repo.mkdir()
+        git = nightly.git
+        with chdir(repo):
+            git("init", "--initial-branch=main")
+            for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+                git("config", key, git("config", "--default", default, "--get", key))
+            git("commit", "--allow-empty", "-m", "previous stable")
+            previous = git("rev-parse", "HEAD")
+            git("switch", "-c", "release")
+            git("commit", "--allow-empty", "-m", "backport")
+            git("switch", "main")
+            git("commit", "--allow-empty", "-m", "main-only change")
+            git("merge", "--no-ff", "release", "-m", "back-merge release")
+            git("switch", "release")
+            git("commit", "--allow-empty", "-m", "another release fix")
+            candidate = git("rev-parse", "HEAD")
+        git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
+        with chdir(checkout):
+            nightly.require_stable_lineage(candidate, "26.3-0.1.11", previous, PREVIOUS)
+
     def test_large_notes_keep_every_target_in_a_linked_file(self):
         target = "module::" + "x" * 125_000
         nightly.append_mixin_notes(self.notes, "26.3-0.1.11", PREVIOUS, {}, {target: ("signature", "source")})

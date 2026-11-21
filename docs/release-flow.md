@@ -458,10 +458,11 @@ version must stay the same within a line. The first release of a line has no API
 note or dispatch option overrides the check. This compares declarations, not behaviour: a vanilla parity fix is
 allowed in a patch even when a mod can observe it.
 
-Within a line, the candidate must descend from its previous stable tag and may not bring in any `main` history
-absent from that tag. Backport fixes by cherry-pick; merging a backport PR is fine, but bringing in new Nightly
-history starts a new major. The workflow runs from the dispatch ref, so backport the check to the release branch
-before cutting a patch or minor there.
+Within a line, the candidate must descend from its previous stable tag and may not bring in commits from
+`main`'s first-parent history that are absent from that tag. Backport fixes by cherry-pick; merging a backport PR
+or merging the release branch back into main is fine. Bringing in new mainline history starts a new major.
+The workflow runs from the dispatch ref, so backport the check to the release branch before cutting a patch or
+minor there.
 
 The check runs before tag reservation, on publish-only retries and in dry runs. Comparing against a previous
 stable release requires both signed SDKs, even on a dry run. Native engine loops, internals and mixin targets
