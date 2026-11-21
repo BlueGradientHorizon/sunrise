@@ -77,6 +77,7 @@ impl ResourceHandler<ItemResource> for BundleItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(offer) = resource.to_stack(amount) else {
             return 0;
         };
@@ -101,6 +102,7 @@ impl ResourceHandler<ItemResource> for BundleItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some((Some(out), changed)) = self
             .0
             .with_stack(host, |stack| stack.project())

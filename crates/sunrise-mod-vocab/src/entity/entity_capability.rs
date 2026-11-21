@@ -182,6 +182,7 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -196,6 +197,7 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -282,6 +284,7 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -296,6 +299,7 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -432,6 +436,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -446,6 +451,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -469,6 +475,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         resource: &ItemResource,
         amount: u32,
     ) -> Result<u32, Overanswered> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !live(host, self.entity) {
             return Ok(0);
         }

@@ -293,7 +293,7 @@ pub fn dispense_container(
         Ok((_, Some(changed))) => {
             host.dispense_with_remainder(event.dimension, event.pos, event.facing, stack, changed)
         }
-        Err(()) => host.dispense_default(event.dimension, event.pos, event.facing, stack),
+        Err(_) => host.dispense_default(event.dimension, event.pos, event.facing, stack),
     };
     Some((left.ok()?, 1000))
 }

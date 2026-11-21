@@ -449,6 +449,7 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(offer) = resource.to_stack(amount) else {
             return 0;
         };
@@ -473,6 +474,7 @@ impl ResourceHandler<ItemResource> for GameItemItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some((Some(out), changed)) = self
             .0
             .with_stack(host, |stack| stack.project())
@@ -635,7 +637,7 @@ impl ItemPlace {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        let _ = tx;
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let swap = |host: &mut dyn ServerHost, tx: &TransactionContext| {
             let old = self.resource(host).ok_or(())?;
             let out = self.extract(host, tx, &old, amount);
@@ -660,6 +662,7 @@ impl ItemPlace {
         tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), crate::CraftedByError> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !matches!(self, Self::MenuSlot { .. } | Self::PlayerCursor { .. }) {
             return Err(crate::CraftedByError::NotHeld);
         }
@@ -691,6 +694,7 @@ impl ItemPlace {
         tx: &TransactionContext,
         edit: impl FnOnce(&mut ItemComponentEditor<'_>),
     ) -> Result<(), ItemPlaceEditError> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut place = self;
         while let Self::Strict(inner) = place {
             place = inner;
@@ -745,6 +749,7 @@ impl ItemPlace {
         amount: u32,
         insert: bool,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if amount == 0 {
             return 0;
         }

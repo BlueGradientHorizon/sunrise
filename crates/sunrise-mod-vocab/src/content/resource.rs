@@ -503,10 +503,11 @@ pub trait ResourceHandler<R> {
     /// Unsupported handlers return false without mutation.
     fn set_max_stack_size(
         &self,
-        _host: &mut dyn ServerHost,
-        _tx: &TransactionContext,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
         _limit: u32,
     ) -> bool {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         false
     }
 
@@ -563,6 +564,7 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
             Ok(self.insert_at(host, tx, *index, resource, left))
@@ -578,6 +580,7 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
             Ok(self.extract_at(host, tx, *index, resource, left))
@@ -593,10 +596,15 @@ pub(crate) fn in_turn<P>(
     parts: impl IntoIterator<Item = P>,
     ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
-    if amount == 0 || host.transaction_current().as_ref() != Some(tx) {
+    crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    if amount == 0 {
         return Ok(0);
     }
-    host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
+    match host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask)) {
+        Ok(done) => Ok(done),
+        Err(crate::TransactionError::Aborted(over)) => Err(over),
+        Err(crate::TransactionError::Unavailable) => Ok(0),
+    }
 }
 
 /// Asks each part for the full remaining amount. The owning transaction aborts on `Err`.
@@ -675,10 +683,15 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
         })
     };
     match step(host, want) {
-        Err(Ok(took)) if took > N::default() => step(host, took),
+        Err(crate::TransactionError::Aborted(Ok(took))) if took > N::default() => step(host, took),
         answer => answer,
     }
-    .or_else(|answer| answer.map(|_| N::default()))
+    .or_else(|error| match error {
+        crate::TransactionError::Aborted(Ok(_)) | crate::TransactionError::Unavailable => {
+            Ok(N::default())
+        }
+        crate::TransactionError::Aborted(Err(over)) => Err(over),
+    })
 }
 
 #[cfg(test)]

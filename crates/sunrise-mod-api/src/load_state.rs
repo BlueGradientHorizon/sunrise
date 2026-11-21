@@ -394,9 +394,9 @@ mod tests {
     }
 
     #[test]
-    fn early_world_handle_and_transaction_calls_panic_naming_the_phase() {
+    fn early_world_handle_calls_panic_naming_the_phase_and_transactions_are_unavailable() {
         crate::__private::initialize().unwrap();
-        use crate::{Host, HostTransaction, ServerHost, prelude::*};
+        use crate::{Host, HostTransaction, ServerHost, TransactionError, prelude::*};
         struct HostDouble;
         impl Host for HostDouble {}
         mod_api::impl_host_areas!(HostDouble);
@@ -409,9 +409,9 @@ mod tests {
             ModPhase::Setup,
         ] {
             let _owner = PhaseOwner::new(phase);
-            for action in [0, 1, 2, 3] {
+            for action in [0, 1, 2] {
                 let panic = std::panic::catch_unwind(|| {
-                    let mut host = HostDouble;
+                    let host = HostDouble;
                     match action {
                         0 => {
                             let _ = host.entity(1);
@@ -419,11 +419,8 @@ mod tests {
                         1 => {
                             let _ = host.level("minecraft:overworld");
                         }
-                        2 => {
-                            let _ = host.player(1);
-                        }
                         _ => {
-                            let _: Result<(), ()> = host.transaction(|_, _| Ok(()));
+                            let _ = host.player(1);
                         }
                     }
                 })
@@ -431,6 +428,11 @@ mod tests {
                 let message = panic.downcast_ref::<String>().unwrap();
                 assert!(message.contains(&format!("{phase:?}")), "{message}");
             }
+            let mut host = HostDouble;
+            let outcome = host.transaction(|_, _| -> Result<(), ()> {
+                panic!("transaction closure must not run in {phase:?}");
+            });
+            assert_eq!(outcome, Err(TransactionError::Unavailable));
         }
         let _owner = PhaseOwner::new(ModPhase::Registration);
         let refused = std::panic::catch_unwind(|| HostDouble.block_state_id("stone")).unwrap_err();

@@ -159,11 +159,12 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &TransactionContext,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !self.is_valid(host, index, resource) {
             return 0;
         }
@@ -182,11 +183,12 @@ impl<R: StackedResource> ResourceHandler<R> for AttachedStacks<R> {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &TransactionContext,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some((held, have)) = self.at(host, index).filter(|(held, _)| held == resource) else {
             return 0;
         };
@@ -248,7 +250,8 @@ impl EnergyHandler for AttachedEnergy {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         self.capacity
     }
-    fn insert(&self, host: &mut dyn ServerHost, _: &TransactionContext, amount: u32) -> u32 {
+    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = self.amount(host);
         match amount
             .min(self.max_insert)
@@ -258,7 +261,8 @@ impl EnergyHandler for AttachedEnergy {
             went => self.write(host, held + went, went),
         }
     }
-    fn extract(&self, host: &mut dyn ServerHost, _: &TransactionContext, amount: u32) -> u32 {
+    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = self.amount(host);
         match amount.min(self.max_extract).min(held) {
             0 => 0,

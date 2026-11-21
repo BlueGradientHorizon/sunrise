@@ -273,9 +273,15 @@ pub mod tests {
             let host: &mut dyn ServerHost = self;
             let source = here().capability(host, &FLUIDS, from, from_side).unwrap();
             let target = here().capability(host, &FLUIDS, to, to_side).unwrap();
-            host.transaction(|host, tx| {
+            match host.transaction(|host, tx| {
                 move_resources(host, &source, &target, |_| true, max, Some(tx))
-            })
+            }) {
+                Ok(moved) => Ok(moved),
+                Err(crate::TransactionError::Aborted(over)) => Err(over),
+                Err(crate::TransactionError::Unavailable) => {
+                    panic!("TankWorld supports transactions")
+                }
+            }
         }
     }
     #[cfg(test)]
@@ -326,8 +332,9 @@ pub mod tests {
             BlockSide { pos, .. }: BlockSide,
             _: usize,
             fluid: FluidStack,
-            _: &TransactionContext,
+            tx: &TransactionContext,
         ) -> Option<FluidStack> {
+            self.journal.assert_current(tx);
             let Some(tank) = self.tanks.get_mut(&pos).filter(|tank| tank.fills) else {
                 return Some(fluid);
             };
@@ -363,8 +370,9 @@ pub mod tests {
             BlockSide { pos, .. }: BlockSide,
             _: usize,
             max: u32,
-            _: &TransactionContext,
+            tx: &TransactionContext,
         ) -> Option<FluidStack> {
+            self.journal.assert_current(tx);
             let tank = self.tanks.get_mut(&pos).filter(|tank| tank.drains)?;
             let held = tank.held.clone()?;
             let asked = if tank.short {
@@ -408,24 +416,35 @@ pub mod tests {
                 self,
             ))
         }
+        fn with_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ) -> bool,
+        ) -> Result<(), crate::TransactionUnavailable> {
+            FakeJournal::with_scope(
+                self,
+                |world| &mut world.journal,
+                |world| world.tanks.clone(),
+                |world, tanks| world.tanks = tanks,
+                callback,
+            )
+        }
+        fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
+            self.journal.matches(tx)
+        }
     }
     #[cfg(test)]
     mod_api::impl_server_host_areas!(TankWorld, except(mod_state));
     #[cfg(test)]
     impl crate::prelude::ModStateServerHost for TankWorld {
-        fn transaction_open(&mut self) -> TransactionSeal {
-            self.journal.open(self.tanks.clone())
-        }
-        fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
-            if let Some(tanks) = self.journal.close(seal, commit) {
-                self.tanks = tanks;
+        fn transaction_lifecycle(&self) -> crate::TransactionLifecycle {
+            if self.journal.depth() == 0 {
+                crate::TransactionLifecycle::None
+            } else {
+                crate::TransactionLifecycle::Open
             }
-        }
-        fn transaction_current(&self) -> Option<TransactionContext> {
-            self.journal.current()
-        }
-        fn transaction_depth(&self, tx: &TransactionContext) -> Option<u32> {
-            self.journal.depth_of(tx)
         }
     }
 
@@ -569,7 +588,11 @@ pub mod tests {
                 let second = move_resources(host, &source, &tank, |_| true, 300, Some(tx))?;
                 Ok(first + second)
             });
-            let error: Overanswered = moved.unwrap_err();
+            let crate::TransactionError::Aborted(error): crate::TransactionError<Overanswered> =
+                moved.unwrap_err()
+            else {
+                panic!("expected aborted Overanswered");
+            };
             assert_eq!(error.owner.as_deref(), Some("doubler"), "{liar}");
             assert!(crate::parts::warned_about("doubler"));
             let held = [SOURCE, OTHER, TANK].map(|pos| world.held(pos));

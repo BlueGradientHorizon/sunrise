@@ -193,6 +193,7 @@ impl ItemStorage for GameStorage {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         crate::backend_mut_of(host)
             .map_or(0, |b| b.container_insert_kind(self.0, resource, amount, tx))
             .min(amount)
@@ -204,6 +205,7 @@ impl ItemStorage for GameStorage {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         crate::backend_mut_of(host)
             .map_or(0, |b| {
                 b.container_extract_kind(self.0, resource, amount, tx)
@@ -301,6 +303,7 @@ impl ItemStorage for Slots {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut left = amount;
         self.fill(host, tx, resource, &mut left, |host, index| {
             self.holds(host, index, resource)
@@ -317,6 +320,7 @@ impl ItemStorage for Slots {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut left = amount;
         for index in 0..self.0.size(host) {
             if left == 0 {
@@ -359,7 +363,7 @@ pub fn transfer(
     max: u64,
     tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
-    let _ = tx;
+    crate::item::transaction::assert_transaction_matches(host, Some(tx));
     let want = max
         .min(from.amount(host, resource)?)
         .min(to.space_for(host, resource)?);
@@ -396,6 +400,7 @@ pub fn transfer_matching(
     max: u64,
     tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
+    crate::item::transaction::assert_transaction_matches(host, Some(tx));
     let mut moved = 0;
     let mut tried_prefix = 0;
     while moved < max {
@@ -429,7 +434,7 @@ mod tests {
     use super::*;
     use crate::prelude::ItemsHost;
     use crate::testing::FakeHost;
-    use crate::{HostTransaction, Identifier, ItemStack, Tag};
+    use crate::{HostTransaction, Identifier, ItemStack, Tag, TransactionError};
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::hash::BuildHasher;
@@ -576,7 +581,7 @@ mod tests {
         chest(&mut host, [0, 64, 0], &[Some((&r[0], 10)), None]);
         let storage = storage_at(&mut host, [0, 64, 0]);
         let host: &mut dyn ServerHost = &mut host;
-        let aborted: Result<(), ()> = host.transaction(|host, tx| {
+        let aborted: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
             assert_eq!(storage.insert(host, tx, &r[0], 70), 70);
             Err(())
         });
@@ -771,7 +776,7 @@ mod tests {
                 kind: &ItemResource,
                 amount: u64,
             ) -> u64 {
-                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                assert!(host.transaction_matches(Some(tx)));
                 let amount = amount.min(self.space_for(host, kind).unwrap());
                 if amount > 0 {
                     self.entries.borrow_mut().push((kind.clone(), amount));
@@ -785,7 +790,7 @@ mod tests {
                 kind: &ItemResource,
                 amount: u64,
             ) -> u64 {
-                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                assert!(host.transaction_matches(Some(tx)));
                 let mut entries = self.entries.borrow_mut();
                 let Some(index) = entries.iter().position(|(held, _)| held == kind) else {
                     return 0;
@@ -871,7 +876,7 @@ mod tests {
                 (&b, &a)
             };
             let kind = &r[(round % 3 % 2) as usize];
-            let result: Result<u64, ()> = host.transaction(|host, tx| {
+            let result: Result<u64, TransactionError<()>> = host.transaction(|host, tx| {
                 let moved =
                     transfer(host, from, to, kind, round + 1, tx).expect("test transfer succeeds");
                 // Every third round aborts after it wrote.

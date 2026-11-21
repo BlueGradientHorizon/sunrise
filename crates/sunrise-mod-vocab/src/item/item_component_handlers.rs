@@ -43,6 +43,7 @@ impl ItemComponentHandler {
         tx: &TransactionContext,
         value: Option<Tag>,
     ) -> bool {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(held) = self.place.resource(host) else {
             return false;
         };
@@ -114,6 +115,7 @@ impl EnergyHandler for ItemComponentEnergy {
         self.capacity
     }
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = self.amount(host);
         let room = self.capacity.saturating_sub(held);
         match amount.min(self.max_insert).min(room) {
@@ -122,6 +124,7 @@ impl EnergyHandler for ItemComponentEnergy {
         }
     }
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = self.amount(host);
         match amount.min(self.max_extract).min(held) {
             0 => 0,
@@ -251,6 +254,7 @@ impl ResourceHandler<FluidResource> for ItemComponentFluidTank {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if index != 0 {
             return 0;
         }
@@ -276,6 +280,7 @@ impl ResourceHandler<FluidResource> for ItemComponentFluidTank {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(held) = self
             .held(host)
             .filter(|held| index == 0 && resource.matches(held))

@@ -327,7 +327,7 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
         let inner = tank_then_liar(host);
         assert_eq!(
             insert(host, &inner, amount),
-            Err(Overanswered { owner: None })
+            Err(TransactionError::Aborted(Overanswered { owner: None }))
         );
     }
     // The ranged wrapper inherits the default slot-less implementation.
@@ -341,7 +341,7 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
     let indices = RangedResourceHandler::of(host, Box::new(indices), 0..2).unwrap();
     assert_eq!(
         insert(host, &indices, 20),
-        Err(Overanswered { owner: None })
+        Err(TransactionError::Aborted(Overanswered { owner: None }))
     );
     assert_eq!(
         insert_stacking(host, &indices, &HYDROGEN, 20, None),
@@ -420,7 +420,10 @@ fn move_first_moves_one_resource_and_an_abort_puts_it_back() {
             Some(tx),
         ))
     });
-    assert_eq!(aborted, Err(Ok(Some((stone.clone(), 12)))));
+    assert_eq!(
+        aborted,
+        Err(TransactionError::Aborted(Ok(Some((stone.clone(), 12)))))
+    );
     assert_eq!(counts(&fake, A), [5, 3, 7]);
     assert_eq!(counts(&fake, B), [0, 10]);
 
@@ -599,25 +602,46 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
 
 #[test]
 fn optional_tokens_must_name_the_current_transaction() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
     let (mut fake, r) = items_host(&["minecraft:stone"]);
     let stone = &r[0];
     chest(&mut fake, A, &[Some((stone, 5))]);
     let items = items_at(&mut fake, A);
-    let assert_refused = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
-        assert_eq!(insert_stacking(host, &items, stone, 1, token), Ok(0));
-        assert_eq!(extract_first(host, &items, |_| true, 1, token), None);
-        assert_eq!(
-            find_extractable_resource(host, &items, |_| true, token),
-            None
+    let assert_panics = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                insert_stacking(host, &items, stone, 1, token)
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                extract_first(host, &items, |_| true, 1, token)
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                find_extractable_resource(host, &items, |_| true, token)
+            }))
+            .is_err()
+        );
+        assert!(
+            catch_unwind(AssertUnwindSafe(|| {
+                move_resources(host, &items, &items, |_| true, 1, token)
+            }))
+            .is_err()
         );
     };
     let host: &mut dyn ServerHost = &mut fake;
     host.transaction(|host, parent| {
-        assert_refused(host, None);
+        assert_panics(host, None);
         host.transaction(|host, _| {
-            assert_refused(host, Some(parent));
+            assert_panics(host, Some(parent));
             Ok::<_, ()>(())
         })
+        .unwrap();
+        Ok::<_, ()>(())
     })
     .unwrap();
     assert_eq!(counts(&fake, A), [5]);
@@ -649,9 +673,9 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
         });
         assert_eq!(
             moved,
-            Err(Overanswered {
+            Err(TransactionError::Aborted(Overanswered {
                 owner: Some("test:liar".into())
-            })
+            }))
         );
         assert_eq!(counts(&fake, A), [5]);
         assert_eq!(counts(&fake, B), [62]);
@@ -737,15 +761,6 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
     );
     let host: &mut dyn ServerHost = &mut fake;
     host.transaction(|host, parent| {
-        // Neither `None` under a parent nor a token naming an ancestor admits a move.
-        assert_eq!(move_resources(host, &from, &to, |_| true, 8, None), Ok(0));
-        host.transaction(|host, _| {
-            assert_eq!(
-                move_resources(host, &from, &to, |_| true, 8, Some(parent)),
-                Ok(0)
-            );
-            Ok::<_, ()>(())
-        })?;
         // Commit this unrelated edit even after catching the helper's failure.
         assert_eq!(other.insert_at(host, parent, 0, stone, 1), 1);
         assert_eq!(

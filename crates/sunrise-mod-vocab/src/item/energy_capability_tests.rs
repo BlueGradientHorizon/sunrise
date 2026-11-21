@@ -84,3 +84,15 @@ fn the_comparator_reads_0_empty_15_full_and_vanillas_steps_between() {
     assert_eq!(signal(&mut *host, 50), 8);
     assert_eq!(signal(&mut *host, 1), 1);
 }
+
+#[test]
+#[should_panic(expected = "does not match the host's innermost open transaction")]
+fn move_energy_panics_with_an_ancestor_transaction_context() {
+    let source = capability(InfiniteEnergyHandler);
+    let target = capability(VoidingEnergyHandler);
+    let mut fake = FakeHost::new();
+    let _ = fake.transaction(|host, outer| {
+        let _ = host.transaction(|host, _| move_energy(host, &source, &target, 16, outer));
+        Ok::<_, ()>(())
+    });
+}

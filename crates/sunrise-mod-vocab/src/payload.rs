@@ -16,6 +16,7 @@ pub use typed::{PayloadToken, ToClient, ToServer};
 
 use crate::{
     ClientHost, ConfigurationTaskError, ConfigurationTaskRef, PlayerRef, ServerHost, Text,
+    TransactionContext, TransactionError, TransactionUnavailable,
 };
 use std::sync::Arc;
 
@@ -335,4 +336,47 @@ pub trait IPayloadContext {
         &mut self,
         work: Arc<dyn PayloadWork>,
     ) -> Result<PayloadWorkStatus, PayloadContextError>;
+    /// Runs `callback` inside one scoped transaction on this payload context (server main
+    /// thread only), committing on `true` and aborting on `false` or unwind. Returns
+    /// [`TransactionUnavailable`] when this context cannot open a transaction (for example, on
+    /// the client, on the network thread, or while a transaction is closing).
+    /// Most callers use [`IPayloadContext::transaction`].
+    fn with_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn IPayloadContext,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
+}
+
+impl dyn IPayloadContext + '_ {
+    /// Runs `f` in a scoped transaction on this payload context (server main thread only).
+    /// `Ok` commits into the surrounding transaction (or for good at the root); `Err` or an
+    /// unwind aborts and rolls back writes made inside `f`. Returns
+    /// [`TransactionError::Unavailable`] without calling `f` when this context cannot open a
+    /// transaction.
+    pub fn transaction<T, E>(
+        &mut self,
+        f: impl for<'loan> FnOnce(
+            &'loan mut dyn IPayloadContext,
+            &'loan TransactionContext,
+        ) -> Result<T, E>,
+    ) -> Result<T, TransactionError<E>> {
+        let mut f = Some(f);
+        let mut result = None;
+        self.with_transaction_scope(&mut |context, tx| {
+            let Some(f) = f.take() else { return false };
+            let outcome = f(context, tx);
+            let commit = outcome.is_ok();
+            result = Some(outcome);
+            commit
+        })
+        .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
+        result
+            .ok_or(TransactionError::Unavailable)?
+            .map_err(TransactionError::Aborted)
+    }
 }
