@@ -151,33 +151,15 @@ mod tests {
         }
     }
 
-    fn in_mod(id: &'static str) -> crate::crash::ModGuard {
-        crate::crash::enter_native_mod(crate::crash::ModCall {
-            id,
-            hook: "test",
-            part: None,
-        })
-    }
-
     #[test]
-    fn validation_shows_and_removes_the_controllers_tickets_to_its_owner_only() {
+    fn validation_shows_and_removes_the_controllers_staged_tickets() {
         let (block, entity) = (TicketOwner::Block([1, 2, 3]), TicketOwner::Entity(9));
-        let mut v = ControllerTickets::new(
-            "m",
-            vec![
-                ticket(0, block, (0, 0)),
-                ticket(0, block, (0, 1)),
-                ticket(0, entity, (5, 5)),
-            ],
-        );
-        assert!(v.block_tickets().is_empty(), "no caller, no tickets");
-        {
-            let _other = in_mod("n");
-            assert!(v.block_tickets().is_empty() && v.entity_tickets().is_empty());
-            assert_eq!(v.remove_block_tickets([1, 2, 3]), 0, "not its controller");
-            assert!(!format!("{v:?}").contains("(0, 0)"));
-        }
-        let _owner = in_mod("m");
+        let mut rows = vec![
+            ticket(0, block, (0, 0)),
+            ticket(0, block, (0, 1)),
+            ticket(0, entity, (5, 5)),
+        ];
+        let mut v = ControllerTickets::new(&mut rows);
         assert_eq!(
             v.block_tickets(),
             vec![([1, 2, 3], set(&[[0, 0], [0, 1]], &[]))]
@@ -187,7 +169,7 @@ mod tests {
         assert!(!v.remove_block_ticket([1, 2, 3], [0, 1], false));
         assert_eq!(v.remove_entity_tickets(9), 1);
         assert_eq!(v.remove_block_tickets([1, 2, 3]), 1);
-        assert_eq!(v.into_removed().len(), 3);
+        assert!(rows.is_empty());
     }
 
     #[test]
@@ -197,10 +179,8 @@ mod tests {
             natural_spawning: true,
             ..ticket(0, owner, (3, 3))
         };
-        let both = vec![ticket(0, owner, (3, 3)), spawning];
-        let mut v1 = ControllerTickets::new("m", both.clone());
-        let v = &mut v1;
-        let _m = in_mod("m");
+        let mut rows = vec![ticket(0, owner, (3, 3)), spawning.clone()];
+        let mut v = ControllerTickets::new(&mut rows);
         assert_eq!(
             v.block_tickets(),
             vec![([4, 5, 6], set(&[[3, 3]], &[[3, 3]]))]
@@ -211,29 +191,32 @@ mod tests {
         assert_eq!(v.block_tickets(), vec![([4, 5, 6], set(&[[3, 3]], &[]))]);
         assert!(v.remove_block_ticket([4, 5, 6], [3, 3], false));
         assert!(v.block_tickets().is_empty());
-        // The other order, and the entity side.
-        let mut v2 = ControllerTickets::new("m", both.clone());
-        assert!(v2.remove_block_ticket([4, 5, 6], [3, 3], false));
-        assert_eq!(v2.block_tickets(), vec![([4, 5, 6], set(&[], &[[3, 3]]))]);
+        assert!(rows.is_empty());
+        // The other order.
+        rows.extend([ticket(0, owner, (3, 3)), spawning.clone()]);
+        let mut v = ControllerTickets::new(&mut rows);
+        assert!(v.remove_block_ticket([4, 5, 6], [3, 3], false));
+        assert_eq!(v.block_tickets(), vec![([4, 5, 6], set(&[], &[[3, 3]]))]);
+        assert_eq!(rows, [spawning]);
         // Remove-all takes both.
-        let mut v3 = ControllerTickets::new("m", both);
-        assert_eq!(v3.remove_block_tickets([4, 5, 6]), 2);
-        assert_eq!(v1.into_removed().len(), 2);
-        assert_eq!(v2.into_removed().len(), 1);
-        assert_eq!(v3.into_removed().len(), 2);
-        let entity = TicketOwner::Entity(7);
-        let mut v = ControllerTickets::new(
-            "m",
-            vec![
-                ticket(0, entity, (1, 1)),
-                ModTicket {
-                    natural_spawning: true,
-                    ..ticket(0, entity, (1, 1))
-                },
-            ],
+        rows.push(ticket(0, owner, (3, 3)));
+        assert_eq!(
+            ControllerTickets::new(&mut rows).remove_block_tickets([4, 5, 6]),
+            2
         );
+        assert!(rows.is_empty());
+
+        let entity = TicketOwner::Entity(7);
+        rows.extend([
+            ticket(0, entity, (1, 1)),
+            ModTicket {
+                natural_spawning: true,
+                ..ticket(0, entity, (1, 1))
+            },
+        ]);
+        let mut v = ControllerTickets::new(&mut rows);
         assert!(v.remove_entity_ticket(7, [1, 1], true));
         assert_eq!(v.entity_tickets(), vec![(7, set(&[[1, 1]], &[]))]);
-        assert!(v.into_removed()[0].natural_spawning);
+        assert_eq!(rows, [ticket(0, entity, (1, 1))]);
     }
 }

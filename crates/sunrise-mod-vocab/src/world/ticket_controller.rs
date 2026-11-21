@@ -2,14 +2,58 @@
 //! mod registers each controller once at startup, from [`Hooks::register`](crate::Hooks::register),
 //! and holds the [`TicketController`] it gets back to hold chunks with.
 
+use crate::{LevelRef, ServerHost, TicketValidation, callback_owner::CallbackOwner};
+use std::sync::Arc;
+
+// no wire: retained executable code and a borrow of staged tickets stay in-process.
+/// Validate one controller's saved chunk tickets in the supplied server level
+/// (NeoForge's `LoadingValidationCallback.validateTickets`). The callback runs
+/// after `level_load` and before the first tick, only when that controller has
+/// saved rows in the level. At startup all built-in levels are available before
+/// validation begins. Remove stale tickets through the borrowed validation view;
+/// the survivors force their chunks after validation. A panic is reported and
+/// disables only this validator for the session. A phase refusal is reported
+/// each time without disabling it. Neither undoes removals already made.
+pub type LoadingValidationCallback =
+    dyn Fn(&mut dyn ServerHost, LevelRef, &mut dyn TicketValidation) + Send + Sync + 'static;
+
+// no wire: retained code, attribution and session poison state stay in-process.
+/// One frozen controller's callback and its registered owner.
+// hidden: the authoring bridge moves the binding without inspecting it.
+#[doc(hidden)]
+#[derive(Clone)]
+// exhaustive: private fields keep callback ownership inside the binding.
+pub struct RegisteredTicketValidator {
+    callback: Arc<LoadingValidationCallback>,
+    owner: CallbackOwner,
+}
+
+impl RegisteredTicketValidator {
+    pub(crate) fn new(callback: Arc<LoadingValidationCallback>, owner: CallbackOwner) -> Self {
+        Self { callback, owner }
+    }
+
+    /// Run the callback under its registered owner's panic and refusal policy.
+    // hidden: game-side dispatch, not part of the mod surface.
+    #[doc(hidden)]
+    pub fn call(&self, invoke: impl FnOnce(&LoadingValidationCallback)) {
+        // CallbackOwner reports refusals and panics; validation still promotes the survivors.
+        let _ = self
+            .owner
+            .call("chunk ticket validator", "validate_tickets", || {
+                invoke(self.callback.as_ref());
+            });
+    }
+}
+
 /// What the game knows about a registered controller.
 pub(crate) struct ControllerInfo {
     /// The namespaced id, `mymod:quarry`, which the tickets are saved under.
     pub(crate) id: Box<str>,
     /// The `[mod] id` that registered it, the only mod that may use it.
     pub(crate) mod_id: &'static str,
-    /// Whether it validates its saved tickets (NeoForge's `LoadingValidationCallback`).
-    pub(crate) validates: bool,
+    /// The controller's retained saved-ticket validator, if registered.
+    pub(crate) validator: Option<RegisteredTicketValidator>,
 }
 
 /// A ticket controller a mod registered with
@@ -57,11 +101,14 @@ impl TicketController {
     pub fn owner(self) -> Option<&'static str> {
         self.info().map(|info| info.mod_id)
     }
-    /// Whether it validates its saved tickets. For the game.
+    /// The controller's enabled saved-ticket validator, if any. For the game.
     // hidden: a game-side helper, not part of the mod surface
     #[doc(hidden)]
-    pub fn validates(self) -> bool {
-        self.info().is_some_and(|info| info.validates)
+    pub fn validator(self) -> Option<&'static RegisteredTicketValidator> {
+        self.info()?
+            .validator
+            .as_ref()
+            .filter(|validator| validator.owner.is_enabled())
     }
     fn info(self) -> Option<&'static ControllerInfo> {
         controllers().get(self.slot as usize)

@@ -63,6 +63,21 @@ the queue runs rather than treating the returned result as completion.
 An explicitly opened runtime level fires `level_load` while parked: `event.dimension` names
 the opened level, whereas the Host still names the current level.
 
+## Validating saved chunk tickets
+
+In `Hooks::register`, pass `Some(Arc::new(|host, level, tickets| { /* prune stale tickets */ }))`
+to `registrar.register_ticket_controller("quarry", ...)` to validate that controller's saved
+chunk tickets. Pass `None` to restore them as saved. Retain the returned `TicketController` to
+hold chunks independently of validation.
+
+A validator runs only when its controller has saved tickets in the opening level. `level` is
+the actual opened `LevelRef`, including when the level is parked; `level.dimension().id(host)`
+returns its id. `tickets` shows only that controller's saved block and entity tickets, not live
+tickets added in `level_load`. The server activates surviving tickets after all validators run.
+If a validator panics, the server reports the mod and skips only that validator for the rest of
+the session. Removals it already made still apply, and other controllers continue restoring and
+validating their tickets.
+
 ## Closing
 
 `unload(id)` saves the level and drops it, keeping the folder. It refuses with `PlayersInside`

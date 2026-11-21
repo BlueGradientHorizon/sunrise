@@ -3,11 +3,12 @@
 //! reach any loaded level; both-side reads also reach the client's current level.
 //! A handle of an earlier open or an unloaded block reads `None` (or `false`).
 use super::Game;
-use mod_api::world::mod_chunk_tickets::ModTicket;
+use mod_api::world::mod_chunk_tickets::{ControllerTickets, ModTicket};
 use mod_api::{
     BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
     Identifier, LevelRef, LightLayer, MapState, PlayerRef, RespawnData, TicketController, Vec3,
 };
+use std::collections::BTreeMap;
 use sunrise_client::{streaming::Streaming, world::World};
 use sunrise_core::{
     geometry::Direction,
@@ -421,40 +422,38 @@ impl Game<'_> {
         }
     }
 
-    /// The mods validate the chunk tickets `dim`'s level loaded from its save,
-    /// controller by controller (`LoadingValidationCallback.validateTickets`),
-    /// and the survivors take hold. Tickets a mod added since the load (in
-    /// `level_load`, say) are not candidates, and a controller registered
-    /// without a validator keeps all of its tickets. Nothing is built while no
-    /// mod listens.
+    /// Let each registered validator prune its own staged save rows before
+    /// activating any of them (`ForcedChunkManager.activateAllDeactivatedTickets`).
+    /// Live tickets, including tickets added by `level_load`, are not staged.
     pub(super) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
+        let Some(level) = self.level(dim.id()) else {
+            return;
+        };
         let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
             return;
         };
-        let mut loaded = streaming.take_loaded_tickets();
-        if !loaded.is_empty() && mod_api::__private::listened(mod_api::HookId::ValidateTickets) {
-            let mut controllers: Vec<u32> = loaded.iter().map(|t| t.controller).collect();
-            controllers.sort_unstable();
-            controllers.dedup();
-            for slot in controllers {
-                let Some(controller) = TicketController::from_slot(slot) else {
-                    continue;
-                };
-                let Some(owner) = controller.owner().filter(|_| controller.validates()) else {
-                    continue;
-                };
-                let (own, rest): (Vec<_>, Vec<_>) =
-                    loaded.into_iter().partition(|t| t.controller == slot);
-                let mut validation =
-                    mod_api::world::mod_chunk_tickets::ControllerTickets::new(owner, own.clone());
-                self.native_validate_tickets(dim.id(), controller, &mut validation);
-                let removed = validation.into_removed();
-                loaded = rest;
-                loaded.extend(own.into_iter().filter(|t| !removed.contains(t)));
+        let mut ready = Vec::new();
+        let mut groups = BTreeMap::new();
+        for ticket in streaming.take_loaded_tickets() {
+            if let Some(validator) =
+                TicketController::from_slot(ticket.controller).and_then(TicketController::validator)
+            {
+                groups
+                    .entry(ticket.controller)
+                    .or_insert_with(|| (validator, Vec::new()))
+                    .1
+                    .push(ticket);
+            } else {
+                ready.push(ticket);
             }
         }
+        for (validator, mut rows) in groups.into_values() {
+            validator
+                .call(|callback| callback(self, level, &mut ControllerTickets::new(&mut rows)));
+            ready.append(&mut rows);
+        }
         if let Some(streaming) = self.mod_ticket_streaming_mut(dim) {
-            for ticket in loaded {
+            for ticket in ready {
                 streaming.set_mod_forced(ticket, true);
             }
         }
@@ -2155,9 +2154,9 @@ mod tests {
     }
 
     use mod_api::{
-        self, Hooks, ModEntry, Registrar, ServerHost, TicketController, ValidateTicketsEvent,
-        testing,
+        self, Hooks, ModEntry, Registrar, ServerHost, TicketController, TicketValidation, testing,
     };
+    use std::sync::Arc;
     use sunrise_client::mod_chunk_tickets::{ModTicket, TicketOwner};
 
     /// Registers three controllers: `quarry` and `drill` validate, `plain` doesn't. `quarry`'s
@@ -2166,24 +2165,24 @@ mod tests {
     #[mod_api::__subscriptions]
     impl Hooks for Machines {
         fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            r.register_ticket_controller("quarry", true);
-            r.register_ticket_controller("machines:drill", true);
-            r.register_ticket_controller("plain", false);
-        }
-        fn validate_tickets(&self, _: &mut dyn ServerHost, e: &mut ValidateTicketsEvent<'_>) {
-            SEEN.with_borrow_mut(|seen| {
-                seen.push((
-                    e.controller.id(),
-                    e.validation
-                        .block_tickets()
-                        .into_iter()
-                        .map(|(pos, _)| pos)
-                        .collect(),
-                ))
-            });
-            if e.controller.id() == "machines:quarry" {
-                e.validation.remove_block_tickets([1, 64, 1]);
-            }
+            r.register_ticket_controller(
+                "quarry",
+                Some(Arc::new(
+                    |_: &mut dyn ServerHost, _, validation: &mut dyn TicketValidation| {
+                        record_validation("machines:quarry", validation);
+                        validation.remove_block_tickets([1, 64, 1]);
+                    },
+                )),
+            );
+            r.register_ticket_controller(
+                "machines:drill",
+                Some(Arc::new(
+                    |_: &mut dyn ServerHost, _, validation: &mut dyn TicketValidation| {
+                        record_validation("machines:drill", validation);
+                    },
+                )),
+            );
+            r.register_ticket_controller("plain", None);
         }
     }
     /// Registers one validating controller, and prunes everything it is shown.
@@ -2191,22 +2190,27 @@ mod tests {
     #[mod_api::__subscriptions]
     impl Hooks for Other {
         fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            r.register_ticket_controller("vault", true);
-        }
-        fn validate_tickets(&self, _: &mut dyn ServerHost, e: &mut ValidateTicketsEvent<'_>) {
-            SEEN.with_borrow_mut(|seen| {
-                seen.push((
-                    e.controller.id(),
-                    e.validation
-                        .block_tickets()
-                        .into_iter()
-                        .map(|(pos, _)| pos)
-                        .collect(),
-                ))
-            });
-            e.validation.remove_block_tickets([1, 64, 1]);
+            r.register_ticket_controller(
+                "vault",
+                Some(Arc::new(
+                    |_: &mut dyn ServerHost, _, validation: &mut dyn TicketValidation| {
+                        record_validation("other:vault", validation);
+                        validation.remove_block_tickets([1, 64, 1]);
+                    },
+                )),
+            );
         }
     }
+
+    fn record_validation(controller: &'static str, validation: &dyn TicketValidation) {
+        let blocks = validation
+            .block_tickets()
+            .into_iter()
+            .map(|(pos, _)| pos)
+            .collect();
+        SEEN.with_borrow_mut(|seen| seen.push((controller, blocks)));
+    }
+
     thread_local! {
         /// What each validation was shown: its controller, then the block positions.
         static SEEN: std::cell::RefCell<Vec<(&'static str, Vec<[i32; 3]>)>> =
@@ -2801,7 +2805,7 @@ mod tests {
     #[ignore = "daily"]
     fn validation_drops_a_removed_ticket_and_leaves_the_rest() {
         with_machines(|game| {
-            // `quarry` and `vault` validate; `plain` doesn't. All of them hold the pruned block.
+            // All hold the same block; `quarry` and `vault` prune it, `drill` keeps it.
             let tickets = vec![
                 saved("machines:quarry", [1, 64, 1], (7, 7)),
                 saved("machines:quarry", [9, 64, 9], (8, 8)),
@@ -2824,20 +2828,14 @@ mod tests {
             );
             assert!(forced.contains(&(10, 10)), "no validator, no validation");
             assert!(!forced.contains(&(11, 11)), "other's own controller");
-            // A validation is shown one controller's tickets, whichever mod hears it.
-            let seen = SEEN.take();
-            let quarry_seen = vec![[1, 64, 1], [9, 64, 9]];
-            assert!(seen.contains(&("machines:quarry", quarry_seen.clone())));
-            assert!(seen.contains(&("machines:drill", vec![[1, 64, 1]])));
-            assert!(seen.contains(&("other:vault", vec![[1, 64, 1]])));
-            assert!(
-                seen.iter().all(|(id, _)| *id != "machines:plain"),
-                "never asked"
-            );
-            // The mod that doesn't own the controller saw an empty view.
-            assert!(
-                seen.iter()
-                    .any(|(id, tickets)| *id == "machines:quarry" && tickets.is_empty())
+            assert_eq!(
+                SEEN.take(),
+                [
+                    ("machines:quarry", vec![[1, 64, 1], [9, 64, 9]]),
+                    ("machines:drill", vec![[1, 64, 1]]),
+                    ("other:vault", vec![[1, 64, 1]]),
+                ],
+                "only the registered callbacks for these groups ran, once each in slot order"
             );
             game.save_chunk_tickets().unwrap();
             let file = game.save.load_mod_tickets(known_slot);
@@ -2847,6 +2845,104 @@ mod tests {
                     .iter()
                     .any(|t| t.chunk == (7, 7) || t.chunk == (11, 11))
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn validation_panic_disables_only_its_controller_for_the_session() {
+        use std::collections::HashSet;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use sunrise_client::{
+            mod_chunk_tickets::ModTickets,
+            save::{SaveDir, dimension_dir},
+        };
+
+        const STALE: [i32; 3] = [1, 64, 1];
+        const LIVE: [i32; 3] = [9, 64, 9];
+        #[derive(Default)]
+        struct Calls {
+            panicking: AtomicUsize,
+            healthy: AtomicUsize,
+        }
+        struct Paired(Arc<Calls>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Paired {
+            fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+                let calls = Arc::clone(&self.0);
+                r.register_ticket_controller(
+                    "panicking",
+                    Some(Arc::new(
+                        move |_: &mut dyn ServerHost, _, validation: &mut dyn TicketValidation| {
+                            calls.panicking.fetch_add(1, Ordering::Relaxed);
+                            validation.remove_block_tickets(STALE);
+                            panic!("chunk ticket validator fixture panic");
+                        },
+                    )),
+                );
+                let calls = Arc::clone(&self.0);
+                r.register_ticket_controller(
+                    "healthy",
+                    Some(Arc::new(
+                        move |_: &mut dyn ServerHost, _, validation: &mut dyn TicketValidation| {
+                            calls.healthy.fetch_add(1, Ordering::Relaxed);
+                            validation.remove_block_tickets(STALE);
+                        },
+                    )),
+                );
+            }
+        }
+
+        let calls = Arc::new(Calls::default());
+        let world = tempfile::tempdir().unwrap();
+        let mods = vec![ModEntry::new(
+            "paired",
+            Box::new(Paired(Arc::clone(&calls))),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_chunk_streaming(|game| {
+                let tickets = [
+                    saved("paired:panicking", STALE, (7, 7)),
+                    saved("paired:panicking", LIVE, (8, 8)),
+                    saved("paired:healthy", STALE, (9, 9)),
+                    saved("paired:healthy", LIVE, (10, 10)),
+                ];
+                game.streaming
+                    .load_forced(Default::default(), tickets.to_vec());
+                let first = game.dim;
+                game.validate_mod_chunk_tickets(first);
+                assert_eq!(calls.panicking.load(Ordering::Relaxed), 1);
+                assert_eq!(calls.healthy.load(Ordering::Relaxed), 1);
+                assert_eq!(game.streaming.forced, HashSet::from([(8, 8), (10, 10)]));
+
+                let second = if first == Dim::Nether {
+                    Dim::End
+                } else {
+                    Dim::Nether
+                };
+                game.world_root = world.path().to_path_buf();
+                let save = SaveDir::new(
+                    dimension_dir(world.path(), second.id()),
+                    second.shape(),
+                    Some(Default::default()),
+                );
+                let mut saved_rows = ModTickets::default();
+                for ticket in tickets {
+                    saved_rows.insert(ticket);
+                }
+                save.save_mod_tickets(&saved_rows, |slot| {
+                    TicketController::from_slot(slot).map(TicketController::id)
+                })
+                .unwrap();
+                game.enter_level(second).unwrap();
+                assert_eq!(calls.panicking.load(Ordering::Relaxed), 1);
+                assert_eq!(calls.healthy.load(Ordering::Relaxed), 2);
+                assert_eq!(
+                    game.streaming.forced,
+                    HashSet::from([(7, 7), (8, 8), (10, 10)])
+                );
+            });
         });
     }
 
@@ -2886,12 +2982,12 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&world);
             });
         });
-        // No mod listens: the tickets stay as loaded.
+        // No validator is registered: the tickets stay as loaded.
         struct Idle;
         #[mod_api::__subscriptions]
         impl Hooks for Idle {
             fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-                r.register_ticket_controller("quarry", true);
+                r.register_ticket_controller("quarry", None);
             }
         }
         let mods: mod_api::Mods = vec![ModEntry::new("idle", Box::new(Idle))].into();

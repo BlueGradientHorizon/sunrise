@@ -2042,8 +2042,8 @@ mod tests {
     #[ignore = "daily"]
     fn built_in_levels_restore_saved_tickets_before_the_first_tick() {
         use mod_api::{
-            Hooks, ModEntry, Registrar, RegistrationContext, ServerHost, TicketController,
-            ValidateTicketsEvent,
+            Hooks, LevelRef, ModEntry, Registrar, RegistrationContext, ServerHost,
+            TicketController, TicketValidation,
         };
         use std::sync::atomic::{AtomicBool, Ordering};
         use sunrise_client::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
@@ -2054,21 +2054,23 @@ mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for Quarry {
             fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-                registrar.register_ticket_controller("quarry", true);
-            }
-
-            fn validate_tickets(
-                &self,
-                host: &mut dyn ServerHost,
-                e: &mut ValidateTicketsEvent<'_>,
-            ) {
-                if e.dimension == "minecraft:the_nether"
-                    && host.level("minecraft:the_end").is_some()
-                {
-                    self.0.store(true, Ordering::Relaxed);
-                } else {
-                    e.validation.remove_block_tickets(OWNER);
-                }
+                let saw_end = Arc::clone(&self.0);
+                registrar.register_ticket_controller(
+                    "quarry",
+                    Some(Arc::new(
+                        move |host: &mut dyn ServerHost,
+                              level: LevelRef,
+                              validation: &mut dyn TicketValidation| {
+                            if level.dimension_id() == "minecraft:the_nether"
+                                && host.level("minecraft:the_end").is_some()
+                            {
+                                saw_end.store(true, Ordering::Relaxed);
+                            } else {
+                                validation.remove_block_tickets(OWNER);
+                            }
+                        },
+                    )),
+                );
             }
         }
 

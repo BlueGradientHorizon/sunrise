@@ -1,0 +1,9 @@
+ids = [
+    "hook:validate_tickets",
+    "method:Hooks::validate_tickets",
+    "type:ValidateTicketsEvent",
+    "method:TicketsRegistrar::register_ticket_controller",
+    "type:LoadingValidationCallback",
+]
+why = "NeoForge's RegisterTicketControllersEvent.register binds a TicketController's LoadingValidationCallback. ForcedChunkManager.activateAllDeactivatedTickets lends it only that controller's saved rows in the actual server level before activation, alongside vanilla TicketStorage.activateAllDeactivatedTickets. Sunrise no longer broadcasts validation or filters it by the current caller. A panic disables only that validator for the session; removals already made still apply."
+migrate = "Replace register_ticket_controller(name, false) with register_ticket_controller(name, None). Replace register_ticket_controller(name, true) and its Hooks::validate_tickets implementation with register_ticket_controller(name, Some(Arc::new(move |host, level, tickets| { ... }))). Move each event.controller branch into the closure registered for that controller. Use level and level.dimension().id(host) instead of event.dimension (the id is now Option<&str>), and use tickets instead of event.validation, with the same read and removal methods. Remove the ValidateTicketsEvent import and keep the returned TicketController as before."

@@ -14,22 +14,25 @@ pub mod tests {
     #[cfg(test)]
     use super::*;
 
+    #[cfg(test)]
+    fn noop_validator(_: &mut dyn ServerHost, _: LevelRef, _: &mut dyn TicketValidation) {}
+
     #[test]
     pub(crate) fn ticket_controllers_get_the_callers_namespace_and_refuse_anothers() {
         let mut r = super::PartRegistrar::new("first");
-        r.register_ticket_controller("quarry", true);
-        r.register_ticket_controller("first:drill", false);
+        r.register_ticket_controller("quarry", Some(Arc::new(noop_validator)));
+        r.register_ticket_controller("first:drill", None);
         assert!(r.refused.is_empty(), "{:?}", r.refused);
         let ids: Vec<_> = r
             .controllers
             .iter()
-            .map(|c| (&*c.id, c.validates))
+            .map(|c| (&*c.id, c.validator.is_some()))
             .collect();
         assert_eq!(ids, [("first:quarry", true), ("first:drill", false)]);
         // Another mod's namespace, and no name at all.
-        r.register_ticket_controller("second:quarry", true);
-        r.register_ticket_controller("first:", true);
-        r.register_ticket_controller("", true);
+        r.register_ticket_controller("second:quarry", Some(Arc::new(noop_validator)));
+        r.register_ticket_controller("first:", Some(Arc::new(noop_validator)));
+        r.register_ticket_controller("", Some(Arc::new(noop_validator)));
         assert_eq!(r.refused.len(), 3, "{:?}", r.refused);
         assert!(r.refused[0].contains("first declares \"second:quarry\""));
         assert!(r.refused[0].contains("unowned namespace \"second\""));
@@ -43,22 +46,22 @@ pub mod tests {
     #[test]
     fn installed_ticket_controllers_read_the_installed_table() {
         let mut registrar = PartRegistrar::new("first");
-        registrar.register_ticket_controller("quarry", true);
+        registrar.register_ticket_controller("quarry", Some(Arc::new(noop_validator)));
         install_registrar(registrar, &crate::parts::tests::rule_schema()).unwrap();
         let controllers = mod_vocab::__private::parts_installation::testing_controllers();
         assert_eq!(controllers.len(), 1);
         assert_eq!(&*controllers[0].id, "first:quarry");
-        assert!(controllers[0].validates);
+        assert!(controllers[0].validator.is_some());
     }
 
     #[test]
     pub(crate) fn a_ticket_controller_registered_twice_refuses_the_mods_naming_mod_and_id() {
         let mut r = super::PartRegistrar::new("first");
-        r.register_ticket_controller("quarry", true);
-        r.register_ticket_controller("first:quarry", false);
+        r.register_ticket_controller("quarry", Some(Arc::new(noop_validator)));
+        r.register_ticket_controller("first:quarry", None);
         r.mod_id = "second";
         // The same path under another mod is another id.
-        r.register_ticket_controller("quarry", true);
+        r.register_ticket_controller("quarry", None);
         assert_eq!(r.refused.len(), 1, "{:?}", r.refused);
         assert_eq!(
             r.refused[0],
@@ -66,17 +69,24 @@ pub mod tests {
         );
         assert_eq!(r.controllers.len(), 2);
         assert_eq!(&*r.controllers[1].id, "second:quarry");
+        assert!(r.controllers[0].validator.is_some());
+        assert!(r.controllers[1].validator.is_none());
     }
 }
 
 impl TicketsRegistrar for PartRegistrar {
-    fn register_ticket_controller(&mut self, name: &str, validates: bool) -> TicketController {
+    fn register_ticket_controller(
+        &mut self,
+        name: &str,
+        validator: Option<Arc<LoadingValidationCallback>>,
+    ) -> TicketController {
         register(
             &mut self.controllers,
             &mut self.refused,
             self.mod_id,
+            self.mod_index,
             name,
-            validates,
+            validator,
         )
     }
 }
@@ -87,8 +97,9 @@ pub(crate) fn register(
     table: &mut Vec<ControllerInfo>,
     refused: &mut Vec<String>,
     mod_id: &'static str,
+    mod_index: usize,
     name: &str,
-    validates: bool,
+    validator: Option<Arc<LoadingValidationCallback>>,
 ) -> TicketController {
     let id = match owned_declaration_id(mod_id, name) {
         Ok(id) => id,
@@ -110,7 +121,11 @@ pub(crate) fn register(
     table.push(ControllerInfo {
         id: id.into(),
         mod_id,
-        validates,
+        validator: validator.map(|callback| {
+            mod_vocab::__private::parts_installation::registered_ticket_validator(
+                mod_id, mod_index, callback,
+            )
+        }),
     });
     mod_vocab::__private::parts_installation::ticket_controller((table.len() - 1) as u32)
 }
