@@ -180,6 +180,13 @@ pub(super) mod tests {
             (self.0.borrow_mut()).push((slot.to_owned(), entity, kind.to_owned(), data));
             !data
         }
+        fn with_stack(
+            &self,
+            _: &crate::items::ItemStack,
+            body: &mut dyn FnMut(&dyn crate::mobs::equip::CanEquip),
+        ) {
+            body(self);
+        }
     }
 
     /// `ArmorSlot.mayPlace` asks the `CanEquip` the game lent the click, for the menu's player

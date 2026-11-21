@@ -170,9 +170,7 @@ pub trait CanEquip {
     /// Runs `body` with a call-scoped [`CanEquip`] that may lazily convert `stack` once and reuse
     /// that conversion for repeated questions about the same unchanged stack during one
     /// synchronous candidate loop.
-    fn with_stack(&self, _stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip)) {
-        body(self);
-    }
+    fn with_stack(&self, stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip));
 }
 
 /// `LivingEntity.getEquipmentSlotForItem`: the item's own `equippable` slot,

@@ -102,6 +102,9 @@ impl CanEquip for ScopedMenuEquip<'_, '_, '_> {
             self.game.can_equip(&prepared, slot, entity, kind, data)
         }
     }
+    fn with_stack(&self, _stack: &ItemStack, body: &mut dyn FnMut(&dyn CanEquip)) {
+        body(self);
+    }
 }
 
 impl CanEquip for MenuEquip<'_, '_> {

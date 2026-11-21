@@ -1655,10 +1655,6 @@ impl Menu {
         self.slot_rules(env, s, stack).0
     }
 
-    fn vanilla_may_place(&self, env: &Env, s: usize, stack: &ItemStack) -> bool {
-        self.vanilla_may_place_with(env, env.can_equip, s, stack)
-    }
-
     fn vanilla_may_place_with(
         &self,
         env: &Env,

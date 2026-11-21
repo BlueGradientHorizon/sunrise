@@ -1827,15 +1827,12 @@ mod tests {
             });
             let large = vec![7; 33 * 1024];
             let large_window = game
-                .player_open_mod_menu(
-                    player,
-                    key,
-                    Text::literal("large"),
-                    large.clone(),
-                    Vec::new(),
-                    None,
-                    MenuReplace::InPlace,
-                )
+                .player_open_mod_menu(player, {
+                    let mut request = ModMenuOpen::new(key, mod_api::Text::literal("large"));
+                    request.extra = large.clone();
+                    request.replace = MenuReplace::InPlace;
+                    request
+                })
                 .unwrap()
                 .unwrap();
             let large_packets = sent(&rx);

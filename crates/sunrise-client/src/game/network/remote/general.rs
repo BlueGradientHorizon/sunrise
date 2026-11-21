@@ -903,12 +903,13 @@ mod tests {
                     let map = held
                         .attachments
                         .get(&sunrise_mod_runtime::attachments::Holder::Entity(id))?;
-                    // A synced value arrives raw, as `{value: <compound>}` (`apply_sync`).
-                    let saved = map.entry("mymod", "fuel").ok()??.saved()?;
-                    let Some(sunrise_core::nbt::Tag::Compound(value)) = saved.get(&"value".into())
-                    else {
-                        return None;
-                    };
+                    let value = map
+                        .synced()
+                        .into_iter()
+                        .find(|entry| {
+                            entry.namespace == "mymod".into() && entry.name == "fuel".into()
+                        })?
+                        .value?;
                     match value.get(&"n".into()) {
                         Some(sunrise_core::nbt::Tag::Int(n)) => Some(*n),
                         _ => None,
