@@ -37,13 +37,25 @@ fn wire(line: &str) -> Vec<u8> {
 fn reply(line: &str) -> Value {
     let out = wire(line);
     let text = std::str::from_utf8(&out).expect("wire output is UTF-8");
-    assert!(text.ends_with('\n'), "reply ends with a newline: {text:?}");
-    assert_eq!(
-        text.matches('\n').count(),
-        1,
-        "one line per reply: {text:?}"
-    );
-    serde_json::from_str(text.strip_suffix('\n').unwrap()).expect("one JSON object")
+    let body = text.strip_suffix('\n').expect("reply ends with LF");
+    let parsed = serde_json::from_str(body).expect("one JSON object");
+
+    // Only whitespace outside strings would make the JSON non-compact. Do not pin key order.
+    let mut in_string = false;
+    let mut bytes = body.bytes();
+    while let Some(byte) = bytes.next() {
+        match byte {
+            b'\\' if in_string => {
+                let _ = bytes.next(); // An escaped quote does not end the string.
+            }
+            b'"' => in_string = !in_string,
+            b' ' | b'\t' | b'\r' | b'\n' if !in_string => {
+                panic!("expected compact JSON followed by one LF: {text:?}");
+            }
+            _ => {}
+        }
+    }
+    parsed
 }
 
 fn request(id: i64, method: &str, params: Value) -> Value {
