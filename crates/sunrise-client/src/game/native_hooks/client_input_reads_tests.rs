@@ -25,7 +25,7 @@ mod tests {
             game.physical_keys.insert(KeyCode::KeyW);
             assert_eq!(forward_mapping.physical_down(game), Ok(true));
             // A write to the logical mapping does not move the physical read.
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             assert_eq!(forward_mapping.is_down(game), Ok(true));
             forward_mapping.set_down(game, false).unwrap();
             assert!(!forward_mapping.is_down(game).unwrap());

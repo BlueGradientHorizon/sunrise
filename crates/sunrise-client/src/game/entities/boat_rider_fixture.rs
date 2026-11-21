@@ -41,7 +41,7 @@ impl Game<'_> {
                 .zip(case.keys)
             {
                 if held {
-                    self.keys.press(key, Source::Agent);
+                    self.press_device_key(key, Source::Agent);
                 }
             }
             self.boats.push(b);

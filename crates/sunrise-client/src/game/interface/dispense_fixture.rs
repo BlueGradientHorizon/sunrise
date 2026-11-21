@@ -661,9 +661,9 @@ impl Game<'_> {
         self.player = Some(player);
         self.yaw = op["yaw"].as_f64().unwrap_or(0.0) as f32;
         self.pitch = 90.0;
-        self.keys.clear();
+        self.clear_device_keys();
         if op["sneaking"].as_bool().unwrap_or(false) {
-            self.keys.insert(KeyCode::ShiftLeft);
+            self.insert_device_key(KeyCode::ShiftLeft);
         }
         self.using = None;
         // The oracle's player wears nothing: no armor left on from an earlier case.
@@ -1118,7 +1118,7 @@ impl Game<'_> {
         )?);
         self.yaw = 0.0;
         self.pitch = 90.0;
-        self.keys.clear();
+        self.clear_device_keys();
         self.inventory[self.selected] = stack.clone();
         self.offhand = None;
         let state = self.world.block(pos.x, pos.y, pos.z);

@@ -39,7 +39,7 @@ fn reset_player(game: &mut Game<'_>, food: i32) {
     player.health.food.food = food;
     player.ground.on_ground = true;
     game.player = Some(player);
-    game.keys.clear();
+    game.clear_device_keys();
     game.using = None;
     let remote = game.remote.as_mut().unwrap();
     remote.health = (20.0, food, 5.0);
@@ -139,13 +139,13 @@ fn native_movement_input_keys_axes_and_sprint() {
 
             // Both edits can stand at once, including all four direction flags being held.
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyS);
+            game.insert_device_key(KeyCode::KeyS);
             tick(game);
             assert_eq!(game.player.as_ref().unwrap().move_vector, [0.5, 0.25]);
             assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 2 | 4 | 8 | 64);
             // Vector-only edits don't affect what gets sent, even if the vector points backward.
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyA);
+            game.insert_device_key(KeyCode::KeyA);
             tick(game);
             assert_eq!(game.player.as_ref().unwrap().move_vector, [0.25, -0.5]);
             assert_eq!(game.remote.as_ref().unwrap().last_input, 4);
@@ -154,7 +154,7 @@ fn native_movement_input_keys_axes_and_sprint() {
             // crouching and slow-item eligibility, not only the hunger check.
             reset_player(game, 20);
             game.player.as_mut().unwrap().shift_key_down = true;
-            game.keys.insert(KeyCode::ShiftLeft);
+            game.insert_device_key(KeyCode::ShiftLeft);
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);
             reset_player(game, 20);
@@ -198,11 +198,11 @@ fn movement_input_passive_listener_preserves_sprint() {
         with_client_game(|game| {
             let server = connect(game);
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyW);
-            game.keys.insert(KeyCode::ControlLeft);
+            game.insert_device_key(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::ControlLeft);
             tick(game);
             assert!(game.player.as_ref().unwrap().sprinting);
-            game.keys.remove(&KeyCode::ControlLeft);
+            game.remove_device_key(&KeyCode::ControlLeft);
             tick(game);
             assert!(saw_released_sprint.load(Ordering::Relaxed));
             assert!(game.player.as_ref().unwrap().sprinting, "vanilla latch");
@@ -210,12 +210,12 @@ fn movement_input_passive_listener_preserves_sprint() {
             assert!(game.remote.as_ref().unwrap().was_sprinting);
 
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);
-            game.keys.clear();
+            game.clear_device_keys();
             tick(game);
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             tick(game);
             assert!(
                 game.player.as_ref().unwrap().sprinting,
@@ -235,8 +235,8 @@ fn movement_input_sends_auto_jump_with_the_edited_keys() {
             let server = connect(game);
             reset_player(game, 20);
             // Right selects the listener's edits: add forward and clear jump.
-            game.keys.insert(KeyCode::KeyD);
-            game.keys.insert(KeyCode::Space);
+            game.insert_device_key(KeyCode::KeyD);
+            game.insert_device_key(KeyCode::Space);
             game.player.as_mut().unwrap().auto_jump_time = 1;
             tick(game);
             let player = game.player.as_ref().unwrap();
@@ -264,23 +264,23 @@ fn movement_input_without_listeners_keeps_vanilla_latch_double_tap_and_controlle
             });
             assert_eq!(keys.direction(), [0.2, 0.8]);
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyW);
-            game.keys.insert(KeyCode::ControlLeft);
+            game.insert_device_key(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::ControlLeft);
             tick(game);
             assert!(game.player.as_ref().unwrap().sprinting);
-            game.keys.remove(&KeyCode::ControlLeft);
+            game.remove_device_key(&KeyCode::ControlLeft);
             tick(game);
             assert!(game.player.as_ref().unwrap().sprinting, "vanilla latch");
-            game.keys.clear();
+            game.clear_device_keys();
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);
             reset_player(game, 20);
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             tick(game);
             assert!(!game.player.as_ref().unwrap().sprinting);
-            game.keys.clear();
+            game.clear_device_keys();
             tick(game);
-            game.keys.insert(KeyCode::KeyW);
+            game.insert_device_key(KeyCode::KeyW);
             tick(game);
             assert!(
                 game.player.as_ref().unwrap().sprinting,
@@ -339,7 +339,7 @@ fn the_sneak_key_counts_while_riding() {
             game.boats.push(boat);
             game.riding = Some(5);
             game.remote.as_mut().unwrap().first_passenger = false;
-            game.keys.insert(KeyCode::ShiftLeft);
+            game.insert_device_key(KeyCode::ShiftLeft);
             tick(game);
             assert_eq!(game.riding, Some(5));
             assert!(game.player.as_ref().unwrap().shift_key_down);

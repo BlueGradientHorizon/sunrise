@@ -593,13 +593,13 @@ impl Game<'_> {
                 }
                 let screen_open = self.screen != Screen::Playing || self.title.is_some();
                 self.keys.resume_device_input(&KeyCode::ShiftLeft);
-                let was = self.keys.held(Action::Sneak);
+                let was = self.held_mapping(Action::Sneak);
                 self.toggles.pad_toggle(SNEAK, screen_open);
                 self.sync_toggle(SNEAK);
-                if !was && self.keys.held(Action::Sneak) {
+                if !was && self.held_mapping(Action::Sneak) {
                     // The pad's latch: a keyboard handoff leaves it.
-                    self.keys.press(KeyCode::ShiftLeft, Source::Pad);
-                    self.keys.release(&KeyCode::ShiftLeft, Source::Keyboard);
+                    self.press_device_key(KeyCode::ShiftLeft, Source::Pad);
+                    self.release_device_key(&KeyCode::ShiftLeft, Source::Keyboard);
                 }
                 self.key_pressed(KeyCode::ShiftLeft, KeyCode::ShiftLeft)
             }

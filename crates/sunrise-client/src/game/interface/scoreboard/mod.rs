@@ -964,7 +964,7 @@ impl Game<'_> {
         // Player heads and the player list both draw from the same skin
         // slots: a new frame, with what the last one drew.
         self.flush_skin_slots();
-        let key = self.screen == super::Screen::Playing && self.keys.held(Action::Playerlist);
+        let key = self.screen == super::Screen::Playing && self.held_mapping(Action::Playerlist);
         let count = self.remote.as_ref().map_or_else(
             || {
                 1 + self

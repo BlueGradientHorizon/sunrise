@@ -315,9 +315,9 @@ impl Game<'_> {
             self.release_mappings_on_screen_open();
         }
         if screen == Screen::Mod {
-            self.keys.clear();
-            self.left = false;
-            self.right = false;
+            self.clear_device_keys();
+            self.set_mapping_held("key.attack", false);
+            self.set_mapping_held("key.use", false);
             self.mining = None;
             self.capture(false);
         }

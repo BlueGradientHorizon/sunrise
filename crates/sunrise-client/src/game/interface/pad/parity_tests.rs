@@ -102,7 +102,7 @@ fn a_keyboard_release_keeps_the_sneak_the_pad_went_on_to_hold() {
         pad_press(game, Button::RightStick, "key.sneak");
         game.mapped_key(shift, false, false, shift, Source::Keyboard)
             .unwrap();
-        assert!(game.keys.held(Action::Sneak), "R3 is still down");
+        assert!(game.held_mapping(Action::Sneak), "R3 is still down");
     });
 }
 
@@ -314,10 +314,13 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
         pad_press(game, Button::RightTrigger, "key.attack");
         game.mouse_mapping(MouseButton::Left, false, Source::Keyboard)
             .unwrap();
-        assert!(game.left, "the pad still holds the attack");
+        assert!(
+            game.mapped_key_down("key.attack"),
+            "the pad still holds the attack"
+        );
         // The pad let go, so its edges are no longer held either.
         pad_release(game, Button::RightTrigger);
-        assert!(!game.left);
+        assert!(!game.mapped_key_down("key.attack"));
 
         // The other way round: the mouse button is physically down.
         game.physical_buttons.insert(MouseButton::Right);
@@ -325,11 +328,14 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
             .unwrap();
         pad_press(game, Button::LeftTrigger, "key.use");
         pad_release(game, Button::LeftTrigger);
-        assert!(game.right, "the mouse still holds the use");
+        assert!(
+            game.mapped_key_down("key.use"),
+            "the mouse still holds the use"
+        );
         game.physical_buttons.remove(&MouseButton::Right);
         game.mouse_mapping(MouseButton::Right, false, Source::Keyboard)
             .unwrap();
-        assert!(!game.right);
+        assert!(!game.mapped_key_down("key.use"));
 
         // Rebinding a physical mouse button to an ordinary key goes through
         // the keyboard source path, not the default attack/use path above.
@@ -344,7 +350,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
                 .unwrap();
             game.pad_action("key.forward", true).unwrap();
             forward_mapping.set_down(game, false).unwrap();
-            assert!(!game.keys.held(Action::Forward));
+            assert!(!game.held_mapping(Action::Forward));
             for mouse_releases in [mouse_releases_first, !mouse_releases_first] {
                 if mouse_releases {
                     game.mapped_mouse_event(MouseButton::Left, binding, false)
@@ -353,7 +359,7 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
                     game.pad_action("key.forward", false).unwrap();
                 }
                 assert_eq!(
-                    game.keys.held(Action::Forward),
+                    game.held_mapping(Action::Forward),
                     mouse_releases == mouse_releases_first
                 );
             }
@@ -368,10 +374,13 @@ fn a_release_from_a_screen_can_not_strand_the_pads_attack() {
         // The mouse went down in play, and came up where the mappings didn't hear it.
         game.mouse_mapping(MouseButton::Left, true, Source::Keyboard)
             .unwrap();
-        game.left = false;
+        game.set_mapping_held("key.attack", false);
         pad_press(game, Button::RightTrigger, "key.attack");
-        assert!(game.left);
+        assert!(game.mapped_key_down("key.attack"));
         pad_release(game, Button::RightTrigger);
-        assert!(!game.left, "nothing is physically held");
+        assert!(
+            !game.mapped_key_down("key.attack"),
+            "nothing is physically held"
+        );
     });
 }

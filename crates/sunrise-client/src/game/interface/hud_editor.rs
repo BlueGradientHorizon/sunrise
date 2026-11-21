@@ -60,7 +60,7 @@ impl Game<'_> {
             return;
         }
         self.release_mappings_on_screen_open();
-        self.keys.clear();
+        self.clear_device_keys();
         self.pvp.editor = Some(HudEditor {
             from_options,
             ..HudEditor::default()

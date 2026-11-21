@@ -139,7 +139,7 @@ impl Game<'_> {
                         }
                     }
                     Ok(other) => {
-                        self.keys.insert(other);
+                        self.insert_device_key(other);
                     }
                     Err(_) => {}
                 }

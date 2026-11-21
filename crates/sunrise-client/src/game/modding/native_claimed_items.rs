@@ -140,7 +140,7 @@ impl Game<'_> {
             if let Some(live) = live {
                 active.stack = live;
             }
-            if self.right {
+            if self.mapped_key_down("key.use") {
                 active.ticks = active.ticks.saturating_add(1);
             }
         }

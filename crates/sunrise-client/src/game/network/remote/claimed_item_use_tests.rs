@@ -133,8 +133,8 @@ fn interception_does_not_send_item_use_or_release_packets() {
 
             // An owner for the off-hand kind does not suppress normal off-hand use or release.
             game.offhand = Some(ItemStack::new(SHIELD, 1));
-            game.right = true;
-            game.remote.as_mut().unwrap().input.press(Button::Use);
+            game.set_mapping_held("key.use", true);
+            game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
             assert!(game.using.is_some());
             assert!(
@@ -142,7 +142,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
                     .iter()
                     .any(|packet| matches!(packet, S::UseItem(play::UseItem { hand: 1, .. })))
             );
-            game.right = false;
+            game.set_mapping_held("key.use", false);
             game.remote_handle_input();
             assert!(game.using.is_none());
             assert!(sent(&mut reader).iter().any(|packet| matches!(
@@ -170,7 +170,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
                 point: [0.5, 65.0, 0.5],
                 inside: false,
             });
-            game.right = true;
+            game.set_mapping_held("key.use", true);
             let input = &mut game.remote.as_mut().unwrap().input;
             input.press(Button::Use);
             input.press(Button::Use);
@@ -184,7 +184,7 @@ fn interception_does_not_send_item_use_or_release_packets() {
             assert!(game.using.is_none());
             assert!(game.remote.as_ref().unwrap().use_item.is_none());
 
-            game.right = false;
+            game.set_mapping_held("key.use", false);
             game.remote_handle_input();
             assert!(game.client_item_use.is_none());
             assert!(game.using.is_none());
@@ -224,14 +224,14 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
     fn start(game: &mut Game<'_>) {
         game.select_hotbar_slot(3).unwrap();
         game.inventory[3] = Some(marked(SHIELD, 1, Tag::Byte(23)));
-        game.right = true;
-        game.remote.as_mut().unwrap().input.press(Button::Use);
+        game.set_mapping_held("key.use", true);
+        game.queue_mapping_click(Button::Use.mapping());
         game.remote_handle_input();
         assert!(game.client_item_use.is_some());
         assert!(game.using.is_none());
     }
     fn key_up(game: &mut Game<'_>) {
-        game.right = false;
+        game.set_mapping_held("key.use", false);
         game.remote_handle_input();
         assert!(game.client_item_use.is_none());
     }

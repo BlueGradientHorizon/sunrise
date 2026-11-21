@@ -83,7 +83,7 @@ impl Game<'_> {
     pub(super) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
         if !self.is_logical_server() {
             return Some(match self.native_client_entity_target(entity)? {
-                Target::Player => self.keys.held(sunrise_client::actions::Action::Sneak),
+                Target::Player => self.held_mapping(sunrise_client::actions::Action::Sneak),
                 _ => false,
             });
         }
@@ -1665,10 +1665,10 @@ mod tests {
             let local = game.local_player().unwrap();
             let entity = game.entity(7).unwrap();
             assert_eq!(local.entity(), entity);
-            game.keys.insert(KeyCode::ShiftLeft);
+            game.insert_device_key(KeyCode::ShiftLeft);
             assert!(!game.player.as_ref().unwrap().shift_key_down);
             assert_eq!(entity.is_shift_key_down(game), Some(true));
-            game.keys.clear();
+            game.clear_device_keys();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 entity.is_shift_key_down(game),
@@ -1682,7 +1682,7 @@ mod tests {
             assert_eq!(entity.is_shift_key_down(game), None);
         });
         with_player(|game, player| {
-            game.keys.clear();
+            game.clear_device_keys();
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 player.is_shift_key_down(game),
