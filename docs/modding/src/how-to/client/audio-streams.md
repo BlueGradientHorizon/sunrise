@@ -36,7 +36,9 @@ fn play_clip(host: &dyn ClientHost, mono_pcm: Vec<i16>) -> Result<AudioStreamRef
 
 The mixer owns the `Send + 'static` source. Keep `read` bounded and nonblocking: all pull streams on the output share a worker, so one slow source delays the others. Do not wait on I/O, locks, another thread or a tick. A source has no `Host` or world borrow and must not call back into the game. Use the preallocated buffer it lends you.
 
-Write up to `pcm.len() / channels` whole interleaved frames into the cleared buffer and return `AudioRead::Frames(n)` with the **frame** count, not the sample count. A short read plays what was supplied; `Frames(0)` is temporary silence. The worker tries again on later demand. A count larger than the buffer can hold stops the stream. When no more PCM will arrive, return `AudioRead::Eof` on a read after reporting the final frames. The mixer drains those frames before stopping. The worker drops an admitted source off the device callback, even if no further callback runs after you stop it. `push` on a pull handle always returns zero.
+Write up to `pcm.len() / channels` whole interleaved frames into the cleared buffer and return `AudioRead::Frames(n)` with the **frame** count, not the sample count. A short read plays what was supplied; `Frames(0)` is temporary silence. The worker tries again on later demand. A count larger than the buffer can hold stops that stream and is logged. When no more PCM will arrive, return `AudioRead::Eof` on a read after reporting the final frames. The mixer drains the queued frames once the worker drops the source successfully with the owner still enabled. If destruction fails, the stream stops without draining. The worker drops an admitted source off the device callback, even if no further callback runs after you stop it. `push` on a pull handle always returns zero.
+
+If a pull source panics while the worker reads or drops it, the client logs the owning mod and shows an error toast, even if a mod cancels the HUD. The player's hide-GUI setting still applies. The panic wakes the worker to retire that mod's live pull sources without waiting for another device callback. This also applies if the worker rejects admission and the source panics while being dropped on the opening thread. The mod cannot open another pull stream until the client restarts. Other mods' streams continue on the same worker; push streams are unaffected. Disabling a mod also retires its live pull sources. The worker discards any read results still in flight and stops the affected streams without draining. A source returning `AudioRead::Eof` is still live until it has been dropped successfully with the owner still enabled; only streams that already completed normal EOF retirement keep draining queued PCM.
 
 ## Push PCM from an async producer
 
@@ -63,7 +65,7 @@ fn push_voice<'a>(stream: &AudioStreamRef, mono_pcm: &'a [i16]) -> &'a [i16] {
 
 ## Format and controls
 
-Both openers are client host calls available to the calling mod from client setup onward. They refuse with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, or the limit of 32 open streams per mod or 64 across all mods is reached. A pull open can also return `AudioRefusal::WorkerUnavailable` if the worker cannot start or take the source.
+Both openers are client host calls available to the calling mod from client setup onward. They refuse with `AudioRefusal`, without opening anything, if the client has no sound output, the call is unavailable in this context, the spec is invalid, or the limit of 32 open streams per mod or 64 across all mods is reached. A pull open can also return `AudioRefusal::WorkerUnavailable` if the worker cannot start or take the source, or `AudioRefusal::PullDisabled` if the calling mod's pull callbacks are disabled after a panic.
 
 | `StreamSpec` field | Meaning |
 |---|---|
@@ -78,7 +80,7 @@ Use the `AudioStreamRef` handle to set placement or volume, read state, or stop 
 
 - `Playing`: open and placed (or flat), even if muted or dry.
 - `Unplaced`: open, but at a place nobody hears (see below).
-- `Stopped`: stopped explicitly, dropped, ended after pull EOF and drain, refused an invalid pull count, or lost sound output. It never plays again; if output is lost, open a new stream once it is back. Changing devices successfully does not stop streams.
+- `Stopped`: stopped explicitly, dropped, or lost sound output. A pull stream also stops after normal EOF retirement and drain, an invalid frame count, a source panic, failed source destruction, or when the worker retires its live source because its owning mod or pull callbacks were disabled. A stopped stream never plays again; if output is lost, open a new stream once it is back. Changing devices successfully does not stop streams.
 
 ## The player's switch
 

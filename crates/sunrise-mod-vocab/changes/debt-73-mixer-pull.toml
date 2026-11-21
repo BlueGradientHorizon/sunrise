@@ -7,8 +7,10 @@ ids = [
     "type:AudioRead.Frames",
     "type:AudioRead.Eof",
     "type:AudioRefusal.WorkerUnavailable",
+    "type:AudioRefusal.PullDisabled",
+    "type:AudioStreamState",
 ]
-why = "The mixer can now read native PCM on demand instead of waiting for a mod to push it every tick. Async producers still have a bounded push stream. Both use the same separate mod stream pool and keep the existing controls and spatial playback."
+why = "The mixer can now read native PCM on demand instead of waiting for a mod to push it every tick. Async producers still have a bounded push stream. Both use the same separate mod stream pool and keep the existing controls and spatial playback. Vanilla 26.3's Channel.pumpBuffers and Channel.destroy log read and close failures at the source, and NeoForge's SoundEngine.playWithoutEvent uses SoundInstance.getStream for a mod's source. On Sunrise's shared worker, the existing crash boundary contains both read and source destruction. A source panic stops the faulting stream, retires the mod's other live pull jobs, and disables its pull callbacks for the session, with a log and error toast naming the mod. Other mods still read on the same worker; with callbacks contained, the worker exits only on shutdown and is not respawned."
 migrate = """
 For tick-generated PCM, move the generator or decoder and its owned state into an implementation of \
 `AudioStream::read(&mut self, pcm: &mut [i16]) -> AudioRead`. Replace `host.open_audio_stream(&spec)` and \
@@ -18,6 +20,12 @@ plays what is ready; `AudioRead::Frames(0)` means retry on later demand. Return 
 separate read after the final frames to drain and stop. Do bounded, nonblocking work with no host or world \
 borrow or calls back into the game. Do not call `AudioStreamRef::push` on a pull handle; it accepts no \
 frames and returns zero. Treat `AudioRefusal::WorkerUnavailable` like any other opening failure. \
+No signature changes are needed for panic containment. If `open_audio_stream` now returns \
+`AudioRefusal::PullDisabled`, stop trying to open pull streams until the client restarts and fix the \
+source panic reported in the log. When the owner or its pull callbacks are disabled, a pull handle \
+with a live source reports `AudioStreamState::Stopped` once the worker retires its job. A source \
+returning `AudioRead::Eof` is still live until it is dropped successfully with the owner still enabled. \
+Only if normal EOF retirement already completed should you expect its queued PCM to drain. \
 For a network or other async producer, replace `host.open_audio_stream(&spec)` with \
 `host.open_push_audio_stream(&spec)` and keep calling `stream.push(&samples)` on the producer thread. \
 Use the returned accepted frame count times the channel count to find the refused suffix; drop it or retry \

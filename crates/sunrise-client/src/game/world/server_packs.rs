@@ -67,13 +67,14 @@ impl PackPrompt {
 }
 
 impl ServerPackState {
-    /// The `ToastManager` slots the download toasts hold.
+    /// The `ToastManager` slots these system toasts hold.
     pub(super) fn toast_slots(&self) -> impl Iterator<Item = usize> + '_ {
         self.notifiers
             .iter()
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
+            .chain(self.mod_audio_errors.iter().flatten())
             .filter_map(|t| t.slot)
     }
 }
@@ -98,6 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
+    /// Pull callback failures to show, one toast per panic.
+    mod_audio_errors: Vec<Option<SystemToast>>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -527,19 +530,41 @@ impl Game<'_> {
         }
     }
 
-    /// The download notifiers' toasts, each in a free 32-pixel slot of the
-    /// `ToastManager` (`hidden`, F1, keeps them timing out undrawn).
-    pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
+    /// System toasts, each in a free 32-pixel slot of the `ToastManager`.
+    /// Hidden toasts still time out. A mod's HUD veto cannot hide an audio failure notice.
+    pub(super) fn draw_pack_toasts(
+        &mut self,
+        batch: &mut HudBatch,
+        hidden: bool,
+        gui_canceled: bool,
+    ) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
+        // A mod cannot veto the notice reporting its failed callback.
+        self.server_packs
+            .mod_audio_errors
+            .extend(self.audio.take_pull_panics().into_iter().map(|id| {
+                Some(SystemToast::new(
+                    Text::tr("sunrise.audio.mod_stream_error.title", &[]),
+                    Some(Text::tr("sunrise.audio.mod_stream_error.message", &[&id])),
+                ))
+            }));
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
-        for slot_toast in packs
+        let hide_audio_errors = hidden || self.ui.hide_gui;
+        for (slot_toast, hidden) in packs
             .notifiers
             .iter_mut()
             .map(|n| &mut n.toast)
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
+            .map(|toast| (toast, hidden || gui_canceled))
+            .chain(
+                packs
+                    .mod_audio_errors
+                    .iter_mut()
+                    .map(|toast| (toast, hide_audio_errors)),
+            )
         {
             let Some(toast) = slot_toast else {
                 continue;
@@ -565,6 +590,7 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        packs.mod_audio_errors.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
@@ -589,6 +615,98 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use download::Progress::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_audio_panic_toast_survives_its_mods_hud_veto_but_not_f1() {
+        use mod_api::{
+            AudioRead, AudioStream, ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent,
+            SoundSource, StreamSpec,
+        };
+        use std::{
+            sync::mpsc,
+            time::{Duration, Instant},
+        };
+
+        const OWNER: &str = "audio_toast_fixture";
+        struct HideHud;
+        #[mod_api::__subscriptions]
+        impl Hooks for HideHud {
+            fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+                Flow::Cancel
+            }
+        }
+
+        struct BrokenSource(mpsc::Sender<()>);
+        impl AudioStream for BrokenSource {
+            fn read(&mut self, _: &mut [i16]) -> AudioRead {
+                panic!("broken pull callback");
+            }
+        }
+        impl Drop for BrokenSource {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new(OWNER, Box::new(HideHud))].into(),
+            || {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    game.title = None;
+                    game.screen = crate::game::Screen::Playing;
+                    game.ui.hide_gui = false;
+                    game.audio.backend_live_for_bench();
+                    let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+                    let (dropped, retired) = mpsc::channel();
+                    let _handle = game
+                        .audio
+                        .open_stream(OWNER, &spec, Some(Box::new(BrokenSource(dropped))))
+                        .unwrap();
+                    game.audio.mix_buffer(&mut [0.0; 2], 2, 48_000);
+                    // The worker queues the notice before dropping the failed source.
+                    retired.recv_timeout(Duration::from_secs(1)).unwrap();
+
+                    game.server_packs.load_fail = Some(SystemToast::new(
+                        Text::tr("resourcePack.load_fail", &[]),
+                        None,
+                    ));
+                    let size = [640, 480];
+                    let _ = game.hud_layers(size);
+                    let regular = game.server_packs.load_fail.as_mut().unwrap();
+                    let error = game.server_packs.mod_audio_errors[0].as_mut().unwrap();
+                    assert_eq!(regular.slot, Some(0));
+                    let error_slot = error.slot.unwrap();
+                    assert_ne!(error_slot, 0, "the ordinary toast keeps its slot");
+                    let error_y = 32.0 * error_slot as f32;
+                    assert_eq!(
+                        error.message.as_ref().unwrap().component()["with"][0]["text"],
+                        OWNER
+                    );
+                    let past = Instant::now() - Duration::from_millis(700);
+                    regular.slide.origin = Some(past);
+                    error.slide.origin = Some(past);
+
+                    let rect = game.gui.atlas.sprites["toast/system"];
+                    let has_toast = |batch: &HudBatch, y| {
+                        batch.vertices.iter().any(|vertex| {
+                            vertex.uv == [rect.u0, rect.v0]
+                                && vertex.pos[1] == y
+                                && vertex.pos[0] < batch.width
+                        })
+                    };
+                    let canceled = game.hud_layers(size);
+                    assert!(!has_toast(&canceled, 0.0), "ordinary toast is canceled");
+                    assert!(has_toast(&canceled, error_y), "audio error still draws");
+                    game.ui.hide_gui = true;
+                    assert!(
+                        !has_toast(&game.hud_layers(size), error_y),
+                        "F1 hides the notice"
+                    );
+                });
+            },
+        );
+    }
 
     fn notifier(total: usize, events: &[download::Progress]) -> PackNotifier {
         let (send, receive) = std::sync::mpsc::channel();

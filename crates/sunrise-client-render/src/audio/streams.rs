@@ -95,7 +95,7 @@ pub(super) struct Control {
     /// The stream's `SoundSource` index.
     category: usize,
     range: f32,
-    owner: String,
+    owner: &'static str,
     volume: AtomicU32,
     closed: AtomicBool,
     /// Another thread is pushing: this push is refused, which keeps the ring single-producer.
@@ -383,7 +383,7 @@ impl StreamPool {
     pub(super) fn open(
         &self,
         mixer: &Mutex<Mixer>,
-        owner: &str,
+        owner: &'static str,
         spec: &StreamSpec,
         source: Option<Box<dyn AudioStream>>,
     ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
@@ -424,7 +424,7 @@ impl StreamPool {
             rate: spec.rate,
             category: spec.category.index(),
             range: spec.range,
-            owner: owner.to_owned(),
+            owner,
             volume: AtomicU32::new(spec.volume.to_bits()),
             closed: AtomicBool::new(false),
             pushing: AtomicBool::new(false),
@@ -445,6 +445,12 @@ impl StreamPool {
                     }
                 },
             };
+            let owner = worker.owner(owner);
+            if owner.pull_disabled() {
+                drop(state);
+                owner.drop_source(source);
+                return Err(AudioRefusal::PullDisabled);
+            }
             let demand = Arc::new(worker.demand());
             control.pull = Some(demand.clone());
             let control = Arc::new(control);
@@ -452,7 +458,8 @@ impl StreamPool {
                 control: control.clone(),
                 demand,
                 ring: ring.clone(),
-                source,
+                owner,
+                source: Some(source),
             }) {
                 drop(state);
                 drop(job);
@@ -490,6 +497,13 @@ impl StreamPool {
         state.controls.push(control);
         self.open.store(state.controls.len(), Relaxed);
         Ok(Arc::new(handle))
+    }
+
+    pub(super) fn take_pull_panics(&self) -> Vec<&'static str> {
+        self.state()
+            .worker
+            .as_ref()
+            .map_or_else(Vec::new, Worker::take_panics)
     }
 
     /// Lets go of the streams a mod stopped or dropped: their voices leave the mixer, and with
@@ -782,7 +796,7 @@ mod tests {
         }
         fn open(
             &self,
-            owner: &str,
+            owner: &'static str,
             spec: &StreamSpec,
         ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
             self.pool.open(&self.mixer, owner, spec, None)

@@ -3,8 +3,8 @@
 use super::Game;
 use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, StreamSpec};
 
-/// The host marks the calling native mod while its hook runs. A call outside a mod's scope
-/// opens nothing.
+/// The mod whose call this is: the host marks it when it enters the native callback.
+/// A call from no mod opens nothing.
 fn calling_mod() -> Result<&'static str, AudioRefusal> {
     mod_api::content::crash::current_native_mod().ok_or(AudioRefusal::Unavailable)
 }

@@ -353,6 +353,8 @@
   "sunrise.attribute.modifier.disabled": "%s: Disabled",
   "sunrise.attribute.modifier.enabled": "%s: Enabled",
   "sunrise.attribute.modifier.invalid": "%s: not valid",
+  "sunrise.audio.mod_stream_error.message": "%s cannot play pull audio until you restart the game.",
+  "sunrise.audio.mod_stream_error.title": "Mod audio stopped",
   "sunrise.biome_regions.adopt.button": "Use Installed Biome Regions",
   "sunrise.biome_regions.adopt.confirm": "Use Installed Regions",
   "sunrise.biome_regions.adopt.description": "New chunks will use the biome regions of the mods installed now, and mods' regions that are no longer installed are dropped. Completed chunks keep their biomes and blocks. Chunks still being generated may use the new regions when they finish, and new chunks beside old ones may differ in surface, decoration and structures. The choice is saved in the world.",
