@@ -2,7 +2,7 @@
 //! food, gossip and the raid state. Their AI is the brain in
 //! `villager_brain`.
 use super::{
-    Mob, MobEvent, MobWorld, Species,
+    Mob, MobEvent, MobWorld, Species, Who,
     anim::{Poses, State},
 };
 use crate::items::{ItemStack, Items};
@@ -365,8 +365,10 @@ pub struct Ext {
     pub sleeping_pos: Option<[i32; 3]>,
     /// `GOLEM_DETECTED_RECENTLY` expires at this game time.
     pub golem_until: i64,
-    /// The `last_hurt_by_time` of the player's hit already counted.
-    pub hurt_seen: i32,
+    /// `Villager.setLastHurtByMob` calls awaiting the game tick, one per
+    /// accepted hit: the attacker, a player attacker's UUID once the hit's
+    /// credit named it, and whether the villager was alive after the damage.
+    pub hurts: Vec<(Who, Option<[i32; 4]>, bool)>,
     /// A zombie villager's cure under way.
     pub cure: Option<super::zombie_villager::Cure>,
     /// `CanContinueSleepingEvent.mayContinueSleeping`, set by the game before the tick
@@ -382,6 +384,18 @@ pub struct Ext {
 }
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
+}
+/// The hit just taken by a player is that player's, whoever hits next in the tick.
+pub fn bind_hurt_player(m: &mut Mob, uuid: [i32; 4]) {
+    if let Some(e) = m.extra.villager.as_deref_mut()
+        && let Some(h) = e
+            .hurts
+            .iter_mut()
+            .rev()
+            .find(|h| h.0 == Who::Player && h.1.is_none())
+    {
+        h.1 = Some(uuid);
+    }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

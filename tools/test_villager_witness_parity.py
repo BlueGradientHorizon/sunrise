@@ -48,7 +48,7 @@ def main(argv=None):
                     'dev.sunriselab.parity.VanillaVillagerWitnessOracle', str(expected)],
                    cwd=scratch, env=env, check=True)
     rows = expected.read_text(encoding='utf-8').splitlines()
-    if [line.split()[0] for line in rows] != ['witnesses', 'cached', 'fresh']:
+    if [line.split()[0] for line in rows] != ['witnesses', 'cached', 'fresh', 'hurt']:
         raise AssertionError('Missing/extra actual Java records')
     if args.java_only:
         base.ensure_sources_unchanged(sources, hashes)
@@ -58,8 +58,8 @@ def main(argv=None):
     artifacts = {}
     executed = {}
     for package, group, count in [
-        ('sunrise-client-lib', 'mobs::villager_brain::reputation_witness_tests', 1),
-        ('sunrise-client', 'game::villagers::witness_tests', 1),
+        ('sunrise-client-lib', 'mobs::villager_brain::reputation_witness_tests', 2),
+        ('sunrise-client', 'game::villagers::witness_tests', 2),
     ]:
         if package not in artifacts:
             source = (lab.ROOT / 'crates/sunrise-client/src' / ('client_lib.rs' if package == 'sunrise-client-lib' else 'lib.rs')).resolve()
@@ -89,7 +89,7 @@ def main(argv=None):
         executed[group] = count
     base.ensure_sources_unchanged(sources, hashes)
     lab.write_json(build / 'report.json', {'minecraft': lock['minecraft']['version'],
-        'sources_sha256': hashes, 'executed_tests': executed, 'java_records': len(rows), 'scope': 'Actual lazy cached witness visibility; isolated entities, no server/world loop.'})
+        'sources_sha256': hashes, 'executed_tests': executed, 'java_records': len(rows), 'scope': 'Actual lazy cached witness visibility and VILLAGER_HURT gossip; isolated entities, no server/world loop.'})
     print('Cached witness candidates and visibility match vanilla')
 
 

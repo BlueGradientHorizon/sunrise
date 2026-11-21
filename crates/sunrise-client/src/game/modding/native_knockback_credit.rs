@@ -47,6 +47,10 @@ impl KnockbackCredit for CreditLoan<'_> {
             mob.ai.last_hurt_by_player = if responsibility.is_some() { 100 } else { 0 };
             match &responsibility {
                 Some((credit, _)) => {
+                    sunrise_client::mobs::villager::bind_hurt_player(
+                        mob,
+                        sunrise_client::lan::playerdata::uuid_ints(credit.0),
+                    );
                     self.players.insert(mob.id, *credit);
                 }
                 None => {

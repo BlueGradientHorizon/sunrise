@@ -5,7 +5,7 @@ use super::Game;
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
-    mobs::{Mob, Species, spawning, villager, villager_brain},
+    mobs::{Mob, Species, Who, spawning, villager, villager_brain},
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 
@@ -486,38 +486,40 @@ impl Game<'_> {
         };
         Some(sunrise_client::lan::playerdata::uuid_ints(uuid))
     }
-    /// `Villager.setLastHurtByMob` and `ServerLevel.onReputationEvent`: a hit
-    /// from a player counts against that player with the villager that was hit.
+    /// `Villager.setLastHurtByMob` and `ServerLevel.onReputationEvent`: each
+    /// accepted hit counts against its attacker (a mob's own UUID too) with
+    /// the villager that was hit.
     pub(super) fn villager_reputation_tick(&mut self) {
         let mut angry = Vec::new();
         for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
-            if m.species() != Species::Villager
-                || m.ai.last_hurt_by != Some(sunrise_client::mobs::Who::Player)
-            {
-                continue;
-            }
-            let time = m.ai.last_hurt_by_time;
-            let alive = m.alive();
-            let at = m.id;
-            if villager::ext(m).is_some_and(|e| e.hurt_seen == time) {
-                continue;
-            }
-            let Some(uuid) = self.last_hurt_by_player.get(&at).and_then(|credit| {
-                self.resolve_player_credit(*credit)
-                    .and_then(|who| self.player_uuid_of(who))
-            }) else {
+            let at = self.mobs[i].id;
+            let Some(e) = self.mobs[i].extra.villager.as_deref_mut() else {
                 continue;
             };
-            let e = villager::ext_mut(&mut self.mobs[i]);
-            e.hurt_seen = time;
-            e.gossips.add(
-                uuid,
-                GossipType::MinorNegative,
-                gossip::REPUTATION_CHANGE_PER_EVENT,
-            );
-            if alive {
-                angry.push(at);
+            for (who, bound, alive) in std::mem::take(&mut e.hurts) {
+                let uuid = match who {
+                    // An unbound hit falls back to the remembered player.
+                    Who::Player => bound.or_else(|| {
+                        self.last_hurt_by_player.get(&at).and_then(|credit| {
+                            self.resolve_player_credit(*credit)
+                                .and_then(|who| self.player_uuid_of(who))
+                        })
+                    }),
+                    Who::Mob(id) => self
+                        .mobs
+                        .iter()
+                        .any(|m| m.id == id)
+                        .then(|| self.mob_uuid(id)),
+                };
+                let Some(uuid) = uuid else { continue };
+                villager::ext_mut(&mut self.mobs[i]).gossips.add(
+                    uuid,
+                    GossipType::MinorNegative,
+                    gossip::REPUTATION_CHANGE_PER_EVENT,
+                );
+                if alive && who == Who::Player {
+                    angry.push(at);
+                }
             }
         }
         // Villager.setLastHurtByMob: entity event 13.

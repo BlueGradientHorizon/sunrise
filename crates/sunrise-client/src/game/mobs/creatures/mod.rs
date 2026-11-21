@@ -2213,6 +2213,9 @@ impl Game<'_> {
     /// Remember the acting player for a mob's `lastHurtByPlayer`.
     pub(super) fn remember_mob_player_credit(&mut self, victim: u32) {
         if let Some(uuid) = self.player_uuid_of(self.lan_acting) {
+            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == victim) {
+                sunrise_client::mobs::villager::bind_hurt_player(m, uuid);
+            }
             self.last_hurt_by_player.insert(
                 victim,
                 super::combat::PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(uuid)),
