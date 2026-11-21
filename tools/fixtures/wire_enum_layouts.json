@@ -302,12 +302,6 @@
       "canonical_path": "crate::block::types::FakeEffect"
     },
     {
-      "name": "FileToIdConverterError",
-      "path": "crate::content::file_to_id_converter::FileToIdConverterError",
-      "hash": "1264ee92f3e87063",
-      "canonical_path": "crate::content::file_to_id_converter::FileToIdConverterError"
-    },
-    {
       "name": "FireworkShape",
       "path": "crate::item::recipe_rule::FireworkShape",
       "hash": "f30055197dbdfd54",

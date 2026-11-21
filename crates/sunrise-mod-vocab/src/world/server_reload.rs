@@ -16,8 +16,9 @@ use std::{
 };
 
 /// Sunrise's vanilla server reload listeners and ordering boundaries.
+/// Use these methods to obtain IDs for server reload dependencies.
+// no wire: namespace for local reload dependency IDs, not a payload.
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct VanillaServerListeners;
 impl VanillaServerListeners {
     /// Boundary before every reload listener.
