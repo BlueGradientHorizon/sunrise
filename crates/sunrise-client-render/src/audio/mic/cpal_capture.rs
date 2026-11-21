@@ -139,14 +139,9 @@ impl BackendDevice for CpalDevice {
         }
         #[cfg(windows)]
         {
-            match (self.device.as_inner(), other.device.as_inner()) {
-                (
-                    cpal::platform::DeviceInner::Wasapi(a),
-                    cpal::platform::DeviceInner::Wasapi(b),
-                ) => a == b,
-                #[allow(unreachable_patterns)]
-                _ => self.selector.is_some() && self.selector == other.selector,
-            }
+            let (cpal::platform::DeviceInner::Wasapi(a), cpal::platform::DeviceInner::Wasapi(b)) =
+                (self.device.as_inner(), other.device.as_inner());
+            a == b
         }
         #[cfg(not(any(target_os = "macos", windows)))]
         {

@@ -4,10 +4,13 @@ use block2::RcBlock;
 use objc2::{rc::autoreleasepool, runtime::Bool};
 use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeAudio};
 use objc2_core_audio::{
-    AudioObjectGetPropertyDataSize, AudioObjectPropertyAddress, kAudioDevicePermissionsError,
-    kAudioDevicePropertyStreams, kAudioHardwareBadDeviceError, kAudioHardwareBadObjectError,
-    kAudioHardwareNoError, kAudioHardwareUnknownPropertyError, kAudioObjectPropertyElementMain,
-    kAudioObjectPropertyScopeInput,
+    AudioObjectGetPropertyDataSize, AudioObjectPropertyAddress,
+    kAudioDevicePermissionsError as AUDIO_DEVICE_PERMISSIONS_ERROR, kAudioDevicePropertyStreams,
+    kAudioHardwareBadDeviceError as AUDIO_HARDWARE_BAD_DEVICE_ERROR,
+    kAudioHardwareBadObjectError as AUDIO_HARDWARE_BAD_OBJECT_ERROR,
+    kAudioHardwareNoError as AUDIO_HARDWARE_NO_ERROR,
+    kAudioHardwareUnknownPropertyError as AUDIO_HARDWARE_UNKNOWN_PROPERTY_ERROR,
+    kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeInput,
 };
 use std::{
     ptr::{NonNull, null},
@@ -25,10 +28,6 @@ pub enum InputMetadataError {
 
 /// Reports whether a CoreAudio device has any input streams, without creating an AudioUnit or
 /// requesting authorization. Output-only and unplugged devices have no input streams.
-#[allow(
-    non_upper_case_globals,
-    reason = "These constants are named by CoreAudio"
-)]
 pub fn has_input_streams(device_id: u32) -> Result<bool, InputMetadataError> {
     let address = AudioObjectPropertyAddress {
         mSelector: kAudioDevicePropertyStreams,
@@ -48,11 +47,11 @@ pub fn has_input_streams(device_id: u32) -> Result<bool, InputMetadataError> {
         )
     };
     match status {
-        kAudioHardwareNoError => Ok(size != 0),
-        kAudioHardwareUnknownPropertyError
-        | kAudioHardwareBadObjectError
-        | kAudioHardwareBadDeviceError => Ok(false),
-        kAudioDevicePermissionsError => Err(InputMetadataError::Denied),
+        AUDIO_HARDWARE_NO_ERROR => Ok(size != 0),
+        AUDIO_HARDWARE_UNKNOWN_PROPERTY_ERROR
+        | AUDIO_HARDWARE_BAD_OBJECT_ERROR
+        | AUDIO_HARDWARE_BAD_DEVICE_ERROR => Ok(false),
+        AUDIO_DEVICE_PERMISSIONS_ERROR => Err(InputMetadataError::Denied),
         status => Err(InputMetadataError::QueryFailed(status)),
     }
 }
