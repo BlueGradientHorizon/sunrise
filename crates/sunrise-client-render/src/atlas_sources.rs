@@ -162,8 +162,8 @@ pub fn decode(text: &str, mods: &dyn ModSources) -> Result<Vec<SpriteSource>, De
         })
         .collect()
 }
-/// Whether a source of type `kind` can be decoded: a built-in one or one a mod registered.
-fn known(kind: &str, mods: &dyn ModSources) -> bool {
+/// Whether `kind` is one of vanilla's built-in sprite source types (`SpriteSources.bootstrap`).
+pub(crate) fn is_builtin_type(kind: &str) -> bool {
     matches!(
         kind,
         "minecraft:directory"
@@ -171,10 +171,21 @@ fn known(kind: &str, mods: &dyn ModSources) -> bool {
             | "minecraft:filter"
             | "minecraft:unstitch"
             | "minecraft:paletted_permutations"
-    ) || mods.is_registered(kind)
+    )
+}
+/// Whether a source of type `kind` can be decoded: a built-in one or one a mod registered.
+fn known(kind: &str, mods: &dyn ModSources) -> bool {
+    is_builtin_type(kind) || mods.is_registered(kind)
 }
 fn decode_source(s: &Value, mods: &dyn ModSources) -> Option<SpriteSource> {
-    Some(match qualified(s.get("type")?.as_str()?).as_str() {
+    let kind = qualified(s.get("type")?.as_str()?);
+    if mods.is_registered(&kind) {
+        return Some(SpriteSource::Registered {
+            kind,
+            config: Arc::new(sunrise_core::json_nbt::json_to_tag(s).ok()?),
+        });
+    }
+    Some(match kind.as_str() {
         "minecraft:directory" => SpriteSource::Directory {
             source: string(s, "source")?,
             prefix: string(s, "prefix")?,
@@ -242,10 +253,6 @@ fn decode_source(s: &Value, mods: &dyn ModSources) -> Option<SpriteSource> {
                 None => "_".to_owned(),
                 Some(v) => v.as_str()?.to_owned(),
             },
-        },
-        kind if mods.is_registered(kind) => SpriteSource::Registered {
-            kind: kind.to_owned(),
-            config: Arc::new(sunrise_core::json_nbt::json_to_tag(s).ok()?),
         },
         _ => return None,
     })
@@ -1484,6 +1491,45 @@ mod tests {
         assert_eq!(
             listing.by_mods("minecraft:blocks").collect::<Vec<_>>(),
             ["srcgame:b"]
+        );
+    }
+
+    /// A registered sprite source type checked ahead of vanilla's built-ins overrides that
+    /// built-in during atlas decode and listing (matching NeoForge's `LateBoundIdMapper`).
+    #[test]
+    fn a_registered_source_overrides_a_builtin_type_when_decoding() {
+        let json = r#"{"sources":[{"type":"single","resource":"minecraft:item/apple"}]}"#;
+        assert!(matches!(
+            decode(json, &Mods::none()).unwrap().as_slice(),
+            [SpriteSource::Single { resource, .. }] if resource == "minecraft:item/apple"
+        ));
+        let overriding = Mods::new(&["minecraft:single"], |_, _, _, _| {
+            vec![pixels("override:custom", [42, 43, 44, 255])]
+        });
+        assert!(matches!(
+            decode(json, &overriding).unwrap().as_slice(),
+            [SpriteSource::Registered { kind, .. }] if kind == "minecraft:single"
+        ));
+        let source = crate::resource_source::ResourceSource::indexed(
+            [
+                (
+                    "assets/minecraft/atlases/blocks.json".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(json.as_bytes().to_vec()),
+                ),
+                (
+                    "assets/minecraft/textures/item/apple.png".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(b"png".to_vec()),
+                ),
+            ]
+            .into(),
+        );
+        let listing = Listing::build(&source, &overriding);
+        assert_eq!(
+            listing
+                .sprites("minecraft:blocks")
+                .keys()
+                .collect::<Vec<_>>(),
+            ["override:custom"]
         );
     }
 }

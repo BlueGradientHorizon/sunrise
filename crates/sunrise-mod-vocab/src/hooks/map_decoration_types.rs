@@ -17,7 +17,7 @@ one: an item's entry `{type: "mymod:treasure", x, z, rotation}` (what `/give` wr
 item frame and on the cartography table's screen, and a type with `show_on_item_frame` false is
 left out of the last two as vanilla's player arrows and markers are. The sprite is looked up in
 the GUI atlas by name, so a pack's texture or a mod's sprite source's pixels
-(`Hooks::sprite_source` in the GUI atlas, `mymod:gui/treasure`) works; a sprite the atlas lacks is left
+(`Hooks::register_sprite_sources` in the GUI atlas, `mymod:gui/treasure`) works; a sprite the atlas lacks is left
 out of the drawing. A mod type never counts toward a map's decoration limit (`trackCount`).
 
 An id in vanilla's namespace, not of that form, registered already, or with an empty sprite is

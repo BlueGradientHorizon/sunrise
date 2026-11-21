@@ -28,7 +28,7 @@ use super::{
 };
 use mod_api::__private::game::{
     BlockStateDefinitionRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
-    ParticleGroupRegistration, StandaloneModelRegistration,
+    ParticleGroupRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
 };
 use mod_api::CommandSource;
 use mod_api::GameMode;
