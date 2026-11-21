@@ -544,37 +544,46 @@ mod tests {
                 snapshots.push(wire);
             }
         });
-        with_client_game(|game| {
-            let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(pipe, "Steve").unwrap();
-            let remote = game.remote.as_mut().unwrap();
-            remote.registries = Arc::new(snapshots[0].dynamic.clone());
-            Arc::make_mut(&mut remote.registries).add_tags(&snapshots[0].tags);
-            game.handle_packet(login()).unwrap();
-            check_host(game, 2);
-            let ids = members[3]
-                .1
-                .map(|id| snapshots[0].id("minecraft:damage_type", id).unwrap());
-            assert_eq!(
-                game.remote
-                    .as_ref()
-                    .unwrap()
-                    .registries
-                    .tag("minecraft:damage_type", "tag_reload:probe"),
-                Some(&ids[..])
-            );
-            game.handle_packet(C::UpdateTags(snapshots[1].tags.clone()))
-                .unwrap();
-            check_host(game, 0);
-            assert_eq!(
-                game.remote
-                    .as_ref()
-                    .unwrap()
-                    .registries
-                    .tag("minecraft:damage_type", "tag_reload:probe"),
-                Some(&[][..])
-            );
-        });
+        // The client only installs tag tables for Host reads when there is a mod.
+        struct Reader;
+        #[mod_api::__subscriptions]
+        impl Hooks for Reader {}
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("tag_reload", Box::new(Reader))].into(),
+            || {
+                with_client_game(|game| {
+                    let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(pipe, "Steve").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.registries = Arc::new(snapshots[0].dynamic.clone());
+                    Arc::make_mut(&mut remote.registries).add_tags(&snapshots[0].tags);
+                    game.handle_packet(login()).unwrap();
+                    check_host(game, 2);
+                    let ids = members[3]
+                        .1
+                        .map(|id| snapshots[0].id("minecraft:damage_type", id).unwrap());
+                    assert_eq!(
+                        game.remote
+                            .as_ref()
+                            .unwrap()
+                            .registries
+                            .tag("minecraft:damage_type", "tag_reload:probe"),
+                        Some(&ids[..])
+                    );
+                    game.handle_packet(C::UpdateTags(snapshots[1].tags.clone()))
+                        .unwrap();
+                    check_host(game, 0);
+                    assert_eq!(
+                        game.remote
+                            .as_ref()
+                            .unwrap()
+                            .registries
+                            .tag("minecraft:damage_type", "tag_reload:probe"),
+                        Some(&[][..])
+                    );
+                });
+            },
+        );
     }
 
     fn power_update(builtin: &Builtin, tags: &[(&str, &[&str])]) -> UpdateTags {
