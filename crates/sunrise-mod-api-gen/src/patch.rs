@@ -1679,8 +1679,9 @@ fn mirror(
             use crate::__fnr_bridges::#name as _;
         )
     });
-    // The explicit re-exports name every item the module defines; the glob is there only for
-    // items a macro invocation defines, which syn can't see. A glob would also make
+    // The explicit re-exports name every item the module defines; the glob is there for items a
+    // macro invocation defines, which syn can't see, and for a lower crate's items gated on a
+    // Cargo feature, whose presence depends on that crate's features. A glob would also make
     // horizon-mixins take `format!`/`vec!`/`matches!` as possibly shadowed.
     let glob = glob.then(|| quote!(pub use #original::*;));
     Ok(quote! {
