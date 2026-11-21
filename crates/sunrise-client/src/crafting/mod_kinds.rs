@@ -80,7 +80,10 @@ fn snapshot_dimensions(
     width: usize,
     height: usize,
 ) -> Option<CraftingGrid> {
-    if !(1..=3).contains(&width) || !(1..=3).contains(&height) {
+    let width_u32 = u32::try_from(width).ok()?;
+    let height_u32 = u32::try_from(height).ok()?;
+    width.checked_mul(height)?;
+    if height > 0 && (size < width || height.checked_mul(size).is_none_or(|n| n > grid.len())) {
         return None;
     }
     let cells = (0..height)
@@ -90,7 +93,7 @@ fn snapshot_dimensions(
             None => Some(None),
         })
         .collect::<Option<Vec<_>>>()?;
-    CraftingGrid::new(width as u32, height as u32, cells).ok()
+    CraftingGrid::new(width_u32, height_u32, cells).ok()
 }
 
 fn to_api(stack: &ItemStack) -> Option<mod_api::ItemStack> {
@@ -159,7 +162,11 @@ impl mod_api::LoopContext for CraftingRemainderView<'_> {
 impl mod_api::CraftingRemainders for CraftingRemainderView<'_> {
     fn default_remainder(&self, cell: u32) -> Option<mod_api::ItemStack> {
         let cell = usize::try_from(cell).ok()?;
-        if cell >= self.width * self.height {
+        if self
+            .width
+            .checked_mul(self.height)
+            .is_none_or(|n| cell >= n)
+        {
             return None;
         }
         let stack = self
@@ -285,10 +292,19 @@ impl Recipes {
         }))
         .ok()
         .flatten();
-        let Some(result) = result.filter(|r| r.len() == width * height) else {
+        let Some(expected) = width.checked_mul(height) else {
             return fallback();
         };
-        let mut placed = vec![None; size * size];
+        let Some(result) = result.filter(|r| r.len() == expected) else {
+            return fallback();
+        };
+        let Some(placed_len) = size.checked_mul(size) else {
+            return fallback();
+        };
+        if width > 0 && height > 0 && height > size {
+            return fallback();
+        }
+        let mut placed = vec![None; placed_len];
         for (i, cell) in result.into_iter().enumerate() {
             placed[i / width * size + i % width] = match cell {
                 Some(stack) => match from_api(stack) {

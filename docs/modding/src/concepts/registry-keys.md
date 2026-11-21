@@ -198,7 +198,7 @@ Retain keys to avoid formatting identifiers on hot paths.
 
 Use `level.recipe_for(host, &recipe_type, &inputs)` to find a matching recipe.
 Use `RecipeInput::Crafting { width, height, slots }` for `minecraft:crafting`
-(row-major slots, dimensions 1 through 3), `Single(stack)` for smelting, blasting,
+(row-major slots matching `width * height`), `Single(stack)` for smelting, blasting,
 smoking, campfire cooking and stonecutting, or `Smithing { template, base, addition }`
 for `minecraft:smithing`. Recipe **types** are not serializers: shaped and shapeless
 files both belong to `minecraft:crafting`, and transform/trim both belong to smithing.

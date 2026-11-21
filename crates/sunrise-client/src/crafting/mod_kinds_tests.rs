@@ -402,3 +402,112 @@ fn registered_kind_receives_the_full_empty_grid_at_every_match_entry() {
         },
     );
 }
+
+struct SizedKind {
+    input: mod_api::ItemKey,
+    output: mod_api::ItemKey,
+    rest: mod_api::ItemKey,
+}
+impl mod_api::CraftingRecipeKind for SizedKind {
+    type Value = ();
+    fn decode(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn write(&self, _: &()) -> Result<String, String> {
+        Ok("{}".into())
+    }
+    fn matches(&self, _context: &dyn mod_api::LoopContext, _: &(), grid: CraftingGrid) -> bool {
+        match (grid.width, grid.height) {
+            (0, 0) => grid.cells.is_empty(),
+            (4, 4) => {
+                grid.cells.len() == 16
+                    && grid.cells[15]
+                        .as_ref()
+                        .is_some_and(|s| s.item() == self.input)
+            }
+            _ => false,
+        }
+    }
+    fn assemble(
+        &self,
+        _context: &dyn mod_api::LoopContext,
+        _: &(),
+        grid: CraftingGrid,
+    ) -> Option<mod_api::ItemStack> {
+        let count = if grid.width == 0 { 1 } else { 4 };
+        mod_api::ItemStack::new(self.output, count)
+    }
+    fn remaining_items(
+        &self,
+        context: &dyn mod_api::CraftingRemainders,
+        _: &(),
+        grid: CraftingGrid,
+    ) -> Option<Vec<Option<mod_api::ItemStack>>> {
+        if grid.width == 0 && grid.height == 0 {
+            assert!(context.default_remainder(0).is_none());
+            return Some(Vec::new());
+        }
+        let mut out = vec![None; grid.cells.len()];
+        out[15] = mod_api::ItemStack::new(self.rest, 1);
+        Some(out)
+    }
+}
+struct SizedMod;
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for SizedMod {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        let kind = SizedKind {
+            input: r.item_key("test:input"),
+            output: r.item_key("test:output"),
+            rest: r.item_key("test:rest"),
+        };
+        r.register_crafting_recipe_serializer("sized", kind);
+    }
+}
+#[test]
+fn registered_kind_matches_and_returns_remainders_for_empty_and_4x4_grids() {
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new("test", Box::new(SizedMod))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(&[mod_api::ModEntry::new(
+                "test",
+                Box::new(SizedMod),
+            )])
+            .unwrap();
+            mod_api::__private::resolve_items(["test:input", "test:output", "test:rest"]).unwrap();
+            let mut recipes = Recipes::empty();
+            recipes.mod_crafting = true;
+            recipes.crafting.push((
+                "test:sized".into(),
+                load("test:sized", &serde_json::json!({"type":"test:sized"})).unwrap(),
+            ));
+            let context = crate::test_resources::server_loop_context();
+
+            let empty_grid: Vec<Option<ItemStack>> = Vec::new();
+            let (id, output) = recipes
+                .find_with_dimensions(context, &empty_grid, 0, 0, 0, &|_| None)
+                .unwrap();
+            assert_eq!(id, "test:sized");
+            assert_eq!(output, ItemStack::new("test:output", 1));
+            assert!(
+                recipes
+                    .mod_remainders_rect(context, "test:sized", &empty_grid, 0, 0, 0, &|_| None)
+                    .is_empty()
+            );
+
+            let mut large_grid = vec![None; 16];
+            large_grid[15] = Some(ItemStack::new("test:input", 1));
+            let (id, output) = recipes
+                .find_with_dimensions(context, &large_grid, 4, 4, 4, &|_| None)
+                .unwrap();
+            assert_eq!(id, "test:sized");
+            assert_eq!(output, ItemStack::new("test:output", 4));
+            let mut expected_remainders = vec![None; 16];
+            expected_remainders[15] = Some(ItemStack::new("test:rest", 1));
+            assert_eq!(
+                recipes.mod_remainders_rect(context, "test:sized", &large_grid, 4, 4, 4, &|_| None),
+                expected_remainders
+            );
+        },
+    );
+}

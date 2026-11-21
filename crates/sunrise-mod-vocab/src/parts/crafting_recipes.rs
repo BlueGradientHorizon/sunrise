@@ -5,9 +5,9 @@ use super::*;
 #[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub struct CraftingGrid {
-    /// Grid width, from one through three.
+    /// Grid width in cells.
     pub width: u32,
-    /// Grid height, from one through three.
+    /// Grid height in cells.
     pub height: u32,
     /// Exactly width times height cells.
     pub cells: Vec<Option<crate::ItemStack>>,
@@ -19,10 +19,13 @@ impl CraftingGrid {
         height: u32,
         cells: Vec<Option<crate::ItemStack>>,
     ) -> Result<Self, String> {
-        if !(1..=3).contains(&width)
-            || !(1..=3).contains(&height)
-            || cells.len() != (width * height) as usize
-        {
+        let Some(expected) = width
+            .checked_mul(height)
+            .and_then(|n| usize::try_from(n).ok())
+        else {
+            return Err("invalid crafting grid dimensions".into());
+        };
+        if cells.len() != expected {
             return Err("invalid crafting grid dimensions".into());
         }
         Ok(Self {
@@ -274,4 +277,21 @@ pub(crate) fn installed_recipe_serializers() -> Vec<(String, String)> {
             .map(|(id, (_, kind, _))| (id.to_string(), kind.clone()))
             .collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crafting_grid_accepts_empty_and_larger_dimensions_and_rejects_mismatches() {
+        let empty = CraftingGrid::new(0, 0, Vec::new()).unwrap();
+        assert_eq!((empty.width, empty.height, empty.cells.len()), (0, 0, 0));
+
+        let large = CraftingGrid::new(4, 4, vec![None; 16]).unwrap();
+        assert_eq!((large.width, large.height, large.cells.len()), (4, 4, 16));
+
+        assert!(CraftingGrid::new(2, 2, vec![None; 3]).is_err());
+        assert!(CraftingGrid::new(u32::MAX, u32::MAX, Vec::new()).is_err());
+    }
 }
