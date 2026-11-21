@@ -34,17 +34,11 @@ impl Game<'_> {
                 return false;
             }
         };
-        let commit = !session.closed()
-            && !matches!(session.result(), Some(Err(_)))
-            && ordinal.is_none_or(|ordinal| {
-                session
-                    .prepare_finish(ordinal, None)
-                    .is_ok_and(|completion| {
-                        // A task can leave a child open; its rollback must not drop this request.
-                        self.journal_configuration_completion(Some(&seal), completion)
-                    })
-            });
+        let commit = !session.closed() && !matches!(session.result(), Some(Err(_)));
         self.transaction_close(&seal, commit);
+        if commit && let Some(ordinal) = ordinal {
+            session.finish_current(ordinal);
+        }
         commit
     }
     pub(super) fn take_lan_for_packet_tick(&mut self) -> Option<LanHost> {
@@ -74,9 +68,7 @@ impl Game<'_> {
                         &request.name,
                         &mut registration,
                     );
-                    registration
-                        .refusal()
-                        .map_or(Ok(None), |error| Err(error.to_string()))
+                    Ok(None)
                 }) {
                     self.lan
                         .as_mut()?
@@ -209,9 +201,6 @@ impl Game<'_> {
         session.require_running(ordinal)?;
         self.queue_current_payload(session.endpoint(), channel, bytes)
             .map(|_| ())
-            .map_err(|error| {
-                session.fail(format!("Configuration payload refused: {error:?}"));
-                ConfigurationTaskError::Payload(error)
-            })
+            .map_err(ConfigurationTaskError::Payload)
     }
 }

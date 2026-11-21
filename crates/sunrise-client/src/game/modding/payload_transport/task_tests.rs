@@ -1,8 +1,8 @@
 //! Configuration admission through the serving Game and its main-thread payload executor.
 use mod_api::{
     ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, ConfigurationTaskRef,
-    ConfigurationTaskRegistrationError, Hooks, IPayloadContext, IPayloadHandler, Identifier,
-    ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
+    Hooks, IPayloadContext, IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId,
+    Registrar, ServerHost,
 };
 use std::{
     sync::{
@@ -24,7 +24,8 @@ enum Case {
     Vanilla,
     Tick,
     Panic,
-    Refusal,
+    Duplicates,
+    SendRefusal,
     ConcurrentPeers,
 }
 struct Fixture {
@@ -47,17 +48,20 @@ impl IPayloadHandler for Reply {
         let [first, second] = *self.0.instances.lock().unwrap();
         let first = first.unwrap();
         let reply = match bytes.0.as_slice() {
-            [step @ (7 | 8)] => {
+            [7] => {
                 assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
-                // Open a child explicitly: the scoped reply context needs its own mutable
-                // borrow to finish, so it cannot be used inside the host's closure guard.
+                // Completion is not rolled back when an inner child transaction aborts.
                 let child = context.server_host().unwrap().transaction_open();
                 context.finish_configuration_task(first).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(first),
+                    Err(ConfigurationTaskError::StaleTask)
+                );
                 context
                     .server_host()
                     .unwrap()
-                    .transaction_close(&child, *step == 8);
-                *step + 1
+                    .transaction_close(&child, false);
+                8
             }
             [10] => {
                 assert_eq!(
@@ -123,7 +127,7 @@ impl Hooks for Mod {
         };
         if matches!(self.0.case, Case::ConcurrentPeers) {
             if let Some(slot) = PEER_NAMES.iter().position(|&name| name == event.name) {
-                event.register(task(kind("first"), slot)).unwrap();
+                event.register(task(kind("first"), slot));
             }
             return;
         }
@@ -138,20 +142,10 @@ impl Hooks for Mod {
             );
             return;
         }
-        event.register(task(kind("first"), 0)).unwrap();
-        event.register(task(kind("second"), 1)).unwrap();
-        if matches!(self.0.case, Case::Refusal) {
-            let duplicate = event.register(task(kind("first"), 0));
-            assert_eq!(
-                duplicate,
-                Err(ConfigurationTaskRegistrationError::DuplicateType(kind(
-                    "first"
-                )))
-            );
-            let empty =
-                event.register(task(Identifier::from_parts("task_fixture", "").unwrap(), 0));
-            assert_eq!(empty, Err(ConfigurationTaskRegistrationError::EmptyType));
-            // Do not fail the connection explicitly: even ignored refusals abort admission.
+        event.register(task(kind("first"), 0));
+        event.register(task(kind("second"), 1));
+        if matches!(self.0.case, Case::Duplicates) {
+            event.register(task(kind("first"), 0));
         }
     }
     fn player_logged_in(
@@ -209,6 +203,15 @@ impl ConfigurationTask for Task {
                     .panic_staged_payload
                     .store(true, Ordering::Relaxed);
                 panic!("fixture panic after staging completion and a payload");
+            }
+            (Case::SendRefusal, 0) => {
+                let channel = PayloadId(CHANNEL.into());
+                assert!(!context.has_channel(host, &channel));
+                assert!(matches!(
+                    context.send_payload(host, &channel, PayloadBytes(vec![42])),
+                    Err(ConfigurationTaskError::Payload(_))
+                ));
+                context.finish();
             }
             _ => context.finish(),
         }
@@ -339,7 +342,14 @@ fn serving_game_drives_configuration_tasks() {
         NAME,
         "SUNRISE_TASK_CHILD",
         &[
-            "reply", "stale", "failure", "vanilla", "tick", "panic", "refusal",
+            "reply",
+            "stale",
+            "failure",
+            "vanilla",
+            "tick",
+            "panic",
+            "duplicates",
+            "send_refusal",
         ],
     ) {
         return;
@@ -351,7 +361,8 @@ fn serving_game_drives_configuration_tasks() {
         "vanilla" => Case::Vanilla,
         "tick" => Case::Tick,
         "panic" => Case::Panic,
-        "refusal" => Case::Refusal,
+        "duplicates" => Case::Duplicates,
+        "send_refusal" => Case::SendRefusal,
         _ => unreachable!(),
     };
     let fixture = Arc::new(Fixture::new(case));
@@ -365,7 +376,7 @@ fn serving_game_drives_configuration_tasks() {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let port = publish_task_server(game);
                 use sunrise_protocol::packets::{Empty, configuration as cfg, play};
-                let (mut c, known) = if matches!(case, Case::Vanilla) {
+                let (mut c, known) = if matches!(case, Case::Vanilla | Case::SendRefusal) {
                     vanilla_peer(port)
                 } else {
                     let (c, _, known) = super::config_tests::configuration_peer(port, "ConfigPeer");
@@ -374,7 +385,7 @@ fn serving_game_drives_configuration_tasks() {
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
                     .unwrap();
                 let mut replies = match case {
-                    Case::Reply => &[7_u8, 8, 9][..],
+                    Case::Reply => &[7_u8, 8][..],
                     Case::Stale => &[10, 11, 12],
                     _ => &[],
                 }
@@ -386,7 +397,7 @@ fn serving_game_drives_configuration_tasks() {
                         cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
                             let expected = replies.next().expect("too many configuration replies");
                             assert_eq!(p.data, [expected]);
-                            if matches!(expected, 7 | 8 | 10 | 11) {
+                            if matches!(expected, 7 | 10 | 11) {
                                 c.send(&cfg::Serverbound::CustomPayload(p).encode())
                                     .unwrap();
                             }
@@ -409,30 +420,23 @@ fn serving_game_drives_configuration_tasks() {
                                     );
                                     assert_eq!(*starts, [kind("first")]);
                                 }
-                                Case::Refusal => {
-                                    assert!(starts.is_empty());
-                                    assert!(
-                                        reason.contains(
-                                            "Duplicate configuration task type: task_fixture:first"
-                                        ),
-                                        "{reason}"
-                                    );
-                                }
                                 _ => panic!("unexpected configuration disconnect: {reason}"),
                             }
                             break;
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
-                            assert!(!matches!(case, Case::Failure | Case::Panic | Case::Refusal));
+                            assert!(!matches!(case, Case::Failure | Case::Panic));
                             assert_eq!(
                                 replies.next(),
                                 None,
                                 "FinishConfiguration overtook a reply"
                             );
-                            let expected = if matches!(case, Case::Vanilla) {
-                                vec![]
-                            } else {
-                                vec![kind("first"), kind("second")]
+                            let expected = match case {
+                                Case::Vanilla => vec![],
+                                Case::Duplicates => {
+                                    vec![kind("first"), kind("second"), kind("first")]
+                                }
+                                _ => vec![kind("first"), kind("second")],
                             };
                             assert_eq!(*fixture.starts.lock().unwrap(), expected);
                             c.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
@@ -455,7 +459,7 @@ fn serving_game_drives_configuration_tasks() {
                     fixture.type_reads.load(Ordering::Relaxed),
                     match case {
                         Case::Vanilla => 0,
-                        Case::Refusal => 4,
+                        Case::Duplicates => 3,
                         _ => 2,
                     }
                 );

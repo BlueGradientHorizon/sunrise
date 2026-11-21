@@ -10,9 +10,6 @@ ids = [
     "method:ConfigurationTask::task_type",
     "method:ConfigurationTask::start",
     "method:ConfigurationTask::tick",
-    "type:ConfigurationTaskRegistrationError",
-    "type:ConfigurationTaskRegistrationError.EmptyType",
-    "type:ConfigurationTaskRegistrationError.DuplicateType",
     "hook:configuration_task_start",
     "hook:configuration_task_start.connection",
     "hook:configuration_task_start.task_type",
@@ -51,16 +48,15 @@ ids = [
     "type:ConfigurationTaskError.WrongContext",
     "method:IPayloadContext::finish_configuration_task",
 ]
-why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs. A delayed reply cannot complete a newer task or another connection's task. Completion publishes after the outermost commit and its deferred sends, so rollback cannot advance the queue."
+why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs (matching NeoForge RegisterConfigurationTasksEvent.register and vanilla ServerConfigurationPacketListenerImpl). Registration is an infallible FIFO queue with no empty/duplicate rejection, completion takes effect directly after callback/handler publication without transaction-layer staging, and a refused payload send returns Err without failing the task session."
 migrate = """
 In `Hooks::register_configuration_tasks` (now version 2), replace \
 `event.tasks.push(ConfigurationTask::new(id))` with `event.register(MyTask { id, ... })`. \
 Define `MyTask: Send + 'static` and implement `ConfigurationTask`; replace the old record's \
-`id` field with your own, returned by `task_type(&self) -> &Identifier`. A nonempty type \
-must be unique per connection. Handle `ConfigurationTaskRegistrationError::EmptyType` and \
-`DuplicateType(id)`; the first refusal aborts admission even if ignored. The event still \
-provides `connection`, `player` and `name`, and `event.connection.has_channel(host, channel)` \
-still works in registration.
+`id` field with your own, returned by `task_type(&self) -> &Identifier`. Registration is \
+infallible and appends tasks to the connection's FIFO queue (matching NeoForge's \
+`RegisterConfigurationTasksEvent.register`). The event still provides `connection`, `player` \
+and `name`, and `event.connection.has_channel(host, channel)` still works in registration.
 
 Move `configuration_task_start` and `configuration_task_tick` into `ConfigurationTask::start` \
 and optional `ConfigurationTask::tick`, each taking `&mut self, host: &mut dyn ServerHost, \
@@ -68,7 +64,8 @@ context: &mut ConfigurationTaskContext<'_>`. Read your own field instead of `eve
 and keep state on `self`. In either callback, replace `event.connection.has_channel(host, channel)` \
 with `context.has_channel(host, channel)`, and `event.connection.send_payload(host, channel, bytes)` \
 with `context.send_payload(host, channel, bytes)`. If calling `host.configuration_send_payload` \
-directly, pass `context.instance()` instead of `event.connection`. Replace \
+directly, pass `context.instance()` instead of `event.connection`. A refused send returns \
+`Err(ConfigurationTaskError::Payload(_))` without automatically failing the task session. Replace \
 `connection.finish(host, task_type)`, `host.configuration_finish(connection, task_type)` or \
 `event.finished = true` with `context.finish()`. Replace `connection.fail(host, reason)` and \
 `host.configuration_fail(connection, reason)` with `context.fail(reason)`.
@@ -76,11 +73,12 @@ directly, pass `context.instance()` instead of `event.connection`. Replace \
 For delayed completion, save `context.instance()` in server-local state for the original \
 challenge. Pass that saved value to `cx.finish_configuration_task(instance)` in a server \
 main-thread configuration payload handler, and use `cx.reply(channel, bytes)` to send its reply. \
-Never substitute the task that is current at reply time. Completion publishes after the outermost \
-transaction commits and publishes its deferred sends; abort, handler failure or an explicit \
-handler disconnect discards the request. Custom `IPayloadContext` implementations must implement \
+Never substitute the task that is current at reply time. Completion takes effect once the \
+handler succeeds and publishes its deferred sends, independently of nested child transactions; \
+handler failure or an explicit handler disconnect discards the request. Custom `IPayloadContext` \
+implementations must implement \
 `finish_configuration_task(&mut self, instance: ConfigurationTaskRef) -> Result<(), ConfigurationTaskError>` \
-and return `WrongContext` where no server main-thread configuration transaction is available.
+and return `WrongContext` where no server main-thread configuration handler is available.
 
 Replace matches on `WrongType` or `NotRunning` with `StaleTask` for a noncurrent instance. \
 Handle `WrongConnection` for another live peer's instance, `WrongContext` for the wrong \

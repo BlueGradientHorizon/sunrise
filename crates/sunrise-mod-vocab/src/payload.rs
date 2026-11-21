@@ -319,9 +319,9 @@ pub trait IPayloadContext {
     /// task on this connection returns `StaleTask`. `WrongContext` means this is not a
     /// server main-thread configuration handler with a transaction; `Disconnected`
     /// means the connection or its configuration epoch has ended. No refusal advances a task.
-    /// Completion takes effect only after the outermost transaction commits and
-    /// publishes its deferred sends. Abort, handler failure, or explicitly disconnecting
-    /// this peer discards the request.
+    /// Completion takes effect once the handler succeeds and publishes its deferred
+    /// sends, independently of nested transactions. Handler failure or explicitly
+    /// disconnecting this peer discards the request.
     fn finish_configuration_task(
         &mut self,
         instance: ConfigurationTaskRef,

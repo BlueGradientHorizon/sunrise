@@ -1,6 +1,6 @@
 //! Server-thread task queues and progress shared with each connection worker.
 use super::config_payloads::ConfigSender;
-use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
+use crate::raw_payloads::{Endpoint, Transport};
 use mod_api::{
     __private::RegisteredConfigurationTask, ConfigurationConnection, ConfigurationTaskError,
     PayloadId,
@@ -154,24 +154,6 @@ pub struct Turn {
     pub start: bool,
 }
 
-/// A completion held until commit, bound to exactly one session and queue entry.
-pub struct ConfigurationCompletion {
-    session: Arc<Session>,
-    ordinal: usize,
-    ingress: Option<Arc<Epoch>>,
-}
-impl ConfigurationCompletion {
-    pub fn publish(self) {
-        let mut state = self.session.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.running(self.ordinal)
-            && !self.session.transport().closed()
-            && self.ingress.as_ref().is_none_or(|epoch| epoch.active())
-        {
-            state.finished = true;
-        }
-    }
-}
-
 pub struct Session {
     state: Mutex<State>,
     sender: ConfigSender,
@@ -232,18 +214,12 @@ impl Session {
         }
         Ok(())
     }
-    /// Validate before staging; a delayed ingress also needs its epoch alive at publication.
-    pub fn prepare_finish(
-        self: &Arc<Self>,
-        ordinal: usize,
-        ingress: Option<Arc<Epoch>>,
-    ) -> Result<ConfigurationCompletion, ConfigurationTaskError> {
-        self.require_running(ordinal)?;
-        Ok(ConfigurationCompletion {
-            session: self.clone(),
-            ordinal,
-            ingress,
-        })
+    /// Mark the currently running task finished if this ordinal is still active.
+    pub fn finish_current(&self, ordinal: usize) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.running(ordinal) && !self.transport().closed() {
+            state.finished = true;
+        }
     }
     pub fn fail(&self, reason: impl Into<String>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -282,7 +258,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn completion_only_takes_effect_on_publication_for_its_own_turn() {
+    fn finish_current_only_completes_its_own_turn() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};
 
@@ -298,8 +274,7 @@ mod tests {
         let turn = turn.unwrap();
         assert!(turn.start);
         assert_eq!(turn.ordinal, 0);
-        let completion = session.prepare_finish(turn.ordinal, None).unwrap();
-        let delayed = session.prepare_finish(turn.ordinal, None).unwrap();
+        assert!(session.require_running(turn.ordinal).is_ok());
         assert!(!session.finished());
         let (completed, tick) = session.turn();
         assert_eq!(completed, None);
@@ -307,24 +282,26 @@ mod tests {
         assert!(!tick.start);
         assert_eq!(tick.ordinal, 0);
 
-        completion.publish();
+        session.finish_current(turn.ordinal);
         assert!(session.finished());
+        assert_eq!(
+            session.require_running(turn.ordinal),
+            Err(ConfigurationTaskError::StaleTask)
+        );
         let (completed, next) = session.turn();
         assert_eq!(completed, Some(0));
         let next = next.unwrap();
         assert!(next.start);
         assert_eq!(next.ordinal, 1);
-        delayed.publish();
+        session.finish_current(turn.ordinal);
         assert!(!session.finished());
-        assert!(matches!(
-            session.prepare_finish(turn.ordinal, None),
+        assert_eq!(
+            session.require_running(turn.ordinal),
             Err(ConfigurationTaskError::StaleTask)
-        ));
+        );
 
-        session
-            .prepare_finish(next.ordinal, None)
-            .unwrap()
-            .publish();
+        assert!(session.require_running(next.ordinal).is_ok());
+        session.finish_current(next.ordinal);
         let (completed, turn) = session.turn();
         assert_eq!(completed, Some(1));
         assert!(turn.is_none());

@@ -1,6 +1,6 @@
 pub use configuration_task::{
     ConfigurationConnection, ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError,
-    ConfigurationTaskRef, ConfigurationTaskRegistrationError,
+    ConfigurationTaskRef,
 };
 mod __private {
     pub use crate::configuration_task::{

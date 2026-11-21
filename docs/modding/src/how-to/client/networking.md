@@ -39,11 +39,8 @@ and resource-pack steps. During registration, keep using
 Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
 `ConfigurationTask` for a `Send + 'static` struct and call `event.register(MyTask { id, ... })`.
 Replace the old `ConfigurationTask.id` field with your own field and return it
-from `task_type(&self) -> &Identifier`. The type is read once on registration and
-must be nonempty and unique for that connection across all listeners. `register`
-returns `ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)`
-for an invalid submission. The first refusal aborts registration and admission
-and supplies the disconnect diagnostic, even if its result is ignored.
+from `task_type(&self) -> &Identifier`. Registration is infallible and appends tasks
+to the connection's FIFO queue (matching NeoForge's `RegisterConfigurationTasksEvent.register`).
 
 Move `configuration_task_start` and `configuration_task_tick` into your task's
 `start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
@@ -75,16 +72,18 @@ an ended connection or configuration epoch returns `Disconnected`. A refusal
 advances neither task. Tasks, contexts, instance and connection capabilities,
 and task errors have no `Wire` encoding.
 
-Completion publishes only after the outermost transaction commits and publishes
-its deferred sends (including replies). A child commit hands the request to its
-parent; an abort discards it. Repeated callback requests coalesce, and `fail`
-wins over `finish`. An explicit payload-handler disconnect discards the request
+Completion takes effect once the callback or payload handler succeeds and
+publishes its deferred sends (including replies), independently of nested child
+transactions. Repeated callback requests coalesce, and `fail` wins over `finish`.
+Handler failure or an explicit payload-handler disconnect discards the request
 even if the rest of the handler succeeds.
 
-A refused task payload send, explicit `fail`, or callback panic aborts the task
-callback and closes that client with the configuration-error reason. Check the
-channel before sending to an optional or vanilla peer, then request completion
-or explain why it cannot join.
+A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
+without failing the task session, so the task can handle it, call
+`context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
+task callback and closes that client with the configuration-error reason. Check
+the channel before sending to an optional or vanilla peer, then request
+completion or explain why it cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

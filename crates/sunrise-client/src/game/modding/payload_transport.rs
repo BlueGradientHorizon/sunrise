@@ -102,6 +102,7 @@ impl Game<'_> {
             receiver: &incoming.receiver,
             disconnect: None,
             failure: None,
+            finish_task: None,
         };
         let result = match incoming.body {
             Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
@@ -115,12 +116,15 @@ impl Game<'_> {
         };
         let reason = context.disconnect.take();
         let failure = context.failure.take().or_else(|| result.err());
-        if reason.is_some() {
-            // An explicit disconnect still commits ordinary work on success, but cannot
-            // advance configuration in the gap before the physical connection closes.
-            context.game.discard_configuration_completions(&seal);
-        }
+        let finish_task = context.finish_task.take();
         context.game.transaction_close(&seal, failure.is_none());
+        if failure.is_none()
+            && reason.is_none()
+            && incoming.epoch.active()
+            && let Some((session, ordinal)) = finish_task
+        {
+            session.finish_current(ordinal);
+        }
         if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
             // refusal rolls back its own work only, and the next mod still runs.
@@ -152,6 +156,10 @@ struct MainContext<'a, 'resources> {
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<String>,
+    finish_task: Option<(
+        Arc<sunrise_client::lan::configuration_tasks::Session>,
+        usize,
+    )>,
 }
 impl IPayloadContext for MainContext<'_, '_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -242,6 +250,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         let session = self
             .game
             .configuration_session(connection)
+            .cloned()
             .ok_or(ConfigurationTaskError::Disconnected)?;
         let transport = self.endpoint.transport();
         if !Arc::ptr_eq(session.transport(), transport) {
@@ -253,10 +262,11 @@ impl IPayloadContext for MainContext<'_, '_> {
         {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        let completion = session.prepare_finish(ordinal, Some(self.epoch.clone()))?;
-        if !self.game.journal_configuration_completion(None, completion) {
-            return Err(ConfigurationTaskError::WrongContext);
+        session.require_running(ordinal)?;
+        if self.finish_task.is_some() {
+            return Err(ConfigurationTaskError::StaleTask);
         }
+        self.finish_task = Some((session, ordinal));
         Ok(())
     }
     fn disconnect(&mut self, reason: Text) {

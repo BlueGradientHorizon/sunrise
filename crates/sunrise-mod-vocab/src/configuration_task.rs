@@ -1,6 +1,5 @@
 //! Configuration tasks and capabilities valid before the player joins.
 use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent, ServerHost};
-use std::{collections::BTreeSet, fmt};
 
 // no wire: tasks are owned objects with server-thread callbacks and local state.
 /// One task instance owned by a configuring connection. Register the instance with
@@ -8,14 +7,13 @@ use std::{collections::BTreeSet, fmt};
 /// on the server thread without holding the connection's task lock, and keeps the
 /// same instance while it waits.
 pub trait ConfigurationTask: Send + 'static {
-    /// The namespaced task type, read once on registration. It must be nonempty and
-    /// unique among all tasks registered for this connection.
+    /// The namespaced task type, read once on registration.
     fn task_type(&self) -> &Identifier;
 
     /// Start this task exactly once. Call [`ConfigurationTaskContext::finish`] or
     /// [`ConfigurationTaskContext::fail`], or leave it pending for a tick or a reply.
-    /// A finish request publishes only after the outermost transaction commits and
-    /// publishes its deferred sends.
+    /// A finish request takes effect after the callback commits and publishes its
+    /// deferred sends.
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
 
     /// Poll a pending task, at most once per server tick after its start. By default
@@ -24,72 +22,29 @@ pub trait ConfigurationTask: Send + 'static {
     fn tick(&mut self, _host: &mut dyn ServerHost, _context: &mut ConfigurationTaskContext<'_>) {}
 }
 
-// no wire: local registration diagnostics, not payload data.
-/// An invalid submission to the connection's configuration task queue.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ConfigurationTaskRegistrationError {
-    /// The task type has an empty namespace or path.
-    EmptyType,
-    /// Another task already declared this type for this connection.
-    DuplicateType(Identifier),
-}
-impl fmt::Display for ConfigurationTaskRegistrationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyType => {
-                f.write_str("Configuration task type has an empty namespace or path")
-            }
-            Self::DuplicateType(id) => write!(f, "Duplicate configuration task type: {id}"),
-        }
-    }
-}
-impl std::error::Error for ConfigurationTaskRegistrationError {}
-
 impl RegisterConfigurationTasksEvent<'_> {
-    /// Append a task to this connection's queue. An invalid or duplicate type refuses
-    /// registration, aborting the registration transaction and admission even if the
-    /// listener ignores this result. The first refusal supplies the diagnostic.
-    pub fn register(
-        &mut self,
-        task: impl ConfigurationTask,
-    ) -> Result<(), ConfigurationTaskRegistrationError> {
-        let id = task.task_type();
-        let refusal = if id.namespace().is_empty() || id.path().is_empty() {
-            ConfigurationTaskRegistrationError::EmptyType
-        } else if !self.registration.types.insert(id.clone()) {
-            ConfigurationTaskRegistrationError::DuplicateType(id.clone())
-        } else {
-            self.registration.tasks.push(RegisteredConfigurationTask {
-                task: Box::new(task),
-                owner: crate::content::crash::current_native_mod(),
-            });
-            return Ok(());
-        };
-        self.registration
-            .refusal
-            .get_or_insert_with(|| refusal.clone());
-        Err(refusal)
+    /// Append a task to this connection's FIFO configuration queue, matching
+    /// NeoForge's `RegisterConfigurationTasksEvent.register`.
+    pub fn register(&mut self, task: impl ConfigurationTask) {
+        let task_type = task.task_type().clone();
+        self.registration.tasks.push(RegisteredConfigurationTask {
+            task_type,
+            task: Box::new(task),
+            owner: crate::content::crash::current_native_mod(),
+        });
     }
 }
 
 /// Engine staging for one registration transaction.
 // no wire: owns pending server-thread tasks.
 // hidden: the server stages registrations here; listeners use the scoped event.
-// exhaustive: the server starts empty staging with Default; the queue and refusal fields are private.
+// exhaustive: the server starts empty staging with Default; the queue field is private.
 #[doc(hidden)]
 #[derive(Default)]
 pub struct ConfigurationTaskRegistration {
     tasks: Vec<RegisteredConfigurationTask>,
-    types: BTreeSet<Identifier>,
-    refusal: Option<ConfigurationTaskRegistrationError>,
 }
 impl ConfigurationTaskRegistration {
-    /// The first refusal, if any, even if the listener ignored the error.
-    pub fn refusal(&self) -> Option<&ConfigurationTaskRegistrationError> {
-        self.refusal.as_ref()
-    }
-
     /// Move the ordered queue to the server after registration commits.
     pub fn into_tasks(self) -> Vec<RegisteredConfigurationTask> {
         self.tasks
@@ -102,6 +57,8 @@ impl ConfigurationTaskRegistration {
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct RegisteredConfigurationTask {
+    /// The task type, captured once on registration.
+    pub task_type: Identifier,
     /// The connection-owned instance.
     pub task: Box<dyn ConfigurationTask>,
     /// The registering mod, for Host calls that depend on the caller's identity.
@@ -151,7 +108,6 @@ impl ConfigurationTaskContext<'_> {
         self.instance.connection.has_channel(host, channel)
     }
     /// Queue a payload in the current transaction on this task's registered channel.
-    /// A transport refusal fails the task.
     pub fn send_payload(
         &self,
         host: &mut dyn ServerHost,
@@ -160,8 +116,8 @@ impl ConfigurationTaskContext<'_> {
     ) -> Result<(), ConfigurationTaskError> {
         host.configuration_send_payload(self.instance, channel, bytes)
     }
-    /// Request completion after the outermost transaction commits and publishes its
-    /// deferred sends. Repeated requests coalesce; failure, panic or disconnect prevents it.
+    /// Request completion when this callback finishes and publishes its deferred sends.
+    /// Repeated requests coalesce; failure, panic or disconnect prevents it.
     pub fn finish(&mut self) {
         if matches!(self.outcome, ConfigurationTaskOutcome::Pending) {
             *self.outcome = ConfigurationTaskOutcome::Finish;
@@ -243,4 +199,57 @@ pub fn configuration_task_context(
     outcome: &mut ConfigurationTaskOutcome,
 ) -> ConfigurationTaskContext<'_> {
     ConfigurationTaskContext { instance, outcome }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct StubTask {
+        id: Identifier,
+        reads: Arc<AtomicUsize>,
+    }
+
+    impl ConfigurationTask for StubTask {
+        fn task_type(&self) -> &Identifier {
+            self.reads.fetch_add(1, Ordering::Relaxed);
+            &self.id
+        }
+
+        fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+    }
+
+    #[test]
+    fn register_accepts_duplicate_and_empty_types_in_fifo_order() {
+        let mut registration = ConfigurationTaskRegistration::default();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let first = Identifier::parse("demo:first").unwrap();
+        let empty = Identifier::from_parts("demo", "").unwrap();
+        let mut event = RegisterConfigurationTasksEvent {
+            connection: configuration_connection(1),
+            player: 1,
+            name: "Peer",
+            registration: &mut registration,
+        };
+        event.register(StubTask {
+            id: first.clone(),
+            reads: reads.clone(),
+        });
+        event.register(StubTask {
+            id: empty.clone(),
+            reads: reads.clone(),
+        });
+        event.register(StubTask {
+            id: first.clone(),
+            reads: reads.clone(),
+        });
+        let tasks = registration.into_tasks();
+        assert_eq!(reads.load(Ordering::Relaxed), 3);
+        let types: Vec<_> = tasks.into_iter().map(|entry| entry.task_type).collect();
+        assert_eq!(types, vec![first.clone(), empty, first]);
+    }
 }
