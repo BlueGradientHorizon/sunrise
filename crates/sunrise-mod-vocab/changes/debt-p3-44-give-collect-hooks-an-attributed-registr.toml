@@ -1,0 +1,22 @@
+ids = [
+    "hook:mod_mismatch",
+    "hook:mod_mismatch.resolved",
+    "type:ModMismatchEvent.resolved",
+    "handle:ModMismatchEvent::mark_resolved",
+    "handle:ModMismatchEvent::was_resolved",
+    "handle:ModMismatchEvent::resolver",
+    "handle:ModMismatchEvent::resolved",
+    "type:ModMismatchResolution",
+    "hook:recipe_property_sets",
+    "hook:recipe_property_sets.additions",
+    "type:RecipePropertySetsEvent.additions",
+    "handle:RecipePropertySetsEvent::register",
+]
+why = "Collect hooks with listener attribution and namespace validation (`mod_mismatch`, `recipe_property_sets`, `register_render_pipelines`) now expose scoped append-only methods on their event types instead of mutable reply vectors policed by copying after each listener, matching NeoForge's `ModMismatchEvent` (`markResolved`/`wasResolved`/`getResolver`), `RegisterRecipePropertiesEvent`, and `RegisterRenderPipelinesEvent`. Attribution and validation run at insertion, and `ModMismatchResolution` no longer implements `From<String>` for unattributed markers."
+migrate = """
+In `Hooks::mod_mismatch`, replace `event.resolved.push("my_mod".to_owned().into())` with `event.mark_resolved("my_mod")`. Read recorded resolutions with `event.was_resolved(id)`, `event.resolver(id)` or `event.resolved()`.
+
+In `Hooks::recipe_property_sets`, replace `event.additions.push(addition)` with `event.register(addition)`.
+
+`Hooks::register_render_pipelines` keeps `event.register(entry)` with the same signature; validation and ownership attribution now run directly inside `register`.
+"""

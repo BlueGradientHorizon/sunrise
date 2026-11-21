@@ -74,8 +74,7 @@ game reaches."#]
         side = "client",
         contract = "collect",
         out = "pipelines",
-        registration_append = "register",
-        collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
+        registration_append = "attributed",
         context = "registration",
         neoforge = "RegisterRenderPipelinesEvent",
         version = 2

@@ -220,30 +220,24 @@ pub enum PipelineDrawError {
     CapacityExceeded,
 }
 
-/// What `owner` added to `pipelines` in `register_render_pipelines`, checked as it returns: a
-/// pipeline outside the mod's namespaces or whose id an earlier registration took is logged
-/// with the mod and dropped.
-pub(crate) fn validate_render_pipelines(
-    owner: &str,
-    previous: &[RenderPipeline],
-    pipelines: &mut Vec<RenderPipeline>,
-) {
-    validate_in(owner, previous, pipelines, &|namespace| {
-        crate::parts::owns_namespace(owner, namespace)
-    });
-}
+impl crate::RegisterRenderPipelinesEvent<'_> {
+    /// Register one render pipeline without exposing earlier registrations.
+    ///
+    /// A pipeline outside this mod's owned namespaces or whose id an earlier registration
+    /// already took is logged with the mod id and dropped. Accepted pipelines are attributed
+    /// to this listener immediately.
+    pub fn register(&mut self, entry: RenderPipeline) {
+        let owner = self.mod_id;
+        self.register_in(entry, &|namespace| {
+            crate::parts::owns_namespace(owner, namespace)
+        });
+    }
 
-fn validate_in(
-    owner: &str,
-    previous: &[RenderPipeline],
-    pipelines: &mut Vec<RenderPipeline>,
-    owns: &dyn Fn(&str) -> bool,
-) {
-    let added = pipelines.split_off(previous.len().min(pipelines.len()));
-    for mut pipeline in added {
-        let refusal = if !owns(pipeline.id.namespace()) {
+    fn register_in(&mut self, mut entry: RenderPipeline, owns: &dyn Fn(&str) -> bool) {
+        let owner = self.mod_id;
+        let refusal = if !owns(entry.id.namespace()) {
             Some("its id is outside the mod's namespaces")
-        } else if pipelines.iter().any(|kept| kept.id == pipeline.id) {
+        } else if self.pipelines.iter().any(|kept| kept.id == entry.id) {
             Some("an earlier registration has that id")
         } else {
             None
@@ -251,11 +245,11 @@ fn validate_in(
         match refusal {
             Some(reason) => log::warn!(
                 "register_render_pipelines: mod {owner}: pipeline {} refused: {reason}",
-                pipeline.id
+                entry.id
             ),
             None => {
-                pipeline.owner = owner.to_owned();
-                pipelines.push(pipeline);
+                entry.owner = owner.to_owned();
+                self.pipelines.push(entry);
             }
         }
     }
@@ -280,17 +274,19 @@ mod tests {
 
     #[test]
     fn a_mod_keeps_only_new_pipelines_in_its_own_namespace() {
-        let previous = vec![pipeline("other:glow")];
-        let mut pipelines = previous.clone();
-        pipelines.extend([
+        let mut pipelines = vec![pipeline("other:glow")];
+        let mut event = crate::RegisterRenderPipelinesEvent {
+            mod_id: "owning_mod",
+            pipelines: &mut pipelines,
+        };
+        for entry in [
             pipeline("mine:glow"),
             pipeline("other:beam"),
             pipeline("mine:glow"),
             pipeline("mine:beam"),
-        ]);
-        validate_in("owning_mod", &previous, &mut pipelines, &|namespace| {
-            namespace == "mine"
-        });
+        ] {
+            event.register_in(entry, &|namespace| namespace == "mine");
+        }
         assert_eq!(ids(&pipelines), ["other:glow", "mine:glow", "mine:beam"]);
         assert_eq!(pipelines[1].owner(), "owning_mod");
     }
@@ -299,21 +295,36 @@ mod tests {
     fn a_mod_cannot_take_an_id_registered_before_it() {
         let previous = vec![pipeline("shared:glow")];
         let mut pipelines = previous.clone();
-        pipelines.push(pipeline("shared:glow"));
-        validate_in("late", &previous, &mut pipelines, &|_| true);
+        let mut event = crate::RegisterRenderPipelinesEvent {
+            mod_id: "late",
+            pipelines: &mut pipelines,
+        };
+        event.register_in(pipeline("shared:glow"), &|_| true);
         assert_eq!(pipelines, previous);
     }
 
     #[test]
     fn a_mod_can_register_more_than_vanillas_pipeline_count() {
-        let mut pipelines: Vec<_> = (0..131).map(|i| pipeline(&format!("mine:p{i}"))).collect();
-        validate_in("mine", &[], &mut pipelines, &|_| true);
+        let mut pipelines = Vec::new();
+        {
+            let mut event = crate::RegisterRenderPipelinesEvent {
+                mod_id: "mine",
+                pipelines: &mut pipelines,
+            };
+            for i in 0..131 {
+                event.register_in(pipeline(&format!("mine:p{i}")), &|_| true);
+            }
+        }
         assert_eq!(pipelines.len(), 131);
         assert_eq!(pipelines.last().unwrap().id.to_string(), "mine:p130");
 
-        let previous = pipelines.clone();
-        pipelines.push(pipeline("next:glow"));
-        validate_in("next", &previous, &mut pipelines, &|_| true);
+        {
+            let mut event = crate::RegisterRenderPipelinesEvent {
+                mod_id: "next",
+                pipelines: &mut pipelines,
+            };
+            event.register_in(pipeline("next:glow"), &|_| true);
+        }
         assert_eq!(pipelines.len(), 132);
     }
 }

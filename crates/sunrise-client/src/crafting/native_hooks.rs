@@ -21,8 +21,8 @@ pub fn native_ingredient(
 /// Items a mod's own recipe type takes in a station slot, added to the
 /// recipe property sets (`RecipeManager.RECIPE_PROPERTY_SETS`): what a
 /// furnace, blast furnace, smoker, campfire, smithing table slot or brewing
-/// stand slot accepts, and what a client predicts it accepts. Push one
-/// `RecipePropertyAddition` per set to add to; the vanilla recipes' own
+/// stand slot accepts, and what a client predicts it accepts. Listeners call
+/// `event.register(addition)` once per set to add to; the vanilla recipes' own
 /// items stay in. Called once per load, after the recipes are resolved, with
 /// the `DataLoadContext` of the load that owns them (`origin()`
 /// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),

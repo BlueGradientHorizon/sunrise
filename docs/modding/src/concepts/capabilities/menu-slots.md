@@ -17,8 +17,8 @@ quick-move items into a locally hidden slot, and the slot's acceptance rules sti
 ## Mod-created recipe input sets
 
 `Hooks::recipe_property_sets` runs once after recipes resolve for each load and again after
-`/reload`. Add `RecipePropertyAddition::new("mymod:cooking_pot_input", items)` to its
-`event.additions`: a key in the listener's manifest-owned namespaces creates a set. Ownership
+`/reload`. Call `event.register(RecipePropertyAddition::new("mymod:cooking_pot_input", items))`:
+a key in the listener's manifest-owned namespaces creates a set. Ownership
 uses the package ID plus the manifest's `namespaces`, so a package named
 `ported_farmersdelight` with `namespaces = ["farmersdelight"]` can create
 `farmersdelight:cooking_pot_input`. A later listener may extend an existing set but cannot

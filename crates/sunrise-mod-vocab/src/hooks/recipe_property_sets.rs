@@ -4,10 +4,10 @@ pub trait Hooks {
     /// Items a mod's own recipe type takes in a station slot, added to the
     /// recipe property sets (`RecipeManager.RECIPE_PROPERTY_SETS`): what a
     /// furnace, blast furnace, smoker, campfire, smithing table slot or brewing
-    /// stand slot accepts, and what a client predicts it accepts. Push one
-    /// `RecipePropertyAddition` per set to add to; the vanilla recipes' own
-    /// items stay in. Called once per load, after the recipes are resolved, with
-    /// the `DataLoadContext` of the load that owns them (`origin()`
+    /// stand slot accepts, and what a client predicts it accepts. Call
+    /// [`RecipePropertySetsEvent::register`] once per set to add to; the vanilla
+    /// recipes' own items stay in. Called once per load, after the recipes are
+    /// resolved, with the `DataLoadContext` of the load that owns them (`origin()`
     /// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),
     /// and again after `/reload`. A new namespaced key creates a set when its
     /// namespace belongs to the listener's manifest (its ID or `namespaces`).
@@ -20,9 +20,10 @@ pub trait Hooks {
         side = "both",
         contract = "collect",
         out = "additions",
-        collect_validator = "crate::item::crafting::validate_recipe_properties",
+        registration_append = "attributed",
         context = "data_load",
         target = "sunrise_client_lib::crafting::native_hooks::native_recipe_property_sets",
+        version = 2,
         neoforge = "RegisterRecipePropertiesEvent"
     )]
     fn recipe_property_sets(additions: &mut Vec<RecipePropertyAddition>);
