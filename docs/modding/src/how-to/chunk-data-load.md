@@ -18,8 +18,10 @@ persistence codec, not `Wire`. Unknown bounded attachment entries are preserved 
 
 Codec errors, invalid or over-budget disk NBT, and panics refuse publication of
 the job's edits. Later listeners still see the last accepted envelopes;
-`event.data.failure()` does not expose an earlier listener's error to them. The job
-reports its first terminal failure, and any later failures are also reported.
+`event.data.failure()` does not expose an earlier listener's error to them. Within
+one callback, each operation runs and reports its own refusal even when another
+operation already failed. `failure()` is the first failure of this callback, not
+its latest operation. The job reports its first terminal failure.
 A phase refusal drops only that listener's proposal and is reported each time;
 only a panic disables a callback for this hook for the session. If the job fails,
 the chunk still loads with the

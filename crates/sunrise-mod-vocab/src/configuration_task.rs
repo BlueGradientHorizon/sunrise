@@ -49,7 +49,9 @@ impl std::error::Error for ConfigurationTaskRegistrationError {}
 impl RegisterConfigurationTasksEvent<'_> {
     /// Append a task to this connection's queue. An invalid or duplicate type refuses
     /// registration, aborting the registration transaction and admission even if the
-    /// listener ignores this result. The first refusal supplies the diagnostic.
+    /// returning listener ignores this result. A panicking listener's tasks and
+    /// its refusal are discarded; later listeners can still configure this peer.
+    /// The first accepted refusal supplies the admission diagnostic.
     pub fn register(
         &mut self,
         task: impl ConfigurationTask,
@@ -105,12 +107,22 @@ impl ConfigurationTaskRegistration {
     }
 
     pub(crate) fn rollback(&mut self, (tasks_len, had_refusal): (usize, bool)) {
-        self.tasks.truncate(tasks_len);
+        let discarded = self.tasks.split_off(tasks_len);
         for id in self.registered_order.drain(tasks_len..) {
             self.types.remove(&id);
         }
         if !had_refusal {
             self.refusal = None;
+        }
+        for entry in discarded {
+            crate::runtime::discard_registration(
+                (
+                    crate::HookId::RegisterConfigurationTasks,
+                    "register_configuration_tasks",
+                ),
+                entry.owner,
+                entry.task,
+            );
         }
     }
 }

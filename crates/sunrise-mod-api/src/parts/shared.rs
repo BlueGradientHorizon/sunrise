@@ -254,7 +254,7 @@ pub(crate) fn register_all(
             );
         });
         if !completed {
-            rollback(&mut registrar);
+            rollback(&mut registrar, true);
             continue;
         }
         // The borrowed context has ended; the registrar can move its record into the report.
@@ -268,7 +268,7 @@ pub(crate) fn register_all(
                 .push((registrar.mod_id, diagnostics.warnings));
         }
         if let Some(reason) = diagnostics.refusal {
-            rollback(&mut registrar);
+            rollback(&mut registrar, false);
             registrar.refused.push(format!(
                 "mod {} refused registration: {reason}",
                 registrar.mod_id

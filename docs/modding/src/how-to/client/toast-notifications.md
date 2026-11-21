@@ -29,5 +29,5 @@ is HUD content, not a queued toast, and is not filtered by this hook.
 
 A [panic diagnostic](../../concepts/hooks-and-the-host.md#failures-and-panics) uses ordinary
 toast slots and animation timing and names the mod and callback. It bypasses `toast_add`, so
-mods cannot cancel it or rewrite its text, and a `render_gui_pre` veto cannot hide it. The
-player's F1 setting still controls HUD visibility. A dedicated server reports it in the log.
+mods cannot cancel it or rewrite its text. A `render_gui_pre` veto and a mod's
+`ClientHost::set_hud_mode` cannot hide it. The player's F1 setting still hides it. A dedicated server reports it in the log.

@@ -177,9 +177,8 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
   back to what they were before its call, and the answers of earlier listeners stand. What its earlier allowed calls
   did (a sound, a narrator line, a HUD mode) stands too.
 - The hook uses its default return value: `Flow::Continue` for a cancel hook, `None` for a replace
-  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A hook that
-  isolates its listeners (`entity_move`) disables the refused listener for the session, and a retained callback
-  (loot types, payload handlers, selectors, command argument types) is refused for that call only.
+  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A
+  refused listener is not disabled for the session; a panicking listener is.
 - A method with a typed phase refusal (for example, one returning `Result<_, LevelReadError>`,
   `Result<_, LevelWriteError>`, or `Result<_, TeamMembersReadError>`) returns its `Err(Unavailable)`
   instead of unwinding, and the mod goes on.

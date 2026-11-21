@@ -13,6 +13,33 @@ pub(crate) struct GameDrawContext<'a, 'g> {
     clips: crate::game::gui_clips::GuiClips,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
+    /// Lend a fresh clip stack and isolate the drawable tail of one listener.
+    pub(crate) fn stage(
+        game: &Game<'_>,
+        surface: &mut crate::hud::HudBatch,
+        listen: &mut dyn FnMut(&mut dyn DrawContext) -> bool,
+    ) {
+        let counts = (
+            surface.vertices.len(),
+            surface.pictures.len(),
+            surface.blends.len(),
+            surface.inline_profiles.len(),
+        );
+        let last_blend_end = surface.blends.last().map(|(range, _)| range.end);
+        let accepted = listen(&mut GameDrawContext::new(game, surface));
+        if !accepted {
+            surface.vertices.truncate(counts.0);
+            surface.pictures.truncate(counts.1);
+            surface.blends.truncate(counts.2);
+            surface.inline_profiles.truncate(counts.3);
+            if let Some((last, end)) = surface.blends.last_mut().zip(last_blend_end) {
+                last.0.end = end;
+            }
+            // Keep glyph uploads: font extraction already cached those atlas locations.
+            // They do not draw anything without an accepted vertex referencing them.
+        }
+    }
+
     pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
         Self {
             game,

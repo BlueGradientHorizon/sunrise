@@ -382,6 +382,19 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
             declared.batches.entry(mod_id).or_default().items.push(item);
             Ok(())
         });
+        // These are per-listener staging batches; local validation never consults
+        // them. Publish only the declarations whose callbacks completed.
+        for (owner, kind) in mod_api::__private::take_discarded_declarations(&context) {
+            if let Some(batch) = declared.batches.get_mut(owner) {
+                match kind {
+                    DeclarationKind::Block => batch.blocks.clear(),
+                    DeclarationKind::Item => batch.items.clear(),
+                }
+            }
+        }
+        declared
+            .batches
+            .retain(|_, batch| !batch.blocks.is_empty() || !batch.items.is_empty());
         declared.refusals = mod_api::__private::take_declaration_refusals(&context);
         for (owner, kind) in super::api_values::block_entity_declarations() {
             declared.batches.entry(owner).or_default().types.push(kind);
@@ -2286,6 +2299,54 @@ mod tests {
                         "{record:?}"
                     );
                 }
+            },
+        );
+    }
+
+    #[test]
+    fn panicking_native_declarations_publish_neither_prefixes_nor_diagnostics() {
+        struct Declares {
+            panics: bool,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+                event
+                    .register(mod_api::Block::new("pot", "minecraft:stone"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Block::new("Bad Block", "minecraft:stone"));
+                    panic!("failed after an invalid block declaration");
+                }
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
+                event
+                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Item::new("Bad Item", "minecraft:stick"));
+                    panic!("failed after an invalid item declaration");
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("failed", Box::new(Declares { panics: true })),
+                mod_api::ModEntry::new("healthy", Box::new(Declares { panics: false })),
+            ]
+            .into(),
+            || {
+                let declared = native_declared();
+                assert!(declared.refusals.is_empty());
+                assert_eq!(
+                    declared.batches.keys().copied().collect::<Vec<_>>(),
+                    ["healthy"]
+                );
+                let batch = &declared.batches["healthy"];
+                assert_eq!(batch.blocks[0].get().id, "healthy:pot");
+                assert_eq!(batch.items[0].get().id, "healthy:tool");
+                assert_eq!(mod_api::__private::take_hook_panics().len(), 2);
             },
         );
     }

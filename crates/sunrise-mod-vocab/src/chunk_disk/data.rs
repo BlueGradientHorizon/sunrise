@@ -11,6 +11,7 @@ use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 /// exceed a limit or require truncation is refused. A codec or budget failure
 /// refuses publication even if the listener ignores its error. Dispatch discards
 /// that listener's edits so later listeners can still work on the accepted envelopes.
+/// Each operation still runs independently and reports its own refusal.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ChunkDiskData {
@@ -60,9 +61,6 @@ impl ChunkDiskData {
         key: &AttachmentType<T>,
         apply: impl FnOnce(&mut Attachments) -> Result<R, AttachmentError>,
     ) -> Result<R, ChunkDiskFailure> {
-        if let Some(failure) = &self.failure {
-            return Err(failure.clone());
-        }
         let key_name = format!("{}:{}", key.namespace, key.name);
         let result = (|| {
             if key.codec.is_none() {
@@ -76,10 +74,20 @@ impl ChunkDiskData {
             self.entries = encoded;
             Ok(value)
         })();
-        if let Err(error) = &result {
-            self.failure = Some(error.clone());
-        }
-        result
+        result.map_err(|mut error: ChunkDiskFailure| {
+            if let Some(call) = crate::content::crash::current_native_call() {
+                error.mod_id = call.id.into();
+                log::warn!(
+                    "mod {} hook {} attachment {} refused: {}",
+                    call.id,
+                    call.hook,
+                    error.key,
+                    error.reason
+                );
+            }
+            self.failure.get_or_insert_with(|| error.clone());
+            error
+        })
     }
 
     /// Run a nested local savepoint. An explicit abort restores the prior
@@ -97,7 +105,8 @@ impl ChunkDiskData {
     }
 
     /// The first refusal of the active callback, or the job's first failure after dispatch.
-    /// An earlier listener's failure does not block this callback's operations.
+    /// A refusal does not block later operations in this callback or in other callbacks.
+    /// Use each operation's returned error to diagnose that operation.
     pub fn failure(&self) -> Option<&ChunkDiskFailure> {
         self.failure.as_ref()
     }

@@ -155,6 +155,17 @@ fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
 mod crate_root {
     mod entity {
         pub(crate) mod types {
+            pub(crate) fn refused_move_output(
+                accepted: &[f64; 3],
+                delta: &[f64; 3],
+            ) -> Result<(), &'static str> {
+                if accepted[0].to_bits() != delta[0].to_bits() && !delta[0].is_finite() {
+                    Err("delta")
+                } else {
+                    Ok(())
+                }
+            }
+
             /// The fixture's validator: input.x past 1.0 or velocity.x past 64.0 is
             /// refused only on replacement. The real budgets are tested in the vocabulary crate.
             pub(crate) fn refused_travel_output(

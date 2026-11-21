@@ -4,7 +4,9 @@ pub trait Hooks {
     /// built-in configuration steps. Runs for every peer, including vanilla.
     /// The profile has no player handle yet. Use `event.connection.has_channel`
     /// to check what the peer negotiated and `event.register(task)` to give this
-    /// connection an owned task. An empty or duplicate type refuses admission.
+    /// connection an owned task. A completed listener's empty or duplicate type
+    /// refuses admission. A panicking listener discards its tasks and transactional
+    /// writes; other listeners still configure the same peer.
     /// Tasks start in registration order and can finish, wait or fail this peer.
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
@@ -12,7 +14,7 @@ pub trait Hooks {
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "RegisterConfigurationTasksEvent"
     )]
     fn register_configuration_tasks(

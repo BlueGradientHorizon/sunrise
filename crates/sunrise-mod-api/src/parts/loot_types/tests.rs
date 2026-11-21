@@ -38,7 +38,7 @@ fn type_ids_are_owned_unique_per_registry_and_rolled_back() {
     let rollback = registrar.registration_checkpoint();
     (&mut registrar as &mut dyn crate::Registrar)
         .register_loot_function_type(&crate::Identifier::parse("test:discarded").unwrap(), Codec);
-    rollback(&mut registrar);
+    rollback(&mut registrar, false);
     assert_eq!(registrar.loot_function_types.len(), 1);
     for namespace in ["minecraft", "neoforge"] {
         let mut reserved = PartRegistrar::new(namespace);

@@ -24,16 +24,8 @@ impl Game<'_> {
         callback: impl FnOnce(&mut Self) -> Result<Option<usize>, String>,
     ) -> bool {
         let seal = self.transaction_open();
-        let failures = mod_api::runtime::isolated_failures();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
-            .unwrap_or_else(|_| Err("Configuration task callback panicked".into()))
-            .and_then(|ordinal| {
-                if mod_api::runtime::isolated_failures() != failures {
-                    Err("Configuration task callback panicked".into())
-                } else {
-                    Ok(ordinal)
-                }
-            });
+            .unwrap_or_else(|_| Err("Configuration task callback panicked".into()));
         let ordinal = match result {
             Ok(ordinal) => ordinal,
             Err(reason) => {

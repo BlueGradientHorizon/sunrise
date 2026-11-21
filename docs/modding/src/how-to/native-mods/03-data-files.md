@@ -2,6 +2,10 @@
 
 A mod has one top-level `data/` tree and one `assets/` tree, with the same namespace and
 content checks as a content mod. They are normal pack resources, not a second native-only data folder.
+Native `blocks` and `items` listeners still receive each `DeclarationError` immediately from
+`event.register`. A returning listener's invalid declaration refuses startup even if it ignored
+the error. If a listener panics, neither its declarations nor its diagnostics join the cached
+startup/reload declaration batch.
 `Hooks::add_pack_finders` can also offer an optional bundled pack to a pack repository.
 `event.packs.add_pack_finders` returns and logs rejected entries; a pack does not enter the repository
 if its registration callback panics or incurs a phase refusal.

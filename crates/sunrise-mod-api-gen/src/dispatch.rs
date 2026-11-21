@@ -130,24 +130,32 @@ pub(super) fn emit<'a>(
         let entered = fresh_name("_entered", &mut used);
         let batch = fresh_name("batch", &mut used);
         let contract = hook.contract;
+        let mut staged_draw = false;
         let staged = if let Some(field) = &hook.staged_surface {
             let Some((_, ty)) = args.iter().find(|(arg, _)| arg == field) else {
                 return Err(format!("{name}: missing staged_surface field {field}"));
             };
+            staged_draw = DrawContext::of(contexts, ty).is_some_and(|draw| {
+                draw.trait_name == "DrawContext" && contract == Contract::Listen
+            });
             if hook.context == Some(PhaseContext::ChunkDisk)
                 || !in_game
                 || is_render
                 || hook.dispatch != DispatchStyle::Flat
-                || args.iter().any(|(_, ty)| DrawContext::of(contexts, ty).is_some())
                 || args.iter().any(|(arg, ty)| {
-                    arg != field
-                        && matches!(ty, Type::Reference(reference) if reference.mutability.is_some())
+                    if staged_draw && arg == field {
+                        return false;
+                    }
+                    DrawContext::of(contexts, ty).is_some()
+                        || (!staged_draw
+                            && arg != field
+                            && matches!(ty, Type::Reference(reference) if reference.mutability.is_some()))
                 })
                 || !matches!(ty, Type::Reference(reference)
                     if reference.mutability.is_some() && matches!(*reference.elem, Type::TraitObject(_)))
             {
                 return Err(format!(
-                    "{name}: staged_surface needs a flat global game listener with a single mutable registrar and no draw surface"
+                    "{name}: staged_surface needs a flat global game listener with a mutable registrar or GUI draw surface"
                 ));
             }
             let stage = fresh_name("stage_listener", &mut used);
@@ -553,7 +561,7 @@ pub(super) fn emit<'a>(
                 inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
-            } else if hook.event_per_listener
+            } else if (hook.event_per_listener || staged_draw)
                 && matches!(field_ty, Type::Reference(ref reference) if reference.mutability.is_some())
             {
                 // Keep write-through access, but not changes to the reference itself.
@@ -608,7 +616,7 @@ pub(super) fn emit<'a>(
         let wire_comment = if registration_append.is_some() {
             "// no wire: this event borrows the registration staging vector.\n"
         } else if staged.is_some() {
-            "// no wire: this event borrows the current listener's registrar.\n"
+            "// no wire: this event borrows the current listener's staging surface.\n"
         } else {
             ""
         };
@@ -707,10 +715,14 @@ pub(super) fn emit<'a>(
                             }
                             surfaces.insert(
                                 arg.as_str(),
-                                format!(
-                                    "&mut crate::game::host::draw::{}::new(self, {arg})",
-                                    draw.game_struct()
-                                ),
+                                if staged_draw {
+                                    format!("|listen| crate::game::host::draw::GameDrawContext::stage(self, {arg}, listen)")
+                                } else {
+                                    format!(
+                                        "&mut crate::game::host::draw::{}::new(self, {arg})",
+                                        draw.game_struct()
+                                    )
+                                },
                             );
                             ty = syn::parse_str(&format!("&mut {}", draw.surface))
                                 .map_err(|e| format!("{name}: invalid draw surface: {e}"))?;
@@ -739,7 +751,7 @@ pub(super) fn emit<'a>(
                     for (arg, ty) in &engine {
                         if let Some((_, _, signature)) = staged
                             .as_ref()
-                            .filter(|(field, _, _)| field.as_str() == arg.as_str())
+                            .filter(|(field, _, _)| !staged_draw && field.as_str() == arg.as_str())
                         {
                             parameter(arg, signature);
                         } else {
@@ -819,6 +831,7 @@ pub(super) fn emit<'a>(
                 "self."
             };
             if let Some((field, _, _)) = &staged
+                && !staged_draw
                 && let Some(argument) = forwarded
                     .iter_mut()
                     .find(|argument| argument.as_str() == field.as_str())
@@ -936,7 +949,8 @@ pub(super) fn emit<'a>(
                 "impl {event_type}<'_> {{\n\
                  /// Submit a declaration in a manifest-owned namespace. A bare name or reference\n\
                  /// uses the mod's ID as its namespace. A locally invalid declaration returns\n\
-                 /// a [`DeclarationError`] and is also reported at startup if ignored. Collisions\n\
+                 /// a [`DeclarationError`] and is also reported at startup if ignored by a returning listener.\n\
+                 /// A panicking listener's declarations and diagnostics are discarded. Collisions\n\
                  /// and checks needing other declarations or resources run after collection.\n\
                  pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
                      super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
@@ -1074,7 +1088,10 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(name, "contents_changed" | "farmland_trample") {
+            if matches!(
+                name,
+                "contents_changed" | "farmland_trample" | "register_configuration_tasks"
+            ) {
                 // Let the existing journal see the unwind before invoke catches it. In World a
                 // successful child merges into the owning action's frame; outside World use
                 // the normal typed phase-refusal path.
@@ -1102,7 +1119,9 @@ pub(super) fn emit<'a>(
                     "false",
                     &format!("{{ {callee}.{name}({invoke}); true }}"),
                 );
-                return format!("{stage}(&mut |{field}| {{ {local_event} {accepted} }});");
+                return format!(
+                    "{stage}(&mut |{field}| {{ {local_event} {snapshot_statement}{accepted} }});"
+                );
             }
             // Early exits must validate while the listener still owns the scope.
             let exit = format!("{stack_after} {exit}");
@@ -1196,15 +1215,25 @@ pub(super) fn emit<'a>(
         };
         let inert_owner = fresh_name("disabled_owner", &mut used);
         let (lookup, calls) = match &scoped {
-            None if declaration.is_some() => (
-                String::new(),
-                format!(
-                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }}; match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, false, || {mod_item}.{name}(context, &mut {event})) {{ super::runtime::DispatchOutcome::Ok(()) | super::runtime::DispatchOutcome::Panicked => {{}} super::runtime::DispatchOutcome::Refused(refusal) => {{ refusal.report(); }} }} }}"
-                ),
-            ),
+            None if declaration.is_some() => {
+                let entry = declaration.as_ref().unwrap();
+                let accepted = run(
+                    &listener_id,
+                    "false",
+                    &format!("{{ {mod_item}.{name}(context, &mut {event}); true }}"),
+                );
+                (String::new(), format!(
+                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{
+                        super::parts::declaration_listener::<{entry}>(context, {listener_id}, || {{
+                            let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }};
+                            {accepted}
+                        }});
+                    }}"
+                ))
+            }
             None if hook.context == Some(PhaseContext::ChunkDisk) => {
-                // The job returns its first terminal error. Keep it out of the store lent to
-                // later listeners, and report any additional codec error that cannot be returned.
+                // Each disk operation reports its own error. Keep the first terminal error
+                // for job publication, out of the store lent to later listeners.
                 let job_failure = fresh_name("job_failure", &mut used);
                 let outcome = fresh_name("outcome", &mut used);
                 (
@@ -1215,13 +1244,8 @@ pub(super) fn emit<'a>(
                              for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{
                                  {local_event} {snapshot_statement}
                                  let {outcome} = super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, contained, || {mod_item}.{name}({invoke}));
-                                 if let Some(mut error) = {event}.data.failure().cloned() {{
-                                     if error.mod_id.is_empty() {{ error.mod_id = {listener_id}.into(); }}
-                                     if {job_failure}.is_none() {{
-                                         {job_failure} = Some(error);
-                                     }} else {{
-                                         log::warn!(\"mod {{}} hook {name} refused: {{error:?}}\", {listener_id});
-                                     }}
+                                 if let Some(error) = {event}.data.failure() {{
+                                     {job_failure}.get_or_insert_with(|| error.clone());
                                  }} else if matches!(&{outcome}, super::runtime::DispatchOutcome::Ok(())) {{
                                      {local_write_back} {stack_after}
                                      continue;

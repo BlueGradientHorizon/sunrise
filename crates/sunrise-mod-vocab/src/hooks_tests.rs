@@ -1126,7 +1126,12 @@ fn world_phase_cloned_event_fields_roll_back_on_panic() {
 
 #[test]
 fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
-    struct StubTask(Identifier);
+    struct StubTask(Identifier, bool);
+    impl Drop for StubTask {
+        fn drop(&mut self) {
+            assert!(!self.1, "a discarded task destructor panics");
+        }
+    }
     impl ConfigurationTask for StubTask {
         fn task_type(&self) -> &Identifier {
             &self.0
@@ -1142,7 +1147,10 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
             event
-                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .register(StubTask(
+                    Identifier::parse("test:shared_task").unwrap(),
+                    true,
+                ))
                 .unwrap();
             panic!("panic after staging configuration task");
         }
@@ -1156,7 +1164,10 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
             event
-                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .register(StubTask(
+                    Identifier::parse("test:shared_task").unwrap(),
+                    false,
+                ))
                 .unwrap();
         }
     }
