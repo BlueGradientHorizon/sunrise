@@ -184,9 +184,9 @@ def submit(batch, checkout, staged, fork):
     require(all((staged / path).is_file() and not (staged / path).is_symlink() for path in relative), "staged submission files are absent or linked")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a", encoding="utf-8") as file:
-            file.write("## Registry submission\n\nThe staged entry and any staged icon are attached to this run.\n\n" + draft)
+            file.write("## Registry submission\n\nOnce this registry job succeeds, the staged entry and any staged icon are attached to this run as `sunrise-registry-submission`.\n\n" + draft)
     if not fork or not os.environ.get("GH_TOKEN"):
-        print("No registry fork token configured. Use the attached registry submission to open the pull request yourself.")
+        print("No registry fork token configured. Once this job succeeds, open the pull request yourself from the `sunrise-registry-submission` artifact.")
         return
     require(REPO.fullmatch(fork), "SUNRISE_MOD_REGISTRY_FORK must be owner/name")
     repository = api(f"repos/{fork}")

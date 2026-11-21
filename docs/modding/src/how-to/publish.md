@@ -258,13 +258,14 @@ only missing ones are uploaded. A different remote file stops the workflow. Reco
 rather than rebuilding or re-signing, even if the original source checkout did not change. A rolling tool update
 can also stop a retry; in that case finish the release manually with the saved, verified assets.
 
-After uploads are verified, the `sunrise-registry-submission` artifact and the run summary give you the entry,
+Once the registry job succeeds, the `sunrise-registry-submission` artifact and the run summary give you the entry,
 any staged icon and the pull request draft. You can always submit these yourself. To let Actions open or update
 that pull request, set `SUNRISE_MOD_REGISTRY_FORK` to your own fork of `sunrise-org/sunrise-mods` (`owner/name`).
 In a separate `sunrise-mod-registry` environment, set `SUNRISE_MOD_REGISTRY_TOKEN` to a token for your listed
 GitHub owner account that can push to the fork and open registry pull requests. It is not the author release's
 token and is not available to the build, sign or upload jobs. If the registry needs page fields or screenshots
 that were not staged, complete the attached draft by hand. The workflow does not commit the author release assets.
+If the registry job fails on the fork or token, fix that setup or remove both settings, then rerun the registry job.
 
 ## Rebuilding binaries for a newer stable release
 
@@ -288,7 +289,7 @@ and its signature never change. The submission adds one build row to the reviewe
 old builds or page fields. If the exact row was already accepted, nothing is submitted. If the source, key, owners
 or existing target changed since planning, stop and replan rather than rewriting the reviewed entry. Recover the
 original signed batch after an interrupted upload, as for a tagged release. Without a registry fork token, submit
-the staged append from the run artifact yourself.
+the staged append yourself from the run artifact, which is attached once the registry job succeeds.
 
 ## A collection
 
