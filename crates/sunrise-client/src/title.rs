@@ -42,6 +42,7 @@ pub use create_world::{DIFFICULTIES, WorldOptions};
 pub use flat::{FlatLayer, FlatSettings, State as FlatEditor};
 pub use onboarding::Onboarding;
 use preset_buttons::ADDED_IDS;
+use preset_editors::PresetEditorFactories;
 use world_toast::WorldToast;
 
 /// SelectWorldScreen's `HeaderAndFooterLayout(8 + 9 + 8 + 20 + 4, 60)`.
@@ -429,6 +430,7 @@ pub struct Title {
     additional_data_packs: std::sync::Arc<[std::sync::Arc<crate::datapack::DataPack>]>,
     /// Game supplies this when screen hooks are available, even with no mod data.
     preset_data: Option<std::sync::Arc<crate::datapack::DataPack>>,
+    preset_editors: std::sync::Arc<PresetEditorFactories>,
     pub started: std::time::Instant,
     search: String,
     search_focused: bool,
@@ -899,6 +901,7 @@ impl Title {
             resources: resources.to_owned(),
             additional_data_packs: std::sync::Arc::from([]),
             preset_data: None,
+            preset_editors: PresetEditorFactories::installed(),
             started: now,
             search: String::new(),
             search_focused: false,
@@ -1363,8 +1366,15 @@ impl Title {
             && delta != 0.0
         {
             let (w, h) = size;
-            let buttons =
-                create_world::buttons(w, h, *creative, options, self.preset_data.is_some());
+            let buttons = create_world::buttons(
+                w,
+                h,
+                *creative,
+                options,
+                self.preset_data
+                    .is_some()
+                    .then_some(self.preset_editors.as_ref()),
+            );
             if let Some(b) = buttons.iter().find(|b| {
                 b.enabled
                     && cursor.0 >= b.x
@@ -2383,11 +2393,12 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         if hit == Some(26)
             && self.preset_data.is_some()
             && let Mode::Create { seed, options, .. } = &self.mode
-            && preset_editors::has_editor(options.preset_id())
+            && self.preset_editors.has_editor(options.preset_id())
         {
             if let Some(sunrise_core::nbt::Tag::Compound(dimensions)) = options.editor_dimensions()
                 && let Ok(Some(session)) =
-                    preset_editors::open_session(options.preset_id(), dimensions, seed)
+                    self.preset_editors
+                        .open_session(options.preset_id(), dimensions, seed)
             {
                 self.set_mode(Mode::CreatePreset {
                     parent: Box::new(self.mode.clone()),

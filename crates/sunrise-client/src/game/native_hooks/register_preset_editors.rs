@@ -311,7 +311,9 @@ mod tests {
                             ),
                         ]),
                     )]);
-                    sunrise_client::title::preset_editors::register(editors);
+                    title.set_preset_editor_factories(
+                        sunrise_client::title::preset_editors::PresetEditorFactories::bind(editors),
+                    );
                     title.mode = Mode::Create {
                         name: "Test".into(),
                         seed: "1".into(),
@@ -475,7 +477,6 @@ mod tests {
                             ("world_create", "key.keyboard.q", 0),
                         ]
                     );
-                    sunrise_client::title::preset_editors::register(Vec::new());
                 });
             },
         );
