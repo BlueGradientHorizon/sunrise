@@ -3064,7 +3064,6 @@ mod tests {
 
     #[test]
     fn an_oversized_bundle_waits_for_credit_but_still_accepts_exactly_4096_members() {
-        use play_bundle::{InvalidBundle, PlayBundle};
         let ping = |id| play::Clientbound::Ping(cfg::Ping { id });
         let capacity = 2
             * (Event::Packet(Box::new(ping(-1))).ingress_charge()
@@ -3118,16 +3117,32 @@ mod tests {
         assert_eq!(events.stats().reserved_bytes, 0);
         thread.join().unwrap();
         std::fs::remove_dir_all(root).unwrap();
+    }
 
-        let mut packer = PlayBundle::default();
-        assert!(packer.accept(delimiter).unwrap().is_none());
-        for id in 0..4096 {
-            assert!(packer.accept(ping(id)).unwrap().is_none());
+    #[test]
+    fn the_4097th_member_disconnects_before_a_closing_delimiter() {
+        use play::Clientbound as C;
+
+        let (root, mut server, events, thread) = bundle_pipe("bundle-member-limit", 1 << 20);
+        server.send(&C::BundleDelimiter(Empty).encode()).unwrap();
+        for id in 0..4097 {
+            server.send(&C::Ping(cfg::Ping { id }).encode()).unwrap();
         }
+        // Leave the wire open. The 4097th member itself fails; there is no
+        // closing delimiter or EOF to finish (or reject) the partial bundle.
+        let (event, _) = events
+            .recv_timeout_owned(Duration::from_secs(5))
+            .unwrap()
+            .into_parts();
         assert!(matches!(
-            packer.accept(ping(4096)),
-            Err(InvalidBundle::TooManyPackets)
+            event,
+            Event::Disconnected { from_server: false, key: Some(key), .. }
+                if key == "multiplayer.disconnect.invalid_packet"
         ));
+        assert!(events.try_recv_owned().is_err());
+        assert!(server.recv().is_err());
+        thread.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
