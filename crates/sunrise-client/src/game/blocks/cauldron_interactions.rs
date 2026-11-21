@@ -298,7 +298,7 @@ impl Game<'_> {
             );
             return Outcome::Consume;
         };
-        let build_input = || -> std::result::Result<CauldronUse, String> {
+        let input = (|| -> std::result::Result<CauldronUse, String> {
             let held = self
                 .held()
                 .cloned()
@@ -336,8 +336,8 @@ impl Game<'_> {
                 underwater: under_water,
                 creative: self.creative,
             })
-        };
-        let input = match build_input() {
+        })();
+        let input = match input {
             Ok(input) => input,
             Err(why) => {
                 log::warn!(
