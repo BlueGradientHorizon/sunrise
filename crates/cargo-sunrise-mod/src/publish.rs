@@ -358,6 +358,10 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             "{id} {release_version} is already listed in the registry, and a published version never changes: raise `version` in {MANIFEST} and run publish again"
         ));
     }
+    let first_stable = o.sunrise.is_some()
+        && existing.as_ref().is_some_and(|entry| {
+            entry.nightly.is_some() && entry.versions.is_empty() && entry.repo.is_none()
+        });
     if let Some(entry) = &existing {
         if listed.is_none()
             && let Some(repo) = &entry.repo
@@ -373,7 +377,9 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
                 kind.name()
             ));
         }
-        if (listed.is_none() || o.key.is_some())
+        let can_set_initial_key = first_stable && entry.key.is_none();
+        if !can_set_initial_key
+            && (listed.is_none() || o.key.is_some())
             && o.key.as_deref().map(str::trim) != entry.key.as_deref().map(str::trim)
         {
             return Err(format!(
@@ -447,7 +453,9 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         })
         .transpose()?;
     let first = existing.is_none();
-    let icon = if first {
+    let needs_icon =
+        first || (first_stable && existing.as_ref().is_some_and(|entry| entry.icon.is_none()));
+    let icon = if needs_icon {
         read_icon(&root.join("icon.png"))?
     } else {
         None
@@ -464,7 +472,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     }
     let mods = out.join(ENTRIES);
     let files = out.join("files");
-    let icons = (first && icon.is_some()).then(|| out.join("icons"));
+    let icons = icon.is_some().then(|| out.join("icons"));
     // An unsigned submission is built first, into the project's own output folder.
     let built = signature
         .is_none()
@@ -568,8 +576,31 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         changelog: o.changelog.clone(),
     });
     let before = existing.clone();
-    let mut entry =
-        existing.unwrap_or_else(|| draft(&manifest, kind, &o, icon.is_some(), version.clone()));
+    let mut entry = match existing {
+        None => draft(&manifest, kind, &o, icon.is_some(), version.clone()),
+        Some(mut entry) => {
+            if first_stable {
+                let defaults = draft(&manifest, kind, &o, icon.is_some(), version.clone());
+                for (field, default) in [
+                    (&mut entry.name, defaults.name),
+                    (&mut entry.summary, defaults.summary),
+                    (&mut entry.description, defaults.description),
+                    (&mut entry.license, defaults.license),
+                    (&mut entry.source, defaults.source),
+                ] {
+                    if field.trim().is_empty() {
+                        *field = default;
+                    }
+                }
+                if entry.categories.is_empty() {
+                    entry.categories = defaults.categories;
+                }
+                entry.icon = entry.icon.or(defaults.icon);
+                entry.key = entry.key.or(defaults.key);
+            }
+            entry
+        }
+    };
     let file = entry.source_file_name(&version)?.to_owned();
     if append && let Some(base) = asset_base {
         let published = version
@@ -726,7 +757,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             submission.descriptor_signature_name
         );
     }
-    if first && icon.is_some() {
+    if icons.is_some() {
         println!("  icons/{}.png   your icon.png", entry.id);
     }
     println!("  PULL_REQUEST.md   the pull request text, below");

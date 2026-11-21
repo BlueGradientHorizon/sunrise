@@ -381,6 +381,86 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
 
 #[test]
 #[ignore = "daily"]
+fn a_nightly_only_listing_can_add_its_first_stable_key_without_replacing_metadata() {
+    let fixture = Assets::new("author-publish");
+    let root = fixture.path();
+    let source = root.join("nightly").join(ROW);
+    fs::create_dir_all(source.parent().unwrap()).unwrap();
+    let nightly = "id='release_probe'\nkind='native-mod'\nname='Original title'\nowners=['test-author']\nowner_ids=[42]\ntags=['native']\n\n[nightly]\nrepo='test-author/release_probe'\npath='mods/probe'\n";
+    fs::write(&source, nightly).unwrap();
+    fs::write(root.join("icon.png"), icon_png()).unwrap();
+    let publish = |out| {
+        run(
+            root,
+            &[
+                "publish",
+                "--out",
+                out,
+                "--registry",
+                "nightly",
+                "--sunrise",
+                SOURCE_RELEASE,
+                "--releases",
+                "releases.json",
+                "--asset-base",
+                ASSET_BASE,
+                "--package",
+                "source.smod",
+                "--key",
+                &fixture.key,
+                "--signature",
+                "source.smod.minisig",
+                "--binaries",
+                "assets",
+                "--sdk-data",
+                "sdk-data",
+                "--summary",
+                "First stable release",
+                "--owner",
+                "different-login",
+                "--categories",
+                "library",
+            ],
+        )
+    };
+    success(publish("first-stable"));
+    fixture.assert_assets_staged("first-stable");
+    let merged: Entry =
+        toml::from_str(&fs::read_to_string(root.join("first-stable").join(ROW)).unwrap()).unwrap();
+    let old: Entry = toml::from_str(nightly).unwrap();
+    assert_eq!(merged.nightly, old.nightly);
+    assert_eq!(merged.id, old.id);
+    assert_eq!(merged.owners, old.owners);
+    assert_eq!(merged.owner_ids, old.owner_ids);
+    assert_eq!(merged.name, old.name);
+    assert_eq!(merged.tags, old.tags);
+    assert_eq!(merged.summary, "First stable release");
+    assert_eq!(merged.license, "MIT");
+    assert_eq!(merged.source, REPO);
+    assert_eq!(merged.categories, ["library"]);
+    assert_eq!(merged.key.as_deref(), Some(fixture.key.as_str()));
+    assert_eq!(merged.versions[0].sunrise.as_deref(), Some(SOURCE_RELEASE));
+    assert_eq!(
+        fs::read(root.join("first-stable/icons/release_probe.png")).unwrap(),
+        icon_png()
+    );
+    assert_eq!(fs::read_to_string(&source).unwrap(), nightly);
+
+    let other = minisign::KeyPair::generate_unencrypted_keypair()
+        .unwrap()
+        .pk
+        .to_base64();
+    let old_with_key = format!("key='{other}'\n{nightly}");
+    fs::write(&source, &old_with_key).unwrap();
+    let refused = publish("rotation");
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("cannot change its signing key"));
+    assert!(!root.join("rotation").exists());
+    assert_eq!(fs::read_to_string(source).unwrap(), old_with_key);
+}
+
+#[test]
+#[ignore = "daily"]
 fn an_asset_write_failure_leaves_no_registry_entry_or_pr_draft() {
     let fixture = Assets::new("author-publish");
     let out = fixture.path().join("blocked");
