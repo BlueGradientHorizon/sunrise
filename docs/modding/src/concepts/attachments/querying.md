@@ -7,9 +7,11 @@ writes.
 
 ## Read a snapshot
 
-Call `host.query(&TYPE)` on `&dyn Host`, then borrow rows with `batch.iter()`.
-Each successful row contains a copyable `holder` and lends its value through
-`row.with_value(scope, |value| ...)`. Get `scope` from `host.attachment_read_scope()?`.
+Call `host.query(&TYPE)` on `&dyn Host`, then create a fallible cursor with
+`query.iter()`. Advance with `rows.try_next()?`; `Ok(None)` means the cursor is
+in scope and has reached the end. Each row contains a copyable `holder` and lends
+its value through `row.with_value(scope, |value| ...)`. Get `scope` from
+`host.attachment_read_scope()?`.
 Copy what you need inside the loan; a borrowed value cannot outlive it.
 Match `AttachmentHolder` to obtain an `EntityRef`, `PlayerRef`, `BlockEntityRef`,
 `ChunkRef` or `LevelRef`. Keep the batch and its holder identities in process;
@@ -31,11 +33,12 @@ static VALUE: AttachmentType<u32> = AttachmentType {
 };
 
 fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
-    let batch = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
+    let query = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
     let scope = host.attachment_read_scope()?;
+    let mut rows = query.iter();
     let mut total = 0;
-    for row in batch.iter() {
-        total += row?.with_value(scope, |value| *value)?;
+    while let Some(row) = rows.try_next()? {
+        total += row.with_value(scope, |value| *value)?;
     }
     Ok(total)
 }
@@ -47,7 +50,7 @@ fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
 | Snapshot | Membership and stored value bindings are captured at query creation. Create a fresh query to see later sets, removals, loads or unloads. |
 | Borrowing | Rows borrow from the batch. Reading a captured value borrows the original host through its read scope, so you can mutate the host between reads, but not during a read loan. |
 | Defaults | Queries never initialize defaults, dirty holders or queue synchronization. An absent key produces an empty batch. |
-| Saved data | Saved values on bound holders decode lazily when visited, without an earlier typed read. Malformed data and incompatible Rust types produce row errors instead of defaults. |
+| Saved data | Saved values on bound holders decode lazily when visited, without an earlier typed read. A decode or type error advances past the offending row and returns `AttachmentRowError::Value`, not a default. |
 | Interior mutability | A snapshot does not deep-freeze interior mutability inside `T`. |
 
 For an immutable keyed read, including in a render hook, call
@@ -68,9 +71,9 @@ Call `host.query_mut(&TYPE)` on `&mut dyn ServerHost`. Values require
 
 ```rust,ignore
 fn increment(host: &mut dyn ServerHost) -> Result<(), AttachmentRowError> {
-    let batch = host.query_mut(&VALUE).map_err(AttachmentRowError::Value)?;
-    for row in batch.iter() {
-        let row = row?;
+    let query = host.query_mut(&VALUE).map_err(AttachmentRowError::Value)?;
+    let mut rows = query.iter();
+    while let Some(row) = rows.try_next()? {
         let replacement = row.with_value(host.attachment_read_scope()?, |value| *value + 1)?;
         row.set(host, replacement)?;
     }
@@ -110,9 +113,10 @@ on its owning game thread. A parent capture can be used again when its child
 closes; a child capture cannot be used in the parent even after the child
 commits. After commit or rollback, capture a fresh query. Using an out-of-scope
 capture reports `AttachmentRowError::OutsideTransaction` for lookup, iteration,
-value loans and writes. An iterator ends after reporting that error; use a fresh
-iterator if the capturing frame becomes current again. A value read through
-`with_value` or `get` also requires a scope borrowed from the capturing host.
+value loans and writes. Each cursor step reports this refusal without advancing,
+even for an empty batch. After the child closes, stepping the same parent cursor
+continues at its next unvisited row. A value read through `with_value` or `get`
+also requires a scope borrowed from the capturing host.
 The scope prevents that host from opening or closing a frame during the call.
 A capture made outside any transaction can be read with
 `AttachmentReadScope::default()` without borrowing a host.

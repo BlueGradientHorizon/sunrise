@@ -18,10 +18,9 @@ static VALUE: AttachmentType<u32> = AttachmentType {
 fn capture(game: &Game<'_>) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)> {
     let batch = game.attachment_query("boundary", "value").unwrap();
     let query = batch.query(&VALUE).unwrap();
-    query
-        .iter()
+    let mut rows = query.iter();
+    std::iter::from_fn(|| rows.try_next().unwrap())
         .map(|row| {
-            let row = row.unwrap();
             (
                 row.holder,
                 row.with_value(game.attachment_frame_borrow(), |value| *value)

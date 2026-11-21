@@ -417,16 +417,15 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
         let holder = Holder::BlockEntity([0, 65, 0]);
         let attachment_values = |game: &Game<'_>| {
             let host: &dyn Host = game;
-            host.attachment_query(VALUE.namespace, VALUE.name)
+            let query = host
+                .attachment_query(VALUE.namespace, VALUE.name)
                 .unwrap()
                 .query(&VALUE)
-                .unwrap()
-                .iter()
-                .map(|row| {
-                    row.unwrap()
-                        .with_value(host.attachment_read_scope().unwrap(), |value| *value)
-                        .unwrap()
-                })
+                .unwrap();
+            let scope = host.attachment_read_scope().unwrap();
+            let mut rows = query.iter();
+            std::iter::from_fn(|| rows.try_next().unwrap())
+                .map(|row| row.with_value(scope, |value| *value).unwrap())
                 .collect::<Vec<_>>()
         };
         game.world.set(1, 65, 0, support).unwrap();

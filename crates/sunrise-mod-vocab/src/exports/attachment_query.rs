@@ -1,5 +1,6 @@
 pub use entity::attachment_query::{
-    AttachmentBatch, AttachmentQuery, AttachmentReadScope, AttachmentRow, AttachmentWriteToken,
+    AttachmentBatch, AttachmentIter, AttachmentQuery, AttachmentReadScope, AttachmentRow,
+    AttachmentWriteToken,
 };
 
 pub use sunrise_mod_runtime::attachments::AttachmentRowError;

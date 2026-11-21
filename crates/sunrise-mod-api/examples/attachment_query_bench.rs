@@ -142,11 +142,10 @@ fn contribution(holder: AttachmentHolder, value: &u32) -> u64 {
 }
 fn api(host: &dyn Host) -> u64 {
     let scope = host.attachment_read_scope().unwrap();
-    host.query(&VALUE)
-        .unwrap()
-        .iter()
+    let batch = host.query(&VALUE).unwrap();
+    let mut rows = batch.iter();
+    std::iter::from_fn(|| rows.try_next().unwrap())
         .map(|row| {
-            let row = row.unwrap();
             row.with_value(scope, |value| contribution(row.holder, value))
                 .unwrap()
         })
@@ -192,10 +191,9 @@ fn warm(host: &BenchHost) -> f64 {
         }
         let r = timed(ROUNDS, || raw(black_box(&rows)));
         let t = timed(ROUNDS, || {
-            batch
-                .iter()
+            let mut rows = batch.iter();
+            std::iter::from_fn(|| rows.try_next().unwrap())
                 .map(|row| {
-                    let row = row.unwrap();
                     row.with_value(scope, |value| contribution(row.holder, value))
                         .unwrap()
                 })
@@ -231,12 +229,11 @@ fn cold() {
             let scope = host.attachment_read_scope().unwrap();
             let start = Instant::now();
             let (sum, counts) = measured(|| {
-                host.query(&VALUE)
-                    .unwrap()
-                    .iter()
+                let batch = host.query(&VALUE).unwrap();
+                let mut rows = batch.iter();
+                std::iter::from_fn(|| rows.try_next().unwrap())
                     .take(limit)
                     .map(|row| {
-                        let row = row.unwrap();
                         row.with_value(scope, |value| contribution(row.holder, value))
                             .unwrap()
                     })
@@ -250,18 +247,18 @@ fn cold() {
             let (_, eager_counts) = measured(|| {
                 // Eager policy measured using the very same production decode path.
                 let batch = host.query(&VALUE).unwrap();
-                for row in batch.iter() {
-                    row.unwrap()
-                        .with_value(scope, |value| {
-                            black_box(value);
-                        })
-                        .unwrap();
+                let mut rows = batch.iter();
+                while let Some(row) = rows.try_next().unwrap() {
+                    row.with_value(scope, |value| {
+                        black_box(value);
+                    })
+                    .unwrap();
                 }
+                let mut rows = batch.iter();
                 black_box(
-                    batch
-                        .iter()
+                    std::iter::from_fn(|| rows.try_next().unwrap())
                         .take(limit)
-                        .map(|row| row.unwrap().with_value(scope, |value| *value).unwrap() as u64)
+                        .map(|row| u64::from(row.with_value(scope, |value| *value).unwrap()))
                         .sum::<u64>(),
                 );
             });

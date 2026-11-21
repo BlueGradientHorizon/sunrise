@@ -20,14 +20,15 @@ static VALUE: AttachmentType<i32> = AttachmentType {
 };
 fn values(game: &Game<'_>) -> Vec<i32> {
     let host: &dyn Host = game;
-    host.attachment_query("mirror", "value")
+    let query = host
+        .attachment_query("mirror", "value")
         .unwrap()
         .query(&VALUE)
-        .unwrap()
-        .iter()
+        .unwrap();
+    let mut rows = query.iter();
+    std::iter::from_fn(|| rows.try_next().unwrap())
         .map(|row| {
-            row.unwrap()
-                .with_value(game.attachment_frame_borrow(), |value| *value)
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
                 .unwrap()
         })
         .collect()

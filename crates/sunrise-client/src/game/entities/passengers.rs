@@ -1700,6 +1700,16 @@ mod nested_vehicle_discard_tests {
             .unwrap();
     }
 
+    fn vehicle_attachment_count(host: &dyn mod_api::Host) -> usize {
+        let query = host
+            .attachment_query("vehicle_boundary", "value")
+            .unwrap()
+            .query(&VEHICLE_VALUE)
+            .unwrap();
+        let mut rows = query.iter();
+        std::iter::from_fn(|| rows.try_next().unwrap()).count()
+    }
+
     fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &str) {
         assert!(host.entity(71).is_none());
         assert!(
@@ -1725,15 +1735,7 @@ mod nested_vehicle_discard_tests {
                 .commands()
                 .run_command("execute if entity 000000a0-0000-0000-0000-000000000047")
         );
-        assert_eq!(
-            host.attachment_query("vehicle_boundary", "value")
-                .unwrap()
-                .query(&VEHICLE_VALUE)
-                .unwrap()
-                .iter()
-                .count(),
-            0
-        );
+        assert_eq!(vehicle_attachment_count(host), 0);
     }
 
     struct RemovalBoundaryObserver {
@@ -2093,8 +2095,7 @@ mod nested_vehicle_discard_tests {
                     "execute if entity @e[type=minecraft:{}]",
                     self.kind
                 )));
-                let batch = host.attachment_query("vehicle_boundary", "value").unwrap();
-                assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 0);
+                assert_eq!(vehicle_attachment_count(host), 0);
                 return mod_api::Flow::Cancel;
             }
             mod_api::Flow::Continue
@@ -2122,15 +2123,7 @@ mod nested_vehicle_discard_tests {
                     game.build_registries();
                     game.set_allow_commands(true);
                     set_vehicle_test_attachment(game);
-                    assert_eq!(
-                        game.attachment_query("vehicle_boundary", "value")
-                            .unwrap()
-                            .query(&VEHICLE_VALUE)
-                            .unwrap()
-                            .iter()
-                            .count(),
-                        1
-                    );
+                    assert_eq!(vehicle_attachment_count(game), 1);
                     if cart {
                         game.hurt_cart(
                             0,
@@ -2173,8 +2166,7 @@ mod nested_vehicle_discard_tests {
                     let command = format!("execute if entity @e[type=minecraft:{kind}]");
                     assert!(game.run_command(&command));
                     set_vehicle_test_attachment(game);
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 1);
+                    assert_eq!(vehicle_attachment_count(game), 1);
                     let vehicle = game.entity(71).unwrap();
                     if cart {
                         game.hurt_cart(
@@ -2192,8 +2184,7 @@ mod nested_vehicle_discard_tests {
                     assert!(game.native_entity_target(vehicle).is_none());
                     assert!(game.entity_passengers(vehicle).is_none());
                     assert!(!game.run_command(&command));
-                    let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(batch.query(&VEHICLE_VALUE).unwrap().iter().count(), 0);
+                    assert_eq!(vehicle_attachment_count(game), 0);
                 });
             });
         }

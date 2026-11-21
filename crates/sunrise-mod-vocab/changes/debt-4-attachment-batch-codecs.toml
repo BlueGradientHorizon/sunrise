@@ -20,7 +20,8 @@ migrate = """
 Replace `Writer::put(&batch)` or `Reader::decode::<AttachmentBatch>(bytes)` with a local
 `host.query(&KEY)?` (import `AttachmentQueries`). Borrow the host with
 `let scope = host.attachment_read_scope()?;`, then use `query.get(scope, holder)` or
-`query.iter()` and `row.with_value(scope, |value| ...)`. Keep passing `Holder` or
+`let mut rows = query.iter(); while let Some(row) = rows.try_next()? { ... }`.
+Borrow a row's value with `row.with_value(scope, |value| ...)`. Keep passing `Holder` or
 `AttachmentHolder` to local calls and handling attachment and Part errors as Rust values.
 Keep `AttachmentForm`, `AttachmentPolicy`, `AttachmentWrite`, Part declarations and
 `EntityResidency` in local storage or registration code. For disk or attachment sync, set

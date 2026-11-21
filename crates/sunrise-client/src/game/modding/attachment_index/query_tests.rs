@@ -14,12 +14,11 @@ static VALUE: AttachmentType<u32> = AttachmentType {
 };
 fn values(game: &Game<'_>) -> Vec<u32> {
     let host: &dyn mod_api::Host = game;
-    host.query(&VALUE)
-        .unwrap()
-        .iter()
+    let query = host.query(&VALUE).unwrap();
+    let mut rows = query.iter();
+    std::iter::from_fn(|| rows.try_next().unwrap())
         .map(|row| {
-            row.unwrap()
-                .with_value(game.attachment_frame_borrow(), |value| *value)
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
                 .unwrap()
         })
         .collect()

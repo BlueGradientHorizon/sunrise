@@ -75,10 +75,11 @@ the storage-relative `Holder`, it carries the handle's world scope.
 
 Import `AttachmentQueries` to use `host.query(&TYPE)` on either host side. The
 returned batch is a **snapshot** of membership and stored value bindings in the
-host's current dimension. Iterate its rows with `iter()`, then borrow each value
-with `row.with_value(scope, |value| ...)` without cloning it. Get `scope` from
-`host.attachment_read_scope()?`. Iteration decodes saved
-entries lazily; malformed or incompatible values produce row errors, not defaults. Later sets, removals and unloads appear only in fresh queries. This
+host's current dimension. Create a cursor with `query.iter()` and step it with
+`rows.try_next()?` until it returns `Ok(None)`. Borrow each value with
+`row.with_value(scope, |value| ...)` without cloning it. Get `scope` from
+`host.attachment_read_scope()?`. Iteration decodes saved entries lazily; malformed
+or incompatible values produce row errors, not defaults. Later sets, removals and unloads appear only in fresh queries. This
 is a residency view: an entity queued for removal can appear until the removal sweep. Captured handles do not keep holders loaded, and stale writes fail.
 Interior mutability inside `T` is not deep-frozen by a snapshot.
 
@@ -96,8 +97,9 @@ Rows retain captured values even after successful write-through updates. A captu
 made during a transaction can only be used while its capturing frame is current.
 A value read borrows the capturing host for the whole call, so the frame cannot
 close or open a child during that read. After commit or rollback, create a fresh
-query; using the old one returns
-`AttachmentRowError::OutsideTransaction`.
+query; using the old one returns `AttachmentRowError::OutsideTransaction`. If a
+child frame temporarily makes the capture unavailable, that refusal does not
+advance the cursor. Continue with the same cursor when the parent is current again.
 
 Traversal follows dense index order: insertion appends, and removal fills its slot
 with the last row. The same ordered mutation history is deterministic, but the

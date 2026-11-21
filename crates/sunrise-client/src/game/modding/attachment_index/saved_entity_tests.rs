@@ -264,7 +264,8 @@ fn saved_binding_family_first_stores_publish_to_queries() {
                 VALUE.set(game, holder, 7).unwrap();
                 {
                     let query = game.query(&VALUE).unwrap();
-                    let rows: Vec<_> = query.iter().map(|row| row.unwrap()).collect();
+                    let mut rows = query.iter();
+                    let rows: Vec<_> = std::iter::from_fn(|| rows.try_next().unwrap()).collect();
                     assert_eq!(rows.len(), 1, "{} first store", $kind);
                     assert_eq!(rows[0].holder, AttachmentHolder::Entity(entity), "{}", $kind);
                     assert_eq!(rows[0].with_value(game.attachment_frame_borrow(), |value| *value), Ok(7), "{}", $kind);

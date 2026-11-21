@@ -46,14 +46,31 @@ pub struct AttachmentQueryMut<'key, T: 'static> {
     key: &'key AttachmentType<T>,
 }
 impl<T: Clone + Send + Sync + 'static> AttachmentQueryMut<'_, T> {
-    /// Traverse captured bindings, decoding saved entries only when visited.
-    /// A transaction-scope refusal ends the traversal with an error.
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = Result<AttachmentRowMut<'_, T>, AttachmentRowError>> {
-        self.query
-            .iter()
-            .map(|row| row.map(|row| AttachmentRowMut { row, key: self.key }))
+    /// Create a fallible cursor over writable rows, decoding saved entries only when visited.
+    pub fn iter(&self) -> AttachmentIterMut<'_, T> {
+        AttachmentIterMut {
+            rows: self.query.iter(),
+            key: self.key,
+        }
+    }
+}
+
+/// A fallible cursor borrowing the snapshot of an [`AttachmentQueryMut`].
+// no wire: borrows an in-process snapshot and its attachment key.
+pub struct AttachmentIterMut<'q, T: 'static> {
+    rows: AttachmentIter<'q, T>,
+    key: &'q AttachmentType<T>,
+}
+
+impl<'q, T: Clone + Send + Sync + 'static> AttachmentIterMut<'q, T> {
+    /// Return the next writable row, or `Ok(None)` at the end while in scope.
+    /// [`AttachmentRowError::OutsideTransaction`] leaves the cursor unchanged.
+    /// A value error consumes only its own row.
+    pub fn try_next(&mut self) -> Result<Option<AttachmentRowMut<'q, T>>, AttachmentRowError> {
+        Ok(self
+            .rows
+            .try_next()?
+            .map(|row| AttachmentRowMut { row, key: self.key }))
     }
 }
 
@@ -97,14 +114,17 @@ impl<T: Clone + Send + Sync + 'static> AttachmentRowMut<'_, T> {
             AttachmentHolder::Level(_) => Holder::Level,
         })
     }
-    /// Replace through the ordinary write path, refusing expired scopes or stale residency.
+    /// Replace through the ordinary write path. Refuses with `Unavailable` outside
+    /// the world phase, `OutsideTransaction` when the captured frame is not current,
+    /// or `StaleHolder` when the holder's residency no longer matches.
     pub fn set(&self, host: &mut dyn ServerHost, value: T) -> Result<(), AttachmentRowError> {
         let holder = self.holder_for_write(host)?;
         self.key
             .set(host.attachments(), holder, value)
             .map_err(write_error)
     }
-    /// Remove through the ordinary write path, refusing expired scopes or stale residency.
+    /// Remove through the ordinary write path, with the same scope, phase and
+    /// residency refusals as [`Self::set`].
     pub fn remove(&self, host: &mut dyn ServerHost) -> Result<Option<T>, AttachmentRowError> {
         let holder = self.holder_for_write(host)?;
         self.key

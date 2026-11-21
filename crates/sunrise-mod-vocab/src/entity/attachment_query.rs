@@ -63,15 +63,26 @@ impl AttachmentBatch {
 pub struct AttachmentQuery<'key, T: 'static>(runtime::AttachmentQuery<'key, AttachmentHolder, T>);
 
 impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
-    /// Traverse in captured order, decoding values only as rows are visited.
-    /// A transaction-scope refusal ends this traversal with an error, even for an empty batch.
-    pub fn iter(&self) -> impl Iterator<Item = Result<AttachmentRow<'_, T>, AttachmentRowError>> {
-        self.0.iter().map(|row| {
-            row.map(|binding| AttachmentRow {
-                holder: binding.holder,
-                binding,
-            })
-        })
+    /// Create a fallible cursor in captured order, decoding values only as rows are visited.
+    pub fn iter(&self) -> AttachmentIter<'_, T> {
+        AttachmentIter(self.0.iter())
+    }
+}
+
+/// A fallible cursor borrowing the snapshot of an [`AttachmentQuery`].
+// no wire: borrows a live snapshot and tracks a local cursor position.
+pub struct AttachmentIter<'q, T: 'static>(runtime::AttachmentIter<'q, AttachmentHolder, T>);
+
+impl<'q, T: Send + Sync + 'static> AttachmentIter<'q, T> {
+    /// Return the next row, or `Ok(None)` at the end while in scope.
+    /// [`AttachmentRowError::OutsideTransaction`] does not advance the cursor;
+    /// the next call can resume once the capturing frame is current again.
+    /// A value error consumes only its own row.
+    pub fn try_next(&mut self) -> Result<Option<AttachmentRow<'q, T>>, AttachmentRowError> {
+        Ok(self.0.try_next()?.map(|binding| AttachmentRow {
+            holder: binding.holder,
+            binding,
+        }))
     }
 }
 

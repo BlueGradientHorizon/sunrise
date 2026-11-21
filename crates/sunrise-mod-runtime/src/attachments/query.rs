@@ -172,13 +172,12 @@ impl<H: Copy, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
     /// or per-item allocation. A first saved decode may allocate in the codec/cache.
     pub fn iter(&self) -> AttachmentIter<'_, H, T> {
         AttachmentIter {
-            rows: Some(
-                self.batch
-                    .rows
-                    .as_deref()
-                    .map_or(&[][..], |rows| rows.as_slice())
-                    .iter(),
-            ),
+            rows: self
+                .batch
+                .rows
+                .as_deref()
+                .map_or(&[][..], |rows| rows.as_slice())
+                .iter(),
             key: self.key,
             scope: self.batch.scope.as_ref(),
         }
@@ -216,48 +215,35 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
     }
 }
 
-/// Borrowing iterator over a batch, not an iterator owning its borrowed values.
+/// A borrowing, fallible cursor over a batch.
 #[non_exhaustive]
 pub struct AttachmentIter<'q, H, T: 'static> {
-    rows: Option<slice::Iter<'q, AttachmentRow<H>>>,
+    rows: slice::Iter<'q, AttachmentRow<H>>,
     key: &'q AttachmentType<T>,
     scope: Option<&'q AttachmentQueryScope>,
 }
 
-impl<'q, H: Copy, T: Send + Sync + 'static> Iterator for AttachmentIter<'q, H, T> {
-    type Item = Result<AttachmentRowRef<'q, H, T>, AttachmentRowError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let rows = self.rows.as_mut()?;
-        if let Some(scope) = self.scope
-            && let Err(error) = scope.check()
-        {
-            self.rows = None;
-            return Some(Err(error));
+impl<'q, H: Copy, T: Send + Sync + 'static> AttachmentIter<'q, H, T> {
+    /// Step in captured order. A scope refusal leaves the cursor unchanged;
+    /// a value error consumes only the offending row. An in-scope cursor at
+    /// the end returns `Ok(None)`.
+    pub fn try_next(&mut self) -> Result<Option<AttachmentRowRef<'q, H, T>>, AttachmentRowError> {
+        if let Some(scope) = self.scope {
+            scope.check()?;
         }
-        let Some(row) = rows.next() else {
-            self.rows = None;
-            return None;
+        let Some(row) = self.rows.next() else {
+            return Ok(None);
         };
-        Some(
-            row.entry
-                .read_validated(self.key)
-                .map(|value| AttachmentRowRef {
-                    holder: row.holder,
-                    value,
-                    row,
-                    scope: self.scope,
-                })
-                .map_err(AttachmentRowError::Value),
-        )
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        match &self.rows {
-            None => (0, Some(0)),
-            Some(_) if self.scope.is_some() => (0, None),
-            Some(rows) => rows.size_hint(),
-        }
+        let value = row
+            .entry
+            .read_validated(self.key)
+            .map_err(AttachmentRowError::Value)?;
+        Ok(Some(AttachmentRowRef {
+            holder: row.holder,
+            value,
+            row,
+            scope: self.scope,
+        }))
     }
 }
 
@@ -388,12 +374,9 @@ mod tests {
             .unwrap()
     }
     fn values(query: &AttachmentQuery<'_, u32, u32>) -> Vec<(u32, u32)> {
-        query
-            .iter()
-            .map(|row| {
-                let row = row.unwrap();
-                (row.holder, *row.value)
-            })
+        let mut rows = query.iter();
+        std::iter::from_fn(|| rows.try_next().unwrap())
+            .map(|row| (row.holder, *row.value))
             .collect()
     }
 
@@ -404,9 +387,9 @@ mod tests {
         let two = index.register(2, [(key(), entry(20u32))]).into_result();
         index.register(3, [(key(), entry(30u32))]).into_result();
         let captured = query(&index);
-        let tokens: Vec<_> = captured
-            .iter()
-            .map(|row| row.unwrap().write_token())
+        let mut rows = captured.iter();
+        let tokens: Vec<_> = std::iter::from_fn(|| rows.try_next().unwrap())
+            .map(|row| row.write_token())
             .collect();
         index.set(&one, &key(), entry(11u32)).into_result();
         index.remove(&two, &key()).into_result();
@@ -420,15 +403,19 @@ mod tests {
             other_index.validate_owner(&tokens[0]),
             Err(AttachmentRowError::StaleHolder)
         );
-        for (row, token) in captured.iter().zip(&tokens) {
-            assert_eq!(row.unwrap().validate_write(&index), Ok(()));
+        let mut rows = captured.iter();
+        for token in &tokens {
+            let row = rows.try_next().unwrap().unwrap();
+            assert_eq!(row.validate_write(&index), Ok(()));
             assert_eq!(index.validate_owner(token), Ok(()));
         }
+        assert!(rows.try_next().unwrap().is_none());
         index.unload(1).into_result();
         // Even reusing the identical entry pointer creates a new registration.
         let same = index.snapshot(&key())[0].entry.clone();
         index.register(3, [(key(), same)]).into_result();
-        let rows: Vec<_> = captured.iter().map(Result::unwrap).collect();
+        let mut rows = captured.iter();
+        let rows: Vec<_> = std::iter::from_fn(|| rows.try_next().unwrap()).collect();
         assert_eq!(
             rows[0].validate_write(&index),
             Err(AttachmentRowError::StaleHolder)
@@ -459,6 +446,37 @@ mod tests {
     }
 
     #[test]
+    fn parent_cursor_resumes_after_repeated_child_scope_refusals() {
+        let mut index = AttachmentIndex::default();
+        index.register(3, [(key(), entry(17u32))]).into_result();
+        index.register(9, [(key(), entry(28u32))]).into_result();
+        let mut scopes = AttachmentQueryScopes::default();
+        let root = scopes.enter();
+        let query = AttachmentBatch::new(index.snapshot(&key()))
+            .in_scope(&scopes)
+            .query(&KEY)
+            .unwrap();
+        let mut rows = query.iter();
+        let first = rows.try_next().unwrap().unwrap();
+        assert_eq!(first.holder, 3);
+        assert_eq!(first.with_value(Some(&scopes), |value| *value), Ok(17));
+
+        let parent = scopes.enter();
+        for _ in 0..2 {
+            assert!(matches!(
+                rows.try_next(),
+                Err(AttachmentRowError::OutsideTransaction)
+            ));
+        }
+        scopes.leave(parent);
+        let second = rows.try_next().unwrap().unwrap();
+        assert_eq!(second.holder, 9);
+        assert_eq!(second.with_value(Some(&scopes), |value| *value), Ok(28));
+        assert!(rows.try_next().unwrap().is_none());
+        scopes.leave(root);
+    }
+
+    #[test]
     fn lazy_success_only_decode_and_malformed_row_is_not_skipped() {
         DECODES.store(0, Ordering::Relaxed);
         let saved = |payload| {
@@ -478,18 +496,16 @@ mod tests {
         assert_eq!(DECODES.load(Ordering::Relaxed), 0);
         for expected in [2, 3] {
             let mut iter = batch.iter();
-            assert_eq!(*iter.next().unwrap().unwrap().value, 17);
+            assert_eq!(*iter.try_next().unwrap().unwrap().value, 17);
             assert!(matches!(
-                iter.next(),
-                Some(Err(AttachmentRowError::Value(AttachmentError::Decode)))
+                iter.try_next(),
+                Err(AttachmentRowError::Value(AttachmentError::Decode))
             ));
             assert!(matches!(
-                iter.next(),
-                Some(Err(AttachmentRowError::Value(
-                    AttachmentError::TypeMismatch
-                )))
+                iter.try_next(),
+                Err(AttachmentRowError::Value(AttachmentError::TypeMismatch))
             ));
-            assert!(iter.next().is_none());
+            assert!(iter.try_next().unwrap().is_none());
             assert_eq!(DECODES.load(Ordering::Relaxed), expected);
         }
         let super::super::Entry::Raw { reads, .. } = &bad.state else {
@@ -510,8 +526,8 @@ mod tests {
         ALLOCATIONS.with(|n| n.set(Some(0)));
         let mut total = 0;
         let mut expected_holder = 0;
-        for row in batch.iter() {
-            let row = row.unwrap();
+        let mut rows = batch.iter();
+        while let Some(row) = rows.try_next().unwrap() {
             assert_eq!(row.holder, expected_holder);
             expected_holder += 1;
             total += *row.value;
@@ -586,7 +602,9 @@ mod tests {
             .unwrap();
         let retired = { index.lock().unwrap().unregister(&token) };
         retired.into_result();
-        assert_eq!(batch.iter().count(), 1);
+        let mut rows = batch.iter();
+        assert!(rows.try_next().unwrap().is_some());
+        assert!(rows.try_next().unwrap().is_none());
         drop(batch);
     }
 }

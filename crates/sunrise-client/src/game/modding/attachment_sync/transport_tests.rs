@@ -88,9 +88,8 @@ fn window_value(game: &mut Game<'_>) -> Option<i32> {
         .unwrap()
         .query(&VALUE)
         .ok()?;
-    rows.iter().next().map(|row| {
-        row.unwrap()
-            .with_value(game.attachment_frame_borrow(), |value| *value)
+    rows.iter().try_next().unwrap().map(|row| {
+        row.with_value(game.attachment_frame_borrow(), |value| *value)
             .unwrap()
     })
 }

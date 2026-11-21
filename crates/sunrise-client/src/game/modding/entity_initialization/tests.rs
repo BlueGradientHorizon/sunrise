@@ -535,8 +535,9 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             assert!(game.entity_attachments.contains_key(&ghost));
             use mod_api::{AttachmentQueries, AttachmentQueriesMut};
             let batch = game.query_mut(&SAVED).unwrap();
-            assert_eq!(batch.iter().count(), 1);
-            let row = batch.iter().try_next().unwrap().unwrap();
+            let mut rows = batch.iter();
+            let row = rows.try_next().unwrap().unwrap();
+            assert!(rows.try_next().unwrap().is_none());
             assert_eq!(
                 row.with_value(game.attachment_frame_borrow(), |value| *value)
                     .unwrap(),
@@ -565,7 +566,10 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 2,
                 "transfer is not reconstruction"
             );
-            assert_eq!(game.query(&SAVED).unwrap().iter().count(), 1);
+            let batch = game.query(&SAVED).unwrap();
+            let mut rows = batch.iter();
+            assert!(rows.try_next().unwrap().is_some());
+            assert!(rows.try_next().unwrap().is_none());
             assert_eq!(
                 row.set(game, 88),
                 Err(mod_api::AttachmentRowError::StaleHolder)
@@ -579,7 +583,10 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             game.forget_entity(refused);
             game.prune_entity_attachments();
             assert_eq!(SAVED.get(game, Holder::Entity(arrived)), Ok(9));
-            assert_eq!(game.query(&SAVED).unwrap().iter().count(), 1);
+            let batch = game.query(&SAVED).unwrap();
+            let mut rows = batch.iter();
+            assert!(rows.try_next().unwrap().is_some());
+            assert!(rows.try_next().unwrap().is_none());
             game.forget_entity(arrived);
             game.mobs.retain(|mob| mob.id != arrived);
             let rebuilt = game.load_mob(tag("minecraft:pig", 200), None).unwrap();
@@ -617,9 +624,9 @@ fn mob_constructor_first_store_binds_only_the_resident_lifetime() {
                     .is_bound()
             );
             let batch = game.query(&VALUE).unwrap();
-            let rows: Vec<_> = batch.iter().collect();
-            assert_eq!(rows.len(), 1);
-            let row = rows[0].as_ref().unwrap();
+            let mut rows = batch.iter();
+            let row = rows.try_next().unwrap().unwrap();
+            assert!(rows.try_next().unwrap().is_none());
             assert_eq!(
                 row.with_value(game.attachment_frame_borrow(), |value| *value),
                 Ok(41)
@@ -729,9 +736,9 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             assert_eq!(VALUE.get_existing(game, holder), Ok(Some(41)));
             assert!(game.dragon.as_mut().unwrap().parts[0].2.is_bound());
             let batch = game.query(&VALUE).unwrap();
-            let rows: Vec<_> = batch.iter().collect();
-            assert_eq!(rows.len(), 1);
-            let row = rows[0].as_ref().unwrap();
+            let mut rows = batch.iter();
+            let row = rows.try_next().unwrap().unwrap();
+            assert!(rows.try_next().unwrap().is_none());
             assert_eq!(
                 row.with_value(game.attachment_frame_borrow(), |value| *value),
                 Ok(41)
@@ -775,7 +782,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     .count(),
                 2
             );
-            assert_eq!(game.query(&VALUE).unwrap().iter().count(), 1);
+            let batch = game.query(&VALUE).unwrap();
+            let mut rows = batch.iter();
+            assert!(rows.try_next().unwrap().is_some());
+            assert!(rows.try_next().unwrap().is_none());
             game.remove_remote_dragon(420);
             // No prune pass between removal and network-ID reuse.
             assert!(!game.entity_attachments.contains_key(&421));
@@ -800,7 +810,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     .count(),
                 3
             );
-            assert_eq!(game.query(&VALUE).unwrap().iter().count(), 1);
+            let batch = game.query(&VALUE).unwrap();
+            let mut rows = batch.iter();
+            assert!(rows.try_next().unwrap().is_some());
+            assert!(rows.try_next().unwrap().is_none());
         });
     });
 }
