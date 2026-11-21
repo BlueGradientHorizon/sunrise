@@ -319,9 +319,14 @@ The category lists are in `crates/sunrise-mod-package/src/index/page.rs`.
 A version can declare `sunrise = "26.3-0.1.0"`: the tag is the Minecraft version (dotted numbers, matching `game`),
 a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field is optional during migration.
 `registry check`, `registry review` and `registry build` accept `--releases <file>`: a JSON array of objects with
-`tag` and `commit` (40 hex digits, published as lowercase), one per stable release. With that file, declared tags must be in the
-list. When package files are checked, a native package's `[native] sunrise` pin must match the named commit. The
-workflow supplies the file; the tool does not discover releases itself.
+`tag` and `commit` (40 hex digits, published as lowercase), one per stable release. A declared tag must be in the
+list, and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
+files are checked, a native package's `[native] sunrise` pin must match the named commit. Once a version is listed
+with `sunrise`, `registry review` refuses changing or removing it. The workflow supplies the file; the tool does not
+discover releases itself.
+
+An entry with neither versions nor a Nightly source publishes nothing and keeps its id; its id, kind and owners are
+still checked.
 
 A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
 `https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own

@@ -139,6 +139,23 @@ fn a_reader_skips_malformed_collection_rows_without_losing_projects() {
 }
 
 #[test]
+fn a_nightly_only_project_keeps_its_id_from_a_collection() {
+    let s = checkout("collection-nightly-id");
+    let mut index = s.build().unwrap();
+    let mut project = index.project("creature").unwrap().clone();
+    project.id = ID.into();
+    project.versions.clear();
+    project.nightly = Some(crate::index::Nightly {
+        repo: "author/example".into(),
+        path: None,
+        metadata: Default::default(),
+    });
+    index.projects.push(project);
+    let error = index.check().unwrap_err();
+    assert!(error.contains("its id is already a project id"), "{error}");
+}
+
+#[test]
 fn a_pruned_project_still_reserves_its_id() {
     let s = checkout("collection-pruned-id");
     let mut index = s.build().unwrap();
