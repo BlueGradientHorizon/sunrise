@@ -3400,7 +3400,7 @@ impl ParticleEngine {
             return;
         }
         let twinkle = explosions.iter().any(|e| e.twinkle);
-        let lifetime = explosions.len() as i32 * 2 - 1 + if twinkle { 15 } else { 0 };
+        let lifetime = Starter::lifetime_for(explosions.len(), twinkle);
         let far = (0..3).map(|i| (at[i] - camera[i]).powi(2)).sum::<f64>() >= 256.0;
         self.pending.push(PendingParticle::Starter(Starter {
             at,
@@ -3465,7 +3465,7 @@ impl ParticleEngine {
                 let flash = ParticleOptions::colored(ParticleType::Flash, rgba);
                 self.create(&flash, s.at, [0.0; 3]);
             }
-            s.life += 1;
+            s.life = s.life.wrapping_add(1);
             if s.life > s.lifetime {
                 if s.twinkle_delay && s.sound.is_some() {
                     let sound = if s.sound == Some(true) {
@@ -4821,6 +4821,15 @@ struct Starter {
     /// it plays: `None` for a silent rocket.
     sound: Option<bool>,
 }
+impl Starter {
+    /// `FireworkParticles.Starter` uses Java's wrapping `int` for its counters.
+    fn lifetime_for(explosion_count: usize, twinkle: bool) -> i32 {
+        (explosion_count as i32)
+            .wrapping_mul(2)
+            .wrapping_sub(1)
+            .wrapping_add(if twinkle { 15 } else { 0 })
+    }
+}
 const STAR: [[f64; 2]; 6] = [
     [0.0, 1.0],
     [0.3455, 0.309],
@@ -4925,6 +4934,32 @@ mod tests {
                 .expect("a trail is made");
             assert_eq!(trail.lifetime, duration);
         }
+    }
+
+    #[test]
+    fn firework_starter_counters_wrap_like_java_ints() {
+        // Exercise the overflow counts without allocating billions of explosions.
+        assert_eq!(Starter::lifetime_for(1_073_741_817, true), i32::MIN);
+        let lifetime = Starter::lifetime_for(1_073_741_824, false);
+        assert_eq!(lifetime, i32::MAX);
+
+        let mut engine = ParticleEngine::new(
+            &ResourceSource::indexed(Default::default()),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        engine.starters.push(Starter {
+            at: [0.0; 3],
+            v: [0.0; 3],
+            explosions: vec![FireworkExplosion::default()],
+            life: i32::MAX,
+            lifetime,
+            twinkle_delay: false,
+            sound: None,
+        });
+        engine.tick_starters();
+        assert_eq!(engine.starters.len(), 1);
+        assert_eq!(engine.starters[0].life, i32::MIN);
     }
 
     #[test]
