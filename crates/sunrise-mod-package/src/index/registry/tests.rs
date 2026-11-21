@@ -175,6 +175,26 @@ fn builds_the_sample_index() {
 }
 
 #[test]
+fn a_stable_source_file_has_its_kinds_extension() {
+    let mut entry: Entry = toml::from_str(GLOW).unwrap();
+    entry.source = "https://github.com/author/glow".into();
+    let mut row = entry.versions[0].clone();
+    row.sunrise = Some("26.3-0.1.0".into());
+    let asset = "https://github.com/author/glow/releases/download/v1.0.0/glow-1.0.0";
+    row.file = format!("{asset}.sshader");
+    assert_eq!(entry.source_file_name(&row), Ok("glow-1.0.0.sshader"));
+    row.file = format!("{asset}.smod");
+    assert!(entry.source_file_name(&row).is_err());
+    entry.kind = Kind::Other("future-pack".into());
+    assert!(
+        entry
+            .source_file_name(&row)
+            .unwrap_err()
+            .contains("future-pack")
+    );
+}
+
+#[test]
 fn stable_source_uses_an_author_url_but_the_index_uses_the_registry_mirror() {
     let s = Scratch::new("author-source");
     let releases = parse_releases(
