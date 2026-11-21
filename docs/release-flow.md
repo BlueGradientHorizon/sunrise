@@ -449,8 +449,14 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
    and publishes a full release, not a pre-release, with `--latest=false`: the site's launcher download reads
    GitHub's latest release.
 
-The stable workflow compares the signed SDK surfaces against the previous published stable release of the same
-Minecraft version and Sunrise major version (`26.3-0.x` is one line). A patch requires an identical mod API; a
+The stable workflow compares each release with its parent, the newest published (not draft, not pre-release) stable
+release before it (`nightly.stable_parent`); the parent's tag must name the commit its own signed
+`sunrise-release.json` names, and a `26.3-*` tag above it with no published release stops every stable release.
+The version must follow the parent: the first release is `0.1.0`, a patch keeps the major and minor, a minor is
+`X.N.0` and a major `N.0.0`. Within the same Minecraft version and Sunrise major version (`26.3-0.x` is one line),
+the parent's own `sunrise-stage` judges the mod API, never the candidate's: built from the parent's tree alone (its
+own folder and target, no inherited compiler wrapper or job token), it exports both trees, its export of the parent
+must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
 minor refuses them too. For content mods, this check only compares the SDK's `content_api` version string, which
 must stay the same within a line. It does not check the manifest or content schema declarations: removing an
@@ -466,7 +472,8 @@ or merging the release branch back into main is fine. Bringing in new mainline h
 The workflow runs from the dispatch ref, so backport the check to the release branch before cutting a patch or
 minor there.
 
-The check runs before tag reservation, on publish-only retries and in dry runs. Comparing against a previous
+The check runs in `pick`, before anything is built or signed (a dry run only warns), and again before tag
+reservation, on publish-only retries and in dry runs. Comparing against a previous
 stable release requires both signed SDKs, even on a dry run. Native engine loops, internals and mixin targets
 are outside the API restriction. The release notes list targets added, removed or changed since the previous
 stable release of the same Minecraft version (including across a major bump). They compare each target's signature
