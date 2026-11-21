@@ -83,100 +83,39 @@ pub trait SlotRules {
     );
 }
 
-/// What `AnvilUpdateEvent` asks about once `createResult` made vanilla's
-/// result with a left input, and what the mods may change: the `output`,
-/// its level `cost` and `material_cost`, the units of `right` used (0 or
-/// more than it holds: all of it), each starting at vanilla's.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AnvilUpdate {
-    pub left: ItemStack,
-    pub right: Option<ItemStack>,
-    /// The rename box's text, `None` when the client sent none.
-    pub name: Option<String>,
-    /// Vanilla's result for these inputs (`getVanillaResult`), whatever
-    /// the mods set.
-    pub vanilla: AnvilVanilla,
-    pub output: Option<ItemStack>,
-    /// Signed level cost, preserved as set by `AnvilUpdateEvent.setXpCost`.
-    /// A negative cost prevents taking the result (as does zero), not a level refund.
-    pub xp_cost: i32,
-    pub material_cost: i32,
+/// The anvil's inputs while asking about the result vanilla just calculated.
+pub struct AnvilUpdateInputs<'a> {
+    pub left: &'a ItemStack,
+    pub right: Option<&'a ItemStack>,
+    pub name: Option<&'a str>,
 }
-/// `AnvilUpdateEvent.VanillaResult`: the output, level cost and material
-/// cost `createResult` made.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AnvilVanilla {
+/// An admitted answer to `GrindstoneEvent.OnPlaceItem`: a replacement result
+/// and its experience award, or no replacement to keep the vanilla calculation.
+pub struct GrindstonePlaceEdits {
     pub output: Option<ItemStack>,
-    pub xp_cost: i32,
-    pub material_cost: i32,
+    /// `-1` for the vanilla award, or a nonnegative experience amount.
+    pub xp: i32,
 }
-impl AnvilUpdate {
-    /// The question about `vanilla`, the result `createResult` made from
-    /// these inputs and name: the output, level cost and material cost
-    /// start at its own.
-    pub fn new(
-        left: ItemStack,
-        right: Option<ItemStack>,
-        name: Option<String>,
-        vanilla: &crate::stations::AnvilResult,
-    ) -> Self {
-        let vanilla = AnvilVanilla {
-            output: vanilla.result.clone(),
-            xp_cost: vanilla.cost,
-            material_cost: i32::try_from(vanilla.repair_item_count_cost).unwrap_or(i32::MAX),
-        };
+
+impl Default for GrindstonePlaceEdits {
+    fn default() -> Self {
         Self {
-            left,
-            right,
-            name,
-            output: vanilla.output.clone(),
-            xp_cost: vanilla.xp_cost,
-            material_cost: vanilla.material_cost,
-            vanilla,
+            output: None,
+            xp: -1,
         }
     }
-
-    /// The mods' answer, in place of `result`: a cancel leaves no result at
-    /// cost 0; otherwise their output, signed level cost and nonnegative
-    /// material cost. A changed output is no longer only a rename.
-    pub fn answer(self, cancel: bool, result: &mut crate::stations::AnvilResult) {
-        if cancel {
-            *result = crate::stations::AnvilResult::default();
-            return;
-        }
-        result.only_renaming &= self.output == self.vanilla.output;
-        result.cost = self.xp_cost;
-        result.repair_item_count_cost = self.material_cost.max(0) as u32;
-        result.result = self.output;
-    }
-}
-/// What `GrindstoneEvent.OnPlaceItem` asks about once the inputs changed,
-/// and what the mods may set: an `output` (none until a mod sets one) and,
-/// with it, `xp` (-1 for vanilla's experience). `vanilla_output` is the
-/// vanilla's result, to read; set `output` to replace it.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
-pub struct GrindstonePlace {
-    pub top: Option<ItemStack>,
-    pub bottom: Option<ItemStack>,
-    pub vanilla_output: Option<ItemStack>,
-    pub output: Option<ItemStack>,
-    pub xp: i32,
-}
-/// A grindstone result taken, as `GrindstoneEvent.OnTakeItem` reports it:
-/// the inputs, the experience (-1 for vanilla's, or what OnPlaceItem set)
-/// and what the inputs hold afterwards (empty, as vanilla's).
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
-pub struct GrindstoneTake {
-    pub top: Option<ItemStack>,
-    pub bottom: Option<ItemStack>,
-    pub xp: i32,
-    pub new_top: Option<ItemStack>,
-    pub new_bottom: Option<ItemStack>,
 }
 
-impl GrindstoneTake {
+/// The pre-take inputs and initial experience of a deferred grindstone result take.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingGrindstoneTake {
+    pub top: Option<ItemStack>,
+    pub bottom: Option<ItemStack>,
+    /// `-1` for vanilla's award, or the amount set when the result was placed.
+    pub xp: i32,
+}
+
+impl PendingGrindstoneTake {
     /// `GrindstoneMenu.getExperienceAmount`, before the server rolls Level.random.
     pub fn vanilla_amount(&self, env: &Env<'_>) -> i32 {
         crate::stations::grindstone_xp_base(
@@ -187,11 +126,30 @@ impl GrindstoneTake {
     }
 }
 
+/// The admitted experience and replacements for a taken grindstone result.
+pub struct GrindstoneTakeEdits {
+    /// `-1` for the award from the pre-take inputs, or a nonnegative amount.
+    pub xp: i32,
+    pub new_top: Option<ItemStack>,
+    pub new_bottom: Option<ItemStack>,
+}
+
+impl GrindstoneTakeEdits {
+    /// Finish the take without listener edits: keep the initial award and empty both slots.
+    pub fn initial(xp: i32) -> Self {
+        Self {
+            xp,
+            new_top: None,
+            new_bottom: None,
+        }
+    }
+}
+
 /// An anvil craft as `AnvilCraftEvent` reports it: the inputs and the result
 /// taken, before the crafting changed anything.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-pub struct AnvilCraft {
+pub struct AnvilCraftSnapshot {
     pub left: Option<ItemStack>,
     pub right: Option<ItemStack>,
     pub output: ItemStack,
