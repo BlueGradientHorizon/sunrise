@@ -594,7 +594,7 @@ impl Game<'_> {
         if moved.length_squared() > 0.0 {
             self.apply_push(&mut gate, target, moved);
         }
-        self.set_pushed_on_ground(target, movement, moved);
+        self.set_pushed_on_ground(target, movement, moved, false);
     }
 
     /// A mod's `Entity.move(cause, movement)` for the listed entity `handle` (never the player
@@ -1274,7 +1274,8 @@ impl Game<'_> {
             // A move the collisions cut to nothing still ends in the check.
             self.release_after_block_move(target);
         }
-        self.set_pushed_on_ground(target, limited, resolved);
+        let updates_mob_ground = mob.is_some_and(|i| self.mobs[i].no_ai);
+        self.set_pushed_on_ground(target, limited, resolved, updates_mob_ground);
         // Restitution reads the new landing block even when the push was blocked.
         if let Some(i) = mob {
             let mut mobs = self.mobs.lift();
@@ -1401,17 +1402,31 @@ impl Game<'_> {
     }
 
     /// The ground recorded after placing the body during `Entity.move`.
-    fn set_pushed_on_ground(&mut self, target: MoveWho, wanted: Vec3, moved: Vec3) {
+    fn set_pushed_on_ground(
+        &mut self,
+        target: MoveWho,
+        wanted: Vec3,
+        moved: Vec3,
+        updates_mob_ground: bool,
+    ) {
         use sunrise_world::entity_move::different;
         let MoveWho::Entity(handle) = target else {
             return;
         };
+        // The mob push path above owns its ground update for eligible NoAI mobs.
+        // A shulker-lid push or an occupied/AI mob did not write that flag here.
+        if matches!(handle, EntityHandle::Mob(_)) && !updates_mob_ground {
+            return;
+        }
         let authoritative = !self.options.execution_role.is_client() && self.remote.is_none();
+        let updates_ground = matches!(handle, EntityHandle::Mob(_) | EntityHandle::ArmorStand(_))
+            || authoritative
+            || wanted.y.abs() > 0.0;
         let on_ground = wanted.y < 0.0 && wanted.y != moved.y;
         with_entity_mut!(self, handle, entity => {
             if let Some(ground) = entity.ground_state_mut() {
                 ground.horizontal_collision = different(wanted.x, moved.x) || different(wanted.z, moved.z);
-                if authoritative || wanted.y.abs() > 0.0 {
+                if updates_ground {
                     entity.update_retained_ground(&self.world, self.collision, on_ground, Some(moved));
                 }
             } else {
