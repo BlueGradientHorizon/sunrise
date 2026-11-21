@@ -2863,7 +2863,29 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        while !world.chunks.is_ticking_ready((x, z)) {
+        self.wait_for_column(world, |world| world.chunks.is_ticking_ready((x, z)));
+        true
+    }
+
+    /// Resolve a single FULL column for an authoritative read, as `ServerChunkCache.getChunk`
+    /// does with its UNKNOWN ticket. This request is not a ticking or saved `/forceload` ticket.
+    pub fn load_full_column(&mut self, world: &mut World, column: (i32, i32)) -> bool {
+        if world.chunks.contains_key(&column) {
+            return true;
+        }
+        if self.paused || self.remote || self.shared.aborted.load(Ordering::Relaxed) {
+            return false;
+        }
+        // Extra areas finish through radius + 1. Request just the target at FULL.
+        self.extra.push((column, -1));
+        self.rank_full_task(column.0, column.1);
+        self.wait_for_column(world, |world| world.chunks.contains_key(&column));
+        let _ = self.extra.pop();
+        true
+    }
+
+    fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) {
+        while !ready(world) {
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -2872,11 +2894,10 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !world.chunks.is_ticking_ready((x, z)) {
+            if !ready(world) {
                 self.wait(std::time::Duration::from_millis(5));
             }
         }
-        true
     }
 
     /// Release every `/forceload`ed chunk (`/forceload remove all`, a game-test

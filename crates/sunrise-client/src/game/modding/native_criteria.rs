@@ -8,7 +8,7 @@ use mod_api::{
     TriggerCriterionError,
 };
 use serde_json::Value;
-use sunrise_client::advancements::{self as adv, EntityView};
+use sunrise_client::advancements as adv;
 
 /// One open criterion of a mod's trigger, as the mod's test sees it.
 struct NativeCriterion<'a> {
@@ -55,7 +55,9 @@ impl Game<'_> {
         player: PlayerRef,
         pos: [i32; 3],
     ) -> Result<(), TriggerCriterionError> {
-        self.with_criterion_player(player, |g| g.trigger_default_block_use(pos))
+        self.with_criterion_player(player, |g| {
+            g.trigger_block_use("minecraft:default_block_use", pos, None)
+        })?
     }
 
     /// Fire only `item_used_on_block` against the pre-use snapshot.
@@ -66,8 +68,8 @@ impl Game<'_> {
         original: &sunrise_client::items::ItemStack,
     ) -> Result<(), TriggerCriterionError> {
         self.with_criterion_player(player, |g| {
-            g.trigger_block("minecraft:item_used_on_block", pos, original);
-        })
+            g.trigger_block_use("minecraft:item_used_on_block", pos, Some(original))
+        })?
     }
 
     /// The same consume_item criterion path food and potions use, in the player's level.
@@ -121,7 +123,7 @@ impl Game<'_> {
                 return false;
             }
             let context = NativeCriterion { conditions, world };
-            match mod_api::__private::run_criterion_test(trigger, test, &context) {
+            match mod_api::__private::game::run_criterion_test(trigger, test, &context) {
                 Ok(matched) => matched && adv::conditions(&conditions["player"], &player, world),
                 Err(error) => {
                     refused = Some(error);

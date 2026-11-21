@@ -174,6 +174,22 @@ impl Types {
             .ok_or_else(|| format!("unknown loot condition type {kind}"))?
             .test(kind, data, ctx, random, tags)
     }
+    /// Decode an inline `LootItemCondition.CODEC` field embedded in another record.
+    /// The predicate registry owns its holders' definitions; here a reference decodes as an id.
+    pub fn validate_condition_field(&self, value: &Value, path: &str) -> io::Result<()> {
+        Walker {
+            types: self,
+            tables: HashMap::new(),
+            visiting_tables: HashSet::new(),
+            predicates: None,
+            modifiers: None,
+            visiting: HashSet::new(),
+            validated: HashMap::new(),
+            allowed: None,
+        }
+        .entry(value, false, path)
+    }
+
     pub fn validate<'a>(
         &self,
         tables: impl Iterator<Item = (&'a str, &'a Value)>,
@@ -185,8 +201,8 @@ impl Types {
             types: self,
             tables: tables.clone(),
             visiting_tables: HashSet::new(),
-            predicates,
-            modifiers,
+            predicates: Some(predicates),
+            modifiers: Some(modifiers),
             visiting: HashSet::new(),
             validated: HashMap::new(),
             allowed: None,
@@ -220,8 +236,8 @@ struct Walker<'a> {
     types: &'a Types,
     tables: HashMap<&'a str, &'a Value>,
     visiting_tables: HashSet<String>,
-    predicates: &'a HashMap<String, Value>,
-    modifiers: &'a HashMap<String, Value>,
+    predicates: Option<&'a HashMap<String, Value>>,
+    modifiers: Option<&'a HashMap<String, Value>>,
     visiting: HashSet<(bool, String)>,
     validated: HashMap<(bool, usize), Vec<String>>,
     allowed: Option<&'static [&'static str]>,
@@ -309,18 +325,23 @@ impl Walker<'_> {
     fn entry(&mut self, data: &Value, function: bool, path: &str) -> io::Result<()> {
         if let Some(id) = data.as_str() {
             let id = sunrise_core::identifier::Identifier::parse(id)
-                .map_err(|reason| invalid(path, id, reason))?
-                .to_string();
+                .map_err(|reason| invalid(path, id, reason))?;
+            let registry = if function {
+                self.modifiers
+            } else {
+                self.predicates
+            };
+            let Some(registry) = registry else {
+                return Ok(());
+            };
+            let id = id.to_string();
             let key = (function, id.clone());
             if !self.visiting.insert(key.clone()) {
                 return Err(invalid(path, &id, "reference cycle"));
             }
-            let value = if function {
-                self.modifiers.get(&id)
-            } else {
-                self.predicates.get(&id)
-            }
-            .ok_or_else(|| invalid(path, &id, "unknown reference"))?;
+            let value = registry
+                .get(&id)
+                .ok_or_else(|| invalid(path, &id, "unknown reference"))?;
             self.entry(value, function, &format!("{path} -> {id}"))?;
             self.visiting.remove(&key);
             return Ok(());
@@ -389,6 +410,14 @@ impl Walker<'_> {
         Ok(())
     }
     fn set(&mut self, data: &Value, function: bool, path: &str) -> io::Result<()> {
+        if self.predicates.is_none()
+            && !function
+            && let Some(tag) = data.as_str().and_then(|id| id.strip_prefix('#'))
+        {
+            return sunrise_core::identifier::Identifier::parse(tag)
+                .map(|_| ())
+                .map_err(|reason| invalid(path, "holder_set", reason));
+        }
         if let Some(list) = data.as_array() {
             for (i, value) in list.iter().enumerate() {
                 if value.is_array() {

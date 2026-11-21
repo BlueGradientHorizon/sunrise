@@ -883,37 +883,45 @@ pub fn block(v: &Value, pos: [i32; 3], w: &dyn World) -> bool {
         return true;
     }
     let (name, props) = w.block(pos);
-    if !id_matches(&v["blocks"], "block", &name, w) {
-        return false;
-    }
-    if let Some(state) = v["state"].as_object() {
-        for (k, want) in state {
-            let have = props.get(k).cloned().unwrap_or_default();
-            let ok = match want {
-                Value::String(s) => have == *s,
-                Value::Bool(b) => have == b.to_string(),
-                Value::Number(n) => have == n.to_string(),
-                Value::Object(bounds) => w
-                    .block_property_values(&name, k)
-                    .is_some_and(|domain| state_ranges::matches(bounds, &have, &domain)),
-                _ => false,
-            };
-            if !ok {
-                return false;
-            }
-        }
-    }
-    // `matchesBlockEntity`: the block entity's data holds the pattern
-    // (`NbtPredicate.matches`, `NbtUtils.compareNbt`); no block entity fails.
-    if let Some(nbt) = v["nbt"].as_str() {
-        let Ok((pattern, _)) = sunrise_core::nbt::parse_snbt(nbt) else {
+    id_matches(&v["blocks"], "block", &name, w)
+        && block_properties_match(&v["state"], &name, |k| props.get(k), w)
+        && block_entity_matches(&v["nbt"], || w.block_entity_nbt(pos))
+}
+
+/// `StatePropertiesPredicate` on either the world block or an event's `BLOCK_STATE`.
+fn block_properties_match<'a>(
+    state: &Value,
+    block: &str,
+    property: impl Fn(&str) -> Option<&'a String>,
+    w: &dyn World,
+) -> bool {
+    state.as_object().into_iter().flatten().all(|(key, want)| {
+        let Some(have) = property(key) else {
             return false;
         };
-        if !crate::nbt_path::compare_nbt(&pattern, w.block_entity_nbt(pos).as_ref()) {
-            return false;
+        match want {
+            Value::String(s) => have == s,
+            Value::Bool(b) => have == if *b { "true" } else { "false" },
+            Value::Number(n) => *have == n.to_string(),
+            Value::Object(bounds) => w
+                .block_property_values(block, key)
+                .is_some_and(|domain| state_ranges::matches(bounds, have, &domain)),
+            _ => false,
         }
-    }
-    true
+    })
+}
+
+/// `BlockPredicate.matchesBlockEntity`: the block entity's data holds the pattern
+/// (`NbtPredicate.matches`, `NbtUtils.compareNbt`); no block entity fails.
+fn block_entity_matches(
+    nbt: &Value,
+    actual: impl FnOnce() -> Option<sunrise_core::nbt::Tag>,
+) -> bool {
+    nbt.is_null()
+        || sunrise_world::loot::nbt_predicate_tag(nbt).is_some_and(|pattern| {
+            matches!(pattern, sunrise_core::nbt::Tag::Compound(_))
+                && crate::nbt_path::compare_nbt(&pattern, actual().as_ref())
+        })
 }
 /// Where `LocationCheck.test` looks: the block centre of `block_pos` (else
 /// `origin`) plus the check's offsets.
@@ -1439,12 +1447,21 @@ pub struct Entities<'a> {
     pub this: Option<&'a EntityView>,
     pub origin: [f64; 3],
     pub tool: Option<&'a ItemView>,
-    pub event_block: Option<[i32; 3]>,
+    pub event_block: Option<BlockEvent<'a>>,
     /// `LootContextParams.TARGET_ENTITY`.
     pub target: Option<&'a EntityView>,
     /// `LootContextParams.INTERACTING_ENTITY`.
     pub interacting: Option<&'a EntityView>,
 }
+/// The block-use event's `BLOCK_STATE` and optional `BLOCK_ENTITY`, not a `LocationPredicate` read.
+#[derive(Clone, Copy)]
+pub struct BlockEvent<'a> {
+    pub state: &'a sunrise_world::chunk::BlockState,
+    /// The position of `BLOCK_ENTITY` when the event carries that parameter. The immutable view
+    /// can read its NBT on demand, and returns none when there is no block entity there.
+    pub block_entity: Option<[i32; 3]>,
+}
+
 impl<'a> Entities<'a> {
     /// A `LootContext.EntityTarget` of this context; the targets a context
     /// does not carry (`attacker`, `direct_attacker`, `attacking_player`)
@@ -1648,15 +1665,29 @@ fn condition_leaf(v: &Value, ctx: &Entities, w: &dyn World) -> bool {
                 "minecraft:entity_properties" => ctx
                     .entity(v["entity"].as_str().unwrap_or("this"))
                     .is_some_and(|e| entity(&v["predicate"], e, w, ctx.origin)),
-                "minecraft:location_check" => location_check(v, ctx.event_block, ctx.origin, w),
-                "minecraft:match_block" => ctx.event_block.is_some_and(|b| block(v, b, w)),
-                "minecraft:block_state_property" => ctx.event_block.is_some_and(|b| {
-                    let mut pred = serde_json::Map::new();
-                    pred.insert("blocks".into(), v["block"].clone());
-                    if !v["properties"].is_null() {
-                        pred.insert("state".into(), v["properties"].clone());
-                    }
-                    block(&Value::Object(pred), b, w)
+                "minecraft:location_check" => location_check(v, None, ctx.origin, w),
+                "minecraft:match_block" => ctx.event_block.is_some_and(|event| {
+                    let block = event.state;
+                    id_matches(&v["blocks"], "block", &block.name, w)
+                        && block_properties_match(
+                            &v["state"],
+                            &block.name,
+                            |k| block.properties.get(k),
+                            w,
+                        )
+                        && block_entity_matches(&v["nbt"], || {
+                            event.block_entity.and_then(|pos| w.block_entity_nbt(pos))
+                        })
+                }),
+                "minecraft:block_state_property" => ctx.event_block.is_some_and(|event| {
+                    let block = event.state;
+                    id_matches(&v["block"], "block", &block.name, w)
+                        && block_properties_match(
+                            &v["properties"],
+                            &block.name,
+                            |k| block.properties.get(k),
+                            w,
+                        )
                 }),
                 "minecraft:match_tool" => ctx.tool.is_some_and(|t| item(&v["predicate"], t, w)),
                 "minecraft:weather_check" => {
@@ -2740,11 +2771,18 @@ mod tests {
     }
     #[test]
     fn bucket_axolotl_block_advancements_require_the_placed_block() {
+        let state = sunrise_world::chunk::BlockState {
+            name: "minecraft:stone".into(),
+            properties: Default::default(),
+        };
         let ctx = Entities {
             this: None,
-            origin: [0.0; 3],
+            origin: [0.5; 3],
             tool: None,
-            event_block: Some([0; 3]),
+            event_block: Some(BlockEvent {
+                state: &state,
+                block_entity: None,
+            }),
             target: None,
             interacting: None,
         };
@@ -2936,6 +2974,21 @@ mod tests {
             "bare ids not read as minecraft: {failed:?}"
         );
     }
+    #[test]
+    fn custom_criteria_decode_the_player_field_but_leave_custom_fields_opaque() {
+        let definition = |terms| {
+            serde_json::json!({"criteria": {"seen": {
+                "trigger": "test:connected",
+                "conditions": {"player": terms, "custom": {"type": "test:shape", "terms": false}}
+            }}})
+        };
+        let malformed = definition(serde_json::json!({"type": "minecraft:all_of"}));
+        assert!(parse("test:malformed", &malformed).is_none());
+        let valid = definition(serde_json::json!({"type": "minecraft:all_of", "terms": []}));
+        let advancement = parse("test:valid", &valid).unwrap();
+        assert_eq!(advancement.criteria[0].conditions["custom"]["terms"], false);
+    }
+
     /// A bare trigger, item or recipe id reaches the indexes as `minecraft:`.
     #[test]
     fn bare_ids_reach_the_trigger_and_item_indexes() {

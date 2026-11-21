@@ -27,7 +27,32 @@ fn install(game: &mut Game<'_>) {
         (
             "position_requires_chunk",
             "default_block_use",
-            json!({"location":{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"minecraft:air"}}}}),
+            json!({"location":{"type":"minecraft:location_check","offsetX":4096,"predicate":{"block":{"blocks":"minecraft:air"}}}}),
+        ),
+        (
+            "event_air",
+            "default_block_use",
+            json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:air"}}),
+        ),
+        (
+            "event_chest",
+            "default_block_use",
+            json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:chest","state":{"waterlogged":"false"}}}),
+        ),
+        (
+            "event_chest_entity",
+            "item_used_on_block",
+            json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:chest","nbt":{"id":"minecraft:chest"}}}),
+        ),
+        (
+            "event_wrong_entity",
+            "item_used_on_block",
+            json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:chest","nbt":{"id":"minecraft:furnace"}}}),
+        ),
+        (
+            "default_has_entity",
+            "default_block_use",
+            json!({"location":{"type":"minecraft:match_block","blocks":"minecraft:chest","nbt":{"id":"minecraft:chest"}}}),
         ),
         ("default_unconditional", "default_block_use", json!({})),
         (
@@ -186,18 +211,97 @@ fn block_use_refusals_grant_nothing() {
 
 #[test]
 #[ignore = "daily"]
-fn unloaded_block_use_only_fails_predicates_that_need_the_world() {
+fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour() {
+    use sunrise_client::{
+        containers::BlockEntity,
+        save::{Persistent, SaveDir},
+        streaming::Streaming,
+        testgen::TestTerrain,
+    };
+
     with_guests(|g| {
         install(g);
+        let saves = tempfile::tempdir().unwrap();
+        let registry = g.pack.assets.registry;
+        let biomes = g.res.biomes();
+        let save = Arc::new(SaveDir::new(
+            saves.path().to_owned(),
+            g.world.shape,
+            Some(g.res.shared_items()),
+        ));
+        let column = (20, 22);
+        let at = [column.0 * 16, 64, column.1 * 16];
+        let [x, y, z] = at;
+        let mut chunk = Chunk::empty(column.0, column.1);
+        chunk.set(
+            0,
+            y,
+            0,
+            registry.default_state("minecraft:chest").unwrap().0,
+        );
+        chunk
+            .block_entities
+            .push(((x, y, z), BlockEntity::Chest(vec![None; 27])));
+        save.save(&[Arc::new(chunk)], registry, biomes).unwrap();
+        let mut streamer = Streaming::new(
+            Arc::new(Persistent {
+                inner: Arc::new(TestTerrain::new(registry, biomes).unwrap()),
+                save,
+                registry: g.pack.assets.clone(),
+                biomes: biomes.clone(),
+            }),
+            g.pack.context.clone(),
+            1,
+        );
+        streamer.radius = -1;
+        streamer.mesh = false;
+        let previous = std::mem::replace(&mut g.streaming, streamer);
         let p = g.player(12).unwrap();
-        let at = [100000, 64, 100000];
         let key = mod_api::__private::item_key("minecraft:stone").unwrap();
         let original = mod_api::ItemStack::new(key, 2).unwrap();
-        assert_eq!(p.trigger_block_use(g, at), Ok(()));
-        assert!(has(g, "default_unconditional"));
-        assert!(!has(g, "position_requires_chunk"));
+        assert!(!g.world.chunks.contains_key(&column));
         assert_eq!(p.trigger_item_used_on_block(g, at, &original), Ok(()));
         assert!(has(g, "item2"));
+        assert!(has(g, "event_chest_entity"));
+        assert!(!has(g, "event_wrong_entity"));
+        assert_eq!(p.trigger_block_use(g, at), Ok(()));
+        assert!(has(g, "default_unconditional"));
+        assert!(has(g, "event_chest"));
+        assert!(!has(g, "default_has_entity"));
+        assert!(!has(g, "event_air"));
+        assert!(!has(g, "position_requires_chunk"));
+        assert!(!g.streaming.commanded().contains(&column));
+        g.streaming = previous;
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_unreachable_guest_level_cannot_award_criteria_in_the_current_level() {
+    use crate::game::Dim;
+
+    with_guests(|g| {
+        install(g);
+        let root = tempfile::tempdir().unwrap();
+        g.options.resources = root.path().join("missing-resources");
+        let here = g.dim;
+        let player = g.player(12).unwrap();
+        g.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |guest| {
+                guest.dimension = Dim::Nether.id().to_owned();
+            })
+            .unwrap();
+        assert!(g.open_runtime_level(Dim::Nether).is_err());
+        assert_eq!(
+            player.trigger_block_use(g, [0, 64, 0]),
+            Err(TriggerCriterionError::PlayerUnavailable)
+        );
+        assert!(!has(g, "default_unconditional"));
+        assert_eq!(g.dim, here);
+        assert!(g.lan_acting.is_none());
     });
 }
 
@@ -228,8 +332,8 @@ fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
             (
                 "pipe_burning",
                 json!({
-                    "condition": "minecraft:entity_properties", "entity": "this",
-                    "predicate": {"flags": {"is_on_fire": true}}
+                    "type": "minecraft:entity_properties", "entity": "this",
+                    "predicate": {"minecraft:flags": {"is_on_fire": true}}
                 }),
             ),
         ] {

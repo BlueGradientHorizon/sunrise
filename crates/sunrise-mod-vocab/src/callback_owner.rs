@@ -1,4 +1,4 @@
-//! Owner enablement, attribution and panic containment for retained resources.
+//! Attribution and panic containment for callbacks, with enablement for retained resources.
 use crate::world::phase_refusal::{self, PhaseRefusal, contain_refusal};
 use std::{
     any::Any,
@@ -11,7 +11,7 @@ use std::{
     },
 };
 
-/// A retained mod callback panicked and was disabled for the rest of this session.
+/// A mod callback panicked. A retained callback is also disabled for the session.
 // no wire: in-process notification drained by the client's error toast queue.
 // exhaustive: engine-only notification record produced by `callback_owner::call`.
 #[derive(Clone, Debug, PartialEq, Eq)]

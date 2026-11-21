@@ -48,9 +48,6 @@ pub(crate) fn client_hook_name(subscribed: &[Option<HookId>]) -> Option<&'static
 /// The ordered list of named mods shared by the client and server.
 pub type Mods = Arc<[ModEntry]>;
 
-pub(crate) type CriterionPanics =
-    std::collections::HashMap<&'static str, std::collections::HashSet<String>>;
-
 pub(crate) struct Installed {
     pub(crate) mods: Mods,
     pub(crate) by_id: std::collections::HashMap<&'static str, usize>,
@@ -58,8 +55,6 @@ pub(crate) struct Installed {
     pub(crate) disabled: Box<[std::sync::atomic::AtomicBool]>,
     /// One installed owner per mod for delayed tasks, independent of its other callbacks.
     pub(crate) scheduled_tasks: Box<[crate::callback_owner::CallbackOwner]>,
-    /// Native criterion predicates are borrowed; only the mod and trigger identity of a panic survives.
-    pub(crate) criterion_panics: OnceLock<std::sync::Mutex<CriterionPanics>>,
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
@@ -120,7 +115,6 @@ impl Installed {
             subscribers,
             disabled,
             scheduled_tasks,
-            criterion_panics: OnceLock::new(),
             mod_id_owners,
             content_owners: OnceLock::new(),
             disabled_count: std::sync::atomic::AtomicUsize::new(0),

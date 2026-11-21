@@ -2145,26 +2145,70 @@ impl Game<'_> {
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(super) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        self.trigger_block_use(name, pos, Some(stack));
+        let _ = self.trigger_block_use(name, pos, Some(stack));
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
     pub(super) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
-        self.trigger_block_use("minecraft:default_block_use", pos, None);
+        let _ = self.trigger_block_use("minecraft:default_block_use", pos, None);
     }
     /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
     /// block's `ADVANCEMENT_LOCATION` context at its centre with the original
     /// stack and its in-place edits, as documented on `Game::finish_block_use`.
     pub(super) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
-        self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
+        let _ = self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
     }
-    fn trigger_block_use(&mut self, name: &str, pos: [i32; 3], stack: Option<&ItemStack>) {
+    pub(super) fn trigger_block_use(
+        &mut self,
+        name: &str,
+        pos: [i32; 3],
+        stack: Option<&ItemStack>,
+    ) -> Result<(), mod_api::TriggerCriterionError> {
         #[cfg(test)]
         crate::game::block_use_completion_tests::record(name, stack);
+        if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
+            return Ok(());
+        }
+        self.load_advancements();
+        let tree = self.adv.tree.clone();
+        let Some(criteria) = tree.by_trigger.get(name) else {
+            return Ok(());
+        };
+        let [x, y, z] = pos;
+        let column = (x >> 4, z >> 4);
+        // `Level.isInValidBounds` uses `ChunkPos.isValid`, not the world border.
+        // `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE`: packed X/Z minus the safety margin
+        // of (32 + the generation FULL step's 12 dependency distances + 1) * 2 chunks.
+        const MAX_CHUNK_COORDINATE: i32 = (33_554_431 >> 4) - (32 + 12 + 1) * 2;
+        let in_bounds = self.world.shape.contains_y(y)
+            && column.0.abs().max(column.1.abs()) <= MAX_CHUNK_COORDINATE;
+        let registry = self.pack.assets.registry;
+        let state = if !in_bounds {
+            registry.default_state("minecraft:void_air")
+        } else if self.streaming.load_full_column(&mut self.world, column) {
+            self.world
+                .chunks
+                .get(&column)
+                .map(|chunk| chunk.block(x & 15, y, z & 15))
+        } else {
+            None
+        };
+        let Some(state) = state.and_then(|state| registry.state(state)) else {
+            log::error!(
+                "{}: {name} could not read the block at {pos:?}",
+                self.dim.id()
+            );
+            return Err(mod_api::TriggerCriterionError::BlockUnavailable);
+        };
+        let event_block = Some(adv::BlockEvent {
+            state,
+            // BLOCK_USE doesn't include BLOCK_ENTITY. ADVANCEMENT_LOCATION does.
+            block_entity: (in_bounds && stack.is_some()).then_some(pos),
+        });
         let me = self.player_entity_for(name);
         let it = stack.map(item_view);
         let centre = pos.map(|c| f64::from(c) + 0.5);
-        self.trigger(name, move |c, w| {
+        self.trigger_criteria(&tree, criteria, move |c, w| {
             let player = adv::Entities {
                 this: Some(&me),
                 origin: me.position,
@@ -2176,12 +2220,13 @@ impl Game<'_> {
             let location = adv::Entities {
                 origin: centre,
                 tool: it.as_ref(),
-                event_block: Some(pos),
+                event_block,
                 ..player
             };
             adv::conditions(&c["location"], &location, w)
                 && adv::conditions(&c["player"], &player, w)
         });
+        Ok(())
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.

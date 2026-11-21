@@ -9,6 +9,7 @@ pub(super) fn parse(id: &str, v: &Value) -> Option<Advancement> {
         return None;
     }
     let mut criteria = Vec::new();
+    let mut loot_types = None;
     for (name, criterion) in v["criteria"].as_object()? {
         let Some(trigger) = criterion["trigger"]
             .as_str()
@@ -20,7 +21,23 @@ pub(super) fn parse(id: &str, v: &Value) -> Option<Advancement> {
         };
         let builtin = is_builtin_trigger(trigger.as_str());
         let conditions = &criterion["conditions"];
-        if let Err(error) = validate_conditions(conditions, builtin) {
+        let validation = if builtin {
+            validate_builtin_conditions(conditions)
+        } else if conditions.is_null() || conditions.is_object() {
+            // SimpleInstance owns only `player`. The trigger's other fields are opaque to the game.
+            let player = &conditions["player"];
+            if player.is_null() {
+                Ok(())
+            } else {
+                loot_types
+                    .get_or_insert_with(sunrise_world::loot::types::Types::capture)
+                    .validate_condition_field(player, "conditions.player")
+                    .map_err(|error| error.to_string())
+            }
+        } else {
+            Err("conditions: expected an object".into())
+        };
+        if let Err(error) = validation {
             log::warn!("advancement {id} rejected: criterion {name}: {error}");
             return None;
         }
@@ -84,15 +101,11 @@ pub(super) fn parse(id: &str, v: &Value) -> Option<Advancement> {
     })
 }
 
-fn validate_conditions(c: &Value, builtin: bool) -> Result<(), String> {
+fn validate_builtin_conditions(c: &Value) -> Result<(), String> {
     use sunrise_world::loot::{
         validate_entity_predicate, validate_item_predicate, validate_loot_condition,
     };
-    // SimpleInstance owns `player`; the custom trigger owns its other fields.
     validate_loot_condition(&c["player"])?;
-    if !builtin {
-        return Ok(());
-    }
     for key in ["item", "rod", "fired_from_weapon"] {
         validate_item_predicate(&c[key])?;
     }

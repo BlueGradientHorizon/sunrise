@@ -1137,8 +1137,10 @@ whatever conditions the mod reads:
   target level's tags. A missing key matches; an invalid stack yields `CriterionTestError::Stack`.
 - `Ok(())` means the player was reached, not that anything matched. An exact built-in key uses its built-in
   trigger path; a custom key does not need to be in the calling mod's namespace. An unavailable player or a
-  client is refused. A callback refusal is reported and returned without disabling later invocations; a panic
-  logs and shows an error toast naming the mod and disables only that mod's predicate for that trigger.
+  client is refused, as is a player whose level cannot be entered. An inline `player` predicate uses the vanilla
+  loot condition codec's `type` field; a malformed condition rejects the advancement at load. A callback refusal
+  or panic ends the current invocation, not later calls with the same key. A panic logs and shows an error toast
+  naming the mod.
 
 ### Explosions
 

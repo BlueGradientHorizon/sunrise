@@ -28,14 +28,15 @@ pub trait PlayerProgressBackendMut {
     /// chat line and rewards, as the game's own triggers award.
     ///
     /// The acting player is reached inside their hook; another live player
-    /// is reached in their own level. An outer player displaced by a nested turn is unavailable.
-    /// `Ok(())` means the player was reached, whether or not anything was granted. A malformed
+    /// is reached in their own level. An outer player displaced by a nested turn or a player
+    /// whose level could not be entered is unavailable. `Ok(())` means the player was reached,
+    /// whether or not anything was granted. A malformed
     /// id is refused, as is an exact built-in trigger key (which uses its own event matcher).
     /// A namespace by itself does not reserve a key.
     ///
     /// `test` and the parsed conditions are borrowed for this call only. A failed test stops
     /// further tests in this invocation; earlier matching criteria may already be granted.
-    /// Only a panic disables the mod's predicate for this trigger for the rest of the session.
+    /// A panic is logged and shown in an error toast; later invocations may lend another test.
     #[access(WorldOnly)]
     fn player_trigger_criterion(
         &mut self,
@@ -48,8 +49,9 @@ pub trait PlayerProgressBackendMut {
     /// It sees the hand after the use; a replacement stack is visible, unlike vanilla's original object.
     /// Evaluates vanilla predicates and rewards in the player's own level; never reads inventory.
     /// `Ok(())` means reached, even if no criterion matched. Refuses clients (`NotServer`) and
-    /// stale/offline/displaced players (`PlayerUnavailable`). Position predicates that need a
-    /// loaded chunk check it themselves.
+    /// unreachable players or levels (`PlayerUnavailable`). The game resolves the event block
+    /// as vanilla does (`BlockUnavailable` on read failure); separate location predicates
+    /// check the chunks they need themselves.
     #[access(WorldOnly)]
     fn player_trigger_block_use(
         &mut self,
@@ -64,8 +66,9 @@ pub trait PlayerProgressBackendMut {
     /// An invalid stack returns `Stack(StackWriteError)` before the trigger fires.
     /// Evaluates vanilla predicates and rewards in the player's own level.
     /// `Ok(())` means reached, even if nothing matched. Refuses clients (`NotServer`) and
-    /// stale/offline/displaced players (`PlayerUnavailable`). Tool-only predicates do not
-    /// require a loaded chunk; predicates that read the location check it themselves.
+    /// unreachable players or levels (`PlayerUnavailable`). The event carries the actual block
+    /// state and optional block entity (`BlockUnavailable` on state read failure). The position
+    /// need not already be resident; predicates that read other locations check them themselves.
     #[access(WorldOnly)]
     fn player_trigger_item_used_on_block(
         &mut self,
@@ -78,8 +81,8 @@ pub trait PlayerProgressBackendMut {
     /// to NeoForge mods. Fires only `minecraft:consume_item` through the food-eating
     /// criterion path, without consuming a stack, awarding a used statistic or reading inventory.
     /// Predicates and rewards run in the player's own level. `Ok(())` means reached,
-    /// even if nothing matched. Refuses clients (`NotServer`), stale/offline/displaced
-    /// players (`PlayerUnavailable`) and invalid stacks (`Stack(StackWriteError)`)
+    /// even if nothing matched. Refuses clients (`NotServer`), unreachable players or levels
+    /// (`PlayerUnavailable`) and invalid stacks (`Stack(StackWriteError)`)
     /// before firing.
     #[access(WorldOnly)]
     fn player_trigger_consume_item(

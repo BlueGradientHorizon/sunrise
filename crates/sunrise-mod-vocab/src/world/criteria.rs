@@ -55,8 +55,10 @@ pub enum TriggerCriterionError {
     BuiltinTrigger,
     /// This game is a remote client's copy, not the authoritative server.
     NotServer,
-    /// The player handle is stale, offline, or displaced by a nested player's turn.
+    /// The player handle is stale, offline, displaced by a nested turn, or their level could not be entered.
     PlayerUnavailable,
+    /// The target level could not provide the event's block state for a block-use trigger.
+    BlockUnavailable,
     /// The generated item boundary refused a supplied stack before firing a vanilla trigger.
     Stack(crate::StackWriteError),
     /// A criterion test could not answer. Earlier matching criteria may already be granted.
@@ -66,11 +68,9 @@ pub enum TriggerCriterionError {
         /// Name of the refused operation.
         operation: &'static str,
     },
-    /// The test panicked. The game logged it, queued an error toast and disabled this mod's
-    /// predicate for this trigger for the rest of the session.
+    /// The borrowed test panicked. The game logged it and queued an error toast. No further
+    /// tests run in this invocation; subsequent invocations may supply another test.
     TestPanicked,
-    /// This mod's predicate for this trigger is disabled because it previously panicked.
-    TestDisabled,
     /// The host has no game backend (for example, a mod's test double).
     NoBackend,
 }
@@ -98,19 +98,6 @@ pub fn run_criterion_test(
     use crate::world::phase_refusal::contain_refusal;
 
     let owner = crate::content::crash::current_native_mod().unwrap_or("unknown");
-    let panics = crate::runtime::installed().map(|runtime| &runtime.criterion_panics);
-    if panics
-        .and_then(std::sync::OnceLock::get)
-        .is_some_and(|panics| {
-            panics
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .get(owner)
-                .is_some_and(|triggers| triggers.contains(trigger))
-        })
-    {
-        return Err(TriggerCriterionError::TestDisabled);
-    }
     let _guard = crate::mark_mod(owner, "trigger_criterion");
     match contain_unwind(|| contain_refusal(owner, || test.test(context))) {
         Ok(Ok(Ok(matched))) => Ok(matched),
@@ -125,18 +112,7 @@ pub fn run_criterion_test(
             })
         }
         Err(message) => {
-            if let Some(panics) = panics {
-                panics
-                    .get_or_init(std::sync::Mutex::default)
-                    .lock()
-                    .unwrap_or_else(|poison| poison.into_inner())
-                    .entry(owner)
-                    .or_default()
-                    .insert(trigger.to_owned());
-            }
-            log::error!(
-                "mod {owner}: criterion {trigger} test panicked and was disabled: {message}"
-            );
+            log::error!("mod {owner}: criterion {trigger} test panicked: {message}");
             record_callback_panic(owner, "criterion predicate", "trigger_criterion", message);
             Err(TriggerCriterionError::TestPanicked)
         }
@@ -149,7 +125,7 @@ mod tests {
     use crate::{EntityRef, Host, Identifier, PlayerRef, ServerHost, WorldEpoch};
 
     #[test]
-    fn only_a_panic_disables_the_mods_predicate_for_that_trigger() {
+    fn a_panicking_matcher_does_not_disable_the_next_matcher_for_the_same_trigger() {
         struct Context;
         impl CriterionContext for Context {
             fn conditions(&self) -> &serde_json::Value {
@@ -185,20 +161,17 @@ mod tests {
                 run_criterion_test("test:first", &mut test, &Context),
                 Err(TriggerCriterionError::TestPanicked)
             );
+            assert_eq!(calls, 2);
+            struct Healthy;
+            impl CriterionTest for Healthy {
+                fn test(&mut self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+                    Ok(true)
+                }
+            }
             assert_eq!(
-                run_criterion_test("test:first", &mut test, &Context),
-                Err(TriggerCriterionError::TestDisabled)
-            );
-            assert_eq!(
-                run_criterion_test("test:other", &mut test, &Context),
+                run_criterion_test("test:first", &mut Healthy, &Context),
                 Ok(true)
             );
-            let _guard = crate::mark_mod("p3-81-other", "testing");
-            assert_eq!(
-                run_criterion_test("test:first", &mut test, &Context),
-                Ok(true)
-            );
-            assert_eq!(calls, 4);
         });
     }
 
