@@ -61,23 +61,20 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 
 ## 3. Open the pull request
 
-Prepare the signed submission and release assets as described under
-[Publishing a stable source version](#publishing-a-stable-source-version).
-
-1. Create a release of your repository and attach the package and signature. The version row's `file` must point
-   to the package on that release.
+1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.
    For a first listing, copy in `icons/<id>.png` too, and at least one screenshot: save a PNG or JPEG (320×180 to
    3840×2160, at most 1 MiB) as `screenshots/<id>/<name>.png` (or `.jpg`) in your fork and list it in the entry:
    `screenshots = ["screenshots/<id>/<name>.png"]`. A new project without one is refused. A `mod` or `native-mod`
    in the `library` category needs none. Do not commit the package or `files/`.
 3. Commit with `git commit -s`: every commit needs a `Signed-off-by:` line.
-4. Open the pull request with the text of `PULL_REQUEST.md`.
+4. Open the pull request with the text of `PULL_REQUEST.md`, after pasting the artifact URL into it.
 
-## 4. What review does
+## 4. What review and staging do
 
-- The `check` workflow downloads each listed file from its registry mirror or the author's release, compares its
-  SHA-256 with the entry's, and runs
+- A maintainer copies your file from the artifact URL to the registry's `staging` release, named
+  `<sha256>.smod`. Nothing is fetched from an address in a pull request on its own, and you cannot stage a file yourself.
+- The `check` workflow then downloads each listed file, compares its SHA-256 with the entry's, and runs
   `registry review`, `registry check` and `registry build` on the result.
 - A reviewer reads the change and merges it. The `publish` workflow then releases the file as `<id>-<version>` and
   adds the project to the index.

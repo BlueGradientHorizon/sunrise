@@ -488,6 +488,7 @@ fn a_review_protects_published_files() {
     let mut cozy: Entry = toml::from_str(COZY).unwrap();
     cozy.versions[0].sunrise = Some("26.3-0.1.0".into());
     let one = std::slice::from_ref(&base);
+    assert_eq!(review(one, one, "someone"), Review::default());
 
     let mut update = base.clone();
     let mut next = update.versions[0].clone();
@@ -507,6 +508,7 @@ fn a_review_protects_published_files() {
     swapped.key = None;
     let r = review(&[base.clone(), cozy.clone()], &[swapped], "ludovic111");
     assert_eq!(r.errors.len(), 3, "{r:?}");
+    assert!(r.errors.iter().any(|e| e.contains("cozy: removed")));
     assert!(r.errors.iter().any(|e| e.contains("never changes")));
     assert!(r.errors.iter().any(|e| e.contains("kind can't change")));
     assert!(r.notes.iter().any(|n| n.contains("signing key")));

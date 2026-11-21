@@ -1541,9 +1541,12 @@ pub fn review_with_revoked(
                 .enumerate()
                 .find(|(_, w)| w.version == v.version)
             {
-                None if v.sunrise.is_none() => {}
                 None if taken_down() => r.notes.push(format!(
                     "{} {}: leaves the entry, taken down in {REVOKED}",
+                    old.id, v.version
+                )),
+                None if v.sunrise.is_none() => r.notes.push(format!(
+                    "{} {}: leaves the entry, it never named a stable release",
                     old.id, v.version
                 )),
                 None => r.errors.push(format!(

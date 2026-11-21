@@ -709,6 +709,13 @@ fn the_last_legacy_row_can_leave_without_a_takedown() {
         t.split_once("[[versions]]").unwrap().0.to_owned()
     });
     assert_eq!(r.review(), Ok(()));
+    let base = super::registry::load(&r.0.path().join("base")).unwrap();
+    let head = super::registry::load(&r.0.path().join("head")).unwrap();
+    let review = super::registry::review_checkout(&base, &head, "author");
+    assert_eq!(
+        review.notes,
+        ["coords 1.0.0: leaves the entry, it never named a stable release"]
+    );
     assert_eq!(r.check(), Ok(()));
     assert!(r.build(&[]).unwrap().project("coords").is_none());
 }
