@@ -416,6 +416,22 @@ Until an owner creates them, everything above runs as it did: the Nightly follow
 | `nightly/26.3` | fast-forwarded by the [daily run](#daily-run) to each fully green commit of main (job `nightly-branch`, the `sunrise-sunny` App's token); only ever forward | the Nightly: its head, under the `nightly` tag and channel as before |
 | `release/26.3` | cut by an owner from a green daily's commit; later commits by pull request (a fix, or a Nightly merged in) | `26.3-<semver>`, by hand, and the `sdk-<sha>` of its own daily runs |
 
+**The release branch is the trust boundary.** GitHub runs `nightly-build.yml` from the ref it is dispatched on, so a
+stable release's workflow, its checks (`tools/ci/nightly.py`, `tools/release_train.py`) and its signing script
+(`tools/ci/sign_release.sh`) are `release/26.3`'s own. No step can make them independent of that branch: a commit
+that could change them could change the workflow too. Its stable checks stay independent of the *candidate's built
+code* (the published parent's own `sunrise-stage` judges the mod API, and signatures are checked with OpenSSL against
+main's `release-keys.txt`), but the scripts themselves are only as trustworthy as the branch. So `release/26.3`, and
+every later `release/*`, must have a ruleset before any stable release after 0.1.0, set by Sunrise's owners:
+
+- a pull request for every change;
+- one approving review from someone other than the last pusher, with stale approvals dismissed on a new push;
+- force pushes and deletion blocked;
+- no bypass actors.
+
+Code-owner review joins those rules once `.github/CODEOWNERS` names a sunrise-org team: today it names another
+organisation's team, so requiring it would request nobody.
+
 Only these three refs publish or sign: `PUBLISHES` in `tools/release_train.py` says which kind each may publish.
 Every workflow asks `release_train.py authorize` before it takes a key, an environment or a write: it compares the
 repository, the event (a dispatch), the full ref and the dry-run input exactly, since Actions' own comparisons ignore
