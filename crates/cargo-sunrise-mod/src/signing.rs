@@ -3,9 +3,11 @@ use crate::options::Options;
 use minisign::{KeyPair, PublicKey, SecretKey};
 use std::{
     env,
+    io::Read,
     path::{Path, PathBuf},
 };
 use sunrise_mod_package::manifest::{MANIFEST, MAX_MANIFEST, Manifest};
+use zeroize::Zeroizing;
 
 mod files;
 use files::Directory;
@@ -37,30 +39,30 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
     let pair = if no_password {
         KeyPair::generate_unencrypted_keypair()
     } else {
-        let password = rpassword::prompt_password("Minisign passphrase: ")
-            .map_err(|e| format!("could not read the passphrase: {e}"))?;
+        let password = prompt("Minisign passphrase: ")?;
         if password.is_empty() {
-            return Err("the passphrase must not be empty; use --no-password only if you intend to store an unencrypted key".into());
+            return Err("the passphrase must not be empty".into());
         }
-        let again = rpassword::prompt_password("Repeat the Minisign passphrase: ")
-            .map_err(|e| format!("could not read the passphrase: {e}"))?;
+        let again = prompt("Repeat the Minisign passphrase: ")?;
         if password != again {
             return Err("the passphrases do not match".into());
         }
-        KeyPair::generate_encrypted_keypair(Some(password))
+        KeyPair::generate_encrypted_keypair(Some(password.to_string()))
     }
     .map_err(|_| "could not generate a Minisign key pair")?;
-    let secret_box = pair
-        .sk
-        .to_box(None)
-        .map_err(|_| "could not encode the new secret key")?;
+    let key_text = Zeroizing::new(
+        pair.sk
+            .to_box(None)
+            .map_err(|_| "could not encode the new secret key")?
+            .into_string(),
+    );
     let public_box = pair
         .pk
         .to_box()
         .map_err(|_| "could not encode the new public key")?;
     out.write_pair(
         (PUBLIC_NAME.as_ref(), &public_box.to_bytes()),
-        (KEY_NAME.as_ref(), &secret_box.to_bytes()),
+        (KEY_NAME.as_ref(), key_text.as_bytes()),
     )?;
     eprintln!(
         "Wrote {} and {}. Keep the private key out of Git and release assets.",
@@ -101,17 +103,17 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
     into.require_absent(&sidecar)?;
     let bytes = into.read(name, sunrise_mod_package::index::MAX_FILE)?;
     let secret = if from_env {
-        let text =
-            env::var(KEY_ENV).map_err(|_| format!("--key-env needs a text key in {KEY_ENV}"))?;
+        let text = secret_env(KEY_ENV)?
+            .ok_or_else(|| format!("--key-env needs a text key in {KEY_ENV}"))?;
         if text.len() as u64 > KEY_LIMIT {
             return Err(format!("{KEY_ENV} is too large for a Minisign key"));
         }
-        match env::var(PASSPHRASE_ENV) {
-            Ok(password) if !password.is_empty() => {
-                SecretKey::from_box(text.into(), Some(password))
+        match secret_env(PASSPHRASE_ENV)? {
+            Some(password) if !password.is_empty() => {
+                SecretKey::from_box(text.to_string().into(), Some(password.to_string()))
             }
-            Err(env::VarError::NotPresent) => SecretKey::from_unencrypted_box(text.into()),
-            _ => return Err(format!("{PASSPHRASE_ENV} must be nonempty text when set")),
+            None => SecretKey::from_unencrypted_box(text.to_string().into()),
+            Some(_) => return Err(format!("{PASSPHRASE_ENV} must be nonempty text when set")),
         }
         .map_err(|_| {
             format!(
@@ -131,15 +133,22 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
                 .unwrap_or_else(|| Path::new(".")),
             false,
         )?;
-        let text = String::from_utf8(key_dir.read(key_name, KEY_LIMIT)?)
+        let mut bytes = Zeroizing::new(Vec::with_capacity(KEY_LIMIT as usize + 1));
+        key_dir
+            .open_regular(key_name)?
+            .take(KEY_LIMIT + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| format!("{}: {e}", key_path.display()))?;
+        if bytes.len() as u64 > KEY_LIMIT {
+            return Err(format!("{}: over {KEY_LIMIT} bytes", key_path.display()));
+        }
+        let text = std::str::from_utf8(&bytes)
             .map_err(|_| format!("{}: expected Minisign key text", key_path.display()))?;
-        let boxed = text.into();
         if no_password {
-            SecretKey::from_unencrypted_box(boxed)
+            SecretKey::from_unencrypted_box(text.to_owned().into())
         } else {
-            let password = rpassword::prompt_password("Minisign passphrase: ")
-                .map_err(|e| format!("could not read the passphrase: {e}"))?;
-            SecretKey::from_box(boxed, Some(password))
+            let password = prompt("Minisign passphrase: ")?;
+            SecretKey::from_box(text.to_owned().into(), Some(password.to_string()))
         }
         .map_err(|_| format!("{}: could not unlock the Minisign key; use --no-password for a passwordless key file", key_path.display()))?
     };
@@ -149,4 +158,23 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
     into.write_new(&sidecar, &signature.to_bytes())?;
     println!("Wrote {}", into.path().join(sidecar).display());
     Ok(())
+}
+
+// Keep our buffers guarded for their whole life. Neither Minisign's owned arguments and
+// internal keys nor the terminal library's internal copies are ours to clear.
+fn prompt(message: &str) -> Result<Zeroizing<String>, String> {
+    rpassword::prompt_password(message)
+        .map(Zeroizing::new)
+        .map_err(|e| format!("could not read the passphrase: {e}"))
+}
+
+fn secret_env(name: &str) -> Result<Option<Zeroizing<String>>, String> {
+    match env::var(name) {
+        Ok(text) => Ok(Some(Zeroizing::new(text))),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(text)) => {
+            drop(Zeroizing::new(text.into_encoded_bytes()));
+            Err(format!("{name} must contain text"))
+        }
+    }
 }

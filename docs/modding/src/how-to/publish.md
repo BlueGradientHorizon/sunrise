@@ -140,7 +140,8 @@ For CI, store the full private key file text as a protected secret named `SUNRIS
 encrypted key, store its passphrase separately as `SUNRISE_MOD_SIGNING_PASSPHRASE`. Set those only in the
 signing step's environment and run `cargo sunrise-mod sign <file> --key-env`. With a passwordless CI key, leave
 the passphrase variable unset. The command never prompts in this mode. Do not put either secret on the command
-line, in a log, or in a build artifact.
+line, in a log, or in a build artifact. The tool clears its own in-memory copies of keys and passphrases after use;
+it cannot clear the process environment or the copies held internally by Minisign and the password prompt library.
 
 For a new version of an already-signed project, use the same key and replace the page flags (`--summary`, `--owner`,
 `--categories`) with `--registry <your checkout of sunrise-mods>`. With `--key` and `--signature`, `publish` checks

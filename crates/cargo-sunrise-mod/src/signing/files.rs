@@ -126,9 +126,13 @@ impl Directory {
         }
     }
 
+    pub(super) fn open_regular(&self, name: &OsStr) -> Result<File, String> {
+        open_file(&self.dir, name, &read_options()).map_err(|e| at(&self.path.join(name), e))
+    }
+
     pub(super) fn read(&self, name: &OsStr, limit: u64) -> Result<Vec<u8>, String> {
         let path = self.path.join(name);
-        let file = open_file(&self.dir, name, &read_options()).map_err(|e| at(&path, e))?;
+        let file = self.open_regular(name)?;
         let mut bytes = Vec::new();
         file.take(limit + 1)
             .read_to_end(&mut bytes)
