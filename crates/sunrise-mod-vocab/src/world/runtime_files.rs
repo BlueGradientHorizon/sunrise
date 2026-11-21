@@ -3,7 +3,7 @@
 //! A mod's package may carry a `runtime/` folder of data its code opens beside itself (a
 //! compiled script bundle, a baked lookup table), each file listed with its SHA-512 in the
 //! manifest's `[runtime]` table. The game checks every hash once, when the package opens, and
-//! serves those bytes: a read never hashes again. A mod reads only its own package's files.
+//! serves those bytes: a read never hashes again.
 use std::{path::Path, sync::Arc};
 
 /// The game's side of one package's runtime files. A mod reaches it through
@@ -24,14 +24,14 @@ pub trait RuntimeFileSource: Send + Sync + 'static {
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum RuntimeFilesError {
-    /// The calling mod's package declares no `[runtime]`, or the call is outside any mod's
-    /// dispatch (a test, a tool).
+    /// The requested package declares no `[runtime]`, is not loaded, or no registration
+    /// snapshot is installed.
     NoRuntimeFiles,
 }
 impl std::fmt::Display for RuntimeFilesError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoRuntimeFiles => f.write_str("this mod's package declares no [runtime] files"),
+            Self::NoRuntimeFiles => f.write_str("package declares no [runtime] files"),
         }
     }
 }
@@ -58,8 +58,8 @@ impl std::fmt::Display for RuntimePathError {
 }
 impl std::error::Error for RuntimePathError {}
 
-/// The calling mod's own runtime files, from
-/// [`RegistrationContext::runtime_files`](crate::RegistrationContext::runtime_files). The mod may
+/// A package's runtime files, from
+/// [`RegistrationContext::runtime_files`](crate::RegistrationContext::runtime_files). A mod may
 /// keep it and read from any thread. Reads borrow from this handle without copying. The bytes were
 /// checked against the manifest's SHA-512 when the package opened, and no read checks them again.
 // exhaustive: its fields are private, so mods cannot build or destructure it
@@ -93,19 +93,16 @@ impl RuntimeFiles {
 }
 
 impl crate::RegistrationContext {
-    /// The runtime files of the mod this call runs for, from its package's `[runtime]`. Available
-    /// from registration on, before any level exists; keep the handle to read later.
-    /// `NoRuntimeFiles` when the package declares none.
-    pub fn runtime_files(&self) -> Result<RuntimeFiles, RuntimeFilesError> {
-        self.bound_runtime_files()
+    /// The runtime files of `mod_id`, from its package's `[runtime]`. Available from registration
+    /// on, before any level exists; keep the handle to read later.
+    /// Returns [`RuntimeFilesError::NoRuntimeFiles`] when the package declares none, no package
+    /// with that ID is loaded, or no registration snapshot is installed.
+    pub fn runtime_files(&self, mod_id: &str) -> Result<RuntimeFiles, RuntimeFilesError> {
+        self.data
+            .as_ref()
+            .and_then(|data| data.runtime_source(mod_id))
             .map(|source| RuntimeFiles { source })
             .ok_or(RuntimeFilesError::NoRuntimeFiles)
-    }
-
-    /// The source for the mod being dispatched.
-    pub(crate) fn bound_runtime_files(&self) -> Option<Arc<dyn RuntimeFileSource>> {
-        let owner = crate::content::crash::current_native_mod()?;
-        self.data.as_ref()?.runtime_source(owner)
     }
 }
 
@@ -161,9 +158,35 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_without_a_runtime_table_is_told_so() {
+    fn runtime_files_looks_up_any_mod_by_id_without_caller_binding() {
+        let mut context = crate::RegistrationContext::new();
         assert_eq!(
-            crate::RegistrationContext::new().runtime_files().err(),
+            context.runtime_files("reader_a").err(),
+            Some(RuntimeFilesError::NoRuntimeFiles)
+        );
+        let source = Arc::new(Fake::new(None));
+        let data = crate::world::phase::RegistrationData::new(
+            Default::default(),
+            Default::default(),
+            crate::InstanceDirectory::Unix(b"/game".to_vec()),
+            crate::RuntimeEnvironment::new(
+                crate::Dist::Client,
+                "26.3".into(),
+                "test".into(),
+                false,
+            ),
+        )
+        .with_runtime_files(std::collections::BTreeMap::from([(
+            "reader_a".to_owned(),
+            source.clone() as Arc<dyn RuntimeFileSource>,
+        )]));
+        context.data = Some(data);
+
+        let files = context.runtime_files("reader_a").unwrap();
+        assert!(std::ptr::eq(files.names(), source.names()));
+        assert_eq!(files.file("nav.bin"), Some(b"tables".as_slice()));
+        assert_eq!(
+            context.runtime_files("reader_b").err(),
             Some(RuntimeFilesError::NoRuntimeFiles)
         );
     }

@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn registration_hooks_read_one_snapshot_and_refuse_bad_reads() {
+    fn registration_hooks_read_one_snapshot_directly() {
         crate::__private::initialize().unwrap();
         use crate::*;
         use std::sync::Mutex;
@@ -442,6 +442,7 @@ mod tests {
                 setting("reader", "mode"),
                 setting("reader", "unset"),
                 setting("other", "mode"),
+                setting("unlisted", "flag"),
                 setting("absent", "mode"),
                 setting("reader", ""),
                 setting("reader", ".."),
@@ -480,6 +481,10 @@ mod tests {
                     "other".to_owned(),
                     BTreeMap::from([("mode".to_owned(), "slow".to_owned())]),
                 ),
+                (
+                    "unlisted".to_owned(),
+                    BTreeMap::from([("flag".to_owned(), "on".to_owned())]),
+                ),
             ]),
             crate::InstanceDirectory::Unix(vec![47, 255]),
             crate::RuntimeEnvironment::new(
@@ -498,19 +503,20 @@ mod tests {
         .into();
         crate::__private::install(mods.clone());
         let expected = [
-            "Ok(true)",
-            r#"Ok(["minecraft:air", "minecraft:stone"])"#,
-            r#"Err(UnknownRegistry("minecraft:missing"))"#,
-            r#"Err(InvalidRegistryName("item"))"#,
-            r#"Err(InvalidRegistryName(""))"#,
-            r#"Ok(Some("fast"))"#,
-            "Ok(None)",
-            r#"Ok(Some("slow"))"#,
-            r#"Err(UnknownMod("absent"))"#,
-            r#"Err(InvalidSettingKey(""))"#,
-            r#"Err(InvalidSettingKey(".."))"#,
-            r#"Err(InvalidSettingKey("../mode"))"#,
-            r#"Err(InvalidSettingKey("a\\b"))"#,
+            "Some(true)",
+            r#"Some(["minecraft:air", "minecraft:stone"])"#,
+            "None",
+            "None",
+            "None",
+            r#"Some("fast")"#,
+            "None",
+            r#"Some("slow")"#,
+            r#"Some("on")"#,
+            "None",
+            "None",
+            "None",
+            "None",
+            "None",
         ];
         with_test_packages(&["reader", "other"], || {
             with_test_registration_data(data, || {
@@ -519,6 +525,10 @@ mod tests {
                 assert_eq!(cx.game_version(), "26.3");
                 assert_eq!(cx.sunrise_version(), "test");
                 assert!(!cx.game_tests_enabled());
+                let items: &[String] = cx.registry("minecraft:item").unwrap();
+                assert_eq!(items, ["minecraft:air", "minecraft:stone"]);
+                let mode: &str = cx.setting("reader", "mode").unwrap();
+                assert_eq!(mode, "fast");
                 crate::__private::install_parts(
                     &mods,
                     &crate::__private::part_tests::rule_schema(),
@@ -530,19 +540,15 @@ mod tests {
                 dispatch_component_types(&RegistrationContext::new(), &mut types);
                 assert_eq!(types, expected, "a later step reads the same snapshot");
             });
-            // No engine view: every read is refused, and a bad name or key still says so.
+            // No engine snapshot: every read returns None.
             crate::__private::install_parts(
                 &mods,
                 &crate::__private::part_tests::rule_schema(),
                 |_| false,
             )
             .unwrap();
-            let refused = registered.lock().unwrap().clone();
-            assert_eq!(refused[0], "Err(Unavailable)");
-            assert_eq!(refused[1], "Err(Unavailable)");
-            assert_eq!(refused[3], r#"Err(InvalidRegistryName("item"))"#);
-            assert_eq!(refused[5], "Err(Unavailable)");
-            assert_eq!(refused[9], r#"Err(InvalidSettingKey(""))"#);
+            let absent = registered.lock().unwrap().clone();
+            assert!(absent.iter().all(|entry| entry == "None"));
         });
     }
 }

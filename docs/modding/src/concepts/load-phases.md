@@ -21,12 +21,11 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 | Reloading | `ReloadContext` (server/shared data reload and tag/data-map/component notices), `ClientReloadHost` (client reload listener registration and client resource reload completion), and `DataLoadContext` callbacks: published asset/data queries, registry facts, settings and mod-list reads; no world handles or transactions. |
 | World | The owning game's side-typed `ServerHost` or `ClientHost`. |
 
-`RegistrationContext::instance_dir()` reads the instance directory captured before
-registration begins, as an `InstanceDirectory`: `Unix(Vec<u8>)` preserves raw Unix
+`RegistrationContext::instance_dir()` borrows the instance directory captured before
+registration begins, as `Option<&InstanceDirectory>`: `Unix(Vec<u8>)` preserves raw Unix
 path bytes, and `Windows(Vec<u16>)` preserves Windows UTF-16 code units, including
 unpaired surrogates. Never convert Unix bytes with a lossy UTF-8 conversion when
-constructing a filesystem path. A context
-with no engine snapshot returns `RegistrationReadError::Unavailable`.
+constructing a filesystem path. A context with no engine snapshot returns `None`.
 
 A mod that does slow work while the game starts shows it on the startup loading screen
 (NeoForge's `StartupNotificationManager` and `ProgressMeter`). `RegistrationContext::progress(label,
@@ -71,13 +70,12 @@ Not every registration-context hook runs only at startup. `register_fluid_models
 `register_texture_atlases` collect declarations again on client resource reload before baking or
 stitching, respectively. Atlas admission, duplicate handling and dispatch timing are unchanged.
 
-The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
+The context's `mods()`, `registry(name)` and `setting(mod_id, key)` borrow
 one view captured before the first of them runs, so every registration step sees the same values
-whatever the dispatch order: the loaded packages, the built-in registries as `registries.json`
-lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A
-mod validates the keys it declares against them from `Hooks::register`; a name that is not a
-namespaced identifier, an unknown registry, an empty or path-like setting key, a package that is
-not loaded, or a context the engine gave no data returns a `RegistrationReadError`. Client setup
+whatever the dispatch order: the loaded packages (`&LoadedMods`), the built-in registries as
+`registries.json` lists them (`Option<&[String]>`, without what mods declare during registration),
+and the settings on disk when the snapshot is captured (`Option<&str>`). An unknown registry,
+an unset key, or a context with no engine snapshot returns `None`. Client setup
 runs once after the initial asset apply. The window's Client/Common configs load once immediately after client setup and before title,
 connection, input, render or ordinary tick callbacks. This includes pack-error recovery: the failed
 selection is cleared and saved during initialization, but its options screen opens only after Config
@@ -121,9 +119,9 @@ the owning side.
 there is no recipe overlay, `Some(&[])` when that overlay has no fluid tags, and otherwise a slice
 of `(tag ID, members)` pairs with each tag's members in source order.
 
-During registration, `RegistrationContext::mods()` already lends the startup inventory.
-`RegistrationContext::registry` and `RegistrationContext::setting` still return their original
-owned results and report `RegistrationReadError` as described above.
+During registration, `RegistrationContext` lends the same startup inventory (`&LoadedMods`),
+built-in registry names (`Option<&[String]>`), captured settings (`Option<&str>`), and instance
+directory (`Option<&InstanceDirectory>`) from the startup snapshot.
 [Chunk disk callbacks](../how-to/chunk-data-load.md) also borrow registry names, but from the
 resource generation retained by their worker.
 

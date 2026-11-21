@@ -591,7 +591,7 @@ impl RegistrationData {
         registration_data().map(|data| data.settings)
     }
     /// Bind each package's checked runtime files, by mod ID: what
-    /// [`RegistrationContext::runtime_files`] serves the mod being dispatched.
+    /// [`RegistrationContext::runtime_files`] serves.
     pub fn with_runtime_files(
         mut self,
         files: std::collections::BTreeMap<String, Arc<dyn crate::RuntimeFileSource>>,
@@ -612,13 +612,17 @@ impl RegistrationData {
         self.block_entity_coverage = Some(block_entity_coverage);
         self
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn instance_dir(&self) -> &crate::InstanceDirectory {
+        &self.instance_dir
+    }
+    fn registry(&self, name: &str) -> Option<&[String]> {
         let at = self
             .registries
-            .binary_search_by(|(known, _)| known.as_str().cmp(name));
-        Some(self.registries[at.ok()?].1.clone())
+            .binary_search_by(|(known, _)| known.as_str().cmp(name))
+            .ok()?;
+        Some(self.registries[at].1.as_ref())
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         let mod_at = self
             .settings
             .binary_search_by(|(known, _)| known.as_str().cmp(mod_id))
@@ -627,7 +631,7 @@ impl RegistrationData {
         let at = values
             .binary_search_by(|(known, _)| known.as_str().cmp(key))
             .ok()?;
-        Some(values[at].1.clone())
+        Some(values[at].1.as_str())
     }
 }
 
@@ -687,29 +691,6 @@ impl LoadedMods {
     }
 }
 
-/// Why a read through [`RegistrationContext`] was refused. Handle this error at the call site.
-// no wire: reports failure of a local registration read.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum RegistrationReadError {
-    /// The engine supplied no registry or settings data to this context.
-    Unavailable,
-    /// The registry name is not a namespaced identifier (`minecraft:item`).
-    InvalidRegistryName(String),
-    /// No built-in registry has this name.
-    UnknownRegistry(String),
-    /// The setting key is empty or names a path rather than one key.
-    InvalidSettingKey(String),
-    /// No loaded package has this ID, so it has no settings to read.
-    UnknownMod(String),
-}
-impl std::fmt::Display for RegistrationReadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "registration read refused: {self:?}")
-    }
-}
-impl std::error::Error for RegistrationReadError {}
-
 /// A registration phase's view. Declarations go on the hook's event; there is
 /// no world, handle constructor, transaction or game Host at this point.
 ///
@@ -748,7 +729,6 @@ pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
     pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
-    pub(crate) instance_dir: Option<crate::InstanceDirectory>,
     /// The game's startup screen, for [`progress`](Self::progress) and
     /// [`message`](Self::message); none without a game.
     pub(crate) startup: Option<Arc<dyn crate::StartupScreen>>,
@@ -758,13 +738,11 @@ pub struct RegistrationContext {
 impl RegistrationContext {
     pub(crate) fn new() -> Self {
         let data = registration_data();
-        let instance_dir = data.as_ref().map(|data| data.instance_dir.clone());
         let runtime = data.as_ref().map(|data| data.runtime.clone());
         Self {
             mods: LoadedMods::new(),
             data,
             declaration_refusals: Default::default(),
-            instance_dir,
             startup: crate::world::startup_progress::installed(),
             runtime,
         }
@@ -792,13 +770,11 @@ impl RegistrationContext {
             .expect("registration runtime environment is installed")
     }
 
-    /// The instance directory captured before registration. This is data only, not permission
-    /// to access a filesystem.
+    /// The instance directory captured before registration, or `None` when no registration
+    /// snapshot is installed. This is data only, not permission to access a filesystem.
     /// The value preserves the host OS's raw path encoding, including non-UTF-8 names.
-    pub fn instance_dir(&self) -> Result<&crate::InstanceDirectory, RegistrationReadError> {
-        self.instance_dir
-            .as_ref()
-            .ok_or(RegistrationReadError::Unavailable)
+    pub fn instance_dir(&self) -> Option<&crate::InstanceDirectory> {
+        Some(self.data.as_ref()?.instance_dir())
     }
 
     /// The loaded-mod view, independent of this phase's event or registrar.
@@ -806,35 +782,16 @@ impl RegistrationContext {
         &self.mods
     }
 
-    /// A built-in registry's names in ID order, for validating the keys a mod declares.
-    pub fn registry(&self, name: &str) -> Result<Arc<[String]>, RegistrationReadError> {
-        if crate::Identifier::parse_namespaced(name).is_none() {
-            return Err(RegistrationReadError::InvalidRegistryName(name.to_owned()));
-        }
-        self.data()?
-            .registry(name)
-            .ok_or_else(|| RegistrationReadError::UnknownRegistry(name.to_owned()))
+    /// Borrows a built-in registry's names in ID order, or returns `None` if the registry
+    /// is unavailable or no registration snapshot is installed.
+    pub fn registry(&self, name: &str) -> Option<&[String]> {
+        self.data.as_ref()?.registry(name)
     }
 
-    /// A loaded mod's setting as it was when registration began: `Ok(None)` when the mod
-    /// has not set it. The key is one setting's name, not a path.
-    pub fn setting(
-        &self,
-        mod_id: &str,
-        key: &str,
-    ) -> Result<Option<String>, RegistrationReadError> {
-        if key.is_empty() || matches!(key, "." | "..") || key.contains(['/', '\\', '\0']) {
-            return Err(RegistrationReadError::InvalidSettingKey(key.to_owned()));
-        }
-        let data = self.data()?;
-        if self.mods.get(mod_id).is_none() {
-            return Err(RegistrationReadError::UnknownMod(mod_id.to_owned()));
-        }
-        Ok(data.setting(mod_id, key))
-    }
-
-    fn data(&self) -> Result<&RegistrationData, RegistrationReadError> {
-        self.data.as_ref().ok_or(RegistrationReadError::Unavailable)
+    /// Borrows a mod's captured setting as it was when registration began, or returns `None`
+    /// when it was not captured or no registration snapshot is installed.
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        self.data.as_ref()?.setting(mod_id, key)
     }
 }
 

@@ -61,8 +61,8 @@ file type, up to 64 MiB a file, 256 MiB and 256 files in all. They are not pack 
 a missing, extra or mismatched file refuses the package by name ([`[runtime]`](../../reference/manifest.md)).
 
 The game hashes each file once, when the package opens, and retains the verified bytes. Get the handle with
-`cx.runtime_files()` in registration; you can keep it and use it from any thread. A mod can read only its own
-package's files. A package with no `[runtime]` returns `RuntimeFilesError::NoRuntimeFiles`.
+`cx.runtime_files(mod_id)` in registration; you can keep it and use it from any thread. A package with no
+`[runtime]` returns `RuntimeFilesError::NoRuntimeFiles`.
 
 - `files.names()` borrows the listed names in name order as `&[String]`.
 - `files.file("nav.bin")` returns `Option<&[u8]>`: parse the borrowed bytes directly, or use `.to_vec()` only
