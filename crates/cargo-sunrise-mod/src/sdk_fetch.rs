@@ -234,9 +234,8 @@ impl Base {
         match self {
             Self::Url(base) => {
                 let url = format!("{base}/{release}/{file}");
-                let agent = sunrise_proxy::agent("cargo-sunrise-mod", &url, std::convert::identity)
-                    .map_err(|e| format!("{url}: {e}"))?;
-                let response = agent.get(&url).call().map_err(|e| format!("{url}: {e}"))?;
+                let response =
+                    sunrise_proxy::get(&url, &[], None).map_err(|e| format!("{url}: {e}"))?;
                 Ok(Box::new(response.into_reader()))
             }
             Self::Folder(base) => {
@@ -269,10 +268,7 @@ impl Base {
                 .collect()),
             Self::Url(base) if base == BASE => {
                 let api = sunrise_addresses::SDK_RELEASE_LIST;
-                let text = sunrise_proxy::agent("cargo-sunrise-mod", api, std::convert::identity)
-                    .map_err(|e| format!("{api}: {e}"))?
-                    .get(api)
-                    .call()
+                let text = sunrise_proxy::get(api, &[], None)
                     .map_err(|e| format!("{api}: {e}"))?
                     .into_string()
                     .map_err(|e| e.to_string())?;

@@ -9,6 +9,7 @@ use std::fmt;
 use std::net::Ipv6Addr;
 use std::num::NonZeroU16;
 use std::sync::{LazyLock, Mutex};
+use url::Url;
 
 type Agents = HashMap<AgentKey, ureq::Agent>;
 
@@ -57,14 +58,18 @@ pub fn agent(
     url: &str,
     configure: impl FnOnce(ureq::AgentBuilder) -> ureq::AgentBuilder,
 ) -> Result<ureq::Agent, ProxyError> {
-    let destination = url::Url::parse(url).ok();
-    let selected = if destination
-        .as_ref()
-        .is_some_and(|url| bypasses_proxy(url, &no_proxy()))
-    {
+    agent_for(slot, Url::parse(url).ok().as_ref(), configure)
+}
+
+fn agent_for(
+    slot: &str,
+    url: Option<&Url>,
+    configure: impl FnOnce(ureq::AgentBuilder) -> ureq::AgentBuilder,
+) -> Result<ureq::Agent, ProxyError> {
+    let selected = if url.is_some_and(|url| bypasses_proxy(url, &no_proxy())) {
         None
     } else {
-        let scheme = destination.as_ref().map_or("https", url::Url::scheme);
+        let scheme = url.map_or("https", Url::scheme);
         env_proxy(scheme, |name| std::env::var_os(name))?
     };
     let mut agents = KEPT.lock().unwrap_or_else(|e| e.into_inner());
@@ -75,6 +80,107 @@ pub fn agent(
             None => builder.build(),
         }
     })
+}
+
+/// An HTTP failure or a request that could not be sent or followed.
+#[derive(Debug)]
+pub enum GetError {
+    Http(Box<ureq::Error>),
+    Request(String),
+}
+
+impl GetError {
+    /// The server's status code, if the request failed with an HTTP error status.
+    pub fn status(&self) -> Option<u16> {
+        match self {
+            Self::Http(error) => match error.as_ref() {
+                ureq::Error::Status(code, _) => Some(*code),
+                ureq::Error::Transport(_) => None,
+            },
+            Self::Request(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for GetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http(error) => fmt::Display::fmt(error, f),
+            Self::Request(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for GetError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Http(error) => Some(error.as_ref()),
+            Self::Request(_) => None,
+        }
+    }
+}
+
+/// An optional policy for the initial URL and each redirect destination, before any request.
+pub type UrlCheck<'a> = dyn Fn(&Url) -> Result<(), String> + 'a;
+
+/// GET with a fresh proxy decision per hop, including `NO_PROXY`. Only `Accept` and
+/// `User-Agent` from `headers` are carried to a redirect destination.
+pub fn get(
+    url: &str,
+    headers: &[(&str, &str)],
+    check: Option<&UrlCheck<'_>>,
+) -> Result<ureq::Response, GetError> {
+    follow(url, check, |current, first| {
+        // This slot is separate from agents that are allowed to follow redirects internally.
+        let agent = agent_for("get-no-redirect", Some(current), |builder| {
+            builder.redirects(0)
+        })
+        .map_err(|e| GetError::Request(e.to_string()))?;
+        let mut request = agent.request_url("GET", current);
+        for &(name, value) in headers {
+            if first
+                || ["accept", "user-agent"]
+                    .iter()
+                    .any(|h| name.eq_ignore_ascii_case(h))
+            {
+                request = request.set(name, value);
+            }
+        }
+        request
+            .call()
+            .map_err(|error| GetError::Http(Box::new(error)))
+    })
+}
+
+fn follow(
+    url: &str,
+    check: Option<&UrlCheck<'_>>,
+    mut request: impl FnMut(&Url, bool) -> Result<ureq::Response, GetError>,
+) -> Result<ureq::Response, GetError> {
+    const MAX_REDIRECTS: usize = 5;
+    let mut current = Url::parse(url).map_err(|e| GetError::Request(e.to_string()))?;
+    for hop in 0..=MAX_REDIRECTS {
+        if let Some(check) = check {
+            check(&current).map_err(GetError::Request)?;
+        }
+        if !matches!(current.scheme(), "http" | "https") {
+            return Err(GetError::Request("Refused non-HTTP URL".into()));
+        }
+        let response = request(&current, hop == 0)?;
+        if !(300..400).contains(&response.status()) {
+            return Ok(response);
+        }
+        if hop == MAX_REDIRECTS {
+            break;
+        }
+        let location = response
+            .header("Location")
+            .ok_or_else(|| GetError::Request("Redirect without Location".into()))?;
+        current = current
+            .join(location)
+            .map_err(|e| GetError::Request(e.to_string()))?;
+    }
+    Err(GetError::Request("Too many redirects".into()))
 }
 
 /// An agent built by `build` and kept for the next request with the same `slot` and proxy.
@@ -499,80 +605,158 @@ mod tests {
     }
 
     #[test]
+    fn checks_each_redirect_before_requesting_it() {
+        let check = |url: &Url| {
+            (url.scheme() == "https" && url.host_str() == Some("assets.invalid"))
+                .then_some(())
+                .ok_or_else(|| "unlisted host".into())
+        };
+        let mut seen = Vec::new();
+        let result = follow("https://assets.invalid/file", Some(&check), |url, first| {
+            seen.push(url.to_string());
+            let reply = if first {
+                "HTTP/1.1 302 Found\r\nLocation: /release\r\n\r\n"
+            } else {
+                "HTTP/1.1 302 Found\r\nLocation: https://other.invalid/file\r\n\r\n"
+            };
+            Ok(reply.parse().unwrap())
+        });
+        assert_eq!(result.unwrap_err().to_string(), "unlisted host");
+        assert_eq!(
+            seen,
+            [
+                "https://assets.invalid/file",
+                "https://assets.invalid/release"
+            ]
+        );
+    }
+
+    #[test]
+    fn stops_after_five_redirects() {
+        let mut requests = 0;
+        let result = follow("http://mirror.invalid/file", None, |_, _| {
+            requests += 1;
+            Ok("HTTP/1.1 302 Found\r\nLocation: /file\r\n\r\n"
+                .parse()
+                .unwrap())
+        });
+        assert_eq!(result.unwrap_err().to_string(), "Too many redirects");
+        assert_eq!(requests, 6);
+    }
+
+    #[test]
     #[ignore = "daily"]
-    fn a_configured_agent_uses_the_env_proxy_but_goes_direct_for_localhost() {
+    fn redirects_select_the_proxy_for_each_destination() {
         use std::io::{BufRead, BufReader, Write};
         use std::net::TcpListener;
 
         const LOCAL_URL: &str = "SUNRISE_PROXY_TEST_LOCAL_URL";
-        if let Ok(local_url) = std::env::var(LOCAL_URL) {
-            let get = |url: &str| {
-                agent("test-configured", url, |builder| {
-                    builder
-                        .redirects(0)
-                        .timeout_connect(TIMEOUT)
-                        .timeout(TIMEOUT)
-                })
-                .unwrap()
-                .get(url)
-                .call()
-                .unwrap()
-            };
-            assert_eq!(
-                get("http://sunrise.invalid/a.jar").into_string().unwrap(),
-                "ok"
+        let headers = [
+            ("Authorization", "Bearer dummy-origin-token"),
+            ("Cookie", "dummy=session"),
+        ];
+        if let Ok(origin) = std::env::var(LOCAL_URL) {
+            let response = get(&format!("{origin}/start"), &headers, None).unwrap();
+            assert_eq!(response.into_string().unwrap(), "direct again");
+            let error = get(&format!("{origin}/secure"), &headers, None).unwrap_err();
+            assert!(
+                matches!(error, GetError::Http(error) if error.kind() == ureq::ErrorKind::ProxyConnect)
             );
-            assert_eq!(
-                get(&local_url).status(),
-                302,
-                "the direct agent must not redirect"
-            );
-            let error = agent("test-configured", "https://sunrise.invalid/", |_| {
-                panic!("a rejected setting must stop before building the agent")
-            })
-            .unwrap_err();
-            assert_eq!(error.setting, "HTTPS_PROXY");
-            assert_eq!(error.kind, InvalidProxy::Scheme);
-            assert!(error.to_string().contains("HTTPS_PROXY"));
-            assert!(!error.to_string().contains("dummy-password"));
             return;
         }
 
-        let (port, proxy) = socks5_proxy();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let local_url = format!(
-            "http://localhost:{}/",
-            listener.local_addr().unwrap().port()
-        );
-        let origin = std::thread::spawn(move || {
+        let reply = |listener: &TcpListener,
+                     request_line: &str,
+                     first: bool,
+                     proxy_auth: Option<&str>,
+                     answer: &str| {
             let (mut stream, _) = listener.accept().unwrap();
             stream.set_read_timeout(Some(TIMEOUT)).unwrap();
             stream.set_write_timeout(Some(TIMEOUT)).unwrap();
+            let mut reader = BufReader::new(&stream);
             let mut line = String::new();
-            let mut request = BufReader::new(&stream);
-            while request.read_line(&mut line).unwrap() > 2 {
-                line.clear();
+            reader.read_line(&mut line).unwrap();
+            assert_eq!(line.trim_end(), request_line);
+            let mut head = String::new();
+            loop {
+                let n = reader.read_line(&mut head).unwrap();
+                if n == 2 {
+                    break;
+                }
+                assert_ne!(n, 0, "client disconnected before sending its headers");
             }
-            stream
-                .write_all(
-                    b"HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                )
-                .unwrap();
+            assert_eq!(head.contains("dummy-origin-token"), first);
+            assert_eq!(head.contains("dummy=session"), first);
+            let auth = head
+                .lines()
+                .filter_map(|line| line.split_once(':'))
+                .find(|(name, _)| name.eq_ignore_ascii_case("proxy-authorization"))
+                .map(|(_, value)| value.trim());
+            assert_eq!(auth, proxy_auth);
+            stream.write_all(answer.as_bytes()).unwrap();
+        };
+
+        let origin = TcpListener::bind("127.0.0.1:0").unwrap();
+        let http = TcpListener::bind("127.0.0.1:0").unwrap();
+        let https = TcpListener::bind("127.0.0.1:0").unwrap();
+        let local_url = format!("http://localhost:{}", origin.local_addr().unwrap().port());
+        let http_proxy = format!("http://{}", http.local_addr().unwrap());
+        let https_proxy = format!("http://user:pass@{}", https.local_addr().unwrap());
+        let to_origin = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {local_url}/finish\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let http = std::thread::spawn(move || {
+            reply(
+                &http,
+                "GET http://sunrise.invalid/asset HTTP/1.1",
+                false,
+                None,
+                &to_origin,
+            )
+        });
+        let https = std::thread::spawn(move || {
+            reply(
+                &https,
+                "CONNECT sunrise.invalid:443 HTTP/1.1",
+                false,
+                Some("basic dXNlcjpwYXNz"),
+                "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+        });
+        let origin = std::thread::spawn(move || {
+            reply(
+                &origin,
+                "GET /start HTTP/1.1",
+                true,
+                None,
+                "HTTP/1.1 302 Found\r\nLocation: http://sunrise.invalid/asset\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            reply(
+                &origin,
+                "GET /finish HTTP/1.1",
+                false,
+                None,
+                "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\ndirect again",
+            );
+            reply(
+                &origin,
+                "GET /secure HTTP/1.1",
+                true,
+                None,
+                "HTTP/1.1 302 Found\r\nLocation: https://sunrise.invalid/asset\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
         });
 
-        // Set the proxy only in a fresh process, never in the test runner's shared environment.
+        // Mutate the environment only in the child, not in the parallel test runner.
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--ignored",
                 "--exact",
-                "tests::a_configured_agent_uses_the_env_proxy_but_goes_direct_for_localhost",
+                "tests::redirects_select_the_proxy_for_each_destination",
             ])
             .env(LOCAL_URL, local_url)
-            .env("HTTP_PROXY", format!("socks5h://127.0.0.1:{port}"))
-            .env(
-                "HTTPS_PROXY",
-                "https://dummy-user:dummy-password@proxy.example",
-            )
+            .env("HTTP_PROXY", http_proxy)
+            .env("HTTPS_PROXY", https_proxy)
             .env("NO_PROXY", "")
             .output()
             .unwrap();
@@ -580,9 +764,10 @@ mod tests {
             output.status.success(),
             "{}\n{}",
             String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stderr)
         );
-        assert_eq!(proxy.join().unwrap(), "sunrise.invalid");
+        http.join().unwrap();
+        https.join().unwrap();
         origin.join().unwrap();
     }
 
