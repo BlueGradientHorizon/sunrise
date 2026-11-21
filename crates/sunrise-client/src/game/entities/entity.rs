@@ -28,9 +28,28 @@ use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
-    collision_context::CollisionContext, ground_support::GroundState, level::data::PushReaction,
-    move_gate::MoveGate, piston_push,
+    block_collision_scan::CollisionScanError,
+    collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
+    entity_obstruction::EntityIdentity,
+    ground_support::GroundState,
+    level::data::PushReaction,
+    move_gate::MoveGate,
+    piston_push,
 };
+
+/// `CollisionContext.of(entity)` for a nonliving entity other than an item.
+pub(super) fn nonliving_support_context(id: u32, feet_y: f64) -> CollisionContext<'static> {
+    CollisionContext::for_entity(
+        CollisionEntity {
+            identity: EntityIdentity(u64::from(id)),
+            kind: EntityContextKind::Other,
+            y: feet_y,
+            descending: false,
+            main_hand: None,
+        },
+        false,
+    )
+}
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
@@ -131,7 +150,10 @@ pub(super) trait Entity: EntityRules {
         None
     }
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (CollisionContext::empty(false), None)
+        (
+            nonliving_support_context(self.id(), self.position().y),
+            None,
+        )
     }
     /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
     fn update_retained_ground(
@@ -140,9 +162,9 @@ pub(super) trait Entity: EntityRules {
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
         on_ground: bool,
         movement: Option<Vec3>,
-    ) -> bool {
+    ) -> Result<bool, CollisionScanError<std::io::Error>> {
         let Some(mut ground) = self.ground_state().copied() else {
-            return false;
+            return Ok(false);
         };
         ground.on_ground = on_ground;
         let (context, subject) = self.support_collision();
@@ -151,17 +173,18 @@ pub(super) trait Entity: EntityRules {
             binding,
             subject,
         };
-        let _ = scene.update_ground_support(
+        scene.update_ground_support(
             &mut ground,
             self.position(),
             self.bounds(),
             movement,
             context,
-        );
+        )?;
         if let Some(owner) = self.ground_state_mut() {
             *owner = ground;
+            return Ok(true);
         }
-        true
+        Ok(false)
     }
     /// `Entity.maxUpStep`.
     fn get_step_height(&self) -> f32 {
@@ -2015,6 +2038,9 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (self.collision_context(), None)
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
@@ -2583,6 +2609,16 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
+    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        (
+            nonliving_support_context(self.id, self.position.y),
+            Some(PowderSnowSubject {
+                fall_distance: self.fall_distance,
+                falling_block: true,
+                ..Default::default()
+            }),
+        )
+    }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }

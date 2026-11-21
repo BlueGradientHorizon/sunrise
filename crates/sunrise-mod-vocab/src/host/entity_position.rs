@@ -64,6 +64,18 @@ pub trait EntityPositionBackend {
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityPositionBackendMut {
     /// Side: server.
+    /// `Entity.setOnGround`: set the live body's ground flag and check supporting
+    /// blocks under its current footprint without moving it. False clears retained
+    /// support; true retains the previous block on the first miss and clears it on
+    /// a second miss. Does not change velocity, fall distance, or collision flags.
+    /// `Ok(false)` for stale handles and bodies that don't keep ground state.
+    #[access(WorldOnly)]
+    fn entity_set_on_ground(
+        &mut self,
+        entity: EntityRef,
+        on_ground: bool,
+    ) -> Result<bool, LevelWriteError>;
+    /// Side: server.
     /// Moves the entity to `pos` in its level (`Entity.teleportTo`), as
     /// `/tp` does: a player is placed there and told, a rider gets off, and a
     /// vehicle (including a general entity) takes its riders with it. With

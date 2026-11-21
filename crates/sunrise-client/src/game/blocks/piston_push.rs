@@ -1427,7 +1427,7 @@ impl Game<'_> {
             if let Some(ground) = entity.ground_state_mut() {
                 ground.horizontal_collision = different(wanted.x, moved.x) || different(wanted.z, moved.z);
                 if updates_ground {
-                    entity.update_retained_ground(&self.world, self.collision, on_ground, Some(moved));
+                    let _ = entity.update_retained_ground(&self.world, self.collision, on_ground, Some(moved));
                 }
             } else {
                 entity.set_piston_on_ground(on_ground);
