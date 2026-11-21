@@ -271,7 +271,8 @@ does not resolve. It never opens a replacement through an old handle.
 To open a content mod menu type with no block (from an item, an entity or a command),
 call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoForge's
 `openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
-32 KiB, is one-time context. Decode `open.extra` in the registered client screen factory.
+1,048,555 bytes (vanilla's 1 MiB clientbound custom payload limit minus the 21-byte
+envelope header), is one-time context. Decode `open.extra` in the registered client screen factory.
 It is an empty slice when no payload matched this opening. Reusing a window id does not reuse
 its previous context. Keep owned decoded values if the screen needs them later; the bytes are
 borrowed only during construction. `pos` is an optional hint offered to the factory and later

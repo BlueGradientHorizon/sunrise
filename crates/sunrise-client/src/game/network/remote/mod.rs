@@ -3464,7 +3464,7 @@ impl Game<'_> {
             }
             // A mod menu type's opening context, just before its OpenScreen.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
-                self.receive_menu_extra(&p.data);
+                self.receive_menu_extra(&p.data)?;
             }
             C::CustomPayload(p) if sunrise_client::lan::recipes::viewer_channel(&p.channel) => {
                 self.remote_recipe_viewer(&p.channel, &p.data);

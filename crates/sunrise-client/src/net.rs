@@ -2628,8 +2628,8 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// #3384: a client asked which `sunrise:menu_extra` layout it reads answers its revision
-    /// in configuration, and keeps it for play (a server that never asked serves the legacy layout).
+    /// #3384: a client asked which `sunrise:menu_extra` revision it supports answers its revision
+    /// in configuration and keeps it for play.
     #[test]
     fn configuration_answers_the_menu_extra_revision_query() {
         let (root, data) = empty_item_data("menu-extra-revision");

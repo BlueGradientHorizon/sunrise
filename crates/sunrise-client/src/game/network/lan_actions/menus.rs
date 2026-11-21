@@ -240,14 +240,21 @@ impl Game<'_> {
             Slots::Block(k) if self.mod_menu_at(k).is_some() => {
                 let mut data = None;
                 self.native_menu_extra_data(uuid, menu, &block, [k.0, k.1, k.2], &mut data);
-                let mut data = data.unwrap_or_default();
+                let data = data.unwrap_or_default();
                 if data.len() > sunrise_protocol::menu_extra::MAX_DATA {
-                    log::warn!(
-                        "Sunrise: {block}'s menu extra data ({} bytes) is past {} bytes; sent without it",
+                    log::error!(
+                        "Sunrise: {block}'s menu ({menu}) extra data ({} bytes) exceeds {} bytes; refusing open",
                         data.len(),
                         sunrise_protocol::menu_extra::MAX_DATA
                     );
-                    data.clear();
+                    if let Some(container) = previous_window
+                        && let Some(host) = self.lan.as_mut()
+                        && super::super::native_menus::open_menu_of(host, conn).is_none()
+                    {
+                        host.hub
+                            .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+                    }
+                    return MenuOpen::Refused;
                 }
                 Some(data)
             }
@@ -266,8 +273,19 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return MenuOpen::Refused;
         };
-        host.hub
-            .open_container(conn, menu, title, pos, slots, items, extra);
+        if host
+            .hub
+            .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
+            .is_none()
+        {
+            if let Some(container) = previous_window
+                && super::super::native_menus::open_menu_of(host, conn).is_none()
+            {
+                host.hub
+                    .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
+            }
+            return MenuOpen::Refused;
+        }
         if !hidden.is_empty() {
             host.hub
                 .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());

@@ -154,7 +154,7 @@ impl Game<'_> {
         let revision = if !data.is_empty() || !kind.player_inventory || kind.slots == 0 {
             menu_extra::LIVE_DATA_REVISION
         } else {
-            1 // Revision 0 cannot carry an absent position.
+            1 // Client must have negotiated menu_extra revision 1 or higher.
         };
         if !sunrise_client::containers::menu_reaches(&guest.brand, &id)
             || guest.sender.menu_extra_rev < revision
@@ -1600,7 +1600,11 @@ mod tests {
             );
 
             for (revision, extra, expected) in [
-                (1, vec![0; 33 * 1024], mod_api::OpenMenuError::TooLarge),
+                (
+                    1,
+                    vec![0; sunrise_protocol::menu_extra::MAX_DATA + 1],
+                    mod_api::OpenMenuError::TooLarge,
+                ),
                 (0, vec![1], mod_api::OpenMenuError::PlayerUnavailable),
             ] {
                 game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -1630,6 +1634,64 @@ mod tests {
                 assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
                 assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
             }
+            // Hub-level encode refusal also aborts before closing or emitting packets.
+            let conn = game.lan.as_ref().unwrap().hub.guests[0].conn;
+            assert_eq!(
+                game.lan.as_mut().unwrap().hub.open_menu_window(
+                    conn,
+                    MOD_MENU,
+                    sunrise_core::nbt::Tag::String("oversize".into()),
+                    None,
+                    Slots::Native,
+                    vec![None; 9],
+                    Some(vec![0; sunrise_protocol::menu_extra::MAX_DATA + 1]),
+                ),
+                None
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .as_ref()
+                    .map(|m| m.window),
+                Some(window),
+                "oversize hub refusal preserves the current menu"
+            );
+            assert!(sent(&rx).is_empty(), "oversize hub refusal emits nothing");
+            // Payloads past the old 32 KiB limit (up to MAX_DATA) are accepted intact.
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 1;
+            });
+            let large = vec![7; 33 * 1024];
+            let large_window = game
+                .player_open_mod_menu(
+                    player,
+                    key,
+                    Text::literal("large"),
+                    large.clone(),
+                    Vec::new(),
+                    None,
+                    MenuReplace::InPlace,
+                )
+                .unwrap()
+                .unwrap();
+            let large_packets = sent(&rx);
+            let large_payload = large_packets
+                .iter()
+                .find_map(|p| match p {
+                    C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
+                        Some(&p.data)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(
+                sunrise_protocol::menu_extra::decode(large_payload).unwrap(),
+                sunrise_protocol::menu_extra::Message {
+                    window: large_window,
+                    pos: None,
+                    data: large,
+                }
+            );
         });
     }
 
