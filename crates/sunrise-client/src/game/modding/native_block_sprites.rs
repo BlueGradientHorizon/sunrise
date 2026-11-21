@@ -313,6 +313,16 @@ mod texture_atlas_stitched_tests {
     #[cfg(unix)]
     #[ignore = "daily"]
     fn a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host() {
+        use mod_api::__private::game::RegistrationContextNew;
+
+        // Both resource loads need the source type, whose registry is process-wide.
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_sprites::texture_atlas_stitched_tests::a_sprite_source_publishes_its_sprites_by_atlas_and_id_through_the_host",
+            "SUNRISE_SPRITE_SOURCE_ATLAS_TEST_CHILD",
+            &["atlas"],
+        ) {
+            return;
+        }
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let files: Vec<_> = ["blocks", "gui"]
             .map(|atlas| with_marker_entry(&base, atlas))
@@ -326,21 +336,27 @@ mod texture_atlas_stitched_tests {
         )]
         .into();
         with_mods(mods, || {
-            use mod_api::__private::game::RegistrationContextNew;
+            let role = crate::game::execution_role::ExecutionRole::Client;
             let mut sources = Vec::new();
             super::Game::native_register_sprite_sources(
                 &mod_api::RegistrationContext::new(),
                 &mut sources,
             );
-            sunrise_client_render::mod_sprite_sources::register(sources);
+            assert_eq!(
+                sunrise_client_render::mod_sprite_sources::register(sources),
+                ["marker:own"]
+            );
             super::super::native_entity_refs::tests::with_game_role(
                 root.path().to_owned(),
-                crate::game::execution_role::ExecutionRole::Client,
+                role,
                 |game| {
                     game.texture_atlases_stitched();
                     {
-                        let marker = marker.lock().unwrap();
-                        assert!(marker.block.is_some(), "no model names the block sprite");
+                        let mut marker = marker.lock().unwrap();
+                        assert!(
+                            marker.block.take().is_some(),
+                            "no model names the block sprite"
+                        );
                         assert_eq!(marker.gui.map(|s| s.size), Some([3, 3]));
                     }
                     assert_eq!(

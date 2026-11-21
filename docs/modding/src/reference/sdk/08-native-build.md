@@ -60,7 +60,8 @@ Each line is an object whose `event` names it.
 For SDK downloads, registry release discovery and native-build downloads, the mod tool uses the first
 nonblank setting in this order: `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` for HTTPS, or
 `HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy` for HTTP. A caller with a proxy setting of its own
-passes it in these variables.
+passes it in these variables. SDK and native-build downloads choose the route again at each redirect;
+registry release discovery does not follow redirects.
 
 A proxy address without a scheme means HTTP. Supported schemes are `http://`, `socks4://`, `socks4a://`,
 `socks5://`, `socks5h://` and `socks://` (an alias for SOCKS5). An `https://` proxy address is not supported,

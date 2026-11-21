@@ -1107,6 +1107,8 @@ mod native_components;
 mod native_config_files;
 #[path = "game/modding/native_configs.rs"]
 mod native_configs;
+#[path = "game/modding/native_connection_groups.rs"]
+mod native_connection_groups;
 #[path = "game/modding/native_console.rs"]
 mod native_console;
 #[cfg(test)]
@@ -2955,7 +2957,7 @@ struct WorldRest {
     ambient: sunrise_client::ambience::AmbientTables,
     nether_environment: Environment,
     end_environment: Environment,
-    behaviours: Behaviours,
+    behaviours: Arc<Behaviours>,
     /// The player model's right and left arms.
     player_arm: [Option<sunrise_client::mobs::Part>; 2],
     /// The slim model's right and left arms (3 pixels wide).
@@ -6394,9 +6396,9 @@ impl Game<'_> {
             // EnderChestBlock.useWithoutItem
             self.award_custom_stat("open_enderchest", 1);
             self.anger_piglins(true);
-            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN
-            // (ContainerOpenersCounter.incrementOpeners), as for chests below.
-            if self.container_opener_event(key, true) {
+            // Guests start the opener only when the handoff installs their menu.
+            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN.
+            if self.lan_acting.is_none() && self.container_opener_event(key, true) {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
@@ -6427,7 +6429,9 @@ impl Game<'_> {
             });
             self.container = Some(key);
             self.open_container_slots = Some((key, self.open_container_size()));
-            let first = self.container_opener_event(key, true);
+            // ChestMenu and ShulkerBoxMenu start the opener in their constructors.
+            // For a guest, open_block_menu does that after the turn's handoff.
+            let first = self.lan_acting.is_none() && self.container_opener_event(key, true);
             if first {
                 self.post_block_game_event(
                     "minecraft:container_open",
@@ -13222,7 +13226,11 @@ impl<'a> Game<'a> {
                 pack.render.model_library.as_deref().ok(),
             )
         })?;
-        let world = Game::world_for_mods(res.facts().air, 0);
+        let world = if options.execution_role.is_logical_server() {
+            Game::authoritative_world_for_mods(res, 0)
+        } else {
+            Game::world_for_mods(res.facts().air, 0)
+        };
         let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
             settings.file.int("tutorialStep"),
         ));
@@ -13983,6 +13991,7 @@ pub(crate) fn run_with(
     options
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
+    mods::validate_startup_packages(&options.mods)?;
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;

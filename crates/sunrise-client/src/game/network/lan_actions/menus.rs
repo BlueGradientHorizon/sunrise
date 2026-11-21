@@ -28,38 +28,22 @@ impl Game<'_> {
         }
     }
 
-    /// Hand a container the guest opened over (ServerPlayer.openMenu);
-    /// false when it is not one a guest can open.
-    pub(in crate::game) fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
-        if pos.1 == crate::game::minecarts::CART_KEY_Y {
-            return self.lan_open_vehicle_container(conn, pos);
-        }
-        let opened = self.open_block_menu_with_opener(conn, pos, true);
-        if opened == MenuOpen::Cancelled
-            && self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .is_some_and(|guest| !guest.spectator())
-        {
-            // The click is spent, but no menu took ownership of the use's opener.
-            self.container_openers_changed(pos, false);
-        }
-        !matches!(opened, MenuOpen::Refused | MenuOpen::Stale)
-    }
-
-    pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
-        self.open_block_menu_with_opener(conn, pos, false)
-    }
-
-    /// A use handed over from `open_menu` already started its opener; a direct
-    /// `BlockEntityRef::open_menu` must start it after its checks succeed.
-    pub(super) fn open_block_menu_with_opener(
+    /// Finish the menu handoff after the guest's use. As in
+    /// `ChestBlock.useWithoutItem`, the block has already decided its use
+    /// result independently of what `ServerPlayer.openMenu` does.
+    pub(in crate::game) fn lan_open_container(
         &mut self,
         conn: u32,
         pos: (i32, i32, i32),
-        opener_started: bool,
     ) -> MenuOpen {
+        if pos.1 == crate::game::minecarts::CART_KEY_Y {
+            return self.lan_open_vehicle_container(conn, pos);
+        }
+        self.open_block_menu(conn, pos)
+    }
+
+    /// Install the block menu for a guest's use or a direct BlockEntityRef open.
+    pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let generation = self.world.block_entities.generation(&pos);
         let name = &self
             .res
@@ -96,13 +80,13 @@ impl Game<'_> {
             (menu, Slots::Block(pos))
         } else {
             let Some(BlockEntity::Chest(items)) = self.world.block_entities.get(&pos) else {
-                return MenuOpen::Refused;
+                return MenuOpen::NoProvider;
             };
             let menu = match items.len() {
                 27 => "minecraft:generic_9x3",
                 9 => "minecraft:generic_3x3",
                 5 => "minecraft:hopper",
-                _ => return MenuOpen::Refused,
+                _ => return MenuOpen::NoProvider,
             };
             (menu, Slots::Block(pos))
         };
@@ -123,12 +107,12 @@ impl Game<'_> {
                     None if self.mod_menu_at(k).is_some() => {
                         format!("block.{}", name.replace(':', "."))
                     }
-                    None => return MenuOpen::Refused,
+                    None => return MenuOpen::NoProvider,
                 };
                 sunrise_client::containers::display_name(custom(k).as_deref(), &key)
             }
             // Opened by a mod (`open_menu`), never here.
-            Slots::Native => return MenuOpen::Refused,
+            Slots::Native => return MenuOpen::NoProvider,
         };
         let Some(host) = self.lan.as_ref() else {
             return MenuOpen::Refused;
@@ -247,10 +231,6 @@ impl Game<'_> {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
         self.guest_close_all(conn);
-        // A hand-off from `open_menu` must not count one player twice. A direct
-        // handle open has no earlier `startOpen`; only it starts the block's lid.
-        let counts_openers =
-            !opener_started && matches!(slots, Slots::Block(_) | Slots::Double(_, _));
         // A mod menu type's block tells the client where it is, with what its
         // mod writes (`openMenu` with an extra-data writer); a stock menu
         // sends nothing more.
@@ -318,12 +298,9 @@ impl Game<'_> {
         {
             return MenuOpen::Refused;
         }
-        // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
-        // starts the lid once, sounding on its first opener. A spectator's
-        // `startOpen` does nothing, so its close must have nothing to decrement.
-        if counts_openers && !spectator && self.container_openers_changed(pos, true) {
-            self.container_edge_sound(pos, true);
-        }
+        // ChestMenu and ShulkerBoxMenu own startOpen, including a ChestMenu
+        // backed by PlayerEnderChestContainer with an active ender chest.
+        self.guest_container_opener(conn, pos, true);
         self.player_menu_opening(conn);
         MenuOpen::Opened
     }
@@ -332,21 +309,21 @@ impl Game<'_> {
     /// the vehicle's own `MenuProvider.createMenu` builds - three rows of a
     /// `ChestMenu` for a chest boat or a chest minecart, a `HopperMenu` for a
     /// hopper minecart - titled with the vehicle's name.
-    pub(super) fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
+    fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let entity_type = if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == pos.2) {
             cart.kind.id().to_owned()
         } else if let Some(boat) = self.boats.iter().find(|b| b.id as i32 == pos.2) {
             if !boat.chest {
-                return false;
+                return MenuOpen::NoProvider;
             }
             boat.entity_type()
         } else {
-            return false;
+            return MenuOpen::NoProvider;
         };
         // `createMenu` (ChestMenu.threeRows or a HopperMenu), and
         // `MenuProvider.getDisplayName`, the vehicle's name key.
         let Some((menu, _)) = sunrise_client::containers::vehicle_menu(&entity_type) else {
-            return false;
+            return MenuOpen::NoProvider;
         };
         let title = sunrise_protocol::text::translatable(
             &sunrise_client::containers::vehicle_menu_name(&entity_type),
@@ -354,7 +331,7 @@ impl Game<'_> {
         );
         let slots = Slots::Block(pos);
         let Some(host) = self.lan.as_ref() else {
-            return false;
+            return MenuOpen::Refused;
         };
         // The mods may stop the menu; the click is spent. A fake player is
         // stopped here too: the stand-in the open staged leaves the level
@@ -370,7 +347,7 @@ impl Game<'_> {
             host.hub.guest(conn).is_some_and(|g| g.spectator())
                 && self.boat_loot_pending(self.boats[i].id)
         });
-        if spectator_pending {
+        let denied = if spectator_pending {
             // ServerPlayer.openMenu: the refused spectator's action bar, red.
             let message = sunrise_client::text::Text::translate("container.spectatorCantOpen", &[])
                 .with_color(sunrise_client::text::RED);
@@ -381,8 +358,15 @@ impl Game<'_> {
                     overlay: true,
                 }),
             );
-        }
-        if spectator_pending || self.guest_may_open(conn, menu, None) != Some(true) {
+            Some(MenuOpen::Refused)
+        } else {
+            match self.guest_may_open(conn, menu, None) {
+                Some(true) => None,
+                Some(false) => Some(MenuOpen::Cancelled),
+                None => Some(MenuOpen::Refused),
+            }
+        };
+        if let Some(denied) = denied {
             let viewed = self.lan.as_ref().is_some_and(|host| {
                 host.hub
                     .guests
@@ -397,7 +381,7 @@ impl Game<'_> {
             if !viewed {
                 self.close_cart_container(pos);
             }
-            return true;
+            return denied;
         }
         if let Some(i) = boat
             && self.boat_loot_pending(self.boats[i].id)
@@ -406,7 +390,7 @@ impl Game<'_> {
             self.unpack_boat_loot(i, true);
             // Advancement rewards can remove the boat while generating its loot.
             if !self.boats.iter().any(|boat| boat.id == id) {
-                return false;
+                return MenuOpen::Stale;
             }
         }
         let Some(items) = self
@@ -415,12 +399,12 @@ impl Game<'_> {
             .and_then(|host| host.hub.guest(conn))
             .and_then(|g| slots.read(&self.world, g))
         else {
-            return false;
+            return MenuOpen::Refused;
         };
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
         let Some(gi) = self.guest_index(conn) else {
-            return false;
+            return MenuOpen::Refused;
         };
         if self
             .with_own_record(gi, |host, _| {
@@ -429,10 +413,10 @@ impl Game<'_> {
             })
             .is_none()
         {
-            return false;
+            return MenuOpen::Refused;
         }
         self.player_menu_opening(conn);
-        true
+        MenuOpen::Opened
     }
 
     /// The guest's open container is closing (`AbstractContainerMenu.removed`):
@@ -441,29 +425,58 @@ impl Game<'_> {
     /// `playSound` with no player), the guest included, once the last opener
     /// has left.
     pub(in crate::game) fn guest_container_closed(&mut self, conn: u32) {
-        let pos = self.lan.as_ref().and_then(|host| {
-            let guest = host.hub.guest(conn)?;
-            (!guest.spectator())
-                .then(|| guest.menu.as_ref().and_then(|m| m.pos))
-                .flatten()
-        });
-        if let Some(pos) = pos
-            && self.container_openers_changed(pos, false)
+        if let Some(pos) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .and_then(|guest| guest.menu.as_ref()?.pos)
         {
-            self.container_edge_sound(pos, false);
-            let post = |game: &mut Self| {
-                game.post_block_game_event(
-                    "minecraft:container_close",
-                    [pos.0, pos.1, pos.2],
-                    Some(sunrise_client::mobs::Who::Player),
-                    None,
-                );
+            self.guest_container_opener(conn, pos, false);
+        }
+    }
+
+    /// `ContainerOpenersCounter.incrementOpeners` / `ContainerOpenersCounter.decrementOpeners`:
+    /// the first opener and the last closer each trigger a sound and game event.
+    fn guest_container_opener(&mut self, conn: u32, pos: (i32, i32, i32), open: bool) {
+        let acting = self.lan_acting == Some(conn);
+        let spectator = if acting {
+            self.spectator()
+        } else {
+            let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+                return;
             };
-            if self.lan_acting == Some(conn) {
-                post(self);
-            } else {
-                self.as_guest(conn, post);
-            }
+            guest.spectator()
+        };
+        if spectator || !self.container_openers_changed(pos, open) {
+            return;
+        }
+        let state = self.world.block(pos.0, pos.1, pos.2);
+        let shulker = super::super::storage::is_shulker_box(&self.res.facts().get(state).name);
+        // ContainerOpenersCounter calls onOpen/onClose before the game event;
+        // ShulkerBoxBlockEntity emits its game event before playing its sound.
+        if !shulker {
+            self.container_edge_sound(pos, open);
+        }
+        let event = if open {
+            "minecraft:container_open"
+        } else {
+            "minecraft:container_close"
+        };
+        let post = |game: &mut Self| {
+            game.post_block_game_event(
+                event,
+                [pos.0, pos.1, pos.2],
+                Some(sunrise_client::mobs::Who::Player),
+                None,
+            );
+        };
+        if acting {
+            post(self);
+        } else {
+            self.as_guest(conn, post);
+        }
+        if shulker {
+            self.container_edge_sound(pos, open);
         }
     }
 

@@ -21,6 +21,7 @@ use std::path::{Component, Path, PathBuf};
 
 pub mod builds;
 mod collections;
+mod requirements;
 pub use collections::{COLLECTIONS, CollectionEntry, review_collections};
 
 /// The folder of entries in the registry repository.
@@ -1313,6 +1314,8 @@ fn owned_by(owners: &[String], author: &str) -> bool {
 pub struct Review {
     /// Changes the registry refuses whoever reviews them.
     pub errors: Vec<String>,
+    /// Findings that do not block the registry review.
+    pub warnings: Vec<String>,
     /// What reviewers should look at: new projects, new owners or keys, a
     /// change by someone who isn't an owner.
     pub notes: Vec<String>,

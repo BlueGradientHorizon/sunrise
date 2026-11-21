@@ -220,7 +220,7 @@ impl Game<'_> {
     ) -> Result<()> {
         use sunrise_client::net::BundleStep;
         use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
-        use sunrise_protocol::payload_negotiation::Phase;
+        use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
         let Some(remote) = self.remote.as_ref() else {
             return Ok(());
@@ -229,6 +229,15 @@ impl Game<'_> {
             return Ok(());
         }
         let endpoint = remote.session.payload_endpoint();
+        let negotiated = endpoint.transport().epoch().is_some_and(|epoch| {
+            epoch.phase == Phase::Play
+                && epoch
+                    .peer
+                    .engine_receives(Phase::Play, connection_groups::CHANNEL)
+        });
+        if self.route_connection_group_bundle(&packets, negotiated)? {
+            return Ok(());
+        }
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
