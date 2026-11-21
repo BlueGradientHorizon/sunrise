@@ -3195,6 +3195,8 @@ struct Game<'a> {
     reload_overlay: Option<packs::ReloadOverlay>,
     /// A server's resource packs (game/world/server_packs.rs).
     server_packs: server_packs::ServerPackState,
+    /// The window's inbox for server notices, kept across world disconnects.
+    client_reports: Arc<sunrise_client::chunk_io::Reports>,
     /// The link a chat click asks to open (`ConfirmLinkScreen`).
     link_prompt: Option<String>,
     /// A command the player didn't type, waiting for their answer
@@ -13134,6 +13136,7 @@ impl<'a> Game<'a> {
             pack_reload: None,
             reload_overlay: None,
             server_packs: Default::default(),
+            client_reports: Arc::default(),
             link_prompt: None,
             command_prompt: None,
             code_of_conduct: None,

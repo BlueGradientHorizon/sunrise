@@ -21,11 +21,11 @@ pub struct Pending {
     pub scheduled_task_failures: Vec<&'static str>,
 }
 
-/// Shared by an integrated server (including region workers) and its owning window.
+/// The receiver's inbox, shared with the integrated server and its region workers.
 #[derive(Default)]
 pub struct Reports(Mutex<Pending>);
 
-/// Reports in a standalone process: dedicated-server I/O or a remote client's warning packet.
+/// Dedicated-server I/O reports; a client window has its own inbox.
 pub static PROCESS_REPORTS: LazyLock<Arc<Reports>> = LazyLock::new(Arc::default);
 
 impl Pending {

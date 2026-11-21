@@ -10,7 +10,6 @@ use std::{
 };
 use sunrise_client::{
     Result,
-    chunk_io::{PROCESS_REPORTS, Reports},
     confirm_screen::Confirm,
     hud::{HudAtlas, HudBatch, rgba},
     multiplayer, packs,
@@ -505,17 +504,11 @@ impl Game<'_> {
         layout.declare_no();
         layout.draw(batch, atlas, self.cursor, [&yes, &no]);
     }
-    pub(super) fn client_reports(&self) -> &Reports {
-        self.integrated.as_ref().map_or(
-            PROCESS_REPORTS.as_ref(),
-            super::integrated::Integrated::reports,
-        )
-    }
 
     /// Admit new server reports in the receiving window. `SystemToast.addOrUpdate`
     /// resets an existing chunk toast instead of admitting a second one.
     fn add_server_report_toasts(&mut self) {
-        let pending = self.client_reports().take();
+        let pending = self.client_reports.take();
         let toasts = [
             pending
                 .low_disk_space
@@ -617,6 +610,62 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn closing_save_reports_reach_the_title_in_the_owning_window() {
+        use crate::game::{
+            integrated::{Integrated, Serving},
+            native_entity_refs::tests::with_client_game,
+        };
+        use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                use mod_api::text::TextContent::Translatable;
+
+                if let Translatable { key, .. } = &event.title.content
+                    && key == "chunk.toast.saveFailure"
+                {
+                    assert_eq!(event.kind, ToastKind::System);
+                    *event.description = Some(mod_api::Text::literal("Reported on title"));
+                }
+                Flow::Continue
+            }
+        }
+
+        let mods = vec![ModEntry::new("chunk_report_probe", Box::new(Listener))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_client_game(|window| {
+                let serving = Serving::fixture_with_reports(0, window.client_reports.clone());
+                window.integrated = Some(Integrated::fixture_for(&serving));
+                window.begin_closing_save(false).unwrap();
+                assert!(window.pending_save.is_some());
+                let dir = tempfile::tempdir().unwrap();
+                serving
+                    .reports()
+                    .report_save_failure(dir.path(), 10, -7, &"region write failed");
+                drop(serving);
+
+                assert!(!window.poll_closing_save().unwrap());
+                assert!(window.integrated.is_none());
+                assert!(window.title.is_some());
+                assert!(window.server_packs.chunk_io[2].is_none());
+                let mut batch = HudBatch::scratch([640, 480]);
+                window.draw_pack_toasts(&mut batch, true);
+                let toast = window.server_packs.chunk_io[2].as_ref().unwrap();
+                assert_eq!(
+                    toast.title.translation_key(),
+                    Some("chunk.toast.saveFailure")
+                );
+                assert_eq!(toast.title.component()["with"][0]["text"], "[10, -7]");
+                assert_eq!(toast.message.as_ref().unwrap().plain(), "Reported on title");
+                assert!(toast.slot.is_some());
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn scheduled_task_error_toasts_are_admitted_by_the_owning_client() {
         use crate::game::{
             integrated::{Integrated, Serving},
@@ -667,36 +716,36 @@ mod tests {
             ModEntry::new(CANCELLED, Box::new(NoHooks)),
         ];
         mod_platform::testing::with_mods(mods.into(), || {
-            let serving = Serving::fixture(0);
-            let owner = Integrated::fixture_for(&serving);
-            with_game(|server| {
-                server.serving = Some(serving);
-                server.native_lifecycle.world_open_ready().unwrap();
-                for id in [ACCEPTED, CANCELLED] {
-                    let _owner = mod_api::__private::enter(id, "schedule fixture");
-                    let host: &mut dyn ServerHost = &mut *server;
-                    host.schedule_task(0, Box::new(|_| panic!("scheduled callback panicked")))
-                        .unwrap();
-                }
-                server.native_lifecycle_server_tick_start(true);
-                server.native_lifecycle_server_tick_end(false);
-            });
-            assert!(
-                observed.lock().unwrap().is_empty(),
-                "not admitted on the server"
-            );
             with_client_game(|window| {
-                let other = Serving::fixture(0);
-                window.integrated = Some(Integrated::fixture_for(&other));
-                let mut batch = HudBatch::scratch([640, 480]);
-                window.draw_pack_toasts(&mut batch, true);
-                assert!(window.server_packs.server_errors.is_empty());
+                let serving = Serving::fixture_with_reports(0, window.client_reports.clone());
+                window.integrated = Some(Integrated::fixture_for(&serving));
+                with_game(|server| {
+                    server.serving = Some(serving);
+                    server.native_lifecycle.world_open_ready().unwrap();
+                    for id in [ACCEPTED, CANCELLED] {
+                        let _owner = mod_api::__private::enter(id, "schedule fixture");
+                        let host: &mut dyn ServerHost = &mut *server;
+                        host.schedule_task(0, Box::new(|_| panic!("scheduled callback panicked")))
+                            .unwrap();
+                    }
+                    server.native_lifecycle_server_tick_start(true);
+                    server.native_lifecycle_server_tick_end(false);
+                });
                 assert!(
                     observed.lock().unwrap().is_empty(),
-                    "not sent to another window"
+                    "not admitted on the server"
                 );
 
-                window.integrated = Some(owner);
+                let mut batch = HudBatch::scratch([640, 480]);
+                with_client_game(|other| {
+                    other.draw_pack_toasts(&mut batch, true);
+                    assert!(other.server_packs.server_errors.is_empty());
+                    assert!(
+                        observed.lock().unwrap().is_empty(),
+                        "not sent to another window"
+                    );
+                });
+
                 window.draw_pack_toasts(&mut batch, true);
                 let [Some(toast)] = window.server_packs.server_errors.as_slice() else {
                     panic!("only the accepted notice should reach the queue");

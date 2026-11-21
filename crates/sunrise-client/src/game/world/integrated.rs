@@ -88,7 +88,7 @@ struct Flags {
     stop: AtomicBool,
     finished: AtomicBool,
     failure: Mutex<Option<String>>,
-    /// Reports from this server and its region workers for the owning window.
+    /// The owning window's report inbox, shared with this server and its region workers.
     reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
@@ -162,11 +162,6 @@ pub(super) struct Integrated {
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
 }
 impl Integrated {
-    /// Reports this window receives from its own integrated server.
-    pub(super) fn reports(&self) -> &Reports {
-        &self.flags.reports
-    }
-
     /// The window's handle on a server fixture, with no server thread behind it.
     #[cfg(test)]
     pub(super) fn fixture_for(serving: &Serving) -> Self {
@@ -365,7 +360,15 @@ impl Serving {
     /// A server thread's handle with no thread behind it, published on `port` (0: not).
     #[cfg(test)]
     pub(super) fn fixture(port: u16) -> Self {
-        let flags = Arc::new(Flags::default());
+        Self::fixture_with_reports(port, Arc::default())
+    }
+
+    #[cfg(test)]
+    pub(super) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
+        let flags = Arc::new(Flags {
+            reports,
+            ..Flags::default()
+        });
         flags.published.store(port, Ordering::Relaxed);
         let (_sender, tasks) = channel();
         Self {
@@ -544,7 +547,10 @@ impl Game<'_> {
         self.world_biomes_base = self.world_biomes.clone();
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
-        let flags = Arc::new(Flags::default());
+        let flags = Arc::new(Flags {
+            reports: self.client_reports.clone(),
+            ..Flags::default()
+        });
         flags
             .render_distance
             .store(settings.render_distance, Ordering::Relaxed);

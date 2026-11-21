@@ -23,7 +23,9 @@ The hook runs for new additions, not in-place `addOrUpdate` changes to an existi
 recipe or system toast. A cancelled tutorial hint is not retried every frame;
 a later, different hint is a new candidate. Title-screen backup/access failures,
 narrator notices, pack download/failure and chunk I/O notices all use the same
-admission point. A failed [delayed task](../world/delayed-tasks.md) on an integrated server
+admission point. A chunk I/O report produced while an integrated world is closing can
+still be offered on the title screen of that same window.
+A failed [delayed task](../world/delayed-tasks.md) on an integrated server
 also offers a system toast there, only in the owning client's window. Editing or cancelling
 it does not change the server's error log. Candidates produced during the initial resource
 loading screen wait until the game can invoke the hook with a `ClientHost`. The pause screen's
