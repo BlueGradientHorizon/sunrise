@@ -93,8 +93,8 @@ pub fn snbt_whitespace(value: u32) -> bool {
         | 0x2008..=0x200a | 0x2028..=0x2029 | 0x205f | 0x3000)
 }
 
-// Sunrise's resource bound protects downstream consumers on the game stack.
-// Vanilla's SNBT grammar has no explicit depth limit.
+// Vanilla's SNBT grammar has no explicit depth limit, but its NBT reader uses
+// NbtAccounter.MAX_STACK_DEPTH. Apply that bound here to protect tag consumers.
 const MAX_PARSE_DEPTH: usize = 512;
 
 struct Failure {
