@@ -3445,6 +3445,10 @@ struct Game<'a> {
     /// Scratch for the copies a frame draws through the terrain materials.
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
+    /// Reusable visible section summaries lent to world render hooks for one frame.
+    visible_renderable_sections: Vec<mod_api::RenderableSection>,
+    /// Scratch buffer for collecting visible sections from the renderer.
+    visible_sections_scratch: Vec<sunrise_client::gfx::VisibleSection>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
@@ -10929,7 +10933,7 @@ impl Game<'_> {
             sunrise_client::camera::depth_far(terrain_distance, self.settings.cloud_range);
         let mods_read_camera = !mod_api::__private::mods().is_empty();
         self.screen_blur_requested.set(false);
-        self.native_camera_frame = (mods_read_camera && !title).then(|| {
+        let frame_camera = (!title).then(|| {
             let partial = camera_alpha as f32;
             mod_api::Camera {
                 position: camera.to_array(),
@@ -10953,6 +10957,11 @@ impl Game<'_> {
                 dimension: self.dim.id().to_string(),
             }
         });
+        self.native_camera_frame = if mods_read_camera {
+            frame_camera.clone()
+        } else {
+            None
+        };
         let _projection_frame = (!title).then(|| self.activate_projection_frame());
         pr.lap("pr_projection");
         let vanilla_skin = self.apply_player_skin_override(title);
@@ -11155,15 +11164,42 @@ impl Game<'_> {
             self.client_particle_geometry(camera, alpha, fov_degrees, &mut entities);
             self.polytone_gpu_particles(camera, alpha);
         }
+        let oit_on = !title
+            && self
+                .renderer
+                .as_ref()
+                .is_some_and(|r| r.oit_active_for(self.settings.improved_transparency));
+        let mut sections = std::mem::take(&mut self.visible_renderable_sections);
+        sections.clear();
+        if !title
+            && let (Some(renderer), Some(frustum)) = (self.renderer.as_ref(), self.view_frustum)
+        {
+            renderer.collect_visible_sections(
+                camera,
+                terrain_distance,
+                &frustum,
+                cave_culling,
+                &mut self.visible_sections_scratch,
+            );
+            sections.extend(
+                self.visible_sections_scratch
+                    .iter()
+                    .map(|s| mod_api::RenderableSection::new(s.origin, s.bounds, s.empty)),
+            );
+        }
         let mut world_geometry = self.world_geometry.take().expect("view storage");
         self.fill_world_geometry(
             title,
+            frame_camera.as_ref(),
             camera.to_array(),
             view,
             alpha,
+            oit_on,
+            &sections,
             &mut world_geometry,
             &mut entities,
         );
+        self.visible_renderable_sections = sections;
         if let Some((skin, slim)) = vanilla_skin
             && let Some(avatar) = self.player_model.as_mut()
         {
@@ -13278,6 +13314,8 @@ impl<'a> Game<'a> {
             prepared_model_draws: Default::default(),
             model_copy_order: Vec::new(),
             world_geometry: Some(Default::default()),
+            visible_renderable_sections: Vec::new(),
+            visible_sections_scratch: Vec::new(),
             debug_renderers: Vec::new(),
             debug_renderers_version: None,
             hud_layer_next: None,

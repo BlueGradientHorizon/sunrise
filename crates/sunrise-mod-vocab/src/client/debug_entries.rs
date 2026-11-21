@@ -48,8 +48,10 @@ impl DebugEntry {
     }
 }
 
-type DebugRendererDraw =
-    dyn Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext) + Send + Sync + 'static;
+type DebugRendererDraw = dyn Fn(&dyn ClientHost, &WorldRenderView<'_>, &mut dyn WorldDrawContext)
+    + Send
+    + Sync
+    + 'static;
 
 // no wire: the renderer owns a process-local draw callback.
 /// A world-space debug renderer owned by the client until its renderer list next refreshes.
@@ -66,7 +68,7 @@ impl DebugRenderer {
     /// renderer-specific state in the callback.
     pub fn new(
         id: String,
-        draw: impl Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext)
+        draw: impl Fn(&dyn ClientHost, &WorldRenderView<'_>, &mut dyn WorldDrawContext)
         + Send
         + Sync
         + 'static,
@@ -86,7 +88,7 @@ impl DebugRenderer {
     pub fn draw(
         &self,
         host: &dyn ClientHost,
-        view: &WorldRenderView,
+        view: &WorldRenderView<'_>,
         draw: &mut dyn WorldDrawContext,
     ) {
         (self.draw)(host, view, draw);

@@ -62,9 +62,12 @@ impl Game<'_> {
     pub(super) fn fill_world_geometry(
         &mut self,
         title: bool,
+        frame_camera: Option<&mod_api::Camera>,
         camera: [f64; 3],
         view: Mat4,
         alpha: f64,
+        oit_on: bool,
+        sections: &[mod_api::RenderableSection],
         draw: &mut WorldGeometry,
         entities: &mut Vec<Vertex>,
     ) {
@@ -77,14 +80,27 @@ impl Game<'_> {
         if title {
             return;
         }
+        let Some(frame_camera) = frame_camera else {
+            return;
+        };
         draw.set_model_cut(entities.len() as u32);
         // Seconds of game time, wrapping every hour (72,000 ticks) so f32 keeps sub-tick steps.
         draw.set_time(((self.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
-        let view = mod_api::WorldRenderView::new(camera, alpha as f32, self.world.game_time);
-        // RenderLevelStageEvent's stages in frame order, so each one's output follows the
-        // last's; custom geometry and the debug renderers draw with the last, AfterLevel.
+        let view = mod_api::WorldRenderView::new(
+            frame_camera,
+            alpha as f32,
+            self.world.game_time,
+            oit_on,
+            sections,
+        );
+        // RenderLevelStageEvent's stages in frame order, with PrepareRenderBuffersEvent between
+        // AfterSky and the pass-bearing stages; custom geometry and the debug renderers draw with
+        // the last, AfterLevel.
         let (last, earlier) = RenderLevelStage::ALL.split_last().expect("stages");
         for &stage in earlier {
+            if stage == RenderLevelStage::AfterOpaqueBlocks {
+                self.native_prepare_render_buffers(&view);
+            }
             draw.begin_stage(stage);
             self.native_render_level_stage(stage, &view, draw);
         }
@@ -1394,6 +1410,23 @@ mod tests {
     }
 
     static STAGES_ARMED: AtomicBool = AtomicBool::new(false);
+    static STAGE_ORDER: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+    fn test_camera(position: [f64; 3], view: Mat4) -> mod_api::Camera {
+        mod_api::Camera {
+            position,
+            eye_height: 1.62,
+            partial_tick: 0.0,
+            yaw: 0.0,
+            pitch: 0.0,
+            fov_degrees: 70.0,
+            near: 0.05,
+            far: 128.0,
+            view: view.to_cols_array(),
+            projection: Mat4::IDENTITY.to_cols_array(),
+            dimension: "minecraft:overworld".into(),
+        }
+    }
 
     /// A line one block long at `x`, so each listener's output can be told apart.
     fn marker(x: f64) -> mod_api::WorldLine {
@@ -1410,12 +1443,25 @@ mod tests {
     struct Staged;
     #[mod_api::__subscriptions]
     impl Hooks for Staged {
+        fn prepare_render_buffers(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+        ) {
+            if STAGES_ARMED.load(Ordering::Relaxed) {
+                assert!(event.view.improved_transparency);
+                assert_eq!(event.view.sections.len(), 1);
+                assert_eq!(event.view.sections[0].origin, [0, 64, 0]);
+                STAGE_ORDER.lock().unwrap().push("prepare");
+            }
+        }
         fn submit_custom_geometry(
             &self,
             _: &dyn ClientHost,
             event: &mut SubmitCustomGeometryEvent<'_>,
         ) {
             if STAGES_ARMED.load(Ordering::Relaxed) {
+                STAGE_ORDER.lock().unwrap().push("submit");
                 event.draw.lines(&[marker(30.0)]).unwrap();
             }
         }
@@ -1424,6 +1470,17 @@ mod tests {
             _: &dyn ClientHost,
             event: &mut mod_api::RenderLevelStageEvent<'_>,
         ) {
+            if STAGES_ARMED.load(Ordering::Relaxed) {
+                let label = match event.stage {
+                    RenderLevelStage::AfterSky => "after_sky",
+                    RenderLevelStage::AfterOpaqueBlocks => "after_opaque_blocks",
+                    RenderLevelStage::AfterTranslucentBlocks => "after_translucent_blocks",
+                    RenderLevelStage::AfterWeather => "after_weather",
+                    RenderLevelStage::AfterLevel => "after_level",
+                    _ => "other",
+                };
+                STAGE_ORDER.lock().unwrap().push(label);
+            }
             let x = match event.stage {
                 RenderLevelStage::AfterSky => 10.0,
                 RenderLevelStage::AfterWeather => 20.0,
@@ -1443,17 +1500,40 @@ mod tests {
             mod_platform::__private::install(
                 vec![ModEntry::new("staged", Box::new(Staged))].into(),
             );
+            STAGE_ORDER.lock().unwrap().clear();
             STAGES_ARMED.store(true, Ordering::Relaxed);
             let mut draw = WorldGeometry::default();
+            let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
+            let sections = [mod_api::RenderableSection::new(
+                [0, 64, 0],
+                [[0.0, 64.0, 0.0], [16.0, 80.0, 16.0]],
+                false,
+            )];
             game.fill_world_geometry(
                 false,
+                Some(&frame_camera),
                 [0.0; 3],
                 Mat4::IDENTITY,
                 0.0,
+                true,
+                &sections,
                 &mut draw,
                 &mut Vec::new(),
             );
             STAGES_ARMED.store(false, Ordering::Relaxed);
+            assert_eq!(
+                *STAGE_ORDER.lock().unwrap(),
+                [
+                    "after_sky",
+                    "prepare",
+                    "after_opaque_blocks",
+                    "after_translucent_blocks",
+                    "after_weather",
+                    "submit",
+                    "after_level",
+                ],
+                "prepare_render_buffers fires after AfterSky and before pass-bearing stages"
+            );
             let batch = draw.batch();
             let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
             assert_eq!(
@@ -1478,9 +1558,12 @@ mod tests {
             // A title view draws no world: nothing, and every stage empty.
             game.fill_world_geometry(
                 true,
+                None,
                 [0.0; 3],
                 Mat4::IDENTITY,
                 0.0,
+                false,
+                &[],
                 &mut draw,
                 &mut Vec::new(),
             );
@@ -1505,11 +1588,15 @@ mod tests {
             FILL_ARMED.store(true, Ordering::Relaxed);
             let mut draw = WorldGeometry::default();
             let mut entities = vec![<Vertex as bytemuck::Zeroable>::zeroed(); 4];
+            let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
             game.fill_world_geometry(
                 false,
+                Some(&frame_camera),
                 [0.0; 3],
                 Mat4::IDENTITY,
                 0.0,
+                false,
+                &[],
                 &mut draw,
                 &mut entities,
             );
@@ -1562,11 +1649,15 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             mod_platform::__private::install(vec![ModEntry::new("gated", Box::new(Gated))].into());
             let fill = |game: &mut Game<'_>| {
+                let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
                 game.fill_world_geometry(
                     false,
+                    Some(&frame_camera),
                     [0.0; 3],
                     Mat4::IDENTITY,
                     0.0,
+                    false,
+                    &[],
                     &mut WorldGeometry::default(),
                     &mut Vec::new(),
                 );

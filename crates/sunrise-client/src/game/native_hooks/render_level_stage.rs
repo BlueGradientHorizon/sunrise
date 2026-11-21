@@ -7,7 +7,7 @@ impl Game<'_> {
     pub(in crate::game) fn native_render_level_stage(
         &self,
         stage: mod_api::RenderLevelStage,
-        view: &mod_api::WorldRenderView,
+        view: &mod_api::WorldRenderView<'_>,
         draw: &mut sunrise_client::world_geometry::WorldGeometry,
     ) {
         self.fire_render_level_stage(stage, view, draw);

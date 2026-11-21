@@ -13,19 +13,44 @@ ids = [
   "type:GroupError.CapacityExceeded",
   "type:text::Text",
   "handle:text::Text::validate_payloads",
+  "type:RenderableSection",
+  "handle:RenderableSection::new",
+  "type:WorldRenderView",
+  "type:WorldRenderView.camera",
+  "type:WorldRenderView.improved_transparency",
+  "type:WorldRenderView.sections",
+  "handle:WorldRenderView::new",
+  "handle:WorldRenderView::camera_position",
+  "handle:WorldRenderView::model_view_matrix",
+  "handle:WorldRenderView::projection_matrix",
+  "handle:DebugRenderer::new",
+  "handle:DebugRenderer::draw",
+  "hook:prepare_render_buffers",
+  "method:Hooks::prepare_render_buffers",
+  "type:PrepareRenderBuffersEvent",
+  "hook:submit_custom_geometry",
+  "hook:submit_custom_geometry.view",
+  "method:Hooks::submit_custom_geometry",
+  "type:SubmitCustomGeometryEvent.view",
+  "hook:render_level_stage",
+  "hook:render_level_stage.view",
+  "method:Hooks::render_level_stage",
+  "type:RenderLevelStageEvent.view",
 ]
 why = """
-Vanilla's `SubmitNodeStorage` / `SubmitNodeCollection` and NeoForge's `SubmitCustomGeometryEvent` and
-`RenderLevelStageEvent` grow their per-frame collections dynamically with no fixed 4,096-line/quad,
-16,384-instance, or 65,536-group-copy caps, no `usage()` budget query, no component-depth cap on
-in-memory `submitNameTag` labels (vanilla enforces `NbtAccounter.MAX_STACK_DEPTH` = 512 only on NBT
-payloads), and no atomic whole-batch rollback on model instance submission. Remove `WorldDrawUsage`,
-`WorldDrawContext::usage`, `CapacityExceeded` across `DrawError`/`PipelineDrawError`/`InstanceError`/
-`GroupError`, and `DrawError::TextTooDeep`. `WorldGeometry` now grows dynamically (with GPU instance
-overflow falling back to CPU baking), `draw_model_instances` culls first and skips individual invalid
-visible copies without rolling back valid ones, `Text::validate_payloads` validates opaque NBT and
-profile payloads without a component-tree depth cap for in-memory rendering, and `Text` implements
-iterative `Drop` so deeply nested component trees drop without stack overflow.
+Vanilla's `SubmitNodeStorage` / `SubmitNodeCollection` and NeoForge's `SubmitCustomGeometryEvent`,
+`PrepareRenderBuffersEvent`, `RenderLevelStageEvent`, and `IRenderableSection` lend the frame's
+camera/render state and visible chunk sections rather than copying a minimal 3-field summary, fire
+`PrepareRenderBuffersEvent` after `AfterSky` and before pass-bearing stages execute, and grow their
+per-frame collections dynamically with no fixed 4,096-line/quad, 16,384-instance, or 65,536-group-copy
+caps, no `usage()` budget query, no component-depth cap on in-memory `submitNameTag` labels (vanilla
+enforces `NbtAccounter.MAX_STACK_DEPTH` = 512 only on NBT payloads), and no atomic whole-batch rollback
+on model instance submission. Remove `WorldDrawUsage`, `WorldDrawContext::usage`, `CapacityExceeded`
+across `DrawError`/`PipelineDrawError`/`InstanceError`/`GroupError`, and `DrawError::TextTooDeep`.
+Replace the `Copy + Wire` `WorldRenderView` summary with borrowed `WorldRenderView<'a>` (lending
+`&'a Camera`, `partial_tick`, `game_time`, `improved_transparency`, and `&'a [RenderableSection]`),
+add `RenderableSection` and `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`), and bump
+`submit_custom_geometry` to version 2.
 """
 migrate = """
 Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and match arms for
@@ -34,5 +59,9 @@ Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and
 only stale/unknown model handles return `Err(InstanceError::Model(_))`; invalid visible copies are
 skipped individually without rolling back valid copies. Because `Text` now implements `Drop`, replace
 any by-value field moves out of `Text` (such as `text.style` or `text.content`) with `.take()`,
-`std::mem::take`, `.clone()`, or borrowing (`&text.style.hover`).
+`std::mem::take`, `.clone()`, or borrowing (`&text.style.hover`). Replace `event.view.camera` reads
+expecting `[f64; 3]` with `event.view.camera_position()` or `event.view.camera.position`, and update
+any explicit `WorldRenderView` annotations or `DebugRenderer` callbacks to `&WorldRenderView<'_>`.
+Use `Hooks::prepare_render_buffers` to prepare or update retained GPU buffers before pass-bearing
+render stages execute.
 """

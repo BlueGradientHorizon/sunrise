@@ -44,7 +44,7 @@ pub fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
     if event.stage != RenderLevelStage::AfterLevel || event.view.game_time != SCENE_TIME {
         return;
     }
-    let camera = event.view.camera;
+    let camera = event.view.camera_position();
     for (n, (at, text, options)) in scene().into_iter().enumerate() {
         let code = result_code(event.draw.name_tag(at, &text, options));
         // Each call's result as a marker line one

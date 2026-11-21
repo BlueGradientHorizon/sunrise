@@ -166,27 +166,76 @@ impl RenderLevelStage {
     ];
 }
 
-/// Immutable, minimal extracted state for custom world geometry submission.
-/// This initial view does not expose NeoForge's full level state or visible sections.
+// no wire: in-process frame section view lent during world rendering.
+/// One visible chunk section in the current world view (NeoForge 26.3's `IRenderableSection`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct WorldRenderView {
-    /// Camera origin in world-space blocks. Subtraction precedes f32 conversion.
-    pub camera: [f64; 3],
-    /// The frame's interpolation fraction.
+pub struct RenderableSection {
+    /// World-space block coordinates of the section's minimum corner.
+    pub origin: [i32; 3],
+    /// World-space axis-aligned bounding box `[min, max]` of the section in blocks.
+    pub bounds: [[f64; 3]; 2],
+    /// Whether the compiled section currently holds no rendered geometry.
+    pub empty: bool,
+}
+impl RenderableSection {
+    /// Describe one visible chunk section in the current frame.
+    pub const fn new(origin: [i32; 3], bounds: [[f64; 3]; 2], empty: bool) -> Self {
+        Self {
+            origin,
+            bounds,
+            empty,
+        }
+    }
+}
+
+// no wire: borrows frame camera state and visible sections for the duration of a render callback.
+/// Read-only frame state and visible chunk sections lent for one world view.
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub struct WorldRenderView<'a> {
+    /// Frame camera state (position, eye height, rotation, projection and dimension).
+    pub camera: &'a crate::Camera,
+    /// World partial tick (`alpha`), distinct from `camera.partial_tick` while paused or frozen.
     pub partial_tick: f32,
     /// Level game time in ticks.
     pub game_time: i64,
+    /// Whether vanilla 26.3 order-independent transparency (improved transparency) is active this frame.
+    pub improved_transparency: bool,
+    /// Visible chunk sections in the current view (NeoForge 26.3 `IRenderableSection` list).
+    pub sections: &'a [RenderableSection],
 }
-impl WorldRenderView {
-    /// Describe the extracted view.
-    pub fn new(camera: [f64; 3], partial_tick: f32, game_time: i64) -> Self {
+impl<'a> WorldRenderView<'a> {
+    /// Borrow the frame camera and visible sections for one world view.
+    pub fn new(
+        camera: &'a crate::Camera,
+        partial_tick: f32,
+        game_time: i64,
+        improved_transparency: bool,
+        sections: &'a [RenderableSection],
+    ) -> Self {
         Self {
             camera,
             partial_tick,
             game_time,
+            improved_transparency,
+            sections,
         }
+    }
+
+    /// Camera position in world-space blocks.
+    pub fn camera_position(&self) -> [f64; 3] {
+        self.camera.position
+    }
+
+    /// Camera-relative model-view matrix in column-major order.
+    pub fn model_view_matrix(&self) -> [f32; 16] {
+        self.camera.view
+    }
+
+    /// Reversed-Z projection matrix in column-major order.
+    pub fn projection_matrix(&self) -> [f32; 16] {
+        self.camera.projection
     }
 }
 
@@ -195,15 +244,31 @@ mod tests {
     use crate::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     static CALLS: AtomicUsize = AtomicUsize::new(0);
+    static PREPARE_CALLS: AtomicUsize = AtomicUsize::new(0);
     struct Listener;
     #[mod_api::__subscriptions]
     impl Hooks for Listener {
+        fn prepare_render_buffers(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut PrepareRenderBuffersEvent<'_>,
+        ) {
+            assert_eq!(event.view.game_time, 42);
+            assert_eq!(event.view.partial_tick, 0.5);
+            assert!(event.view.improved_transparency);
+            assert_eq!(event.view.camera_position(), [1.0, 2.0, 3.0]);
+            assert_eq!(event.view.sections.len(), 1);
+            assert_eq!(event.view.sections[0].origin, [16, 64, -32]);
+            PREPARE_CALLS.fetch_add(1, Ordering::Relaxed);
+        }
         fn submit_custom_geometry(
             &self,
             _: &dyn ClientHost,
             event: &mut SubmitCustomGeometryEvent<'_>,
         ) {
             assert_eq!(event.view.game_time, 42);
+            assert_eq!(event.view.camera_position(), [1.0, 2.0, 3.0]);
+            assert_eq!(event.view.sections.len(), 1);
             CALLS.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -224,11 +289,33 @@ mod tests {
             ]
             .into(),
         );
-        let view = WorldRenderView::new([0.0; 3], 0.5, 42);
+        let camera = Camera {
+            position: [1.0, 2.0, 3.0],
+            eye_height: 1.62,
+            partial_tick: 0.25,
+            yaw: 15.0,
+            pitch: -10.0,
+            fov_degrees: 70.0,
+            near: 0.05,
+            far: 128.0,
+            view: [0.0; 16],
+            projection: [0.0; 16],
+            dimension: "minecraft:overworld".into(),
+        };
+        let sections = [RenderableSection::new(
+            [16, 64, -32],
+            [[16.0, 64.0, -32.0], [32.0, 80.0, -16.0]],
+            false,
+        )];
+        let view = WorldRenderView::new(&camera, 0.5, 42, true, &sections);
+        dispatch_prepare_render_buffers(&Empty, &view);
         dispatch_submit_custom_geometry(&Empty, &view, &mut Empty);
+        assert_eq!(PREPARE_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(CALLS.load(Ordering::Relaxed), 1);
         assert!(set_mod_enabled("geometry", false));
+        dispatch_prepare_render_buffers(&Empty, &view);
         dispatch_submit_custom_geometry(&Empty, &view, &mut Empty);
+        assert_eq!(PREPARE_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(CALLS.load(Ordering::Relaxed), 1);
     }
 }

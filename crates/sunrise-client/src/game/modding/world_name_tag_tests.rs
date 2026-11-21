@@ -526,7 +526,30 @@ fn scene_frame(game: &mut super::Game<'_>) -> ([Vec<Vertex>; 2], Vec<u32>) {
     game.see_through_vertices.clear();
     let mut draw = WorldGeometry::default();
     let mut entities = Vec::new();
-    game.fill_world_geometry(false, CAMERA, Mat4::IDENTITY, 0.0, &mut draw, &mut entities);
+    let frame_camera = mod_api::Camera {
+        position: CAMERA,
+        eye_height: 1.62,
+        partial_tick: 0.0,
+        yaw: 0.0,
+        pitch: 0.0,
+        fov_degrees: 70.0,
+        near: 0.05,
+        far: 128.0,
+        view: Mat4::IDENTITY.to_cols_array(),
+        projection: Mat4::IDENTITY.to_cols_array(),
+        dimension: "minecraft:overworld".into(),
+    };
+    game.fill_world_geometry(
+        false,
+        Some(&frame_camera),
+        CAMERA,
+        Mat4::IDENTITY,
+        0.0,
+        false,
+        &[],
+        &mut draw,
+        &mut entities,
+    );
     let see_through = std::mem::take(&mut game.see_through_vertices);
     // Each call's result, from the scene's marker lines: `code` across, the call's index up.
     let mut results: Vec<(f32, u32)> = draw

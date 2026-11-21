@@ -8,15 +8,17 @@ pub trait DrawContexts {
 pub trait Hooks {
     /// Submit unlit geometry after particle submission, before opaque rendering
     /// (NeoForge 26.3 `SubmitCustomGeometryEvent`, vanilla `LevelRenderer.submitFeatures`).
-    /// Client-only, noncancellable. `view` holds only camera, partial tick and game time,
-    /// not full extracted level state or visible sections. Submit from extracted state.
+    /// Client-only, noncancellable. `view` lends the frame's `Camera`, world partial tick, game
+    /// time, improved-transparency state and visible `RenderableSection` slice. Submit from
+    /// extracted state.
     #[notes = r#"## Custom world geometry
 
 `Hooks::submit_custom_geometry` runs on the client after particles, before rendering. Its
-`WorldRenderView` holds camera, partial tick and game time; `WorldDrawContext::lines` and `quads`
-accept unlit world-space ARGB geometry with depth testing or through walls. Batches fail atomically
-for invalid inputs; backing storage grows dynamically and output clears every view. Submit
-extracted state, without world writes or resource loading.
+`WorldRenderView` lends the frame's `Camera`, world partial tick, game time, whether vanilla's
+improved transparency (OIT) is active, and the visible `RenderableSection` slice;
+`WorldDrawContext::lines` and `quads` accept unlit world-space ARGB geometry with depth testing or
+through walls. Batches fail atomically for invalid inputs; backing storage grows dynamically and
+output clears every view. Submit extracted state, without world writes or resource loading.
 
 `WorldDrawContext::draw_model_instances` draws one batch of a resolved `ModelRef`. Each
 `ModelInstance` carries an f64 world origin, a row-major 3×4 local transform, an `0xAARRGGBB`
@@ -53,7 +55,8 @@ sends nothing and reads nothing the client does not already hold."#]
         side = "client",
         contract = "listen",
         neoforge = "SubmitCustomGeometryEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
-    fn submit_custom_geometry(view: &mod_api::WorldRenderView, draw: &mut dyn WorldDrawContext);
+    fn submit_custom_geometry(view: &mod_api::WorldRenderView<'_>, draw: &mut dyn WorldDrawContext);
 }

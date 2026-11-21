@@ -3,7 +3,7 @@
 //! camera-relative world (section origins, entity offsets) is built once and
 //! only each view's rotation and lens differ.
 
-use super::{Frame, Frustum, JoinedFrusta, Renderer, frustum, taa_frustum};
+use super::{Cull, Frame, Frustum, JoinedFrusta, Renderer, frustum, taa_frustum};
 #[cfg(feature = "test-support")]
 use glam::Vec4;
 use glam::{DVec3, Mat4, Vec3};
@@ -101,7 +101,7 @@ impl Renderer {
         &self,
         camera: DVec3,
         radius: i32,
-        frustum: &Frustum,
+        frustum: &impl Cull,
         cave_culling: bool,
         out: &mut Vec<VisibleSection>,
     ) {

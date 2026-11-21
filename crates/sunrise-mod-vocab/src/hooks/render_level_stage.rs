@@ -37,7 +37,7 @@ weather stages. Nothing is dropped, and the order between stages is kept."#]
     )]
     fn render_level_stage(
         stage: mod_api::RenderLevelStage,
-        view: &mod_api::WorldRenderView,
+        view: &mod_api::WorldRenderView<'_>,
         draw: &mut dyn WorldDrawContext,
     );
 }
