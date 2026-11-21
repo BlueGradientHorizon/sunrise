@@ -760,8 +760,8 @@ impl Game<'_> {
     }
     /// `Slot.mayPlace` and `getMaxStackSize` for station slots.
     fn slot_rules(&self, slot: usize, stack: &ItemStack) -> (bool, u32) {
-        if slot >= super::mount_menu::SADDLE
-            && slot < crate::game::inventory_slots::MOD_MENU_SLOT_BASE
+        if (super::mount_menu::SADDLE..crate::game::inventory_slots::MOD_MENU_SLOT_BASE)
+            .contains(&slot)
         {
             return self.mount_slot_rules(slot, stack);
         }

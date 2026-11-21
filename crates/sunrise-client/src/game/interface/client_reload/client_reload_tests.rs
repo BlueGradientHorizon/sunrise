@@ -620,9 +620,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     let result = game.apply_pending_client_start(*pending, renderer);
                     let generations = APPLY_GENERATIONS.take().unwrap();
                     if let Some(refusal) = refusal {
-                        let error = result
-                            .err()
-                            .expect("startup must refuse the unknown texture");
+                        let error = result.expect_err("startup must refuse the unknown texture");
                         assert!(error.to_string().contains(if refusal == "renderer" {
                             "renderer validation refused"
                         } else {

@@ -550,7 +550,7 @@ impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
                 inventory_y: 51.0,
                 slots: (0..5)
                     .map(|i| {
-                        (i != HIDDEN).then(|| mod_api::ScreenSlot {
+                        (i != HIDDEN).then_some(mod_api::ScreenSlot {
                             position: [44.0 + 18.0 * i as f32, 20.0],
                             no_item_icon: None,
                         })
