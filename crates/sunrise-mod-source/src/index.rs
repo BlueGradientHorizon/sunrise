@@ -1,7 +1,7 @@
 //! The Rust items a set of crates' signatures name, found as rustc finds them: through each
 //! module's items, `use`s and glob imports, into the crates `sunrise-mod-api` builds on.
 use std::{collections::HashMap, fs, path::Path};
-use syn::{Item, UseTree};
+use syn::{Item, UseTree, Visibility};
 
 /// One module: its crate, its path below the crate root, and its items.
 pub struct Module {
@@ -222,7 +222,7 @@ impl<'a> Index<'a> {
                 m.path.join("::")
             ));
         }
-        let found = self.lookup(module, name, &mut Vec::new());
+        let found = self.lookup(module, name, module, &mut Vec::new());
         self.depth = self.depth.saturating_sub(1);
         found?.ok_or_else(|| {
             let m = &self.modules[module];
@@ -234,6 +234,7 @@ impl<'a> Index<'a> {
         &mut self,
         module: usize,
         name: &str,
+        from: usize,
         seen: &mut Vec<usize>,
     ) -> Result<Option<Found>, String> {
         if seen.contains(&module) {
@@ -241,13 +242,17 @@ impl<'a> Index<'a> {
         }
         seen.push(module);
         let items = &self.modules[module].items;
-        if let Some(item) = items.iter().position(|item| defines(item, name)) {
+        if let Some(item) = items.iter().position(|item| {
+            definition_visibility(item, name).is_some_and(|vis| self.visible(module, from, vis))
+        }) {
             return Ok(Some(Found::Item(ItemId { module, item })));
         }
         let mut named = None;
         let mut globs = Vec::new();
         for item in items {
-            if let Item::Use(item) = item {
+            if let Item::Use(item) = item
+                && self.visible(module, from, &item.vis)
+            {
                 uses(
                     &item.tree,
                     &mut Vec::new(),
@@ -265,12 +270,37 @@ impl<'a> Index<'a> {
         for glob in globs {
             if let Some((krate, path)) = self.absolute(module, &glob)
                 && let Ok(target) = self.module(krate, &path)
-                && let Some(found) = self.lookup(target, name, seen)?
+                && let Some(found) = self.lookup(target, name, from, seen)?
             {
                 return Ok(Some(found));
             }
         }
         Ok(None)
+    }
+
+    /// A glob does not import a sibling's private definitions or local `use` bindings.
+    fn visible(&self, module: usize, from: usize, vis: &Visibility) -> bool {
+        if module == from {
+            return true;
+        }
+        let module_path = &self.modules[module];
+        let from = &self.modules[from];
+        match vis {
+            Visibility::Public(_) => true,
+            _ if module_path.krate != from.krate => false,
+            Visibility::Inherited => from.path.starts_with(&module_path.path),
+            Visibility::Restricted(vis) => {
+                let path: Vec<_> = vis
+                    .path
+                    .segments
+                    .iter()
+                    .map(|seg| seg.ident.to_string())
+                    .collect();
+                self.absolute(module, &path).is_some_and(|(krate, scope)| {
+                    from.krate == krate && from.path.starts_with(&scope)
+                })
+            }
+        }
     }
 
     /// What the path `path`, written in `module`, names.
@@ -329,17 +359,18 @@ impl<'a> Index<'a> {
     }
 }
 
-/// Whether `item` defines the type or trait `name`.
-fn defines(item: &Item, name: &str) -> bool {
-    match item {
-        Item::Struct(item) => item.ident == name,
-        Item::Enum(item) => item.ident == name,
-        Item::Type(item) => item.ident == name,
-        Item::Trait(item) => item.ident == name,
-        Item::Union(item) => item.ident == name,
-        Item::Const(item) => item.ident == name,
-        _ => false,
-    }
+/// The visibility of an indexed definition named `name`, if this item defines it.
+fn definition_visibility<'a>(item: &'a Item, name: &str) -> Option<&'a Visibility> {
+    let (ident, vis) = match item {
+        Item::Struct(item) => (&item.ident, &item.vis),
+        Item::Enum(item) => (&item.ident, &item.vis),
+        Item::Type(item) => (&item.ident, &item.vis),
+        Item::Trait(item) => (&item.ident, &item.vis),
+        Item::Union(item) => (&item.ident, &item.vis),
+        Item::Const(item) => (&item.ident, &item.vis),
+        _ => return None,
+    };
+    (ident == name).then_some(vis)
 }
 
 /// Each path `tree` imports, with the name it binds (`None` for a glob).
