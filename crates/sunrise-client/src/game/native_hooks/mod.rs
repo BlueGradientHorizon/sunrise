@@ -40,11 +40,12 @@ use mod_api::{
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
-    EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt, InteractionKey,
-    ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
-    PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId,
-    ScreenOpening, ScreenTarget, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
-    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    EntityRenderers, GameRuleActor, HandDrawContext, HandRender, InsideEffects, InteractionAttempt,
+    InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
+    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
+    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
+    VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
