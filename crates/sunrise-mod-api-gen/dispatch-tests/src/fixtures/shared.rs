@@ -85,6 +85,8 @@ impl BlockEntityDrawContext for BlockEntityDraw {
         self.0.push(part);
     }
 }
+/// Stand-in for `render_hand`'s draw context.
+trait HandDrawContext: BlockEntityDrawContext {}
 enum HostSide<'a> {
     Server(&'a mut dyn ServerHost),
     Client(&'a mut dyn ClientHost),
