@@ -503,7 +503,7 @@ public final class VanillaHudOracle {
                         if (mode != GameType.SPECTATOR) hotbar.invoke(hud, capture, delta);
                         if (mode.isSurvival()) health.invoke(hud, capture);
                         vehicle.invoke(hud, capture);
-                        if (c.has("experienceBar") && c.get("experienceBar").getAsBoolean()) new ExperienceBar(mc).extractBackground(capture, delta);
+                        if (mode.isSurvival() && c.has("experienceBar") && c.get("experienceBar").getAsBoolean()) new ExperienceBar(mc).extractBackground(capture, delta);
                         if (mode.isSurvival() && actor.experienceLevel > 0) level.invoke(null, capture, font, actor.experienceLevel);
                     }
                     case "effects" -> {

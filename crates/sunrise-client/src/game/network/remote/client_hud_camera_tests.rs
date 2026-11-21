@@ -341,15 +341,19 @@ fn hud_bars_follow_the_camera_player_like_26_3() {
             case["gameMode"].as_str().unwrap(),
             case["cameraKind"].as_str().unwrap()
         );
-        assert!(
-            !expected.get("xp").unwrap_or(&vec![]).is_empty(),
+        let has_xp = |g: &Groups| !g.get("xp").unwrap_or(&vec![]).is_empty();
+        let survival = case["gameMode"] == "survival";
+        assert_eq!(
+            has_xp(&expected),
+            survival,
             "{label}: the recording draws the experience bar"
         );
         with_client_game(|game| {
             set_up(game, case);
             let drawn = drawn_groups(game);
-            assert!(
-                !drawn.get("xp").unwrap_or(&vec![]).is_empty(),
+            assert_eq!(
+                has_xp(&drawn),
+                has_xp(&expected),
                 "{label}: the HUD drew the experience bar"
             );
             assert_eq!(drawn, expected, "{label}: sprites drawn per layer");
