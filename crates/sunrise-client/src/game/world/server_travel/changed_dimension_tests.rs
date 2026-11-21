@@ -19,6 +19,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::configuration::ClientInformation;
 
 const CONN: u32 = 12;
+const UUID: u128 = 120;
 
 type Heard = Arc<Mutex<Vec<(String, String)>>>;
 
@@ -79,7 +80,7 @@ fn with_server(role: ExecutionRole, test: impl FnOnce(&mut Game<'_>)) {
         let mut guest = Guest::new(
             Joined {
                 conn: CONN,
-                uuid: 120,
+                uuid: UUID,
                 name: "Owner".into(),
                 properties: Vec::new(),
                 info: ClientInformation::new(2),
@@ -298,57 +299,93 @@ fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
 #[test]
 #[ignore = "daily"]
 fn a_failed_cross_level_trip_closes_the_retired_client_window() {
-    use sunrise_client::lan::Out;
+    use mod_api::{BlockUpdateFlags, EntityJoinLevelEvent, Flow};
+    use sunrise_client::{items::ItemStack, lan::Out};
     use sunrise_protocol::{buf::Reader, ids::play::clientbound};
 
-    with_server(ExecutionRole::DedicatedServer, |game| {
-        // Opening an unloaded destination refuses an unreadable saved biome layout.
-        // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
-        let world = tempfile::tempdir().unwrap();
-        game.world_root = world.path().to_path_buf();
-        let record = world.path().join("data/sunrise/biome_regions.dat");
-        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
-        std::fs::write(record, b"not a biome layout").unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
-        game.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
-            g.sender = PlayerSender::new(tx, Arc::default());
-        });
-        for via_portal in [false, true] {
-            let hub = &mut game.lan.as_mut().unwrap().hub;
-            hub.open_native_menu(
-                CONN,
-                1,
-                sunrise_protocol::text::literal("fixture"),
-                Vec::new(),
-            )
-            .unwrap();
-            let window = hub.guest(CONN).unwrap().menu.as_ref().unwrap().window;
-            while rx.try_recv().is_ok() {}
-            if via_portal {
-                game.start_server_trip(CONN, Dim::Nether, None, false);
-            } else {
-                run_as_player(
-                    game,
-                    ExecutionRole::DedicatedServer,
-                    "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
-                );
+    const CHEST: [i32; 3] = [4, 64, 5];
+    struct OpenOnOverflow;
+    #[mod_api::__subscriptions]
+    impl Hooks for OpenOnOverflow {
+        fn entity_join_level(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            if event.kind == "minecraft:item" {
+                let level = host.level(Dim::Overworld.id()).unwrap();
+                let chest = host.block_entity(level, CHEST).unwrap();
+                let player = host.player(UUID).unwrap();
+                assert_eq!(player.open_menu(host, chest), Ok(true));
             }
-            let mut closes = Vec::new();
-            for packet in rx.try_iter() {
-                if let Out::Packet(packet) = packet {
-                    let mut reader = Reader::new(&packet);
-                    let id = reader.varint().unwrap();
-                    assert_ne!(id, clientbound::RESPAWN);
-                    if id == clientbound::CONTAINER_CLOSE {
-                        closes.push(reader.varint().unwrap());
+            Flow::Continue
+        }
+    }
+
+    let mods = vec![ModEntry::new("open-on-overflow", Box::new(OpenOnOverflow))];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            // Opening an unloaded destination refuses an unreadable saved biome layout.
+            // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
+            let world = tempfile::tempdir().unwrap();
+            game.world_root = world.path().to_path_buf();
+            let record = world.path().join("data/sunrise/biome_regions.dat");
+            std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+            std::fs::write(record, b"not a biome layout").unwrap();
+            let level = game.level(Dim::Overworld.id()).unwrap();
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            assert_eq!(
+                game.level_set_block(level, CHEST, chest, BlockUpdateFlags::NEIGHBORS),
+                Ok(true)
+            );
+            let (tx, rx) = std::sync::mpsc::channel();
+            game.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+                g.sender = PlayerSender::new(tx, Arc::default());
+                g.inventory
+                    .fill(Some(ItemStack::new("minecraft:stone", 64)));
+            });
+            for via_portal in [false, true] {
+                game.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+                    assert!(g.menu.is_none());
+                    g.carried = Some(ItemStack::new("minecraft:gold_ingot", 5));
+                });
+                if via_portal {
+                    game.start_server_trip(CONN, Dim::Nether, None, false);
+                } else {
+                    run_as_player(
+                        game,
+                        ExecutionRole::DedicatedServer,
+                        "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
+                    );
+                }
+                let mut windows = Vec::new();
+                for packet in rx.try_iter() {
+                    if let Out::Packet(packet) = packet {
+                        let mut reader = Reader::new(&packet);
+                        let id = reader.varint().unwrap();
+                        assert_ne!(id, clientbound::RESPAWN);
+                        if matches!(id, clientbound::OPEN_SCREEN | clientbound::CONTAINER_CLOSE) {
+                            windows.push((id, reader.varint().unwrap()));
+                        }
                     }
                 }
+                assert!(
+                    matches!(windows.as_slice(),
+                        [(clientbound::OPEN_SCREEN, open), (clientbound::CONTAINER_CLOSE, close)]
+                            if open == close && *open != 0
+                    ),
+                    "via portal: {via_portal}, packets: {windows:?}"
+                );
+                let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+                assert_eq!(guest.dimension, Dim::Overworld.id());
+                assert!(guest.menu.is_none());
             }
-            assert_eq!(closes, [window], "via portal: {via_portal}");
-            let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
-            assert_eq!(guest.dimension, Dim::Overworld.id());
-            assert!(guest.menu.is_none());
-        }
+        });
     });
 }
 

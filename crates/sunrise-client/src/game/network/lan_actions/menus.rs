@@ -448,42 +448,34 @@ impl Game<'_> {
 
     /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
     /// a cursor that still fits. Overflow belongs in the level the guest left.
-    /// Return the old nonzero window in case the trip fails before sending a respawn.
+    /// Return the retired nonzero window in case the trip fails before sending a respawn.
     pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) -> Option<i32> {
-        let window = self
-            .lan
-            .as_ref()
-            .and_then(|host| super::super::native_menus::open_menu_of(host, conn))
-            .map(|(window, _, _)| window);
         self.lan_crafting_closed(conn, Some(0));
-        self.guest_close_all(conn);
-        window
+        self.guest_remove_menus(conn, MenuRemoval::Live)
     }
 
     pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
         self.guest_remove_menus(conn, MenuRemoval::Disconnected);
     }
 
-    pub(super) fn guest_remove_menus(&mut self, conn: u32, removal: MenuRemoval) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return;
-        };
+    fn guest_remove_menus(&mut self, conn: u32, removal: MenuRemoval) -> Option<i32> {
+        let gi = self.guest_index(conn)?;
         if removal == MenuRemoval::Disconnected {
             self.guest_drop_carried(gi);
         } else if let Some(host) = self.lan.as_mut() {
             let returned = host.hub.take_closed_menu_cursors(conn).collect();
             self.lan_place_back(gi, returned);
         }
-        let open_menu = self.lan.as_ref().and_then(|host| {
-            host.hub
-                .guest(conn)?
-                .menu
-                .as_ref()
-                .map(|m| (m.window, m.slots))
-        });
+        // Overflow listeners can open a menu. Remember the window we will
+        // retire now, not the one that was open before returning cursors.
+        let host = self.lan.as_ref()?;
+        let retired_window =
+            super::super::native_menus::open_menu_of(host, conn).map(|(window, _, _)| window);
+        let open_menu = host
+            .hub
+            .guest(conn)
+            .and_then(|g| g.menu.as_ref())
+            .map(|m| (m.window, m.slots));
         if let Some((window, slots)) = open_menu {
             self.guest_container_closed(conn);
             if let Slots::Block(key) = slots
@@ -509,6 +501,7 @@ impl Game<'_> {
         self.lan_mount_closed(conn, None);
         // `PlayerContainerEvent.Close`, after the menu's `removed`.
         self.player_menu_closing(conn);
+        retired_window
     }
 
     /// `ContainerEntity`'s `Container.stopOpen` when a vehicle menu closes
