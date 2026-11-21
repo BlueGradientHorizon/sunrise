@@ -595,6 +595,41 @@ impl Game<'_> {
         }
         self.lan_merchant_reputation(id);
     }
+    /// `Villager.shouldRestock` / `restock` with a trading player: the open
+    /// screen's offers are the live ones, so they restock (not the mob's stale
+    /// copy), then `updateSpecialPrices` refreshes the screen and resends them.
+    pub(super) fn villager_restock_open(&mut self, id: u32, game_time: i64, day: i64) {
+        let Some(i) = self.villager_index(id) else {
+            return;
+        };
+        let mut trade = self.mobs[i].extra.trade.as_deref().cloned().unwrap_or_default();
+        let restock = |menu: &mut sunrise_client::menu::Menu,
+                       env: &sunrise_client::menu::Env,
+                       trade: &mut sunrise_client::merchant::Trader| {
+            if let Some(session) = menu.merchant.as_mut()
+                && session.restock_if_due(trade, game_time, day)
+            {
+                menu.merchant_update(env);
+            }
+        };
+        let local = self
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+            .is_some_and(|m| m.mob == Some(id));
+        if local {
+            self.menu_session(|menu, env, _| {
+                restock(menu, env, &mut trade);
+                Some(true)
+            });
+        } else if let Some(conn) = self.lan_trade_conn(id) {
+            self.lan_merchant_op(conn, None, true, |menu, env| restock(menu, env, &mut trade));
+        } else if trade.should_restock(game_time, day) {
+            // No screen is open after all.
+            trade.restock(game_time);
+        }
+        self.mobs[i].extra.trade = Some(Box::new(trade));
+    }
     /// `Villager.getPlayerReputation` of the local player.
     pub(super) fn villager_reputation(&self, id: u32) -> i32 {
         let Some(uuid) = self.level.player_uuid else {

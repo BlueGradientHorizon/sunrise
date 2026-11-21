@@ -2531,6 +2531,12 @@ pub enum MobEvent {
         mob: u32,
         pos: [i32; 3],
     },
+    /// `WorkAtPoi.start`'s restock of a villager with a trading player.
+    VillagerRestock {
+        mob: u32,
+        game_time: i64,
+        day: i64,
+    },
     /// A villager asks whether enough neighbours want an iron golem.
     GolemCheck {
         mob: u32,

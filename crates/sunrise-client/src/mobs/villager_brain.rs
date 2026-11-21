@@ -1679,7 +1679,7 @@ impl B {
                         pos: site,
                     });
                 }
-                restock_if_due(m, cx.w);
+                restock_if_due(m, cx.w, cx.events);
                 true
             }
             B::HarvestFarmland {
@@ -3342,11 +3342,21 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
     }
 }
 /// `WorkAtPoi.start`'s restock.
-fn restock_if_due(m: &mut Mob, w: &MobWorld) {
+fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if w.professions.state_index(&m.extra.profession).is_none() {
         return;
     }
     let day = w.day_time.div_euclid(24000);
+    // A trading player's open screen holds the live offers (the mob's are stale
+    // until it closes): the game restocks those.
+    if m.extra.flag2 {
+        events.push(MobEvent::VillagerRestock {
+            mob: m.id,
+            game_time: w.game_time,
+            day,
+        });
+        return;
+    }
     if let Some(t) = m.extra.trade.as_mut()
         && t.should_restock(w.game_time, day)
     {

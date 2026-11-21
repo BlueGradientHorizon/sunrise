@@ -259,7 +259,7 @@ impl Game<'_> {
     }
     /// Runs `op` on the guest's merchant menu (their inventory copied in and
     /// back), then syncs the client. False when the guest has no such window.
-    fn lan_merchant_op(
+    pub(in crate::game) fn lan_merchant_op(
         &mut self,
         conn: u32,
         window: Option<i32>,

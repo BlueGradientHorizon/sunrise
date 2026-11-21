@@ -539,7 +539,22 @@ fn trade(
             "close" if open_menu => {
                 menu.merchant_close(env);
                 open_menu = false;
-                session_after = Some(menu.merchant.take().ok_or("session")?);
+                let session = menu.merchant.take().ok_or("session")?;
+                // Game::merchant_closed: the mob gets the screen's offers.
+                m.trader.offers.clone_from(&session.offers);
+                session_after = Some(session);
+            }
+            "restock" if m.villager => {
+                let time: i64 = f[1].parse()?;
+                let day: i64 = f[2].parse()?;
+                if let Some(sess) = menu.merchant.as_mut() {
+                    // Game::villager_restock_open: the result slot follows the new prices.
+                    if sess.restock_if_due(&mut m.trader, time, day) {
+                        menu.merchant_update(env);
+                    }
+                } else if m.trader.should_restock(time, day) {
+                    m.trader.restock(time);
+                }
             }
             _ => {}
         }
@@ -575,7 +590,12 @@ fn trade(
                         _ => {}
                     }
                 }
-                (sess.xp, sess.level, sess.offers.clone(), orbs)
+                let offers = if open_menu {
+                    sess.offers.clone()
+                } else {
+                    m.trader.offers.clone()
+                };
+                (sess.xp, sess.level, offers, orbs)
             }
             None => (m.trader.xp, m.level, m.trader.offers.clone(), Vec::new()),
         };
@@ -591,10 +611,11 @@ fn trade(
         for o in &offers {
             write!(
                 line,
-                " {}/{}/{}",
+                " {}/{}/{}/{}",
                 o.uses,
                 o.special_price_diff,
-                o.cost_a_count(env.items)
+                o.cost_a_count(env.items),
+                o.demand
             )?;
         }
         line.push_str(" orbs");

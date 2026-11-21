@@ -256,6 +256,23 @@ impl Session {
             update_special_prices(&mut self.offers, self.reputation, self.hero);
         }
     }
+    /// `Villager.shouldRestock` / `restock` while a player trades: the screen's
+    /// offers are the live ones, so they restock, not the mob's stale copy in
+    /// `trader` (which keeps the restock clock); `updateSpecialPrices` follows.
+    /// True when the offers changed (the player is sent them again).
+    pub fn restock_if_due(&mut self, trader: &mut Trader, game_time: i64, day: i64) -> bool {
+        let before = self.offers.clone();
+        std::mem::swap(&mut trader.offers, &mut self.offers);
+        if trader.should_restock(game_time, day) {
+            trader.restock(game_time);
+        }
+        std::mem::swap(&mut trader.offers, &mut self.offers);
+        let changed = self.offers != before;
+        if changed {
+            self.update_special_prices();
+        }
+        changed
+    }
     /// `AbstractVillager.notifyTrade`: the offer's use, then `rewardTradeXp`
     /// (and a level-up with its offers). True when the special prices were
     /// recomputed (the menu then updates its result).
@@ -1060,6 +1077,27 @@ mod tests {
                 expected,
             );
         }
+    }
+
+    #[test]
+    fn an_open_screen_restocks_its_own_offers_not_the_mobs_stale_copy() {
+        // The mob's copy was taken when the screen opened: unused.
+        let mut mob = Trader {
+            offers: vec![offer(4, None)],
+            ..Default::default()
+        };
+        // The screen's offers were used up since: they are the live ones.
+        let mut session = Session::new(vec![offer(4, None)], true);
+        session.offers[0].uses = 12;
+        session.reputation = 5;
+        assert!(session.restock_if_due(&mut mob, 100, 0));
+        let o = &session.offers[0];
+        assert_eq!((o.uses, o.demand, o.special_price_diff), (0, 12, -1));
+        // The restock clock lives on the mob; its stale offers are untouched.
+        assert_eq!((mob.last_restock, mob.restocks_today), (100, 1));
+        assert_eq!((mob.offers[0].uses, mob.offers[0].demand), (0, 0));
+        // Nothing used since: not due, nothing resent.
+        assert!(!session.restock_if_due(&mut mob, 200, 0));
     }
 
     #[test]
