@@ -7253,30 +7253,105 @@ mod dolphin_noai_air_tests {
 #[cfg(test)]
 mod oxygen_bonus_tests {
     use super::*;
+    use std::collections::HashMap;
     use std::sync::Arc;
+    use sunrise_core::nbt::Tag;
 
-    fn saved_ids(id: &str) -> Vec<(String, f64)> {
+    #[derive(serde::Deserialize)]
+    struct Witness {
+        minecraft: String,
+        cases: Vec<Case>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        entity: String,
+        medium: String,
+        effect: Option<String>,
+        stored_oxygen_bonus_bits: Option<String>,
+        ticks: u32,
+        attributes: Vec<AttrRow>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AttrRow {
+        id: String,
+        base_bits: String,
+    }
+
+    fn saved_attributes(case: &Case) -> Vec<(String, u64)> {
         let mut out = Vec::new();
+        let medium = case.medium.as_str();
         let ran = crate::mobs::world::with_built_test_world(
             &[],
             |world, registry| {
                 world
                     .chunks
                     .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
-                let water = registry.default_state("minecraft:water").unwrap();
-                for y in 3..=8 {
-                    world.set(2, y, 2, water).unwrap();
+                let block = match medium {
+                    "air" => None,
+                    "water" => Some("minecraft:water"),
+                    "bubble_column" => Some("minecraft:bubble_column"),
+                    other => panic!("unexpected medium {other}"),
+                };
+                if let Some(name) = block {
+                    let state = registry.default_state(name).unwrap();
+                    for x in 1..=3 {
+                        for z in 1..=3 {
+                            for y in 3..=8 {
+                                world.set(x, y, z, state).unwrap();
+                            }
+                        }
+                    }
                 }
             },
             |w, types| {
-                let kind = Arc::new(types.types[id].clone());
-                let mut m = Mob::new(1, kind, Vec3::new(2.5, 3.0, 2.5), 0.0);
-                m.no_ai = true;
-                m.no_gravity = true;
-                m.persistent = true;
+                let kind = Arc::new(types.types[case.entity.as_str()].clone());
+                let kind_map = HashMap::from([(case.entity.clone(), kind)]);
+                let mut entries: Vec<(&str, Tag)> = vec![
+                    ("id", Tag::String(case.entity.as_str().into())),
+                    (
+                        "Pos",
+                        Tag::List(vec![
+                            Tag::Double(2.5_f64.to_bits()),
+                            Tag::Double(3.0_f64.to_bits()),
+                            Tag::Double(2.5_f64.to_bits()),
+                        ]),
+                    ),
+                    ("NoAI", Tag::Byte(1)),
+                    ("NoGravity", Tag::Byte(1)),
+                    ("PersistenceRequired", Tag::Byte(1)),
+                ];
+                if let Some(effect) = &case.effect {
+                    entries.push((
+                        "active_effects",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String(effect.as_str().into())),
+                            ("duration", Tag::Int(100)),
+                            ("amplifier", Tag::Byte(0)),
+                        ])]),
+                    ));
+                }
+                if let Some(bits) = &case.stored_oxygen_bonus_bits {
+                    let raw = u64::from_str_radix(bits, 16).unwrap();
+                    entries.push((
+                        "attributes",
+                        Tag::List(vec![Tag::compound([
+                            ("id", Tag::String("minecraft:oxygen_bonus".into())),
+                            ("base", Tag::Double(raw)),
+                        ])]),
+                    ));
+                }
+                let input = Tag::compound(entries);
+                let mut m = crate::entity_nbt::mob_from_nbt(&input, &kind_map, 1, None).unwrap();
                 let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
-                assert!(tick(&mut m, w, &mut level.level(), &mut events));
-                assert!(m.fluids.eye_in_water);
+                for _ in 0..case.ticks {
+                    assert!(tick(&mut m, w, &mut level.level(), &mut events));
+                }
+                if case.ticks > 0 {
+                    assert_eq!(m.fluids.eye_in_water, medium != "air", "{}", case.name);
+                }
                 let tag = crate::entity_nbt::mob_to_nbt(
                     &m,
                     [1, 2, 3, 4],
@@ -7285,13 +7360,17 @@ mod oxygen_bonus_tests {
                     |_| None,
                     &Default::default(),
                 );
-                let Some(sunrise_core::nbt::Tag::List(list)) = tag.get("attributes") else {
-                    panic!("no attributes list");
+                let Some(Tag::List(list)) = tag.get("attributes") else {
+                    panic!("no attributes list for {}", case.name);
                 };
                 for entry in list {
-                    let name = crate::save::text(entry.get("id")).unwrap();
-                    let base = crate::save::float(entry.get("base")).unwrap();
-                    out.push((name, base));
+                    let Some(Tag::String(name)) = entry.get("id") else {
+                        panic!("attribute entry missing id for {}", case.name);
+                    };
+                    let Some(Tag::Double(base_bits)) = entry.get("base") else {
+                        panic!("attribute entry missing double base for {}", case.name);
+                    };
+                    out.push((name.to_string().unwrap(), *base_bits));
                 }
             },
         );
@@ -7300,24 +7379,30 @@ mod oxygen_bonus_tests {
         out
     }
 
-    /// `LivingEntity.decreaseAirSupply` asks for `oxygen_bonus`, so a pig that loses a bubble
-    /// under water saves the instance with its default base; a squid, which breathes there,
-    /// never asks (vanilla 26.3, #2679).
+    /// Saved `attributes` against the vanilla 26.3 VanillaCommandExecOracle witness (#2679).
     #[test]
     #[ignore = "daily"]
     fn a_mob_losing_air_under_water_saves_oxygen_bonus() {
-        let pig = saved_ids("minecraft:pig");
-        assert!(
-            pig.contains(&("minecraft:oxygen_bonus".to_owned(), 0.0)),
-            "{pig:?}"
-        );
-        let squid = saved_ids("minecraft:squid");
-        assert!(
-            !squid
+        let witness: Witness = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tools/witness/26.3/mob_oxygen_bonus_save.json"
+        )))
+        .unwrap();
+        assert_eq!(witness.minecraft, "26.3");
+        assert!(!witness.cases.is_empty());
+        for case in &witness.cases {
+            let expected: Vec<(String, u64)> = case
+                .attributes
                 .iter()
-                .any(|(name, _)| name == "minecraft:oxygen_bonus"),
-            "{squid:?}"
-        );
+                .map(|row| {
+                    (
+                        row.id.clone(),
+                        u64::from_str_radix(&row.base_bits, 16).unwrap(),
+                    )
+                })
+                .collect();
+            assert_eq!(saved_attributes(case), expected, "{}", case.name);
+        }
     }
 }
 
