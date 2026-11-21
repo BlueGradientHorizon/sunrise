@@ -147,11 +147,42 @@ impl Game<'_> {
         {
             return self.guest_passage_cross(conn, &p.data);
         }
+        use super::super::cauldron_prediction::{USE_CHANNEL, use_result};
         let Some(host) = self.lan.as_ref() else {
             return;
         };
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
             return;
+        };
+        // An authoritative request is an ordinary UseItemOn with a receipt, not
+        // permission to use an item or to bypass the vanilla loaded/dead checks.
+        let (packet, receipt) = match packet {
+            S::CustomPayload(p) if p.channel == USE_CHANNEL => {
+                use sunrise_protocol::buf::{Codec, Reader};
+                let mut input = Reader::new(&p.data);
+                let decoded = (|| -> sunrise_protocol::Result<_> {
+                    let receipt = input.i64()?;
+                    let packet = play::UseItemOn::read(&mut input)?;
+                    if input.remaining() != 0 || packet.sequence < 0 {
+                        return Err(sunrise_protocol::Error::new("invalid block use request"));
+                    }
+                    Ok((receipt, packet))
+                })();
+                let (receipt, packet) = match decoded {
+                    Ok(request) => request,
+                    Err(error) => {
+                        log::warn!("authoritative block use from guest {conn} refused: {error}");
+                        return;
+                    }
+                };
+                let guest = &host.hub.guests[gi];
+                if !guest.client_loaded() {
+                    host.hub.send_to(conn, &use_result(receipt, false));
+                    return;
+                }
+                (S::UseItemOn(packet), Some(receipt))
+            }
+            packet => (packet, None),
         };
         // A dead player acts no more, but the death screen still respawns and chats: its
         // commands run as anyone's (ServerGamePacketListenerImpl.handleChatCommand doesn't
@@ -201,12 +232,6 @@ impl Game<'_> {
         let permission = host.hub.guests[gi].permission;
         let won_game = matches!(packet, S::ClientCommand(ref c) if c.action == 0)
             && host.play.get(&conn).is_some_and(|p| p.won_game);
-        if !matches!(packet, S::UseItem(_))
-            && let Some(host) = self.lan.as_mut()
-            && let Some(play) = host.play.get_mut(&conn)
-        {
-            play.cauldron_pass_item_use = None;
-        }
         match packet {
             S::PlayerAction(a) => match a.action {
                 0 => {
@@ -562,18 +587,12 @@ impl Game<'_> {
                 host.hub.ack(conn, p.sequence);
                 let hit = Hit::from_use_item_on(&p);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-                if let Ok((false, true)) = self.guest_use_item_on_pass(conn, gi, hit, hand)
-                    && let Some(gi) = self
-                        .lan
-                        .as_ref()
-                        .and_then(|host| host.hub.guests.connection_index(conn))
+                let result = self.guest_use_item_on(conn, gi, hit, hand);
+                if let Some(receipt) = receipt
+                    && let Some(host) = self.lan.as_ref()
                 {
-                    let _ = self.guest_use_item(conn, gi, hand, None);
-                    if let Some(host) = self.lan.as_mut() {
-                        let tick = host.hub.ticks;
-                        host.play.entry(conn).or_default().cauldron_pass_item_use =
-                            Some((hand, p.sequence.wrapping_add(1), tick));
-                    }
+                    host.hub
+                        .send_to(conn, &use_result(receipt, matches!(result, Ok(false))));
                 }
             }
             S::UseItem(p) => {
@@ -582,20 +601,6 @@ impl Game<'_> {
                 };
                 host.hub.ack(conn, p.sequence);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-                let tick = host.hub.ticks;
-                let already_used = host.play.get_mut(&conn).is_some_and(|play| {
-                    play.cauldron_pass_item_use
-                        .take()
-                        .is_some_and(|(h, seq, at)| {
-                            h == hand && p.sequence == seq && tick.saturating_sub(at) <= 1
-                        })
-                });
-                if already_used {
-                    host.hub
-                        .guests
-                        .update(gi, |g| (g.yaw, g.pitch) = (p.yaw, p.pitch));
-                    return;
-                }
                 let _ = self.guest_use_item(conn, gi, hand, Some((p.yaw, p.pitch)));
             }
             S::Attack(p) => {

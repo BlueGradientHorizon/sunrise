@@ -354,10 +354,7 @@ impl Game<'_> {
         match decision {
             Ok(CauldronDecision::Success) => Outcome::Success,
             Ok(CauldronDecision::Consume) => Outcome::Consume,
-            Ok(_) => {
-                self.mod_cauldron_passed = true;
-                Outcome::Pass
-            }
+            Ok(_) => Outcome::Pass,
             Err(why) => {
                 log::warn!("cauldron interaction refused: {why}");
                 Outcome::Consume

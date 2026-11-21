@@ -32,7 +32,7 @@ use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
 use super::remote_vehicles::PassengerSeat;
 use super::render_tick::{mob_tracking_body, player_tracking_body};
-use super::{Dim, Game, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
+use super::{Dim, Game, Hit, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
 use crate::game::api_values::TryIntoApi;
 use mod_api::InteractionKey;
 use std::{
@@ -573,6 +573,12 @@ enum OwnProfile {
     Done(Option<sunrise_client::skins::Textures>),
 }
 
+struct PendingCauldron {
+    hand: Hand,
+    hit: Hit,
+    attempt: mod_api::InteractionAttempt,
+}
+
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
@@ -727,6 +733,11 @@ pub(super) struct Remote {
     menu_title_snapshot: Option<Arc<mod_api::Text>>,
     pub(in crate::game) state_id: i32,
     use_target: Option<[i32; 3]>,
+    pub(super) cauldron_entries: Option<sunrise_client::cauldron::interactions::Dispatcher<()>>,
+    /// Receipts are connection-scoped; unlike block prediction sequences, they
+    /// are never reset on a level change.
+    cauldron_receipt: i64,
+    pending_cauldrons: HashMap<i64, PendingCauldron>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
@@ -1320,6 +1331,9 @@ impl Game<'_> {
             menu_title_snapshot: None,
             state_id: 0,
             use_target: None,
+            cauldron_entries: None,
+            cauldron_receipt: 0,
+            pending_cauldrons: HashMap::new(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -1574,6 +1588,9 @@ impl Game<'_> {
             menu_title_snapshot: None,
             state_id: 0,
             use_target: None,
+            cauldron_entries: None,
+            cauldron_receipt: 0,
+            pending_cauldrons: HashMap::new(),
             menu_extra: None,
             entities: HashMap::new(),
             tick_fluids: Vec::new(),
@@ -3419,6 +3436,31 @@ impl Game<'_> {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
             // thread, after all preceding packets (especially teleports).
             C::Ping(p) => self.send(S::Pong(p)),
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::ENTRIES_CHANNEL => {
+                let entries = super::cauldron_prediction::decode_registrations(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.cauldron_entries = Some(entries);
+                }
+            }
+            C::CustomPayload(p) if p.channel == super::cauldron_prediction::USE_CHANNEL => {
+                let mut body = sunrise_protocol::buf::Reader::new(&p.data);
+                let receipt = body.i64()?;
+                let passed = body.bool()?;
+                if body.remaining() != 0 {
+                    return Err("extra bytes in authoritative block-use result".into());
+                }
+                let click = self
+                    .remote
+                    .as_mut()
+                    .and_then(|r| r.pending_cauldrons.remove(&receipt));
+                if let Some(click) = click
+                    && passed
+                {
+                    self.with_interaction_swing_scope(|game| {
+                        game.remote_use_hands(click.hand, click.attempt, Some(click.hit));
+                    });
+                }
+            }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
                 sunrise_client::datapack_net::accept_chunk(&p.data)?;
@@ -3519,6 +3561,7 @@ impl Game<'_> {
                 }
                 if let Some(r) = self.remote.as_mut() {
                     r.carried.set(Some(0));
+                    r.pending_cauldrons.clear();
                     // handleLogin makes a new ClientLevel: its predictions count from 0.
                     r.sequence = 0;
                     r.own_invisible = false;
@@ -3627,10 +3670,11 @@ impl Game<'_> {
                 }
                 // handleRespawn makes a new ClientLevel for another dimension
                 // key (a proxy's server switch too): its predictions count from 0.
-                if let Some(r) = self.remote.as_mut()
-                    && r.level != p.spawn.dimension
-                {
-                    r.sequence = 0;
+                if let Some(r) = self.remote.as_mut() {
+                    r.pending_cauldrons.clear();
+                    if r.level != p.spawn.dimension {
+                        r.sequence = 0;
+                    }
                 }
                 self.portals.respawn_attributes.respawn(p.keep & 1 != 0);
                 let entry = if died {
@@ -8382,10 +8426,15 @@ impl Game<'_> {
     /// `Minecraft.startUseItem`'s block turn for `hand`: a use that swung drops
     /// the hand (`LocalPlayer.itemUsed`) when it spent the held item or the
     /// player has infinite materials.
-    fn remote_use_block(&mut self, hand: Hand) -> bool {
+    fn remote_use_block(
+        &mut self,
+        hand: Hand,
+        attempt: mod_api::InteractionAttempt,
+        hit: Option<Hit>,
+    ) -> bool {
         let before = self.with_hand(hand, |g| g.held().map(|s| s.count));
         let swings = self.swings_started;
-        let done = self.remote_use_item_on(hand);
+        let done = self.remote_use_item_on(hand, attempt, hit);
         if done
             && self.swings_started != swings
             && let Some(after) = self.with_hand(hand, |g| g.held().map(|s| s.count))
@@ -9055,20 +9104,29 @@ impl Game<'_> {
                 .is_none_or(|i| i.consumable.is_none())
     }
 
-    /// The rest of Minecraft.startUseItem once the main hand's target passed:
-    /// the main hand's item, then the off hand's turn (its block, its item).
-    /// The server does each packet's part with that packet's hand only.
-    fn remote_use_hands(&mut self, attempt: mod_api::InteractionAttempt) {
+    /// Continue Minecraft.startUseItem after this hand's target passed:
+    /// its item, then the off hand's target and item if this is the main hand.
+    /// When resumed after a server answer, use the original block hit.
+    fn remote_use_hands(
+        &mut self,
+        hand: Hand,
+        attempt: mod_api::InteractionAttempt,
+        block_hit: Option<Hit>,
+    ) {
         // Nothing in the crosshair: an empty hand's click is heard, by mods only.
-        let miss = mod_api::__private::listened(mod_api::HookId::RightClickEmpty)
+        let miss = block_hit.is_none()
+            && mod_api::__private::listened(mod_api::HookId::RightClickEmpty)
             && !self.entity_targeted()
             && self.pick().is_none();
-        if miss && self.held().is_none() {
-            self.native_right_click_empty(Hand::Main);
+        if miss && self.with_hand(hand, |g| g.held().is_none()) {
+            self.native_right_click_empty(hand);
         }
         // A successful Item.use always drops the hand (LocalPlayer.itemUsed).
-        if self.remote_use_item(Hand::Main) {
-            self.heights.item_used(Hand::Main);
+        if self.remote_use_item(hand) {
+            self.heights.item_used(hand);
+            return;
+        }
+        if hand == Hand::Off {
             return;
         }
         // The off hand's turn: the event again, then the entity or the block.
@@ -9081,10 +9139,10 @@ impl Game<'_> {
             }
             return;
         }
-        let off_target = if self.remote_use_targets_entity() {
+        let off_target = if block_hit.is_none() && self.remote_use_targets_entity() {
             self.remote_use_entity(Hand::Off)
         } else {
-            self.remote_use_block(Hand::Off)
+            self.remote_use_block(Hand::Off, attempt, block_hit)
         };
         if off_target {
             return;
@@ -10375,10 +10433,10 @@ impl sunrise_client::interaction_input::TargetUseWorld for RemoteUseWorld<'_, '_
         self.0.remote_use_entity(Hand::Main)
     }
     fn use_block(&mut self) -> bool {
-        self.0.remote_use_block(Hand::Main)
+        self.0.remote_use_block(Hand::Main, self.1, None)
     }
     fn use_item(&mut self) {
-        self.0.remote_use_hands(self.1);
+        self.0.remote_use_hands(Hand::Main, self.1, None);
     }
 }
 

@@ -246,19 +246,7 @@ impl Game<'_> {
         hit: Hit,
         hand: Hand,
     ) -> Result<bool, ActionRefused> {
-        self.guest_use_item_on_pass(conn, gi, hit, hand)
-            .map(|(consumed, _)| consumed)
-    }
-
-    pub(super) fn guest_use_item_on_pass(
-        &mut self,
-        conn: u32,
-        gi: usize,
-        hit: Hit,
-        hand: Hand,
-    ) -> Result<(bool, bool), ActionRefused> {
         let mut consumed = false;
-        let mut cauldron_passed = false;
         let Some(host) = self.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
@@ -313,47 +301,48 @@ impl Game<'_> {
             .contains(f64::from(hit.pos[0]), f64::from(hit.pos[2]))
         {
             if spectator && self.spectator_use_portal(conn, gi, hit.pos) {
-                return Ok((true, false));
+                return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
             let heard = self.audio.capture.as_ref().map_or(0, Vec::len);
-            let used = self
-                .as_guest_at(gi, conn, |g| {
-                    let attempt = g.was_block_placement_attempt(hand);
-                    let saved = (g.forced_hit, g.guest_use, g.mod_cauldron_passed);
-                    g.forced_hit = Some(hit);
-                    g.guest_use = Some(GuestUse::OnBlock(hand));
-                    g.mod_cauldron_passed = false;
-                    let swings = g.swings_started;
-                    let predicted = g.predicted_swings;
-                    let consumed = g.with_block_use_original(hand, |g| {
-                        let consumed = matches!(g.use_item(), Ok(Some(_)));
-                        if consumed && !g.use_failed {
-                            g.finish_block_use(hit.pos, hand);
-                        }
-                        consumed
-                    });
-                    let cauldron_passed = g.mod_cauldron_passed;
-                    (g.forced_hit, g.guest_use, g.mod_cauldron_passed) = saved;
-                    reset_use_attack_strength(&mut g.attack_ticks, swings, g.swings_started);
-                    (
-                        g.swings_started != swings && g.predicted_swings == predicted,
-                        consumed,
-                        attempt,
-                        cauldron_passed,
-                    )
-                })
-                .ok();
-            consumed = used.is_some_and(|u| u.1);
-            cauldron_passed = used.is_some_and(|u| u.3);
-            let swung = used.map(|u| u.0);
-            self.lan_swing_back(conn, swung);
+            let used = self.as_guest_at(gi, conn, |g| {
+                let attempt = g.was_block_placement_attempt(hand);
+                let saved = (g.forced_hit, g.guest_use);
+                g.forced_hit = Some(hit);
+                g.guest_use = Some(GuestUse::OnBlock(hand));
+                let swings = g.swings_started;
+                let predicted = g.predicted_swings;
+                let result = g.with_block_use_original(hand, |g| {
+                    let result = g.use_item();
+                    if matches!(result, Ok(Some(_))) && !g.use_failed {
+                        g.finish_block_use(hit.pos, hand);
+                    }
+                    result
+                });
+                (g.forced_hit, g.guest_use) = saved;
+                reset_use_attack_strength(&mut g.attack_ticks, swings, g.swings_started);
+                (
+                    g.swings_started != swings && g.predicted_swings == predicted,
+                    result.map(|used| used.is_some()),
+                    attempt,
+                )
+            });
+            let (swung, result, attempt) = used.map_err(|_| ActionRefused::Stale)?;
+            self.lan_swing_back(conn, Some(swung));
             self.guest_use_sounds(conn, logged, heard);
             // A placement that did nothing at the top or bottom of the
             // world says why. Vanilla asks twice for the top (once
             // before the swing, once in the check that also has the
             // bottom), so a player there is told twice.
-            if let Some((_, false, true, _)) = used {
+            consumed = match result {
+                Ok(consumed) => consumed,
+                Err(error) => {
+                    log::warn!("block interaction for guest {conn} refused: {error:#}");
+                    refused = Some(ActionRefused::InvalidTarget);
+                    false
+                }
+            };
+            if !consumed && attempt && refused.is_none() {
                 if face == [0, 1, 0] && hit.pos[1] >= max_y {
                     self.build_limit_message(conn, true, max_y);
                     self.build_limit_message(conn, true, max_y);
@@ -367,14 +356,14 @@ impl Game<'_> {
         }
         // The client predicted a result: correct it with what really is.
         let Some(host) = self.lan.as_mut() else {
-            return refused.map_or(Ok((consumed, cauldron_passed)), Err);
+            return refused.map_or(Ok(consumed), Err);
         };
         for pos in [hit.pos, hit.beside()] {
             let state = self.world.block(pos[0], pos[1], pos[2]).0 as i32;
             host.hub
                 .send_to(conn, &C::BlockUpdate(play::BlockUpdate { pos, state }));
         }
-        refused.map_or(Ok((consumed, cauldron_passed)), Err)
+        refused.map_or(Ok(consumed), Err)
     }
 
     /// `ServerGamePacketListenerImpl.handleUseItem` for guest `conn` (at `gi`) using the item in

@@ -53,8 +53,9 @@ pub enum CauldronRegistrationError {
 }
 
 /// NeoForge's `RegisterCauldronInteractionEvent.Interaction` counterpart (`CauldronInteraction`).
-/// Custom handlers run on the server only: clients suppress prediction and wait for the server
-/// result, while vanilla handlers still predict locally. Perform block, item, sound, event, and
+/// Custom handlers run only on the server. Sunrise clients wait for the server's block-use result
+/// for matching registrations, including server-only registrations. A passed block use resumes the
+/// same click; vanilla handlers still predict locally. Perform block, item, sound, event, and
 /// statistic changes directly through `host`, using
 /// [`HostTransaction::transaction`](crate::HostTransaction::transaction) when grouping storage
 /// mutations.

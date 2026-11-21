@@ -159,6 +159,26 @@ impl<H> Dispatcher<H> {
             }
         }
     }
+    /// Visit the keys of the custom entries, without exposing their callbacks.
+    pub fn for_each_mod_entry(&self, mut emit: impl FnMut(&str, &str, bool)) {
+        for block in self.blocks() {
+            let items = match index(&block) {
+                Some(i) => &self.maps[i],
+                None => &self.custom[&block],
+            };
+            for (item, entry) in items {
+                if matches!(entry, Entry::Mod(_)) {
+                    emit(&block, item, false);
+                }
+            }
+            if let Some(tags) = self.tagged.get(&block) {
+                for (tag, _) in tags {
+                    emit(&block, tag, true);
+                }
+            }
+        }
+    }
+
     /// Complete prepared dispatcher set, including declared custom blocks.
     pub fn blocks(&self) -> Vec<String> {
         let mut blocks = [

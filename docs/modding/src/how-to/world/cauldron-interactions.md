@@ -202,9 +202,12 @@ grouping storage mutations (such as `ItemPlace::exchange` with
 
 ## Client prediction
 
-Client prediction selects from the same prepared dispatcher table, but skips
-custom mod handlers entirely: it does not invoke `Interaction::interact` or
-predict local writes, and holds the local click while waiting for the server
-result. If the server callback returns `CauldronDecision::Pass` and block/useOn
-handling does not consume the click, the server resumes normal item use for
-that hand once. Vanilla handlers continue to predict locally.
+Sunrise clients use the server's published registration keys to identify a
+custom cauldron click, even when the handler is installed only on the server.
+They do not invoke `Interaction::interact`, predict its writes, or send a
+speculative item-use packet. Once the server finishes the block use, a pass
+resumes the original click: the same hand's item use, then the off hand's
+block and item use if the main hand still passes. A terminal result ends
+only that click. Vanilla handlers continue to predict locally. Clients that do
+not negotiate these results still use vanilla packets, which do not identify
+which item-use packet belongs to a block click.

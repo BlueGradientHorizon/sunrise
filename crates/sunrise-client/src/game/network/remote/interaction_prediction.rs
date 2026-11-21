@@ -179,7 +179,12 @@ impl Game<'_> {
     }
     /// MultiPlayerGameMode.useItemOn for `hand`: whether the click ends there
     /// (the block reacts, or a block item is placed).
-    pub(in crate::game) fn remote_use_item_on(&mut self, hand: Hand) -> bool {
+    pub(in crate::game) fn remote_use_item_on(
+        &mut self,
+        hand: Hand,
+        attempt: mod_api::InteractionAttempt,
+        hit: Option<Hit>,
+    ) -> bool {
         let held = self.with_hand(hand, |g| g.held().cloned());
         let held_block = held
             .as_ref()
@@ -188,7 +193,7 @@ impl Game<'_> {
         let debug_stick = held
             .as_ref()
             .is_some_and(|stack| &*stack.item == "minecraft:debug_stick");
-        if let Some(hit) = self.pick() {
+        if let Some(hit) = hit.or_else(|| self.pick()) {
             use mod_api::InteractionResult as Answer;
             use mod_api::TriState;
             let spectator = self.spectator();
@@ -251,6 +256,42 @@ impl Game<'_> {
             };
             let vanilla_block = block_used && block_answer.is_none();
             let seq = self.next_sequence();
+            let packet = play::UseItemOn {
+                hand: hand_id(hand),
+                pos: hit.pos,
+                face: i32::from(face_direction(hit.face)),
+                cursor: std::array::from_fn(|axis| {
+                    (hit.point[axis] - f64::from(hit.pos[axis])) as f32
+                }),
+                inside: hit.inside,
+                world_border: false,
+                sequence: seq,
+            };
+            if !spectator
+                && vanilla_block
+                && self.has_server_cauldron_handler(hit.pos, held.as_ref())
+                && let Some(remote) = &mut self.remote
+            {
+                use sunrise_protocol::buf::Codec;
+                remote.cauldron_receipt = remote.cauldron_receipt.wrapping_add(1);
+                let receipt = remote.cauldron_receipt;
+                let mut body = sunrise_core::vanilla_bytes::Writer::new();
+                body.i64(receipt);
+                play::UseItemOn::write(&packet, &mut body);
+                self.remote_send_carried();
+                if self.send_play(S::CustomPayload(
+                    sunrise_protocol::packets::configuration::CustomPayload {
+                        channel: super::super::cauldron_prediction::USE_CHANNEL.into(),
+                        data: body.data,
+                    },
+                )) && let Some(remote) = &mut self.remote
+                {
+                    remote
+                        .pending_cauldrons
+                        .insert(receipt, PendingCauldron { hand, hit, attempt });
+                }
+                return true;
+            }
             // ShelfBlock.useItemOn consumes a nonempty main-hand click client-side
             // without predicting the inventory swap or swinging.
             let shelf_reacts = hand == Hand::Main
@@ -357,20 +398,7 @@ impl Game<'_> {
                 && held
                     .as_ref()
                     .is_some_and(|s| self.armor_stand_spawn(&hit, s).is_some());
-            let cursor = [
-                (hit.point[0] - f64::from(hit.pos[0])) as f32,
-                (hit.point[1] - f64::from(hit.pos[1])) as f32,
-                (hit.point[2] - f64::from(hit.pos[2])) as f32,
-            ];
-            self.send(S::UseItemOn(play::UseItemOn {
-                hand: hand_id(hand),
-                pos: hit.pos,
-                face: i32::from(face_direction(hit.face)),
-                cursor,
-                inside: hit.inside,
-                world_border: false,
-                sequence: seq,
-            }));
+            self.send(S::UseItemOn(packet));
             // MultiPlayerGameMode.performUseItemOn: a spectator's use predicts
             // nothing and ends the click (CONSUME, no swing); the server opens
             // the block's menu. A cancelled RightClickBlock answers instead,
