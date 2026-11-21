@@ -5208,7 +5208,8 @@ impl PackPost {
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`.
+    /// the result onto `screen`. Calls `after_level` after the last pack world pass and before
+    /// composition. A pack's hand is still part of its world passes for the depth snapshots.
     #[allow(clippy::too_many_arguments)]
     pub fn run(
         &mut self,
@@ -5224,6 +5225,7 @@ impl PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        after_level: impl FnOnce(),
         lost: &std::sync::atomic::AtomicBool,
     ) -> Result<(), String> {
         self.resize(device, size, lost)?;
@@ -5537,6 +5539,7 @@ impl PackPost {
         });
         let mut water_drawn = self.water.is_none() && self.weather.is_none() && !late_entities;
         let mut shadow_drawn = false;
+        let mut after_level = Some(after_level);
         for pass in &mut passes {
             if pass.group == Group::Setup && !self.setup_pending {
                 continue;
@@ -5554,9 +5557,14 @@ impl PackPost {
             if self.sizes_differ(pass) {
                 continue;
             }
-            if !water_drawn && matches!(pass.group, Group::Composite | Group::Final) {
-                water_drawn = true;
-                self.draw_translucent(device, queue, encoder, size, terrain);
+            if matches!(pass.group, Group::Composite | Group::Final) {
+                if !water_drawn {
+                    water_drawn = true;
+                    self.draw_translucent(device, queue, encoder, size, terrain);
+                }
+                if let Some(after_level) = after_level.take() {
+                    after_level();
+                }
             }
             if pass.group == Group::Deferred && !seen.0 {
                 seen.0 = true;
@@ -5653,6 +5661,9 @@ impl PackPost {
         }
         if !water_drawn {
             self.draw_translucent(device, queue, encoder, size, terrain);
+        }
+        if let Some(after_level) = after_level {
+            after_level();
         }
         let targets = self.targets.as_ref().expect("resized");
         // depthtex0 as the frame leaves it, for next frames' `centerDepthSmooth`.

@@ -130,15 +130,30 @@ fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCusto
         log::warn!("glow not drawn: {error:?}");
     }
 }
+```
+
+To draw at a specific stage instead, replace `submit_custom_geometry` with these two callbacks.
+Store `prepared_glow` in a `Mutex<Option<PreparedWorldDraw>>` on your mod:
+
+```rust,ignore
+fn prepare_render_buffers(&self, _host: &dyn ClientHost, event: &mut PrepareRenderBuffersEvent<'_>) {
+    let mut prepared = self.prepared_glow.lock().unwrap();
+    *prepared = None;
+    let Some(glow) = *self.glow.lock().unwrap() else { return };
+    let quad = PipelineQuad::spanning(corners, 0xFFFF_C040);
+    match event.context.pipeline_quads(RenderLevelStage::AfterOpaqueBlocks, glow, &[quad]) {
+        Ok(batch) => *prepared = Some(batch),
+        Err(error) => log::warn!("glow not prepared: {error:?}"),
+    }
+}
 
 fn render_level_stage(&self, _host: &dyn ClientHost, event: &mut RenderLevelStageEvent<'_>) {
     if event.stage != RenderLevelStage::AfterOpaqueBlocks {
         return;
     }
-    let Some(glow) = *self.glow.lock().unwrap() else { return };
-    if let StagePass::World(pass) = event.context.pass() {
-        let quad = PipelineQuad::spanning(corners, 0xFFFF_C040);
-        if let Err(error) = pass.pipeline_quads(glow, &[quad]) {
+    let Some(batch) = self.prepared_glow.lock().unwrap().take() else { return };
+    if let Some(pass) = event.context.world_pass() {
+        if let Err(error) = pass.draw(batch) {
             log::warn!("glow not drawn: {error:?}");
         }
     }
@@ -178,7 +193,11 @@ For an exact stage, prepare the geometry before the pass:
 `event.context.lines(stage, &lines)` and `event.context.quads(stage, &quads)`, but not pipeline
 quads because OIT writes different attachments. The renderer pages uploads at its device's
 buffer limits rather than capping the number of mod quads. A stage skipped by the render route
-is not replayed later.
+is not replayed later. In particular, a classic shader pack which replaces the engine sky draws
+its sky after reading the engine world, so there is no early engine `AfterSky` on that route.
+`AfterLevel` runs when the level is finished, before pack composition and the engine's hand
+overlay. If the pack draws its own hand, it stays inside the pack's world passes so that
+`depthtex1` contains the opaque hand and `depthtex2` does not.
 
 ## Sampling a texture
 

@@ -84,7 +84,9 @@ create the toggle. In `Hooks::register_debug_renderers`, push `DebugRenderer::ne
 with the same ID. Use the callback's `ClientHost`, `WorldRenderView<'_>` (lending the frame's
 `Camera`, world `partial_tick`, `game_time`, `improved_transparency` state, and visible
 `RenderableSection` slice), and `WorldDrawContext` to draw, and capture any state specific to
-this renderer instead of handling an ID in a draw hook.
+this renderer instead of handling an ID in a draw hook. A panic logs and shows an error naming
+your mod and disables just that renderer for the session, even across refreshes. It does not
+roll back already accepted draws.
 
 ```rust,ignore
 use mod_api::{

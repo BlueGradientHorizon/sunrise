@@ -56,6 +56,8 @@ ids = [
   "type:RenderLevelStageEvent.context",
   "type:OitStage",
   "type:RenderLevelStage",
+  "type:RenderLevelStage.AfterSky",
+  "type:RenderLevelStage.AfterLevel",
   "type:RenderLevelStage.AfterOpaqueFeatures",
   "type:RenderLevelStage.AfterTranslucentFeatures",
   "type:RenderLevelStage.AfterTranslucentParticles",
@@ -110,6 +112,15 @@ and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRende
 - Audit [90]: replace whole-batch pre-cull validation and rollback in `draw_model_instances` with
   frustum-first culling and per-copy skipping of invalid visible instances, matching vanilla's
   `SubmitNodeStorage`.
+- Follow NeoForge's `RenderLevelStageEvent.AfterLevel` injection in `GameRenderer.renderLevel`:
+  dispatch at the world boundary, not after the classic pack's composite/final passes. Preserve
+  the classic pack's own hand within the world draws between the two depth snapshots; unlike the
+  engine hand overlay, it is an input to the pack's deferred passes. An engine `AfterSky` is not
+  synthesized when the pack replaces the early sky pass with a draw over the imported world.
+- Run retained debug renderers from vanilla's `DebugRenderer.emitGizmos` / NeoForge's
+  `RegisterDebugRenderersEvent` under the shared render-listener panic rule. A panic disables
+  only the failing callback and issues the shared log and toast naming its mod. Accepted draws
+  outside a journal are not undone.
 - Bump `submit_custom_geometry` and `render_level_stage` to version 2.
 """
 migrate = """
@@ -150,4 +161,8 @@ migrate = """
 - Move submission-only calls (`name_tag`, `draw_model_instances`, `draw_instance_group`) into
   `Hooks::submit_custom_geometry`. Move drawing previously done in `AfterSky` or `AfterLevel`
   (now `StagePass::None`) to `submit_custom_geometry` or prepare it for a pass-bearing stage.
+  Do not depend on `AfterSky` for work needed on classic packs that replace the engine sky;
+  use `prepare_render_buffers` to run on both routes. No call changes are needed for `AfterLevel`
+  or debug renderer failure handling. `AfterLevel` precedes pack composition, and a panicking
+  debug renderer remains disabled across renderer-list refreshes.
 """

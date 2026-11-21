@@ -29,8 +29,10 @@ under their registering mods' identities, after `submit_custom_geometry`. It pas
 `ClientHost`, `WorldRenderView` (lending the frame's `Camera`, world partial tick, game time,
 improved-transparency state, and visible `RenderableSection` slice) and the same
 `WorldDrawContext`, so [its submission rules](#custom-world-geometry) apply and are shared. The ID
-selects the switch; it isn't passed to the callback. Output clears every view, and callbacks don't
-run on the title or connect screens."#]
+selects the switch; it isn't passed to the callback. A panic reports the owning mod and disables
+that renderer for the session, even if the list refreshes. Other renderers and already accepted
+draws are unaffected. Output clears every view, and callbacks don't run on the title or connect
+screens."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

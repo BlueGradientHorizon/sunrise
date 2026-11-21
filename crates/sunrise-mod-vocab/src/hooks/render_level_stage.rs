@@ -10,8 +10,8 @@ pub trait DrawContexts {
 
 pub trait Hooks {
     /// Observe or draw world geometry at one stage of a world view (NeoForge 26.3's
-    /// `RenderLevelStageEvent`), asked for each stage of `RenderLevelStage::frame_order` in
-    /// frame order. `context` exposes the active stage capability: `StagePass::None` for
+    /// `RenderLevelStageEvent`), asked for each active stage of `RenderLevelStage::frame_order`
+    /// in frame order. `context` exposes the active stage capability: `StagePass::None` for
     /// no-pass stages (`AfterSky`, `AfterLevel`), `StagePass::World` for standard pass stages,
     /// and `StagePass::Oit` for `OitTranslucent` sub-passes. Client-only, noncancellable.
     #[notes = r#"## World render stages
@@ -38,8 +38,9 @@ world primitives drawn at the end of the world pass), then `AfterSky` (when the 
 then `Hooks::prepare_render_buffers` (before primitive, entity, prepared-instance, and glyph
 uploads so group updates apply to this frame), then each active pass-bearing stage in
 `RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
-the world pass finishes and before the engine's first-person hand overlay. Never fires on title
-or connect screens.
+the world pass finishes and before the engine's first-person hand overlay. A classic shader pack's
+own hand must stay in its world passes for the pack's depth snapshots; `AfterLevel` runs before
+pack composition, not before that hand. Never fires on title or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return
@@ -49,9 +50,13 @@ or connect screens.
 stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
 are standard-only because mod pipelines write to the world colour format, not OIT float targets.
 
-Stages that do not run on the active route (for example, `AfterSky` when sky is skipped or
-shader-pack routes that take over terrain, water, or weather passes) do not fire rather than
-being synthesized or relocated to another stage."#]
+Stages that do not run on the active route are not synthesized or relocated. For example, a
+classic shader pack can replace the engine sky with a late draw using the imported world;
+that route skips `AfterSky` rather than sending it after buffer preparation. Classic packs
+can also replace engine terrain, water, and weather passes.
+
+A panic disables that mod's listener for this hook for the session, with an error log and toast.
+Draws already accepted are not rolled back."#]
     #[hook(
         receiver = "read",
         dispatch = "flat",

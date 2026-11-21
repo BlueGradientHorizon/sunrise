@@ -158,6 +158,7 @@ impl Gpu {
             SIZE,
             &[],
             terrain,
+            || {},
             &std::sync::atomic::AtomicBool::new(false),
         )
         .unwrap();

@@ -224,6 +224,11 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
+                || {
+                    if let Some(hooks) = hooks {
+                        hooks.on_after_level(&self.visible_renderable_sections, false);
+                    }
+                },
                 &self.device_lost,
             );
             // Keep the capacity, not the buffers: a page the arena frees must not stay alive
@@ -231,10 +236,6 @@ impl Renderer {
             self.pack_pages.clear();
             self.pack_post = Some((dimension, Some(post)));
             ran?;
-            // Pack world passes, including deferred translucent terrain, have completed.
-            if let Some(hooks) = hooks {
-                hooks.on_after_level(&self.visible_renderable_sections, false);
-            }
         } else if let Some((color, depth)) = &scaled
             && native_post
             && let Some(native) = &mut self.native

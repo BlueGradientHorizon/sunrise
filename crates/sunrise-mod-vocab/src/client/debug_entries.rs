@@ -65,7 +65,9 @@ impl DebugRenderer {
     /// Bind drawing to the ID of a [`DebugEntry::renderer`] toggle, such as `mymod:pipe_network`.
     /// Submit a new declaration on each renderer-list refresh. If selected, the client calls
     /// `draw` after custom geometry in each world view, as the registering mod. Capture any
-    /// renderer-specific state in the callback.
+    /// renderer-specific state in the callback. If it panics, its registering mod and renderer
+    /// ID are disabled for this session, including across refreshes; other renderers keep running.
+    /// Submitted draws are not rolled back.
     pub fn new(
         id: String,
         draw: impl Fn(&dyn ClientHost, &WorldRenderView<'_>, &mut dyn WorldDrawContext)

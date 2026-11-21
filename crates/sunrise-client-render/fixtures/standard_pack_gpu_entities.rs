@@ -55,7 +55,7 @@ fn install_observer() {
     });
 }
 
-fn pack(renderer: &mut Renderer, folder: &Path, valid: bool) {
+fn pack(renderer: &mut Renderer, folder: &Path, valid: bool, classic_sky_and_hand: bool) {
     let shaders = folder.join("shaders");
     std::fs::create_dir_all(&shaders).unwrap();
     let vertex = "#version 120\nvarying vec2 uv; void main(){gl_Position=ftransform();uv=gl_MultiTexCoord0.xy;}\n";
@@ -80,13 +80,54 @@ fn pack(renderer: &mut Renderer, folder: &Path, valid: bool) {
         )
         .unwrap();
     }
+    let (final_fragment, properties) = if classic_sky_and_hand {
+        for (program, vertex, fragment) in [
+            (
+                "gbuffers_skybasic",
+                "gl_Position=ftransform();",
+                "vec4(1.0,0.0,0.0,1.0)",
+            ),
+            (
+                "gbuffers_hand",
+                "gl_Position=vec4(gl_Vertex.xy,-0.6,1.0);",
+                "vec4(0.0,1.0,0.0,1.0)",
+            ),
+        ] {
+            std::fs::write(
+                shaders.join(format!("{program}.vsh")),
+                format!("#version 120\nvoid main(){{{vertex}}}"),
+            )
+            .unwrap();
+            std::fs::write(
+                shaders.join(format!("{program}.fsh")),
+                format!(
+                    "#version 120\n/* DRAWBUFFERS:0 */\nvoid main(){{gl_FragData[0]={fragment};}}"
+                ),
+            )
+            .unwrap();
+        }
+        (
+            "#version 120\n\
+         varying vec2 uv;
+         uniform sampler2D colortex0;
+         uniform sampler2D depthtex1;
+         uniform sampler2D depthtex2;
+         void main() {
+             float withHand = texture2D(depthtex1, uv).r;
+             float withoutHand = texture2D(depthtex2, uv).r;
+             gl_FragColor = vec4(texture2D(colortex0, uv).rg, withoutHand > withHand ? 1.0 : 0.0, 1.0);
+         }",
+            "oldLighting=false\nshadow.enabled=false\nblend.gbuffers_hand=off\n",
+        )
+    } else {
+        (
+            "#version 120\nvarying vec2 uv; uniform sampler2D colortex0; void main(){gl_FragColor=texture2D(colortex0,uv);}\n",
+            "oldLighting=false\nshadow.enabled=false\n",
+        )
+    };
     std::fs::write(shaders.join("final.vsh"), vertex).unwrap();
-    std::fs::write(shaders.join("final.fsh"), "#version 120\nvarying vec2 uv; uniform sampler2D colortex0; void main(){gl_FragColor=texture2D(colortex0,uv);}\n").unwrap();
-    std::fs::write(
-        shaders.join("shaders.properties"),
-        "oldLighting=false\nshadow.enabled=false\n",
-    )
-    .unwrap();
+    std::fs::write(shaders.join("final.fsh"), final_fragment).unwrap();
+    std::fs::write(shaders.join("shaders.properties"), properties).unwrap();
     let pack = sunrise_shaders::Pack::open(folder).unwrap();
     let mut macros = sunrise_shaders::Macros::standard();
     renderer.define_pack_macros(&mut macros);
@@ -197,7 +238,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         "fixture requires compute skinning"
     );
     let unmodified_tagged = renderer.skins_tagged();
-    pack(&mut renderer, &out.join("valid-pack"), true);
+    pack(&mut renderer, &out.join("valid-pack"), true, false);
     assert!(
         !renderer.skins_tagged(),
         "eye/tagged layers keep the CPU path with a pack"
@@ -390,7 +431,81 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     assert_eq!(sky_hooks.stages.first(), Some(&Stage::AfterSky));
     assert_eq!(sky_hooks.prepared_after_sky, Some(true));
 
-    pack(&mut renderer, &out.join("failed-pack"), false);
+    // Exercise the actual classic pack route, not just an engine sky with a pack active.
+    // The pack's final shader distinguishes sky, hand, and depth1 with the hand vs depth2
+    // without it. Adding the live hook must not move the pack hand past either snapshot.
+    pack(
+        &mut renderer,
+        &out.join("classic-boundary-pack"),
+        true,
+        true,
+    );
+    let hand = [
+        [-0.5, -0.5, 0.0],
+        [0.5, -0.5, 0.0],
+        [0.5, 0.5, 0.0],
+        [-0.5, 0.5, 0.0],
+    ]
+    .map(|pos| Vertex {
+        pos,
+        uv: [0.0; 2],
+        layer: 0,
+        color: u32::MAX,
+        light: 0,
+        normal: [0, 0, 127, 0],
+        glint_uv: [0.0; 2],
+    });
+    frame.entities = &[];
+    frame.entity_spans = &[];
+    frame.hand = &hand;
+    let mut classic = WorldStageProbe::default();
+    for (name, hooks) in [
+        ("classic-boundary-control.png", None),
+        (
+            "classic-boundary-hooked.png",
+            Some(&mut classic as &mut dyn FrameHooks),
+        ),
+    ] {
+        renderer.screenshot = Some(ScreenshotRequest {
+            path: out.join(name),
+            size: None,
+            scaled: false,
+            background: false,
+        });
+        renderer.render(&frame, hooks)?;
+        renderer
+            .screenshot_result
+            .take()
+            .expect("classic boundary readback")?
+            .save()?;
+    }
+    let pixels = read(&out.join("classic-boundary-hooked.png"));
+    assert_eq!(pixels, read(&out.join("classic-boundary-control.png")));
+    let (pixels, _) = pixels.as_chunks::<4>();
+    assert!(
+        pixels.iter().any(|pixel| pixel[..3] == [255, 0, 0]),
+        "pack-owned sky"
+    );
+    assert!(
+        pixels.iter().any(|pixel| pixel[..3] == [0, 255, 255]),
+        "pack-owned hand only in depthtex1"
+    );
+    assert!(
+        !classic.stages.contains(&Stage::AfterSky) || classic.prepared_after_sky == Some(true),
+        "AfterSky must not be emitted after preparation"
+    );
+    assert_eq!(
+        classic
+            .stages
+            .iter()
+            .filter(|&&stage| stage == Stage::AfterLevel)
+            .count(),
+        1
+    );
+    assert_eq!(classic.stages.last(), Some(&Stage::AfterLevel));
+    frame.hand = &[];
+
+    pack(&mut renderer, &out.join("failed-pack"), false, false);
     assert!(
         !renderer.skins_entities(),
         "failed entity programs retain CPU posing"

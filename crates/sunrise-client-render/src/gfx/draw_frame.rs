@@ -1456,8 +1456,10 @@ impl Renderer {
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
         }
-        // On the engine sky route, complete its pass before giving mods the buffer-prepare
-        // boundary. The main world pass loads that colour and starts its own depth as usual.
+        // Complete the engine sky pass before giving mods the buffer-prepare boundary. The main
+        // world pass loads that colour and starts its own depth as usual. A classic pack that
+        // replaces the sky instead draws it after the engine world import in PackPost; there
+        // is no early engine sky pass to observe on that route.
         let separate_sky =
             live_hooks && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
         if separate_sky {
@@ -3763,8 +3765,8 @@ impl Renderer {
                 self.draw_hand(&mut pass, hand_quads, world_quads + additive_quads);
             }
         }
-        // RenderLevelStageEvent.AfterLevel: after the world pass finishes and before the
-        // first-person hand and overlays draw.
+        // RenderLevelStageEvent.AfterLevel: after the world finishes and before the engine
+        // hand and overlays. A classic pack finishes its world inside PackPost.
         let pack_world_runs = pack_post && scaled.is_some();
         if live_hooks
             && !pack_world_runs

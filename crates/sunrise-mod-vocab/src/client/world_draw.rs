@@ -178,8 +178,10 @@ pub enum OitStage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum RenderLevelStage {
-    /// After the sky, sun, moon and stars, before `prepare_render_buffers` and before any
-    /// world render pass (`RenderLevelStageEvent.AfterSky`). Provides no active render pass.
+    /// After the early engine sky pass, before `prepare_render_buffers` and before any
+    /// main world render pass (`RenderLevelStageEvent.AfterSky`). Absent if no engine sky
+    /// pass runs, including when a classic shader pack replaces that pass with its own
+    /// sky after importing the world. Provides no active render pass.
     AfterSky,
     /// After solid and cutout chunk geometry, before opaque entities and block entities
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).
@@ -203,8 +205,9 @@ pub enum RenderLevelStage {
     /// geometry, translucent features, the world border and weather
     /// (`RenderLevelStageEvent.OitTranslucent`).
     OitTranslucent(OitStage),
-    /// After the level finishes rendering, before the first-person hand
-    /// (`RenderLevelStageEvent.AfterLevel`). Provides no active render pass.
+    /// After the level finishes rendering, before the engine's first-person hand overlay
+    /// (`RenderLevelStageEvent.AfterLevel`). A classic pack's own hand is part of its world
+    /// passes; this stage runs before pack composition. Provides no active render pass.
     AfterLevel,
 }
 impl RenderLevelStage {

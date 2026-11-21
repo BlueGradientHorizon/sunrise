@@ -6,7 +6,6 @@ use glam::{DVec3, Mat4, Vec3};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, ModelRef, NameTagOptions, PipelineDrawError,
     PipelineQuad, RenderLevelStage, RenderPipelineRef, WorldLine, WorldQuad,
-    content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_client::mesher::Vertex;
 use sunrise_client::screen_effects::{CameraQuads, sampling};
@@ -65,18 +64,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         );
         self.draw.begin_custom_geometry();
         self.game.native_submit_custom_geometry(&view, self.draw);
-        for renderer in &self.game.debug_renderers {
-            let _owner = enter_native_mod(ModCall {
-                id: renderer.mod_id,
-                hook: "debug_renderer_callback",
-                part: None,
-            });
-            renderer.answer.draw(
-                self.game,
-                &view,
-                &mut GameWorldDrawContext::new(self.game, self.draw),
-            );
-        }
+        self.game.submit_debug_geometry(&view, self.draw);
     }
 
     fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
@@ -200,6 +188,18 @@ impl Game<'_> {
             .debug_entries
             .active_renderers(renderers, self.debug, reduced);
     }
+    fn submit_debug_geometry(&self, view: &mod_api::WorldRenderView<'_>, draw: &mut WorldGeometry) {
+        let mut context = GameWorldDrawContext::new(self, draw);
+        for renderer in &self.debug_renderers {
+            mod_api::__private::game::draw_debug_renderer(
+                renderer.mod_id,
+                &renderer.answer,
+                self,
+                view,
+                &mut context,
+            );
+        }
+    }
     /// Whether any mod subscribes to world rendering hooks or active debug renderers.
     pub(super) fn has_world_render_hooks(&self) -> bool {
         !self.debug_renderers.is_empty()
@@ -257,16 +257,7 @@ impl Game<'_> {
         draw.begin_custom_geometry();
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
-        for renderer in &self.debug_renderers {
-            let _owner = enter_native_mod(ModCall {
-                id: renderer.mod_id,
-                hook: "debug_renderer_callback",
-                part: None,
-            });
-            renderer
-                .answer
-                .draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
-        }
+        self.submit_debug_geometry(&view, draw);
         // 2. AfterSky (no active render pass).
         {
             let mut surface = draw.stage_surface(RenderLevelStage::AfterSky);
@@ -2275,6 +2266,147 @@ mod tests {
             assert_eq!(draw.copy_count(), 0);
             assert_eq!(entities.len(), 4);
             assert_eq!(game.prepared_model_draws.borrow()[0].cpu_vertices, 4);
+        });
+    }
+
+    struct RenderFault {
+        panics: bool,
+        batch: Mutex<Option<mod_api::PreparedWorldDraw>>,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for RenderFault {
+        fn register_debug_renderers(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterDebugRenderersEvent<'_>,
+        ) {
+            if self.panics {
+                event.renderers.push(mod_api::DebugRenderer::new(
+                    "render_fault:broken".into(),
+                    |_, _, draw| {
+                        draw.lines(&[marker(50.0)]).unwrap();
+                        panic!("debug renderer failed");
+                    },
+                ));
+                event.renderers.push(mod_api::DebugRenderer::new(
+                    "render_fault:sibling".into(),
+                    |_, _, draw| draw.lines(&[marker(60.0)]).unwrap(),
+                ));
+            }
+        }
+
+        fn submit_custom_geometry(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut SubmitCustomGeometryEvent<'_>,
+        ) {
+            let x = if self.panics { 30.0 } else { 40.0 };
+            event.draw.lines(&[marker(x)]).unwrap();
+        }
+
+        fn prepare_render_buffers(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+        ) {
+            let x = if self.panics { 10.0 } else { 20.0 };
+            *self.batch.lock().unwrap() = Some(
+                event
+                    .context
+                    .lines(RenderLevelStage::AfterOpaqueBlocks, &[marker(x)])
+                    .unwrap(),
+            );
+        }
+
+        fn render_level_stage(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::RenderLevelStageEvent<'_>,
+        ) {
+            if event.stage == RenderLevelStage::AfterOpaqueBlocks {
+                let batch = self.batch.lock().unwrap().unwrap();
+                event.context.world_pass().unwrap().draw(batch).unwrap();
+                assert!(!self.panics, "world stage listener failed");
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn render_panics_use_the_shared_boundary_without_rolling_back_draws() {
+        use mod_api::__private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics};
+        use sunrise_client::gfx::world_primitives::FrameHooks;
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _world = PhaseOwner::scope(ModPhase::World);
+            mod_platform::__private::install(
+                [("render_fault", true), ("render_healthy", false)]
+                    .into_iter()
+                    .map(|(id, panics)| {
+                        ModEntry::new(
+                            id,
+                            Box::new(RenderFault {
+                                panics,
+                                batch: Mutex::new(None),
+                            }),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+            );
+            let camera = test_camera([0.0; 3], Mat4::IDENTITY);
+            let mut draw = WorldGeometry::default();
+            for (expected_requests, expected_lines) in [
+                (&[0..1, 1..2][..], &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0][..]),
+                (&[1..2][..], &[10.0, 20.0, 30.0, 40.0, 60.0][..]),
+            ] {
+                // Refresh with fresh callback objects: enablement belongs to the renderer ID
+                // and the mod for the session, not to this list's current boxed closure.
+                let mut renderers = Vec::new();
+                Game::native_register_debug_renderers(
+                    &mod_api::RegistrationContext::new(),
+                    &mut renderers,
+                );
+                assert_eq!(renderers.len(), 2);
+                game.debug_renderers = renderers;
+
+                draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+                let mut driver = GameWorldStageDriver::new(game, &camera, 0.0, &mut draw);
+                driver.on_custom_geometry(&[], false);
+                driver.on_prepare_render_buffers(&[], false);
+                let requests =
+                    driver.on_render_stage(RenderLevelStage::AfterOpaqueBlocks, &[], false);
+                assert_eq!(
+                    requests
+                        .iter()
+                        .map(|r| r.primitives[2].clone())
+                        .collect::<Vec<_>>(),
+                    expected_requests,
+                );
+                assert_eq!(
+                    driver
+                        .prepared_primitives()
+                        .lines
+                        .iter()
+                        .map(|line| line[0])
+                        .collect::<Vec<_>>(),
+                    expected_lines,
+                );
+            }
+            assert_eq!(
+                take_hook_panics(),
+                [
+                    HookPanicReport {
+                        mod_id: "render_fault",
+                        hook: "debug_renderer_callback"
+                    },
+                    HookPanicReport {
+                        mod_id: "render_fault",
+                        hook: "render_level_stage"
+                    },
+                ],
+            );
         });
     }
 

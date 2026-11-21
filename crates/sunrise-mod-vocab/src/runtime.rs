@@ -69,10 +69,9 @@ pub(crate) struct Installed {
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
-    /// Per-hook sets of mods whose listener panicked and is disabled for that
-    /// hook for the rest of the session. Filled only on a panic; `poison_free`
-    /// answers through one atomic load, so a dispatch with no poison pays nothing.
-    poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
+    /// Callbacks disabled for this session after a panic. `poison_free` lets dispatch skip the
+    /// map lookup with one atomic load when no callback has panicked.
+    poisons: std::sync::Mutex<Option<PoisonedCallbacks>>,
     poison_free: std::sync::atomic::AtomicBool,
     /// Hook-listener panic reports queued for this installed set's client error toast.
     hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
@@ -223,29 +222,53 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
-/// Mark `id`'s listener of `hook` disabled for the rest of the session: it is skipped by
-/// that one hook alone — its other hooks, Parts, and every other mod's listeners are
-/// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
-/// `(hook, id)`, so the error log line and error toast fire once.
-pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
+#[derive(Clone, Copy)]
+pub(crate) enum DispatchSite<'a> {
+    Hook(generated::HookId),
+    // The switch ID survives a renderer-list refresh; the callback object doesn't.
+    DebugRenderer(&'a str),
+}
+
+impl From<generated::HookId> for DispatchSite<'_> {
+    fn from(hook: generated::HookId) -> Self {
+        Self::Hook(hook)
+    }
+}
+
+struct PoisonedCallbacks {
+    hooks: Box<[Option<std::collections::HashSet<&'static str>>]>,
+    debug_renderers: std::collections::HashMap<&'static str, std::collections::HashSet<Box<str>>>,
+}
+
+/// Disable the panicking callback for this mod for the rest of the session, leaving all
+/// other callbacks alone. Returns `true` only the first time to report it once.
+fn poison(site: DispatchSite<'_>, id: &'static str) -> bool {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
     let Some(installed) = installed() else {
         return true;
     };
     let mut poisons = installed.poisons.lock().unwrap_or_else(|e| e.into_inner());
-    let sets =
-        poisons.get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT].into_boxed_slice());
-    let first = sets[hook as usize]
-        .get_or_insert_with(std::collections::HashSet::new)
-        .insert(id);
+    let sets = poisons.get_or_insert_with(|| PoisonedCallbacks {
+        hooks: std::vec![None; generated::HOOK_COUNT].into_boxed_slice(),
+        debug_renderers: Default::default(),
+    });
+    let first = match site {
+        DispatchSite::Hook(hook) => sets.hooks[hook as usize]
+            .get_or_insert_with(std::collections::HashSet::new)
+            .insert(id),
+        DispatchSite::DebugRenderer(renderer) => {
+            let set = sets.debug_renderers.entry(id).or_default();
+            !set.contains(renderer) && set.insert(renderer.into())
+        }
+    };
     installed
         .poison_free
         .store(false, std::sync::atomic::Ordering::Release);
     first
 }
 
-fn is_poisoned(installed: &Installed, hook: generated::HookId, id: &str) -> bool {
+fn is_poisoned<'a>(installed: &Installed, site: impl Into<DispatchSite<'a>>, id: &str) -> bool {
     // One atomic load on the usual path: the sets only fill on a panic.
     !installed
         .poison_free
@@ -255,8 +278,15 @@ fn is_poisoned(installed: &Installed, hook: generated::HookId, id: &str) -> bool
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .as_ref()
-            .and_then(|poisons| poisons[hook as usize].as_ref())
-            .is_some_and(|poisoned| poisoned.contains(id))
+            .is_some_and(|poisons| match site.into() {
+                DispatchSite::Hook(hook) => poisons.hooks[hook as usize]
+                    .as_ref()
+                    .is_some_and(|set| set.contains(id)),
+                DispatchSite::DebugRenderer(renderer) => poisons
+                    .debug_renderers
+                    .get(id)
+                    .is_some_and(|set| set.contains(renderer)),
+            })
 }
 
 /// Whether `id`'s listener of `hook` is poisoned for the session.
@@ -266,17 +296,15 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
 
 /// Record a mod callback panic under the unified dispatch failure rule.
 ///
-/// On the first panic for `(hook_id, mod_id)`, disables that mod's callback for that hook for the
-/// rest of the session (leaving other hooks and other mods running), logs an `error!` line naming
-/// the mod, hook, and panic message, and queues one [`HookPanicReport`] for the client's error
-/// toast.
-pub(crate) fn record_hook_panic(
-    hook_id: generated::HookId,
+/// The first panic for a mod at this dispatch site disables just that callback for the session,
+/// logs the mod, site, and panic message, and queues a [`HookPanicReport`] for the error toast.
+fn record_hook_panic(
+    site: DispatchSite<'_>,
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
 ) {
-    if poison(hook_id, mod_id) {
+    if poison(site, mod_id) {
         log_and_queue_panic(hook, mod_id, payload);
     }
 }
@@ -321,8 +349,8 @@ pub(crate) enum DispatchOutcome<T> {
 /// [`DispatchOutcome::Refused`] so the caller reports it each time without latching or disabling
 /// the listener.
 #[inline]
-pub(crate) fn invoke<T>(
-    hook_id: generated::HookId,
+pub(crate) fn invoke<'a, T>(
+    site: impl Into<DispatchSite<'a>>,
     hook: &'static str,
     mod_id: &'static str,
     contained: bool,
@@ -333,10 +361,41 @@ pub(crate) fn invoke<T>(
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            record_hook_panic(site.into(), hook, mod_id, &*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
+    }
+}
+
+/// Invoke a selected debug renderer without conflating its failure with registration or with
+/// a different renderer registered by the same mod.
+pub fn draw_debug_renderer(
+    mod_id: &'static str,
+    renderer: &DebugRenderer,
+    host: &dyn ClientHost,
+    view: &WorldRenderView<'_>,
+    draw: &mut dyn WorldDrawContext,
+) {
+    const HOOK: &str = "debug_renderer_callback";
+    let Some(installed) = installed() else {
+        return;
+    };
+    let Some(&index) = installed.by_id.get(mod_id) else {
+        return;
+    };
+    let site = DispatchSite::DebugRenderer(renderer.id());
+    if installed.disabled[index].load(std::sync::atomic::Ordering::Relaxed)
+        || is_poisoned(installed, site, mod_id)
+    {
+        return;
+    }
+    bump_listener_serial();
+    let _owner = mark_mod(mod_id, HOOK);
+    if let DispatchOutcome::Refused(refusal) = invoke(site, HOOK, mod_id, outside_world(), || {
+        renderer.draw(host, view, draw);
+    }) {
+        refusal.report();
     }
 }
 

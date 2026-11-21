@@ -302,7 +302,7 @@ pub mod built {
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
     #[doc(hidden)]
-    pub use crate::runtime::discard_registration;
+    pub use crate::runtime::{discard_registration, draw_debug_renderer};
     use crate::*;
     use std::fmt::Debug;
 
