@@ -58,6 +58,15 @@ class DailyRowsCoverage(unittest.TestCase):
         with unittest.mock.patch.object(check, "windows_daily_runs", return_value=False):
             self.assertIn("daily.yml must call", check.daily_problems(rows, self.TARGETS, FULL)[0])
 
+    def test_own_sdk_tests_are_run_by_exact_name_only_in_quickstart(self):
+        log = row("cargo-sunrise-mod", "run_writes_native_registration_logs_to_latest_log", "test:run")
+        log = log._replace(reason="own-sdk")
+        self.assertEqual(ignored_tests.daily_rows_groups([log]), {})
+        targets = {log.package: {log.reference}}
+        self.assertEqual(check.daily_problems([log], targets, []), [])
+        missing = log._replace(test="run_writes_missing_log")
+        self.assertIn("by exact name", check.daily_problems([missing], targets, FULL)[0])
+
     def test_a_row_must_name_a_package_and_one_of_its_targets(self):
         problems = check.daily_problems([row("sunrise-nothing", "a"), row("sunrise-relay", "b", "test:missing")],
                                         self.TARGETS, FULL)

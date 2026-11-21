@@ -1,7 +1,7 @@
 use std::{path::Path, process::Command};
 
 #[test]
-#[ignore = "book-quickstart.yml: the run's own SDK"]
+#[ignore = "daily"]
 fn run_writes_native_registration_logs_to_latest_log() {
     use std::fs;
     use std::io::Write;
