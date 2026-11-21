@@ -465,9 +465,6 @@ pub(super) struct Levels {
     /// Whether the level held in `Game`'s own fields has been closed by server
     /// shutdown (`close_loaded_levels_for_stop`).
     pub(in crate::game) active_closed: bool,
-    /// The levels whose open the mods heard (`native_level_load`), each to
-    /// be told closed once.
-    heard_open: Vec<Dim>,
     /// The levels a mod asked to have saved (`level_request_save`), each once, saved at the start
     /// of the next server tick.
     requested_saves: Vec<Dim>,
@@ -511,21 +508,8 @@ impl Levels {
         self.requested_saves.retain(|saved| *saved != dim);
     }
 
-    /// Record `dim` in server level creation order (`MinecraftServer.levels`).
-    pub(super) fn record_creation(&mut self, dim: Dim) {
-        if !self.order.contains(&dim) {
-            self.order.push(dim);
-        }
-    }
-
-    /// Forget `dim` from server level creation order once its level has closed.
-    pub(super) fn forget_creation(&mut self, dim: Dim) {
-        self.order.retain(|d| *d != dim);
-    }
-
-    /// Whether any server level has fired `level_load` without yet closing.
-    pub(in crate::game) fn has_heard_open(&self) -> bool {
-        !self.heard_open.is_empty()
+    pub(in crate::game) fn has_loaded_levels(&self) -> bool {
+        !self.order.is_empty()
     }
 
     /// Clear every parked level and dimensions recorded as heard open.
@@ -533,7 +517,6 @@ impl Levels {
         self.parked.clear();
         self.order.clear();
         self.active_closed = false;
-        self.heard_open.clear();
         self.requested_saves.clear();
         self.runtime.clear();
     }
@@ -840,29 +823,25 @@ impl Game<'_> {
         })
     }
 
-    /// Every currently loaded server level in creation order
-    /// (`MinecraftServer.levels`'s `LinkedHashMap` order). Levels inserted
-    /// outside startup/open (such as unit tests) follow in deterministic order.
+    /// Every loaded server level in `MinecraftServer.levels` creation order.
     pub(in crate::game) fn loaded_level_order(&self) -> Vec<Dim> {
-        let mut present = Vec::with_capacity(self.levels.parked.len() + 1);
-        if !self.levels.active_closed {
-            present.push(self.dim);
+        #[cfg(test)]
+        if self.levels.order.len()
+            != self.levels.parked.len() + usize::from(!self.levels.active_closed)
+        {
+            // Isolated Game fixtures can populate level storage without running createLevels.
+            let mut dims = self.levels.order.clone();
+            let mut unannounced: Vec<_> = (!self.levels.active_closed)
+                .then_some(self.dim)
+                .into_iter()
+                .chain(self.levels.parked.keys().copied())
+                .filter(|dim| !dims.contains(dim))
+                .collect();
+            unannounced.sort_by_key(|dim| dim_fallback_key(*dim));
+            dims.extend(unannounced);
+            return dims;
         }
-        present.extend(self.levels.parked.keys().copied());
-
-        let mut ordered = Vec::with_capacity(present.len());
-        for &dim in &self.levels.order {
-            if present.contains(&dim) && !ordered.contains(&dim) {
-                ordered.push(dim);
-            }
-        }
-        let mut rest: Vec<Dim> = present
-            .into_iter()
-            .filter(|dim| !ordered.contains(dim))
-            .collect();
-        rest.sort_by(|a, b| dim_fallback_key(*a).cmp(&dim_fallback_key(*b)));
-        ordered.extend(rest);
-        ordered
+        self.levels.order.clone()
     }
 
     /// `MinecraftServer.createLevels`: open every configured level from the
@@ -906,17 +885,9 @@ impl Game<'_> {
             }
             self.native_level_opened(dim);
         }
-        // Switching back to the owner's level is separate from publishing the
-        // configured levels. A saved starting level not in the configured stem
-        // table (if any) is published here.
-        let publish_starting_level = starting_level.is_some();
-        if let Some(level) = starting_level {
-            self.levels.parked.insert(starting_dim, level);
-        }
+        // Preparing the owner's level does not add it to createLevels. The
+        // player dimension was resolved against the configured stems before loading.
         self.enter_level(starting_dim)?;
-        if publish_starting_level {
-            self.native_level_opened(starting_dim);
-        }
         Ok(())
     }
 
@@ -1754,9 +1725,8 @@ impl Game<'_> {
             self.entity_attachments.remove_collider(*id);
         }
         self.enter_level(back)?;
-        self.levels.parked.remove(&dim);
-        self.levels.forget_creation(dim);
         self.native_level_closed(dim);
+        self.levels.parked.remove(&dim);
         Ok(())
     }
 
@@ -1765,10 +1735,9 @@ impl Game<'_> {
         if dim == self.dim {
             self.levels.active_closed = false;
         }
-        self.levels.record_creation(dim);
         if self.remote.is_some()
             || self.options.execution_role.is_client()
-            || self.levels.heard_open.contains(&dim)
+            || self.levels.order.contains(&dim)
         {
             return;
         }
@@ -1779,7 +1748,7 @@ impl Game<'_> {
             parked.bind_resident_owners(&journal, dim.key(), true);
         }
         self.bind_dimension_attachments(dim);
-        self.levels.heard_open.push(dim);
+        self.levels.order.push(dim);
         self.native_level_load(dim.id());
     }
 
@@ -1787,9 +1756,9 @@ impl Game<'_> {
     /// each open they heard.
     fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
-        if let Some(i) = self.levels.heard_open.iter().position(|d| *d == dim) {
-            self.levels.heard_open.remove(i);
+        if let Some(i) = self.levels.order.iter().position(|d| *d == dim) {
             self.native_level_unload(dim.id());
+            self.levels.order.remove(i);
         }
         if dim == self.dim {
             self.world.water_tickets.clear();
@@ -1815,25 +1784,22 @@ impl Game<'_> {
                 match self.save.flush() {
                     Ok(()) => {
                         self.streaming.abort_generation();
-                        self.levels.active_closed = true;
-                        self.levels.forget_creation(dim);
                         self.native_level_closed(dim);
+                        self.levels.active_closed = true;
                     }
                     Err(error) => {
                         log::error!("Exception closing the level {}: {error}", dim.id());
                     }
                 }
-            } else if let Some(mut parked) = self.levels.parked.remove(&dim) {
+            } else if let Some(parked) = self.levels.parked.get_mut(&dim) {
                 match parked.save.flush() {
                     Ok(()) => {
                         parked.streaming.abort_generation();
-                        drop(parked);
-                        self.levels.forget_creation(dim);
                         self.native_level_closed(dim);
+                        self.levels.parked.remove(&dim);
                     }
                     Err(error) => {
                         log::error!("Exception closing the level {}: {error}", dim.id());
-                        self.levels.parked.insert(dim, parked);
                     }
                 }
             }
@@ -1887,6 +1853,7 @@ impl Game<'_> {
     }
 }
 
+#[cfg(test)]
 fn dim_fallback_key(dim: Dim) -> (u8, &'static str) {
     match dim {
         Dim::Overworld => (0, ""),
@@ -1936,12 +1903,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn levels_clear_empties_parked_and_heard_open() {
+    fn levels_clear_retires_the_level_order() {
         let mut levels = Levels::default();
-        levels.heard_open.push(Dim::Nether);
-        assert!(!levels.heard_open.is_empty());
+        levels.order.push(Dim::Nether);
+        assert!(!levels.order.is_empty());
         levels.clear();
-        assert!(levels.heard_open.is_empty());
+        assert!(levels.order.is_empty());
         assert!(levels.parked.is_empty());
     }
 

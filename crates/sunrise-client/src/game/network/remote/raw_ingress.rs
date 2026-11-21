@@ -152,7 +152,7 @@ impl Game<'_> {
                     self.send_chat_acknowledgement();
                     self.close_dialogs();
                     // clearClientLevel posts Unload before clearing the level.
-                    self.set_client_level_notice(None);
+                    self.unload_client_level();
                     // The server configuring us now (a proxy's next one)
                     // offers its own far terrain, or none, and announces its
                     // own features again.

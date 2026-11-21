@@ -18,7 +18,10 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
         native_entity_refs::tests::with_client_game,
         remote::{Received, RemoteDimensionEntry},
     };
-    use mod_api::{ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, Hooks, ModEntry};
+    use mod_api::{
+        BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, Hooks, LevelRef,
+        ModEntry,
+    };
     use std::sync::{Arc, Mutex};
     use sunrise_client::{
         level_loading::Reason,
@@ -26,24 +29,42 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     };
     use sunrise_protocol::packets::play::SpawnInfo;
 
-    struct Log(Arc<Mutex<Vec<String>>>);
+    struct Notice {
+        kind: &'static str,
+        dimension: String,
+        level: LevelRef,
+        block: Option<BlockState>,
+    }
+    struct Log(Arc<Mutex<Vec<Notice>>>);
+    impl Log {
+        fn record(&self, kind: &'static str, host: &dyn ClientHost, dimension: &str) {
+            let level = host
+                .level(dimension)
+                .expect("the event's level must resolve");
+            let block = level.block_state(host, [3, 70, 5]);
+            self.0.lock().unwrap().push(Notice {
+                kind,
+                dimension: dimension.to_owned(),
+                level,
+                block,
+            });
+        }
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Log {
-        fn client_level_load(&self, _: &mut dyn ClientHost, event: &mut ClientLevelLoadEvent<'_>) {
-            self.0
-                .lock()
-                .unwrap()
-                .push(format!("load:{}", event.dimension));
+        fn client_level_load(
+            &self,
+            host: &mut dyn ClientHost,
+            event: &mut ClientLevelLoadEvent<'_>,
+        ) {
+            self.record("load", host, event.dimension);
         }
         fn client_level_unload(
             &self,
-            _: &mut dyn ClientHost,
+            host: &mut dyn ClientHost,
             event: &mut ClientLevelUnloadEvent<'_>,
         ) {
-            self.0
-                .lock()
-                .unwrap()
-                .push(format!("unload:{}", event.dimension));
+            self.record("unload", host, event.dimension);
         }
     }
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -65,10 +86,26 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 };
                 let _server = logged_client(game);
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                let overworld = game.level(&login.dimension).unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Respawn, Reason::Other);
+                assert_eq!(game.level(&login.dimension), Some(overworld));
                 let mut nether = login.clone();
                 nether.dimension = "minecraft:the_nether".into();
                 game.enter_remote_dimension(&nether, RemoteDimensionEntry::Respawn, Reason::Other);
+                let nether = game.level(&nether.dimension).unwrap();
+                assert_eq!(
+                    log.lock().unwrap()[1].level,
+                    nether,
+                    "constructor handle survives installation"
+                );
+                assert_eq!(
+                    game.level_block_state(overworld, [3, 70, 5]),
+                    None,
+                    "old handle retires after Unload"
+                );
                 let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
                 tx.send(Event::Reconfiguring).unwrap();
                 let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
@@ -91,18 +128,29 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
             });
         },
     );
+    let log = log.lock().unwrap();
     assert_eq!(
-        *log.lock().unwrap(),
+        log.iter()
+            .map(|notice| (notice.kind, notice.dimension.as_str()))
+            .collect::<Vec<_>>(),
         [
-            "load:minecraft:overworld",
-            "load:minecraft:the_nether",
-            "unload:minecraft:overworld",
-            "unload:minecraft:the_nether",
-            "load:minecraft:overworld",
-            "unload:minecraft:overworld",
-            "load:minecraft:overworld",
-            "unload:minecraft:overworld",
+            ("load", "minecraft:overworld"),
+            ("load", "minecraft:the_nether"),
+            ("unload", "minecraft:overworld"),
+            ("unload", "minecraft:the_nether"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
         ]
+    );
+    assert_eq!(log[0].level, log[2].level);
+    assert_eq!(log[1].level, log[3].level);
+    assert_ne!(log[0].level.epoch(), log[1].level.epoch());
+    assert!(log[0].block.is_none() && log[1].block.is_none());
+    assert!(
+        log[2].block.is_some(),
+        "the retiring Overworld still holds the old chunk"
     );
 }
 

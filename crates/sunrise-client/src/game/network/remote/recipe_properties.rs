@@ -21,7 +21,7 @@ impl Game<'_> {
         if self.mod_screen.is_some() {
             self.remote_close_local();
         }
-        self.set_client_level_notice(None);
+        self.unload_client_level();
         self.native_lifecycle.begin_close();
         self.native_lifecycle_world_closed();
         self.recipe_ui.server_properties = Default::default();
@@ -29,18 +29,11 @@ impl Game<'_> {
         self.refresh_recipe_property_context();
     }
 
-    /// NeoForge tells the new ClientLevel's Load before setLevel's old-level
-    /// Unload; disconnect and clearClientLevel just consume the previous load.
-    pub(super) fn set_client_level_notice(&mut self, next: Option<&str>) {
-        let Some(remote) = self.remote.as_mut() else {
-            return;
-        };
-        let old = std::mem::replace(&mut remote.heard_level, next.map(str::to_owned));
-        if let Some(next) = next {
-            self.native_client_level_load(next);
-        }
-        if let Some(old) = old {
-            self.native_client_level_unload(&old);
+    /// `Minecraft.setLevel` / `clearClientLevel`: once per installed level,
+    /// while it is still the active level and its chunks and handles resolve.
+    pub(super) fn unload_client_level(&mut self) {
+        if let Some(dimension) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
+            self.native_client_level_unload(&dimension);
         }
     }
 

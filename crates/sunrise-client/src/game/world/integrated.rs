@@ -1003,7 +1003,8 @@ impl Game<'_> {
         startup::time("server.settle_spawn", || self.settle_player_spawn())?;
         // IntegratedServer.initServer calls saveEverything(false, true, true)
         // before ServerLifecycleHooks.handleServerStarting(this).
-        startup::time("server.initial_save", || self.save_game())?;
+        // The owner has not joined the player list. Save levels and metadata only.
+        startup::time("server.initial_save", || self.save_world_with(true, false))?;
         Ok((pipe, self.level.name.clone()))
     }
 
@@ -1864,11 +1865,15 @@ pub(super) mod tests {
         use mod_api::{Hooks, ModEntry, ServerHost};
         use mod_platform::testing::with_mods;
         use std::sync::Mutex;
+        use sunrise_client::{lan::playerdata, save};
+        use sunrise_core::nbt::Tag;
 
         struct Order {
             events: Arc<Mutex<Vec<String>>>,
             ready_rx: Arc<Mutex<Receiver<Ready>>>,
             flags: Arc<Flags>,
+            player_file: std::path::PathBuf,
+            player_bytes: Vec<u8>,
         }
         #[mod_api::__subscriptions]
         impl Hooks for Order {
@@ -1902,6 +1907,7 @@ pub(super) mod tests {
                         "ready must not be sent during initial save"
                     );
                 }
+                assert_eq!(std::fs::read(&self.player_file).unwrap(), self.player_bytes);
                 self.events.lock().unwrap().push("saved".into());
             }
             fn server_starting(
@@ -1944,6 +1950,34 @@ pub(super) mod tests {
         super::super::native_entity_refs::tests::with_client_game(|window| {
             window.join_world_rest().unwrap();
             let dir = tempfile::tempdir().unwrap();
+            let owner = offline_uuid("Tester");
+            let position = [8.5, 90.0, -4.5];
+            let mut initial = save::Level {
+                name: "Integrated Startup Order".into(),
+                seed: 1,
+                player_uuid: Some(playerdata::uuid_ints(owner)),
+                position: Some(position),
+                dimension: "minecraft:the_nether".into(),
+                world_spawn: Some([0, 80, 0]),
+                xp_level: 7,
+                inventory: vec![(0, "minecraft:diamond".into(), 2, 0)],
+                ..save::Level::default()
+            };
+            initial.write(dir.path(), window.res.items()).unwrap();
+            save::biome_regions::create(dir.path()).unwrap();
+            // An existing experimental world whose preset omits the player's saved Nether.
+            let settings_path = dir.path().join("data/minecraft/world_gen_settings.dat");
+            let mut settings = save::read_dat(&settings_path).unwrap();
+            let Some(Tag::Compound(stems)) = settings
+                .get_mut("data")
+                .and_then(|data| data.get_mut("dimensions"))
+            else {
+                panic!("saved worldgen contains its stems");
+            };
+            assert!(stems.remove(&"minecraft:the_nether".into()).is_some());
+            save::write_dat(&settings_path, settings).unwrap();
+            let player_file = playerdata::path(dir.path(), owner);
+            let player_bytes = std::fs::read(&player_file).unwrap();
             let folder = dir.path().to_string_lossy().into_owned();
             let flags = Arc::new(Flags::default());
             let (ready_tx, ready_rx) = channel();
@@ -1964,7 +1998,7 @@ pub(super) mod tests {
                 seed: Some(1),
                 creative: true,
                 create: None,
-                owner: offline_uuid("Tester"),
+                owner,
                 player: "Tester".into(),
                 owner_profile: None,
             };
@@ -1975,6 +2009,8 @@ pub(super) mod tests {
                         events: events.clone(),
                         ready_rx: ready_rx.clone(),
                         flags: flags.clone(),
+                        player_file: player_file.clone(),
+                        player_bytes: player_bytes.clone(),
                     }),
                 )]
                 .into(),
@@ -1994,26 +2030,28 @@ pub(super) mod tests {
             );
             let received = ready_rx.lock().unwrap().try_recv().unwrap();
             assert_eq!(received.unwrap().1, "Integrated Startup Order");
+            assert_eq!(std::fs::read(&player_file).unwrap(), player_bytes);
+            let reopened = save::Level::read(dir.path()).unwrap();
+            assert_eq!(reopened.position, Some(position));
+            assert_eq!(reopened.dimension, "minecraft:the_nether");
+            assert_eq!(reopened.xp_level, 7);
+            assert_eq!(reopened.inventory, initial.inventory);
             assert_eq!(
                 *events.lock().unwrap(),
                 [
                     "about-to-start",
                     "level-load:minecraft:overworld",
-                    "level-load:minecraft:the_nether",
                     "level-load:minecraft:the_end",
                     "level-save:minecraft:overworld",
-                    "level-save:minecraft:the_nether",
                     "level-save:minecraft:the_end",
                     "saved",
                     "starting",
                     "started",
                     "stopping",
                     "level-save:minecraft:overworld",
-                    "level-save:minecraft:the_nether",
                     "level-save:minecraft:the_end",
                     "saved",
                     "level-unload:minecraft:overworld",
-                    "level-unload:minecraft:the_nether",
                     "level-unload:minecraft:the_end",
                     "stopped",
                 ]

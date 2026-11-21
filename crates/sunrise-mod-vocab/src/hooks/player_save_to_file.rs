@@ -10,17 +10,17 @@ pub trait Hooks {
     /// is the world's player directory (`players/data`): write your own file
     /// there, named `<uuid>.<suffix>`, never the player's `.dat`. The player
     /// may be leaving, so no player's state is swapped in. Not cancellable.
-    /// Autosave snapshots are written asynchronously: this notification runs
-    /// on a later server tick after a successful write, possibly after WorldSaved.
-    /// Live state may have advanced beyond the saved snapshot; a process exit
-    /// before completions are drained can prevent notification delivery.
+    /// On a full world save, including an autosave, successful player writes and
+    /// these notifications finish before the first `level_save`; placed players
+    /// stay online. A world save before any player joins has no player to save.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_save_to_file",
         dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "PlayerEvent.SaveToFile (not cancellable)",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn player_save_to_file(player: u128, name: &str, directory: &std::path::Path);
 }

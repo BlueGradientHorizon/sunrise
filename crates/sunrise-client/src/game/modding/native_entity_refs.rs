@@ -195,10 +195,10 @@ impl Game<'_> {
     /// for viewing (`client_level_key`). None with no world open, or for a
     /// dimension the server hasn't loaded. API 373.
     pub(in crate::game) fn level(&self, dimension: &str) -> Option<LevelRef> {
-        let epoch = self.native_lifecycle.epoch()?;
         if !self.is_logical_server() {
-            return Some(LevelRef::new(epoch, self.client_level_key(dimension)?));
+            return self.client_level_by_name(dimension);
         }
+        let epoch = self.native_lifecycle.epoch()?;
         let dim = (!self.levels.active_closed)
             .then_some(self.dim)
             .into_iter()
@@ -224,14 +224,18 @@ impl Game<'_> {
             .as_ref()
             .map_or_else(|| self.dim.key(), |r| r.level_key)
     }
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
+    /// Loaded server levels, in creation order. Empty without a server world.
     pub(super) fn native_list_levels(&self) -> Vec<LevelRef> {
-        if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
+        let Some(epoch) = self
+            .native_lifecycle
+            .epoch()
+            .filter(|_| self.is_logical_server())
+        else {
             return Vec::new();
-        }
-        self.loaded_dims()
+        };
+        self.loaded_level_order()
             .into_iter()
-            .filter_map(|dim| self.level(dim.id()))
+            .map(|dim| self.level_ref(epoch, dim.key()))
             .collect()
     }
     fn level_entity_candidates(&self, level: LevelRef) -> impl Iterator<Item = EntityRef> + '_ {

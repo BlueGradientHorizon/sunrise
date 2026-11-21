@@ -105,9 +105,13 @@ impl NativeLifecycle {
 
     /// The open starts: a fresh process-wide epoch, never reused.
     pub(super) fn begin_open(&mut self, authority: Authority) {
+        self.begin_open_at(authority, fresh_epoch());
+    }
+
+    fn begin_open_at(&mut self, authority: Authority, epoch: WorldEpoch) {
         self.attempt = Some(OpenAttempt {
             authority,
-            epoch: fresh_epoch().get(),
+            epoch: epoch.get(),
             session: OpenState::Opening,
             ticks: 0,
             tick_open: false,
@@ -199,6 +203,10 @@ impl Game<'_> {
     }
 
     pub(super) fn native_lifecycle_open_started(&mut self) {
+        self.native_lifecycle_open_at(fresh_epoch());
+    }
+
+    pub(super) fn native_lifecycle_open_at(&mut self, epoch: WorldEpoch) {
         self.levels.active_closed = false;
         self.clear_composter_randoms();
         self.reset_entity_residency();
@@ -209,7 +217,7 @@ impl Game<'_> {
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.native_lifecycle
-            .begin_open(self.native_lifecycle_authority());
+            .begin_open_at(self.native_lifecycle_authority(), epoch);
     }
 
     pub(super) fn native_lifecycle_world_ready(&mut self) {

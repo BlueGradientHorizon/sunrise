@@ -4,7 +4,10 @@
 pub trait Hooks {
     /// The client is dropping its level for `dimension` (`LevelEvent.Unload`
     /// from `Minecraft.setLevel`, `clearClientLevel`, and `disconnect`). On
-    /// replacement, the new level's load is heard first. Reconfiguration,
+    /// replacement, the new level's load is heard first, but
+    /// `host.level(event.dimension)` still resolves the retiring level, and
+    /// previously acquired handles can still read its chunks in this callback.
+    /// Reconfiguration,
     /// leaving a server, and quitting all unload the current level once.
     /// When quitting single player, this fires before halting its server.
     /// Client-side.
@@ -15,7 +18,7 @@ pub trait Hooks {
         contract = "listen",
         neoforge = "LevelEvent.Unload",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn client_level_unload(dimension: &str);
 }

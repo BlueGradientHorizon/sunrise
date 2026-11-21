@@ -259,7 +259,7 @@ impl Game<'_> {
         // when the world save did not fail or panic, matching vanilla's control
         // flow where a failed `saveAllChunks` unwinds before `level.close()`.
         if save_ok
-            && (self.world_adopted || self.levels.has_heard_open())
+            && (self.world_adopted || self.levels.has_loaded_levels())
             && let Err(payload) =
                 catch_unwind(AssertUnwindSafe(|| self.close_loaded_levels_for_stop()))
             && result.is_ok()

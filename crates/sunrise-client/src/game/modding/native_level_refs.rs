@@ -325,10 +325,12 @@ impl Game<'_> {
         if self.is_logical_server() {
             return self.native_level_world(level);
         }
-        (self.remote.as_ref().is_some_and(|r| r.logged_in)
-            && self.level_handle_current(level)
-            && level.dimension() == self.native_level_key())
-        .then_some(&self.world)
+        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        if let Some(constructing) = remote.constructing(level) {
+            return Some(&constructing.world);
+        }
+        (self.level_handle_current(level) && level.dimension() == remote.level_key)
+            .then_some(&self.world)
     }
     /// Find a loaded chunk in an open server level.
     pub(super) fn chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<ChunkRef> {

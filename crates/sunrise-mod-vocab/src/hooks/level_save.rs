@@ -8,6 +8,10 @@ pub trait Hooks {
     /// `server_starting`. A world-wide save visits levels in their creation
     /// order, regardless of which level is active. Idle chunk eviction is
     /// not a level save. Server-side.
+    ///
+    /// On a full server save the placed players are saved before any level,
+    /// and world metadata is saved after the levels. The integrated server's
+    /// initial save has no placed owner and does not write the owner's player file.
     #[hook(
         dispatch = "flat",
         side = "server",

@@ -51,10 +51,21 @@ A folder that exists under the id is reopened as it was saved, a persistent leve
 unload or a restart. Nothing reopens a runtime level by itself at the next start: the mod
 reopens what it keeps, and a player saved in a level that was not reopened keeps the usual
 fallback. At server startup every configured level (including datapack dimensions) fires `level_load` before the next is available. The Overworld opens first and, if needed,
-selects the initial world spawn before the other levels open. The remaining levels follow the
-`LEVEL_STEM` registry traversal; mods must not assume a particular order among them. Saves
-and shutdown use that creation order. The server then validates and activates their saved
+selects the initial world spawn before the other levels open. `create_spawn_position` runs there
+for normal fresh worlds; the Debug preset uses its fixed spawn without that hook. The remaining
+levels follow the `LEVEL_STEM` registry traversal; mods must not assume a particular order among
+them. `host.levels().list_levels()`, saves and shutdown use that creation order. A player's saved
+dimension does not add to the registry. The server then validates and activates their saved
 tickets and waits for the ticketed chunks before `server_started`, even if no player visits those levels.
+
+On a full server save, `player_save_to_file` notifications for successfully saved placed players
+come before `level_save`, then `world_saved` follows the world metadata write. Startup's integrated
+save before `server_starting` writes levels and world metadata but does not rewrite the offline owner.
+
+On the client, resolve the level in `client_level_load` with `host.level(event.dimension)` before it
+is installed. On replacement, `client_level_unload` follows for the retiring level: its handle and
+loaded chunks still resolve until that callback finishes. The handle given through the new level's
+lookup remains valid when that level is installed.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
 requesting mod and level id. A failed open rolls back publication and frees the id for retry;

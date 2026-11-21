@@ -4,6 +4,7 @@ pub trait Hooks {
     /// Before a new server level selects its initial world spawn
     /// (NeoForge's `LevelEvent.CreateSpawnPosition`), after the Overworld's
     /// `level_load` and before the remaining configured levels are opened.
+    /// The vanilla Debug preset uses its fixed spawn and skips this hook.
     #[hook(
         dispatch = "flat",
         side = "server",

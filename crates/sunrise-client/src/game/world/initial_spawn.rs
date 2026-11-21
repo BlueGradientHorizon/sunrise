@@ -60,6 +60,13 @@ impl Game<'_> {
     /// is resolved separately, after level preparation.
     pub(super) fn initialize_overworld_spawn(&mut self) -> Result<()> {
         let dedicated = self.is_dedicated_server();
+        if self.level.world_spawn.is_none() && self.world_debug {
+            // MinecraftServer.setInitialSpawn takes this branch before NeoForge's
+            // CreateSpawnPosition and the normal chunk search (including bonus chest).
+            self.level.world_spawn = Some([0, 80, 0]);
+            self.level.world_spawn_angle = [0.0, 0.0];
+            self.level.spawn = Some([0.0, 80.0, 0.0]);
+        }
         if self.level.world_spawn.is_none() {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
             if dedicated {

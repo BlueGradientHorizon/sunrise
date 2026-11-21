@@ -14169,22 +14169,6 @@ mod test_neighbourhood {
     }
 }
 
-fn write_level_for_role(
-    level: &mut Level,
-    dir: &std::path::Path,
-    role: execution_role::ExecutionRole,
-    items: &crate::items::Items,
-    keep_owner_file: bool,
-) -> Result<()> {
-    match (role.writes_singleplayer_player(), keep_owner_file) {
-        (true, false) => level.write(dir, items),
-        // Player-first shutdown keeps the file just written by the live owner;
-        // an interrupted owner keeps their last file or legacy `Data.Player`.
-        (true, true) => level.write_keeping_player(dir),
-        (false, _) => level.write_without_player(dir),
-    }
-}
-
 /// A server's data load with no mods and no settings, for loaders under test.
 #[cfg(test)]
 fn test_server_load() -> sunrise_world::native_load_context::LoadContext {

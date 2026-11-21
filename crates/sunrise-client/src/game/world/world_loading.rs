@@ -294,7 +294,18 @@ impl WorldRequest {
         // The bounded registry-loader leaf slice: fail world preparation before streaming,
         // rather than letting the flat-generator fallback swallow a selected pack's codec error.
         overrides.validate_fill_layers(pack.assets.registry)?;
-        let dim = Dim::from_id(&level.dimension);
+        // PrepareSpawnTask: resolve the player's dimension against this world's stems,
+        // without changing the saved position or adding a stem for the player.
+        let dim = configured_levels
+            .iter()
+            .find(|dim| dim.id() == level.dimension)
+            .or_else(|| {
+                let spawn = level.world_spawn_dimension.as_deref()?;
+                configured_levels.iter().find(|dim| dim.id() == spawn)
+            })
+            .copied()
+            .unwrap_or(Dim::Overworld);
+        level.dimension = dim.id().to_owned();
         let shape = shapes.get(dim.id());
         let streaming_step = startup::step("world.make_streaming");
         let loot = sunrise_client::structure_blocks::LootSnapshot::default();
@@ -756,22 +767,20 @@ fn shapes_of(
     use sunrise_client::chunk::{ExtraLevel, LevelShape, LevelShapes};
     use sunrise_world::worldgen::overrides::DIMENSIONS;
     let builtins = [Dim::Overworld.id(), Dim::Nether.id(), Dim::End.id()];
-    // WorldDimensions.bake resolves the effective stems; createLevels walks
-    // the resulting MappedRegistry.entrySet (byKey), not preset insertion or
-    // pack path order. Derive both shape lookup and publication from those entries.
-    let mut stems: std::collections::HashMap<_, _> = overrides
+    // WorldDimensions.bake resolves the effective stems. Traverse the existing
+    // winning registry entries, not the bucket order of a second map. Worlds
+    // without a saved preset also have the built-in stems not overridden there.
+    let stems = overrides
         .entries(DIMENSIONS)
-        .map(|(id, json)| (id, Some(json)))
-        .collect();
-    if implicit_defaults {
-        for id in builtins {
-            stems.entry(id).or_insert(None);
-        }
-    }
+        .map(|(id, json)| (id, Some(json)));
+    let defaults = builtins
+        .into_iter()
+        .filter(|id| implicit_defaults && !overrides.entries(DIMENSIONS).any(|(key, _)| key == *id))
+        .map(|id| (id, None));
     let mut shapes = LevelShapes::VANILLA;
     let mut extra = Vec::new();
-    let mut configured = Vec::with_capacity(stems.len());
-    for (level, stem) in stems {
+    let mut configured = Vec::new();
+    for (level, stem) in stems.chain(defaults) {
         let shape = overrides.level_height(level).and_then(|h| {
             LevelShape::new(
                 h.min_y,

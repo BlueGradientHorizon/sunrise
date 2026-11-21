@@ -543,26 +543,42 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
     use std::fs;
     use sunrise_client::save::Level;
 
-    struct Log(Arc<Mutex<Vec<String>>>);
+    struct Log {
+        events: Arc<Mutex<Vec<String>>>,
+        listed_at_load: Arc<Mutex<Vec<Vec<String>>>>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Log {
-        fn level_load(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
-            self.0.lock().unwrap().push(format!("load:{}", e.dimension));
+        fn level_load(&self, host: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("load:{}", e.dimension));
+            self.listed_at_load.lock().unwrap().push(
+                host.levels()
+                    .list_levels()
+                    .into_iter()
+                    .map(|level| level.dimension_id().to_owned())
+                    .collect(),
+            );
         }
         fn create_spawn_position(
             &self,
             _: &mut dyn ServerHost,
             e: &mut mod_api::CreateSpawnPositionEvent<'_>,
         ) -> mod_api::Flow {
-            self.0.lock().unwrap().push("initialize-spawn".into());
+            self.events.lock().unwrap().push("initialize-spawn".into());
             *e.position = [32, 73, 16];
             mod_api::Flow::Cancel
         }
         fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
-            self.0.lock().unwrap().push(format!("save:{}", e.dimension));
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("save:{}", e.dimension));
         }
         fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
-            self.0
+            self.events
                 .lock()
                 .unwrap()
                 .push(format!("unload:{}", e.dimension));
@@ -593,8 +609,16 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
         .unwrap();
     }
     let log = Arc::new(Mutex::new(Vec::new()));
+    let listed_at_load = Arc::new(Mutex::new(Vec::new()));
     with_mods(
-        vec![ModEntry::new("log", Box::new(Log(log.clone())))].into(),
+        vec![ModEntry::new(
+            "log",
+            Box::new(Log {
+                events: log.clone(),
+                listed_at_load: listed_at_load.clone(),
+            }),
+        )]
+        .into(),
         || {
             with_game(|game| {
                 game.options.execution_role = ExecutionRole::DedicatedServer;
@@ -633,12 +657,31 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         "test:last"
                     ]
                 );
+                assert!(
+                    order.iter().position(|id| *id == "test:first")
+                        < order.iter().position(|id| *id == "test:last")
+                );
                 game.native_lifecycle_open_started();
                 game.finish_open_world(prepared).unwrap();
                 game.prepare_levels().unwrap();
                 assert_eq!(game.level.world_spawn, Some([32, 73, 16]));
                 // Switching the active level must not put it first in saves or close.
                 game.enter_level(Dim::Nether).unwrap();
+                assert_eq!(
+                    game.native_list_levels()
+                        .into_iter()
+                        .map(|level| level.dimension_id())
+                        .collect::<Vec<_>>(),
+                    order
+                );
+                let listed = listed_at_load.lock().unwrap();
+                assert_eq!(listed.len(), order.len());
+                for (i, levels) in listed.iter().enumerate() {
+                    assert_eq!(
+                        levels.iter().map(String::as_str).collect::<Vec<_>>(),
+                        &order[..=i]
+                    );
+                }
                 game.save_game().unwrap();
                 assert_eq!(game.dim, Dim::Nether);
                 game.close_loaded_levels_for_stop();
@@ -818,5 +861,137 @@ fn integrated_shutdown_reopens_the_authoritative_owner_or_keeps_an_interrupted_s
                 assert_eq!(saved.inventory, [(0, "minecraft:diamond".to_owned(), 9, 0)]);
             }
         });
+    }
+}
+
+/// A Debug world's fixed spawn bypasses the NeoForge event in setInitialSpawn.
+#[test]
+#[ignore = "daily"]
+fn debug_world_uses_fixed_spawn_without_create_spawn_position() {
+    struct ReplaceSpawn(Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
+    impl Hooks for ReplaceSpawn {
+        fn create_spawn_position(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::CreateSpawnPositionEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0.store(true, Ordering::Relaxed);
+            *event.position = [32, 73, 16];
+            mod_api::Flow::Cancel
+        }
+    }
+
+    let fired = Arc::new(AtomicBool::new(false));
+    with_mods(
+        vec![ModEntry::new(
+            "spawn",
+            Box::new(ReplaceSpawn(fired.clone())),
+        )]
+        .into(),
+        || {
+            with_game(|game| {
+                game.world_debug = true;
+                assert!(game.level.world_spawn.is_none());
+                game.open_configured_levels(&[Dim::Overworld]).unwrap();
+                assert_eq!(game.level.world_spawn, Some([0, 80, 0]));
+                assert_eq!(game.level.world_spawn_angle, [0.0, 0.0]);
+            })
+        },
+    );
+    assert!(!fired.load(Ordering::Relaxed));
+}
+
+/// saveEverything saves the placed players, without removing them, before LevelEvent.Save.
+#[test]
+#[ignore = "daily"]
+fn full_saves_write_live_players_before_saving_levels() {
+    use sunrise_client::{lan::playerdata, save};
+
+    #[derive(Debug, PartialEq)]
+    enum Notice {
+        Player(u128),
+        Level(Option<i32>, Option<i32>),
+    }
+
+    struct Log {
+        directory: std::path::PathBuf,
+        notices: Arc<Mutex<Vec<Notice>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn player_save_to_file(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut mod_api::PlayerSaveToFileEvent<'_>,
+        ) {
+            self.notices
+                .lock()
+                .unwrap()
+                .push(Notice::Player(event.player));
+        }
+        fn level_save(&self, _: &mut dyn ServerHost, _: &mut mod_api::LevelSaveEvent<'_>) {
+            let xp = |uuid| {
+                let tag = save::read_dat(&playerdata::path(&self.directory, uuid))?;
+                match tag.get("XpLevel") {
+                    Some(sunrise_core::nbt::Tag::Int(xp)) => Some(*xp),
+                    _ => None,
+                }
+            };
+            self.notices
+                .lock()
+                .unwrap()
+                .push(Notice::Level(xp(12), xp(13)));
+        }
+    }
+
+    for role in [
+        ExecutionRole::DedicatedServer,
+        ExecutionRole::IntegratedServer,
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let notices = Arc::new(Mutex::new(Vec::new()));
+        with_mods(
+            vec![ModEntry::new(
+                "save",
+                Box::new(Log {
+                    directory: dir.path().to_owned(),
+                    notices: notices.clone(),
+                }),
+            )]
+            .into(),
+            || {
+                with_guests(|game| {
+                    game.join_world_rest().unwrap();
+                    game.options.execution_role = role;
+                    game.world_root = dir.path().to_owned();
+                    let host = game.lan.as_mut().unwrap();
+                    if role == ExecutionRole::IntegratedServer {
+                        host.owner = Some(crate::game::lan::Owner {
+                            uuid: 12,
+                            saved: None,
+                        });
+                        game.level.player_uuid = Some(playerdata::uuid_ints(12));
+                    }
+                    host.hub
+                        .update_guest(12, |guest| guest.xp_level = 7)
+                        .unwrap();
+                    host.hub
+                        .update_guest(13, |guest| guest.xp_level = 9)
+                        .unwrap();
+                    game.native_level_opened(Dim::Overworld);
+                    game.save_game_with(false).unwrap();
+                    assert_eq!(game.lan.as_ref().unwrap().hub.online_players().count(), 2);
+                })
+            },
+        );
+        assert_eq!(
+            *notices.lock().unwrap(),
+            [
+                Notice::Player(12),
+                Notice::Player(13),
+                Notice::Level(Some(7), Some(9))
+            ]
+        );
     }
 }
