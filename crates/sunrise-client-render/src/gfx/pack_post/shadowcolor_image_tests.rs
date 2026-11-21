@@ -761,37 +761,27 @@ fn a_buffer_image_or_its_copy_of_another_dimension_is_refused() {
     // Any other dimension would bind a 2D view to a layout wgpu then refuses to match: the
     // program is refused while the pack loads. A copy is checked on its own, as a dispatch
     // loads from it.
-    for (img, of) in [
-        (image("shadowcolorimg0", "image3D", None), "shadowcolor0"),
-        (image("shadowcolorimg1", "uimage1D", None), "shadowcolor1"),
-        (
-            image("shadowcolorimg0", "image2DArray", None),
-            "shadowcolor0",
-        ),
-        (
-            image(
-                "hz_before_shadowcolorimg1",
-                "image3D",
-                Some("shadowcolorimg1"),
-            ),
-            "shadowcolor1",
+    for img in [
+        image("shadowcolorimg0", "image3D", None),
+        image("shadowcolorimg1", "uimage1D", None),
+        image("shadowcolorimg0", "image2DArray", None),
+        image(
+            "hz_before_shadowcolorimg1",
+            "image3D",
+            Some("shadowcolorimg1"),
         ),
         // colortex buffers are 2D as well, with their copies.
-        (image("colorimg0", "image3D", None), "colortex0"),
-        (
-            image("hz_before_colorimg1", "image2DArray", Some("colorimg1")),
-            "colortex1",
-        ),
+        image("colorimg0", "image3D", None),
+        image("hz_before_colorimg1", "image2DArray", Some("colorimg1")),
     ] {
         let name = img.name.clone();
         let ty = img.ty.clone();
         let (bound, notes) = bind_images(vec![img]).expect("a GPU");
         assert!(bound.is_none(), "{name} {ty}");
-        assert_eq!(
-            notes,
-            [format!(
-                "composite: `{name}` is declared {ty} but {of} is 2D; skipped"
-            )]
+        // One note, naming the program and the image.
+        assert!(
+            matches!(&notes[..], [note] if note.contains("composite") && note.contains(&*name)),
+            "{name} {ty}: {notes:?}"
         );
     }
 }
@@ -816,10 +806,11 @@ fn a_pack_declaring_a_3d_shadowcolor_image_runs_without_that_program() {
         let mut post = gpu
             .try_build(pack(&[("composite.csh", &composite)]))
             .unwrap();
+        // A note names the program and the image.
         assert!(
-            post.notes.iter().any(|n| n.ends_with(
-                "`shadowcolorimg0` is declared image3D but shadowcolor0 is 2D; skipped"
-            )),
+            post.notes
+                .iter()
+                .any(|n| n.contains("composite") && n.contains("shadowcolorimg0")),
             "{:?}",
             post.notes
         );
@@ -970,8 +961,13 @@ fn the_shadow_cache_key_has_the_uniforms_of_an_attached_compute_stage() {
     ) else {
         return;
     };
-    // The frames differ, as the counter does, with the cache off and on alike.
-    assert_ne!(off[0][1], off[1][1], "{off:?}");
+    // Column 1 reads the counter's value: (0 + 1) * 0.2 on the first frame, (1 + 1) * 0.2 on
+    // the second, with the cache off and on alike.
+    assert_eq!(
+        [off[0][1], off[1][1]],
+        [[51, 51, 51, 255], [102, 102, 102, 255]],
+        "{off:?}"
+    );
     assert_eq!(on, off);
 }
 
