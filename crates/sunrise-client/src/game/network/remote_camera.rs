@@ -7,6 +7,9 @@
 #[cfg(test)]
 #[path = "tests/remote_camera_tests.rs"]
 mod camera_tests;
+#[cfg(test)]
+#[path = "tests/camera_mount_tests.rs"]
+mod camera_mount_tests;
 
 use super::Game;
 use sunrise_client::{
