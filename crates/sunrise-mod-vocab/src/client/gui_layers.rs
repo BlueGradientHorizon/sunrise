@@ -27,11 +27,13 @@ pub trait GuiLayerWrapContext {
     fn draw_previous(&mut self);
 }
 
-// no wire: the registrar borrows the live HUD registration for one hook call.
-/// The HUD layer registrar handed to `register_gui_layers` once at client startup.
-/// Registrations are applied in call order; the registrar is only available during that hook.
+// no wire: the registrar stages process-local callbacks for one listener call.
+/// The HUD layer registrar handed to a `register_gui_layers` listener at client startup.
+/// Edits are staged in call order, so a layer can anchor to, replace or wrap one added earlier
+/// in the same call. The game commits the edits only if the listener returns without a phase
+/// refusal; a refused listener leaves earlier registrations untouched.
 pub trait GuiLayerRegistrar {
-    /// Install `draw` at `placement` under a namespaced ID such as `mymod:compass`.
+    /// Stage `draw` at `placement` under a namespaced ID such as `mymod:compass`.
     /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
     /// already registered, or relative to a layer that is not registered yet. A rejected
     /// registration does not reserve the ID; use `replace_layer` or `wrap_layer` to edit one.
@@ -42,13 +44,13 @@ pub trait GuiLayerRegistrar {
         draw: Box<GuiLayerDraw>,
     ) -> bool;
 
-    /// Replace an already registered layer (including a vanilla layer) with `draw`.
+    /// Stage a replacement for an already registered layer (including a vanilla layer).
     /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
     /// position and draw conditions.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
-    /// Wrap an already registered layer in place, keeping its ID, position and draw conditions.
+    /// Stage a wrapper for an already registered layer, keeping its ID, position and draw conditions.
     /// The newest wrapper runs first and can draw the previous body through its context.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;

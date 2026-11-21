@@ -118,6 +118,8 @@ pub(super) fn emit<'a>(
         let entered = fresh_name("_entered", &mut used);
         let batch = fresh_name("batch", &mut used);
         let contract = hook.contract;
+        // HUD placement and body edits need a fresh, staged registrar for every listener.
+        let staged_gui_layers = name == "register_gui_layers";
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
         let isolated_collect = answered && hook.isolate && contract == Contract::Collect;
@@ -453,7 +455,14 @@ pub(super) fn emit<'a>(
                     ));
                 }
             }
-            dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
+            if staged_gui_layers && name == "layers" {
+                dispatch_params.push(
+                    "mut stage_layers: impl FnMut(&mut dyn FnMut(&mut dyn GuiLayerRegistrar) -> bool)"
+                        .into(),
+                );
+            } else {
+                dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
+            }
             if collect_cancel && name == "cancel" {
                 continue;
             }
@@ -1057,13 +1066,24 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
+        let report_refusal = if staged_gui_layers {
+            // A refused registration is not a disabled listener; report every refused call.
+            "log::warn!(\"native refusal in register_gui_layers: {refusal}\");"
+        } else {
+            "refusal.report();"
+        };
         let run = |expression: &str| {
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
+                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}{report_refusal} {refused_value} }} }}"
             )
         };
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, exit: &str| {
+            if staged_gui_layers {
+                // Publish only after the phase gate accepts the *whole* listener call.
+                let accepted = run(&format!("{{ {callee}.{name}({invoke}); true }}"));
+                return format!("stage_layers(&mut |layers| {{ {local_event} {accepted} }});");
+            }
             // Early exits must validate while the listener still owns the scope.
             let exit = format!("{stack_after} {exit}");
             let answer_call = if scoped_write_replace {

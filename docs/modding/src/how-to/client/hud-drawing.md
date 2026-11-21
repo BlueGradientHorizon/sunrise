@@ -14,7 +14,10 @@ In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box:
 `GuiLayerRegistrar`. Registration runs once at client startup.
 Use your own namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
 below or above a vanilla anchor or a layer already registered. The client logs and refuses
-invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it installed the layer.
+invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it staged the layer.
+The layer can be used as an anchor later in the same listener. The game applies staged insertions,
+replacements and wrappers in call order after a successful listener. A phase-forbidden call discards
+that listener's edits, even if the listener catches the refusal and returns.
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`

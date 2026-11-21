@@ -6,6 +6,8 @@ pub trait Hooks {
     /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it. Use
     /// `event.layers.register(id, placement, Box::new(draw))` to insert a new slot,
     /// or `replace_layer` and `wrap_layer` to change an existing slot's body.
+    /// Each listener sees its own staged edits. If a load-phase refusal occurs, the game discards
+    /// that listener's edits without changing earlier listeners' layers.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -14,9 +16,11 @@ pub trait Hooks {
 with a namespaced ID, a `GuiLayerPlacement` and an owned draw callback. The four placements
 are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, `registerBelow`,
 `registerAbove` and `registerAboveAll`. `Below` and `Above` name a vanilla layer (the IDs
-`Hooks::gui_layer_pre` lists) or a layer already registered. Calls take effect in order, in mod
-load order. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
-refused. The client calls each installed callback as the mod that registered it.
+`Hooks::gui_layer_pre` lists) or a layer already registered, including one added earlier in this
+listener. The game commits each successful listener's calls in order before invoking the next
+listener. A load-phase refusal discards all edits by that listener, including replacements and
+wrappers, and leaves earlier listeners' work intact. Invalid, reserved or duplicate IDs and unknown
+relative anchors are logged and refused. The client calls each installed callback as its owner.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
@@ -35,11 +39,12 @@ a replacement or wrapper inherits its slot's draw conditions. A mod that needs a
 pass regardless of F1 uses `Hooks::gui_render_post`."#]
     #[hook(
         receiver = "associated",
-        dispatch = "flat",
+        dispatch = "direct",
         side = "client",
         version = 2,
         contract = "listen",
         context = "registration",
+        event_per_listener = true,
         neoforge = "RegisterGuiLayersEvent"
     )]
     fn register_gui_layers(layers: &mut dyn GuiLayerRegistrar);

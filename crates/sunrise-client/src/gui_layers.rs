@@ -133,7 +133,47 @@ impl Default for GuiLayers {
     }
 }
 
-impl GuiLayerRegistrar for GuiLayers {
+enum GuiLayerEdit {
+    Insert(usize, GuiLayerSlot),
+    Replace(usize, GuiLayerBody),
+    Wrap(usize, Option<&'static str>, Box<GuiLayerWrapper>),
+}
+
+struct GuiLayerEdits<'a> {
+    existing: &'a [GuiLayerSlot],
+    edits: Vec<GuiLayerEdit>,
+    len: usize,
+}
+
+impl GuiLayerEdits<'_> {
+    /// Resolve against the order at this call, including this listener's earlier insertions.
+    fn position(&self, id: &str) -> Option<usize> {
+        let mut at = self.existing.iter().position(|slot| slot.id() == id);
+        for edit in &self.edits {
+            if let GuiLayerEdit::Insert(index, slot) = edit {
+                at = match at {
+                    Some(at) => Some(at + usize::from(*index <= at)),
+                    None if slot.id() == id => Some(*index),
+                    None => None,
+                };
+            }
+        }
+        at
+    }
+
+    fn edit_position(&self, id: &str, owner: Option<&str>, action: &str) -> Option<usize> {
+        let at = self.position(id);
+        if at.is_none() {
+            log::warn!(
+                "{} cannot {action} HUD layer {id}: it is not registered",
+                owner.unwrap_or("unknown mod")
+            );
+        }
+        at
+    }
+}
+
+impl GuiLayerRegistrar for GuiLayerEdits<'_> {
     fn register(
         &mut self,
         id: String,
@@ -146,16 +186,15 @@ impl GuiLayerRegistrar for GuiLayers {
             );
             return false;
         }
-        let position = |key: &str| self.slots.iter().position(|slot| slot.id() == key);
-        if position(&id).is_some() {
+        if self.position(&id).is_some() {
             log::warn!("HUD layer {id} is registered twice; the first is kept");
             return false;
         }
         let at = match &placement {
             GuiLayerPlacement::BelowAll => Some(0),
-            GuiLayerPlacement::AboveAll => Some(self.slots.len()),
-            GuiLayerPlacement::Below(other) => position(other),
-            GuiLayerPlacement::Above(other) => position(other).map(|i| i + 1),
+            GuiLayerPlacement::AboveAll => Some(self.len),
+            GuiLayerPlacement::Below(other) => self.position(other),
+            GuiLayerPlacement::Above(other) => self.position(other).map(|i| i + 1),
         };
         let owner = current_native_mod();
         let Some(at) = at else {
@@ -165,36 +204,35 @@ impl GuiLayerRegistrar for GuiLayers {
             );
             return false;
         };
-        self.slots.insert(
+        self.edits.push(GuiLayerEdit::Insert(
             at,
             GuiLayerSlot {
                 id: GuiLayerId::Native(id),
                 body: GuiLayerBody::Native { owner, draw },
             },
-        );
+        ));
+        self.len += 1;
         true
     }
 
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool {
         let owner = current_native_mod();
-        let Some(slot) = self.slot_for_edit(id, owner, "replace") else {
+        let Some(at) = self.edit_position(id, owner, "replace") else {
             return false;
         };
-        slot.body = GuiLayerBody::Native { owner, draw };
+        self.edits.push(GuiLayerEdit::Replace(
+            at,
+            GuiLayerBody::Native { owner, draw },
+        ));
         true
     }
 
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool {
         let owner = current_native_mod();
-        let Some(slot) = self.slot_for_edit(id, owner, "wrap") else {
+        let Some(at) = self.edit_position(id, owner, "wrap") else {
             return false;
         };
-        let previous = Box::new(std::mem::replace(&mut slot.body, GuiLayerBody::Vanilla));
-        slot.body = GuiLayerBody::Wrapped {
-            owner,
-            wrap,
-            previous,
-        };
+        self.edits.push(GuiLayerEdit::Wrap(at, owner, wrap));
         true
     }
 }
@@ -207,20 +245,31 @@ pub struct GuiLayerOrder {
 }
 
 impl GuiLayers {
-    fn slot_for_edit(
-        &mut self,
-        id: &str,
-        owner: Option<&str>,
-        action: &str,
-    ) -> Option<&mut GuiLayerSlot> {
-        let slot = self.slots.iter_mut().find(|slot| slot.id() == id);
-        if slot.is_none() {
-            log::warn!(
-                "{} cannot {action} HUD layer {id}: it is not registered",
-                owner.unwrap_or("unknown mod")
-            );
+    /// Stage one listener's edits and publish them in call order only if it succeeds.
+    pub fn register_listener(&mut self, listen: impl FnOnce(&mut dyn GuiLayerRegistrar) -> bool) {
+        let mut pending = GuiLayerEdits {
+            existing: &self.slots,
+            edits: Vec::new(),
+            len: self.slots.len(),
+        };
+        if !listen(&mut pending) {
+            return;
         }
-        slot
+        for edit in pending.edits {
+            match edit {
+                GuiLayerEdit::Insert(at, slot) => self.slots.insert(at, slot),
+                GuiLayerEdit::Replace(at, body) => self.slots[at].body = body,
+                GuiLayerEdit::Wrap(at, owner, wrap) => {
+                    let body = &mut self.slots[at].body;
+                    let previous = Box::new(std::mem::replace(body, GuiLayerBody::Vanilla));
+                    *body = GuiLayerBody::Wrapped {
+                        owner,
+                        wrap,
+                        previous,
+                    };
+                }
+            }
+        }
     }
 
     fn into_order(self) -> GuiLayerOrder {
@@ -274,18 +323,21 @@ mod tests {
     fn layers_go_where_register_gui_layers_event_inserts_them() {
         use GuiLayerPlacement::*;
         let mut layers = GuiLayers::default();
-        for (id, placement) in [
-            ("compass:bar", Above("minecraft:hotbar".into())),
-            // Below the compass, so between the hotbar and it.
-            ("compass:shadow", Below("compass:bar".into())),
-            ("compass:first", BelowAll),
-            ("compass:last", AboveAll),
-            // A second `BelowAll` goes under the first.
-            ("compass:very_first", BelowAll),
-            ("compass:over_chat", Above("minecraft:chat".into())),
-        ] {
-            assert!(layers.register(id.into(), placement, Box::new(|_, _| {})));
-        }
+        layers.register_listener(|layers| {
+            for (id, placement) in [
+                ("compass:bar", Above("minecraft:hotbar".into())),
+                // Below the compass, so between the hotbar and it.
+                ("compass:shadow", Below("compass:bar".into())),
+                ("compass:first", BelowAll),
+                ("compass:last", AboveAll),
+                // A second `BelowAll` goes under the first.
+                ("compass:very_first", BelowAll),
+                ("compass:over_chat", Above("minecraft:chat".into())),
+            ] {
+                assert!(layers.register(id.into(), placement, Box::new(|_, _| {})));
+            }
+            true
+        });
         let order = layers.into_order();
         let ids: Vec<&str> = order.slots().iter().map(GuiLayerSlot::id).collect();
         assert_eq!(
@@ -323,29 +375,32 @@ mod tests {
     fn a_layer_that_cannot_be_placed_is_left_out() {
         use GuiLayerPlacement::*;
         let mut layers = GuiLayers::default();
-        for (id, placement, accepted) in [
-            ("minecraft:hotbar", AboveAll, false),
-            ("minecraft:mine", AboveAll, false),
-            ("no_namespace", AboveAll, false),
-            ("compass:bad space", AboveAll, false),
-            ("compass:bar", AboveAll, true),
-            ("compass:bar", BelowAll, false),
-            // An unknown anchor does not reserve the ID: it can be registered again later.
-            ("compass:early", Below("compass:late".into()), false),
-            ("compass:late", AboveAll, true),
-            ("compass:early", Below("compass:late".into()), true),
-            (
-                "compass:lost",
-                Above("minecraft:no_such_layer".into()),
-                false,
-            ),
-        ] {
-            assert_eq!(
-                layers.register(id.into(), placement, Box::new(|_, _| {})),
-                accepted,
-                "registration of {id}"
-            );
-        }
+        layers.register_listener(|layers| {
+            for (id, placement, accepted) in [
+                ("minecraft:hotbar", AboveAll, false),
+                ("minecraft:mine", AboveAll, false),
+                ("no_namespace", AboveAll, false),
+                ("compass:bad space", AboveAll, false),
+                ("compass:bar", AboveAll, true),
+                ("compass:bar", BelowAll, false),
+                // An unknown anchor does not reserve the ID: it can be registered again later.
+                ("compass:early", Below("compass:late".into()), false),
+                ("compass:late", AboveAll, true),
+                ("compass:early", Below("compass:late".into()), true),
+                (
+                    "compass:lost",
+                    Above("minecraft:no_such_layer".into()),
+                    false,
+                ),
+            ] {
+                assert_eq!(
+                    layers.register(id.into(), placement, Box::new(|_, _| {})),
+                    accepted,
+                    "registration of {id}"
+                );
+            }
+            true
+        });
         let order = layers.into_order();
         let mods: Vec<&str> = order
             .slots()
@@ -358,6 +413,127 @@ mod tests {
             order.slots()[VanillaGuiLayer::ALL.len()].id(),
             "compass:bar"
         );
+    }
+
+    #[test]
+    fn a_phase_refusal_discards_all_hud_layer_edits_from_one_listener() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
+        use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
+
+        enum Listener {
+            First,
+            Refused,
+            Last,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                use GuiLayerPlacement::{Above, Below};
+                let layers = &mut *event.layers;
+                match self {
+                    Self::First => {
+                        assert!(layers.register(
+                            "hud:base".into(),
+                            Above("minecraft:hotbar".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                        assert!(layers.wrap_layer("minecraft:hotbar", Box::new(|_| {})));
+                    }
+                    Self::Refused => {
+                        assert!(layers.register(
+                            "hud:aborted".into(),
+                            Above("hud:base".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                        assert!(layers.replace_layer("minecraft:hotbar", Box::new(|_, _| {})));
+                        assert!(layers.wrap_layer("hud:base", Box::new(|_| {})));
+                        // Returning normally after catching the unwind does not accept the edits.
+                        assert!(
+                            std::panic::catch_unwind(|| {
+                                check_access("entity", LoadAccess::WorldOnly);
+                            })
+                            .is_err()
+                        );
+                    }
+                    Self::Last => {
+                        assert!(!layers.register(
+                            "hud:anchor".into(),
+                            Above("hud:aborted".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                        assert!(layers.register(
+                            "hud:anchor".into(),
+                            Above("minecraft:hotbar".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                        assert!(layers.register(
+                            "hud:child".into(),
+                            Below("hud:anchor".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                        assert!(layers.wrap_layer("hud:child", Box::new(|_| {})));
+                        assert!(layers.wrap_layer("hud:anchor", Box::new(|_| {})));
+                        assert!(layers.replace_layer("hud:anchor", Box::new(|_, _| {})));
+                    }
+                }
+            }
+        }
+
+        let mods = vec![
+            ModEntry::new("first", Box::new(Listener::First)),
+            ModEntry::new("refused", Box::new(Listener::Refused)),
+            ModEntry::new("last", Box::new(Listener::Last)),
+        ];
+        let mut layers = GuiLayers::default();
+        mod_platform::testing::with_mods(mods.into(), || {
+            let _phase = PhaseOwner::scope(ModPhase::Registration);
+            mod_api::dispatch_register_gui_layers(&RegistrationContext::new(), |listen| {
+                layers.register_listener(listen);
+            });
+        });
+        let order = layers.into_order();
+        let ids: Vec<_> = order.slots().iter().map(GuiLayerSlot::id).collect();
+        assert!(!ids.contains(&"hud:aborted"));
+        let hotbar = order.position(VanillaGuiLayer::Hotbar);
+        assert_eq!(
+            &ids[hotbar..hotbar + 5],
+            [
+                "minecraft:hotbar",
+                "hud:child",
+                "hud:anchor",
+                "hud:base",
+                "minecraft:effects"
+            ]
+        );
+        assert!(matches!(
+            &order.slots()[hotbar].body,
+            GuiLayerBody::Wrapped { owner: Some("first"), previous, .. }
+                if matches!(**previous, GuiLayerBody::Vanilla)
+        ));
+        assert!(matches!(
+            &order.slots()[hotbar + 1].body,
+            GuiLayerBody::Wrapped { owner: Some("last"), previous, .. }
+                if matches!(**previous, GuiLayerBody::Native { owner: Some("last"), .. })
+        ));
+        assert!(matches!(
+            &order.slots()[hotbar + 2].body,
+            GuiLayerBody::Native {
+                owner: Some("last"),
+                ..
+            }
+        ));
+        assert!(matches!(
+            &order.slots()[hotbar + 3].body,
+            GuiLayerBody::Native {
+                owner: Some("first"),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -389,13 +565,16 @@ mod tests {
             "demo_overlay",
         ];
         let mut layers = GuiLayers::default();
-        for id in staged_ids {
-            assert!(!layers.register(
-                "compass:bar".into(),
-                GuiLayerPlacement::Above(format!("minecraft:{id}")),
-                Box::new(|_, _| {}),
-            ));
-        }
+        layers.register_listener(|layers| {
+            for id in staged_ids {
+                assert!(!layers.register(
+                    "compass:bar".into(),
+                    GuiLayerPlacement::Above(format!("minecraft:{id}")),
+                    Box::new(|_, _| {}),
+                ));
+            }
+            true
+        });
         let order = layers.into_order();
         assert_eq!(order.slots().len(), VanillaGuiLayer::ALL.len());
         assert!(

@@ -1,12 +1,13 @@
-use super::*;
+use super::Game;
+use sunrise_client::gui_layers::GuiLayers;
 
 impl Game<'_> {
     /// Registers HUD layers and their draw callbacks (NeoForge's `RegisterGuiLayersEvent`).
     /// Asked once at client startup.
     pub(in crate::game) fn native_register_gui_layers(
         context: &mod_api::RegistrationContext,
-        layers: &mut dyn GuiLayerRegistrar,
+        layers: &mut GuiLayers,
     ) {
-        Self::fire_register_gui_layers(context, layers);
+        mod_api::dispatch_register_gui_layers(context, |listen| layers.register_listener(listen));
     }
 }

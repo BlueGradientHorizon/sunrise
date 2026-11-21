@@ -56,9 +56,12 @@ receive no `Host` and read startup facts through `RegistrationContext`.
 `event.register("mymod:charge".into())` with each owned, namespaced ID. The game checks IDs and
 duplicates before freezing the component registry.
 
-Scoped registration events are borrowed only for the listener call. Their registration methods
+Scoped registration events are borrowed only for the listener call. Append-only registration methods
 add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
-If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
+[HUD layer registration](../how-to/client/hud-drawing.md#registering-a-hud-layer) also allows
+replacing or wrapping an existing layer. It stages those edits along with insertions and lets
+later calls in the same listener use its newly added anchors. If the phase gate refuses a listener,
+its edits are discarded and earlier registrations stand.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;

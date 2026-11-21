@@ -1,0 +1,3 @@
+version = 1
+doc = "HUD layer registrations, replacements and wrappers are committed in call order per listener. A phase refusal during register_gui_layers discards only that listener's edits, even if the listener catches the refusal. Later calls in a listener can use anchors it just added."
+tests = ["crates/sunrise-client/src/gui_layers.rs::a_phase_refusal_discards_all_hud_layer_edits_from_one_listener"]
