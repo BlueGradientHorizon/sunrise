@@ -139,8 +139,10 @@ pub trait HostTransaction: ServerHost {
     /// guard ends the transaction.
     ///
     /// Covered: block entities (item slots, saved compound, custom name and attachments), cauldrons,
-    /// players' inventories and cursors, entities' inventories
+    /// players' inventories, cursors, ender chests and persistent data, entities' inventories
     /// ([`ItemPlace::EntitySlot`](crate::ItemPlace::EntitySlot)) and item entities' stacks.
+    /// Aborting restores a player's recorded storage even if the player dies, is in another
+    /// level, or is no longer the acting player when the transaction closes.
     fn transaction<T, E>(
         &mut self,
         f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,

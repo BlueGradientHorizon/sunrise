@@ -449,7 +449,7 @@ impl Game<'_> {
                     return Ok(());
                 };
                 if let Some(index) = parked {
-                    self.journal_parked_player(player, index);
+                    self.journal_parked_player(index);
                     let host = self.lan.as_mut().expect("resolved guest");
                     host.hub.guests.update(index, |guest| {
                         apply(
