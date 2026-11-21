@@ -61,14 +61,20 @@ pub trait ModStateServerHost {
     #[access(WorldOnly)]
     fn transaction_depth(&self, tx: &Transaction) -> Option<u32>;
     /// Side: server.
-    /// Runs the calling mod's `task` once after `delay_ticks` server ticks, after the due tick's
-    /// start hook. Both 0 and 1 mean the next tick; a paused server does not advance the delay.
+    /// Runs `task` once after `delay_ticks` server ticks, matching vanilla's
+    /// `MinecraftServer.schedule(TickTask)` / `pollTask`. Due tasks drain after both the
+    /// `server_tick` start hook and the `server_tick` end hook, so `delay_ticks == 0` runs in the
+    /// same tick (a `delay_ticks == 0` task scheduled inside a draining task waits for the next
+    /// drain to avoid infinite same-tick recursion). A paused server does not advance the delay.
     /// Tasks due together run in the order they were scheduled.
     ///
     /// Move owned data into the closure, not the current host or event. The task gets a fresh
     /// server host on the same thread. Journaled writes commit on return or roll back on panic;
-    /// other due tasks still run before the first panic resumes. Tasks whose owners are disabled
-    /// when due are discarded. Pending tasks are dropped with the world and are not saved.
+    /// other due tasks still run before the first panic resumes. When scheduled inside a mod call,
+    /// the task runs under that mod's identity and is discarded if that mod is disabled when due;
+    /// calls outside a mod call also succeed. Reaching [`MAX_PENDING_TASKS`] logs a warning naming
+    /// the mod and returns [`ScheduleError::TooMany`]. Pending tasks are dropped with the world
+    /// and are not saved.
     #[access(WorldOnly)]
     fn schedule_task(
         &mut self,
@@ -76,7 +82,8 @@ pub trait ModStateServerHost {
         task: Box<dyn FnOnce(&mut dyn ServerHost)>,
     ) -> Result<TaskId, ScheduleError>;
     /// Side: server.
-    /// Withdraws a task the calling mod scheduled: true if it was still waiting.
+    /// Withdraws the waiting task identified by the opaque capability `id`: returns `true` if it
+    /// was still waiting.
     #[access(WorldOnly)]
     fn cancel_task(&mut self, id: TaskId) -> bool;
 }

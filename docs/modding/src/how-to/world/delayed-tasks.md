@@ -18,17 +18,23 @@ fn schedule_reminder(host: &mut dyn ServerHost) -> Result<TaskId, ScheduleError>
 ```
 
 **Timing.** Delays count ticks the server runs: a paused integrated server does not advance them.
-Delays of `0` and `1` both mean the next tick. Tasks due on the same tick run in the order they
-were scheduled, just after the `server_tick` start phase. A task scheduled by a task or by that
-start phase cannot run in the same tick.
+Due tasks drain after both the `server_tick` start phase and the `server_tick` end phase (matching
+vanilla's `MinecraftServer.schedule(TickTask)` and `pollTask`), so `delay_ticks == 0` runs in the
+current tick: a `0`-delay task scheduled from `server_tick` start, mid-tick hooks, or `server_tick`
+end runs before the tick finishes. Tasks due on the same tick run in the order they were scheduled.
+A `0`-delay task scheduled from inside a draining task waits for the next drain (`server_tick` end
+if scheduled during the start drain, or the next tick's start drain if scheduled during the end
+drain) so a task cannot recurse infinitely within one drain.
 
-**Ownership.** Only the scheduling mod's callback runs. It runs as that mod, including when it
-schedules more work. If its owner is disabled when the task is due, the game drops the task without
-calling it. `host.cancel_task(id)` returns `true` only if the calling mod owns the still-pending
-task. A cancelled or discarded task releases the values it captured; ids are not reused in a world.
+**Ownership and cancellation.** Only the scheduled callable runs. When scheduled inside a mod call,
+it runs under that mod's identity (including when it schedules more work), and if its owner is
+disabled when due, the game drops the task without calling it. Scheduling outside an active mod call
+also succeeds. `TaskId` is an opaque capability: any holder of a still-pending `id` can cancel it
+with `host.cancel_task(id)`, which returns `true` when the task was still waiting. A cancelled or
+discarded task releases the values it captured; ids are not reused in a world.
 
-**Refusals.** `schedule_task` returns `ScheduleError::NotInMod` when there is no running mod call,
-`ScheduleError::TooMany` when that mod already has `MAX_PENDING_TASKS` tasks waiting, and
+**Refusals.** `schedule_task` returns `ScheduleError::TooMany` (and logs a warning naming the mod)
+when that mod (or the unattributed caller pool) already has `MAX_PENDING_TASKS` tasks waiting, and
 `ScheduleError::Unavailable` outside the world phase or without an open or opening server world.
 
 **Writes.** Each callback runs in its own transaction. Journaled writes commit on normal return or

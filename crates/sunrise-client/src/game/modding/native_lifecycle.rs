@@ -289,6 +289,30 @@ impl Game<'_> {
         self.clear_world_parts();
     }
 
+    fn drain_due_tasks(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
+        let cutoff = self.native_lifecycle.tasks.cutoff();
+        run_all(
+            self,
+            |game| game.native_lifecycle.tasks.pop_due_up_to(cutoff),
+            |game, (owner, task)| {
+                let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
+                let enabled = owner.is_none_or(|mod_id| {
+                    mod_api::__private::mod_index(mod_id)
+                        .is_some_and(mod_api::__private::mod_index_on)
+                });
+                if enabled {
+                    let _: Result<(), std::convert::Infallible> =
+                        mod_api::run_transaction(game, |game, _| {
+                            task(game);
+                            Ok(())
+                        });
+                } else {
+                    drop(task);
+                }
+            },
+        )
+    }
+
     pub(super) fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_start(world_running) {
             self.native_console_lines();
@@ -296,24 +320,7 @@ impl Game<'_> {
             self.native_server_tick(&context, phase);
             // Tasks come due after the start phase, still inside the tick's read scope. One that
             // panics does not drop the others; its panic goes on once the scope is restored.
-            let panic = run_all(
-                self,
-                |game| game.native_lifecycle.tasks.pop_due(),
-                |game, (owner, task)| {
-                    let _call = mod_api::__private::enter(owner, "schedule_task");
-                    if mod_api::__private::mod_index(owner)
-                        .is_some_and(mod_api::__private::mod_index_on)
-                    {
-                        let _: Result<(), std::convert::Infallible> =
-                            mod_api::run_transaction(game, |game, _| {
-                                task(game);
-                                Ok(())
-                            });
-                    } else {
-                        drop(task);
-                    }
-                },
-            );
+            let panic = self.drain_due_tasks();
             self.native_lifecycle.read_scope = false;
             if let Some(payload) = panic {
                 std::panic::resume_unwind(payload);
@@ -321,7 +328,7 @@ impl Game<'_> {
         }
     }
 
-    /// `schedule_task`: a delayed callable owned by the current mod.
+    /// `schedule_task`: a delayed callable attributed to the current mod when called inside one.
     pub(in crate::game) fn schedule_task(
         &mut self,
         delay_ticks: u32,
@@ -338,11 +345,9 @@ impl Game<'_> {
             .schedule(owner, delay_ticks, task)
     }
 
-    /// `cancel_task`: withdraws a task the running mod scheduled.
+    /// `cancel_task`: withdraws a waiting task by its opaque `TaskId`.
     pub(in crate::game) fn cancel_task(&mut self, id: TaskId) -> bool {
-        mod_api::content::crash::current_native_mod()
-            .and_then(|owner| self.native_lifecycle.tasks.cancel(owner, id))
-            .is_some()
+        self.native_lifecycle.tasks.cancel(id).is_some()
     }
 
     /// An errored tick returned at `result?` before this site.
@@ -350,7 +355,13 @@ impl Game<'_> {
         if let Some((context, phase)) = self.native_lifecycle.server_tick_end(paused) {
             self.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
+            // Drain tasks due this tick (including delay 0 scheduled during the tick body or end
+            // hook), still inside the tick's read scope.
+            let panic = self.drain_due_tasks();
             self.native_lifecycle.read_scope = false;
+            if let Some(payload) = panic {
+                std::panic::resume_unwind(payload);
+            }
         }
     }
 }
@@ -420,8 +431,8 @@ mod tests {
     }
 
     /// A task a mod schedules from the tick's start hook (after `server_tick_start` moved "now")
-    /// fires on a later tick: delay 0 and 1 on the next, delay N on the Nth after this one. A
-    /// paused pass moves nothing, and closing the world drops what waits.
+    /// fires on the same tick for delay 0, on the next tick for delay 1, and on the Nth tick
+    /// after for delay N. A paused pass moves nothing, and closing the world drops what waits.
     #[test]
     fn tasks_scheduled_from_the_start_hook_fire_on_a_later_tick() {
         let owner = Some("mymod");
@@ -439,12 +450,13 @@ mod tests {
                         .unwrap();
                 }
             }
-            while lifecycle.tasks.pop_due().is_some() {
+            let cutoff = lifecycle.tasks.cutoff();
+            while lifecycle.tasks.pop_due_up_to(cutoff).is_some() {
                 fired.push(tick);
             }
             lifecycle.server_tick_end(false);
         }
-        assert_eq!(fired, [2, 2, 4]);
+        assert_eq!(fired, [1, 2, 4]);
 
         lifecycle
             .tasks
@@ -475,7 +487,7 @@ mod tests {
                 game.native_lifecycle.world_open_ready().unwrap();
                 let capture = Rc::new(());
                 let retained = Rc::clone(&capture);
-                let disabled_id = {
+                {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_disabled", "schedule fixture");
                     host.schedule_task(
@@ -485,24 +497,42 @@ mod tests {
                             panic!("a disabled owner's callback must not run");
                         }),
                     )
-                    .unwrap()
+                    .unwrap();
+                }
+                // TaskId is an opaque capability: another caller can cancel a waiting task.
+                let cancelled_id = {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = api::enter("task_disabled", "schedule fixture");
+                    host.schedule_task(1, Box::new(|_| panic!("a cancelled task must not run")))
+                        .unwrap()
                 };
                 let hit = Rc::new(Cell::new(0));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = api::enter("task_owner", "schedule fixture");
-                    assert!(!host.cancel_task(disabled_id));
+                    assert!(host.cancel_task(cancelled_id));
+                    assert!(!host.cancel_task(cancelled_id));
                     let hit = Rc::clone(&hit);
                     host.schedule_task(
                         1,
                         Box::new(move |host| {
                             assert_eq!(current_native_mod(), Some("task_owner"));
                             hit.set(1);
+                            let same_tick = Rc::clone(&hit);
                             host.schedule_task(
                                 0,
                                 Box::new(move |_| {
                                     assert_eq!(current_native_mod(), Some("task_owner"));
-                                    hit.set(2);
+                                    same_tick.set(2);
+                                }),
+                            )
+                            .unwrap();
+                            let next_tick = Rc::clone(&hit);
+                            host.schedule_task(
+                                1,
+                                Box::new(move |_| {
+                                    assert_eq!(current_native_mod(), Some("task_owner"));
+                                    next_tick.set(3);
                                 }),
                             )
                             .unwrap();
@@ -513,14 +543,24 @@ mod tests {
 
                 assert!(api::set_mod_enabled("task_disabled", false));
                 game.native_lifecycle_server_tick_start(true);
-                assert_eq!(hit.get(), 1, "a nested task must not run this tick");
+                assert_eq!(
+                    hit.get(),
+                    1,
+                    "a nested delay-0 task defers past the active drain"
+                );
                 assert_eq!(Rc::strong_count(&capture), 1, "disabled captures are gone");
                 assert_eq!(current_native_mod(), None);
                 game.native_lifecycle_server_tick_end(false);
+                assert_eq!(
+                    hit.get(),
+                    2,
+                    "a nested delay-0 task runs at server_tick_end of the same tick"
+                );
+                assert_eq!(current_native_mod(), None);
 
                 assert!(api::set_mod_enabled("task_disabled", true));
                 game.native_lifecycle_server_tick_start(true);
-                assert_eq!(hit.get(), 2);
+                assert_eq!(hit.get(), 3, "a delay-1 task runs on the next tick");
                 game.native_lifecycle_server_tick_end(false);
             });
         });
