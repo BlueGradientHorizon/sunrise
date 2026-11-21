@@ -148,8 +148,10 @@ where
 }
 
 impl OverworldGenerator {
-    /// A level whose stem names `generator`, a mod's that asks for vanilla stages: its terrain,
-    /// then those stages, over the stem's noise settings and biome source. `structures` is the
+    /// A level whose stem names `generator`, a mod's that either asks for vanilla stages or uses
+    /// a biome source resolved by the worldgen pipeline (`minecraft:multi_noise`,
+    /// `minecraft:the_end`, or a tag/set `minecraft:checkerboard`): its terrain, then any vanilla
+    /// stages it asks for, over the stem's noise settings and biome source. `structures` is the
     /// world's `generate_structures`. A level whose stem names no noise settings, or ones the
     /// world lacks, is refused naming the generator and the settings.
     pub fn for_mod(
@@ -161,17 +163,30 @@ impl OverworldGenerator {
         structures: bool,
     ) -> Result<Self, GeneratorError> {
         let id = stem["generator"]["type"].as_str().unwrap_or_default();
+        let stages_any = generator.vanilla_stages().any();
         match &stem["generator"]["settings"] {
             Value::String(name) if !data.settings.contains_key(name) => {
-                return Err(resource(format!(
-                    "chunk generator {id} runs vanilla stages over the unknown noise settings {name}"
-                )));
+                let reason = if stages_any {
+                    format!(
+                        "chunk generator {id} runs vanilla stages over the unknown noise settings {name}"
+                    )
+                } else {
+                    format!("chunk generator {id} runs over the unknown noise settings {name}")
+                };
+                return Err(resource(reason));
             }
             Value::String(_) | Value::Object(_) => {}
             _ => {
-                return Err(resource(format!(
-                    "chunk generator {id} runs vanilla stages, but its level names no noise settings"
-                )));
+                let reason = if stages_any {
+                    format!(
+                        "chunk generator {id} runs vanilla stages, but its level names no noise settings"
+                    )
+                } else {
+                    format!(
+                        "chunk generator {id} uses a pipeline biome source, but its level names no noise settings"
+                    )
+                };
+                return Err(resource(reason));
             }
         }
         let mut stages = generator.vanilla_stages();

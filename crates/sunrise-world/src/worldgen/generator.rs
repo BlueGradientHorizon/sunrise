@@ -1080,7 +1080,14 @@ where
         };
         context.set_lattice(lattice);
         let filled = match &self.mod_terrain {
-            Some(terrain) => terrain.fill(&mut chunk, data.registry, self.seed, [min, height]),
+            Some(terrain) => {
+                let range = if terrain.stages.any() {
+                    [min, height]
+                } else {
+                    [self.settings.level_min_y, self.settings.level_height]
+                };
+                terrain.fill(&mut chunk, data.registry, self.seed, range)
+            }
             None => fill_noise(
                 &mut chunk,
                 volume,

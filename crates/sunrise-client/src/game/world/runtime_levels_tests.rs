@@ -1,10 +1,10 @@
 //! Levels a mod opens at run time: the table's rules, and a mod's calls against a game.
 
 use super::native_entity_refs::tests::with_game;
-use super::runtime_levels::RuntimeTable;
+use super::runtime_levels::{Generate, RuntimeTable};
 use mod_api::{
-    Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent, ModEntry,
-    RuntimeGenerator, RuntimeLevel, RuntimeLevelError,
+    BiomePoint, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent,
+    ModEntry, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError,
 };
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
@@ -14,33 +14,134 @@ fn flat() -> RuntimeLevel {
 }
 
 #[test]
-fn the_cap_refuses_the_open_past_it_and_a_removal_frees_a_place() {
+fn runtime_table_has_no_artificial_level_cap() {
     let mut table = RuntimeTable::default();
-    table.set_cap(2);
-    assert!(table.queue_open("test", "cap:a", flat()).is_ok());
-    assert!(table.queue_open("test", "cap:b", flat()).is_ok());
-    assert_eq!(
-        table.queue_open("test", "cap:c", flat()),
-        Err(RuntimeLevelError::CapReached)
-    );
-    table.remove("cap:a");
-    assert!(table.queue_open("test", "cap:c", flat()).is_ok());
-}
-
-#[test]
-fn the_default_cap_is_64() {
-    let mut table = RuntimeTable::default();
-    for n in 0..64 {
+    for n in 0..80 {
         assert!(
             table
                 .queue_open("test", &format!("cap:l{n}"), flat())
                 .is_ok()
         );
     }
+}
+
+#[test]
+fn runtime_biome_source_validates_fields_and_composes_with_generators() {
     assert_eq!(
-        table.queue_open("test", "cap:l64", flat()),
-        Err(RuntimeLevelError::CapReached)
+        RuntimeBiomeSource::Fixed("minecraft:plains".into()).invalid_field(),
+        None
     );
+    assert!(
+        RuntimeBiomeSource::Fixed(String::new())
+            .invalid_field()
+            .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec![],
+            scale: 2,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into()],
+            scale: 63,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "minecraft:desert".into()],
+            scale: 62,
+        }
+        .invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::MultiNoise("minecraft:end".into())
+            .invalid_field()
+            .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::MultiNoise("minecraft:overworld".into()).invalid_field(),
+        None
+    );
+    assert_eq!(RuntimeBiomeSource::End.invalid_field(), None);
+    assert!(RuntimeBiomeSource::Points(vec![]).invalid_field().is_some());
+    assert_eq!(
+        RuntimeBiomeSource::Points(vec![BiomePoint {
+            biome: "minecraft:plains".into(),
+            temperature: (-1.0, 1.0),
+            humidity: (0.0, 0.0),
+            continentalness: (0.0, 0.0),
+            erosion: (0.0, 0.0),
+            depth: (0.0, 0.0),
+            weirdness: (0.0, 0.0),
+            offset: 0.0,
+        }])
+        .invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::Registered(String::new())
+            .invalid_field()
+            .is_some()
+    );
+    assert_eq!(
+        RuntimeBiomeSource::Registered("mymod:rings".into()).invalid_field(),
+        None
+    );
+
+    // Flat/Void accept None or Fixed only; non-fixed sources do not produce a Flat/Void Generate.
+    let flat_fixed = flat().with_biome_source(RuntimeBiomeSource::Fixed("minecraft:desert".into()));
+    assert!(matches!(
+        Generate::of(&flat_fixed),
+        Some(Generate::Flat { biome: Some(ref b) }) if b == "minecraft:desert"
+    ));
+    let flat_end = flat().with_biome_source(RuntimeBiomeSource::End);
+    assert!(Generate::of(&flat_end).is_none());
+    let void_end = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Void, 1)
+        .with_biome_source(RuntimeBiomeSource::End);
+    assert!(Generate::of(&void_end).is_none());
+
+    // Mod generator composes with any RuntimeBiomeSource into the level stem JSON.
+    let mod_cb = RuntimeLevel::new(
+        "minecraft:overworld",
+        RuntimeGenerator::Mod("mymod:arena".into()),
+        7,
+    )
+    .with_biome_source(RuntimeBiomeSource::Checkerboard {
+        biomes: vec!["minecraft:plains".into(), "minecraft:desert".into()],
+        scale: 3,
+    });
+    match Generate::of(&mod_cb) {
+        Some(Generate::Stem(stem)) => {
+            assert_eq!(stem["generator"]["type"], "mymod:arena");
+            assert_eq!(
+                stem["generator"]["biome_source"]["type"],
+                "minecraft:checkerboard"
+            );
+            assert_eq!(stem["generator"]["biome_source"]["scale"], 3);
+        }
+        _ => panic!("expected mod stem"),
+    }
+
+    let mod_reg = RuntimeLevel::new(
+        "minecraft:overworld",
+        RuntimeGenerator::Mod("mymod:arena".into()),
+        7,
+    )
+    .with_biome_source(RuntimeBiomeSource::Registered("mymod:rings".into()));
+    match Generate::of(&mod_reg) {
+        Some(Generate::Stem(stem)) => {
+            assert_eq!(stem["generator"]["type"], "mymod:arena");
+            assert_eq!(stem["generator"]["biome_source"]["type"], "mymod:rings");
+        }
+        _ => panic!("expected mod stem"),
+    }
 }
 
 #[test]
@@ -297,13 +398,10 @@ fn tick_post(game: &mut super::Game<'_>) {
 #[ignore = "daily"]
 fn a_mod_opens_only_ids_in_its_own_namespace() {
     for (id, expected) in [
-        ("other:x", Err(RuntimeLevelError::OutsideNamespace)),
+        ("other:x", Ok(())),
         ("mymod:../x", Err(RuntimeLevelError::InvalidId)),
         ("mymod:a//b", Err(RuntimeLevelError::InvalidId)),
-        (
-            "minecraft:overworld",
-            Err(RuntimeLevelError::OutsideNamespace),
-        ),
+        ("minecraft:overworld", Err(RuntimeLevelError::ReservedId)),
         // Names Windows maps to a device or to another folder: refused before any folder exists.
         ("mymod:con", Err(RuntimeLevelError::InvalidId)),
         ("mymod:a/nul.txt", Err(RuntimeLevelError::InvalidId)),
@@ -627,23 +725,19 @@ fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
     });
 }
 
-/// The folder of another mod's level, of a vanilla level and of a path that leaves the world is
-/// never touched.
+/// The folder of a vanilla level and of a path that leaves the world is never touched.
 #[test]
 #[ignore = "daily"]
 fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
     with_opener("mine", "mine:a", flat(), |game, _| {
-        let other = game.world_root.join("dimensions/other/x/region/r.0.0.mca");
         let vanilla = game
             .world_root
             .join("dimensions/minecraft/overworld/region/r.0.0.mca");
         let escape = game.world_root.join("dimensions/mine/x");
-        write_file(&other);
         write_file(&vanilla);
         write_file(&escape.join("keep.txt"));
         for (id, expected) in [
-            ("other:x", RuntimeLevelError::OutsideNamespace),
-            ("minecraft:overworld", RuntimeLevelError::OutsideNamespace),
+            ("minecraft:overworld", RuntimeLevelError::ReservedId),
             ("mine:../other/x", RuntimeLevelError::InvalidId),
             ("mine:x/../../other/x", RuntimeLevelError::InvalidId),
             ("mine:con", RuntimeLevelError::InvalidId),
@@ -651,7 +745,7 @@ fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
             assert_eq!(delete_as(game, "mine", id), Err(expected), "{id}");
         }
         game.apply_runtime_levels();
-        assert!(other.is_file() && vanilla.is_file() && escape.join("keep.txt").is_file());
+        assert!(vanilla.is_file() && escape.join("keep.txt").is_file());
     });
 }
 

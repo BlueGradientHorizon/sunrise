@@ -8,7 +8,7 @@
 //! later open of the same id. A delete is an unload and then the removal of the level's files, on
 //! the server thread in the same pass, so a reopen is applied only after the files are gone.
 use super::{Dim, Game};
-use mod_api::{LevelRef, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
+use mod_api::{LevelRef, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
@@ -17,13 +17,11 @@ use sunrise_core::LevelKey;
 use sunrise_world::{
     dimension_type::DimensionFacts,
     worldgen::{
+        mod_biome_sources::mod_biome_sources,
         mod_generators::mod_chunk_generators,
         overrides::{DIMENSION_TYPES, DIMENSIONS, WorldgenOverrides, mod_dimensions},
     },
 };
-
-/// How many runtime levels a server keeps open unless `sunrise-max-runtime-levels` says otherwise.
-pub(in crate::game) const DEFAULT_CAP: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
@@ -58,7 +56,6 @@ pub(in crate::game) struct RuntimeTable {
     queue: Vec<Request>,
     /// The last generation given; never reset, so no two opens of an id share one.
     last_generation: u32,
-    cap: usize,
     #[cfg(test)]
     pub(super) fail_open_after_publication: bool,
     #[cfg(test)]
@@ -72,7 +69,6 @@ impl Default for RuntimeTable {
             erasing: BTreeSet::new(),
             queue: Vec::new(),
             last_generation: 0,
-            cap: DEFAULT_CAP,
             #[cfg(test)]
             fail_open_after_publication: false,
             #[cfg(test)]
@@ -82,19 +78,15 @@ impl Default for RuntimeTable {
 }
 
 impl RuntimeTable {
-    /// Forget every level, at the end of a world open. The cap and the generations stay.
+    /// Forget every level, at the end of a world open. Generations stay.
     pub(in crate::game) fn clear(&mut self) {
         self.entries.clear();
         self.erasing.clear();
         self.queue.clear();
     }
 
-    pub(in crate::game) fn set_cap(&mut self, cap: usize) {
-        self.cap = cap;
-    }
-
-    /// Queue the open of `id`, which the caller has checked except against the table: the cap and
-    /// a repeat. Returns the generation of this open.
+    /// Queue the open of `id`, which the caller has checked except against the table. Returns the
+    /// generation of this open.
     pub(in crate::game) fn queue_open(
         &mut self,
         owner: &'static str,
@@ -106,9 +98,6 @@ impl RuntimeTable {
         }
         if self.erasing.contains(id) {
             return Err(RuntimeLevelError::Removing);
-        }
-        if self.entries.len() >= self.cap {
-            return Err(RuntimeLevelError::CapReached);
         }
         self.last_generation += 1;
         let generation = self.last_generation;
@@ -252,10 +241,56 @@ impl RuntimeTable {
     }
 }
 
+/// Convert a [`RuntimeBiomeSource`] into the level stem JSON `biome_source` object.
+fn runtime_biome_source_json(source: &RuntimeBiomeSource) -> serde_json::Value {
+    match source {
+        RuntimeBiomeSource::Fixed(biome) => {
+            serde_json::json!({"type": "minecraft:fixed", "biome": biome})
+        }
+        RuntimeBiomeSource::Checkerboard { biomes, scale } => serde_json::json!({
+            "type": "minecraft:checkerboard",
+            "biomes": biomes,
+            "scale": scale,
+        }),
+        RuntimeBiomeSource::MultiNoise(preset) => serde_json::json!({
+            "type": "minecraft:multi_noise",
+            "preset": preset,
+        }),
+        RuntimeBiomeSource::End => serde_json::json!({"type": "minecraft:the_end"}),
+        RuntimeBiomeSource::Points(points) => {
+            let interval = |(min, max): (f32, f32)| serde_json::json!([min, max]);
+            let biomes: Vec<serde_json::Value> = points
+                .iter()
+                .map(|point| {
+                    serde_json::json!({
+                        "biome": point.biome,
+                        "parameters": {
+                            "temperature": interval(point.temperature),
+                            "humidity": interval(point.humidity),
+                            "continentalness": interval(point.continentalness),
+                            "erosion": interval(point.erosion),
+                            "depth": interval(point.depth),
+                            "weirdness": interval(point.weirdness),
+                            "offset": point.offset,
+                        },
+                    })
+                })
+                .collect();
+            serde_json::json!({"type": "minecraft:multi_noise", "biomes": biomes})
+        }
+        RuntimeBiomeSource::Registered(id) => serde_json::json!({"type": id}),
+        _ => unreachable!("unknown API runtime biome source"),
+    }
+}
+
 /// The JSON of the stem a runtime level is generated from, as a mod's registered level has one:
 /// the generator of the registered level `dimension_type` names, if any, with the generator
-/// `name` in place of its own.
-fn mod_stem(dimension_type: &str, name: &str) -> serde_json::Value {
+/// `name` in place of its own and `biome_source` applied when given.
+fn mod_stem(
+    dimension_type: &str,
+    name: &str,
+    biome_source: Option<&RuntimeBiomeSource>,
+) -> serde_json::Value {
     let mut generator = mod_dimensions()
         .iter()
         .find(|dimension| dimension.id == dimension_type)
@@ -269,6 +304,9 @@ fn mod_stem(dimension_type: &str, name: &str) -> serde_json::Value {
             })
         });
     generator["type"] = name.into();
+    if let Some(source) = biome_source {
+        generator["biome_source"] = runtime_biome_source_json(source);
+    }
     serde_json::json!({"type": dimension_type, "generator": generator})
 }
 
@@ -540,20 +578,33 @@ fn prune_empty_parents(path: &Path, stop: &Path) {
 
 /// What `make_streaming` generates a runtime level with.
 pub(in crate::game) enum Generate {
-    /// The default superflat layers.
-    Flat,
-    /// Air.
-    Void,
+    /// The default superflat layers, over a fixed biome (defaulting to `minecraft:plains`).
+    Flat { biome: Option<String> },
+    /// Air, over a fixed biome (defaulting to `minecraft:the_void`).
+    Void { biome: Option<String> },
     /// A mod's generator, by the stem that names it.
     Stem(serde_json::Value),
 }
 
 impl Generate {
-    fn of(level: &RuntimeLevel) -> Option<Self> {
+    pub(super) fn of(level: &RuntimeLevel) -> Option<Self> {
+        let fixed_biome = || match &level.biome_source {
+            None => Some(None),
+            Some(RuntimeBiomeSource::Fixed(biome)) => Some(Some(biome.clone())),
+            _ => None,
+        };
         match &level.generator {
-            RuntimeGenerator::Flat => Some(Self::Flat),
-            RuntimeGenerator::Void => Some(Self::Void),
-            RuntimeGenerator::Mod(name) => Some(Self::Stem(mod_stem(&level.dimension_type, name))),
+            RuntimeGenerator::Flat => Some(Self::Flat {
+                biome: fixed_biome()?,
+            }),
+            RuntimeGenerator::Void => Some(Self::Void {
+                biome: fixed_biome()?,
+            }),
+            RuntimeGenerator::Mod(name) => Some(Self::Stem(mod_stem(
+                &level.dimension_type,
+                name,
+                level.biome_source.as_ref(),
+            ))),
             _ => None,
         }
     }
@@ -571,38 +622,69 @@ impl Dim {
 }
 
 impl Game<'_> {
-    /// The cap on open runtime levels `server.properties` sets (`sunrise-max-runtime-levels`,
-    /// docs/hosting.md): the default, 64, for a missing or unreadable value.
-    pub(in crate::game) fn read_runtime_level_cap(
-        &mut self,
-        property: impl Fn(&str) -> Option<String>,
-    ) {
-        if let Some(cap) = property("sunrise-max-runtime-levels")
-            .and_then(|value| value.trim().parse::<usize>().ok())
-        {
-            self.levels.runtime.set_cap(cap);
-        }
-    }
-
-    /// The mod running, if it is one and a server world is open: who a runtime level request
-    /// belongs to.
+    /// Require an open logical server world for runtime level operations and return the current
+    /// mod name (or `"?"` outside a hook) for logging.
     fn runtime_caller(&self) -> Result<&'static str, RuntimeLevelError> {
         if !self.is_logical_server() || self.native_lifecycle.epoch().is_none() {
             return Err(RuntimeLevelError::Unavailable);
         }
-        mod_api::content::crash::current_native_mod().ok_or(RuntimeLevelError::Unavailable)
+        Ok(mod_api::content::crash::current_native_mod().unwrap_or("?"))
     }
 
-    /// `id` as a level the calling mod `owner` may open or close: a valid, portable id in a
-    /// namespace the mod owns. The folder of a level is only ever derived from an id that passed
-    /// this.
-    fn owned_level_id(owner: &str, id: &str) -> Result<(), RuntimeLevelError> {
+    /// `id` as a valid, portable level id: the folder of a level is only ever derived from an id
+    /// that passed this.
+    fn valid_runtime_level_id(id: &str) -> Result<(), RuntimeLevelError> {
         if !sunrise_core::level_id::valid_level_id(id) || !portable_level_id(id) {
             return Err(RuntimeLevelError::InvalidId);
         }
-        let namespace = id.split_once(':').map_or("", |(namespace, _)| namespace);
-        if !mod_api::__private::owns_namespace(owner, namespace) {
-            return Err(RuntimeLevelError::OutsideNamespace);
+        Ok(())
+    }
+
+    /// Validate a runtime level's biome source against its generator, registered mod biome
+    /// sources, and the world's biome registry.
+    fn validate_runtime_biome_source(&self, level: &RuntimeLevel) -> Result<(), RuntimeLevelError> {
+        let Some(source) = &level.biome_source else {
+            return Ok(());
+        };
+        if source.invalid_field().is_some() {
+            return Err(RuntimeLevelError::InvalidBiomeSource);
+        }
+        // Vanilla FlatLevelSource holds a FixedBiomeSource; Flat and Void accept Fixed only.
+        if matches!(
+            level.generator,
+            RuntimeGenerator::Flat | RuntimeGenerator::Void
+        ) && !matches!(source, RuntimeBiomeSource::Fixed(_))
+        {
+            return Err(RuntimeLevelError::IncompatibleBiomeSource);
+        }
+        let biomes = world_biomes!(self);
+        match source {
+            RuntimeBiomeSource::Fixed(biome) => {
+                if !biomes.contains(biome) {
+                    return Err(RuntimeLevelError::UnknownBiomeSource);
+                }
+            }
+            RuntimeBiomeSource::Checkerboard { biomes: list, .. } => {
+                for entry in list {
+                    if !entry.starts_with('#') && !biomes.contains(entry) {
+                        return Err(RuntimeLevelError::UnknownBiomeSource);
+                    }
+                }
+            }
+            RuntimeBiomeSource::Points(points) => {
+                for point in points {
+                    if !biomes.contains(&point.biome) {
+                        return Err(RuntimeLevelError::UnknownBiomeSource);
+                    }
+                }
+            }
+            RuntimeBiomeSource::Registered(id) => {
+                if !mod_biome_sources().contains_key(id) {
+                    return Err(RuntimeLevelError::UnknownBiomeSource);
+                }
+            }
+            RuntimeBiomeSource::MultiNoise(_) | RuntimeBiomeSource::End => {}
+            _ => return Err(RuntimeLevelError::InvalidBiomeSource),
         }
         Ok(())
     }
@@ -626,7 +708,7 @@ impl Game<'_> {
         level: RuntimeLevel,
     ) -> Result<LevelRef, RuntimeLevelError> {
         let owner = self.runtime_caller()?;
-        Self::owned_level_id(owner, id)?;
+        Self::valid_runtime_level_id(id)?;
         if !self.levels.runtime.holds(id) && Dim::exists(id) {
             return Err(RuntimeLevelError::ReservedId);
         }
@@ -637,10 +719,10 @@ impl Game<'_> {
             RuntimeGenerator::Mod(name) if !mod_chunk_generators().contains_key(name) => {
                 return Err(RuntimeLevelError::UnknownGenerator);
             }
-            RuntimeGenerator::Noise => return Err(RuntimeLevelError::NoiseUnsupported),
             RuntimeGenerator::Flat | RuntimeGenerator::Void | RuntimeGenerator::Mod(_) => {}
             _ => return Err(RuntimeLevelError::UnknownGenerator),
         }
+        self.validate_runtime_biome_source(&level)?;
         let generation = self.levels.runtime.queue_open(owner, id, level)?;
         let epoch = self
             .native_lifecycle
@@ -666,8 +748,8 @@ impl Game<'_> {
     }
 
     fn runtime_level_queue_unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
-        let owner = self.runtime_caller()?;
-        Self::owned_level_id(owner, id)?;
+        let _owner = self.runtime_caller()?;
+        Self::valid_runtime_level_id(id)?;
         if self.levels.runtime.is_open(id) && self.level_has_players(Dim::from_id(id)) {
             return Err(RuntimeLevelError::PlayersInside);
         }
@@ -688,7 +770,7 @@ impl Game<'_> {
 
     fn runtime_level_queue_delete(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         let owner = self.runtime_caller()?;
-        Self::owned_level_id(owner, id)?;
+        Self::valid_runtime_level_id(id)?;
         if !self.levels.runtime.holds(id) && Dim::exists(id) {
             return Err(RuntimeLevelError::ReservedId);
         }

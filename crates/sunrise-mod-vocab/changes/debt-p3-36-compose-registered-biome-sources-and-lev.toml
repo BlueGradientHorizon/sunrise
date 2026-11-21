@@ -1,0 +1,33 @@
+ids = [
+    "type:RuntimeGenerator",
+    "type:RuntimeGenerator.Noise",
+    "type:RuntimeBiomeSource",
+    "type:RuntimeBiomeSource.Fixed",
+    "type:RuntimeBiomeSource.Checkerboard",
+    "type:RuntimeBiomeSource.MultiNoise",
+    "type:RuntimeBiomeSource.End",
+    "type:RuntimeBiomeSource.Points",
+    "type:RuntimeBiomeSource.Registered",
+    "handle:RuntimeBiomeSource::invalid_field",
+    "type:RuntimeLevel",
+    "type:RuntimeLevel.biome_source",
+    "handle:RuntimeLevel::with_biome_source",
+    "type:RuntimeLevelError",
+    "type:RuntimeLevelError.OutsideNamespace",
+    "type:RuntimeLevelError.NoiseUnsupported",
+    "type:RuntimeLevelError.CapReached",
+    "type:RuntimeLevelError.UnknownBiomeSource",
+    "type:RuntimeLevelError.InvalidBiomeSource",
+    "type:RuntimeLevelError.IncompatibleBiomeSource",
+    "method:RuntimeLevels::open",
+    "method:RuntimeLevels::unload",
+    "method:RuntimeLevels::delete",
+    "handle:DimensionSettings::invalid_biome_source",
+]
+why = "Removed the unimplemented RuntimeGenerator::Noise variant and RuntimeLevelError::NoiseUnsupported, removed the non-vanilla runtime-level count cap (RuntimeLevelError::CapReached, DEFAULT_CAP, sunrise-max-runtime-levels) and namespace ownership gate (RuntimeLevelError::OutsideNamespace), added RuntimeBiomeSource and RuntimeLevel::biome_source / with_biome_source so runtime levels compose dimension type, chunk generator and biome source like vanilla net.minecraft.world.level.dimension.LevelStem (LevelStem(Holder<DimensionType>, ChunkGenerator), ChunkGenerator(BiomeSource), FlatLevelSource holding a fixed biome, CheckerboardColumnBiomeSource scale 0..=62, and NeoForge LevelStem), and allowed non-fixed BiomeSourceKind values (Checkerboard, MultiNoise, End, Points) to compose with mod chunk generators in DimensionSettings::invalid_biome_source, ModTerrain and OverworldGenerator::for_mod."
+migrate = """
+- Remove any use of `RuntimeGenerator::Noise` and any match arms for `RuntimeLevelError::NoiseUnsupported`, `RuntimeLevelError::CapReached` and `RuntimeLevelError::OutsideNamespace`. Handle `RuntimeLevelError::UnknownBiomeSource`, `RuntimeLevelError::InvalidBiomeSource` and `RuntimeLevelError::IncompatibleBiomeSource` when passing a `RuntimeBiomeSource`.
+- `RuntimeLevel` no longer implements `Eq` (it carries `biome_source: Option<RuntimeBiomeSource>`, whose `Points` variant holds `BiomePoint` floats, matching `DimensionSettings`). Use `PartialEq` or construct levels with `RuntimeLevel::new(...)` and optional `.with_biome_source(RuntimeBiomeSource::...)`.
+- `RuntimeLevels::open`, `unload` and `delete` no longer reject ids outside the calling mod's namespace; vanilla, startup and data-pack dimension ids still return `RuntimeLevelError::ReservedId`, and invalid or non-portable paths still return `RuntimeLevelError::InvalidId`. Remove `sunrise-max-runtime-levels` from `server.properties` or `server.toml`.
+- `DimensionSettings::invalid_biome_source` now accepts valid `Checkerboard`, `MultiNoise`, `End` and `Points` biome sources alongside custom chunk generators (`generator != "minecraft:noise"`).
+"""

@@ -355,9 +355,6 @@ impl DimensionSettings {
             {
                 "biome_preset must be minecraft:overworld or minecraft:nether"
             }
-            _ if self.generator != NOISE_GENERATOR => {
-                "only the fixed biome source suits a chunk generator of a mod's own"
-            }
             _ => return None,
         };
         Some(reason.to_owned())

@@ -857,8 +857,12 @@ fn set_level_types(
 enum ModLevel {
     /// The generator's terrain alone.
     Terrain(sunrise_client::modgen::ModTerrain),
-    /// Its terrain and the vanilla stages it asks for.
-    Staged(VanillaTerrain),
+    /// Its terrain on the vanilla worldgen pipeline (for requested vanilla stages or a
+    /// pipeline-only biome source such as multi-noise, End or tag checkerboard).
+    Staged {
+        terrain: VanillaTerrain,
+        uses_vanilla_stages: bool,
+    },
 }
 
 /// The generation of a level whose stem names a generator a mod registered, the
@@ -902,22 +906,29 @@ fn mod_terrain(
     if let Some(generator) = stem["generator"]["type"]
         .as_str()
         .and_then(|id| generators.get(id))
-        && generator.vanilla_stages().any()
     {
-        let staged = VanillaTerrain::for_mod(
-            terrain_resources,
-            &overrides,
-            seed,
-            dim.id(),
-            &stem,
-            generator.clone(),
-            structures,
-        );
-        return Some(
-            staged
-                .map(ModLevel::Staged)
-                .map_err(|e| format!("{}: {e}", dim.id())),
-        );
+        let uses_vanilla_stages = generator.vanilla_stages().any();
+        if uses_vanilla_stages
+            || sunrise_client::modgen::ModTerrain::biome_source_needs_pipeline(&stem)
+        {
+            let staged = VanillaTerrain::for_mod(
+                terrain_resources,
+                &overrides,
+                seed,
+                dim.id(),
+                &stem,
+                generator.clone(),
+                structures,
+            );
+            return Some(
+                staged
+                    .map(|terrain| ModLevel::Staged {
+                        terrain,
+                        uses_vanilla_stages,
+                    })
+                    .map_err(|e| format!("{}: {e}", dim.id())),
+            );
+        }
     }
     sunrise_client::modgen::ModTerrain::for_stem(
         dim.id(),
@@ -1072,12 +1083,17 @@ pub(super) fn make_streaming(
         runtime.filter(|generate| !matches!(generate, super::runtime_levels::Generate::Stem(_)))
     {
         // A level a mod opened with the default layers or with air alone.
-        let flat = matches!(generate, super::runtime_levels::Generate::Flat);
+        let (flat, biome) = match generate {
+            super::runtime_levels::Generate::Flat { biome } => (true, biome.as_deref()),
+            super::runtime_levels::Generate::Void { biome } => (false, biome.as_deref()),
+            super::runtime_levels::Generate::Stem(_) => unreachable!(),
+        };
         let inner = sunrise_client::flatgen::FlatTerrain::of_layers(
             pack.assets.registry,
-            res.biomes(),
+            &biomes,
             shape,
             flat,
+            biome,
         )
         .ok_or("a runtime level's layers use a block the game lacks")?;
         register_sea_level(-63);
@@ -1178,13 +1194,20 @@ pub(super) fn make_streaming(
                 pack.context_with(biomes.clone()),
                 res.threads(),
             ),
-            ModLevel::Staged(mut inner) => {
-                inner.add_mod_signs(res.facts());
-                register_sea_level(inner.sea_level());
+            ModLevel::Staged {
+                terrain: mut inner,
+                uses_vanilla_stages,
+            } => {
+                if uses_vanilla_stages {
+                    inner.add_mod_signs(res.facts());
+                    register_sea_level(inner.sea_level());
+                }
                 let inner = Arc::new(inner);
-                inner.load_structure_mobs_behind();
-                keep_structure_references(&inner, world_root, dim, &save);
-                locator = Some(inner.clone());
+                if uses_vanilla_stages {
+                    inner.load_structure_mobs_behind();
+                    keep_structure_references(&inner, world_root, dim, &save);
+                    locator = Some(inner.clone());
+                }
                 Streaming::new(
                     Arc::new(Persistent {
                         inner,
