@@ -2561,7 +2561,7 @@ impl Hub {
                 .any(|g| g.participates_online() && g.dimension == self.config.dimension)
             {
                 let _ = ctx.world.block_log.take();
-                let _ = ctx.world.connection_group_log.take();
+                ctx.world.stop_group_sync();
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
@@ -2571,7 +2571,7 @@ impl Hub {
             ctx.world.block_log = Some(Vec::new());
         }
         if ctx.world.connection_group_log.is_none() {
-            ctx.world.connection_group_log = Some(Vec::new());
+            ctx.world.connection_group_log = Some(Default::default());
         }
         if ctx.world.light_log.is_none() {
             ctx.world.light_log = Some(Default::default());
@@ -2915,34 +2915,31 @@ impl Hub {
                 // The single-player window shares the sections it is sent (handoff.rs).
                 let memory = g.address == super::conn::MEMORY_ADDRESS;
                 let sync_groups = g.negotiated_connection_groups();
-                let mut group_chunks: Vec<&Chunk> = Vec::new();
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
-                    g.sender.send_many(batch.into_iter().map(|j| {
+                    g.sender.send_many(batch.into_iter().flat_map(|j| {
                         let chunk = chunks[j];
                         if memory {
                             super::handoff::offer(chunk);
                         }
-                        if sync_groups && !chunk.connection_groups.is_empty() {
-                            group_chunks.push(chunk);
-                        }
+                        let prefix = if sync_groups {
+                            block_changes::encode_chunk_connection_groups(chunk)
+                        } else {
+                            Vec::new()
+                        };
                         uses[j] -= 1;
-                        if uses[j] == 0 {
+                        let body = if uses[j] == 0 {
                             std::mem::take(&mut encoded[j])
                         } else {
                             encoded[j].clone()
-                        }
+                        };
+                        prefix.into_iter().chain(std::iter::once(body))
                     }));
                     g.send(&C::ChunkBatchFinished(play::ChunkBatchFinished {
                         size: size as i32,
                     }));
                     g.unacknowledged += 1;
-                    for chunk in group_chunks {
-                        for packet in block_changes::encode_chunk_connection_groups(chunk, false) {
-                            g.sender.send(packet);
-                        }
-                    }
                 }
                 if watching {
                     // ChunkMap.markChunkPendingToSend, then PlayerChunkSender.sendChunk's end:
@@ -2970,7 +2967,12 @@ impl Hub {
                         seen.iter().map(|&(x, z)| Holder::Chunk([x, z])),
                     );
                 }
-                g.sent_chunks.extend(seen);
+                for key in seen {
+                    if sync_groups && let Some(revision) = world.group_snapshot_revision(key) {
+                        g.group_snapshots.insert(key, revision);
+                    }
+                    g.sent_chunks.insert(key);
+                }
             });
         }
     }
@@ -3000,6 +3002,7 @@ impl Hub {
                 .collect();
             for (x, z) in forget {
                 g.sent_chunks.remove(&(x, z));
+                g.group_snapshots.remove(&(x, z));
                 super::chunk_watch::unwatch(&mut self.chunk_watches, g, (x, z));
                 g.send(&C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [x, z] }));
             }
@@ -4876,6 +4879,7 @@ impl Hub {
             }
             g.tracker.clear();
             g.sent_chunks.clear();
+            g.group_snapshots.clear();
             g.chunk_queue.clear();
             g.viewed.forget_views();
             g.entity_id

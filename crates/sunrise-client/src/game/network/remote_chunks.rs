@@ -60,6 +60,9 @@ impl Game<'_> {
         // ClientChunkCache.replaceWithPacketData: a column outside the
         // storage around the view centre is ignored.
         if !self.remote_chunk_in_range(p.x, p.z) {
+            if let Some(remote) = self.remote.as_mut() {
+                remote.group_ingress.discard();
+            }
             log::warn!(
                 "Ignoring chunk since it's not in the view range: {}, {}",
                 p.x,
@@ -74,14 +77,20 @@ impl Game<'_> {
             Some((used, column)) if Arc::ptr_eq(used, &format) => column,
             _ => format.column(p),
         };
-        let chunk = match column {
+        let mut chunk = match column {
             Ok(chunk) => chunk,
             Err(e) => {
+                if let Some(remote) = self.remote.as_mut() {
+                    remote.group_ingress.discard();
+                }
                 log::warn!("Sunrise: chunk {} {}: {e}", p.x, p.z);
                 return;
             }
         };
         let (x, z) = (p.x, p.z);
+        if let Some(remote) = self.remote.as_mut() {
+            remote.group_ingress.install_column((x, z), &mut chunk);
+        }
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
         let resident = self.world.chunks.contains_key(&(x, z));
         if resident {

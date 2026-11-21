@@ -13,10 +13,24 @@ impl Game<'_> {
         self.destroy_block_progress(p.id, p.pos, i32::from(p.progress));
     }
 
+    pub(super) fn apply_block_update_packet(&mut self, p: play::BlockUpdate) {
+        let group = self
+            .remote
+            .as_mut()
+            .and_then(|remote| remote.group_ingress.take_blocks())
+            .and_then(|mut groups| groups.take(p.pos));
+        self.server_block(p.pos, p.state, group);
+    }
+
     /// `C::SectionBlocksUpdate`: its arms of `apply_packet`, guard and order kept.
     pub(super) fn apply_section_blocks_update_packet(&mut self, p: play::SectionBlocksUpdate) {
+        let mut groups = self
+            .remote
+            .as_mut()
+            .and_then(|remote| remote.group_ingress.take_blocks());
         for (pos, state) in super::super::remote_chunks::section_blocks(&p) {
-            self.server_block(pos, state);
+            let group = groups.as_mut().and_then(|groups| groups.take(pos));
+            self.server_block(pos, state, group);
         }
     }
 

@@ -1578,13 +1578,14 @@ const OFFSETS: [isize; 6] = {
     out
 };
 /// Per-worker temporary arrays. They never hold resource-pack references or
-/// geometry still owned by the renderer, and total about 150 KiB per worker
-/// (the leaf mask adds 8,000 cells, depths and a queue).
+/// geometry still owned by the renderer. Group cells are allocated only by workers
+/// that mesh a region with group rules and data.
 #[derive(Default)]
 pub struct MeshScratch {
     padded: Padded,
     own: Option<Box<[u32; 4096]>>,
     leaf: leaf_culling::LeafMask,
+    groups: Option<GroupCells>,
     /// Per padded row (`pi(-B, y, z) / P`), bit `x + B` set where the block
     /// is `isSolidRender` (`MeshTables::solid`).
     solid_rows: Vec<u32>,
@@ -2155,33 +2156,69 @@ pub struct Mesher<'a> {
     /// no part subscribes.
     pub part_tables: &'a part_tables::PartTables,
 }
-/// Zero-allocation handle passed into `Mesher::face` to query mod-published connection groups
-/// across the 3x3 chunk region. When `active` is false (no loaded rule uses `connect_group` or
-/// no chunk in the 3x3 has any groups), `at` returns `None` in one branch without hashing.
-#[derive(Clone, Copy)]
-struct GroupLookup<'a> {
-    region: &'a [[Option<&'a Chunk>; 3]; 3],
-    center_x: i32,
-    center_z: i32,
-    active: bool,
+/// A direct-indexed view using the same padded strides as states. The mask is
+/// independent of the ID, so both zero and every other u64 remain usable.
+struct GroupCells {
+    values: Box<[u64; P * P * P]>,
+    present: [u32; P * P],
 }
 
-impl GroupLookup<'_> {
+impl GroupCells {
+    fn new() -> Self {
+        Self {
+            values: Box::new([0; P * P * P]),
+            present: [0; P * P],
+        }
+    }
+
+    fn fill(&mut self, region: &[[Option<&Chunk>; 3]; 3], base_y: i32) {
+        self.present.fill(0);
+        let span = -B..16 + B;
+        for (dz, row) in region.iter().enumerate() {
+            for (dx, chunk) in row.iter().enumerate() {
+                let Some(chunk) = chunk.filter(|c| !c.connection_groups.is_empty()) else {
+                    continue;
+                };
+                let (ox, oz) = ((dx as i32 - 1) * 16, (dz as i32 - 1) * 16);
+                let x = span.start.max(ox)..span.end.min(ox + 16);
+                let z = span.start.max(oz)..span.end.min(oz + 16);
+                let y =
+                    span.start.max(chunk.min_y() - base_y)..span.end.min(chunk.max_y() - base_y);
+                // Sparse columns cost one visit per group; dense tall columns cost at
+                // most one hash lookup per padded cell, never one per face or rule.
+                if chunk.connection_groups.len() <= x.len() * y.len() * z.len() {
+                    for (&cell, &group) in &chunk.connection_groups {
+                        let (lx, wy, lz) = chunk.dynamic_cell_coords(cell);
+                        let (xx, yy, zz) = (ox + i32::from(lx), wy - base_y, oz + i32::from(lz));
+                        if x.contains(&xx) && y.contains(&yy) && z.contains(&zz) {
+                            self.put(pi(xx, yy, zz), group);
+                        }
+                    }
+                } else {
+                    for yy in y {
+                        for zz in z.clone() {
+                            for xx in x.clone() {
+                                if let Some(group) =
+                                    chunk.connection_group(xx - ox, yy + base_y, zz - oz)
+                                {
+                                    self.put(pi(xx, yy, zz), group);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn put(&mut self, cell: usize, group: u64) {
+        self.values[cell] = group;
+        self.present[cell / P] |= 1 << (cell % P);
+    }
+
     #[inline]
-    fn at(&self, world: BlockPos, offset: [i32; 3]) -> Option<u64> {
-        if !self.active {
-            return None;
-        }
-        let wx = world.x + offset[0];
-        let wy = world.y + offset[1];
-        let wz = world.z + offset[2];
-        let dcx = (wx >> 4) - self.center_x;
-        let dcz = (wz >> 4) - self.center_z;
-        if !(-1..=1).contains(&dcx) || !(-1..=1).contains(&dcz) {
-            return None;
-        }
-        let chunk = self.region[(dcz + 1) as usize][(dcx + 1) as usize]?;
-        chunk.connection_group(wx & 15, wy, wz & 15)
+    fn at(&self, cell: usize) -> Option<u64> {
+        (self.present[cell / P] & (1 << (cell % P)) != 0).then(|| self.values[cell])
     }
 }
 
@@ -2298,16 +2335,18 @@ impl Mesher<'_> {
         let info = &self.tables.info;
         let full_faces = &self.tables.full_faces;
         let catalog = &self.render.model_catalog;
-        let groups = GroupLookup {
-            region,
-            center_x: center.x,
-            center_z: center.z,
-            active: self.render.connected.has_group_rules()
-                && region
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .any(|c| !c.connection_groups.is_empty()),
+        let groups = if self.render.connected.has_group_rules()
+            && region
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|c| !c.connection_groups.is_empty())
+        {
+            let groups = scratch.groups.get_or_insert_with(GroupCells::new);
+            groups.fill(region, base_y);
+            Some(&*groups)
+        } else {
+            None
         };
         let mut models = Vec::new();
         for y in 0..16 {
@@ -2505,7 +2544,7 @@ impl Mesher<'_> {
     fn face(
         &self,
         pad: &Padded,
-        groups: GroupLookup<'_>,
+        groups: Option<&GroupCells>,
         tints: &mut Tints,
         out: &mut SectionMesh,
         pos: [i32; 3],
@@ -2611,7 +2650,7 @@ impl Mesher<'_> {
                 CtmFace::ALL[q.facing as usize],
                 [world.x, world.y, world.z],
                 neighbour,
-                |n| groups.at(world, n),
+                |n| groups.and_then(|groups| groups.at((cell as isize + step_index(n)) as usize)),
                 |s| self.tables.full_faces[s as usize],
                 || Some(tints.biome(pos[0], pos[1], pos[2])),
                 // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
@@ -3034,40 +3073,25 @@ mod quarter_tests {
     }
 
     #[test]
-    fn group_lookup_resolves_within_chunk_and_across_chunk_borders() {
-        let mut c00 = Chunk::empty(0, 0);
-        let mut c10 = Chunk::empty(1, 0);
-        let mut c0n1 = Chunk::empty(0, -1);
-        c00.set_connection_group(15, 64, 0, Some(77));
-        c10.set_connection_group(0, 64, 0, Some(77));
-        c0n1.set_connection_group(15, 64, 15, Some(88));
-        // `region[dz + 1][dx + 1]`
-        let mut region: [[Option<&Chunk>; 3]; 3] = [[None; 3]; 3];
-        region[1][1] = Some(&c00);
-        region[1][2] = Some(&c10);
-        region[0][1] = Some(&c0n1);
-
-        let origin = BlockPos::new(15, 64, 0);
-        let inactive = GroupLookup {
-            region: &region,
-            center_x: 0,
-            center_z: 0,
-            active: false,
-        };
-        assert_eq!(inactive.at(origin, [0, 0, 0]), None);
-        assert_eq!(inactive.at(origin, [1, 0, 0]), None);
-
-        let active = GroupLookup {
-            region: &region,
-            center_x: 0,
-            center_z: 0,
-            active: true,
-        };
-        assert_eq!(active.at(origin, [0, 0, 0]), Some(77));
-        assert_eq!(active.at(origin, [1, 0, 0]), Some(77));
-        assert_eq!(active.at(origin, [0, 0, -1]), Some(88));
-        assert_eq!(active.at(origin, [-16, 0, 0]), None);
-        assert_eq!(active.at(origin, [0, 1, 0]), None);
-        assert_eq!(active.at(origin, [17, 0, 0]), None);
+    fn group_cells_index_the_padded_region_and_forget_old_values_on_reuse() {
+        let mut centre = Chunk::empty(0, 0);
+        let mut east = Chunk::empty(1, 0);
+        let mut north = Chunk::empty(0, -1);
+        centre.set_connection_group(15, 64, 0, Some(0));
+        east.set_connection_group(0, 64, 0, Some(u64::MAX));
+        north.set_connection_group(15, 63, 15, Some(88));
+        let mut region = [[None; 3]; 3];
+        region[1][1] = Some(&centre);
+        region[1][2] = Some(&east);
+        region[0][1] = Some(&north);
+        let mut cells = GroupCells::new();
+        cells.fill(&region, 64);
+        assert_eq!(cells.at(pi(15, 0, 0)), Some(0));
+        assert_eq!(cells.at(pi(16, 0, 0)), Some(u64::MAX));
+        assert_eq!(cells.at(pi(15, -1, -1)), Some(88));
+        assert_eq!(cells.at(pi(15, 1, 0)), None);
+        region[1][2] = None;
+        cells.fill(&region, 64);
+        assert_eq!(cells.at(pi(16, 0, 0)), None);
     }
 }

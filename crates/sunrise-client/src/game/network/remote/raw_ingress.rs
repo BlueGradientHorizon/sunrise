@@ -44,6 +44,9 @@ impl Game<'_> {
             if let Received::Event(Event::Packet(packet), _) = &item
                 && let C::ForgetLevelChunk(p) = &**packet
             {
+                if let Some(remote) = self.remote.as_mut() {
+                    remote.group_ingress.discard();
+                }
                 self.observe_client_packet(packet);
                 forgotten.insert((p.pos[0], p.pos[1]));
                 forgotten_credits.push(item.into_event_credit());
@@ -80,6 +83,9 @@ impl Game<'_> {
                             break;
                         }
                         Next::Lost => {
+                            if let Some(remote) = self.remote.as_mut() {
+                                remote.group_ingress.discard();
+                            }
                             log::warn!("Sunrise: the chunk decoder stopped; a column is missing");
                             continue;
                         }

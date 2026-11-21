@@ -1284,7 +1284,7 @@ impl Game<'_> {
         hub.debug_world = self.world_debug;
         let port = hub.lan.port;
         self.world.block_log = Some(Vec::new());
-        self.world.connection_group_log = Some(Vec::new());
+        self.world.connection_group_log = Some(Default::default());
         self.world.light_log = Some(Default::default());
         self.lan = Some(LanHost {
             players_told_left: false,
@@ -1353,7 +1353,7 @@ impl Game<'_> {
         // Give the network threads a moment to flush the disconnect packets.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.world.block_log = None;
-        self.world.connection_group_log = None;
+        self.world.stop_group_sync();
         self.world.light_log = None;
         self.audio.capture = None;
         self.bound_sounds.clear();
@@ -2544,19 +2544,13 @@ impl Game<'_> {
     /// first updated in this tick's pass (`Entities::synced`).
     /// `ServerChunkCache.tick`'s broadcast, where ServerLevel.tick runs it:
     /// after the scheduled and random ticks, before the block events, so the
-    /// players get the blocks as they are then. The block log and connection
-    /// group log lengths after it: what the tick writes from there on goes out
-    /// with the next tick's.
-    pub(super) fn lan_broadcast_changes(&mut self) -> Option<(usize, usize)> {
+    /// players get the blocks as they are then. What the tick writes from
+    /// there on goes out with the next tick's.
+    pub(super) fn lan_broadcast_changes(&mut self) -> Option<usize> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.broadcast_changes(&mut self.world);
         }
-        self.world.block_log.as_ref().map(|b| {
-            (
-                b.len(),
-                self.world.connection_group_log.as_ref().map_or(0, Vec::len),
-            )
-        })
+        self.world.block_log.as_ref().map(Vec::len)
     }
 
     pub(super) fn lan_mark_synced(&mut self) {
@@ -2688,6 +2682,11 @@ impl Game<'_> {
             };
             let ridden: Vec<u32> = host.hub.guests.iter().filter_map(|g| g.vehicle).collect();
             self.find_ridden_vehicle_portals(&ridden);
+        }
+        // LevelChunk.registerAllBlockEntitiesAfterLevelLoad publishes saved data before
+        // the first send, not on the first entity tick (which may be frozen or later).
+        if self.is_logical_server() {
+            self.fire_pending_block_entity_loads();
         }
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle

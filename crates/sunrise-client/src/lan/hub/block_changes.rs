@@ -22,25 +22,10 @@ fn encode_payload(msg: &connection_groups::Message) -> Vec<u8> {
     .encode()
 }
 
-/// Encode one chunk's connection-group map into one or more `sunrise:connection_groups` play
-/// clientbound custom-payload packet bodies. When `include_empty` is false (initial chunk send),
-/// an empty chunk produces nothing; when true (bulk chunk resend), an empty chunk emits an
-/// authoritative empty `replace: true` snapshot so clients clear any stale groups in unchanged
-/// sections.
-pub(in crate::lan) fn encode_chunk_connection_groups(
-    chunk: &Chunk,
-    include_empty: bool,
-) -> Vec<Vec<u8>> {
+/// Snapshot prefix of a column packet. An unprefixed column carries no groups.
+pub(in crate::lan) fn encode_chunk_connection_groups(chunk: &Chunk) -> Vec<Vec<u8>> {
     if chunk.connection_groups.is_empty() {
-        if !include_empty {
-            return Vec::new();
-        }
-        return vec![encode_payload(&connection_groups::Message::Chunk {
-            cx: chunk.x,
-            cz: chunk.z,
-            replace: true,
-            entries: Vec::new(),
-        })];
+        return Vec::new();
     }
     let mut entries: Vec<ChunkEntry> = chunk
         .connection_groups
@@ -95,54 +80,66 @@ impl Hub {
             .collect()
     }
 
-    /// Send a world-state correction directly to one guest. A block packet can make a formerly
-    /// unsent replacement visible, so send the current group (including a clear) with it.
+    /// Send a world-state correction directly to one guest, with its group at the same
+    /// receive boundary. This does not publish the replacement to its other holders.
     pub fn send_authoritative_block(&self, conn: u32, world: &World, pos: [i32; 3]) {
         let Some(guest) = self.guest(conn) else {
             return;
         };
         let [x, y, z] = pos;
-        guest.send(&C::BlockUpdate(play::BlockUpdate {
+        let block = C::BlockUpdate(play::BlockUpdate {
             pos,
             state: world.block(x, y, z).0 as i32,
-        }));
+        });
         if guest.negotiated_connection_groups()
             && world
                 .chunks
                 .get(&(x >> 4, z >> 4))
                 .is_some_and(|chunk| chunk.has_held_connection_groups)
         {
-            guest
-                .sender
-                .send(encode_payload(&connection_groups::Message::Update {
-                    entries: vec![UpdateEntry {
-                        pos,
-                        group: world.connection_group(x, y, z),
-                    }],
-                }));
-        }
-    }
-
-    /// Whether the play packet could be sent in this holder's scope.
-    fn send_to_holder(&self, i: usize, level: Option<Level>, body: &[u8]) -> bool {
-        let g = &self.guests[i];
-        if let Some(level) = level {
-            let mut runs = Runs::new(level);
-            if !runs.push(body) {
-                return false;
-            }
-            g.sender.send_many(runs.finish());
+            let prefix = encode_payload(&connection_groups::Message::Blocks {
+                entries: vec![UpdateEntry {
+                    pos,
+                    group: world.connection_group(x, y, z),
+                }],
+            });
+            guest.sender.send_many([prefix, block.encode()]);
         } else {
-            g.sender.send(body.to_vec());
+            guest.send(&block);
         }
-        true
     }
 
-    /// `body`, a play clientbound packet, to each of `holders`.
-    fn send_to_holders(&self, holders: &[(usize, Option<Level>)], body: &[u8]) {
+    /// Publish the body to each holder; only negotiated peers get its metadata, and only if
+    /// that scope accepts the body. Returns whether all negotiated holders got the body.
+    fn send_to_holders_prefixed(
+        &self,
+        holders: &[(usize, Option<Level>)],
+        prefix: &[Vec<u8>],
+        body: &[u8],
+    ) -> bool {
+        let mut published = true;
         for &(i, level) in holders {
-            self.send_to_holder(i, level, body);
+            let guest = &self.guests[i];
+            let negotiated = !prefix.is_empty() && guest.negotiated_connection_groups();
+            let prefix = if negotiated { prefix } else { &[] };
+            if let Some(level) = level {
+                let mut runs = Runs::new(level);
+                if runs.push_prefixed(prefix, body) {
+                    guest.sender.send_many(runs.finish());
+                } else if guest.negotiated_connection_groups() {
+                    published = false;
+                }
+            } else {
+                guest
+                    .sender
+                    .send_many(prefix.iter().cloned().chain(std::iter::once(body.to_vec())));
+            }
         }
+        published
+    }
+
+    fn send_to_holders(&self, holders: &[(usize, Option<Level>)], body: &[u8]) {
+        self.send_to_holders_prefixed(holders, &[], body);
     }
 
     /// `ChunkHolder.broadcastChanges`' light part: the light sections that
@@ -209,32 +206,62 @@ impl Hub {
                 .filter_map(|k| world.chunks.get(k).map(|c| &**c))
                 .collect();
             self.encoder.warm(&columns);
+            let mut published = Vec::new();
+            let mut missed = Vec::new();
             for chunk in columns {
                 let key = (chunk.x, chunk.z);
                 let holders = self.holders(key);
                 if holders.is_empty() {
+                    published.push(key);
                     continue;
                 }
                 let body = self.encoder.body_in(chunk, world);
-                let mut cg_holders = Vec::new();
-                for (i, level) in holders {
-                    if self.send_to_holder(i, level, &body)
-                        && chunk.has_held_connection_groups
-                        && self.guests[i].negotiated_connection_groups()
-                    {
-                        cg_holders.push((i, level));
-                    }
+                let prefix = if holders
+                    .iter()
+                    .any(|&(i, _)| self.guests[i].negotiated_connection_groups())
+                {
+                    encode_chunk_connection_groups(chunk)
+                } else {
+                    Vec::new()
+                };
+                let mut all_published = true;
+                let mut accepted = holders;
+                accepted.retain(|&holder @ (i, _)| {
+                    let sent = self.send_to_holders_prefixed(&[holder], &prefix, &body);
+                    all_published &= sent;
+                    sent && self.guests[i].negotiated_connection_groups()
+                });
+                if all_published {
+                    published.push(key);
+                } else {
+                    missed.push((key, accepted));
                 }
-                if !cg_holders.is_empty() {
-                    for packet in encode_chunk_connection_groups(chunk, true) {
-                        self.send_to_holders(&cg_holders, &packet);
-                    }
+            }
+            for key in published {
+                world.group_blocks_sent(key, None);
+            }
+            for (key, accepted) in missed {
+                let revision = world.group_column_missed(key);
+                let dimension = &self.config.dimension;
+                for (i, level) in accepted {
+                    self.guests.update(i, |g| {
+                        let snapshots = if level.is_some() {
+                            &mut g
+                                .viewed
+                                .views
+                                .get_mut(dimension)
+                                .expect("holder views this level")
+                                .group_snapshots
+                        } else {
+                            &mut g.group_snapshots
+                        };
+                        snapshots.insert(key, revision);
+                    });
                 }
             }
         }
-        let mut block_group_positions: Vec<(i32, i32, i32)> = Vec::new();
         let Some(log) = world.block_log.as_mut() else {
-            self.broadcast_connection_group_changes(world, &bulk, block_group_positions);
+            self.broadcast_connection_group_changes(world, &bulk);
             return;
         };
         if !bulk.is_empty() {
@@ -261,20 +288,37 @@ impl Hub {
                     .push(p);
             }
             for ((sx, sy, sz), positions) in sections {
-                let holders = self.holders((sx, sz));
+                let key = (sx, sz);
+                let holders = self.holders(key);
+                if let Some(log) = &mut world.connection_group_log {
+                    for pos in &positions {
+                        log.remove(pos);
+                    }
+                }
                 if holders.is_empty() {
+                    world.group_blocks_sent(key, Some(&positions));
                     continue;
                 }
-                if world
+                let prefix = if world
                     .chunks
-                    .get(&(sx, sz))
+                    .get(&key)
                     .is_some_and(|c| c.has_held_connection_groups)
                     && holders
                         .iter()
                         .any(|&(i, _)| self.guests[i].negotiated_connection_groups())
                 {
-                    block_group_positions.extend(positions.iter().copied());
-                }
+                    vec![encode_payload(&connection_groups::Message::Blocks {
+                        entries: positions
+                            .iter()
+                            .map(|&(x, y, z)| UpdateEntry {
+                                pos: [x, y, z],
+                                group: world.connection_group(x, y, z),
+                            })
+                            .collect(),
+                    })]
+                } else {
+                    Vec::new()
+                };
                 let packet = if positions.len() == 1 {
                     let (x, y, z) = positions[0];
                     C::BlockUpdate(play::BlockUpdate {
@@ -296,7 +340,9 @@ impl Hub {
                             .collect(),
                     })
                 };
-                self.send_to_holders(&holders, &packet.encode());
+                if self.send_to_holders_prefixed(&holders, &prefix, &packet.encode()) {
+                    world.group_blocks_sent(key, Some(&positions));
+                }
                 // Block entities with data the client shows.
                 for &(x, y, z) in &positions {
                     let state = world.block(x, y, z).0;
@@ -331,34 +377,26 @@ impl Hub {
                 }
             }
         }
-        self.broadcast_connection_group_changes(world, &bulk, block_group_positions);
+        self.broadcast_connection_group_changes(world, &bulk);
     }
 
-    /// Broadcast incremental connection-group updates for explicitly logged writes in
-    /// `world.connection_group_log` and for sent block changes in chunks that have held a group
-    /// (`block_group_positions`), reading each position's authoritative group from `world` at send
-    /// time. Routed to negotiated holders (both in-level guests and viewed-level viewers).
-    fn broadcast_connection_group_changes(
-        &self,
-        world: &mut World,
-        bulk: &[(i32, i32)],
-        mut positions: Vec<(i32, i32, i32)>,
-    ) {
-        if let Some(log) = world.connection_group_log.as_mut() {
-            positions.append(log);
-        }
-        if positions.is_empty() {
+    /// Explicit writes with no companion block packet may only describe state the holders
+    /// already have. A deferred replacement will publish the current group when its block
+    /// is sent, not as a standalone delta to an older block.
+    fn broadcast_connection_group_changes(&self, world: &mut World, bulk: &[(i32, i32)]) {
+        let Some(log) = world.connection_group_log.as_mut() else {
+            return;
+        };
+        if log.is_empty() {
             return;
         }
+        let mut positions: Vec<_> = log.drain().collect();
         positions.sort_unstable();
-        positions.dedup();
-        // Group by chunk so we only send to negotiated holders that hold that chunk. Positions in
-        // bulk-resent chunks were already covered by the authoritative chunk snapshot above.
         let mut by_chunk: std::collections::BTreeMap<(i32, i32), Vec<UpdateEntry>> =
             Default::default();
         for (x, y, z) in positions {
             let key = (x >> 4, z >> 4);
-            if bulk.binary_search(&key).is_ok() {
+            if bulk.binary_search(&key).is_ok() || !world.chunks.contains_key(&key) {
                 continue;
             }
             let group = world.connection_group(x, y, z);
@@ -377,13 +415,29 @@ impl Hub {
             Default::default();
         for (key, entries) in by_chunk {
             for (i, level) in self.holders(key) {
-                if self.guests[i].negotiated_connection_groups() {
-                    per_guest
-                        .entry(i)
-                        .or_insert_with(|| (level, Vec::new()))
-                        .1
-                        .extend(entries.iter().copied());
+                let guest = &self.guests[i];
+                if !guest.negotiated_connection_groups() {
+                    continue;
                 }
+                let snapshots = if level.is_some() {
+                    &self
+                        .view_here(guest)
+                        .expect("holder views this level")
+                        .group_snapshots
+                } else {
+                    &guest.group_snapshots
+                };
+                let sent_revision = snapshots.get(&key).copied().unwrap_or(0);
+                per_guest
+                    .entry(i)
+                    .or_insert_with(|| (level, Vec::new()))
+                    .1
+                    .extend(entries.iter().copied().filter(|entry| {
+                        let [x, y, z] = entry.pos;
+                        world
+                            .group_block_pending((x, y, z))
+                            .is_none_or(|revision| revision <= sent_revision)
+                    }));
             }
         }
         for (i, (level, entries)) in per_guest {

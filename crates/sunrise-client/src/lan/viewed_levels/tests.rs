@@ -616,9 +616,27 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
     let mut oversized = Writer::new();
     oversized.varint(ids::LEVEL_CHUNK_WITH_LIGHT);
     oversized.bytes(&vec![0; 1 << 21]);
-    let taken = [(3, ()), (5, ()), (8, ())];
+    // The rejected column has a valid prefix. It must not escape and become the
+    // next accepted column's metadata (possibly in a different outer run).
+    use sunrise_protocol::connection_groups;
+    let prefix = || {
+        C::CustomPayload(sunrise_protocol::packets::custom_payload::CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: connection_groups::encode(&connection_groups::Message::Chunk {
+                cx: 9,
+                cz: 1,
+                replace: true,
+                entries: Vec::new(),
+            })
+            .unwrap(),
+        })
+        .encode()
+    };
+    let taken = [(3, false), (5, true), (8, false)];
     let bodies = [body((0, 0)), oversized.data.clone(), body((1, 0))];
-    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &taken, &bodies);
+    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &taken, &bodies, |grouped| {
+        if *grouped { vec![prefix()] } else { Vec::new() }
+    });
     assert_eq!(sent, vec![3, 8], "the queue places of the columns sent");
     let mut columns = Vec::new();
     for payload in &payloads {
@@ -641,7 +659,12 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
         }
     }
     assert_eq!(columns, vec![(0, 0), (1, 0)]);
-    let (payloads, sent) = batch_runs(Level::Index(NETHER_INDEX), &[(0, ())], &[oversized.data]);
+    let (payloads, sent) = batch_runs(
+        Level::Index(NETHER_INDEX),
+        &[(0, ())],
+        &[oversized.data],
+        |_| vec![prefix()],
+    );
     assert!(payloads.is_empty() && sent.is_empty(), "no empty batch");
 }
 

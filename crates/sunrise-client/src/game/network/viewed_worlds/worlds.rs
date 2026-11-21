@@ -7,15 +7,18 @@ use super::{
     meshing::{block_changed, column_changed},
     routing::RouteError,
 };
-use crate::game::remote_chunks::{ChunkFormat, section_blocks};
+use crate::game::{
+    native_connection_groups::GroupIngress,
+    remote_chunks::{ChunkFormat, section_blocks},
+};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
 use sunrise_client::{
-    chunk::known_block_state,
+    chunk::{group_budget::GroupBudget, known_block_state},
     fast_hash::{FxHashMap, FxHashSet},
-    streaming::ViewedMeshing,
+    streaming::{ViewedMeshing, take_resent_column},
     world::World,
 };
 use sunrise_protocol::{
@@ -43,6 +46,7 @@ pub(in crate::game) struct ViewedWorld {
     /// (`ClientClockManager`).
     clock: Option<ClockState>,
     pub(in crate::game) world: World,
+    pub(super) group_ingress: GroupIngress,
     pub(in crate::game) entities: ViewedEntities,
     /// The block entities of each column as its chunk packet carried them, with the data sent
     /// since: what a travel into the level loads (`switch`). A world that was the player's keeps
@@ -73,8 +77,27 @@ impl ViewedWorld {
             default_clock,
             clock: None,
             world,
+            group_ingress: Default::default(),
             entities: ViewedEntities::default(),
             block_entities: FxHashMap::default(),
+        }
+    }
+
+    pub(super) fn receive_groups(&mut self, data: &[u8], budget: &GroupBudget) {
+        match self.group_ingress.receive(data, budget) {
+            Ok(Some(updates)) => {
+                for (pos, group) in updates.into_updates() {
+                    group.apply(&mut self.world, pos);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => {
+                self.group_ingress.discard();
+                log::debug!(
+                    "Sunrise: {} bad connection_groups payload: {error}",
+                    self.level
+                );
+            }
         }
     }
 
@@ -84,6 +107,12 @@ impl ViewedWorld {
     /// they show is drawn, and drawing a viewed level is gap 13. A chunk of a new column past
     /// its cap ([`Self::columns`]) is refused before it is decoded.
     pub(in crate::game) fn apply(&mut self, packet: C) -> Result<(), RouteError> {
+        if !matches!(
+            packet,
+            C::LevelChunkWithLight(_) | C::BlockUpdate(_) | C::SectionBlocksUpdate(_)
+        ) {
+            self.group_ingress.discard();
+        }
         match packet {
             // `handleLevelChunkWithLight`: the column replaces any it held, with the light the
             // server sent.
@@ -91,21 +120,26 @@ impl ViewedWorld {
                 if self.world.chunks.len() >= self.columns as usize
                     && !self.world.chunks.contains_key(&(p.x, p.z)) =>
             {
+                self.group_ingress.discard();
                 return Err(RouteError::TooManyColumns(self.columns));
             }
             C::LevelChunkWithLight(p) => match self.format.column(&p) {
                 Ok(mut chunk) => {
                     let key = (p.x, p.z);
-                    if let Some(old) = self.world.chunks.get(&key) {
-                        chunk.connection_groups = old.connection_groups.clone();
-                        chunk.has_held_connection_groups = old.has_held_connection_groups;
+                    self.group_ingress.install_column(key, &mut chunk);
+                    if let Some(old) = self.world.chunks.get(&key).cloned() {
+                        take_resent_column(&mut self.world, &old, chunk, false);
+                    } else {
+                        self.world.install_light_column(chunk);
+                        column_changed(&mut self.world, key);
                     }
-                    self.world.install_light_column(chunk);
                     self.unload_block_entities(key);
                     self.block_entities.insert(key, p.chunk.block_entities);
-                    column_changed(&mut self.world, key);
                 }
-                Err(e) => log::warn!("Sunrise: {} chunk {} {}: {e}", self.level, p.x, p.z),
+                Err(e) => {
+                    self.group_ingress.discard();
+                    log::warn!("Sunrise: {} chunk {} {}: {e}", self.level, p.x, p.z);
+                }
             },
             C::ForgetLevelChunk(p) => {
                 let key = (p.pos[0], p.pos[1]);
@@ -135,10 +169,18 @@ impl ViewedWorld {
                     column_changed(&mut self.world, (x, z));
                 }
             }
-            C::BlockUpdate(p) => self.set_block(p.pos, p.state),
+            C::BlockUpdate(p) => {
+                let group = self
+                    .group_ingress
+                    .take_blocks()
+                    .and_then(|mut groups| groups.take(p.pos));
+                self.set_block(p.pos, p.state, group);
+            }
             C::SectionBlocksUpdate(p) => {
+                let mut groups = self.group_ingress.take_blocks();
                 for (pos, state) in section_blocks(&p) {
-                    self.set_block(pos, state);
+                    let group = groups.as_mut().and_then(|groups| groups.take(pos));
+                    self.set_block(pos, state, group);
                 }
             }
             // `handleSetTime` / `ClientClockManager.handleUpdates`: the clock it follows moves on
@@ -168,19 +210,6 @@ impl ViewedWorld {
                 }
             }
             C::GameEvent(p) => self.world.weather.game_event(p.event, p.param),
-            C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
-                match sunrise_protocol::connection_groups::decode(&p.data) {
-                    Ok(message) => {
-                        crate::game::native_connection_groups::apply_connection_groups(
-                            &mut self.world,
-                            message,
-                        );
-                    }
-                    Err(e) => {
-                        log::warn!("Sunrise: {} bad connection_groups payload: {e}", self.level)
-                    }
-                }
-            }
             other => self.entities.apply(other)?,
         }
         Ok(())
@@ -188,8 +217,16 @@ impl ViewedWorld {
 
     /// A server's block: a state the client lacks (a server with mods it lacks) reads as air,
     /// as in its chunks.
-    fn set_block(&mut self, [x, y, z]: [i32; 3], state: i32) {
+    fn set_block(
+        &mut self,
+        [x, y, z]: [i32; 3],
+        state: i32,
+        group: Option<crate::game::native_connection_groups::ReceivedGroup>,
+    ) {
         if self.world.set_stored(x, y, z, stored_state(state)) {
+            if let Some(group) = group {
+                group.apply(&mut self.world, [x, y, z]);
+            }
             block_changed(&mut self.world, [x, y, z]);
         }
     }

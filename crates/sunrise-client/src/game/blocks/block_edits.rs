@@ -69,18 +69,9 @@ impl Game<'_> {
             },
         );
         self.world.watched = watched;
-        if !out.grouped_changes.is_empty() {
-            let behaviours = self.res.behaviours();
-            let mut cleared = FxHashSet::default();
-            for &(pos @ (x, y, z), old, new) in &out.grouped_changes {
-                if !behaviours.keeps_connection_group(BlockStateId(old), BlockStateId(new))
-                    && cleared.insert(pos)
-                {
-                    self.world.clear_connection_group_automatic(x, y, z);
-                }
-            }
+        if !out.group_clears.is_empty() {
             self.transactions
-                .reconcile_bulk_connection_group_clears(self.dim, &cleared);
+                .reconcile_bulk_connection_group_clears(self.dim, &out.group_clears);
         }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.

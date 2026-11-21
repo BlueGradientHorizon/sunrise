@@ -17,6 +17,7 @@ pub struct View {
     /// (`sunrise_protocol::viewed_levels`).
     pub level: sunrise_protocol::viewed_levels::Level,
     pub sent: FxHashSet<(i32, i32)>,
+    pub group_snapshots: FxHashMap<(i32, i32), u64>,
     /// Covered and not sent, nearest to an area's centre first.
     pub queue: Vec<(i32, i32)>,
     /// Sent chunks no area covers, with the hub tick they stopped being covered.
@@ -39,6 +40,7 @@ impl View {
         Self {
             level,
             sent: Default::default(),
+            group_snapshots: Default::default(),
             queue: Vec::new(),
             linger: Default::default(),
             dirty: true,
@@ -98,6 +100,7 @@ impl View {
         for key in &gone {
             self.linger.remove(key);
             self.sent.remove(key);
+            self.group_snapshots.remove(key);
         }
         gone
     }

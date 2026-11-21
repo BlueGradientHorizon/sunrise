@@ -8,7 +8,7 @@ impl Game<'_> {
     /// The length the block log had after the changed blocks went out
     /// (`ServerChunkCache.tick`'s broadcast), before the block events and the
     /// block entities ran.
-    pub(super) fn tick_blocks(&mut self) -> Result<Option<(usize, usize)>> {
+    pub(super) fn tick_blocks(&mut self) -> Result<Option<usize>> {
         let mut scratch = std::mem::take(&mut self.tick_scratch);
         let result = self.tick_blocks_with_scratch(&mut scratch);
         self.tick_scratch = scratch;
@@ -17,7 +17,7 @@ impl Game<'_> {
     pub(super) fn tick_blocks_with_scratch(
         &mut self,
         scratch: &mut TickScratch,
-    ) -> Result<Option<(usize, usize)>> {
+    ) -> Result<Option<usize>> {
         let mut laps = sunrise_client::spans::laps();
         // ServerChunkCache.tick: the tickets that time out.
         let world = &self.world;

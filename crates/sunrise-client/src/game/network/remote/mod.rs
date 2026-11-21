@@ -369,6 +369,8 @@ pub(super) struct Remote {
     logged_out: bool,
     /// The other levels' worlds the server opened on `sunrise:levels` (`viewed_worlds`).
     pub(in crate::game) viewed: super::viewed_worlds::ViewedWorlds,
+    pub(in crate::game) group_ingress: super::native_connection_groups::GroupIngress,
+    pub(in crate::game) group_budget: sunrise_client::chunk::group_budget::GroupBudget,
     /// The level's hashed seed (login, respawn): the folder of its kept chunks
     /// (`server_terrain::level_dir`).
     pub(super) hashed_seed: i64,
@@ -950,6 +952,15 @@ impl Game<'_> {
 
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
+        if let Some(remote) = self.remote.as_mut()
+            && !matches!(
+                packet,
+                C::BlockUpdate(_) | C::SectionBlocksUpdate(_) | C::LevelChunkWithLight(_)
+            )
+            && !matches!(&packet, C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL)
+        {
+            remote.group_ingress.discard();
+        }
         match packet {
             // ClientCommonPacketListenerImpl.handlePing runs on the game
             // thread, after all preceding packets (especially teleports).
@@ -1037,7 +1048,7 @@ impl Game<'_> {
             C::LightUpdate(p) => self.remote_light_update(&p),
             C::ChunksBiomes(p) => self.remote_chunks_biomes(&p),
             C::ForgetLevelChunk(p) => self.apply_forget_level_chunk_packet(p),
-            C::BlockUpdate(p) => self.server_block(p.pos, p.state),
+            C::BlockUpdate(p) => self.apply_block_update_packet(p),
             C::AddTransientBlock(p) => self.add_transient_block(p.pos, p.state),
             C::BlockDestruction(p) => self.apply_block_destruction_packet(p),
             C::SectionBlocksUpdate(p) => self.apply_section_blocks_update_packet(p),

@@ -50,13 +50,6 @@ impl LevelAccess for GameLevel<'_> {
             self.world.block_entities.insert(key, entity);
         }
     }
-    fn on_block_replaced(&mut self, pos: BlockPos) {
-        if !self.client_side {
-            let _ = self
-                .world
-                .clear_connection_group_automatic(pos.x, pos.y, pos.z);
-        }
-    }
     fn observe_block_changed(
         &self,
         pos: BlockPos,

@@ -2,10 +2,10 @@
 //! (`LevelRef::set_connection_group`), sent by a Sunrise server to the Sunrise clients that hold
 //! the chunk.
 //!
-//! When a chunk is sent to a client, any non-empty group map in that chunk follows in one
-//! [`Message::Chunk`] (split into batches of at most [`MAX_ENTRIES`] if needed, with `replace`
-//! on the first batch only). Incremental edits and clears follow as [`Message::Update`]. A
-//! vanilla client never offers the channel and receives nothing.
+//! A chunk snapshot precedes its column packet. A block-attached delta precedes its single or
+//! section block update; receivers apply the metadata only with the packet it describes.
+//! Independent updates apply to a block already published to the client. A vanilla client
+//! never offers the channel and receives nothing.
 //!
 //! The channel is an engine declaration in the negotiated payload table: only a peer that offers
 //! it at [`VERSION`] is sent anything.
@@ -89,20 +89,22 @@ pub struct UpdateEntry {
 /// What the server tells a client about connection groups.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
-    /// Snapshot for one chunk `(cx, cz)`. When `replace` is true, replaces any previously stored
-    /// groups in that chunk; otherwise merges into them (for multi-part chunk snapshots).
+    /// Begin (`replace: true`) or continue a snapshot for the next column packet of `(cx, cz)`.
     Chunk {
         cx: i32,
         cz: i32,
         replace: bool,
         entries: Vec<ChunkEntry>,
     },
-    /// Incremental updates or clears at world block positions.
+    /// Independent updates or clears, for blocks whose state is already published.
     Update { entries: Vec<UpdateEntry> },
+    /// Metadata for the next `BlockUpdate` or `SectionBlocksUpdate` in this level.
+    Blocks { entries: Vec<UpdateEntry> },
 }
 
 const KIND_CHUNK: u8 = 0;
 const KIND_UPDATE: u8 = 1;
+const KIND_BLOCKS: u8 = 2;
 
 /// Encode one message. Refuses lists longer than [`MAX_ENTRIES`].
 pub fn encode(message: &Message) -> Result<Vec<u8>> {
@@ -131,14 +133,18 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
                 w.i64(e.group as i64);
             }
         }
-        Message::Update { entries } => {
+        Message::Update { entries } | Message::Blocks { entries } => {
             if entries.len() > MAX_ENTRIES {
                 return Err(Error::new(format!(
                     "connection groups: {} update entries exceeds max {MAX_ENTRIES}",
                     entries.len()
                 )));
             }
-            w.u8(KIND_UPDATE);
+            w.u8(if matches!(message, Message::Blocks { .. }) {
+                KIND_BLOCKS
+            } else {
+                KIND_UPDATE
+            });
             w.varint(entries.len() as i32);
             for e in entries {
                 w.i32(e.pos[0]);
@@ -159,6 +165,13 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
 
 /// Decode one message, rejecting unknown tags, oversized counts, and trailing bytes.
 pub fn decode(data: &[u8]) -> Result<Message> {
+    decode_with_budget(data, MAX_ENTRIES)
+}
+
+/// Decode with the connection's remaining capacity for retained groups. Clears require no
+/// capacity. Refuse at the count boundary for snapshots and before retaining a set in a delta.
+/// The caller owns the connection's budget and charges the admitted groups to it.
+pub fn decode_with_budget(data: &[u8], mut available: usize) -> Result<Message> {
     let mut r = Reader::new(data);
     let kind = r.u8()?;
     let msg = match kind {
@@ -166,7 +179,7 @@ pub fn decode(data: &[u8]) -> Result<Message> {
             let cx = r.i32()?;
             let cz = r.i32()?;
             let replace = r.bool()?;
-            let count = r.count(MAX_ENTRIES)?;
+            let count = r.count(MAX_ENTRIES.min(available))?;
             let mut entries = Vec::with_capacity(count.min(256));
             for _ in 0..count {
                 let xz = r.u8()?;
@@ -181,21 +194,31 @@ pub fn decode(data: &[u8]) -> Result<Message> {
                 entries,
             }
         }
-        KIND_UPDATE => {
+        KIND_UPDATE | KIND_BLOCKS => {
             let count = r.count(MAX_ENTRIES)?;
             let mut entries = Vec::with_capacity(count.min(256));
             for _ in 0..count {
                 let x = r.i32()?;
                 let y = r.varint()?;
                 let z = r.i32()?;
-                let present = r.bool()?;
-                let group = if present { Some(r.i64()? as u64) } else { None };
+                let group = if r.bool()? {
+                    available = available
+                        .checked_sub(1)
+                        .ok_or_else(|| Error::new("connection groups: receive budget exhausted"))?;
+                    Some(r.i64()? as u64)
+                } else {
+                    None
+                };
                 entries.push(UpdateEntry {
                     pos: [x, y, z],
                     group,
                 });
             }
-            Message::Update { entries }
+            if kind == KIND_BLOCKS {
+                Message::Blocks { entries }
+            } else {
+                Message::Update { entries }
+            }
         }
         other => {
             return Err(Error::new(format!(

@@ -7,6 +7,7 @@
 use crate::chunk::index;
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use crate::world::World;
+use sunrise_world::registry::BlockStateId;
 
 /// A run of one column, resolved: blocks `y0..=y1` of column (x, z) set to
 /// `state` where filter `only` (if any) passes the block there.
@@ -30,9 +31,8 @@ pub struct Outcome {
     /// Changes of the states `tracked` asked for (block entities, watched
     /// blocks): position, previous and new state.
     pub tracked: Vec<((i32, i32, i32), u32, u32)>,
-    /// Changes at cells with a resident or journaled connection group:
-    /// position, previous and new state, in run order.
-    pub grouped_changes: Vec<((i32, i32, i32), u32, u32)>,
+    /// Replaced cells whose open group journal needs to forget the old block.
+    pub group_clears: FxHashSet<(i32, i32, i32)>,
 }
 
 /// Per state answers, worked out once each.
@@ -95,6 +95,7 @@ impl World {
         let mut tracked_memo = Memo(Vec::new());
         let mut values: Vec<Option<Box<[u32; 4096]>>> = Vec::new();
         let mut changed: Vec<bool> = Vec::new();
+        let mut grouped_changes = Vec::new();
         for key in order {
             let Some(chunk) = self.chunks.get(&key) else {
                 continue;
@@ -145,8 +146,14 @@ impl World {
                                 .connection_groups
                                 .contains_key(&((s as u32) << 12 | at as u32)))
                             || (!journaled_groups.is_empty() && journaled_groups.contains(&pos))
+                            || self
+                                .connection_group_log
+                                .as_ref()
+                                .is_some_and(|log| !log.is_empty() && log.contains(&pos))
+                            || (!self.connection_group_log_held.is_empty()
+                                && self.connection_group_log_held.contains(&pos))
                         {
-                            out.grouped_changes.push((pos, old, r.state));
+                            grouped_changes.push((pos, old, r.state));
                         }
                         if tracked_memo.get(old, &mut tracked)
                             || tracked_memo.get(r.state, &mut tracked)
@@ -169,6 +176,13 @@ impl World {
                     && let Some(v) = &values[s]
                 {
                     chunk.replace_blocks(s, v);
+                }
+            }
+            for (pos, old, new) in grouped_changes.drain(..) {
+                if self.block_storage_changed(pos, BlockStateId(old), BlockStateId(new))
+                    && journaled_groups.contains(&pos)
+                {
+                    out.group_clears.insert(pos);
                 }
             }
             self.revision = self.revision.wrapping_add(1);

@@ -470,15 +470,9 @@ fn check_level_scoped(id: i32, body: &[u8], revision: u8) -> Result<(), ViewedLe
         match Clientbound::decode(id, body).map_err(|_| ViewedLevelsError::MalformedPacket(id))? {
             Clientbound::GameEvent(e) => WEATHER_EVENTS.contains(&e.event),
             Clientbound::LevelEvent(e) => !e.global,
-            Clientbound::CustomPayload(p) => {
-                if p.channel != crate::connection_groups::CHANNEL {
-                    false
-                } else {
-                    crate::connection_groups::decode(&p.data)
-                        .map_err(|_| ViewedLevelsError::MalformedPacket(id))?;
-                    true
-                }
-            }
+            // Its own receive boundary checks negotiation and decodes against the connection's
+            // retained-group budget. This envelope owns only whether the channel is scoped.
+            Clientbound::CustomPayload(p) => p.channel == crate::connection_groups::CHANNEL,
             _ => true,
         };
     if scoped {
@@ -955,16 +949,6 @@ mod tests {
         assert_eq!(
             Run::new(Level::Bound { slot: 0, epoch: 1 }, &other).err(),
             Some(ViewedLevelsError::NotLevelScoped(id::CUSTOM_PAYLOAD))
-        );
-
-        let bad_body = Clientbound::CustomPayload(CustomPayload {
-            channel: connection_groups::CHANNEL.into(),
-            data: vec![99],
-        })
-        .encode();
-        assert_eq!(
-            Run::new(Level::Bound { slot: 0, epoch: 1 }, &bad_body).err(),
-            Some(ViewedLevelsError::MalformedPacket(id::CUSTOM_PAYLOAD))
         );
     }
 }

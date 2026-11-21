@@ -117,19 +117,22 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
   position with `None` joins nothing (not even another `None` neighbour). Every `u64`, including `0`, is a valid
   group. When a table enables `cover`, the covering cell must also share the same connection group to suppress a join.
 - **Derived visual state.** Connection groups are never saved to disk. For block-entity-backed structures,
-  republish them from `block_entity_on_load` when `HostSide::Server`; for chunks without block entities, queue
-  the loaded chunk in `chunk_load` and publish on the next server tick (since `chunk_load` gives read-only
-  `&dyn Host`). Also republish whenever your multiblock forms, splits, or changes membership.
-- **Automatic lifetime.** On the server, replacing a block with one that does not keep block entities (including
-  through bulk `edit_blocks`) clears its connection group automatically and syncs the clear with the block
-  update; changing only a block state property of the same block (or weathering a copper chest or copper golem
-  statue) preserves it. Writing to an unloaded chunk, an out-of-height position, a carrier-fenced cell, or an
-  unchanged group returns `Ok(false)`.
-- **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads, bulk chunk
-  resends, viewed levels (`sunrise:levels`), and incremental updates (skipping vanilla clients) and remeshes
-  affected sections and chunk borders. Writes inside a Host transaction are tentative: aborting restores the
-  previous group quietly, and committing publishes the final block and connection-group state per position
-  (including any clear caused by an intermediate replacing block write).
+  republish them from `block_entity_on_load` when `HostSide::Server`. It runs after saved data is available and
+  before the server sends the column, even in a dimension held only by `Loaded` views. For chunks without block
+  entities, queue the loaded chunk in `chunk_load` and publish on the next server tick (`chunk_load` receives a
+  read-only `&dyn Host`); a loaded-only view does not tick. Also republish whenever your multiblock forms, splits,
+  or changes membership.
+- **Automatic lifetime.** Replacing a block with one that does not keep block entities (including through bulk
+  `edit_blocks`), or attaching a fresh block entity at the same block state, ends the old group's lifetime.
+  Changing only a state property of the same block (or weathering a copper chest or copper golem statue)
+  preserves it. Writing to an unloaded chunk, an out-of-height position, a carrier-fenced cell, or an unchanged
+  group returns `Ok(false)`.
+- **Sync and transactions.** Sunrise clients adopt groups with their columns and authoritative block changes,
+  including in viewed levels. A replacement's group waits for its block or column to be published; changing a
+  group alone remeshes affected sections and borders without changing the block. Vanilla peers do not receive
+  groups. Writes inside a Host transaction are tentative: aborting restores the previous group quietly, and
+  committing publishes the final block and group per position (including a clear caused by an intermediate
+  replacement).
 
 ## What it joins, and what it does not
 

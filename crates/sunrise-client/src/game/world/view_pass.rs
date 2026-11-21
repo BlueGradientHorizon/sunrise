@@ -50,6 +50,9 @@ impl Game<'_> {
             // `LevelChunk.postProcessGeneration` comes before a chunk is sent
             // (`ChunkMap.prepareTickingChunk`, then `onChunkReadyToSend`), ticked or not.
             self.postprocess_chunks()?;
+            // Like LevelChunk.registerAllBlockEntitiesAfterLevelLoad, attaching a loaded
+            // entity publishes it even when this level has no entity ticks.
+            self.fire_pending_block_entity_loads();
             self.view_pass_send();
         }
         Ok(())
@@ -180,7 +183,20 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn host_a_viewer(
         game: &mut Game<'_>,
     ) -> std::sync::mpsc::Receiver<sunrise_client::lan::Out> {
-        use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+        host_with_viewer(game, || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            (
+                sunrise_client::lan::PlayerSender::new(tx, std::sync::Arc::default()),
+                rx,
+            )
+        })
+    }
+
+    fn host_with_viewer<T>(
+        game: &mut Game<'_>,
+        make_sender: impl FnOnce() -> (sunrise_client::lan::PlayerSender, T),
+    ) -> T {
+        use sunrise_client::lan::{Joined, NetConfig, guest::Guest, hub::HubConfig};
         let net = NetConfig {
             announce: false,
             ..NetConfig::lan(0, "view-pass-test".into(), 2)
@@ -206,8 +222,7 @@ pub(in crate::game) mod tests {
             level_seeds: Default::default(),
         };
         game.lan_host(settings, net, hub).unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut sender = PlayerSender::new(tx, std::sync::Arc::default());
+        let (mut sender, receive) = make_sender();
         // Revision 3, still served, names a viewed level by its Login index: the Overworld 0, the
         // Nether 2.
         sender.viewed_levels = sunrise_protocol::viewed_levels::Answer {
@@ -236,7 +251,7 @@ pub(in crate::game) mod tests {
         // Its client was told at Login the levels the server has now.
         guest.viewed.logged_in_with(hub.level_keys());
         hub.guests.push(guest);
-        rx
+        receive
     }
 
     /// What a client was sent of the Nether (level 2) on `sunrise:levels`.
@@ -573,6 +588,10 @@ pub(in crate::game) mod tests {
             sunrise_client::lan::Out::Packets(bodies) => bodies,
             sunrise_client::lan::Out::Disconnect(_) => Vec::new(),
         });
+        decode_ordered(bodies)
+    }
+
+    fn decode_ordered(bodies: impl IntoIterator<Item = Vec<u8>>) -> Vec<Got> {
         let mut got = Vec::new();
         for body in bodies {
             let mut r = Reader::new(&body);
@@ -599,6 +618,156 @@ pub(in crate::game) mod tests {
             }
         }
         got
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent() {
+        use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases};
+        use mod_api::{
+            Block, BlockEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockPart,
+            BlocksEvent, Compound, Hooks, HostSide, LevelSide, ModEntry, Mods, Registrar,
+            RegistrationContext, Tag,
+        };
+        use sunrise_client::{
+            lan::{
+                PlayerSender,
+                viewed_levels::areas::{ChunkArea, ChunkAreaMode},
+            },
+            raw_payloads::{Side, Transport},
+        };
+        use sunrise_protocol::connection_groups::{self, ChunkEntry};
+
+        const NAME: &str = "game::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
+        if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
+            return;
+        }
+        const BLOCK: &str = "view_group:holder";
+        const COLUMN: (i32, i32) = (40, 40);
+        const AT: [i32; 3] = [648, 120, 648];
+
+        struct Holder;
+        #[mod_api::sunrise_part]
+        impl BlockPart for Holder {}
+        #[mod_api::sunrise_part]
+        impl BlockEntityPart for Holder {
+            fn block_entity(
+                &self,
+                _: LevelSide<'_>,
+                _: &mut BlockEntityEvent<'_>,
+            ) -> Option<Compound> {
+                Some(Compound::from([("group".into(), Tag::Long(1))]))
+            }
+            fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
+                let HostSide::Server(host) = host else {
+                    return;
+                };
+                let data = event.entity.data(host).unwrap();
+                let Some(Tag::Long(group)) = data.get(&"group".into()) else {
+                    panic!("no saved group")
+                };
+                let pos = event.entity.position(host).unwrap();
+                let level = event.entity.level(host).unwrap();
+                level
+                    .set_connection_group(host, pos, Some(*group as u64))
+                    .unwrap();
+            }
+        }
+
+        struct Publisher;
+        #[mod_api::__subscriptions]
+        impl Hooks for Publisher {
+            fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                let key = r.block_entity_type("holder").blocks(&[BLOCK]).build();
+                r.block_entity_part(&key, Holder).unwrap();
+            }
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                event
+                    .register(Block::new(BLOCK, "minecraft:stone"))
+                    .unwrap();
+            }
+        }
+
+        let mods: Mods = vec![ModEntry::new("view_group", Box::new(Publisher))].into();
+        mod_platform::__private::install(mods.clone());
+        crate::game::api_values::install_parts(&mods).unwrap();
+        let content =
+            crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+        let root = content.prepared();
+        let home = tempfile::tempdir().unwrap();
+        for reopen in [false, true] {
+            let mut resources = None;
+            let mut game = open_game(&mut resources, root, home.path());
+            let transport = Transport::capture(Side::Server).unwrap();
+            transport
+                .accept(transport.local.manifest.entries())
+                .unwrap();
+            transport.finish_configuration().unwrap();
+            let out = host_with_viewer(&mut game, || {
+                PlayerSender::payload_executor_test_sender(transport)
+            });
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .set_viewed_areas(
+                    2,
+                    "test:portal",
+                    vec![ChunkArea {
+                        level: Dim::Nether.id().into(),
+                        center: COLUMN,
+                        radius: 0,
+                        mode: ChunkAreaMode::Loaded,
+                    }],
+                )
+                .unwrap();
+
+            let deadline = Instant::now() + Duration::from_secs(120);
+            let (packets, body) = loop {
+                game.tick_server(false).unwrap();
+                assert!(!game.levels_to_tick().contains(&Dim::Nether));
+                let packets = decode_ordered(out());
+                if let Some(body) = packets.iter().position(|p| {
+                    matches!(
+                        p, Got::Wrapped(2, C::LevelChunkWithLight(p)) if (p.x, p.z) == COLUMN
+                    )
+                }) {
+                    break (packets, body);
+                }
+                assert!(Instant::now() < deadline, "Nether column was never sent");
+                std::thread::sleep(Duration::from_millis(20));
+            };
+            if reopen {
+                let Got::Wrapped(2, C::CustomPayload(prefix)) = &packets[body - 1] else {
+                    panic!("reloaded column lacked its group prefix");
+                };
+                assert_eq!(prefix.channel, connection_groups::CHANNEL);
+                assert_eq!(
+                    connection_groups::decode(&prefix.data).unwrap(),
+                    connection_groups::Message::Chunk {
+                        cx: COLUMN.0,
+                        cz: COLUMN.1,
+                        replace: true,
+                        entries: vec![ChunkEntry::new(8, AT[1], 8, 729).unwrap()],
+                    }
+                );
+            } else {
+                game.enter_level(Dim::Nether).unwrap();
+                game.set_allow_commands(true);
+                assert!(game.run_command("setblock 648 120 648 view_group:holder"));
+                let level = game.level(Dim::Nether.id()).unwrap();
+                let entity = game.block_entity(level, AT).unwrap();
+                assert_eq!(
+                    entity.merge_data(
+                        &mut game,
+                        Compound::from([("group".into(), Tag::Long(729))])
+                    ),
+                    Ok(true)
+                );
+                game.enter_level(Dim::Overworld).unwrap();
+                game.save_game().unwrap();
+            }
+        }
     }
 
     /// The viewer, a server player.

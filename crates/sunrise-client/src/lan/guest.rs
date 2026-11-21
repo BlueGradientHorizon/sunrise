@@ -332,6 +332,8 @@ pub struct Guest {
     // Chunks.
     pub center: Option<(i32, i32)>,
     pub sent_chunks: crate::fast_hash::FxHashSet<(i32, i32)>,
+    /// Snapshot revisions for sent columns with unpublished block replacements.
+    pub group_snapshots: crate::fast_hash::FxHashMap<(i32, i32), u64>,
     /// The near chunks the mods were told this player watches
     /// (`lan::chunk_watch`); empty while no mod listens.
     pub watched: crate::fast_hash::FxHashSet<(i32, i32)>,
@@ -775,6 +777,7 @@ impl Guest {
             load_timeout: CLIENT_LOADED_TIMEOUT,
             center: None,
             sent_chunks: Default::default(),
+            group_snapshots: Default::default(),
             watched: Default::default(),
             chunk_queue: Vec::new(),
             unacknowledged: 0,

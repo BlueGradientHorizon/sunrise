@@ -181,7 +181,7 @@ struct KeptBlock {
     /// the real Level.setBlock still has to run its removal side effects.
     replay_removal: bool,
     /// Any tentative write at this position replaced the block with one that does not keep
-    /// connection groups (`!Behaviours::keeps_connection_group`), even if a later write returned
+    /// connection groups (`!Behaviours::keeps_block_entity`), even if a later write returned
     /// it to a compatible block.
     clear_connection_group: bool,
 }
@@ -1335,7 +1335,7 @@ impl Game<'_> {
         }
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
-        let clears_group = !self.res.behaviours().keeps_connection_group(old, state);
+        let clears_group = !self.res.behaviours().keeps_block_entity(old, state);
         if let Some(level) = self.transactions.last_mut() {
             level
                 .blocks
@@ -1710,13 +1710,10 @@ impl Game<'_> {
                         clear_connection_group,
                     } = level.blocks[&pos];
                     if !told.insert(Err(pos)) {
-                        // A later replacing block write to `pos` after an earlier explicit
-                        // `set_connection_group` clears that group as live `on_block_replaced`
-                        // would (storage + local remesh only; never logged).
+                        // A later replacement ends the lifetime of a group published
+                        // between writes, even though the block's final state is already stored.
                         if clears_group && explicit_group_since_block.remove(&pos) {
-                            let _ = self
-                                .world
-                                .clear_connection_group_automatic(pos.0, pos.1, pos.2);
+                            self.world.invalidate_replaced_group(pos);
                         }
                         continue;
                     }
@@ -1725,7 +1722,7 @@ impl Game<'_> {
                     // Restore an entity that the real write must remove with its side effects,
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
-                    let net_keeps_group = b.keeps_connection_group(was, now);
+                    let net_keeps_group = b.keeps_block_entity(was, now);
                     if level.removed_block_entities.contains(&pos)
                         && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
@@ -1739,9 +1736,7 @@ impl Game<'_> {
                         // before replaying the block write so any hook on the replay can still set
                         // a new group.
                         if clear_connection_group && net_keeps_group {
-                            let _ = self
-                                .world
-                                .clear_connection_group_automatic(pos.0, pos.1, pos.2);
+                            self.world.invalidate_replaced_group(pos);
                         }
                         // The stored state back, so the one real write sees the change.
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
@@ -1755,9 +1750,7 @@ impl Game<'_> {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
                     } else if clear_connection_group
-                        && self
-                            .world
-                            .clear_connection_group_automatic(pos.0, pos.1, pos.2)
+                        && self.world.invalidate_replaced_group(pos)
                         && flags & flags::UPDATE_CLIENTS != 0
                     {
                         // The block ended where it began, but an intermediate replacement

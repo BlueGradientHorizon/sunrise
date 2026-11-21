@@ -8,6 +8,7 @@ use sunrise_core::paletted::{PalettedContainer, Strategy};
 use sunrise_world::registry::BlockStateId;
 
 pub mod block_entity;
+pub mod group_budget;
 
 /// The vanilla Overworld's column, which every dimension's chunks hold for
 /// now (`LevelShape::column`).
@@ -733,6 +734,7 @@ pub struct Chunk {
     /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
     /// never saved to disk.
     pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
+    received_groups: Option<Arc<group_budget::RetainedGroups>>,
     /// Sticky bit set when a non-empty connection group is published, not on a tentative
     /// write. Dropped with the chunk. A block sent from a marked chunk carries its current
     /// group (including a clear) to peers that negotiated group sync.
@@ -774,6 +776,7 @@ impl Chunk {
             dynamic_emission: Default::default(),
             dynamic_pending: false,
             connection_groups: Default::default(),
+            received_groups: None,
             has_held_connection_groups: false,
         }
     }
@@ -810,14 +813,58 @@ impl Chunk {
         group: Option<u64>,
     ) -> Option<bool> {
         let cell = self.dynamic_cell(x, y, z)?;
-        let changed = match group {
-            Some(g) => {
-                self.has_held_connection_groups = true;
-                self.connection_groups.insert(cell, g) != Some(g)
+        self.has_held_connection_groups |= group.is_some();
+        Some(self.write_group(cell, group, None))
+    }
+
+    pub(crate) fn write_group(
+        &mut self,
+        cell: u32,
+        group: Option<u64>,
+        reservation: Option<&mut group_budget::GroupReservation>,
+    ) -> bool {
+        if let Some(group) = group {
+            let old = self.connection_groups.insert(cell, group);
+            if old.is_none()
+                && let Some(reservation) = reservation
+            {
+                reservation.move_to(&mut self.received_groups, 1);
             }
-            None => self.connection_groups.remove(&cell).is_some(),
-        };
-        Some(changed)
+            old != Some(group)
+        } else if self.connection_groups.remove(&cell).is_some() {
+            if let Some(retained) = &self.received_groups {
+                retained.remove_one();
+                // Dropping the last group must free its table, not just its budget credit.
+                if self.connection_groups.is_empty() {
+                    self.connection_groups = Default::default();
+                    self.received_groups = None;
+                } else if self.connection_groups.len() * 4 < self.connection_groups.capacity() {
+                    self.connection_groups.shrink_to_fit();
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Populate a decoded column before it becomes resident. The complete snapshot owns the
+    /// groups; repeated or out-of-height entries do not consume permanent receive budget.
+    pub fn install_group_snapshot(
+        &mut self,
+        entries: impl IntoIterator<Item = sunrise_protocol::connection_groups::ChunkEntry>,
+        mut reservation: group_budget::GroupReservation,
+    ) {
+        self.connection_groups.clear();
+        self.received_groups = None;
+        for entry in entries {
+            if let Some(cell) =
+                self.dynamic_cell(entry.local_x().into(), entry.y(), entry.local_z().into())
+            {
+                self.write_group(cell, Some(entry.group()), None);
+            }
+        }
+        reservation.move_to(&mut self.received_groups, self.connection_groups.len());
     }
     /// The original `structures.starts`, including starts with unknown pieces.
     pub fn saved_structure_starts(&self) -> Option<&sunrise_core::nbt::Compound> {

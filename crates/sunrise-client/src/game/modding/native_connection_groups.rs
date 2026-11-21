@@ -1,49 +1,40 @@
-//! Per-position connected-texture groups (#3843): client-side receive handler for
-//! `sunrise:connection_groups` (`Chunk` snapshots and incremental `Update` deltas).
-use super::Game;
-use sunrise_protocol::connection_groups::{self, Message};
+//! Per-position connected-texture group receive path.
+use super::{Game, remote::Remote};
+use sunrise_protocol::connection_groups;
 
-/// Apply a decoded `sunrise:connection_groups` message to a client world (the player's active
-/// world or a viewed level's world), marking affected sections and cross-border neighbours for
-/// remesh.
-pub(in crate::game) fn apply_connection_groups(
-    world: &mut sunrise_client::world::World,
-    message: Message,
-) {
-    match message {
-        Message::Chunk {
-            cx,
-            cz,
-            replace,
-            entries,
-        } => {
-            world.apply_chunk_connection_groups(cx, cz, replace, entries);
-        }
-        Message::Update { entries } => {
-            for entry in entries {
-                let [x, y, z] = entry.pos;
-                let _ = world.set_connection_group(x, y, z, entry.group, false);
-            }
-        }
+#[path = "native_connection_groups/receive.rs"]
+mod receive;
+pub(in crate::game) use receive::{GroupIngress, ReceivedGroup};
+
+impl Remote {
+    pub(in crate::game) fn negotiates_connection_groups(&self) -> bool {
+        sunrise_client::raw_payloads::negotiated(
+            self.session.payload_transport(),
+            connection_groups::CHANNEL,
+        )
     }
 }
 
 impl Game<'_> {
-    /// Apply a `sunrise:connection_groups` play clientbound payload from the server to the
-    /// client's current world and mark affected sections (and cross-border neighbours) for
-    /// remesh.
     pub(super) fn remote_connection_groups(&mut self, data: &[u8]) {
-        if self.remote.is_none() {
+        let Some(remote) = self.remote.as_mut() else {
+            return;
+        };
+        if !remote.negotiates_connection_groups() {
             return;
         }
-        let message = match connection_groups::decode(data) {
-            Ok(message) => message,
-            Err(e) => {
-                log::debug!("Sunrise: bad connection_groups payload: {e}");
-                return;
+        match remote.group_ingress.receive(data, &remote.group_budget) {
+            Ok(Some(updates)) => {
+                for (pos, group) in updates.into_updates() {
+                    self.server_group(pos, group);
+                }
             }
-        };
-        apply_connection_groups(&mut self.world, message);
+            Ok(None) => {}
+            Err(error) => {
+                remote.group_ingress.discard();
+                log::debug!("Sunrise: bad connection_groups payload: {error}");
+            }
+        }
     }
 }
 
@@ -55,8 +46,8 @@ mod tests {
         execution_role::ExecutionRole,
         native_entity_refs::tests::with_game,
         viewed_worlds::tests::{
-            client as viewed_client, column as viewed_column, open as viewed_open,
-            run as viewed_run,
+            client as viewed_client, close as viewed_close, column as viewed_column,
+            open as viewed_open, run as viewed_run,
         },
     };
     use mod_api::{
@@ -70,8 +61,11 @@ mod tests {
     };
     use sunrise_protocol::{
         connection::Pipe,
-        connection_groups::{ChunkEntry, UpdateEntry},
-        packets::{custom_payload::CustomPayload, play::Clientbound as C},
+        connection_groups::{ChunkEntry, Message, UpdateEntry},
+        packets::{
+            custom_payload::CustomPayload,
+            play::{self, Clientbound as C},
+        },
     };
 
     fn state(game: &Game<'_>, name: &str) -> mod_api::BlockState {
@@ -88,7 +82,7 @@ mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.world.connection_group_log = Some(Vec::new());
+            game.world.connection_group_log = Some(Default::default());
 
             let level = game.level("minecraft:overworld").unwrap();
             let log_y = state(game, "minecraft:oak_log[axis=y]");
@@ -115,8 +109,8 @@ mod tests {
                 Ok(false)
             );
             assert_eq!(
-                game.world.connection_group_log.as_deref(),
-                Some(&[(2, 64, 3)][..])
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(2, 64, 3)].into_iter().collect()
             );
 
             // Unloaded chunk, out-of-height, and carrier-fenced positions return Ok(false).
@@ -189,7 +183,7 @@ mod tests {
             assert_eq!(level.connection_group(game, [2, 64, 3]), Ok(Some(7)));
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Bulk block edits follow the same keeps_connection_group rule: same-block state
+            // Bulk block edits follow the same block-entity lifetime rule: same-block state
             // changes and copper-chest weathering preserve groups; replacing with another block
             // clears them.
             assert_eq!(
@@ -254,6 +248,52 @@ mod tests {
             assert_eq!(level.connection_group(game, [6, 64, 5]), Ok(Some(2)));
             assert_eq!(level.connection_group(game, [7, 64, 5]), Ok(None));
 
+            // AnvilMenu's last wear step writes directly to World rather than calling
+            // the simulation's block setter.
+            let anvil = [8, 64, 5];
+            let damaged = state(game, "minecraft:damaged_anvil");
+            assert_eq!(
+                level.set_block(game, anvil, damaged, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.set_connection_group(game, anvil, Some(30)), Ok(true));
+            use sunrise_core::random::{LegacyRandom, LevelRandom};
+            game.world.random = LevelRandom::for_level(LegacyRandom::new(4096));
+            assert!(game.anvil_used(anvil, false));
+            assert_eq!(game.world.block(8, 64, 5), game.world.air);
+            assert_eq!(level.connection_group(game, anvil), Ok(None));
+
+            // Live features' section writer uses set_raw on the installed world.
+            let raw = [9, 64, 5];
+            assert_eq!(
+                level.set_block(game, raw, log_y, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.set_connection_group(game, raw, Some(31)), Ok(true));
+            let at = sunrise_core::position::BlockPos::new(raw[0], raw[1], raw[2]);
+            let air = game.world.air;
+            game.with_level(|_, level, _| {
+                assert!(sunrise_world::level::LevelAccess::set_raw(level, at, air).is_some());
+            });
+            assert_eq!(level.connection_group(game, raw), Ok(None));
+
+            // Clone's destination contains the same block state, but not the same entity.
+            game.build_registries();
+            game.set_allow_commands(true);
+            assert!(game.run_command("setblock 10 64 5 chest"));
+            assert!(game.run_command("setblock 11 64 5 chest"));
+            let destination = [11, 64, 5];
+            let old_entity = game.block_entity(level, destination).unwrap();
+            let old_state = level.block_state(game, destination);
+            assert_eq!(
+                level.set_connection_group(game, destination, Some(32)),
+                Ok(true)
+            );
+            assert!(game.run_command("clone 10 64 5 10 64 5 11 64 5"));
+            assert_eq!(level.block_state(game, destination), old_state);
+            assert_ne!(game.block_entity(level, destination), Some(old_entity));
+            assert_eq!(level.connection_group(game, destination), Ok(None));
+
             // Parked level refuses writes with Unavailable while reads still succeed.
             assert_eq!(
                 level.set_connection_group(game, [2, 64, 3], Some(19)),
@@ -278,7 +318,7 @@ mod tests {
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.world.block_log = Some(Vec::new());
-            game.world.connection_group_log = Some(Vec::new());
+            game.world.connection_group_log = Some(Default::default());
             let non_ticking = Sources {
                 viewed: vec![ViewedTicket {
                     center: (0, 0),
@@ -371,8 +411,8 @@ mod tests {
             assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(Some(33)));
             assert!(game.world.dirty_sections.contains(&(0, sy, 0)));
             assert_eq!(
-                game.world.connection_group_log.as_deref(),
-                Some(&[(4, 64, 4)][..])
+                game.world.connection_group_log.as_ref().unwrap(),
+                &[(4, 64, 4)].into_iter().collect()
             );
 
             // Held non-ticking column round-trip (`oak_log[y] -> stone -> oak_log[x]`): clears
@@ -751,6 +791,27 @@ mod tests {
         });
     }
 
+    fn group_packet(msg: Message) -> C {
+        C::CustomPayload(CustomPayload {
+            channel: connection_groups::CHANNEL.into(),
+            data: connection_groups::encode(&msg).unwrap(),
+        })
+    }
+
+    fn negotiate(game: &Game<'_>, with_groups: bool) {
+        let transport = game.remote.as_ref().unwrap().session.payload_transport();
+        let entries: Vec<_> = transport
+            .local
+            .manifest
+            .entries()
+            .iter()
+            .filter(|entry| with_groups || entry.id() != connection_groups::CHANNEL)
+            .cloned()
+            .collect();
+        transport.accept(&entries).unwrap();
+        transport.finish_configuration().unwrap();
+    }
+
     #[test]
     #[ignore = "daily"]
     fn client_applies_connection_group_payloads_and_refuses_client_writes() {
@@ -761,152 +822,252 @@ mod tests {
             game.connect_local(client, "ConnGroupsClient").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
             game.native_lifecycle.world_open_ready().unwrap();
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.world
-                .chunks
-                .insert((1, 0), Arc::new(Chunk::empty(1, 0)));
-            game.world.dirty_sections.clear();
-
+            negotiate(game, true);
             let level = game.level("minecraft:overworld").unwrap();
             assert_eq!(
                 level.set_connection_group(game, [15, 64, 2], Some(5)),
                 Err(LevelWriteError::Unavailable)
             );
+            let sy = (64 - MIN_Y) >> 4;
+            game.handle_packet(viewed_column(1, 0)).unwrap();
+            game.world.dirty_sections.clear();
+            let snapshot = |replace, entries| {
+                group_packet(Message::Chunk {
+                    cx: 0,
+                    cz: 0,
+                    replace,
+                    entries,
+                })
+            };
+            let border = ChunkEntry::new(15, 64, 2, 55).unwrap();
+            let interior = ChunkEntry::new(1, 80, 2, 66).unwrap();
 
-            // Chunk snapshot installs groups and marks section + cross-chunk border for remesh.
-            let chunk_payload = connection_groups::encode(&Message::Chunk {
-                cx: 0,
+            // Each arrival can land on a different frame: neither prefix publishes a
+            // partial column or requests a remesh. Adoption publishes both parts together.
+            game.handle_packet(snapshot(true, vec![border])).unwrap();
+            assert!(!game.world.chunks.contains_key(&(0, 0)));
+            game.handle_packet(snapshot(false, vec![interior])).unwrap();
+            assert!(!game.world.chunks.contains_key(&(0, 0)));
+            assert!(game.world.dirty_sections.is_empty());
+            game.handle_packet(viewed_column(0, 0)).unwrap();
+            assert_eq!(level.connection_group(game, [15, 64, 2]), Ok(Some(55)));
+            assert_eq!(level.connection_group(game, [1, 80, 2]), Ok(Some(66)));
+
+            // Repartition the same groups across parts. The unchanged column remains clean.
+            game.world.dirty_sections.clear();
+            game.handle_packet(snapshot(true, vec![interior])).unwrap();
+            game.handle_packet(snapshot(false, vec![border])).unwrap();
+            assert!(game.world.dirty_sections.is_empty());
+            game.handle_packet(viewed_column(0, 0)).unwrap();
+            assert!(!game.world.dirty_sections.contains(&(0, sy, 0)));
+            assert!(!game.world.dirty_sections.contains(&(1, sy, 0)));
+
+            let pos = [15, 64, 2];
+            let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+            let stone = game.world.block(pos[0], pos[1], pos[2]);
+            let air = game.world.air;
+            for (sequence, server, shown, id) in [(1, stone, air, 88), (2, air, air, 99)] {
+                game.predict_blocks(&[(at, shown)], sequence);
+                let group_before = level.connection_group(game, pos);
+                game.handle_packet(group_packet(Message::Blocks {
+                    entries: vec![UpdateEntry {
+                        pos,
+                        group: Some(id),
+                    }],
+                }))
+                .unwrap();
+                assert_eq!(level.connection_group(game, pos), group_before);
+                game.handle_packet(C::BlockUpdate(play::BlockUpdate {
+                    pos,
+                    state: server.0 as i32,
+                }))
+                .unwrap();
+                assert_eq!(game.world.block(pos[0], pos[1], pos[2]), shown);
+                assert_eq!(level.connection_group(game, pos), group_before);
+                game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence }))
+                    .unwrap();
+                assert_eq!(game.world.block(pos[0], pos[1], pos[2]), server);
+                assert_eq!(level.connection_group(game, pos), Ok(Some(id)));
+                assert!(game.world.dirty_sections.contains(&(1, sy, 0)));
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn received_groups_join_and_unjoin_a_real_mesh_across_the_column_border() {
+        use sunrise_assets::resource_source::{Resource, ResourceRoot};
+        use sunrise_client::{
+            graphics::LeafCullingMode,
+            mesher::{MeshScratch, MeshTables, Mesher, SectionMesh},
+        };
+        use sunrise_core::biome::BiomeZoom;
+
+        let mut resources = None;
+        let mut game = viewed_client(&mut resources);
+        negotiate(&game, true);
+        let root = ResourceRoot::directory(game.options.resources.clone());
+        let mut sheet = Vec::new();
+        {
+            let mut png = png::Encoder::new(&mut sheet, 2, 1);
+            png.set_color(png::ColorType::Rgb);
+            png.write_header()
+                .unwrap()
+                .write_image_data(&[200, 0, 0, 0, 0, 200])
+                .unwrap();
+        }
+        let rule = br#"{
+            "method": "table", "blocks": ["minecraft:stone"], "faces": ["up"],
+            "connect_group": true, "sheet": "test:block/group",
+            "table": {"tests": ["left", "right"], "grid": [2, 1], "tiles": [0, 1, 1, 1]}
+        }"#;
+        let root = root.with_runtime_textures(
+            [
+                (
+                    "assets/test/textures/block/group.png".into(),
+                    Resource::bytes(sheet),
+                ),
+                (
+                    "assets/test/sunrise/connected/group.json".into(),
+                    Resource::bytes(rule.to_vec()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let assets = game.pack.assets.clone();
+        let render = assets.reload(&root).unwrap();
+        assert!(render.connected.has_group_rules());
+        let visibility =
+            sunrise_client::models::load_visibility(root.prepared(), assets.registry).unwrap();
+        let tables =
+            MeshTables::new(&assets, &render, game.res.facts(), visibility.clone(), None).unwrap();
+        let biomes = game.res.biomes().clone();
+        let mut mesher = Mesher {
+            nether_shading: false,
+            shader_pack_lighting: false,
+            separate_ao: false,
+            shader_pack: false,
+            assets: &assets,
+            render: &render,
+            tables: &tables,
+            biomes: &biomes,
+            visibility,
+            zoom: BiomeZoom::new(0),
+            blend_radius: 0,
+            smooth_lighting: false,
+            cutout_leaves: false,
+            opaque_ice: false,
+            translucent_layers: &[],
+            leaf_culling: LeafCullingMode::Off,
+            hidden_states: &[],
+            part_tables: Default::default(),
+        };
+        let mut scratch = MeshScratch::default();
+        let sy = (79 - MIN_Y) >> 4;
+        let top_layer = |game: &Game<'_>, mesher: &mut Mesher<'_>, scratch: &mut MeshScratch| {
+            let mut region = [[None; 3]; 3];
+            region[1][1] = game.world.chunks.get(&(0, 0)).map(Arc::as_ref);
+            region[1][2] = game.world.chunks.get(&(1, 0)).map(Arc::as_ref);
+            let mesh = mesher.mesh_reusing(&region, sy, SectionMesh::default(), scratch);
+            mesh.solid
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|quad| {
+                    quad.iter().all(|v| v.pos[1] == 16.0)
+                        && quad.iter().any(|v| v.pos[0] == 15.0 && v.pos[2] == 2.0)
+                        && quad.iter().any(|v| v.pos[0] == 16.0 && v.pos[2] == 3.0)
+                })
+                .expect("stone top face at the column edge")[0]
+                .layer
+        };
+        let send_column = |game: &mut Game<'_>, cx, local_x| {
+            game.handle_packet(group_packet(Message::Chunk {
+                cx,
                 cz: 0,
                 replace: true,
-                entries: vec![ChunkEntry::new(15, 64, 2, 55).unwrap()],
-            })
+                entries: vec![ChunkEntry::new(local_x, 79, 2, 7).unwrap()],
+            }))
             .unwrap();
-            let sy = (64 - MIN_Y) >> 4;
-            game.remote_connection_groups(&chunk_payload);
-            assert_eq!(level.connection_group(game, [15, 64, 2]), Ok(Some(55)));
-            assert!(game.world.dirty_sections.contains(&(0, sy, 0)));
-            assert!(game.world.dirty_sections.contains(&(1, sy, 0)));
-
-            // Incremental update updates and clears entries cleanly.
-            game.world.dirty_sections.clear();
-            let update_payload = connection_groups::encode(&Message::Update {
-                entries: vec![
-                    UpdateEntry {
-                        pos: [15, 64, 2],
-                        group: None,
-                    },
-                    UpdateEntry {
-                        pos: [16, 64, 2],
-                        group: Some(88),
-                    },
-                ],
-            })
+            game.handle_packet(crate::game::viewed_worlds::tests::layered(cx, 0, 9))
+                .unwrap();
+        };
+        send_column(&mut game, 0, 15);
+        let alone = top_layer(&game, &mut mesher, &mut scratch);
+        send_column(&mut game, 1, 0);
+        let joined = top_layer(&game, &mut mesher, &mut scratch);
+        assert_ne!(alone, joined);
+        game.world.dirty_sections.clear();
+        game.handle_packet(C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [1, 0] }))
             .unwrap();
-            game.remote_connection_groups(&update_payload);
-            assert_eq!(level.connection_group(game, [15, 64, 2]), Ok(None));
-            assert_eq!(level.connection_group(game, [16, 64, 2]), Ok(Some(88)));
-            assert!(game.world.dirty_sections.contains(&(0, sy, 0)));
-            assert!(game.world.dirty_sections.contains(&(1, sy, 0)));
-        });
+        assert!(game.world.dirty_sections.contains(&(0, sy, 0)));
+        assert_eq!(top_layer(&game, &mut mesher, &mut scratch), alone);
+    }
 
-        // Viewed level: wrapped `sunrise:connection_groups` payloads in `sunrise:levels` runs
-        // populate and update the viewed world, mark its sections dirty, survive chunk resend
-        // until an authoritative empty snapshot clears them, and stay isolated from own world.
-        let sy = (64 - MIN_Y) >> 4;
+    #[test]
+    #[ignore = "daily"]
+    fn viewed_groups_require_negotiation_and_share_the_active_worlds_budget() {
         let mut resources = None;
-        let mut vgame = viewed_client(&mut resources);
-        vgame
-            .handle_packet(viewed_open(1, "minecraft:the_nether"))
-            .unwrap();
-        vgame
-            .handle_packet(viewed_run(1, &[viewed_column(0, 0)]))
-            .unwrap();
-        let viewed = vgame.level("minecraft:the_nether").unwrap();
-        let own = vgame.level("minecraft:overworld").unwrap();
-        vgame
-            .remote
-            .as_mut()
-            .unwrap()
-            .viewed
-            .get_mut(1)
-            .unwrap()
-            .world
-            .dirty_sections
-            .clear();
-
-        let cg_pkt = |msg: &Message| {
-            C::CustomPayload(CustomPayload {
-                channel: connection_groups::CHANNEL.into(),
-                data: connection_groups::encode(msg).unwrap(),
+        let pos = [15, 64, 2];
+        let group = |id| {
+            group_packet(Message::Update {
+                entries: vec![UpdateEntry {
+                    pos,
+                    group: Some(id),
+                }],
             })
         };
-        vgame
-            .handle_packet(viewed_run(
-                1,
-                &[cg_pkt(&Message::Chunk {
-                    cx: 0,
-                    cz: 0,
-                    replace: true,
-                    entries: vec![ChunkEntry::new(15, 64, 2, 55).unwrap()],
-                })],
-            ))
-            .unwrap();
-        assert_eq!(viewed.connection_group(&vgame, [15, 64, 2]), Ok(Some(55)));
-        assert_eq!(own.connection_group(&vgame, [15, 64, 2]), Ok(None));
-        assert!(
-            vgame
-                .remote
-                .as_ref()
-                .unwrap()
-                .viewed
-                .get(1)
-                .unwrap()
-                .world
-                .dirty_sections
-                .contains(&(0, sy, 0))
-        );
+        for with_groups in [false, true] {
+            let mut game = viewed_client(&mut resources);
+            game.native_lifecycle.world_open_ready().unwrap();
+            negotiate(&game, with_groups);
+            game.handle_packet(viewed_column(0, 0)).unwrap();
+            game.handle_packet(viewed_open(1, "minecraft:the_nether"))
+                .unwrap();
+            game.handle_packet(viewed_run(1, &[viewed_column(0, 0)]))
+                .unwrap();
+            let viewed = game.level("minecraft:the_nether").unwrap();
+            let own = game.level("minecraft:overworld").unwrap();
+            let budget = game.remote.as_ref().unwrap().group_budget.clone();
+            let _other_columns = budget.reserve(budget.available() - 2);
 
-        // Bulk chunk resend on a viewed world preserves groups until the authoritative empty
-        // snapshot clears and dirties the section.
-        vgame
-            .handle_packet(viewed_run(1, &[viewed_column(0, 0)]))
-            .unwrap();
-        assert_eq!(viewed.connection_group(&vgame, [15, 64, 2]), Ok(Some(55)));
-        vgame
-            .remote
-            .as_mut()
-            .unwrap()
-            .viewed
-            .get_mut(1)
-            .unwrap()
-            .world
-            .dirty_sections
-            .clear();
-        vgame
-            .handle_packet(viewed_run(
-                1,
-                &[cg_pkt(&Message::Chunk {
-                    cx: 0,
-                    cz: 0,
-                    replace: true,
-                    entries: Vec::new(),
-                })],
-            ))
-            .unwrap();
-        assert_eq!(viewed.connection_group(&vgame, [15, 64, 2]), Ok(None));
-        assert!(
-            vgame
-                .remote
-                .as_ref()
-                .unwrap()
-                .viewed
-                .get(1)
-                .unwrap()
-                .world
-                .dirty_sections
-                .contains(&(0, sy, 0))
-        );
+            game.handle_packet(viewed_run(1, &[group(50)])).unwrap();
+            assert_eq!(
+                viewed.connection_group(&game, pos),
+                Ok(with_groups.then_some(50))
+            );
+            assert_eq!(own.connection_group(&game, pos), Ok(None));
+
+            game.handle_packet(group(60)).unwrap();
+            assert_eq!(
+                own.connection_group(&game, pos),
+                Ok(with_groups.then_some(60))
+            );
+            if !with_groups {
+                assert_eq!(budget.available(), 2);
+                continue;
+            }
+            assert_eq!(budget.available(), 0);
+            let next = [14, 64, 2];
+            let update = || {
+                group_packet(Message::Update {
+                    entries: vec![UpdateEntry {
+                        pos: next,
+                        group: Some(70),
+                    }],
+                })
+            };
+            game.handle_packet(update()).unwrap();
+            assert_eq!(own.connection_group(&game, next), Ok(None));
+
+            game.handle_packet(viewed_close(1)).unwrap();
+            assert_eq!(budget.available(), 1);
+            game.handle_packet(update()).unwrap();
+            assert_eq!(own.connection_group(&game, next), Ok(Some(70)));
+            game.handle_packet(C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [0, 0] }))
+                .unwrap();
+            assert_eq!(budget.available(), 2);
+        }
     }
 }

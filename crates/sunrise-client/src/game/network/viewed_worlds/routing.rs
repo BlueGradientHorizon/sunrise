@@ -205,18 +205,37 @@ impl Game<'_> {
                 for (id, body) in packets {
                     // A sound plays in the player's level, if a mod says where.
                     if SOUNDS.contains(&id) {
+                        if let Some(world) =
+                            self.remote.as_mut().and_then(|r| r.viewed.get_mut(level))
+                        {
+                            world.group_ingress.discard();
+                        }
                         self.viewed_level_sound(level, id, body)?;
                         continue;
                     }
                     let facts = self.res.facts();
-                    let Some(world) = self.remote.as_mut().and_then(|r| r.viewed.get_mut(level))
-                    else {
+                    let Some(remote) = self.remote.as_mut() else {
+                        return Ok(());
+                    };
+                    let group_budget = remote
+                        .negotiates_connection_groups()
+                        .then_some(&remote.group_budget);
+                    let Some(world) = remote.viewed.get_mut(level) else {
                         return Ok(());
                     };
                     // The codec read each one exactly already.
                     let packet =
                         C::decode(id, body).map_err(|_| ViewedLevelsError::MalformedPacket(id))?;
+                    if let C::CustomPayload(p) = &packet
+                        && p.channel == sunrise_protocol::connection_groups::CHANNEL
+                    {
+                        if let Some(budget) = group_budget {
+                            world.receive_groups(&p.data, budget);
+                        }
+                        continue;
+                    }
                     if let C::BlockEntityData(p) = packet {
+                        world.group_ingress.discard();
                         let [x, y, z] = p.pos;
                         let entity_block = block_entity_block(facts, world.world.block(x, y, z));
                         world.block_entity_data(p, entity_block);
