@@ -109,6 +109,9 @@ mod translucent_color_tests;
 #[cfg(test)]
 mod noise_resolution_tests;
 
+#[cfg(test)]
+mod player_boolean_tests;
+
 /// The texture behind a pack sampler name.
 #[derive(Clone, Copy, PartialEq)]
 enum Source {
@@ -2283,7 +2286,7 @@ fn build_compute(
     pack: &Resources<'_>,
 ) -> Option<Pass> {
     let index = |name: &str, ty: &str| {
-        pack_uniforms::index(name).or_else(|| custom_index(custom, name, ty))
+        pack_uniforms::index_in(name, false).or_else(|| custom_index(custom, name, ty))
     };
     let interface = &c.interface;
     let (entries, samplers, slots, reads, shadow_reads, images) = bindings(
