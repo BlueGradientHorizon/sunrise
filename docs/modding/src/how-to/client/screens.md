@@ -98,7 +98,10 @@ Its `reason` and optional smoothed integrated-server `progress` are current each
 If another load starts while the screen is open, the same presentation stays in place,
 even if the reason changes. The tracker still decides when the screen closes. Login and death
 respawn do not look up dimension keys; like unmatched travel, they use vanilla when opening
-a new loading screen.
+a new loading screen. The vanilla screen also draws when the matching factory or its presentation
+is disabled or refused. If a presentation fails after drawing, the frame keeps neither its paint nor
+its blur request. A panic disables only the failing callback for the session: a draw panic does not
+stop the factory from being called on the next matching load. A phase refusal only affects that invocation.
 
 ## Reading open trades
 

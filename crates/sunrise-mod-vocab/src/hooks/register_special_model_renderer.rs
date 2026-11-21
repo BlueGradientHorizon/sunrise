@@ -18,12 +18,12 @@ and returns the argument for `submit`. Submit geometry or nested stacks through
 `base` model's display transforms, particle and GUI light, and handles foil, packed light,
 overlay and outline through the normal item draw path.
 
-An unknown type, decode or bake error, or panic during resource loading refuses that item
-definition without falling back to a lower pack. At draw time a callback error, panic or
-invalid geometry or pose rolls back the whole layer and disables the offending type until
-resources reload. Unreadable input or a nested refusal rolls back the enclosing layer
-without disabling the parent renderer. Only the outermost refused layer draws the missing
-model."#]
+An unknown type, a disabled winning factory, or a decode or bake error or panic refuses that
+item definition. The game does not retry a built-in decoder or a lower pack. Decode, bake,
+argument extraction and submit run as the mod that registered the type. A failed draw rolls back the whole special layer;
+only a panic disables that type's failing callback for the session, including resource reloads.
+Other refusals are reported on every failed invocation and do not disable the callback.
+Only the outermost refused layer draws the missing model."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
@@ -31,7 +31,7 @@ model."#]
         contract = "listen",
         context = "registration",
         neoforge = "RegisterSpecialModelRendererEvent",
-        version = 2
+        version = 3
     )]
     fn register_special_model_renderer(renderers: &mut dyn SpecialModelRenderers);
 }

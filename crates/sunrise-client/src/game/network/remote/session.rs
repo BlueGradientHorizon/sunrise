@@ -898,24 +898,21 @@ impl Game<'_> {
             self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
-        if let Some((owner, factory)) = transition_factory {
-            use mod_api::content::crash::{ModCall, enter_native_mod};
-            use sunrise_client_render::dimension_transition::ActiveTransitionScreen;
-
-            let presentation = {
-                let _owner = enter_native_mod(ModCall {
-                    id: owner,
-                    hook: "dimension_transition_factory",
-                    part: None,
-                });
-                factory.create(self, reason.into())
-            };
-            if let Some(r) = self.remote.as_mut() {
-                r.level_load.set_transition_screen(ActiveTransitionScreen {
-                    owner,
+        if let Some(registration) = transition_factory
+            && registration.factory_owner.is_enabled()
+            && let Ok(presentation) = registration.factory_owner.call(
+                "dimension transition screen",
+                "dimension_transition_screen_factory",
+                || registration.factory.create(self, reason.into()),
+            )
+            && let Some(r) = self.remote.as_mut()
+        {
+            r.level_load.set_transition_screen(
+                sunrise_client_render::dimension_transition::ActiveTransitionScreen {
+                    owner: registration.draw_owner.clone(),
                     presentation,
-                });
-            }
+                },
+            );
         }
     }
 }

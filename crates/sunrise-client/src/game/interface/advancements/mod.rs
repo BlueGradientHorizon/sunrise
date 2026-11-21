@@ -2513,6 +2513,42 @@ impl Game<'_> {
             }
         }
     }
+    /// Retained callback faults use system toasts but bypass `toast_add`: a mod
+    /// must not be able to hide the message naming the callback that failed.
+    pub(super) fn draw_mod_callback_toasts(&mut self, batch: &mut HudBatch) {
+        use sunrise_client::toasts::SystemToast;
+        for notice in mod_api::__private::game::take_callback_panic_notices() {
+            self.mod_callback_toasts.push(
+                SystemToast::new(
+                    Text::tr("sunrise.toast.mod_callback_disabled", &[&notice.mod_id]),
+                    Some(Text::literal(notice.message)),
+                )
+                .with_title_color(0xffff5555)
+                .with_display_time(SystemToast::LONG_DISPLAY_TIME),
+            );
+        }
+        if self.mod_callback_toasts.is_empty() {
+            return;
+        }
+        let title = self.title.as_ref().is_some_and(|title| title.has_toast());
+        let mut used = self.toast_slots_used() | u32::from(title);
+        let multiplier = self.settings.notification_display_time;
+        self.mod_callback_toasts.retain_mut(|toast| {
+            if toast.slot.is_none() {
+                toast.slot = (0..Self::TOAST_SLOTS).find(|slot| used & (1 << slot) == 0);
+            }
+            let Some(slot) = toast.slot else {
+                return true;
+            };
+            used |= 1 << slot;
+            let (_, finished) = toast.update(multiplier);
+            if !finished && !self.ui.hide_gui {
+                toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
+            }
+            !finished
+        });
+    }
+
     /// The slots held by shown advancement, recipe, pack and narrator toasts,
     /// as bits.
     pub(super) fn toast_slots_used(&self) -> u32 {
@@ -2522,6 +2558,11 @@ impl Game<'_> {
             .iter()
             .filter_map(|t| t.slot)
             .chain(packs)
+            .chain(
+                self.mod_callback_toasts
+                    .iter()
+                    .filter_map(|toast| toast.slot),
+            )
             .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
             .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
     }

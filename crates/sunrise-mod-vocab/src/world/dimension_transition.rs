@@ -23,6 +23,8 @@ impl DimensionTransitionScreen {
     /// client calls the factory once as the registering mod and owns the returned presentation
     /// until the loading screen closes, even if the tracker restarts for another level.
     /// Capture per-load state in the returned presentation, not in the registration itself.
+    /// A disabled or refused factory leaves the vanilla screen. A failed draw does not disable
+    /// the factory or prevent it from creating the presentation for a later matching load.
     pub fn new(
         screen: String,
         transition: DimensionTransition,
@@ -68,6 +70,9 @@ pub trait DimensionTransitionPresentation: Send + Sync + 'static {
     /// Draw under the registering mod's identity using this frame's reason and optional
     /// smoothed integrated-server progress. The tracker, not the presentation, decides when
     /// the screen closes. The reason can change while the same presentation remains active.
+    /// A disabled or refused draw leaves the vanilla loading screen without the mod's paint
+    /// or blur request. A panic also discards that output and disables only the registration's
+    /// draw callback for the session.
     fn draw(
         &self,
         host: &dyn ClientHost,
