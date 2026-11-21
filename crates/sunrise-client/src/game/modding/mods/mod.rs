@@ -141,13 +141,6 @@ impl ModsState {
         }
     }
 
-    pub(super) fn has_unapplied_code_switches(&self) -> bool {
-        self.code_switches.as_ref().is_some_and(|switches| {
-            !switches.disabled.is_empty()
-                && !switches.applied.load(std::sync::atomic::Ordering::Acquire)
-        })
-    }
-
     pub(super) fn code_owner_enabled(&self, owner: &str) -> bool {
         let initially_disabled = self.code_switches.as_ref().is_some_and(|switches| {
             !switches.applied.load(std::sync::atomic::Ordering::Acquire)

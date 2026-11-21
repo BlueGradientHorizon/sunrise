@@ -120,15 +120,6 @@ pub fn enabled_listened(hook: HookId) -> bool {
     crate::runtime::enabled_listened(hook)
 }
 
-/// Dispatch `add_pack_finders` only to enabled subscribers that `allow` admits.
-pub fn dispatch_add_pack_finders_for(
-    host: crate::HostSide<'_>,
-    packs: &mut dyn crate::PackFinders,
-    allow: impl FnMut(&str) -> bool,
-) {
-    crate::runtime::dispatch_add_pack_finders_for(host, packs, allow);
-}
-
 /// Whether any part subscribed to the scoped entity hook `hook` is attached to
 /// entity type `kind`, so a family's walk can resolve its rows' slots once per
 /// pass instead of naming each row's type.

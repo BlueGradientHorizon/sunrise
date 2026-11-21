@@ -50,7 +50,6 @@ impl PackFinders for Registry {
             .native
             .packages()
             .iter()
-            .filter(|package| self.mods.code_owner_enabled(&package.manifest.id))
             .map(|package| (package.manifest.id.as_str(), &package.path))
             .chain(
                 self.mods
@@ -150,9 +149,7 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
         PackType::ServerData => HostSide::Server(&mut host),
         _ => return Vec::new(),
     };
-    mod_api::__private::dispatch_add_pack_finders_for(host, &mut registry, |id| {
-        mods.code_owner_enabled(id)
-    });
+    mod_api::dispatch_add_pack_finders_for(host, &mut registry, |id| mods.code_owner_enabled(id));
     registry.packs
 }
 

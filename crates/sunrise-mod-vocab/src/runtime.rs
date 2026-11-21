@@ -370,6 +370,16 @@ pub(crate) fn entered(
     entered_subscribers(hook_id, hook).map(|entry| &*entry.hooks)
 }
 
+/// [`entered`] filtered by `allow`, skipping rejected subscribers before entering their crash
+/// scope or advancing the listener serial.
+pub(crate) fn entered_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = &'static dyn Hooks> + 'a {
+    entered_subscribers_matching(hook_id, hook, allow).map(|entry| &*entry.hooks)
+}
+
 /// [`entered`] with each mod's own `[mod] id`, for a hook that names the mod that answered.
 pub(crate) fn entered_with_id(
     hook_id: generated::HookId,
@@ -385,9 +395,17 @@ pub(crate) fn entered_subscribers(
     hook_id: generated::HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = &'static ModEntry> {
+    entered_subscribers_matching(hook_id, hook, |_| true)
+}
+
+fn entered_subscribers_matching<'a>(
+    hook_id: generated::HookId,
+    hook: &'static str,
+    allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = &'static ModEntry> + 'a {
     let mut crash_guard = crate::dispatch_scope::ModGuard::empty();
     let scope = crate::dispatch_scope::snapshot();
-    listening(hook_id).map(move |(_, entry)| {
+    listening_matching(hook_id, allow).map(move |(_, entry)| {
         scope.replace(
             &mut crash_guard,
             crate::content::crash::ModCall {
@@ -569,30 +587,6 @@ pub(crate) fn listening_matching<'a>(
         }
         None
     })
-}
-
-/// Dispatch `add_pack_finders` only to enabled subscribers admitted by `allow`.
-/// Startup discovery runs before saved switches are applied to the global dispatch table, so the
-/// caller filters disabled mods before entering their crash scope or invoking their listener.
-pub(crate) fn dispatch_add_pack_finders_for(
-    mut host: crate::HostSide<'_>,
-    packs: &mut dyn crate::PackFinders,
-    allow: impl FnMut(&str) -> bool,
-) {
-    if !enabled_listened(generated::HookId::AddPackFinders) {
-        return;
-    }
-    let contained = outside_world();
-    let mut event = crate::AddPackFindersEvent { packs };
-    let mut entered = ListenerScope::new();
-    for (_, entry) in listening_matching(generated::HookId::AddPackFinders, allow) {
-        let hooks = entered.enter(entry, "add_pack_finders");
-        if let Err(refusal) = refusable(contained, || {
-            hooks.add_pack_finders(host.reborrow(), &mut event)
-        }) {
-            refusal.report();
-        }
-    }
 }
 
 /// Look up the enabled subscriber owning a namespaced kind without walking the hook's listeners.
