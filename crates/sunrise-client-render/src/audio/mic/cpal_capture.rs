@@ -13,6 +13,9 @@ pub(super) struct CpalBackend;
 pub(super) struct CpalDevice {
     device: cpal::Device,
     label: Option<String>,
+    #[cfg(target_os = "macos")]
+    coreaudio_id: Option<u32>,
+    #[cfg(not(target_os = "macos"))]
     selector: Option<String>,
 }
 
@@ -71,9 +74,9 @@ impl CpalDevice {
     fn from_device(device: cpal::Device) -> Self {
         let label = device.name().ok().filter(|name| !name.is_empty());
         #[cfg(target_os = "macos")]
-        let selector = {
+        let coreaudio_id = {
             let cpal::platform::DeviceInner::CoreAudio(dev) = device.as_inner();
-            parse_coreaudio_device_id(&format!("{dev:?}")).map(|id| format!("coreaudio:{id}"))
+            parse_coreaudio_device_id(&format!("{dev:?}"))
         };
         #[cfg(windows)]
         let selector = None;
@@ -82,6 +85,9 @@ impl CpalDevice {
         Self {
             device,
             label,
+            #[cfg(target_os = "macos")]
+            coreaudio_id,
+            #[cfg(not(target_os = "macos"))]
             selector,
         }
     }
@@ -109,13 +115,20 @@ impl BackendDevice for CpalDevice {
     }
 
     fn stable_selector(&self) -> Option<String> {
-        self.selector.clone()
+        #[cfg(target_os = "macos")]
+        {
+            self.coreaudio_id.map(|id| format!("coreaudio:{id}"))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.selector.clone()
+        }
     }
 
     fn same_endpoint(&self, other: &Self) -> bool {
         #[cfg(target_os = "macos")]
         {
-            if let (Some(a), Some(b)) = (&self.selector, &other.selector) {
+            if let (Some(a), Some(b)) = (self.coreaudio_id, other.coreaudio_id) {
                 return a == b;
             }
             let (
@@ -139,6 +152,21 @@ impl BackendDevice for CpalDevice {
         {
             self.selector.is_some() && self.selector == other.selector
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn has_input_metadata(&self) -> Result<bool, mod_api::MicRefusal> {
+        use mod_api::MicRefusal;
+        use sunrise_audio_input::macos::{InputMetadataError, has_input_streams};
+
+        let id = self.coreaudio_id.ok_or(MicRefusal::DeviceFailed)?;
+        has_input_streams(id).map_err(|err| match err {
+            InputMetadataError::Denied => MicRefusal::OsDenied,
+            InputMetadataError::QueryFailed(status) => {
+                log::warn!("Sunrise: CoreAudio input discovery failed for device {id}: {status}");
+                MicRefusal::DeviceFailed
+            }
+        })
     }
 
     fn input_configs(&self) -> Result<Option<Self::InputConfigs>, mod_api::MicRefusal> {
@@ -174,6 +202,7 @@ impl CaptureBackend for CpalBackend {
     fn devices(
         &self,
         _target: Option<&mod_api::MicTarget>,
+        _listed_label_ids: &[String],
     ) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal> {
         Ok(DeviceInventory {
             devices: cpal::default_host()
@@ -194,7 +223,10 @@ impl CaptureBackend for CpalBackend {
         {
             // Only enumerated CPAL devices register a removal listener. Open the same
             // CoreAudio endpoint via that route even when the OS selected it by default.
-            Ok(enumerated_default(&device, self.devices(None)?.devices))
+            Ok(enumerated_default(
+                &device,
+                self.devices(None, &[])?.devices,
+            ))
         }
         #[cfg(not(target_os = "macos"))]
         Ok(Some(device))

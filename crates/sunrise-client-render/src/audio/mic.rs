@@ -477,6 +477,13 @@ trait BackendDevice: Clone + Send + 'static {
     fn label(&self) -> Option<String>;
     fn stable_selector(&self) -> Option<String>;
     fn same_endpoint(&self, other: &Self) -> bool;
+
+    /// Excludes output-only endpoints using metadata alone, before OS authorization.
+    /// Backends that cannot ask for OS authorization may leave this to `input_configs`.
+    fn has_input_metadata(&self) -> Result<bool, mod_api::MicRefusal> {
+        Ok(true)
+    }
+
     fn input_configs(&self) -> Result<Option<Self::InputConfigs>, mod_api::MicRefusal>;
 }
 
@@ -503,9 +510,11 @@ trait CaptureBackend: Send + Sync + 'static {
     type Stream;
 
     /// Enumerates backend devices without an error-erasing `supports_input()` filter.
+    /// During label lookup, `listed_label_ids` identifies previously listed matches.
     fn devices(
         &self,
         target: Option<&mod_api::MicTarget>,
+        listed_label_ids: &[String],
     ) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal>;
 
     fn default_input_device(&self) -> Result<Option<Self::Device>, mod_api::MicRefusal>;
@@ -537,7 +546,9 @@ trait CaptureBackend: Send + Sync + 'static {
 #[cfg(any(feature = "audio", test))]
 struct DeviceRegistry<D> {
     next_id: u64,
-    entries: Vec<(String, D)>,
+    // Remember the last listed label for an endpoint, not its availability or probe result.
+    // Only generated selectors need to retain the backend device for endpoint equality.
+    entries: Vec<(mod_api::MicDevice, Option<D>)>,
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -549,28 +560,47 @@ impl<D: BackendDevice> DeviceRegistry<D> {
         }
     }
 
-    fn selector_for(&mut self, dev: &D) -> String {
-        if let Some(stable) = dev.stable_selector() {
-            return stable;
-        }
-        if let Some((id, _)) = self
-            .entries
-            .iter()
-            .find(|(_, existing)| existing.same_endpoint(dev))
+    fn register(&mut self, dev: D, label: String) -> mod_api::MicDevice {
+        let stable = dev.stable_selector();
+        if let Some((listed, _)) =
+            self.entries
+                .iter_mut()
+                .find(|(listed, remembered)| match &stable {
+                    Some(id) => remembered.is_none() && listed.id == *id,
+                    None => remembered
+                        .as_ref()
+                        .is_some_and(|old| old.same_endpoint(&dev)),
+                })
         {
-            return id.clone();
+            listed.label = label;
+            return listed.clone();
         }
-        let id = format!("input:{}", self.next_id);
-        self.next_id += 1;
-        self.entries.push((id.clone(), dev.clone()));
-        id
+        let (id, remembered) = match stable {
+            Some(id) => (id, None),
+            None => {
+                let id = format!("input:{}", self.next_id);
+                self.next_id += 1;
+                (id, Some(dev))
+            }
+        };
+        let listed = mod_api::MicDevice::new(id, label);
+        self.entries.push((listed.clone(), remembered));
+        listed
     }
 
     fn lookup(&self, selector: &str) -> Option<D> {
         self.entries
             .iter()
-            .find(|(id, _)| id == selector)
-            .map(|(_, dev)| dev.clone())
+            .find(|(listed, _)| listed.id == selector)
+            .and_then(|(_, dev)| dev.clone())
+    }
+
+    fn listed_ids_for_label(&self, label: &str) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|(listed, _)| listed.label == label)
+            .map(|(listed, _)| listed.id.clone())
+            .collect()
     }
 }
 
@@ -582,7 +612,7 @@ fn list_devices_with<B: CaptureBackend>(
     let DeviceInventory {
         devices,
         mut discovery_error,
-    } = backend.devices(None)?;
+    } = backend.devices(None, &[])?;
     let mut found = Vec::new();
     let mut reg = registry.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -592,8 +622,7 @@ fn list_devices_with<B: CaptureBackend>(
                 if let Some(label) = dev.label()
                     && !label.is_empty()
                 {
-                    let id = reg.selector_for(&dev);
-                    found.push(mod_api::MicDevice::new(id, label));
+                    found.push(reg.register(dev, label));
                 }
             }
             Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
@@ -630,7 +659,7 @@ fn resolve_and_open_stream<B: CaptureBackend>(
             let DeviceInventory {
                 devices,
                 discovery_error,
-            } = backend.devices(Some(target))?;
+            } = backend.devices(Some(target), &[])?;
             let mut matching = devices.into_iter().filter(|dev| {
                 if let Some(remembered) = &remembered {
                     dev.same_endpoint(remembered)
@@ -647,18 +676,29 @@ fn resolve_and_open_stream<B: CaptureBackend>(
             device
         }
         Some(target @ MicTarget::Label(label)) => {
+            let listed_ids = registry
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .listed_ids_for_label(label);
             let DeviceInventory {
-                devices,
-                discovery_error,
-            } = backend.devices(Some(target))?;
-            let mut matching = devices
-                .into_iter()
-                .filter(|dev| dev.label().as_deref() == Some(label.as_str()))
-                .peekable();
-            // CoreAudio enumerates names without opening an AudioUnit, but queries
-            // input configurations through one. Do not ask for access to an absent
-            // name, and do not let a probe skip the OS permission request.
-            if matching.peek().is_none() {
+                devices: mut matching,
+                mut discovery_error,
+            } = backend.devices(Some(target), &listed_ids)?;
+            // A name alone can identify a CoreAudio output. Check input direction without
+            // querying configurations, which would create an AudioUnit before authorization.
+            matching.retain(|dev| {
+                if dev.label().as_deref() != Some(label.as_str()) {
+                    return false;
+                }
+                match dev.has_input_metadata() {
+                    Ok(supports_input) => supports_input,
+                    Err(err) => {
+                        record_input_error(&mut discovery_error, err);
+                        false
+                    }
+                }
+            });
+            if matching.is_empty() {
                 return Err(discovery_error.unwrap_or(MicRefusal::NoDevice));
             }
             return backend.with_input_authorization(|| {
@@ -679,15 +719,13 @@ fn resolve_and_open_stream<B: CaptureBackend>(
                 if probe_error == Some(MicRefusal::OsDenied) {
                     return Err(MicRefusal::OsDenied);
                 }
-                let (device, configs) = match candidate {
-                    Some(candidate) => candidate,
-                    None => {
-                        if let Some(err) = discovery_error {
-                            record_input_error(&mut probe_error, err);
-                        }
-                        return Err(probe_error.unwrap_or(MicRefusal::NoDevice));
-                    }
-                };
+                // One usable input doesn't prove the label is unique if walking the
+                // relevant part of the inventory failed.
+                if let Some(err) = discovery_error {
+                    return Err(err);
+                }
+                let (device, configs) =
+                    candidate.ok_or(probe_error.unwrap_or(MicRefusal::NoDevice))?;
                 backend.open_stream(&device, Some(configs), spec, ring, events)
             });
         }
@@ -1008,6 +1046,7 @@ mod tests {
         endpoint_id: String,
         expose_selector: bool,
         label: String,
+        has_input_metadata: bool,
         supported: Result<Vec<InputConfigRange>, MicRefusal>,
         probed: Option<Arc<AtomicBool>>,
         default_cfg: Result<InputConfig, MicRefusal>,
@@ -1019,6 +1058,7 @@ mod tests {
                 endpoint_id: endpoint_id.to_owned(),
                 expose_selector: true,
                 label: label.to_owned(),
+                has_input_metadata: true,
                 supported: Ok(vec![InputConfigRange {
                     channels: 1,
                     min_rate: 8_000,
@@ -1048,6 +1088,10 @@ mod tests {
 
         fn same_endpoint(&self, other: &Self) -> bool {
             self.endpoint_id == other.endpoint_id
+        }
+
+        fn has_input_metadata(&self) -> Result<bool, MicRefusal> {
+            Ok(self.has_input_metadata)
         }
 
         fn input_configs(&self) -> Result<Option<Self::InputConfigs>, MicRefusal> {
@@ -1122,6 +1166,7 @@ mod tests {
         fn devices(
             &self,
             _target: Option<&mod_api::MicTarget>,
+            _listed_label_ids: &[String],
         ) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
             let barrier = self.state.lock().unwrap().devices_barrier.clone();
             if let Some(barrier) = barrier {
@@ -1512,23 +1557,15 @@ mod tests {
     #[test]
     fn denied_backend_preserves_os_denied_for_list_named_and_default_open() {
         let denied = FakeDevice {
-            endpoint_id: "alsa:usb-mic".into(),
-            expose_selector: true,
-            label: "USB Mic".into(),
             supported: Err(MicRefusal::OsDenied),
             // Even if default_input_config would succeed, it must not mask OsDenied.
-            default_cfg: Ok(InputConfig {
-                channels: 1,
-                rate: 48_000,
-                format: PcmFormat::F32,
-            }),
+            ..FakeDevice::input("alsa:usb-mic", "USB Mic", 48_000, PcmFormat::F32)
         };
         let output_only = FakeDevice {
-            endpoint_id: "alsa:hdmi".into(),
-            expose_selector: true,
-            label: "HDMI Out".into(),
+            has_input_metadata: false,
             supported: Ok(Vec::new()),
             default_cfg: Err(MicRefusal::DeviceFailed),
+            ..FakeDevice::input("alsa:hdmi", "HDMI Out", 48_000, PcmFormat::F32)
         };
         let backend = Arc::new(FakeBackend::new(
             vec![output_only, denied.clone()],
@@ -1651,13 +1688,42 @@ mod tests {
             Some(MicRefusal::NoDevice)
         );
         assert_eq!(backend.state.lock().unwrap().authorization_requests, 0);
+        let desk = spec.with_label("Desk Mic");
+        assert_eq!(pool.open(&desk).err(), Some(MicRefusal::OsDenied));
+        assert!(!probed.load(Ordering::Relaxed));
+        {
+            let mut state = backend.state.lock().unwrap();
+            assert_eq!(state.authorization_requests, 1);
+            assert!(state.opened.is_empty());
+            state.authorization_request = Some(Ok(()));
+        }
+        assert_eq!(pool.open(&desk).err(), Some(MicRefusal::NoDevice));
+        assert!(probed.load(Ordering::Relaxed));
+        let state = backend.state.lock().unwrap();
+        assert_eq!(state.authorization_requests, 2);
+        assert!(state.opened.is_empty());
+    }
+
+    #[test]
+    fn output_only_label_neither_probes_nor_requests_microphone_access() {
+        let probed = Arc::new(AtomicBool::new(false));
+        let output = FakeDevice {
+            has_input_metadata: false,
+            supported: Ok(Vec::new()),
+            probed: Some(Arc::clone(&probed)),
+            ..FakeDevice::input("coreaudio:75", "HDMI Out", 48_000, PcmFormat::F32)
+        };
+        let backend = Arc::new(FakeBackend::new(vec![output], None));
+        backend.state.lock().unwrap().authorization_request = Some(Err(MicRefusal::OsDenied));
+        let pool = MicPoolInner::new(true, Arc::clone(&backend));
         assert_eq!(
-            pool.open(&spec.with_label("Desk Mic")).err(),
-            Some(MicRefusal::OsDenied)
+            pool.open(&MicSpec::new(1, 48_000).with_label("HDMI Out"))
+                .err(),
+            Some(MicRefusal::NoDevice)
         );
         assert!(!probed.load(Ordering::Relaxed));
         let state = backend.state.lock().unwrap();
-        assert_eq!(state.authorization_requests, 1);
+        assert_eq!(state.authorization_requests, 0);
         assert!(state.opened.is_empty());
     }
 

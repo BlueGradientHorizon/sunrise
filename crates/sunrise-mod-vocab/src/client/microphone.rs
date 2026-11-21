@@ -45,7 +45,8 @@ impl MicDevice {
 pub enum MicTarget {
     /// An opaque [`MicDevice::id`] returned by `microphone_devices()`. Never matched as a label.
     DeviceId(String),
-    /// A human-readable [`MicDevice::label`]. Never matched as an endpoint ID.
+    /// A human-readable [`MicDevice::label`]. Never matched as an endpoint ID or against an
+    /// output-only device. The client must be able to establish that the input match is unique.
     Label(String),
 }
 
@@ -88,7 +89,10 @@ impl MicSpec {
         }
     }
 
-    /// The same specification targeting a unique input by its display label.
+    /// The same specification targeting a unique input by its display label. Discovery can
+    /// return [`MicRefusal::OsDenied`] if OS permissions prevent checking a previously listed
+    /// match, or [`MicRefusal::DeviceFailed`] if another discovery error prevents checking
+    /// whether the label is unique. Select by [`MicDevice::id`] to target an independent input.
     pub fn with_label(self, label: impl Into<String>) -> Self {
         Self {
             device: Some(MicTarget::Label(label.into())),
@@ -139,13 +143,14 @@ pub enum MicRefusal {
     Unavailable,
     /// The capture specification has an invalid `channels` or `rate`.
     BadSpec(MicSpecFault),
-    /// No default input device exists, the selected device was not found or vanished, or client
-    /// audio capture is disabled.
+    /// No default input device exists, the selected input was not found or vanished, or client
+    /// audio capture is disabled. A label that matches only output devices does not select a mic.
     NoDevice,
     /// More than one input device matches the requested selection; select a specific
     /// [`MicDevice::id`] from `microphone_devices()`.
     AmbiguousDevice,
-    /// The operating system denied microphone access or prevented checking the requested input.
+    /// The operating system denied microphone access or prevented checking the requested input,
+    /// for example by blocking access to the ALSA card of a previously listed input.
     OsDenied,
     /// The input device is busy or held in exclusive use.
     Busy,

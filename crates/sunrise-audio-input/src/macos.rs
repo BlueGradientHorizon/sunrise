@@ -1,11 +1,61 @@
-//! AVFoundation's application-wide microphone authorization.
+//! CoreAudio input discovery and AVFoundation's application-wide microphone authorization.
 
 use block2::RcBlock;
 use objc2::{rc::autoreleasepool, runtime::Bool};
 use objc2_av_foundation::{AVCaptureDevice, AVMediaTypeAudio};
-use std::sync::mpsc;
+use objc2_core_audio::{
+    AudioObjectGetPropertyDataSize, AudioObjectPropertyAddress, kAudioDevicePermissionsError,
+    kAudioDevicePropertyStreams, kAudioHardwareBadDeviceError, kAudioHardwareBadObjectError,
+    kAudioHardwareNoError, kAudioHardwareUnknownPropertyError, kAudioObjectPropertyElementMain,
+    kAudioObjectPropertyScopeInput,
+};
+use std::{
+    ptr::{NonNull, null},
+    sync::mpsc,
+};
 
 pub use objc2_av_foundation::AVAuthorizationStatus as MicrophoneAuthorization;
+
+/// Failure to read a CoreAudio device's input metadata.
+#[derive(Debug)]
+pub enum InputMetadataError {
+    Denied,
+    QueryFailed(i32),
+}
+
+/// Reports whether a CoreAudio device has any input streams, without creating an AudioUnit or
+/// requesting authorization. Output-only and unplugged devices have no input streams.
+#[allow(
+    non_upper_case_globals,
+    reason = "These constants are named by CoreAudio"
+)]
+pub fn has_input_streams(device_id: u32) -> Result<bool, InputMetadataError> {
+    let address = AudioObjectPropertyAddress {
+        mSelector: kAudioDevicePropertyStreams,
+        mScope: kAudioObjectPropertyScopeInput,
+        mElement: kAudioObjectPropertyElementMain,
+    };
+    let mut size = 0;
+    // SAFETY: Both pointers borrow live stack variables. This property requires no qualifier
+    // and writes only the size of the input AudioStreamID array to `size`.
+    let status = unsafe {
+        AudioObjectGetPropertyDataSize(
+            device_id,
+            NonNull::from(&address),
+            0,
+            null(),
+            NonNull::from(&mut size),
+        )
+    };
+    match status {
+        kAudioHardwareNoError => Ok(size != 0),
+        kAudioHardwareUnknownPropertyError
+        | kAudioHardwareBadObjectError
+        | kAudioHardwareBadDeviceError => Ok(false),
+        kAudioDevicePermissionsError => Err(InputMetadataError::Denied),
+        status => Err(InputMetadataError::QueryFailed(status)),
+    }
+}
 
 /// Reads the OS microphone authorization without asking for permission.
 pub fn microphone_authorization() -> Option<MicrophoneAuthorization> {

@@ -105,13 +105,14 @@ pub trait AudioClientHost {
     /// the stream's teardown thread to release the OS input device before returning; a backend
     /// device error also releases the OS stream promptly without waiting for `close`, drop, or a
     /// tick. The engine never records or transmits captured audio. On macOS, opening a matching
-    /// endpoint can wait for the operating system's first microphone permission decision, before
-    /// probing the input configuration.
+    /// input can wait for the operating system's first microphone permission decision, before
+    /// probing the input configuration. A label matching only an output does not request
+    /// microphone permission.
     ///
     /// Refuses with [`MicRefusal`] when called on a server, outside client setup or later, with
     /// an invalid [`MicSpec`], when the OS denies permission or prevents checking the selected
-    /// endpoint, when a selected device vanished or is ambiguous, or when no matching device can
-    /// be opened.
+    /// input, when an input vanished, when discovery cannot establish a unique label match,
+    /// or when no matching device can be opened.
     ///
     /// ```
     /// use mod_api::{ClientHost, MicRef, MicRefusal, MicSpec};

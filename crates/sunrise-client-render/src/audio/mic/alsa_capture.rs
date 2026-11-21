@@ -135,6 +135,7 @@ impl<'a> HardwareSelector<'a> {
 fn discover_devices<C: CardControl, T>(
     cards: impl Iterator<Item = alsa::Result<alsa::Card>>,
     target: Option<&MicTarget>,
+    listed_label_ids: &[String],
     mut open_control: impl FnMut(alsa::Card) -> alsa::Result<C>,
     mut open_pcm: impl FnMut(&str) -> alsa::Result<T>,
 ) -> DeviceInventory<AlsaDevice> {
@@ -166,6 +167,10 @@ fn discover_devices<C: CardControl, T>(
         Some(MicTarget::Label(label)) => (None, Some(label.as_str())),
         None => (None, None),
     };
+    let listed_cards: Vec<_> = listed_label_ids
+        .iter()
+        .filter_map(|id| HardwareSelector::parse(id).map(|selector| selector.card_index))
+        .collect();
     for card in cards {
         let card = match card {
             Ok(card) => card,
@@ -189,10 +194,13 @@ fn discover_devices<C: CardControl, T>(
         {
             Ok(info) => info,
             Err(err) => {
-                // A saved ID identifies the card slot even when its control cannot be
-                // read. A label alone cannot identify a card that never reported a name.
-                if target_label.is_none() {
-                    record_input_error(&mut inventory.discovery_error, map_error(err));
+                // A listed ID or label can identify a relevant card even when its control
+                // can't be read. Do not attribute a fault on an unrelated card to this label.
+                let refusal = map_error(err);
+                if refusal != MicRefusal::NoDevice
+                    && (target_label.is_none() || listed_cards.contains(&index))
+                {
+                    record_input_error(&mut inventory.discovery_error, refusal);
                 }
                 if hardware.is_some() {
                     break;
@@ -224,23 +232,17 @@ fn discover_devices<C: CardControl, T>(
                     continue;
                 }
             }
-            let pcm = format!("plughw:CARD={card_id},DEV={device}");
-            // Output-only devices have no capture PCM. A known endpoint with a failed
-            // control query, like one with a failed PCM open, keeps its selector and error.
+            // Output-only devices have no capture PCM. A failed control query can leave
+            // the number of capture matches unknown, unlike a probe of a known capture PCM.
             match ctl.query_capture(device).map_err(map_error) {
                 Ok(()) => inventory.devices.push(AlsaDevice::probe(
-                    pcm,
+                    format!("plughw:CARD={card_id},DEV={device}"),
                     Some(index),
                     label.clone(),
                     &mut open_pcm,
                 )),
                 Err(MicRefusal::NoDevice) => {}
-                Err(refusal) => inventory.devices.push(AlsaDevice {
-                    pcm,
-                    card_index: Some(index),
-                    label: label.clone(),
-                    capture: Err(refusal),
-                }),
+                Err(refusal) => record_input_error(&mut inventory.discovery_error, refusal),
             }
             if hardware.is_some() {
                 break;
@@ -270,10 +272,12 @@ impl CaptureBackend for AlsaBackend {
     fn devices(
         &self,
         target: Option<&MicTarget>,
+        listed_label_ids: &[String],
     ) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
         Ok(discover_devices(
             alsa::card::Iter::new(),
             target,
+            listed_label_ids,
             CaptureControl::open,
             open_pcm,
         ))
@@ -406,7 +410,7 @@ mod tests {
 
     impl<F> Discovered<F>
     where
-        F: Fn(Option<&MicTarget>) -> DeviceInventory<AlsaDevice> + Send + Sync + 'static,
+        F: Fn(Option<&MicTarget>, &[String]) -> DeviceInventory<AlsaDevice> + Send + Sync + 'static,
     {
         fn new(discover: F) -> Self {
             Self {
@@ -432,6 +436,7 @@ mod tests {
     struct FakeControl<const N: usize> {
         identity: alsa::Result<(&'static str, &'static str)>,
         devices: [alsa::Result<u32>; N],
+        capture_error: Option<(u32, alsa::Error)>,
     }
 
     impl<const N: usize> FakeControl<N> {
@@ -439,7 +444,11 @@ mod tests {
             identity: alsa::Result<(&'static str, &'static str)>,
             devices: [alsa::Result<u32>; N],
         ) -> Self {
-            Self { identity, devices }
+            Self {
+                identity,
+                devices,
+                capture_error: None,
+            }
         }
     }
 
@@ -453,14 +462,17 @@ mod tests {
             self.devices.iter().copied()
         }
 
-        fn query_capture(&self, _device: u32) -> alsa::Result<()> {
-            Ok(())
+        fn query_capture(&self, device: u32) -> alsa::Result<()> {
+            match self.capture_error {
+                Some((index, error)) if index == device => Err(error),
+                _ => Ok(()),
+            }
         }
     }
 
     impl<F> CaptureBackend for Discovered<F>
     where
-        F: Fn(Option<&MicTarget>) -> DeviceInventory<AlsaDevice> + Send + Sync + 'static,
+        F: Fn(Option<&MicTarget>, &[String]) -> DeviceInventory<AlsaDevice> + Send + Sync + 'static,
     {
         type Device = AlsaDevice;
         type Stream = ();
@@ -468,8 +480,9 @@ mod tests {
         fn devices(
             &self,
             target: Option<&MicTarget>,
+            listed_label_ids: &[String],
         ) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
-            Ok((self.discover)(target))
+            Ok((self.discover)(target, listed_label_ids))
         }
 
         fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
@@ -511,7 +524,7 @@ mod tests {
         let devices = Arc::new(Mutex::new(devices));
         let backend = Arc::new(Discovered::new({
             let devices = Arc::clone(&devices);
-            move |_target: Option<&MicTarget>| DeviceInventory {
+            move |_target: Option<&MicTarget>, _listed_label_ids: &[String]| DeviceInventory {
                 devices: devices.lock().unwrap().clone(),
                 discovery_error: None,
             }
@@ -544,11 +557,12 @@ mod tests {
         let working_inputs = Arc::new(AtomicBool::new(true));
         let backend = Arc::new(Discovered::new({
             let working_inputs = Arc::clone(&working_inputs);
-            move |target| {
+            move |target, listed_label_ids| {
                 let working = working_inputs.load(Ordering::Relaxed);
                 discover_devices(
                     (0..if working { 2 } else { 1 }).map(|index| Ok(alsa::Card::new(index))),
                     target,
+                    listed_label_ids,
                     |card| {
                         if card.get_index() == 0 {
                             return Err(alsa::Error::new("snd_ctl_open", libc::EACCES));
@@ -578,19 +592,20 @@ mod tests {
     }
 
     #[test]
-    fn reopening_saved_id_reports_its_own_card_control_denial_not_another_cards() {
+    fn reopening_listed_input_reports_its_own_card_control_denial_not_another_cards() {
         #[derive(Clone, Copy)]
         enum CardState {
             Available,
             OpenDenied,
             InfoDenied,
             Removed,
+            RemovedDuringLookup,
             Replaced,
         }
         let card_state = Arc::new(Mutex::new(CardState::Available));
         let backend = Arc::new(Discovered::new({
             let card_state = Arc::clone(&card_state);
-            move |target| {
+            move |target, listed_label_ids| {
                 let state = *card_state.lock().unwrap();
                 let first_index = if matches!(state, CardState::Removed) {
                     1
@@ -600,6 +615,7 @@ mod tests {
                 discover_devices(
                     (first_index..3).map(|index| Ok(alsa::Card::new(index))),
                     target,
+                    listed_label_ids,
                     |card| match card.get_index() {
                         0 => match state {
                             CardState::OpenDenied => {
@@ -609,6 +625,9 @@ mod tests {
                                 Err(alsa::Error::new("snd_ctl_card_info", libc::EACCES)),
                                 [Ok(0)],
                             )),
+                            CardState::RemovedDuringLookup => {
+                                Err(alsa::Error::new("snd_ctl_open", libc::ENODEV))
+                            }
                             CardState::Replaced => {
                                 Ok(FakeControl::new(Ok(("Replacement", "Desk Mic")), [Ok(0)]))
                             }
@@ -630,21 +649,36 @@ mod tests {
         let pool = MicPoolInner::new(true, Arc::clone(&backend));
         let listed = pool.devices().unwrap();
         assert_eq!(listed[0].label, "Desk Mic");
-        let desk = MicSpec::new(1, 48_000).with_device(&listed[0].id);
-        let headset = MicSpec::new(1, 48_000).with_device(&listed[1].id);
+        let spec = MicSpec::new(1, 48_000);
+        let desk_id = spec.clone().with_device(&listed[0].id);
+        let desk_label = spec.clone().with_label(&listed[0].label);
+        let headset_label = spec.clone().with_label(&listed[1].label);
+        let headset_id = spec.with_device(&listed[1].id);
         for (state, expected) in [
             (CardState::OpenDenied, MicRefusal::OsDenied),
             (CardState::InfoDenied, MicRefusal::OsDenied),
             (CardState::Removed, MicRefusal::NoDevice),
-            (CardState::Replaced, MicRefusal::NoDevice),
+            (CardState::RemovedDuringLookup, MicRefusal::NoDevice),
         ] {
             *card_state.lock().unwrap() = state;
-            assert_eq!(pool.open(&desk).err(), Some(expected));
+            assert_eq!(pool.open(&desk_id).err(), Some(expected));
+            assert_eq!(pool.open(&desk_label).err(), Some(expected));
         }
-        pool.open(&headset).unwrap().close();
+        *card_state.lock().unwrap() = CardState::Replaced;
+        assert_eq!(pool.open(&desk_id).err(), Some(MicRefusal::NoDevice));
+        assert!(backend.opened.lock().unwrap().is_empty());
+        // The formerly denied label can select a present match; the ID may not retarget.
+        pool.open(&desk_label).unwrap().close();
+        *card_state.lock().unwrap() = CardState::OpenDenied;
+        pool.open(&headset_label).unwrap().close();
+        pool.open(&headset_id).unwrap().close();
         assert_eq!(
             *backend.opened.lock().unwrap(),
-            ["plughw:CARD=Headset,DEV=0"]
+            [
+                "plughw:CARD=Replacement,DEV=0",
+                "plughw:CARD=Headset,DEV=0",
+                "plughw:CARD=Headset,DEV=0",
+            ]
         );
     }
 
@@ -653,7 +687,7 @@ mod tests {
         let other_card = Arc::new(AtomicBool::new(false));
         let backend = Arc::new(Discovered::new({
             let other_card = Arc::clone(&other_card);
-            move |target| {
+            move |target, listed_label_ids| {
                 let end = if other_card.load(Ordering::Relaxed) {
                     2
                 } else {
@@ -662,6 +696,7 @@ mod tests {
                 discover_devices(
                     (0..end).map(|index| Ok(alsa::Card::new(index))),
                     target,
+                    listed_label_ids,
                     |card| {
                         if card.get_index() == 0 {
                             Ok(FakeControl::new(
@@ -706,6 +741,82 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_pcm_discovery_does_not_open_a_partial_label_match() {
+        #[derive(Clone, Copy)]
+        enum Fault {
+            Walk(i32),
+            CaptureQuery,
+        }
+        for (fault, second_card, expected) in [
+            (Fault::Walk(libc::EIO), false, MicRefusal::DeviceFailed),
+            (Fault::Walk(libc::EACCES), false, MicRefusal::OsDenied),
+            (Fault::Walk(libc::EIO), true, MicRefusal::DeviceFailed),
+            (Fault::CaptureQuery, false, MicRefusal::DeviceFailed),
+        ] {
+            let backend = Arc::new(Discovered::new(move |target, listed_label_ids| {
+                discover_devices(
+                    (0..if second_card { 2 } else { 1 }).map(|index| Ok(alsa::Card::new(index))),
+                    target,
+                    listed_label_ids,
+                    |card| {
+                        if card.get_index() != 0 {
+                            return Ok(FakeControl::new(
+                                Ok(("OtherDesk", "Desk Mic")),
+                                [
+                                    Err(alsa::Error::new("snd_ctl_pcm_next_device", libc::EIO)),
+                                    Ok(0),
+                                ],
+                            ));
+                        }
+                        let mut ctl = FakeControl::new(
+                            Ok(("Desk", "Desk Mic")),
+                            [
+                                Ok(0),
+                                match fault {
+                                    Fault::Walk(errno) if !second_card => {
+                                        Err(alsa::Error::new("snd_ctl_pcm_next_device", errno))
+                                    }
+                                    _ => Ok(1),
+                                },
+                            ],
+                        );
+                        if matches!(fault, Fault::CaptureQuery) {
+                            ctl.capture_error =
+                                Some((1, alsa::Error::new("snd_ctl_pcm_info", libc::EIO)));
+                        }
+                        Ok(ctl)
+                    },
+                    |pcm| {
+                        if pcm == "plughw:CARD=Desk,DEV=0" {
+                            Ok(())
+                        } else {
+                            Err(alsa::Error::new("snd_pcm_open", libc::ENODEV))
+                        }
+                    },
+                )
+            }));
+            let pool = MicPoolInner::new(true, Arc::clone(&backend));
+            assert_eq!(
+                pool.devices().unwrap(),
+                [mod_api::MicDevice::new(
+                    "alsa:0:plughw:CARD=Desk,DEV=0".into(),
+                    "Desk Mic".into(),
+                )]
+            );
+            let spec = MicSpec::new(1, 48_000);
+            assert_eq!(
+                pool.open(&spec.clone().with_label("Desk Mic")).err(),
+                Some(expected)
+            );
+            assert!(backend.opened.lock().unwrap().is_empty());
+            pool.open(&spec.with_device("alsa:0:plughw:CARD=Desk,DEV=0"))
+                .unwrap()
+                .close();
+            assert_eq!(*backend.opened.lock().unwrap(), ["plughw:CARD=Desk,DEV=0"]);
+        }
+    }
+
+    #[test]
     fn a_busy_alsa_card_keeps_its_selector_instead_of_retargeting_a_same_label_input() {
         let first = "plughw:CARD=Headset,DEV=0";
         let second = "plughw:CARD=Headset_1,DEV=0";
@@ -716,7 +827,7 @@ mod tests {
         let devices = Arc::new(Mutex::new(probe_endpoints(endpoints.clone(), |_| Ok(()))));
         let backend = Arc::new(Discovered::new({
             let devices = Arc::clone(&devices);
-            move |_target: Option<&MicTarget>| DeviceInventory {
+            move |_target: Option<&MicTarget>, _listed_label_ids: &[String]| DeviceInventory {
                 devices: devices.lock().unwrap().clone(),
                 discovery_error: None,
             }
