@@ -713,54 +713,56 @@ impl Game<'_> {
             "pad" => Ok(Some(self.pad_command(&words)?)),
             "key" => {
                 let key = key_code(arg(1)?).ok_or_else(|| format!("unknown key {}", words[1]))?;
-                let action = arg(2)?;
+                let mut action = arg(2)?;
                 if !matches!(action, "down" | "up" | "tap" | "repeat") {
                     return Err(format!(
                         "key action must be down, up, tap or repeat, not {action}"
                     )
                     .into());
                 }
-                if action == "up" {
-                    // Like the window's physical release, this is independent of which screen
-                    // now receives the event. A press can have closed that screen in the meantime.
-                    self.press_modifier_key(key, false);
-                    self.physical_keys.remove(&key);
-                } else {
+                let mut preset_press = Ok(());
+                if action != "up" {
                     self.input_keyboard_used();
                     // As a window's key press: the radial menu closes, and the key goes on.
                     self.pad_radial_cancel();
-                }
-                // The command confirmation takes the keys; none go past it.
-                if self.command_prompt.is_some() {
-                    if action != "up" {
+                    // The command confirmation and server dialog take the keys, even in configuration.
+                    if self.command_prompt.is_some() {
                         self.command_prompt_key(key);
+                        return ok();
                     }
-                    return ok();
-                }
-                // A server's dialog takes the keys, in configuration too.
-                if self.dialog_open() {
-                    if action != "up" {
+                    if self.dialog_open() {
                         self.dialog_key(key, None, None)?;
+                        return ok();
                     }
-                    return ok();
+                    // A bound world preset editor handles keys even when no world is loaded.
+                    if self.preset_editor_title().is_some() {
+                        self.press_modifier_key(key, true);
+                        self.physical_keys.insert(key);
+                        preset_press =
+                            self.preset_editor_key_pressed(event_loop, key, action == "repeat");
+                        if action != "tap" {
+                            preset_press?;
+                            return ok();
+                        }
+                        // The press may have requested a different title screen. Resolve that
+                        // transition before sending the second event, as for separate down and up.
+                        self.settle_title_mode();
+                        action = "up";
+                    }
                 }
-                if action == "up" && self.title.is_some() {
-                    self.screen_key_released(key);
-                    return ok();
-                }
-                // A bound world preset editor handles keys even when no world is loaded.
-                if self.preset_editor_title().is_some() {
-                    self.press_modifier_key(key, true);
-                    self.physical_keys.insert(key);
-                    let result =
-                        self.preset_editor_key_pressed(event_loop, key, action == "repeat");
-                    if action == "tap" {
-                        self.press_modifier_key(key, false);
-                        self.physical_keys.remove(&key);
+                if action == "up" {
+                    // The physical release happens regardless of which screen receives the event.
+                    self.press_modifier_key(key, false);
+                    self.physical_keys.remove(&key);
+                    let intercepted = self.command_prompt.is_some() || self.dialog_open();
+                    let title = self.title.is_some();
+                    if title && !intercepted {
                         self.screen_key_released(key);
                     }
-                    result?;
-                    return ok();
+                    preset_press?;
+                    if title || intercepted {
+                        return ok();
+                    }
                 }
                 self.require_world()?;
                 // KeyboardHandler.keyPress: the open screen's narration hears it.
@@ -837,7 +839,7 @@ impl Game<'_> {
                     && action != "up"
                     && self.screen_key_post(physical, true, action == "repeat")
                 {
-                    if arg(2)? == "tap" {
+                    if action == "tap" {
                         self.physical_keys.remove(&physical);
                     }
                     return ok();

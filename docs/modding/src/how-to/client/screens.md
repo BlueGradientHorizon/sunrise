@@ -54,8 +54,13 @@ closes; there is no close that skips it, because the vanilla client never omits 
 Bind a `PresetEditor` to a world preset with `register_preset_editors`. While `world_preset_editor`
 is open, keys consumed by the input method during composition do not reach `PresetEditor::key_pressed`
 or the editor's Done and Cancel buttons. Committed characters go through the usual character hooks
-and `PresetEditor::char_typed`, separately from key presses. A release after the editor closes goes
-to the screen now open with the released key no longer held.
+and `PresetEditor::char_typed`, separately from key presses.
+
+The control socket sends `screen_key_released_pre` to the currently open title screen, even if
+that screen did not receive the matching press. For example, when Escape closes the preset editor,
+its release goes to Create World, including when Escape is sent as a single tap. The released key
+is no longer held. If it was a modifier, its bit is already cleared in `event.modifiers` unless
+the other key for the same modifier is still held.
 
 ## Drawing a dimension transition
 

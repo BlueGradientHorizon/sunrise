@@ -46,7 +46,7 @@ mod tests {
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
         RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
         ScreenKeyPressedPostEvent, ScreenKeyPressedPreEvent, ScreenKeyReleasedPreEvent,
-        ScreenRenderPostEvent,
+        ScreenOpening, ScreenOpeningEvent, ScreenRenderPostEvent,
     };
     use std::sync::{
         Mutex,
@@ -137,7 +137,8 @@ mod tests {
         typed: Arc<Mutex<String>>,
         char_post: Arc<Mutex<String>>,
         key_post: Arc<Mutex<Vec<String>>>,
-        shift_releases_in_create: Arc<Mutex<Vec<u32>>>,
+        releases: Arc<Mutex<Vec<(String, String, u32)>>>,
+        create_openings: Arc<AtomicUsize>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for EditorMod {
@@ -173,17 +174,27 @@ mod tests {
             mod_api::Flow::Continue
         }
 
+        fn screen_opening(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenOpeningEvent<'_>,
+        ) -> Option<ScreenOpening> {
+            if event.current.id == "world_preset_editor" && event.new.id == "world_create" {
+                self.create_openings.fetch_add(1, Ordering::Relaxed);
+            }
+            None
+        }
+
         fn screen_key_released_pre(
             &self,
             _: &dyn mod_api::ClientHost,
             event: &mut ScreenKeyReleasedPreEvent<'_>,
         ) -> mod_api::Flow {
-            if event.screen.id == "world_create" && event.key == "key.keyboard.left.shift" {
-                self.shift_releases_in_create
-                    .lock()
-                    .unwrap()
-                    .push(event.modifiers);
-            }
+            self.releases.lock().unwrap().push((
+                event.screen.id.to_owned(),
+                event.key.to_owned(),
+                event.modifiers,
+            ));
             mod_api::Flow::Continue
         }
 
@@ -252,7 +263,8 @@ mod tests {
         let typed = Arc::new(Mutex::new(String::new()));
         let char_post = Arc::new(Mutex::new(String::new()));
         let key_post = Arc::new(Mutex::new(Vec::new()));
-        let shift_releases_in_create = Arc::new(Mutex::new(Vec::new()));
+        let releases = Arc::new(Mutex::new(Vec::new()));
+        let create_openings = Arc::new(AtomicUsize::new(0));
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
@@ -262,7 +274,8 @@ mod tests {
                     typed: Arc::clone(&typed),
                     char_post: Arc::clone(&char_post),
                     key_post: Arc::clone(&key_post),
-                    shift_releases_in_create: Arc::clone(&shift_releases_in_create),
+                    releases: Arc::clone(&releases),
+                    create_openings: Arc::clone(&create_openings),
                 }),
             )]
             .into(),
@@ -318,6 +331,7 @@ mod tests {
                     );
                     game.title = Some(title);
                     game.screen = Screen::Playing;
+                    game.settle_title_mode();
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
                     game.title.as_ref().unwrap().draw(
                         &game.gui.atlas,
@@ -424,6 +438,7 @@ mod tests {
 
                     // Releases target the screen that is open when they arrive, not the editor
                     // that saw the presses. No world is loaded on either screen.
+                    releases.lock().unwrap().clear();
                     for line in ["key shift down", "key q down"] {
                         game.control_command(line, &reply, &NoopLoop).unwrap();
                     }
@@ -439,7 +454,24 @@ mod tests {
                     assert!(!game.has_shift_down());
                     assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
                     assert!(!game.physical_keys.contains(&KeyCode::KeyQ));
-                    assert_eq!(*shift_releases_in_create.lock().unwrap(), [0]);
+                    assert_eq!(create_openings.load(Ordering::Relaxed), 1);
+                    assert_eq!(
+                        releases
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .map(|(screen, key, modifiers)| (
+                                screen.as_str(),
+                                key.as_str(),
+                                *modifiers
+                            ))
+                            .collect::<Vec<_>>(),
+                        [
+                            ("world_create", "key.keyboard.escape", 1),
+                            ("world_create", "key.keyboard.left.shift", 0),
+                            ("world_create", "key.keyboard.q", 0),
+                        ]
+                    );
                     sunrise_client::title::preset_editors::register(Vec::new());
                 });
             },
