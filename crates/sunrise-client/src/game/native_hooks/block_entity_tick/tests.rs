@@ -1,10 +1,11 @@
 use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::{
-    BlockEntityPart, BlockEntityTickEvent, BlockPart, Hooks, HostTransaction, ModEntry, Registrar,
+    BlockEntityLoadAdditionalEvent, BlockEntityPart, BlockEntitySaveAdditionalEvent,
+    BlockEntityTickEvent, BlockPart, Hooks, HostTransaction, LevelHost, ModEntry, Registrar,
 };
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicU32, Ordering},
 };
 use sunrise_client::{
@@ -206,25 +207,49 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
     });
 }
 
-struct Tick;
+#[derive(Clone, Default)]
+struct Effects {
+    notices: Arc<AtomicU32>,
+    ticks: Arc<AtomicU32>,
+    loaded_items: Arc<Mutex<Option<Tag>>>,
+    saved_items: Arc<Mutex<Option<Tag>>>,
+}
 #[mod_api::sunrise_part]
-impl BlockPart for Tick {}
-#[mod_api::sunrise_part]
-impl BlockEntityPart for Tick {
+impl BlockEntityPart for Effects {
+    fn block_entity_ticks(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::BlockEntityTicksEvent<'_>,
+    ) {
+        event.ticks = true;
+    }
+
     fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
-        event
-            .subject
-            .with_view(|mut view| assert!(view.set_data_slot(0, 1)))
-            .unwrap();
+        self.ticks.fetch_add(1, Ordering::Relaxed);
+        let _ = event.subject.with_view(|mut view| view.set_data_slot(0, 1));
+    }
+
+    fn block_entity_load_additional(
+        &self,
+        _: &dyn LevelHost,
+        event: &mut BlockEntityLoadAdditionalEvent<'_>,
+    ) {
+        *self.loaded_items.lock().unwrap() = event.tag.get(&"Items".into()).cloned();
+    }
+
+    fn block_entity_save_additional(
+        &self,
+        _: &dyn LevelHost,
+        event: &mut BlockEntitySaveAdditionalEvent<'_>,
+    ) {
+        *self.saved_items.lock().unwrap() = event.tag.get(&"Items".into()).cloned();
     }
 }
-
-struct Effects(Arc<AtomicU32>);
 #[mod_api::sunrise_part]
 impl BlockPart for Effects {
     fn contents_changed(&self, _: &mut dyn ServerHost, event: &mut mod_api::ContentsChangedEvent) {
         if event.pos == mod_api::BlockPos::new(POS.0, POS.1, POS.2) {
-            self.0.fetch_add(1, Ordering::Relaxed);
+            self.notices.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -235,12 +260,12 @@ impl Hooks for Effects {
             .block_entity_type("subscribed")
             .blocks(&[MACHINE, CONTAINER_MACHINE])
             .build();
-        r.block_entity_part(&kind, Tick).unwrap();
+        r.block_entity_part(&kind, self.clone()).unwrap();
         r.block_entity_type("unsubscribed")
             .blocks(&[UNSUBSCRIBED_MACHINE])
             .build();
         let machine = r.block_key(MACHINE);
-        r.block_part(machine, Effects(self.0.clone()));
+        r.block_part(machine, self.clone());
         let container_machine = r.block_key(CONTAINER_MACHINE);
         r.block_container(
             &container_machine,
@@ -264,19 +289,77 @@ impl Hooks for Effects {
     }
 }
 
-fn with_ticker(test: impl FnOnce(&mut Game<'_>, &AtomicU32)) {
-    let notices = Arc::new(AtomicU32::new(0));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "view_tick",
-        Box::new(Effects(notices.clone())),
-    )]
-    .into();
+fn with_ticker(test: impl FnOnce(&mut Game<'_>, &Effects)) {
+    let effects = Effects::default();
+    let mods: mod_api::Mods = vec![ModEntry::new("view_tick", Box::new(effects.clone()))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = crate::game::native_entity_refs::tests::fixture_root();
         let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
-        with_game_at(root.prepared().to_owned(), |game| test(game, &notices));
+        with_game_at(root.prepared().to_owned(), |game| test(game, &effects));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_invalid_resident_block_entity_is_not_dispatched() {
+    use crate::game::{
+        block_entity_ticks::{BlockEntityTick, BlockEntityTickSlot},
+        published_loops::LoopFlow,
+    };
+
+    struct Invalidate {
+        glass: BlockStateId,
+        visited: bool,
+    }
+    impl BlockEntityTickSlot for Invalidate {
+        fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
+            assert_eq!(tick.pos, POS);
+            self.visited = true;
+            // This before-slot's raw write keeps the row and its ticker live.
+            tick.game
+                .world
+                .set(POS.0, POS.1, POS.2, self.glass)
+                .unwrap();
+            LoopFlow::Continue
+        }
+    }
+
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::an_invalid_resident_block_entity_is_not_dispatched";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_INVALID_TICK", &["run"]) {
+        return;
+    }
+    with_ticker(|game, effects| {
+        let subject = place_subject(game, KIND);
+        let valid = game.world.block(POS.0, POS.1, POS.2);
+        let glass = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:glass")
+            .unwrap();
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(8.5, 65.0, 8.5),
+            )
+            .unwrap(),
+        );
+        game.update_chunk_tickets();
+        let mut slot = Invalidate {
+            glass,
+            visited: false,
+        };
+        game.tick_block_entities_with(&mut slot).unwrap();
+        assert!(slot.visited);
+        assert_eq!(effects.ticks.load(Ordering::Relaxed), 0);
+        assert_eq!(subject.data_slots(game).unwrap(), [23]);
+
+        game.world.set(POS.0, POS.1, POS.2, valid).unwrap();
+        game.tick_mod_block_entity(POS);
+        assert_eq!(effects.ticks.load(Ordering::Relaxed), 1);
+        assert_eq!(subject.data_slots(game).unwrap(), [1]);
     });
 }
 
@@ -287,7 +370,8 @@ fn ticker_and_handle_setters_require_explicit_set_changed() {
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_TICK", &["run"]) {
         return;
     }
-    with_ticker(|game, notices| {
+    with_ticker(|game, effects| {
+        let notices = &effects.notices;
         let subject = place_subject(game, KIND);
         let machine_state = game.world.block(POS.0, POS.1, POS.2);
         game.world.block_entities.set_mod_containers(
@@ -350,14 +434,15 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_NO_TICK", &["run"]) {
         return;
     }
-    with_ticker(|game, notices| {
+    with_ticker(|game, effects| {
         let subject = place_subject(game, UNSUBSCRIBED);
         game.world.block_entities.sleep(POS);
         game.tick_mod_block_entity(POS);
         assert_eq!(subject.data_slots(game).unwrap(), [23]);
         assert!(game.world.block_entities.is_asleep(&POS));
         assert!(game.world.modified.is_empty());
-        assert_eq!(notices.load(Ordering::Relaxed), 0);
+        assert_eq!(effects.notices.load(Ordering::Relaxed), 0);
+        assert_eq!(effects.ticks.load(Ordering::Relaxed), 0);
     });
 }
 
@@ -371,7 +456,7 @@ fn chunk_save_reloads_reordered_slotless_items() {
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_ORDER", &["run"]) {
         return;
     }
-    with_ticker(|game, _| {
+    with_ticker(|game, effects| {
         let subject = place_subject(game, KIND);
         let item = |slot| {
             Tag::compound([
@@ -401,6 +486,7 @@ fn chunk_save_reloads_reordered_slotless_items() {
 
         write_items(game, subject, initial.clone());
         let mut loaded = save_reload(game);
+        assert_eq!(effects.saved_items.lock().unwrap().as_ref(), Some(&initial));
         let BlockEntity::Mod(entity) = &loaded.block_entities[0].1 else {
             panic!("expected slotless mod block entity");
         };
@@ -413,6 +499,19 @@ fn chunk_save_reloads_reordered_slotless_items() {
         let subject = game
             .block_entity(game.level(game.dim.id()).unwrap(), pos)
             .unwrap();
+        game.fire_pending_block_entity_loads();
+        assert_eq!(
+            effects.loaded_items.lock().unwrap().as_ref(),
+            Some(&initial)
+        );
+        assert_eq!(
+            subject.data(game).unwrap().get(&"Items".into()),
+            Some(&initial)
+        );
+        // Capture a save straight after loading as well: the hook must not sort the rows.
+        *effects.saved_items.lock().unwrap() = None;
+        let _ = save_reload(game);
+        assert_eq!(effects.saved_items.lock().unwrap().as_ref(), Some(&initial));
         write_items(game, subject, reordered.clone());
 
         let reloaded = save_reload(game);

@@ -1064,8 +1064,9 @@ A status or control screen that has no item slots at all can omit the player inv
 
 `player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
 container slots, never the optional player group. A mapping to an absent slot is refused at load.
-The `data_slots` count is separate from `slots`. A block-backed menu sends only the signed-short
-index range (0 through 32,767); a blockless mod menu sends all its declared `i32` values.
+The `data_slots` count is separate from `slots`. Larger declarations can be stored on the server,
+but each sync packet retains its index range: 0 through 32,767 for a block-backed menu and
+0 through 65,535 for the negotiated blockless payload.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and

@@ -71,9 +71,10 @@ its container; acquire a new handle for the replacement.
 ## Borrow the ticking machine
 
 `BlockEntityPart::block_entity_tick` receives a `BlockEntityTickEvent<'_>` and no
-separate Host argument. Its `subject` lends the live row. Use the view for the
-machine's own data, saved fields and internal slots. Derive owned values from the
-view before taking the Host for other objects. Each `with_view` loan checks that
+separate Host argument. It runs only if the block currently supports that entity type.
+Its `subject` lends the live row. Use the view for the machine's own data,
+saved fields and internal slots. Derive owned values from the view before taking
+the Host for other objects. Each `with_view` loan checks that
 the same entity instance is still loaded in the same level (same generation) and
 that the live block at `pos` is still valid for the block entity's type
 (`BlockEntityType.isValid`). In-place block-state updates to another valid state
@@ -303,11 +304,10 @@ player.open_mod_menu(
 )?;
 ```
 
-The initial `i32` values are sent in index order after the new window opens. Unlike the
-signed-short packet for block-backed menus, the blockless stream carries every declared
-index, including indices above 65,535. A client without this layout is refused with
-`OpenMenuError::PlayerUnavailable`. In the draw callback, read `frame.data.get(index)`;
-the values are not available before they arrive. The owning mod
+The negotiated blockless payload sends initial `i32` values after the window opens, at
+indices 0 through 65,535. Larger declared indices remain in server storage. A client
+without the required layout is refused with `OpenMenuError::PlayerUnavailable`. In the draw
+callback, read `frame.data.get(index)`; values are not available before they arrive. The owning mod
 gets the live `MenuRef` from `player.container_menu(host)` or the open event and calls, for
 example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a changed value,
 `false` for a repeat, and refuses unsupported, stale or foreign menus and undeclared indices.

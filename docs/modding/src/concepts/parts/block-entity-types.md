@@ -149,9 +149,10 @@ let done = Press::edit_state(host, entity, |_, progress| {
 Implement `BlockEntityPart::block_entity_save_additional` to serialize live mod state when the server
 captures this type's data. `event.tag` starts with the stored payload. Change that copy to write the
 value that goes into a chunk, a command read, or a copy into an item, loot or a structure. For a
-holder without declared slots, this copy includes any saved `Items`, and the listener can replace
-or remove that field. For a declared container, the game writes its inventory instead. Neither path
-changes the live entity or the separate client update tag.
+holder without declared inventory slots, this copy includes any saved `Items` as mod-owned NBT.
+Even canonical-looking item rows keep their saved list order instead of being reconstructed in
+slot order. The listener can replace or remove that field. For a declared container, the game
+writes its inventory instead. Neither path changes the live entity or the separate client update tag.
 Malformed payloads, including names or strings too long for NBT, are refused before any copy uses
 that output. If the region writer cannot encode or admit the complete chunk
 record, it retries with the stored block-entity payloads from the same snapshot. Other changes in
@@ -176,9 +177,12 @@ load or an unchanged result.
 
 Implement `BlockEntityPart::block_entity_load_additional` to refresh mod-owned state after the server
 applies a saved payload, including `/data merge` and `/data modify`, cloning, structure and item
-placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload, `event.pos` and `event.level` name the instance, and the
-read-only level host already sees the updated instance. `block_entity_on_load` follows when that
-instance is new; it also fires for a fresh placement that had no saved data.
+placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload,
+`event.pos` and `event.level` name the instance, and the read-only level host already sees the
+updated instance. On a slotless holder, `event.tag` and `BlockEntityRef::data` include any saved
+`Items` field in its original list order, even if its entries look like inventory rows.
+`block_entity_on_load` follows when that instance is new; it also fires for a fresh placement
+that had no saved data.
 
 Direct Mod API `merge_data` and `replace_data` writes and transaction restores do not fire the
 notice. Client sync instead uses `block_entity_data_received`.

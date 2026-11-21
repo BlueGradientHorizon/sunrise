@@ -2114,16 +2114,16 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn blockless_menu_sends_snapshot_and_commit_above_unsigned_short_range() {
-        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot, LIVE_DATA_REVISION};
+    fn revision_two_blockless_menu_sends_data_above_255() {
+        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
 
-        const INDEX: usize = 65_536;
+        const INDEX: u16 = 256;
         sunrise_client::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
                 "status_package".into(),
                 0,
-                INDEX + 1,
+                usize::from(INDEX) + 1,
                 Vec::new(),
                 Vec::new(),
                 None,
@@ -2138,10 +2138,11 @@ mod tests {
                         .unwrap()
                         .hub
                         .guests
-                        .update(0, |g| g.sender.menu_extra_rev = LIVE_DATA_REVISION);
+                        .update(0, |g| g.sender.menu_extra_rev = 2);
                     let player = game.player(123).unwrap();
-                    let mut data = vec![0; INDEX + 1];
-                    data[INDEX] = -80_000;
+                    let index = usize::from(INDEX);
+                    let mut data = vec![0; index + 1];
+                    data[index] = -80_000;
                     let window = player
                         .open_mod_menu(
                             game,
@@ -2163,9 +2164,9 @@ mod tests {
                         })
                     };
                     let snapshot = updates().collect::<Vec<_>>();
-                    assert_eq!(snapshot.len(), INDEX + 1);
+                    assert_eq!(snapshot.len(), index + 1);
                     assert_eq!(
-                        snapshot[INDEX],
+                        snapshot[index],
                         DataSlot {
                             window,
                             index: INDEX,
@@ -2182,7 +2183,7 @@ mod tests {
                     let menu = player.container_menu(game).unwrap();
                     let host: &mut dyn ServerHost = game;
                     let committed: Result<(), ()> = host.transaction(|host, _| {
-                        assert_eq!(menu.set_data_slot(host, INDEX, i32::MAX), Ok(true));
+                        assert_eq!(menu.set_data_slot(host, index, i32::MAX), Ok(true));
                         assert!(sent(&rx).is_empty());
                         Ok(())
                     });

@@ -3,6 +3,8 @@
 
 pub trait Hooks {
     /// A server tick of a resident mod block entity of your registered `kind`.
+    /// The game skips the callback if the current block does not support that
+    /// entity type, as in `LevelChunk.BoundTickingBlockEntity.tick`.
     /// `event.subject.with_view` lends its live storage. To reach the level or
     /// another object, return from the loan and call `event.subject.host()`.
     /// Ask for another loan afterwards; it returns `None` if the level, chunk
@@ -29,7 +31,7 @@ pub trait Hooks {
         scope = "block_entity",
         key = "kind",
         neoforge = "none (vanilla BlockEntityTicker; NeoForge adds no event or extension for it)",
-        version = 3
+        version = 4
     )]
     fn block_entity_tick(
         kind: mod_api::BlockEntityTypeKey,

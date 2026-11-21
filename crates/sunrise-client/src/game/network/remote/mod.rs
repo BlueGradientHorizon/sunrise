@@ -3459,7 +3459,7 @@ impl Game<'_> {
                     .is_some_and(|r| r.registries.menu_extra_revision >= LIVE_DATA_REVISION)
                     && let Ok(slot) = DataSlot::decode(&p.data)
                 {
-                    self.native_screen_data(slot.window, slot.index, slot.value, true);
+                    self.native_screen_data(slot.window, usize::from(slot.index), slot.value);
                 }
             }
             // A mod menu type's opening context, just before its OpenScreen.
@@ -5003,7 +5003,7 @@ impl Game<'_> {
             }
             C::ContainerSetData(p)
                 if usize::try_from(p.id).is_ok_and(|index| {
-                    self.native_screen_data(p.container, index, i32::from(p.value), false)
+                    self.native_screen_data(p.container, index, i32::from(p.value))
                 }) => {}
             C::ContainerSetData(p) => {
                 let v = i32::from(p.value);

@@ -1492,7 +1492,9 @@ pub trait LevelHost {
         Err(crate::PartStateError::Stale)
     }
     /// Read this level's copy of a block entity's saved data without identity or position
-    /// metadata. This never loads chunks or opens loot containers.
+    /// metadata. This never loads chunks or opens loot containers. A mod holder
+    /// without declared inventory slots exposes saved `Items` as mod-owned NBT
+    /// and preserves the saved list order.
     /// Returns `None` when no saved data is available, the handle is stale, or it names
     /// another level or world. A view with no block entities returns `None` explicitly.
     fn block_entity_data(&self, entity: crate::BlockEntityRef) -> Option<crate::Compound>;

@@ -132,9 +132,9 @@ pointer truncates toward zero, including outside the panel. `origin: [f32; 2]`
 is the panel's top-left; `at: [f32; 2]` is the pointer relative to that origin,
 without truncation. Use these values for hover regions and layout after a resize
 or panel move. `frame.data` borrows the current menu's live data slots, which may
-not have arrived yet. Use `frame.data.get(index)`: a block-backed menu only sends
-indices 0 through 32,767 with signed-short values, while a blockless mod menu sends
-`i32` values at every declared index. Live data is not the opening payload: decode
+not have arrived yet. Use `frame.data.get(index)`: a block-backed menu sends
+signed-short values at indices 0 through 32,767, and the negotiated blockless
+payload sends `i32` values at indices 0 through 65,535. Live data is not the opening payload: decode
 `open.extra` in the factory and capture only the owned values the callbacks need.
 
 To draw a sprite from synchronized menu data, see

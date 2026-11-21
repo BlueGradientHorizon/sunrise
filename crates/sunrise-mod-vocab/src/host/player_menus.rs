@@ -41,10 +41,10 @@ pub trait PlayerMenusBackendMut {
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
     /// (at most 32 KiB) is available only during construction in [`crate::MenuScreenOpen::extra`].
     /// `pos`, when given, is offered to the factory and available later through `screen_pos`.
-    /// `data` has exactly the menu type's `data_slots` signed `i32` values. Every index is
-    /// sent in order after opening and is read through [`crate::MenuScreenFrame::data`]. The
-    /// menu's owning mod can change them with [`MenuRef::set_data_slot`]. The old menu closes
-    /// on the server as a close does (its
+    /// `data` has exactly the menu type's `data_slots` signed `i32` values. The negotiated
+    /// blockless payload sends indices `0..=u16::MAX` after opening; read the received values
+    /// through [`crate::MenuScreenFrame::data`]. The menu's owning mod can change the stored
+    /// values with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps

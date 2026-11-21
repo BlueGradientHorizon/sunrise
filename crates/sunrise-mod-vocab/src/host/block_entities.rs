@@ -54,6 +54,8 @@ pub trait BlockEntitiesBackend {
     /// Side: both.
     /// An owned snapshot of the data saved without identity or position metadata
     /// (`BlockEntity.saveWithoutMetadata`). The save payload is assembled on request.
+    /// A mod holder without declared inventory slots returns saved `Items` as opaque
+    /// NBT in its original list order, even if entries look like canonical stacks.
     #[access(WorldOnly)]
     fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound>;
     /// Side: both.

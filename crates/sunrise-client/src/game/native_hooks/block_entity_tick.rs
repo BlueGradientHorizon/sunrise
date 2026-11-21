@@ -25,6 +25,15 @@ impl Game<'_> {
         let Some(kind) = entity.tick_kind() else {
             return;
         };
+        let live_state = self.world.block(pos.0, pos.1, pos.2);
+        let block = &self.res.facts().get(live_state).name;
+        if !valid_tick_subject(block, entity) {
+            log::warn!(
+                "Block entity {} at {pos:?} cannot tick on {block}",
+                entity.id()
+            );
+            return;
+        }
         let Some(level) = self.level(self.dim.id()) else {
             return;
         };
@@ -47,6 +56,10 @@ impl Game<'_> {
     ) {
         Self::fire_block_entity_tick(kind, subject);
     }
+}
+
+fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
+    sunrise_client::block_entity_types::valid(block, entity.id()) == Some(true)
 }
 
 struct TickAccess<'g, 'w> {
@@ -81,11 +94,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
         else {
             return;
         };
-        if sunrise_client::block_entity_types::valid(
-            &self.game.res.facts().get(live_state).name,
-            loan.entity.id(),
-        ) != Some(true)
-        {
+        if !valid_tick_subject(&self.game.res.facts().get(live_state).name, loan.entity) {
             return;
         }
         let mut data = TickData {

@@ -83,8 +83,8 @@ pub struct MenuScreenFrame<'a> {
     /// Pointer position relative to `origin`, without integer truncation.
     pub at: [f32; 2],
     /// Live data slots. Block-backed menus carry signed shorts as in vanilla, with
-    /// indices `0..=i16::MAX`. Blockless mod menus carry `i32` values at all their
-    /// declared indices. Use `get`: slots have not necessarily arrived yet.
+    /// indices `0..=i16::MAX`. The negotiated blockless payload carries `i32` values
+    /// with indices `0..=u16::MAX`. Use `get`: slots may not have arrived yet.
     pub data: &'a [i32],
 }
 

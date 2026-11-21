@@ -208,8 +208,9 @@ pub trait MenusBackendMut {
     /// Side: server.
     /// Set a data slot of the owning mod's current blockless menu (`DataSlot.set`).
     /// Returns true only if the value changed. Publishes the final signed `i32` at
-    /// its declared index at root commit (immediately outside a transaction); an abort
-    /// restores it silently. Stale handles, unsupported menus, other mods and undeclared
+    /// root commit (immediately outside a transaction) if the index fits `u16`.
+    /// Larger declared indices remain in server storage. An abort restores the
+    /// value silently. Stale handles, unsupported menus, other mods and undeclared
     /// indices are refused.
     #[access(WorldOnly)]
     fn menu_set_data_slot(

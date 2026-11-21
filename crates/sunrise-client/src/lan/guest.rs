@@ -907,11 +907,20 @@ impl Guest {
             Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
-    /// Send the complete committed data of this guest's current blockless menu.
+    /// Send the committed data that fits the negotiated blockless packet's index.
     pub fn send_menu_data_snapshot(&self) {
         let Some(menu) = &self.menu else { return };
-        for (index, &value) in menu.blockless_data.iter().enumerate() {
+        for (index, &value) in (0..=u16::MAX).zip(&menu.blockless_data) {
             self.send_menu_data(menu.window, index, value);
+        }
+        let wire_len = usize::from(u16::MAX) + 1;
+        if menu.blockless_data.len() > wire_len {
+            log::warn!(
+                "Sunrise: blockless menu window {} cannot sync data slots at indices {wire_len}..{} (DataSlot index max is {})",
+                menu.window,
+                menu.blockless_data.len(),
+                u16::MAX,
+            );
         }
     }
 
@@ -923,11 +932,18 @@ impl Guest {
         if *slot != value {
             *slot = value;
             let window = menu.window;
-            self.send_menu_data(window, index, value);
+            if let Ok(wire_index) = u16::try_from(index) {
+                self.send_menu_data(window, wire_index, value);
+            } else {
+                log::warn!(
+                    "Sunrise: blockless menu window {window} cannot sync data slot {index} (DataSlot index max is {})",
+                    u16::MAX,
+                );
+            }
         }
     }
 
-    fn send_menu_data(&self, window: i32, index: usize, value: i32) {
+    fn send_menu_data(&self, window: i32, index: u16, value: i32) {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
         self.send(&play::Clientbound::CustomPayload(CustomPayload {
             channel: DATA_CHANNEL.into(),
