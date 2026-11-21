@@ -157,63 +157,33 @@ impl Menu {
                     }
                     let mut source = self.state.carried.clone().expect("checked");
                     let mut remaining = source.count as i64;
-                    let observed = env.player_entity_id.is_some()
-                        && env.can_equip.is_some_and(|parts| parts.listens(&source))
-                        && self
-                            .state
-                            .quick_slots
-                            .iter()
-                            .any(|slot| matches!(self.state.slots[*slot].role, Role::Armor(_)));
-                    let mut input = observed.then(|| Some(source.clone()));
-                    let mut barrier = input
-                        .as_mut()
-                        .map(|slot| crate::mobs::equip::EquipDecision::new(0, slot));
-                    let carried = barrier.as_deref().unwrap_or(&source);
-                    if observed
-                        && !env.can_equip.unwrap().prepare(
-                            carried,
-                            env.player_entity_id.unwrap() as u32,
-                            "minecraft:player",
-                        )
-                    {
-                        self.reset_quick_craft();
-                        return Ok(None);
-                    }
                     for s in self.state.quick_slots.clone() {
-                        let proof = self.equip_placement(env, s, carried);
-                        if self.quick_replace(s, carried, env)
-                            && proof.allowed
-                            && (self.state.quick_type == 2
-                                || carried.count as usize >= self.state.quick_slots.len())
-                            && self.can_drag_to(s)
-                        {
-                            let have = self.slot(s).map_or(0, |c| c.count);
-                            let max = Self::max_stack(env, &source).min(proof.max);
-                            let new_count = quick_craft_count(
-                                self.state.quick_type as u8,
-                                source.count,
-                                self.state.quick_slots.len(),
-                                have,
-                                max,
-                                Self::max_stack(env, &source),
-                            );
-                            if !proof.can_apply(self, env, carried) {
-                                continue;
+                        if self.quick_replace(s, &source, env) {
+                            let (allowed, slot_max) = self.placement_rules(env, s, &source);
+                            if allowed
+                                && (self.state.quick_type == 2
+                                    || source.count as usize >= self.state.quick_slots.len())
+                                && self.can_drag_to(s)
+                            {
+                                let have = self.slot(s).map_or(0, |c| c.count);
+                                let max = Self::max_stack(env, &source).min(slot_max);
+                                let new_count = quick_craft_count(
+                                    self.state.quick_type as u8,
+                                    source.count,
+                                    self.state.quick_slots.len(),
+                                    have,
+                                    max,
+                                    Self::max_stack(env, &source),
+                                );
+                                remaining -= i64::from(new_count) - i64::from(have);
+                                let mut placed = source.clone();
+                                placed.count = new_count;
+                                self.set_by_player(env, s, Some(placed));
                             }
-                            remaining -= i64::from(new_count) - i64::from(have);
-                            let mut placed = source.clone();
-                            placed.count = new_count;
-                            self.set_by_player(env, s, Some(placed));
                         }
                     }
-                    self.state.carried = if let Some(barrier) = barrier.as_mut() {
-                        *barrier.count_mut().expect("drag source retained") =
-                            remaining.max(0) as u32;
-                        barrier.remove()
-                    } else {
-                        source.count = remaining.max(0) as u32;
-                        Some(source)
-                    };
+                    source.count = remaining.max(0) as u32;
+                    self.state.carried = Some(source);
                     tidy(&mut self.state.carried);
                 }
                 self.reset_quick_craft();
@@ -439,22 +409,14 @@ impl Menu {
 
     pub(super) fn pickup_inner(&mut self, env: &Env, s: usize, primary: bool) {
         self.touch();
-        if self.pickup_equip_carried(env, s, primary) {
-            return;
-        }
         let clicked = self.slot(s).cloned();
         match clicked {
             None => {
-                if let Some(mut carried) = self.state.carried.take() {
+                if let Some(carried) = self.state.carried.take() {
                     let amount = if primary { carried.count } else { 1 };
-                    let mut input = Some(carried.clone());
+                    let mut input = Some(carried);
                     self.safe_insert(env, s, &mut input, amount);
-                    carried = input.unwrap_or_else(|| {
-                        let mut e = carried.clone();
-                        e.count = 0;
-                        e
-                    });
-                    self.state.carried = Some(carried);
+                    self.state.carried = input;
                     tidy(&mut self.state.carried);
                 }
             }
@@ -479,20 +441,16 @@ impl Menu {
                         }
                     }
                 }
-                Some(mut carried) => {
-                    if self.may_place(env, s, &carried) {
+                Some(carried) => {
+                    let (allowed, max) = self.placement_rules(env, s, &carried);
+                    if allowed {
                         if clicked.same_item_same_components(&carried) {
                             let amount = if primary { carried.count } else { 1 };
-                            let mut input = Some(carried.clone());
-                            self.safe_insert(env, s, &mut input, amount);
-                            carried = input.unwrap_or_else(|| {
-                                let mut e = carried.clone();
-                                e.count = 0;
-                                e
-                            });
-                            self.state.carried = Some(carried);
+                            let mut input = Some(carried);
+                            self.safe_insert_with_placement(env, s, &mut input, amount, true, max);
+                            self.state.carried = input;
                             tidy(&mut self.state.carried);
-                        } else if carried.count <= self.slot_max(env, s, &carried) {
+                        } else if carried.count <= max {
                             self.state.carried = Some(clicked);
                             self.set_by_player(env, s, Some(carried));
                         } else {
@@ -500,7 +458,7 @@ impl Menu {
                         }
                     } else if clicked.same_item_same_components(&carried) {
                         let room = Self::max_stack(env, &carried).saturating_sub(carried.count);
-                        self.state.carried = Some(carried.clone());
+                        self.state.carried = Some(carried);
                         if let Some(mut taken) = self.try_remove(env, s, clicked.count, room) {
                             if let Some(c) = self.state.carried.as_mut() {
                                 c.count += taken.count;
@@ -528,9 +486,6 @@ impl Menu {
         if target_slot.container == PLAYER && target_slot.index == inv_slot {
             return None;
         }
-        if self.swap_equip_source(env, target, inv_slot) {
-            return None;
-        }
         let source = self.state.containers[PLAYER][inv_slot].clone();
         let target_stack = self.slot(target).cloned();
         if source.is_none() && target_stack.is_none() {
@@ -552,8 +507,8 @@ impl Menu {
                 }
             }
             (Some(mut source), None) => {
-                if self.may_place(env, target, &source) {
-                    let max = self.slot_max(env, target, &source);
+                let (allowed, max) = self.placement_rules(env, target, &source);
+                if allowed {
                     if source.count > max {
                         let part = split(&mut source, max);
                         self.state.containers[PLAYER][inv_slot] = Some(source);
@@ -565,23 +520,25 @@ impl Menu {
                 }
             }
             (Some(mut source), Some(mut taken)) => {
-                if self.may_pickup(env, target) && self.may_place(env, target, &source) {
-                    let max = self.slot_max(env, target, &source);
-                    if source.count > max {
-                        let part = split(&mut source, max);
-                        self.state.containers[PLAYER][inv_slot] = Some(source);
-                        self.set_by_player(env, target, Some(part));
-                        self.on_take(env, target, &mut taken);
-                        let rest = ClickStep::SwapOverflow(taken);
-                        return if self.take_pending() {
-                            Some(ClickContinuation(rest))
+                if self.may_pickup(env, target) {
+                    let (allowed, max) = self.placement_rules(env, target, &source);
+                    if allowed {
+                        if source.count > max {
+                            let part = split(&mut source, max);
+                            self.state.containers[PLAYER][inv_slot] = Some(source);
+                            self.set_by_player(env, target, Some(part));
+                            self.on_take(env, target, &mut taken);
+                            let rest = ClickStep::SwapOverflow(taken);
+                            return if self.take_pending() {
+                                Some(ClickContinuation(rest))
+                            } else {
+                                self.run_click_step(env, rest)
+                            };
                         } else {
-                            self.run_click_step(env, rest)
-                        };
-                    } else {
-                        self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
-                        self.set_by_player(env, target, Some(source));
-                        self.on_take(env, target, &mut taken);
+                            self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
+                            self.set_by_player(env, target, Some(source));
+                            self.on_take(env, target, &mut taken);
+                        }
                     }
                 }
             }

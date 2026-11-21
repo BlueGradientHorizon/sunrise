@@ -1863,7 +1863,12 @@ impl Menu {
 
     /// `Slot.getMaxStackSize(stack)`.
     fn slot_max(&self, env: &Env, s: usize, stack: &ItemStack) -> u32 {
-        let max = self.slot_rules(env, s, stack).2;
+        let max = match self.registry_id() {
+            Some(_) => self.slot_rules(env, s, stack).2,
+            None => self
+                .vanilla_slot_max(s, stack)
+                .min(Self::max_stack(env, stack)),
+        };
         self.limit_slot_max(s, max)
     }
 
@@ -2184,7 +2189,10 @@ impl Menu {
 
     /// `Slot.safeInsert`: puts up to `amount` of `input` into the slot.
     fn safe_insert(&mut self, env: &Env, s: usize, input: &mut Option<ItemStack>, amount: u32) {
-        self.insert_equip_source(env, s, input, amount);
+        self.touch();
+        let Some(stack) = input.as_ref() else { return };
+        let (allowed, max) = self.placement_rules(env, s, stack);
+        self.safe_insert_with_placement(env, s, input, amount, allowed, max);
     }
 
     // ---- Inventory ----
@@ -2314,7 +2322,7 @@ impl Menu {
         self.slot(s).is_some()
     }
 
-    /// `AbstractContainerMenu.moveItemStackTo`, with an owned equip source when subscribed.
+    /// `AbstractContainerMenu.moveItemStackTo`.
     fn move_to(
         &mut self,
         env: &Env,
@@ -2324,7 +2332,7 @@ impl Menu {
         backwards: bool,
     ) -> bool {
         self.touch();
-        self.move_to_equip_source(env, stack, start, end, backwards)
+        self.move_item_stack_to(env, stack, start, end, backwards)
     }
 
     /// `quickMoveStack` of the menu's kind; the moved stack's original copy

@@ -740,35 +740,10 @@ impl Game<'_> {
         // `Equippable.canBeEquippedBy`, then the item's parts (`canEquip`) with the stack converted
         // once, for the entity in front.
         let targets = self.targets_at(front);
-        let observed = mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item);
-        let mut source_slot = observed.then(|| Some(stack.clone()));
-        let mut source = source_slot.as_mut().map(|slot| {
-            sunrise_client::mobs::equip::EquipDecision::new(stack as *const _ as usize as u64, slot)
-        });
-        let entities = if observed {
-            targets
-                .iter()
-                .filter_map(|target| match target {
-                    Target::Player => Some(self.own_entity_id() as u32),
-                    Target::Guest(conn) => self
-                        .lan
-                        .as_ref()?
-                        .hub
-                        .guest(*conn)
-                        .map(|guest| guest.entity_id as u32),
-                    Target::Stand(i) => Some(self.armor_stands[*i].id),
-                    Target::Mob(i) => Some(self.mobs[*i].id),
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
-        };
-        let input = source.as_deref().map_or(&*stack, |source| source);
         let (tags, prepared) = (
             &self.stations().enchantments.entity_tags,
-            self.equip_stack(input, &entities),
+            self.equip_stack(stack),
         );
-        let stamp = source.as_ref().and_then(|source| source.stamp());
         let allows = |entity: u32, id: &str| {
             let data = equippable.allows(id, tags);
             self.can_equip(&prepared, equippable.slot, entity, id, data)
@@ -815,28 +790,7 @@ impl Game<'_> {
         let Some(target) = target else {
             return false;
         };
-        let entity = match target {
-            Target::Player => Some(self.own_entity_id() as u32),
-            Target::Guest(conn) => self
-                .lan
-                .as_ref()
-                .and_then(|lan| lan.hub.guest(conn))
-                .map(|guest| guest.entity_id as u32),
-            Target::Stand(i) => Some(self.armor_stands[i].id),
-            Target::Mob(i) => Some(self.mobs[i].id),
-        };
-        if !entity.is_some_and(|id| self.equip_can_apply(&prepared, id)) {
-            return false;
-        }
-        if let Some(source) = source.as_mut() {
-            if !stamp.is_some_and(|stamp| source.matches(stamp)) {
-                return false;
-            }
-            *source.count_mut().expect("live dispenser source") -= 1;
-            stack.count = source.count;
-        } else {
-            stack.count -= 1;
-        }
+        stack.count -= 1;
         // setItemSlot: onEquipItem plays the equip sound and the equip event.
         let (at, sound) = match target {
             Target::Guest(conn) => {
@@ -2499,12 +2453,11 @@ mod tests {
                 assert_eq!((done, worn, stand), (false, None, false));
                 assert_eq!(fits.asked().len(), 2);
                 // A missing entity is refused, and the part never hears of it.
-                let prepared = game.equip_stack(&helmet, &[]);
+                let prepared = game.equip_stack(&helmet);
                 assert!(!game.can_equip(&prepared, "head", 9_999, "minecraft:zombie", true));
                 assert!(fits.asked().is_empty());
                 // With no part to ask, the component's answer stands for any entity.
-                let chestplate =
-                    game.equip_stack(&ItemStack::new("minecraft:iron_chestplate", 1), &[]);
+                let chestplate = game.equip_stack(&ItemStack::new("minecraft:iron_chestplate", 1));
                 assert!(game.can_equip(&chestplate, "chest", 9_999, "minecraft:zombie", true));
             });
         });

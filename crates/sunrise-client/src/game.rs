@@ -503,8 +503,6 @@ mod entity_sounds;
 mod entity_type_rows;
 #[path = "game/items/equip_answers.rs"]
 mod equip_answers;
-#[path = "game/modding/equip_host.rs"]
-mod equip_host;
 #[path = "game/entities/equipment_piece.rs"]
 mod equipment_piece;
 #[cfg(test)]

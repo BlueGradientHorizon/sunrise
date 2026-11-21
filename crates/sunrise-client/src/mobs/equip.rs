@@ -2,14 +2,8 @@
 //! `compareWeapons`, `canReplaceEqualItem` and the per-species gates that
 //! decide whether a mob takes an item off the ground at all (`wantsToPickUp`,
 //! `canHoldItem`). `game/mobs/mob_looting.rs` reads the item data and calls these.
-#[path = "equip_decision.rs"]
-mod decision;
-#[path = "equip_source.rs"]
-mod source;
 use super::Species;
 use crate::items::ItemStack;
-pub use decision::{EquipAnswer, EquipDecision, EquipEntityStamp, EquipStamp};
-pub use source::{EquipInput, source_stamp, source_stamp_at};
 use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
 
@@ -164,16 +158,8 @@ fn names(units: &[u16], id: &str) -> bool {
 /// lends the menu one for the click, with its read-only `Host` and the target behind it. A menu
 /// that has none (a data-only consumer) keeps the component's answer.
 pub trait CanEquip {
-    /// Prepare the immutable input before candidate traversal.
-    fn prepare(&self, _stack: &ItemStack, _entity: u32, _kind: &str) -> bool {
-        true
-    }
-    /// Recheck retained answer preconditions before applying a menu placement.
-    fn can_apply(&self, _stack: &ItemStack, _entity: u32) -> bool {
-        true
-    }
-    /// O(1) gate before creating a source decision or converting its payload.
-    fn listens(&self, _stack: &ItemStack) -> bool {
+    /// O(1) gate before converting a stack or calling into mod parts.
+    fn listens(&self, _item: &str) -> bool {
         true
     }
     /// May `stack` go into the equipment slot `slot` of the entity `entity` of type `kind`? `data`

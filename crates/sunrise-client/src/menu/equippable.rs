@@ -8,56 +8,14 @@ use crate::mobs::equip::equippable_in_slot;
 /// The equipment slots of `Role::Armor`, by `EquipmentSlot.getIndex` (feet first).
 pub(super) const ARMOR_SLOTS: [&str; 4] = ["feet", "legs", "chest", "head"];
 
-pub(super) struct EquipPlacement {
-    pub(super) allowed: bool,
-    pub(super) max: u32,
-    menu: super::MutationStamp,
-    source: Option<crate::mobs::equip::EquipStamp>,
-    observed: bool,
-}
-impl EquipPlacement {
-    pub(super) fn can_apply(&self, menu: &Menu, env: &Env, stack: &ItemStack) -> bool {
-        if !self.allowed {
-            return false;
-        }
-        if !self.observed {
-            return true;
-        }
-        self.menu == menu.mutation_stamp()
-            && self.source.is_some()
-            && self.source == crate::mobs::equip::source_stamp(stack)
-            && match (env.can_equip, env.player_entity_id) {
-                (Some(parts), Some(entity)) => parts.can_apply(stack, entity as u32),
-                _ => false,
-            }
-    }
-}
 impl Menu {
-    pub(super) fn equip_placement(
-        &self,
-        env: &Env,
-        slot: usize,
-        stack: &ItemStack,
-    ) -> EquipPlacement {
-        let observed = matches!(self.state.slots[slot].role, super::Role::Armor(_))
-            && env.player_entity_id.is_some()
-            && env.can_equip.is_some_and(|parts| parts.listens(stack));
-        let menu = self.mutation_stamp();
-        let source = observed
-            .then(|| crate::mobs::equip::source_stamp(stack))
-            .flatten();
-        let (allowed, max) = if self.state.slots[slot].role == super::Role::Hidden {
+    /// Whether `stack` may be placed into `slot`, and the slot's effective maximum count.
+    pub(super) fn placement_rules(&self, env: &Env, slot: usize, stack: &ItemStack) -> (bool, u32) {
+        if self.state.slots[slot].role == super::Role::Hidden {
             (false, 0)
         } else {
             let (place, _, maximum) = self.slot_rules(env, slot, stack);
-            (place, maximum)
-        };
-        EquipPlacement {
-            menu,
-            source,
-            observed,
-            allowed,
-            max: self.limit_slot_max(slot, max),
+            (place, self.limit_slot_max(slot, maximum))
         }
     }
     /// Apply the backing container's bound without asking placement again.
@@ -83,29 +41,13 @@ impl Menu {
         let tags = &env.enchantments.entity_tags;
         let data = equippable_in_slot(env.items, tags, stack, ARMOR_SLOTS[eq], "minecraft:player");
         match (env.can_equip, env.player_entity_id) {
-            (Some(parts), Some(player)) => {
-                if !parts.listens(stack) {
-                    return data;
-                }
-                let ask = |stack: &ItemStack| {
-                    parts.prepare(stack, player as u32, "minecraft:player")
-                        && parts.can_equip(
-                            stack,
-                            ARMOR_SLOTS[eq],
-                            player as u32,
-                            "minecraft:player",
-                            data,
-                        )
-                };
-                match crate::mobs::equip::source_stamp_at(stack as *const _ as usize) {
-                    Some(Some(_)) => ask(stack),
-                    Some(None) => false,
-                    None => {
-                        let source = crate::mobs::equip::EquipInput::new(0, stack.clone());
-                        ask(&source)
-                    }
-                }
-            }
+            (Some(parts), Some(player)) if parts.listens(&stack.item) => parts.can_equip(
+                stack,
+                ARMOR_SLOTS[eq],
+                player as u32,
+                "minecraft:player",
+                data,
+            ),
             _ => data,
         }
     }
