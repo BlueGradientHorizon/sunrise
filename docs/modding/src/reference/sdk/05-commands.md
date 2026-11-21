@@ -11,6 +11,7 @@ folder.
 | `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
 | `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
 | [`release plan`](#release-plan) | Writes a native release or rebuild plan and fetches the SDK metadata it needs, without building or publishing. |
+| [`release scripts`](#release-scripts) | Writes the workflow scripts embedded in this tool. |
 | `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
 | `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [-- <game args>]` | For a native mod, builds, stages the game with the mod in `target/sunrise-mod/run/` and starts it. |
@@ -84,6 +85,13 @@ that SDK-data directory. Release discovery supplies tags and commits; it does no
 it fetches. It writes `sdk.json` and `surface.json` under `sdk-data/<commit>/` and extracts `build-data/` there for each
 SDK needed by a binary plan. It does not fetch compiled SDK slices. Failed verification leaves any existing plan
 file unchanged.
+
+## `release scripts`
+
+`cargo sunrise-mod release scripts --out <new-dir>` extracts the native release workflow scripts from this tool
+into a new directory under an existing parent. It never overwrites an existing directory. The generated workflows
+first authenticate the tool, then use the scripts from that same tool commit rather than checking copies into the
+mod repository.
 
 ## `fits`
 

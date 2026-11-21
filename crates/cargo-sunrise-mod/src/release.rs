@@ -20,7 +20,52 @@ use sunrise_mod_package::{
 };
 use sunrise_native_build::{library_record::Library, prebuilt::Route};
 
-pub(crate) mod plan;
+mod plan;
+
+pub(crate) const USAGE: &str = concat!(
+    "release plan --releases <file> --sdk-data <new-dir> --out <file> (--tag <vVERSION> | --registry <checkout> --index <file> --id <mod-id> --repo <owner/name> [--version <version> --target <stable-tag>])",
+    "\n       cargo sunrise-mod release scripts --out <new-dir>",
+);
+
+const SCRIPTS: &[(&str, &str)] = &[
+    (
+        "sunrise_release.py",
+        include_str!("../template/native/sunrise_release.py"),
+    ),
+    (
+        "sunrise_release_github.py",
+        include_str!("../template/native/sunrise_release_github.py"),
+    ),
+];
+
+pub(crate) fn run(project: &Path, args: &[String]) -> Result<(), String> {
+    if crate::help::asked(args) {
+        print!(
+            "{}",
+            crate::help::of("release").expect("release has a help entry")
+        );
+        return Ok(());
+    }
+    match args.split_first() {
+        Some((command, args)) if command == "plan" => plan::run(project, args),
+        Some((command, args)) if command == "scripts" => {
+            let mut options = crate::options::Options::new("release scripts", args, &["--out"]);
+            let values = options.values("--out")?;
+            options.finish()?;
+            let [out] = values.as_slice() else {
+                return Err("release scripts needs one --out <new-dir>".into());
+            };
+            let out = output_dir(Path::new(out))?;
+            let error = |error| format!("{}: {error}", out.display());
+            fs::create_dir(&out).map_err(error)?;
+            for (name, script) in SCRIPTS {
+                fs::write(out.join(name), script).map_err(error)?;
+            }
+            Ok(())
+        }
+        _ => Err(format!("use `cargo sunrise-mod {USAGE}`")),
+    }
+}
 
 pub(crate) fn releases(path: &Path) -> Result<Vec<SunriseRelease>, String> {
     let text = bounded::read(path, 1 << 20)?;
@@ -261,6 +306,26 @@ pub(crate) fn describe(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_scripts_are_written_exactly_and_do_not_replace_existing_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = temp.path().join("scripts");
+        let args = [
+            "scripts".to_owned(),
+            "--out".to_owned(),
+            out.display().to_string(),
+        ];
+        run(temp.path(), &args).unwrap();
+        assert_eq!(fs::read_dir(&out).unwrap().count(), SCRIPTS.len());
+        for (name, text) in SCRIPTS {
+            assert_eq!(fs::read(out.join(name)).unwrap(), text.as_bytes());
+        }
+        let keep = out.join(SCRIPTS[0].0);
+        fs::write(&keep, b"keep these bytes").unwrap();
+        assert!(run(temp.path(), &args).is_err());
+        assert_eq!(fs::read(keep).unwrap(), b"keep these bytes");
+    }
 
     #[test]
     fn archive_from_the_completed_api_library_passes_the_registry_decoder() {

@@ -1,5 +1,5 @@
 //! One release decision and its verified SDK metadata, before any build or signing job runs.
-use super::{AssetName, releases, version};
+use super::{AssetName, USAGE, releases, version};
 use crate::{bounded, internals::atomic_write, options::Options, sdk_fetch};
 use serde::Serialize;
 use std::{
@@ -16,8 +16,6 @@ use sunrise_mod_package::{
 };
 use sunrise_native_build::{api, prebuilt};
 use sunrise_release_sign::PublicKey;
-
-pub(crate) const USAGE: &str = "release plan --releases <file> --sdk-data <new-dir> --out <file> (--tag <vVERSION> | --registry <checkout> --index <file> --id <mod-id> --repo <owner/name> [--version <version> --target <stable-tag>])";
 
 #[derive(Debug, Serialize)]
 struct Output<'a> {
@@ -84,21 +82,6 @@ struct Rebuild<'a> {
 }
 
 pub(crate) fn run(project: &Path, args: &[String]) -> Result<(), String> {
-    let Some((command, args)) = args.split_first() else {
-        return Err(format!("use `cargo sunrise-mod {USAGE}`"));
-    };
-    if command != "plan" {
-        return Err(format!(
-            "unknown release command {command:?}; use `cargo sunrise-mod {USAGE}`"
-        ));
-    }
-    if crate::help::asked(args) {
-        print!(
-            "{}",
-            crate::help::of("release").expect("release has a help entry")
-        );
-        return Ok(());
-    }
     let mut flags = Options::new(
         "release plan",
         args,

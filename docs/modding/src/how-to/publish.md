@@ -221,6 +221,47 @@ pin and the target commit. To describe the archives with `--describe-binaries`, 
    Submit `mods/<id>.toml` with `icons/<id>.png` if an icon was staged; do not commit the release assets. See the
    [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
+## Tagged native releases in GitHub Actions
+
+New native projects include `.github/workflows/release.yml`, the shared workflow and an action that verifies
+and installs the release tool. The repository does not carry the release scripts: every job extracts them
+from its verified tool with `cargo sunrise-mod release scripts`. Development still starts on Nightly. When
+you are ready to publish a stable version from GitHub:
+
+1. Set `homepage` to your mod's GitHub repository and pin the mod to the commit of a stable Sunrise release.
+   The tag you push must be `v` followed by the full version in `sunrise-mod.toml`, such as `v0.1.0`. Check in
+   your reviewed `Cargo.lock` if the project has one; CI does not update an existing lock for you.
+2. Run [`cargo sunrise-mod keygen`](#signing) once. Back up the private key outside the repository. Set the
+   Actions variable `SUNRISE_MOD_PUBLIC_KEY` to the printed public key. For an existing registry listing it
+   must match the key in that entry. Don't generate a fresh key for another release of the same project.
+3. Create the `sunrise-mod-signing` environment. Restrict it to your trusted release tags and require review
+   according to your repository's release policy. Store `SUNRISE_MOD_SIGNING_KEY` and, if needed,
+   `SUNRISE_MOD_SIGNING_PASSPHRASE` there, not in repository variables or on the command line. Keep this
+   environment off pull requests. Only the signing step sees the secrets, and it never builds or runs mod code.
+4. For a first listing, set `SUNRISE_MOD_REGISTRY_OWNER` (your GitHub login), `SUNRISE_MOD_SUMMARY` and
+   `SUNRISE_MOD_CATEGORIES` (comma-separated). Fill the manifest's description and license and put `icon.png`
+   beside it. See the [registry page requirements](../reference/registry-index.md#submitting-a-project) for
+   anything else to add to your submission. Set `SUNRISE_MOD_RELEASES=true` in Actions variables to enable the workflow.
+
+A tag build verifies Sunrise's rolling signed [`mod-tool`](../start/install-tool.md#newest-tool-from-main), then
+plans against the tag's independently signed SDK. All jobs require the same authenticated tool commit. A
+standalone API mod builds an archive for each host in that SDK. Other valid native mods get a signed source
+package only. A failed check or binary build stops the release; it does not publish a source-only substitute.
+
+The workflow keeps the verified signed batch as a run artifact before uploading. If an upload stops partway,
+rerun the failed jobs of that run while the original signed batch is available. Identical assets are reused;
+only missing ones are uploaded. A different remote file stops the workflow. Recover the original signed batch
+rather than rebuilding or re-signing, even if the original source checkout did not change. A rolling tool update
+can also stop a retry; in that case finish the release manually with the saved, verified assets.
+
+After uploads are verified, the `sunrise-registry-submission` artifact and the run summary give you the entry,
+any staged icon and the pull request draft. You can always submit these yourself. To let Actions open or update
+that pull request, set `SUNRISE_MOD_REGISTRY_FORK` to your own fork of `sunrise-org/sunrise-mods` (`owner/name`).
+In a separate `sunrise-mod-registry` environment, set `SUNRISE_MOD_REGISTRY_TOKEN` to a token for your listed
+GitHub owner account that can push to the fork and open registry pull requests. It is not the author release's
+token and is not available to the build, sign or upload jobs. If the registry needs page fields or screenshots
+that were not staged, complete the attached draft by hand. The workflow does not commit the author release assets.
+
 ## A collection
 
 Add `collections/<id>.toml` and a square PNG at `icons/<id>.png` in one pull request to
