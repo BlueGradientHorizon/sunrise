@@ -45,8 +45,20 @@ fn content_keys() {
         }
         let path = entry.path();
         let manifest_path = path.join(MANIFEST);
-        let toml: toml::Value =
+        let mut toml: toml::Value =
             toml::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        // The probe replays the manifest as JSON, which has no `nan` or `inf`: the form is a float
+        // either way, and the golden file holds the value.
+        if let Some(properties) = toml
+            .get_mut("properties")
+            .and_then(toml::Value::as_table_mut)
+        {
+            for (_, value) in properties.iter_mut() {
+                if value.as_float().is_some_and(|number| !number.is_finite()) {
+                    *value = toml::Value::Float(0.0);
+                }
+            }
+        }
         let value = serde_json::to_value(toml).unwrap();
         Manifest::deserialize(Probe::new("manifest", &value, &coverage))
             .unwrap_or_else(|e| panic!("{}: {e}", manifest_path.display()));
