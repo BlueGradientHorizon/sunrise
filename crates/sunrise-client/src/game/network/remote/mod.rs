@@ -105,6 +105,7 @@ mod effect;
 mod entity_section_steps;
 mod inventory;
 mod item_use;
+mod kept_columns;
 mod menu_interactions;
 mod minecarts;
 use minecarts::CartLerp;
@@ -124,6 +125,7 @@ mod sync;
 mod tab_entries;
 mod tables;
 mod tick;
+mod tracking;
 mod ui;
 #[path = "use.rs"]
 mod r#use;
@@ -256,68 +258,6 @@ fn mob_pos_rot(m: &Mob) -> PosRot {
         position: [m.position.x, m.position.y, m.position.z],
         yaw: m.yaw,
         pitch: m.head_pitch,
-    }
-}
-
-impl Game<'_> {
-    /// `Entity.commonTick` for the mount this client drives, `mobs[i]`: an
-    /// interpolation it had going when the client took it over runs on, its
-    /// target carried along by the mount's own moves (where the mount fits).
-    /// The mount's pose before the step: its tick saves the old pose
-    /// (setOldPosAndRot) before the step in vanilla, so `drive_mount` puts this one
-    /// back as the old pose once the tick has run.
-    pub(super) fn interpolate_driven_mount(&mut self, i: usize) -> Option<(Vec3, f32, f32)> {
-        let id = self.mobs[i].id as i32;
-        let handler = self.remote.as_mut().and_then(|r| r.stepped.get_mut(&id))?;
-        let m = &mut self.mobs[i];
-        let mut scene = sunrise_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        handler.follow(mob_pos_rot(m), |to| {
-            let bounds = m.bounds_at(Vec3::new(to[0], to[1], to[2]));
-            scene.unobstructed(bounds).unwrap_or(false)
-        });
-        let before = (m.position, m.yaw, m.head_pitch);
-        let at = handler.interpolate()?;
-        place_interpolated(m, at);
-        // A step that crosses a section is filed where it happens.
-        let to = m.position;
-        if to != before.0 {
-            let from = before.0;
-            self.entity_section_step(id as u32, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-        }
-        Some(before)
-    }
-    /// `Entity.getClientPositionAndRotation` of the mount this client drives:
-    /// while an interpolation runs, where it is going.
-    pub(super) fn driven_mount_heading(&self, m: &Mob) -> PosRot {
-        let at = mob_pos_rot(m);
-        self.remote
-            .as_ref()
-            .and_then(|r| r.stepped.get(&(m.id as i32)))
-            .map_or(at, |h| h.heading(at))
-    }
-    /// The mount this client drives teleported to `at` (`moveOrInterpolateTo`):
-    /// it eases there over its type's update interval.
-    pub(super) fn interpolate_driven_mount_to(&mut self, i: usize, at: PosRot) {
-        let m = &mut self.mobs[i];
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let handler = r.stepped.entry(m.id as i32).or_insert_with(|| {
-            let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
-            SteppedInterpolation::new(interval as i32)
-        });
-        let entity = mob_pos_rot(m);
-        if let Start::Snap(to) = handler.interpolate_to(
-            entity,
-            Some(Path::Linear(at.position)),
-            Some((at.yaw, at.pitch)),
-        ) {
-            place_interpolated(m, to);
-        }
     }
 }
 
@@ -943,95 +883,6 @@ impl Game<'_> {
         ));
     }
 
-    /// `ClientChunkCache.Storage.inRange`: within the storage around the
-    /// view centre, `calculateStorageRange` (the server's radius, at least
-    /// two, plus three) chunks each way.
-    pub(super) fn remote_chunk_in_range(&self, x: i32, z: i32) -> bool {
-        if self.replay.playing() {
-            return true;
-        }
-        self.remote
-            .as_ref()
-            .is_none_or(|r| in_storage_range(r.view_distance, r.chunk_center, x, z))
-    }
-    fn chunk_inside_remote_range(center: (i32, i32), distance: i32, x: i32, z: i32) -> bool {
-        in_storage_range(distance, center, x, z)
-    }
-
-    /// The columns a moved or resized storage no longer holds. Returns the
-    /// positions it freed (`forget_remote_columns`).
-    pub(in crate::game) fn drop_remote_chunks_out_of_range(
-        &mut self,
-        center: (i32, i32),
-        distance: i32,
-    ) -> Vec<(i32, i32)> {
-        let mut gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> = self
-            .world
-            .chunks
-            .keys()
-            .copied()
-            .filter(|&(x, z)| !Self::chunk_inside_remote_range(center, distance, x, z))
-            .collect();
-        self.forget_remote_columns(&mut gone, true)
-    }
-
-    /// Every column goes with the client level. Returns the positions it
-    /// freed (`forget_remote_columns`).
-    pub(in crate::game) fn forget_all_remote_columns(&mut self) -> Vec<(i32, i32)> {
-        let mut gone = self.world.chunks.keys().copied().collect();
-        self.forget_remote_columns(&mut gone, false)
-    }
-
-    /// Forgets the `gone` columns (and empties the set): their chunks (freed on a thread
-    /// of their own when there are many), their sections in the renderer and their block
-    /// entities, each store once for all of them. When the level stays open,
-    /// far terrain keeps their last state (`server_terrain`). Returns the
-    /// positions it freed, in `gone`'s order: only those still resident,
-    /// so a later forget of the same positions frees nothing.
-    pub(in crate::game) fn forget_remote_columns(
-        &mut self,
-        gone: &mut sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
-        keep_terrain: bool,
-    ) -> Vec<(i32, i32)> {
-        if gone.is_empty() {
-            return Vec::new();
-        }
-        // The client chunk seam: one unload per column still resident, with
-        // its data still there, before `take_remote_columns` frees it.
-        let freed_at: Vec<(i32, i32)> = gone
-            .iter()
-            .filter(|&&(x, z)| self.world.chunks.contains_key(&(x, z)))
-            .copied()
-            .collect();
-        for &(x, z) in &freed_at {
-            self.client_chunk_unload(x, z, keep_terrain);
-        }
-        let freed =
-            sunrise_client::streaming::Streaming::take_remote_columns(&mut self.world, gone);
-        self.streaming.forget_columns(&mut self.world, gone);
-        if keep_terrain && let Some(lod) = &mut self.lod {
-            for chunk in &freed {
-                lod.observe(chunk.clone(), self.res.facts());
-            }
-        }
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.remove_columns(gone.iter().copied());
-        }
-        sunrise_client::chunk::free_columns(freed, gone.len());
-        self.world
-            .block_entities
-            .unload(|k| gone.contains(&(k.0 >> 4, k.2 >> 4)));
-        if let Some(r) = self.remote.as_mut() {
-            r.attachments.retain(|holder, _| match *holder {
-                Holder::Chunk([x, z]) => !gone.contains(&(x, z)),
-                Holder::BlockEntity([x, _, z]) => !gone.contains(&(x >> 4, z >> 4)),
-                _ => true,
-            });
-        }
-        gone.clear();
-        freed_at
-    }
-
     /// `handleServerData`: the server list entry of the server joined keeps
     /// the icon the server sends (`ServerList.saveSingleServer`). Single
     /// player has no entry.
@@ -1051,50 +902,6 @@ impl Game<'_> {
         }
     }
 
-    /// Keep the renderable block entities (chests, furnaces) in step with blocks.
-    /// `previous`: the block's state before, when it changed. A column sent again has
-    /// none, and keeps its block entities' synced attachments: the server does not send
-    /// them again (`remote_chunk` drops those of block entities the column lost).
-    pub(super) fn sync_block_entity(
-        &mut self,
-        pos: (i32, i32, i32),
-        previous: Option<BlockStateId>,
-        state: BlockStateId,
-    ) {
-        let name = self.res.facts().get(state).name.clone();
-        // LevelChunk.setBlockState: another block's block entity goes, even
-        // one of the same type (a mod's blocks may share one).
-        let other_block = previous.is_some_and(|p| self.res.facts().get(p).name != name);
-        self.ensure_stateful_entity_table();
-        // State-aware factories decide creation only. A valid same-block
-        // instance survives even when the new state would create none.
-        if !other_block
-            && self.world.block_entities.stateful_entity(state.0)
-            && matches!(
-                self.world.block_entities.get(&pos),
-                Some(BlockEntity::Mod(_))
-            )
-        {
-            return;
-        }
-        // A mod block's is the mod's own, as on the server.
-        let removed = match self.new_block_entity_for_state(state) {
-            Some(entity) => {
-                let same = self.world.block_entities.get(&pos).is_some_and(|e| {
-                    e.id() == entity.id() && !(other_block && matches!(e, BlockEntity::Mod(_)))
-                });
-                if same {
-                    return;
-                }
-                self.world.block_entities.replace(pos, entity)
-            }
-            None => self.world.block_entities.remove(&pos),
-        };
-        if let Some(previous) = previous {
-            self.retire_client_block_entity([pos.0, pos.1, pos.2], previous, removed);
-        }
-    }
-
     /// The player's position, for `retainKnownServerState`'s `player.position()`.
     fn player_position(&self) -> [f64; 3] {
         let at = self
@@ -1103,38 +910,6 @@ impl Game<'_> {
             .map(|p| p.position)
             .unwrap_or(Vec3::ZERO);
         [at.x, at.y, at.z]
-    }
-
-    /// `Entity.isColliding(pos, state)` for the local player: the state's own
-    /// collision shape, at the player's pose, against the player's box.
-    fn block_meets_player(&self, pos: [i32; 3], state: BlockStateId) -> bool {
-        let Some(player) = self.player.as_ref() else {
-            return false;
-        };
-        let entity = player.bounds();
-        let context = sunrise_world::collision_context::CollisionContext::for_entity(
-            sunrise_world::collision_context::CollisionEntity {
-                identity: sunrise_world::entity_obstruction::EntityIdentity(0),
-                kind: sunrise_world::collision_context::EntityContextKind::Player,
-                y: player.position.y,
-                descending: player.shift_key_down,
-                main_hand: None,
-            },
-            false,
-        );
-        let mut scene = sunrise_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        match self
-            .collision
-            .collision_shape_with_context(&mut scene, state, at, &context)
-        {
-            Ok(shape) => shape_meets(&shape, pos, entity),
-            Err(_) => false,
-        }
     }
 
     /// `Entity.absSnapTo`: the remembered point, clamped to the level's edge.
@@ -1163,84 +938,8 @@ impl Game<'_> {
         }
     }
 
-    /// `recreateFromPacket`: yRot and xRot from the packet, the body and head
-    /// both at its head yaw (LivingEntity).
-    pub(super) fn client_attachment_entity_exists(&self, holder: Holder) -> bool {
-        self.remote.as_ref().is_some_and(|remote| match holder {
-            Holder::Entity(id) => remote.entities.contains_key(&(id as i32)),
-            Holder::Player(uuid) => {
-                remote.profile == uuid || remote.level_players.values().any(|p| *p == uuid)
-            }
-            _ => false,
-        })
-    }
-
-    pub(super) fn spawn_entity(
-        &mut self,
-        id: i32,
-        kind: &str,
-        position: [f64; 3],
-        rotation: [f32; 3],
-    ) {
-        self.detach_remote_tracking_entity(id);
-        let [yaw, pitch, head] = rotation;
-        let at = Vec3::new(position[0], position[1], position[2]);
-        let mob_type = if kind == "minecraft:player" {
-            self.remote.as_ref().and_then(|r| r.player_type.clone())
-        } else {
-            self.res.mob_types().get(kind).cloned()
-        };
-        if kind == "minecraft:ender_dragon" {
-            self.spawn_remote_dragon(id, position, yaw);
-        }
-        if kind == "minecraft:experience_orb" {
-            // Its value (ExperienceOrb.DATA_VALUE) follows in SetEntityData.
-            self.orbs.retain(|o| o.id != id as u32);
-            self.orbs
-                .push(ExperienceOrb::new(id as u32, at, Vec3::ZERO, 1));
-        }
-        if let Some(t) = mob_type {
-            // The window's copy of the server's mob: no mod part goals —
-            // their `register_goals` ran on the authoritative side (#1077).
-            let mut mob = Mob::new_remote(id as u32, t, at, head);
-            super::remote_mob_data::client_defaults(&mut mob);
-            (mob.yaw, mob.previous_yaw) = (yaw, yaw);
-            (mob.head_pitch, mob.previous_head_pitch) = (pitch, pitch);
-            mob.persistent = true;
-            self.mobs.retain(|m| m.id != id as u32);
-            self.mobs.push(mob);
-        }
-        if let Some(r) = self.remote.as_mut() {
-            // A new entity has a new interpolation handler (a mob's or an
-            // armor stand's), even under an id the server used before.
-            r.stepped.remove(&id);
-            if kind == "minecraft:item" {
-                r.pending_items.insert(id, (position, Vec3::ZERO));
-            }
-            r.entities.insert(
-                id,
-                Tracked {
-                    kind: kind.to_owned(),
-                    position,
-                    codec_base: position,
-                    on_fire: false,
-                    mod_fire_immune: false,
-                    silent: false,
-                    vehicle: None,
-                },
-            );
-        }
-    }
-
     // move_entity: remote/motion.rs
-    pub(super) fn detach_remote_tracking_entity(&mut self, id: i32) {
-        let mobs = &self.mobs;
-        let index = &mut self.mob_index;
-        self.particles
-            .detach_tracking_target(TrackingTarget::Entity(id), || {
-                index.get(mobs, id as u32).map(mob_tracking_body)
-            });
-    }
+
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
@@ -1599,97 +1298,9 @@ impl Game<'_> {
         });
     }
 
-    fn apply_remote_health(&mut self) {
-        let Some((health, food, saturation)) = self.remote.as_ref().map(|r| r.health) else {
-            return;
-        };
-        if let Some(p) = self.player.as_mut() {
-            if (p.health.health() - health).abs() > f32::EPSILON {
-                let _ = p.set_health(health.max(0.0), false);
-            }
-            p.health.food.food = food;
-            p.health.food.saturation = saturation;
-        }
-    }
-
     // remote_teleport: remote/sync.rs
 
     // tick_remote and tick_remote_player: remote/tick.rs
-
-    /// `Level.tickBlockEntities` on a client: the block entities' animations
-    /// and client ticks, and the moving pistons' pushes.
-    fn tick_remote_block_entities(&mut self) {
-        // The ticker list's spawners, trial spawners, vaults and mod block entities; the
-        // animated ones, beacons and potent sulfur still tick on their own passes after them.
-        self.tick_client_block_entities();
-        self.tick_block_entity_anims();
-        self.client_tick_beacons();
-        self.tick_remote_potent_sulfur();
-        self.with_level(|b, level, ticks| {
-            b.client_tick_block_entities(level, ticks);
-        });
-        let pushes = std::mem::take(&mut self.block_ticks.piston_pushes);
-        self.push_piston_entities(pushes);
-        self.sync_moving_pistons();
-    }
-
-    /// The local player's `LocalPlayer.tick`, once the client has loaded. The
-    /// input `sendChanges` sends after the block entities ticked, if it runs.
-    fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
-        let entity_collisions = self.entity_collisions(Mover::Player);
-        // Those added before it tick before it: their pushes reach this move.
-        let pushed = self.remote_pushes(true);
-        let sprint_window = self.settings.sprint_window;
-        if self.player.is_none() {
-            return Ok(None);
-        }
-        // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
-        // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's
-        // empty chunk has none, so the player falls through it until the chunk comes.
-        if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
-            return Ok(None);
-        }
-        // LocalPlayer.tick reaches Player.tick only once the client has loaded; its
-        // endpoints bracket that work alone, also on the death screen, not the level
-        // pass before it.
-        let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
-            || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
-        .then(|| self.local_player())
-        .flatten();
-        // The entities that tick before the player pushed it before its tick began, so
-        // before Pre.
-        self.apply_remote_push(pushed);
-        if let Some(player) = player {
-            self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
-        }
-        self.native_local_player_fit_sizes();
-        let result = self.tick_local_player(entity_collisions, sprint_window);
-        // `EntityEvent.Size` for the pose the tick set.
-        self.native_local_player_size();
-        if let Some(player) = player {
-            self.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player });
-        }
-        // The entities added after the player tick after it, so after Post: `Entity.push`
-        // adds each to the player's deltaMovement during their tick, from where they and
-        // the player ended it. A velocity or teleport the server sends before the next
-        // tick replaces that deltaMovement, push included
-        // (`ClientPacketListener.handleSetEntityMotion`, `handleMovePlayer`), so the push
-        // lands on the velocity now, not on the next move.
-        let after = self.remote_pushes(false);
-        self.apply_remote_push(after);
-        result
-    }
-
-    /// `Entity.push`'s share of the other entities' ticks: added to the local
-    /// player's deltaMovement, unless it lies dead, sleeps or rides.
-    fn apply_remote_push(&mut self, pushed: Vec3) {
-        let still = self.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
-        if let Some(player) = self.player.as_mut()
-            && !still
-        {
-            player.velocity = player.velocity.add_vector(pushed);
-        }
-    }
 
     /// The last `ClientboundPlayerAbilities` the server sent, on a client.
     pub(super) fn remote_abilities(&self) -> Option<&play::PlayerAbilities> {
@@ -1698,45 +1309,6 @@ impl Game<'_> {
 
     // tick_remote_guardian_eyes: remote/tick.rs
 
-    /// Humanoid held arm poses, once the tick has set equipment and use state.
-    pub(in crate::game) fn tick_remote_arm_poses(&mut self) {
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
-            if !sunrise_client::mobs::anim::extracts_humanoid(m) {
-                continue;
-            }
-            // Extraction also runs while the world is frozen: derive the use
-            // animation from the current equipment rather than last tick's state.
-            if &*m.kind.id != "minecraft:player" {
-                let slot = if m.extra.using_off_hand {
-                    sunrise_items::equipment::OFFHAND
-                } else {
-                    sunrise_items::equipment::MAINHAND
-                };
-                let animation = (m.extra.using_item > 0)
-                    .then(|| m.extra.slot_stack(slot))
-                    .flatten()
-                    .map_or_else(Default::default, |stack| self.item_use_animation(stack));
-                self.mobs[i].extra.use_animation = animation;
-            }
-            let m = &self.mobs[i];
-            let poses = self.held_arm_poses(m.id, m);
-            let charge_duration = (&*m.kind.id != "minecraft:player").then(|| {
-                let using_slot = if m.extra.using_off_hand {
-                    sunrise_items::equipment::OFFHAND
-                } else {
-                    sunrise_items::equipment::MAINHAND
-                };
-                m.extra
-                    .slot_stack(using_slot)
-                    .map_or(25, |stack| Self::charge_ticks(stack).max(1)) as i32
-            });
-            self.mobs[i].extra.held_arm_pose = poses;
-            if let Some(duration) = charge_duration {
-                self.mobs[i].extra.ints[5] = duration;
-            }
-        }
-    }
     // tick_remote_entities: remote/tick.rs
 
     /// `AbstractMinecartRenderer.newExtractState`: sample the same weighted
@@ -1772,81 +1344,7 @@ impl Game<'_> {
         }
     }
 
-    /// `MultiPlayerGameMode.stopDestroyBlock`: aborts the break and starts the attack strength
-    /// again, if one is running (`if (!isDestroying) return;`), and says whether it did. Only the
-    /// progress goes: `destroyBlockPos` and `destroyingItem` keep the target, so a dig resumed on
-    /// the same block sends no START and the server's clock runs on (#4124).
-    pub(super) fn stop_remote_mining(&mut self) -> bool {
-        let kept = self.remote.as_mut().and_then(|r| {
-            if !std::mem::take(&mut r.is_destroying) {
-                return None;
-            }
-            let (pos, face, _) = r.destroying?;
-            r.destroying = Some((pos, face, 0.0));
-            r.destroying
-        });
-        let Some((pos, _, _)) = kept else {
-            return false;
-        };
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        self.tutorial_destroy(state, -1.0);
-        self.send(S::PlayerAction(play::PlayerAction {
-            action: 2,
-            pos,
-            direction: 0,
-            sequence: 0,
-        }));
-        self.reset_attack_strength();
-        true
-    }
-
     // remote_mining: remote/use.rs
-
-    fn veto_mining_prediction(
-        &self,
-        pos: [i32; 3],
-        face: [i32; 3],
-        starting: bool,
-        progress: f32,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ClientMiningPredict) {
-            return false;
-        }
-        let mut canceled = false;
-        self.native_client_mining_predict(
-            mod_api::ClientMiningPrediction {
-                pos,
-                face,
-                starting,
-                progress: progress.clamp(0.0, 1.0),
-            },
-            &mut canceled,
-        );
-        canceled
-    }
-
-    /// `Player.blockActionRestricted` for the block at `pos`: a spectator
-    /// never breaks, an adventure player only with a main-hand item whose
-    /// `can_break` matches the block (`ItemStack.canBreakBlockInAdventureMode`).
-    /// A predicate this client could not decode (exact components) only
-    /// tells that the server gave one, and the server sends the block back
-    /// if it does not match.
-    fn remote_break_restricted(&self, pos: [i32; 3]) -> bool {
-        use sunrise_protocol::item::{WirePatch, component::CAN_BREAK};
-        if self
-            .held()
-            .and_then(|s| s.data())
-            .is_some_and(|d| d.other("minecraft:can_break").is_some())
-        {
-            return self.block_action_restricted(pos);
-        }
-        self.spectator()
-            || (!self.may_build()
-                && !self
-                    .held()
-                    .and_then(|s| s.wire_patch())
-                    .is_some_and(|p| WirePatch::adds(&p, CAN_BREAK)))
-    }
 
     // remote_use_block: remote/use.rs
 
@@ -1916,58 +1414,9 @@ impl Game<'_> {
         }
     }
 
-    /// Whether a main-hand right click with `held` would end on the block hit, for the gameplay
-    /// guide: what `remote_block_reacts` answers on its dry level, by the templates' rules alone,
-    /// so looking asks no mod's placement or survival hook.
-    pub(super) fn block_takes_click(&mut self, hit: &super::Hit, held: Option<&ItemStack>) -> bool {
-        self.remote_block_reacts(hit, held, false)
-            .0
-            .consumes_action()
-    }
-
-    /// `InteractionResult.CONSUME` for this click: the block keeps it and does nothing, so the
-    /// item in hand never gets it either (an empty flower pot, a pressed button). For the
-    /// guide's look, as `block_takes_click`.
-    pub(super) fn block_swallows_click(
-        &mut self,
-        hit: &super::Hit,
-        held: Option<&ItemStack>,
-    ) -> bool {
-        matches!(
-            self.remote_block_reacts(hit, held, false).0,
-            InteractionResult::Consume
-        )
-    }
-
     // remote_block_reacts: remote/use.rs
     // remote_block_template: remote/use.rs
 
-    /// The idle controller guide cannot know what these Parts will decide on a click.
-    pub(super) fn can_hint_block_placement(stack: &ItemStack) -> bool {
-        use mod_api::{__private::item_listens, HookId};
-        !item_listens(HookId::PlacementContext, &stack.item)
-            && !item_listens(HookId::MustSurvive, &stack.item)
-    }
-
-    /// Run BlockItem.place on a disposable level for a click: where it placed
-    /// and the blocks it set. The real level supplies collision shapes and
-    /// building-blocking entities; random draws, scheduled ticks and events
-    /// stay in the preview. `ItemStack.useOn` runs it in adventure mode only
-    /// when the used stack's `can_place_on` names the clicked block.
-    pub(super) fn remote_can_place(
-        &mut self,
-        hit: &super::Hit,
-        stack: &ItemStack,
-    ) -> Option<DryPlace> {
-        self.remote_place_preview(hit, stack, true)
-    }
-
-    /// Whether a click would place `stack` (the controller guide's look): as
-    /// `remote_can_place`, by the templates' rules alone, so looking asks no
-    /// mod's placement or survival hook.
-    pub(super) fn remote_would_place(&mut self, hit: &super::Hit, stack: &ItemStack) -> bool {
-        self.remote_place_preview(hit, stack, false).is_some()
-    }
     // remote_place_preview: remote/use.rs
 
     // remote_use_bucket: remote/use.rs
@@ -1994,11 +1443,6 @@ impl Game<'_> {
     // remote_use_hands: remote/use.rs
 
     // remote_complete_using: remote/use.rs
-    pub(super) fn request_remote_mining_stop(&mut self) {
-        if let Some(r) = self.remote.as_mut() {
-            r.stop_mining = true;
-        }
-    }
 
     // remote_send_carried: remote/sync.rs
 

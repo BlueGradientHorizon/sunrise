@@ -626,3 +626,29 @@ impl Game<'_> {
         push
     }
 }
+
+impl Game<'_> {
+    pub(super) fn apply_remote_health(&mut self) {
+        let Some((health, food, saturation)) = self.remote.as_ref().map(|r| r.health) else {
+            return;
+        };
+        if let Some(p) = self.player.as_mut() {
+            if (p.health.health() - health).abs() > f32::EPSILON {
+                let _ = p.set_health(health.max(0.0), false);
+            }
+            p.health.food.food = food;
+            p.health.food.saturation = saturation;
+        }
+    }
+
+    /// `Entity.push`'s share of the other entities' ticks: added to the local
+    /// player's deltaMovement, unless it lies dead, sleeps or rides.
+    pub(super) fn apply_remote_push(&mut self, pushed: Vec3) {
+        let still = self.screen == Screen::Dead || self.sleeping.is_some() || self.riding.is_some();
+        if let Some(player) = self.player.as_mut()
+            && !still
+        {
+            player.velocity = player.velocity.add_vector(pushed);
+        }
+    }
+}
