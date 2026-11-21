@@ -317,7 +317,6 @@ impl Game<'_> {
         menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
         menu.item_smelted_hook = menu.brewed_potion_hook;
         let result = op(menu, &env);
-        drop(parts);
         if let Some(maps) = maps {
             self.register_made_maps(maps);
         }
