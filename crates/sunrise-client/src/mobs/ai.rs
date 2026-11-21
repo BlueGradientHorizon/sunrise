@@ -59,7 +59,10 @@ mod inside_walk_tests {
     }
 
     /// What the fire's callback does, as a part's would.
-    fn fire_like_a_part(at: sunrise_core::position::BlockPos, staged: &mut mod_api::InsideEffects) {
+    fn fire_like_a_part(
+        at: sunrise_core::position::BlockPos,
+        effects: &mut mod_api::InsideEffects,
+    ) {
         let mut contacts = CONTACTS.lock().unwrap();
         contacts.push([at.x, at.y, at.z]);
         let seen = contacts.len();
@@ -68,27 +71,18 @@ mod inside_walk_tests {
             panic!("an entity_inside part panics");
         }
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
-            staged.run_after(
-                mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt {
-                    source: None,
-                    amount: 1000.0,
-                },
-            );
+            effects.run_after(mod_api::InsideEffect::Freeze, |view| {
+                view.hurt("minecraft:generic", 1000.0);
+            });
         }
-        staged.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::Push([0.5, 0.0, 0.0]),
-        );
-        staged.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::AddEffect {
-                effect: mod_api::__private::effect_key("minecraft:wither")
-                    .expect("an effect key resolves"),
-                duration: 40,
-                amplifier: 0,
-            },
-        );
+        effects.run_after(mod_api::InsideEffect::Freeze, |view| {
+            view.push([0.5, 0.0, 0.0]);
+        });
+        let wither =
+            mod_api::__private::effect_key("minecraft:wither").expect("an effect key resolves");
+        effects.run_after(mod_api::InsideEffect::Freeze, move |view| {
+            view.add_effect(wither, 40, 0);
+        });
     }
 
     fn install_walk_hooks() {
@@ -101,22 +95,19 @@ mod inside_walk_tests {
             bounce_listens: |_| false,
             fall_on: |_, _, _, _, _, _| {},
             bounce_on: |_, _, _, _, _| {},
-            // The production binding's own shape: the whole callback staged,
-            // a panic contained with it.
-            inside_fire: |_level,
-                          _dimension,
-                          _entity,
-                          _kind,
-                          _state,
-                          at,
-                          _precise,
-                          staged,
-                          _writes| {
+            // The production binding's own shape: each part's callback staged
+            // into its own collector and absorbed only on normal return.
+            inside_fire: |_level, _dimension, _entity, _kind, _state, at, _precise, effects| {
+                let mut staged = mod_api::InsideEffects::default();
                 let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    fire_like_a_part(at, staged);
+                    fire_like_a_part(at, &mut staged);
                 }));
-                let _ = fired;
+                if fired.is_ok() {
+                    effects.absorb_step(staged);
+                }
             },
+            state_to_api: |_| None,
+            state_to_engine: |_| None,
         });
     }
 
@@ -402,15 +393,25 @@ mod inside_walk_tests {
         reset(usize::MAX, usize::MAX, false);
         let mut mob = Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
         let mut level = crate::health::TestLevel::new(0);
-        let write = |amplifier| mod_api::EntityWrite::AddEffect {
-            effect: mod_api::__private::effect_key("minecraft:wither").expect("a resolved key"),
-            duration: 40,
-            amplifier,
-        };
+        let wither = mod_api::__private::effect_key("minecraft:wither").expect("a resolved key");
         let ran = crate::mobs::world::with_test_world(&[], |w, _| {
             let mut events = Vec::new();
-            apply_entity_write(&mut mob, w, &mut level.level(), &mut events, write(1));
-            apply_entity_write(&mut mob, w, &mut level.level(), &mut events, write(0));
+            let mut effects = mod_api::InsideEffects::default();
+            effects.advance_step(0);
+            effects.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                view.add_effect(wither, 40, 1);
+            });
+            effects.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                view.add_effect(wither, 40, 0);
+            });
+            let mut level_guard = level.level();
+            let mut access = MobInsideAccess {
+                m: &mut mob,
+                w,
+                level: &mut level_guard,
+                events: &mut events,
+            };
+            effects.apply_and_clear(&mut access);
         });
         assert!(ran, "the vanilla test resources must be available");
         assert_eq!(
@@ -1093,6 +1094,27 @@ pub enum TickProgress {
     Paused(Pause),
 }
 
+/// Which half of `LivingEntity.aiStep` to continue after an inside-block
+/// collector flush pause.
+#[derive(Clone, Copy, Debug)]
+pub enum InsideResume {
+    /// NoAI mob: continue after `effects_from_blocks` (`freeze_tick` -> `push_entities` -> NoAI steps -> `finish_tick`).
+    NoAi,
+    /// AI mob: continue after `effects_from_blocks` (`freeze_tick` -> `push_entities` -> AI post-steps -> `finish_tick`).
+    AiStep,
+}
+
+/// A mob's collected `InsideEffects`, paused so the owning `Game` can flush
+/// them with a live level loan before freezing and the rest of `aiStep`.
+#[derive(Debug)]
+pub struct InsidePause {
+    pub mob: u32,
+    pub join: crate::join_seq::JoinSeq,
+    pub effects: mod_api::InsideEffects,
+    pub was_on_fire: bool,
+    pub resume: InsideResume,
+}
+
 /// A point where the tick needs the owning game before it can continue.
 #[derive(Debug)]
 pub enum Pause {
@@ -1108,6 +1130,13 @@ pub enum Pause {
     },
     /// The caller's trample slot holds the continuation.
     Trample,
+    /// The mob's `InsideEffects` collector is ready to flush against the live level.
+    InsideEffects(Box<InsidePause>),
+}
+
+enum AiStepPause {
+    Trample(TramplePhase),
+    InsideEffects(mod_api::InsideEffects),
 }
 
 #[derive(Debug)]
@@ -1203,6 +1232,9 @@ pub fn tick(
             }
             TickProgress::Paused(Pause::Trample) => {
                 unreachable!("hostless travel cannot pause")
+            }
+            TickProgress::Paused(Pause::InsideEffects(_)) => {
+                unreachable!("hostless inside-block flush cannot pause")
             }
         };
     }
@@ -1409,64 +1441,119 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-        walk_and_freeze(m, w, level, events);
-        push_entities(m, w, level, events);
-        ageable_step(m, w, level, events);
-        animal_step(m, events);
-        if m.species() == Species::Chicken {
-            farm::chicken_egg_step(m, events);
+        let effects = collect_effects_from_blocks(m, w, level, events);
+        if trample.is_some() && !effects.is_empty() {
+            return TickProgress::Paused(Pause::InsideEffects(Box::new(InsidePause {
+                mob: m.id,
+                join: m.join,
+                effects,
+                was_on_fire,
+                resume: InsideResume::NoAi,
+            })));
         }
-        if m.species() == Species::Allay {
-            super::allay::passive_heal(m, w.loop_context);
-            super::allay::update_duplication_cooldown(m);
+        flush_mob_inside_hostless(m, w, level, events, effects);
+        finish_no_ai_after_inside(m, w, level, events);
+    } else if let Some(paused) = ai_step(m, w, level, events, trample.is_some()) {
+        match paused {
+            AiStepPause::Trample(phase) => {
+                *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
+                    phase,
+                    was_on_fire,
+                    join: m.join,
+                    mob: m.id,
+                });
+                return TickProgress::Paused(Pause::Trample);
+            }
+            AiStepPause::InsideEffects(effects) => {
+                return TickProgress::Paused(Pause::InsideEffects(Box::new(InsidePause {
+                    mob: m.id,
+                    join: m.join,
+                    effects,
+                    was_on_fire,
+                    resume: InsideResume::AiStep,
+                })));
+            }
         }
-        // AbstractHorse.aiStep and Camel.tick (a camel's, through the equine step), Bee.aiStep's
-        // countdowns and WanderingTrader.aiStep's maybeDespawn: none of them asks for AI.
-        if horse || super::camel::is_camel(m.species()) {
-            super::equine::ai_step(m, w, events);
-        }
-        if m.species() == Species::Bee {
-            super::bee::ai_step(m, w);
-        }
-        if m.species() == Species::WanderingTrader {
-            super::trader::ai_step(m, w);
-        }
-        // LivingEntity.aiStep ends in the water's hurt with or without AI;
-        // a NoAI enderman's or shulker's hurts still teleport it (hurtServer).
-        hurt_by_water(m, w, level, events);
-        hurt_teleports(m, w, events);
-        // Ravager.aiStep runs outside serverAiStep: NoAI still advances
-        // attack/stun/roar, including the stun-to-roar transition.
-        if m.species() == Species::Ravager {
-            super::ravager::ai_step(m, w, events);
-        }
-        if family(m.species()) == Family::Aquatic {
-            aquatic::no_ai_step(m, w, events);
-        }
-        super::cube::no_ai_tick(m, w, events); // AbstractCubeMob.tick
-        // Shulker.tick after its living tick: a NoAI shell still keeps a
-        // face and eases its lid, pushing what the lid opens into.
-        if m.species() == Species::Shulker {
-            super::shulker::shell_tick(m, w, events);
-        }
-        // TraderLlama.aiStep still calls maybeDespawn after its super step.
-        // Keep unrelated llama healing and its random draw in the AI path.
-        if m.species() == Species::TraderLlama {
-            super::caravan::trader_llama_tick(m, w);
-        }
-    } else if let Some(phase) = ai_step(m, w, level, events, trample.is_some()) {
-        *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
-            phase,
-            was_on_fire,
-            join: m.join,
-            mob: m.id,
-        });
-        return TickProgress::Paused(Pause::Trample);
     }
     if m.no_ai && m.species() == Species::Fox {
         super::fox::finish_ai_step(m, w, events);
     }
     TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events))
+}
+
+/// NoAI remainder of `LivingEntity.aiStep` after `effects_from_blocks` has flushed.
+fn finish_no_ai_after_inside(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) {
+    let horse = super::equine::is_equine(m.species())
+        && !super::camel::is_camel(m.species())
+        && !super::llama::is_llama(m.species());
+    if m.alive() {
+        freeze_tick(m, w, level, events);
+    }
+    push_entities(m, w, level, events);
+    ageable_step(m, w, level, events);
+    animal_step(m, events);
+    if m.species() == Species::Chicken {
+        farm::chicken_egg_step(m, events);
+    }
+    if m.species() == Species::Allay {
+        super::allay::passive_heal(m, w.loop_context);
+        super::allay::update_duplication_cooldown(m);
+    }
+    if horse || super::camel::is_camel(m.species()) {
+        super::equine::ai_step(m, w, events);
+    }
+    if m.species() == Species::Bee {
+        super::bee::ai_step(m, w);
+    }
+    if m.species() == Species::WanderingTrader {
+        super::trader::ai_step(m, w);
+    }
+    hurt_by_water(m, w, level, events);
+    hurt_teleports(m, w, events);
+    if m.species() == Species::Ravager {
+        super::ravager::ai_step(m, w, events);
+    }
+    if family(m.species()) == Family::Aquatic {
+        aquatic::no_ai_step(m, w, events);
+    }
+    super::cube::no_ai_tick(m, w, events);
+    if m.species() == Species::Shulker {
+        super::shulker::shell_tick(m, w, events);
+    }
+    if m.species() == Species::TraderLlama {
+        super::caravan::trader_llama_tick(m, w);
+    }
+}
+
+/// Resume a mob after the owning `Game` flushed its `InsideEffects` collector
+/// with a live level loan.
+pub(super) fn resume_after_inside_effects(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    paused: InsidePause,
+) -> TickProgress {
+    if m.removed || m.id != paused.mob || m.join != paused.join {
+        return TickProgress::Complete(!m.removed);
+    }
+    match paused.resume {
+        InsideResume::NoAi => {
+            finish_no_ai_after_inside(m, w, level, events);
+            if m.species() == Species::Fox {
+                super::fox::finish_ai_step(m, w, events);
+            }
+        }
+        InsideResume::AiStep => {
+            finish_ai_step_after_inside(m, w, level, events);
+        }
+    }
+    TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events))
 }
 
 /// Resume the exact move, then the remainder of `LivingEntity.aiStep` and the tick.
@@ -1485,8 +1572,7 @@ pub(super) fn resume_after_trample(
         TramplePhase::Travel(travel) => {
             travel.resume(m, w, level, events);
             hurt_teleports(m, w, events);
-            finish_ai_step(m, w, level, events);
-            None
+            finish_ai_step(m, w, level, events, true).map(AiStepPause::InsideEffects)
         }
         TramplePhase::Goal(goal) => {
             let paused = {
@@ -1494,20 +1580,27 @@ pub(super) fn resume_after_trample(
                 goals.resume_after_trample(mob, &mut Cx { w, level, events }, goal)
             };
             if let Some(goal) = paused {
-                Some(TramplePhase::Goal(goal))
+                Some(AiStepPause::Trample(TramplePhase::Goal(goal)))
             } else {
                 finish_server_ai_step(m, w, level, events);
                 ai_step_after_goals(m, w, level, events, true)
-                    .err()
-                    .map(TramplePhase::Travel)
             }
         }
     };
     match progress {
         None => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
-        Some(phase) => {
+        Some(AiStepPause::Trample(phase)) => {
             *trample = Some(MobTrample { phase, ..paused });
             TickProgress::Paused(Pause::Trample)
+        }
+        Some(AiStepPause::InsideEffects(effects)) => {
+            TickProgress::Paused(Pause::InsideEffects(Box::new(InsidePause {
+                mob: m.id,
+                join: m.join,
+                effects,
+                was_on_fire: paused.was_on_fire,
+                resume: InsideResume::AiStep,
+            })))
         }
     }
 }
@@ -1580,6 +1673,7 @@ pub fn finish_tick(
 /// was cleared by `Entity.baseTick`; the walk's FREEZE effect sets it for a
 /// powder snow cell on the tick's path, so a hurt that teleports the mob
 /// during the walk keeps it.
+#[cfg(test)]
 fn walk_and_freeze(
     m: &mut Mob,
     w: &MobWorld,
@@ -1604,6 +1698,35 @@ pub(crate) fn effects_from_blocks(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
+    let effects = collect_effects_from_blocks(m, w, level, events);
+    flush_mob_inside_hostless(m, w, level, events, effects);
+}
+
+fn flush_mob_inside_hostless(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    mut effects: mod_api::InsideEffects,
+) {
+    if effects.is_empty() {
+        return;
+    }
+    let mut access = MobInsideAccess {
+        m,
+        w,
+        level,
+        events,
+    };
+    effects.apply_and_clear(&mut access);
+}
+
+fn collect_effects_from_blocks(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) -> mod_api::InsideEffects {
     // Entity.applyEffectsFromBlocks fixes the tick's movements before stepOn:
     // a hurt below that teleports an enderman or a shulker leaves the scan on
     // the path it had. A stepOn teleport (snapTo) has rewritten the mob's
@@ -1684,63 +1807,197 @@ pub(crate) fn effects_from_blocks(
     );
     let _ =
         crate::block_contact::sweep_movements(&mut inside, &movements, &mut visited, &mut effects);
-    let MobInside {
-        m,
-        w,
-        level,
-        events,
-    } = inside;
-    // `applyAndClear` for the part's queued writes, in the collector's order,
-    // in this mob's tick, until it dies.
-    for planned in effects.take_planned() {
-        if !m.alive() {
-            break;
+    effects
+}
+
+/// Hostless backing for [`mod_api::InsideEntityView`] used only in standalone
+/// mob unit tests without a live `Game`. Game-owned mob ticks pause and flush
+/// through `Game::flush_mob_inside_live` with a live level loan.
+pub(super) struct MobInsideAccess<'a, 'w, 'l> {
+    pub(super) m: &'a mut Mob,
+    pub(super) w: &'a MobWorld<'w>,
+    pub(super) level: &'a mut DamageLevel<'l>,
+    pub(super) events: &'a mut Vec<MobEvent>,
+}
+
+impl MobInsideAccess<'_, '_, '_> {
+    fn in_loaded_world(&self, pos: [i32; 3]) -> bool {
+        let layout = self.w.world.layout();
+        pos[1] >= layout.min_y()
+            && pos[1] < layout.max_y()
+            && self
+                .w
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
+    }
+
+    fn current_block(&self, pos: [i32; 3]) -> Option<sunrise_world::registry::BlockStateId> {
+        if !self.in_loaded_world(pos) {
+            return None;
         }
-        if let mod_api::PlannedInside::Write(write) = planned {
-            apply_entity_write(m, w, level, events, write);
-        }
+        Some(self.w.world.block(pos[0], pos[1], pos[2]))
     }
 }
 
-/// A typed entity write an `entity_inside` part queued for a mob, applied in
-/// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Its `source` is not
-/// resolved to an attacker, so an enderman always draws its teleport chance,
-/// where `Enderman.hurtServer` skips it for a living attacker. The hurt's
-/// teleport is settled inside it.
-fn apply_entity_write(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-    write: mod_api::EntityWrite,
-) {
-    let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-    match write {
-        mod_api::EntityWrite::Push(v) => {
-            m.velocity = m.velocity.add_vector(triple(v));
+impl mod_api::InsideEntityAccess for MobInsideAccess<'_, '_, '_> {
+    fn id(&self) -> u32 {
+        self.m.id
+    }
+
+    fn kind(&self) -> &str {
+        &self.m.kind.id
+    }
+
+    fn is_alive(&self) -> bool {
+        self.m.alive()
+    }
+
+    fn position(&self) -> [f64; 3] {
+        [self.m.position.x, self.m.position.y, self.m.position.z]
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        [self.m.velocity.x, self.m.velocity.y, self.m.velocity.z]
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.m.fire_ticks
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.m.is_on_fire()
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.m.fall_distance
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        self.current_block(pos)
+            .and_then(crate::block_contact::state_to_api)
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
         }
-        mod_api::EntityWrite::SetMovement(v) => m.velocity = triple(v),
-        mod_api::EntityWrite::StuckIn(v) => {
-            m.fall_distance = 0.0;
-            m.stuck_multiplier = triple(v);
+        self.m.velocity = self
+            .m
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
         }
-        mod_api::EntityWrite::Hurt { amount, .. } => {
-            m.damage(level, amount, Damage::of(DamageKind::Generic));
-            // The hurt's own teleport, inside it (#1697).
-            hurt_teleports(m, w, events);
+        self.m.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
         }
-        mod_api::EntityWrite::ResetFallDistance => m.fall_distance = 0.0,
-        mod_api::EntityWrite::SetFireTicks(ticks) => m.fire_ticks = ticks,
-        mod_api::EntityWrite::AddEffect {
-            effect,
-            duration,
-            amplifier,
-        } => {
-            // `LivingEntity.addEffect`, as the write's contract names: one
-            // instance an effect, its attribute modifiers stored.
-            if let Some(id) = mod_api::__private::effect_key_id(effect) {
-                m.add_effect(id, duration, i32::from(amplifier));
+        self.m.fall_distance = 0.0;
+        self.m.stuck_multiplier = Vec3::new(
+            speed_multiplier[0],
+            speed_multiplier[1],
+            speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        self.m.fall_distance = 0.0;
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.m.fire_ticks = ticks;
+    }
+
+    fn add_effect(&mut self, effect: mod_api::EffectKey, duration: i32, amplifier: u8) -> bool {
+        let Some(def) = mod_api::__private::effect_index(effect)
+            .and_then(sunrise_client_core::potions::effect_by_index)
+        else {
+            return false;
+        };
+        self.m
+            .try_add_effect(def.id, duration, i32::from(amplifier))
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        if !amount.is_finite() || amount < 0.0 || direct.is_some() || causing.is_some() {
+            return false;
+        }
+        let Some(kind) = crate::health::resolve_damage_kind(None, damage_type) else {
+            return false;
+        };
+        let hurt = self.m.damage(self.level, amount, Damage::of(kind));
+        // The hurt's own teleport, inside it (#1697).
+        hurt_teleports(self.m, self.w, self.events);
+        hurt
+    }
+
+    fn set_block(&mut self, _pos: [i32; 3], _state: mod_api::BlockState) -> bool {
+        false
+    }
+
+    fn destroy_block(&mut self, _pos: [i32; 3], _drop: bool) -> bool {
+        false
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Freeze => {
+                self.m.in_powder_snow = true;
+                if can_freeze(self.m, self.w) {
+                    self.m.ticks_frozen = (self.m.ticks_frozen + 1)
+                        .min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                }
+            }
+            mod_api::InsideEffect::ClearFreeze => {
+                self.m.ticks_frozen = 0;
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                self.m.fire_ignite_contact();
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                if !self.m.fire_immune() {
+                    self.m.ignite_for_ticks(300);
+                }
+            }
+            mod_api::InsideEffect::Extinguish => {
+                self.m.fire_ticks = self.m.fire_ticks.min(0);
+            }
+        }
+    }
+
+    fn apply_builtin(&mut self, action: mod_api::__private::BuiltinInsideAction) {
+        match action {
+            mod_api::__private::BuiltinInsideAction::PowderSnowMelt(pos) => {
+                if self.m.is_on_fire() && self.w.can_grief(self.m.id) {
+                    self.events.push(MobEvent::BreakBlock {
+                        pos,
+                        drop: false,
+                        by: None,
+                        breaker: None,
+                    });
+                }
+            }
+            mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish { .. } => {}
+            mod_api::__private::BuiltinInsideAction::FireHurt(damage) => {
+                self.m
+                    .damage(self.level, damage, Damage::of(DamageKind::InFire));
+                hurt_teleports(self.m, self.w, self.events);
             }
         }
     }
@@ -1796,46 +2053,45 @@ impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
     ) -> std::result::Result<(), ()> {
         let (x, y, z) = (at.x, at.y, at.z);
         let p = [x, y, z];
-        // The part's contact, mid-walk, staged: its writes join this step only
-        // when it answered, and a panic is contained.
+        // The parts' contacts, mid-walk: generated dispatch isolates each part
+        // into its own staged collector and absorbs it only on normal return.
         if let Some(hooks) = crate::block_contact::HOOKS.get()
             && let Some(dimension) = crate::block_contact::current_level()
             && (hooks.inside_listens)(state)
         {
-            let mut staged = mod_api::InsideEffects::default();
-            let mut writes = Vec::new();
-            let kind = self.m.kind.id.clone();
             let id = self.m.id as i32;
             (hooks.inside_fire)(
                 self.level,
                 dimension,
                 id,
-                &kind,
+                &self.m.kind.id,
                 state,
                 at,
                 precise,
-                &mut staged,
-                &mut writes,
+                effects,
             );
-            effects.absorb_step(staged);
-            crate::block_contact::inside_written(state, at, writes);
         }
-        // PowderSnowBlock.entityInside: a burning mob destroys the
-        // block (`canEntityGrief` for the mob), then EXTINGUISH puts it out.
+        // PowderSnowBlock.entityInside: queue runBefore(EXTINGUISH) melt, FREEZE,
+        // and EXTINGUISH into the shared collector so mod callbacks order against them.
         if self.w.block_name(x, y, z) == "minecraft:powder_snow" {
-            // InsideBlockEffectType.FREEZE: `setIsInPowderSnow(true)`.
-            self.m.in_powder_snow = true;
-            if self.m.is_on_fire() && self.w.can_grief(self.m.id) {
-                self.events.push(MobEvent::BreakBlock {
-                    pos: p,
-                    drop: false,
-                    by: None,
-                    breaker: None,
-                });
-            }
-            self.m.extinguish_fire();
+            effects.run_before_builtin(
+                mod_api::InsideEffect::Extinguish,
+                mod_api::__private::BuiltinInsideAction::PowderSnowMelt(p),
+            );
+            effects.apply(mod_api::InsideEffect::Freeze);
+            effects.apply(mod_api::InsideEffect::Extinguish);
         }
         match self.w.block_name(x, y, z) {
+            "minecraft:water_cauldron" | "minecraft:powder_snow_cauldron" => {
+                effects.run_before_builtin(
+                    mod_api::InsideEffect::Extinguish,
+                    mod_api::__private::BuiltinInsideAction::LayeredCauldronExtinguish {
+                        pos: p,
+                        state: state.0,
+                    },
+                );
+                effects.apply(mod_api::InsideEffect::Extinguish);
+            }
             "minecraft:cactus" => {
                 self.m
                     .damage(self.level, 1.0, Damage::of(DamageKind::Cactus));
@@ -2468,12 +2724,7 @@ fn freeze_tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
         return;
     }
     let can_freeze = can_freeze(m, w);
-    if in_snow && can_freeze {
-        m.ticks_frozen = m
-            .ticks_frozen
-            .wrapping_add(1)
-            .min(crate::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
-    } else {
+    if !in_snow || !can_freeze {
         m.ticks_frozen = m.ticks_frozen.wrapping_sub(2).max(0);
     }
     if m.age.is_multiple_of(40) && m.is_fully_frozen() && can_freeze {
@@ -2756,7 +3007,7 @@ fn ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Option<TramplePhase> {
+) -> Option<AiStepPause> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -2804,7 +3055,7 @@ fn ai_step(
     }
     if m.alive() && !immobile {
         if let Some(paused) = server_ai_until_trample(m, w, level, events, pause_trample) {
-            return Some(TramplePhase::Goal(paused));
+            return Some(AiStepPause::Trample(TramplePhase::Goal(paused)));
         }
     } else {
         m.ai.jumping = false;
@@ -2812,8 +3063,6 @@ fn ai_step(
         m.ai.zza = 0.0;
     }
     ai_step_after_goals(m, w, level, events, pause_trample)
-        .err()
-        .map(TramplePhase::Travel)
 }
 
 fn ai_step_after_goals(
@@ -2822,7 +3071,7 @@ fn ai_step_after_goals(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Option<AiStepPause> {
     m.handle_jumping(w);
     let input = Vec3::new(
         f64::from(m.ai.xxa),
@@ -2837,12 +3086,13 @@ fn ai_step_after_goals(
         m.velocity = Vec3::ZERO;
     } else if !(m.species() == Species::Mannequin && m.extra.immovable) {
         // Mannequin.isEffectiveAi: an immovable one never travels.
-        m.travel_until_trample(w, level, input, events, pause_trample)?;
+        if let Err(travel) = m.travel_until_trample(w, level, input, events, pause_trample) {
+            return Some(AiStepPause::Trample(TramplePhase::Travel(travel)));
+        }
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
-    finish_ai_step(m, w, level, events);
-    Ok(())
+    finish_ai_step(m, w, level, events, pause_trample).map(AiStepPause::InsideEffects)
 }
 
 fn finish_ai_step(
@@ -2850,11 +3100,29 @@ fn finish_ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) {
+    pause_inside: bool,
+) -> Option<mod_api::InsideEffects> {
     // LivingEntity.aiStep: applyEffectsFromBlocks follows travel, then
     // the freezing, before pushEntities and the water's hurt.
     m.apply_effects_from_blocks(w, events);
-    walk_and_freeze(m, w, level, events);
+    let effects = collect_effects_from_blocks(m, w, level, events);
+    if pause_inside && !effects.is_empty() {
+        return Some(effects);
+    }
+    flush_mob_inside_hostless(m, w, level, events, effects);
+    finish_ai_step_after_inside(m, w, level, events);
+    None
+}
+
+fn finish_ai_step_after_inside(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) {
+    if m.alive() {
+        freeze_tick(m, w, level, events);
+    }
     push_entities(m, w, level, events);
     hurt_by_water(m, w, level, events);
     // Spider.tick: climbing while pressed against a wall.
@@ -7854,9 +8122,9 @@ mod freeze_tests {
                     // The freeze damage falls on a tick that is a multiple of 40.
                     m.age = 40;
                     let start = m.health;
-                    // The block walk's FREEZE effect for the snow it stands in.
-                    m.in_powder_snow = in_powder_snow(&m, w);
-                    freeze_tick(
+                    // The block walk's FREEZE effect for the snow it stands in,
+                    // followed by aiStep's freezing check.
+                    walk_and_freeze(
                         &mut m,
                         w,
                         &mut crate::health::TestLevel::new(0).level(),

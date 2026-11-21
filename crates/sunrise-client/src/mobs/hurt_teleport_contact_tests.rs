@@ -467,16 +467,23 @@ fn freezing_cramming_and_a_mod_hurt_each_teleport_inside_the_hurt() {
                     2.0,
                     Damage::of(DamageKind::Generic),
                 );
-                apply_entity_write(
-                    &mut m,
-                    w,
-                    &mut crate::health::TestLevel::new(0).level(),
-                    &mut Vec::new(),
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 2.0,
-                    },
-                );
+                {
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    let mut level = test_level.level();
+                    let mut events = Vec::new();
+                    let mut effects = mod_api::InsideEffects::default();
+                    effects.advance_step(0);
+                    effects.run_after(mod_api::InsideEffect::Freeze, |view| {
+                        view.hurt("minecraft:generic", 2.0);
+                    });
+                    let mut access = MobInsideAccess {
+                        m: &mut m,
+                        w,
+                        level: &mut level,
+                        events: &mut events,
+                    };
+                    effects.apply_and_clear(&mut access);
+                }
                 assert_eq!(m.position, expected.position, "mod hurt, seed {seed}");
                 assert_eq!(
                     m.random.state(),
@@ -630,16 +637,21 @@ fn two_hurts_in_a_tick_each_teleport_inside_their_own_hurt() {
                 m.in_powder_snow = true;
                 let mut level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
-                apply_entity_write(
-                    &mut m,
-                    w,
-                    &mut level.level(),
-                    &mut events,
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 2.0,
-                    },
-                );
+                {
+                    let mut level_guard = level.level();
+                    let mut effects = mod_api::InsideEffects::default();
+                    effects.advance_step(0);
+                    effects.run_after(mod_api::InsideEffect::Freeze, |view| {
+                        view.hurt("minecraft:generic", 2.0);
+                    });
+                    let mut access = MobInsideAccess {
+                        m: &mut m,
+                        w,
+                        level: &mut level_guard,
+                        events: &mut events,
+                    };
+                    effects.apply_and_clear(&mut access);
+                }
                 freeze_tick(&mut m, w, &mut level.level(), &mut events);
                 assert_eq!(
                     m.position, expected.position,

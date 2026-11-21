@@ -1537,17 +1537,14 @@ impl Game<'_> {
         Some(LivingRef::new(EntityRef::new(epoch, id)))
     }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing or a mid-walk `entity_inside`
-    /// contact asked for to the level. A write is skipped when the block at
-    /// its position is no longer the state it touched, as vanilla never sees
-    /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
-    /// on the shared inside sweep, not here.
+    /// to the parts, and the writes a landing (`Block.fallOn`) asked for to
+    /// the level. A write is skipped when the block at its position is no
+    /// longer the state it touched, as vanilla never sees a stale one.
     pub(super) fn drain_entity_inside(&mut self) {
         for contact in sunrise_client::block_contact::take_pending() {
             let (state, pos) = match &contact {
                 Pending::Landed(landed) => (landed.state, landed.position),
                 Pending::MinecartPass(pass) => (pass.state, pass.position),
-                Pending::InsideWritten(written) => (written.state, written.position),
             };
             let Some(level) = self.level(self.dim.id()) else {
                 continue;
@@ -1567,13 +1564,6 @@ impl Game<'_> {
                 Pending::Landed(landed) => {
                     for write in landed.writes {
                         self.apply_landing_write(level, pos, write);
-                    }
-                }
-                // The mid-walk contacts' own level writes, guarded on the touched
-                // state above, as a landing's are.
-                Pending::InsideWritten(written) => {
-                    for write in written.writes {
-                        self.apply_inside_write(level, pos, write);
                     }
                 }
             }
@@ -1596,27 +1586,6 @@ impl Game<'_> {
                 let _ = self.level_set_block(level, at, state, flags);
             }
             sunrise_world::level::LandingWrite::DestroyBlock { drop } => {
-                self.level_destroy_block(level, at, drop, None, false);
-            }
-            // A write a later API adds that this game does not know is not applied.
-            _ => {}
-        }
-    }
-    /// A write an `entity_inside` part asked for, applied as a landing write is: at the
-    /// touched block, once the entity's batch has ticked.
-    fn apply_inside_write(
-        &mut self,
-        level: mod_api::LevelRef,
-        pos: BlockPos,
-        write: sunrise_world::level::InsideWrite,
-    ) {
-        let at = [pos.x, pos.y, pos.z];
-        match write {
-            sunrise_world::level::InsideWrite::SetBlock(state) => {
-                let flags = BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS;
-                let _ = self.level_set_block(level, at, state, flags);
-            }
-            sunrise_world::level::InsideWrite::DestroyBlock { drop } => {
                 self.level_destroy_block(level, at, drop, None, false);
             }
             // A write a later API adds that this game does not know is not applied.
@@ -1919,32 +1888,21 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
         bounce_listens: |state| {
             crate::game::api_values::block_state::block_listens(mod_api::HookId::BounceOn, state)
         },
-        inside_fire: |level, dimension, entity, kind, state, pos, precise, staged, writes| {
-            // The whole callback is staged: a panic is contained and the walk
-            // keeps the caller's collector and write list as they were (#2247's
-            // rule: a mod's panic never breaks the model).
-            let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                HitLevel(level.reborrow()).native_entity_inside(
-                    crate::game::native_hooks::fire::EntityInsideCall {
-                        dimension,
-                        entity,
-                        kind,
-                        state,
-                        pos,
-                        precise,
-                        effects: staged,
-                        writes,
-                    },
-                );
-            }));
-            if let Err(payload) = fired {
-                if let Some(text) = payload.downcast_ref::<&str>() {
-                    eprintln!("an entity_inside part panicked at {text:?}");
-                } else if let Some(text) = payload.downcast_ref::<String>() {
-                    eprintln!("an entity_inside part panicked at {text:?}");
-                }
-            }
+        inside_fire: |level, dimension, entity, kind, state, pos, precise, effects| {
+            HitLevel(level.reborrow()).native_entity_inside(
+                crate::game::native_hooks::fire::EntityInsideCall {
+                    dimension,
+                    entity,
+                    kind,
+                    state,
+                    pos,
+                    precise,
+                    effects,
+                },
+            );
         },
+        state_to_api: |id| id.try_into_api().ok(),
+        state_to_engine: |state| state.try_into_engine(&()).ok(),
         fall_on: |dimension, level, c, distance, damage_multiplier, writes| {
             HitLevel(level.reborrow()).native_fall_on(
                 crate::game::native_hooks::fire::FallOnCall {

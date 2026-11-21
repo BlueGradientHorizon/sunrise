@@ -1,4 +1,1 @@
-pub use world::inside_write::{
-    EntityLookup, EntityWrite, HurtSourceError, InsideEffect, InsideEffects, InsideWrite,
-    PlannedInside,
-};
+pub use world::inside_write::{InsideEffect, InsideEffects, InsideEntityAccess, InsideEntityView};

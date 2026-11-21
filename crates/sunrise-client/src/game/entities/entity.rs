@@ -642,6 +642,346 @@ impl sunrise_client::block_contact::InsideWalk for ProjectileInside<'_, '_> {
         Ok(())
     }
 }
+/// Engine backing for [`mod_api::InsideEntityView`] while flushing an item's
+/// `InsideEffects` collector.
+struct ItemInsideAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    item: &'a mut ItemEntity,
+}
+
+impl mod_api::InsideEntityAccess for ItemInsideAccess<'_, '_> {
+    fn id(&self) -> u32 {
+        self.item.id
+    }
+
+    fn kind(&self) -> &str {
+        "minecraft:item"
+    }
+
+    fn is_alive(&self) -> bool {
+        self.item.health > 0
+    }
+
+    fn position(&self) -> [f64; 3] {
+        [
+            self.item.position.x,
+            self.item.position.y,
+            self.item.position.z,
+        ]
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        [
+            self.item.velocity.x,
+            self.item.velocity.y,
+            self.item.velocity.z,
+        ]
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.item.fire_ticks
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.item.fire_ticks > 0
+            && self
+                .game
+                .stack_can_be_hurt_by(&self.item.stack, "minecraft:in_fire")
+                != Some(false)
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.item.fall_distance
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use crate::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.velocity = self
+            .item
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.item.fall_distance = 0.0;
+        self.item.velocity = Vec3::new(
+            self.item.velocity.x * speed_multiplier[0],
+            self.item.velocity.y * speed_multiplier[1],
+            self.item.velocity.z * speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        self.item.fall_distance = 0.0;
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.item.fire_ticks = ticks;
+    }
+
+    fn add_effect(&mut self, _effect: mod_api::EffectKey, _duration: i32, _amplifier: u8) -> bool {
+        false
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        let subject_pos = self.position();
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            self.item.id,
+            crate::game::commands::Target::Item(self.item.id),
+            subject_pos,
+            direct,
+            causing,
+        ) else {
+            return false;
+        };
+        self.game
+            .hurt_lent_item_entity(self.item, amount, damage_type, direct, causing, from)
+    }
+
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use crate::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&*self.game) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, false)
+            .is_some()
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Extinguish => {
+                self.item.fire_ticks = self.item.fire_ticks.min(0);
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                if self.item.fire_ticks < 0 {
+                    self.item.fire_ticks += 1;
+                }
+                if self.item.fire_ticks >= 0 {
+                    self.item.fire_ticks = self.item.fire_ticks.max(160);
+                }
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                self.item.fire_ticks = self.item.fire_ticks.max(300);
+            }
+            mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+}
+
+/// Engine backing for [`mod_api::InsideEntityView`] while flushing a projectile's
+/// `InsideEffects` collector.
+struct ProjectileInsideAccess<'a, 'g> {
+    game: &'a mut Game<'g>,
+    shot: &'a mut Projectile,
+}
+
+impl mod_api::InsideEntityAccess for ProjectileInsideAccess<'_, '_> {
+    fn id(&self) -> u32 {
+        self.shot.id
+    }
+
+    fn kind(&self) -> &str {
+        self.shot.entity_type()
+    }
+
+    fn is_alive(&self) -> bool {
+        shot_alive(self.shot)
+    }
+
+    fn position(&self) -> [f64; 3] {
+        [
+            self.shot.position.x,
+            self.shot.position.y,
+            self.shot.position.z,
+        ]
+    }
+
+    fn velocity(&self) -> [f64; 3] {
+        [
+            self.shot.velocity.x,
+            self.shot.velocity.y,
+            self.shot.velocity.z,
+        ]
+    }
+
+    fn fire_ticks(&self) -> i32 {
+        self.shot.fire_ticks
+    }
+
+    fn is_on_fire(&self) -> bool {
+        self.shot.on_fire()
+    }
+
+    fn fall_distance(&self) -> f64 {
+        self.shot.fall_distance
+    }
+
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        use crate::game::api_values::TryIntoApi as _;
+        let level = self.game.level(self.game.dim.id())?;
+        self.game
+            .level_block_state(level, pos)
+            .and_then(|id| id.try_into_api().ok())
+    }
+
+    fn push(&mut self, delta: [f64; 3]) -> bool {
+        if !delta.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.velocity = self
+            .shot
+            .velocity
+            .add_vector(Vec3::new(delta[0], delta[1], delta[2]));
+        true
+    }
+
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        if !speed_multiplier.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.shot.fall_distance = 0.0;
+        self.shot.velocity = Vec3::new(
+            self.shot.velocity.x * speed_multiplier[0],
+            self.shot.velocity.y * speed_multiplier[1],
+            self.shot.velocity.z * speed_multiplier[2],
+        );
+        true
+    }
+
+    fn reset_fall_distance(&mut self) {
+        self.shot.fall_distance = 0.0;
+    }
+
+    fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.shot.fire_ticks = ticks;
+    }
+
+    fn add_effect(&mut self, _effect: mod_api::EffectKey, _duration: i32, _amplifier: u8) -> bool {
+        false
+    }
+
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> bool {
+        if !amount.is_finite()
+            || amount < 0.0
+            || self.game.health_resources.damage.id(damage_type).is_none()
+        {
+            return false;
+        }
+        let subject_pos = self.position();
+        let Some((direct, causing, from)) = self.game.resolve_inside_damage_sources(
+            self.shot.id,
+            crate::game::commands::Target::Projectile(self.shot.id),
+            subject_pos,
+            direct,
+            causing,
+        ) else {
+            return false;
+        };
+        self.game
+            .hurt_lent_projectile(self.shot, damage_type, direct, causing, from)
+    }
+
+    fn set_block(&mut self, pos: [i32; 3], state: mod_api::BlockState) -> bool {
+        use crate::game::api_values::TryIntoEngine as _;
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        let Ok(id) = state.try_into_engine(&*self.game) else {
+            return false;
+        };
+        let flags = mod_api::BlockUpdateFlags::NEIGHBORS | mod_api::BlockUpdateFlags::CLIENTS;
+        self.game
+            .level_set_block(level, pos, id, flags)
+            .unwrap_or(false)
+    }
+
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        let Some(level) = self.game.level(self.game.dim.id()) else {
+            return false;
+        };
+        self.game
+            .level_destroy_block(level, pos, drop, None, false)
+            .is_some()
+    }
+
+    fn apply_effect(&mut self, effect: mod_api::InsideEffect) {
+        match effect {
+            mod_api::InsideEffect::Extinguish => {
+                self.shot.fire_ticks = self.shot.fire_ticks.min(0);
+            }
+            mod_api::InsideEffect::FireIgnite => {
+                if self.shot.fire_ticks < 0 {
+                    self.shot.fire_ticks += 1;
+                }
+                if self.shot.fire_ticks >= 0 {
+                    self.shot.fire_ticks = self.shot.fire_ticks.max(160);
+                }
+            }
+            mod_api::InsideEffect::LavaIgnite => {
+                self.shot.fire_ticks = self.shot.fire_ticks.max(300);
+            }
+            mod_api::InsideEffect::Freeze | mod_api::InsideEffect::ClearFreeze => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod render_bounds_tests {
     use super::*;
@@ -786,47 +1126,14 @@ impl Game<'_> {
             &mut effects,
         );
         let ItemInside { game, item } = inside;
-        // `applyAndClear`: the writes apply in the collector's order, in this
-        // item's tick, until it is destroyed.
-        for planned in effects.take_planned() {
-            if item.health <= 0 {
-                break;
-            }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_item_write(item, write);
-            }
-        }
-    }
-
-    /// A typed entity write an `entity_inside` part queued for an item, applied
-    /// in its own tick. An item takes no effects and keeps no stuck multiplier
-    /// (its tick's friction reads none): `StuckIn` scales the movement once,
-    /// `AddEffect` is skipped, as vanilla's items keep no effect list.
-    fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
-        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        match write {
-            mod_api::EntityWrite::Push(v) => {
-                item.velocity = item.velocity.add_vector(triple(v));
-            }
-            mod_api::EntityWrite::SetMovement(v) => item.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
-                item.velocity = Vec3::new(
-                    item.velocity.x * v[0],
-                    item.velocity.y * v[1],
-                    item.velocity.z * v[2],
-                );
-            }
-            mod_api::EntityWrite::Hurt { amount, .. } => {
-                let _ = item.hurt(amount as i32);
-            }
-            mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
-            mod_api::EntityWrite::AddEffect { .. } => {}
-        }
+        // `applyAndClear`: the queued effects and callbacks apply in the
+        // collector's order, in this item's tick, until it is destroyed.
+        let mut access = ItemInsideAccess { game, item };
+        effects.apply_and_clear(&mut access);
     }
 
     /// The projectile's `Entity.checkInsideBlocks`, the same batch sweep the
-    /// item's is: the shared walk over its move, the staged fire over a lent
+    /// item's is: the shared walk over its move, the isolated fire over a lent
     /// level, and the flush into this projectile's own tick.
     pub(in crate::game) fn sweep_projectile_inside(&mut self, shot: &mut Projectile) {
         if !sunrise_client::block_contact::HOOKS
@@ -850,58 +1157,91 @@ impl Game<'_> {
             &mut effects,
         );
         let ProjectileInside { game, shot } = inside;
-        for planned in effects.take_planned() {
-            if !shot_alive(shot) {
-                break;
-            }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_projectile_write(shot, write);
-            }
-        }
+        let mut access = ProjectileInsideAccess { game, shot };
+        effects.apply_and_clear(&mut access);
     }
 
-    /// `Projectile.hurtServer` from lava's `lavaHurt` this tick: `markHurt`,
-    /// unless the projectile is invulnerable to lava (`isInvulnerableToBase`).
+    /// Resolve optional direct/causing source handles against the live level during
+    /// an inside-block callback flush, including the currently swept subject (whose row
+    /// may be temporarily lent out of its table). Returns `None` if an explicitly
+    /// supplied handle is stale or unresolvable so the caller reports `false` without
+    /// dropping attribution or rolling back sibling operations.
+    pub(in crate::game) fn resolve_inside_damage_sources(
+        &self,
+        subject_id: u32,
+        subject_target: crate::game::commands::Target,
+        subject_pos: [f64; 3],
+        direct: Option<mod_api::EntityRef>,
+        causing: Option<mod_api::EntityRef>,
+    ) -> Option<(
+        Option<crate::game::commands::Target>,
+        Option<crate::game::commands::Target>,
+        Option<[f64; 3]>,
+    )> {
+        let resolve = |handle: mod_api::EntityRef| {
+            let target = if handle.id() == subject_id {
+                (self.is_logical_server() && self.native_lifecycle.epoch() == Some(handle.epoch()))
+                    .then_some(subject_target)
+            } else {
+                self.native_entity_target(handle)
+                    .filter(|&target| self.target_level(target) == self.dim)
+            };
+            target.ok_or_else(|| {
+                log::warn!(
+                    "entity_inside: cannot resolve damage source {} in the swept entity's level",
+                    handle.id()
+                );
+            })
+        };
+        let direct_target = direct.map(resolve).transpose().ok()?;
+        let causing_target = causing.map(resolve).transpose().ok()?;
+        let from = direct_target.and_then(|t| {
+            if t == subject_target {
+                Some(subject_pos)
+            } else {
+                self.target_position(t)
+            }
+        });
+        Some((direct_target, causing_target, from))
+    }
+
+    /// `Projectile.hurtServer`: always returns `false`, marking non-immune
+    /// projectiles hurt (`sync_velocity = true`, `Entity.markHurt`).
+    pub(in crate::game) fn hurt_lent_projectile(
+        &mut self,
+        shot: &mut Projectile,
+        damage_type: &str,
+        direct: Option<crate::game::commands::Target>,
+        causing: Option<crate::game::commands::Target>,
+        position: Option<[f64; 3]>,
+    ) -> bool {
+        let creative = self.creative_source_of(causing);
+        let vanilla = self.saved_refuses_damage(shot.id, damage_type, creative);
+        let source = sunrise_client::health::HurtSource {
+            damage_type,
+            causing: causing.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
+            direct: direct.and_then(|t| self.network_entity_id(t)).unwrap_or(0),
+            position,
+        };
+        if !self.native_nonliving_invulnerable(shot.id, shot.entity_type(), source, vanilla) {
+            shot.sync_velocity = true;
+        }
+        false
+    }
+
+    /// Lava uses the same `Projectile.hurtServer` path as explicit damage.
     pub(in crate::game) fn lava_mark_hurt(&mut self, shot: &mut Projectile) {
         if !shot.take_lava_marked() {
             return;
         }
-        let vanilla = self.saved_refuses_damage(shot.id, "minecraft:lava", false);
-        if !self.refuses_lava_hurt(shot.id, shot.entity_type(), vanilla) {
-            shot.sync_velocity = true;
-        }
-    }
-
-    /// A typed entity write for a projectile, applied in its own tick. A
-    /// projectile takes no effects, no damage table and keeps no stuck
-    /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
-    /// movement once, as vanilla's projectiles keep none of the three.
-    fn apply_projectile_write(&mut self, shot: &mut Projectile, write: mod_api::EntityWrite) {
-        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        match write {
-            mod_api::EntityWrite::Push(v) => {
-                shot.velocity = shot.velocity.add_vector(triple(v));
-            }
-            mod_api::EntityWrite::SetMovement(v) => shot.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
-                shot.velocity = Vec3::new(
-                    shot.velocity.x * v[0],
-                    shot.velocity.y * v[1],
-                    shot.velocity.z * v[2],
-                );
-            }
-            mod_api::EntityWrite::ResetFallDistance => shot.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => shot.fire_ticks = ticks,
-            mod_api::EntityWrite::Hurt { .. } | mod_api::EntityWrite::AddEffect { .. } => {}
-        }
+        let _ = self.hurt_lent_projectile(shot, "minecraft:lava", None, None, None);
     }
 
     /// An `entity_inside` part's contact for a kind the batch ticks, fired
-    /// mid-walk over a lent level, the whole callback staged: only an answering
-    /// callback's writes join the walk, and a panic there is contained, leaving
-    /// the batch's rows and the level as they were. The level is lent and given
-    /// back per contact, as `item_fall_on` lends its own (#2194's carrier
-    /// discipline).
+    /// mid-walk over a lent level. Generated dispatch isolates each part into
+    /// its own staged collector and absorbs it only on normal return. The level
+    /// is lent and given back per contact, as `item_fall_on` lends its own
+    /// (#2194's carrier discipline).
     pub(in crate::game) fn fire_batch_inside(
         &mut self,
         entity: i32,
@@ -920,8 +1260,6 @@ impl Game<'_> {
         {
             return;
         }
-        let mut staged = mod_api::InsideEffects::default();
-        let mut writes = Vec::new();
         let mut lent = sunrise_client::health::LentLevel::take(&mut self.world);
         let mut level = sunrise_client::health::DamageLevel::lent(
             &self.world,
@@ -934,20 +1272,10 @@ impl Game<'_> {
         .with_effects(crate::game::entity::hit_effects_of!(self, None));
         if let Some(hooks) = sunrise_client::block_contact::HOOKS.get() {
             (hooks.inside_fire)(
-                &mut level,
-                dimension,
-                entity,
-                kind,
-                state,
-                at,
-                precise,
-                &mut staged,
-                &mut writes,
+                &mut level, dimension, entity, kind, state, at, precise, effects,
             );
         }
         lent.give_back(&mut self.world);
-        effects.absorb_step(staged);
-        sunrise_client::block_contact::inside_written(state, at, writes);
     }
 
     pub(super) fn tick_item_with_block_contacts(
@@ -987,6 +1315,9 @@ impl Game<'_> {
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
+            if item.health <= 0 {
+                return (false, true);
+            }
         }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);

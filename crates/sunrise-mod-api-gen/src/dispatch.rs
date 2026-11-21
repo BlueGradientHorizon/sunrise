@@ -507,13 +507,15 @@ pub(super) fn emit<'a>(
                     hook.name
                 ));
             }
-            // Owned configuration tasks cannot be snapshotted. The connection's
-            // registration transaction owns the entire staging sink.
+            // Owned configuration tasks and inside-block callbacks cannot be snapshotted.
+            // Their staging sinks isolate each listener directly.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
+            let inside_effects = event_type == "EntityInsideEvent" && name == "effects";
             if scalar {
                 rollback.push((name.clone(), false));
             } else if !task_registration
+                && !inside_effects
                 && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
@@ -530,6 +532,7 @@ pub(super) fn emit<'a>(
                 Some((RegistrationAppend::Register, _)) => "",
                 Some((RegistrationAppend::Custom, _)) => "pub(super)",
                 None if task_registration
+                    || inside_effects
                     || matches!(
                         (event_type.as_str(), name.as_str()),
                         ("ApplyEffectTickEvent", "changes")
@@ -946,7 +949,7 @@ pub(super) fn emit<'a>(
         if declaration_only {
             continue;
         }
-        let build = if declaration.is_some() {
+        let build = if declaration.is_some() || name == "entity_inside" {
             String::new()
         } else {
             format!(
@@ -1319,6 +1322,17 @@ pub(super) fn emit<'a>(
                             "break 'dispatch_parts"
                         ),
                     )
+                } else if name == "entity_inside" {
+                    let inside_stage = fresh_name("inside_stage", &mut used);
+                    let invoke_inside = call(&part_item, &listener_id, "continue;", "break");
+                    format!(
+                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{
+                             let mut {inside_stage} = InsideEffects::staged_for({listener_id});
+                             let mut {event} = {event_type} {{ dimension, entity, kind, state, pos, precise, effects: &mut {inside_stage} }};
+                             {invoke_inside}
+                             effects.absorb_step({inside_stage});
+                         }}"
+                    )
                 } else {
                     format!(
                         "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
@@ -1420,8 +1434,6 @@ fn engine_types(ty: &mut Type, carrier: bool) {
                 }
             } else if path.path.is_ident("LandingWrite") {
                 syn::parse_quote!(sunrise_world::level::LandingWrite)
-            } else if path.path.is_ident("InsideWrite") {
-                syn::parse_quote!(sunrise_world::level::InsideWrite)
             } else {
                 return syn::visit_mut::visit_type_mut(self, ty);
             };
@@ -1475,7 +1487,7 @@ fn stack_crossing_routed(
         "LootContext",
         "ParticleOptions",
     ];
-    const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
+    const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite"];
     const INFALLIBLE_VALUES: &[&str] = &["GuiDraw", "Text"];
     let parameters = args.iter().chain(output).collect::<Vec<_>>();
     if !parameters.iter().any(|(_, ty)| {

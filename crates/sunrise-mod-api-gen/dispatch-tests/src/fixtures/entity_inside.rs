@@ -1,5 +1,12 @@
 mod stubs {
     pub(super) struct LandingWrite;
+    #[derive(Default)]
     pub(super) struct InsideEffects;
-    pub(super) struct InsideWrite;
+    impl InsideEffects {
+        pub(crate) fn staged_for(_: &'static str) -> Self {
+            Self
+        }
+
+        pub(crate) fn absorb_step(&mut self, _: Self) {}
+    }
 }
