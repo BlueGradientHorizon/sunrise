@@ -210,7 +210,7 @@ fn tile(
         );
         for vertex in &mut batch.vertices[start..] {
             vertex.glint_uv = [uv.u1, uv.v1];
-            vertex.repeat_x[3] = repeat;
+            vertex.repeat[3] = repeat;
         }
         return;
     }
@@ -351,7 +351,7 @@ pub fn blit_gui_sprite(
         batch.scissor_since(start, clip);
     } else if batch.vertices[start..]
         .iter()
-        .any(|vertex| vertex.repeat_x[3] != 0)
+        .any(|vertex| vertex.repeat[3] != 0)
     {
         // Bound the submitted rectangle as well as the repeat work. With an enormous
         // finite extent the projected geometry must not overflow before raster clipping.

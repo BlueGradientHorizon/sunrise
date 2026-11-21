@@ -2148,7 +2148,7 @@ pub struct HudVertex {
     pub text: u32,
     /// X repeat phase and one-based index into the batch's repeats (0 for an ordinary vertex).
     /// The renderer fills phase coefficients when uploading for the current device scale.
-    pub repeat_x: [u32; 4],
+    pub repeat: [u32; 4],
     pub repeat_y: [u32; 3],
 }
 /// Sutherland-Hodgman against one half plane, interpolating every attribute.
@@ -2398,7 +2398,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat_x: [0; 4],
+                repeat: [0; 4],
                 repeat_y: [0; 3],
             });
         }
@@ -2420,7 +2420,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: glint_uv[i],
                 text: 0,
-                repeat_x: [0; 4],
+                repeat: [0; 4],
                 repeat_y: [0; 3],
             });
         }
@@ -2434,7 +2434,7 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat_x: [0; 4],
+                repeat: [0; 4],
                 repeat_y: [0; 3],
             });
         }
@@ -2460,7 +2460,7 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: glint_uv[i],
                 text: 0,
-                repeat_x: [0; 4],
+                repeat: [0; 4],
                 repeat_y: [0; 3],
             });
         }
@@ -2764,7 +2764,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat_x: [0; 4],
+                repeat: [0; 4],
                 repeat_y: [0; 3],
             });
         }
@@ -3651,11 +3651,11 @@ impl HudRenderer {
             uploads.buffer_with(encoder, &self.buffer, 0, vertices.len(), |mut dst| {
                 dst.slice(..).copy_from_slice(vertices);
                 for (i, vertex) in batch.vertices.iter().enumerate() {
-                    let repeat = vertex.repeat_x[3];
+                    let repeat = vertex.repeat[3];
                     if repeat != 0 {
                         let [x, y] = phases[repeat as usize - 1];
                         let mut vertex = *vertex;
-                        vertex.repeat_x[..3].copy_from_slice(&x);
+                        vertex.repeat[..3].copy_from_slice(&x);
                         vertex.repeat_y = y;
                         let bytes = bytemuck::bytes_of(&vertex);
                         let start = i * bytes.len();
