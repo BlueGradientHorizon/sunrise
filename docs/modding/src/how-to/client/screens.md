@@ -126,8 +126,8 @@ screen part lays it out (several mods' blocks can open one vanilla menu type, ea
 `MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
 corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
 `screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
-costs no layout work. The change lasts until the screen closes, and the next screen opens with its declared
-layout. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
+costs no layout work. The change lasts for that opening. A replacement starts from its declared layout,
+even when the server reuses the same window id without a close packet. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
 hidden.
 
 From the next frame a moved slot is a vanilla slot at that position, which is what the screen reads live:

@@ -11,9 +11,9 @@ mod lifecycle_tests;
 impl Game<'_> {
     /// The mod screen showing now, if any.
     pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
-        self.mod_screen
-            .as_ref()
-            .filter(|s| self.screen == Screen::Inventory && self.container == Some(s.menu.key))
+        self.active_native_screen().filter(|s| {
+            s.shown && self.screen == Screen::Inventory && self.container == Some(s.menu.key)
+        })
     }
     /// Whether a mod's screen places the current container and player slots.
     pub(in crate::game) fn native_screen_shown(&self) -> bool {

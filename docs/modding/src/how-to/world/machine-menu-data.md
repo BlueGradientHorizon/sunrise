@@ -261,7 +261,8 @@ call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoFo
 `openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
 32 KiB, is one-time context. On the client, `host.screen_extra_data()` returns
 `Option<&[u8]>`: decode the slice directly during the host borrow. `None` means no mod
-screen is showing; `Some(&[])` means one is showing but no bytes arrived for its window.
+screen is showing; `Some(&[])` means one is showing but no bytes arrived for this opening.
+Reusing a window id does not reuse the previous opening's context.
 Copy the bytes with `to_vec()` only if you need to keep them beyond the host borrow.
 `pos` is an optional hint returned by `screen_pos()`. Neither is live data or block backing.
 The menu's declared container slots, if any, start empty. Opening returns the window id or

@@ -17,6 +17,9 @@ impl Game<'_> {
             .as_ref()
             .map(|_| (remote.entity_id, remote.profile));
         self.native_client_player_logging_out(player.map(|p| p.0), player.map(|p| p.1));
+        if self.mod_screen.is_some() {
+            self.remote_close_local();
+        }
         self.native_lifecycle.begin_close();
         self.native_lifecycle_world_closed();
         self.recipe_ui.server_properties = Default::default();

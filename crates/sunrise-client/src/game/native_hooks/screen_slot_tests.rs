@@ -7,15 +7,18 @@ fn mod_screen_data_is_its_windows_only() {
         menu: super::OpenNativeMenu {
             key: (0, 0, 0),
             window: 4,
+            generation: 1,
             name: "gtmod:menu".into(),
             block: Some("gtmod:machine".into()),
+            pos: None,
             mod_type: None,
             data: Vec::new(),
-            extra: None,
+            extra: Vec::new(),
         },
         slot_moves: Default::default(),
         layout_revision: 0,
         screen: mod_api::MenuScreenLayout::default(),
+        shown: true,
     };
     assert!(s.set_data(4, 1, 7));
     assert!(!s.set_data(3, 1, 99));

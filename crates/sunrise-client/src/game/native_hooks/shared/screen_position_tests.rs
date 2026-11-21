@@ -16,6 +16,7 @@ struct ScreenEvents {
     frames: Vec<Frame>,
     tooltip_at: Vec<[f32; 2]>,
     data: Vec<Vec<i32>>,
+    cancel_opening: bool,
 }
 type Seen = Arc<Mutex<ScreenEvents>>;
 /// A mod menu type no block opens here.
@@ -74,6 +75,18 @@ impl mod_api::Hooks for Listener {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         r.menu_part("minecraft:generic_9x3", Position(self.0.clone()));
         r.menu_part(PACK, Position(self.0.clone()));
+    }
+
+    fn screen_opening(
+        &self,
+        _: &dyn mod_api::ClientHost,
+        _: &mut mod_api::ScreenOpeningEvent<'_>,
+    ) -> Option<mod_api::ScreenOpening> {
+        self.0
+            .lock()
+            .unwrap()
+            .cancel_opening
+            .then_some(mod_api::ScreenOpening::Cancel)
     }
 }
 fn with_listener(test: impl FnOnce(&mut Game<'_>, &Seen)) {
@@ -162,22 +175,46 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     game.slot_at(&HudBatch::scratch([200, 200]), 25.0, 40.0),
                     None
                 );
+                seen.lock().unwrap().cancel_opening = true;
+                game.set_screen(Screen::Paused);
+                assert_eq!(game.screen, Screen::Inventory);
+                assert!(
+                    game.native_screen_shown(),
+                    "an unrelated veto keeps the menu"
+                );
+                seen.lock().unwrap().cancel_opening = false;
                 receive(game, 2, 0, -80_000);
                 receive(game, 2, 1, 3);
                 draw(game);
                 receive(game, 2, 2, 9);
                 receive(game, 2, 0, i32::MAX);
                 draw(game);
-                open(game, 3, 1);
-                receive(game, 2, 0, 8);
-                draw(game);
-                receive(game, 3, 0, -17);
-                receive(game, 3, 1, i32::MIN);
-                draw(game);
-                game.handle_packet(C::ContainerClose(ContainerClose { container: 3 }))
-                    .unwrap();
-                receive(game, 3, 1, 18);
+                let first = game.remote.as_ref().unwrap().menu.generation;
+                // Even before the old state is dropped, another generation
+                // of the same window cannot see it or write to it.
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .menu
+                    .set(Some((2, PACK.into())));
                 assert!(game.shown_native_screen().is_none());
+                assert!(!game.native_screen_data(2, 0, 8));
+                open(game, 2, 1); // Same id, new opening.
+                assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
+                receive(game, 3, 0, 8);
+                draw(game);
+                receive(game, 2, 0, -17);
+                receive(game, 2, 1, i32::MIN);
+                draw(game);
+                game.handle_packet(C::ContainerClose(ContainerClose { container: 2 }))
+                    .unwrap();
+                receive(game, 2, 1, 18);
+                assert!(game.shown_native_screen().is_none());
+                seen.lock().unwrap().cancel_opening = true;
+                open(game, 2, 1);
+                assert_eq!(game.screen, Screen::Playing);
+                assert!(game.mod_screen.is_none(), "a veto drops the staged screen");
+                assert!(game.remote.as_ref().unwrap().menu.as_ref().is_none());
                 assert_eq!(
                     seen.lock().unwrap().data,
                     [
@@ -258,14 +295,8 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
                 let host: &dyn mod_api::ClientHost = &*game;
                 let bytes = host.screen_extra_data().unwrap();
                 assert_eq!(bytes, expected.as_slice());
-                let stored = game
-                    .shown_native_screen()
-                    .unwrap()
-                    .menu
-                    .extra
-                    .as_ref()
-                    .unwrap();
-                assert!(std::ptr::eq(bytes, stored.data.as_slice()));
+                let stored = &game.shown_native_screen().unwrap().menu.extra;
+                assert!(std::ptr::eq(bytes, stored.as_slice()));
 
                 receive(game, 3, &[0x78]);
                 assert_extra(game, Some(&expected)); // Still showing window 1.
@@ -336,6 +367,14 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
+                seed_native_menu(game, 1, "minecraft:generic_9x3");
+                game.player = Some(
+                    sunrise_client::motion::PlayerMotion::new(
+                        game.motion,
+                        sunrise_core::geometry::Vec3::new(17.5, 64.0, -8.5),
+                    )
+                    .unwrap(),
+                );
                 let pos = (17, 63, -9);
                 game.world.chunks.insert(
                     (1, -1),
@@ -348,11 +387,10 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                     .default_state("test:crate")
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-                game.open_native_screen(pos, Some(pos), 1, "minecraft:generic_9x3", None);
+                game.open_native_screen(pos, Some(pos), None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                 assert_eq!(open.screen.height, 166.0);
-                game.screen = Screen::Inventory;
                 game.container = Some(pos);
                 game.title = None;
                 game.ui.hide_gui = true;
@@ -365,6 +403,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                 screen.width = 176.0;
                 screen.inventory_x = 8.0;
                 screen.inventory_y = 84.0;
+                game.set_screen(Screen::Inventory);
                 // No new motion: the odd-sized resize allows GUI scale 2.
                 let small = [638, 478];
                 let projection = game.pointer_projection(small);
@@ -437,15 +476,17 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
         || {
             with_listener(|game, seen| {
                 let key = (i32::MIN, 0, 0);
-                game.open_native_screen(key, None, 1, PACK, None);
+                seed_native_menu(game, 1, PACK);
+                game.open_native_screen(key, None, None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!((open.screen.height, &open.menu.block), (133.0, &None));
-                game.screen = Screen::Inventory;
                 game.container = Some(key);
+                game.set_screen(Screen::Inventory);
                 let mut batch = HudBatch::scratch([128, 128]);
                 assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
                 assert_eq!(seen.lock().unwrap().draw, [(None, None)]);
-                game.open_native_screen(key, None, 2, "minecraft:generic_9x3", None);
+                seed_native_menu(game, 2, "minecraft:generic_9x3");
+                game.open_native_screen(key, None, None);
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla chest keeps its screen"
@@ -563,6 +604,8 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
+                let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(pipe, "Hopper screens").unwrap();
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
@@ -574,9 +617,10 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     let state = game.pack.assets.registry.default_state(block).unwrap();
                     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                     heard.lock().unwrap().clear();
-                    game.open_native_screen(pos, Some(pos), x, "minecraft:hopper", None);
-                    game.screen = Screen::Inventory;
+                    seed_native_menu(game, x, "minecraft:hopper");
+                    game.open_native_screen(pos, Some(pos), None);
                     game.container = Some(pos);
+                    game.set_screen(Screen::Inventory);
                     let open = game.mod_screen.as_ref().expect("the machine's screen");
                     let (menu, block) = (open.menu.name.clone(), open.menu.block.clone().unwrap());
                     let shown: Vec<_> = (0..5).filter(|&i| i != hidden).collect();
@@ -641,7 +685,8 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 heard.lock().unwrap().clear();
-                game.open_native_screen(pos, Some(pos), 3, "minecraft:hopper", None);
+                seed_native_menu(game, 3, "minecraft:hopper");
+                game.open_native_screen(pos, Some(pos), None);
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla hopper keeps its screen"

@@ -11,20 +11,24 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
             let icon = "container/slot/shield";
             assert!(game.gui.atlas.sprites.contains_key(icon));
+            let generation = seed_native_menu(game, 1, "test:menu");
             game.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
             game.mod_screen = Some(OpenNativeScreen {
                 menu: OpenNativeMenu {
                     key: (1, 2, 3),
                     window: 1,
+                    generation,
                     name: "test:menu".into(),
                     block: Some("test:block".into()),
+                    pos: None,
                     mod_type: None,
                     data: Vec::new(),
-                    extra: None,
+                    extra: Vec::new(),
                 },
                 layout_revision: 0,
                 slot_moves: Default::default(),
+                shown: true,
                 screen: mod_api::MenuScreenLayout {
                     slots: vec![Some(mod_api::ScreenSlot {
                         position: [8.0, 18.0],
@@ -152,6 +156,7 @@ fn unknown_slot_icon_refuses_screen_at_open_with_diagnostic() {
             root.prepared().to_owned(),
             crate::game::execution_role::ExecutionRole::Client,
             |game| {
+                seed_native_menu(game, 1, "minecraft:generic_9x1");
                 let pos = (1, 64, 2);
                 game.world
                     .chunks
@@ -163,12 +168,13 @@ fn unknown_slot_icon_refuses_screen_at_open_with_diagnostic() {
                     .default_state("icon_open:machine")
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, block).unwrap();
-                game.open_native_screen(pos, Some(pos), 1, "minecraft:generic_9x1", None);
+                game.open_native_screen(pos, Some(pos), None);
                 assert!(game.mod_screen.is_some(), "valid icon must open the screen");
                 DIAGNOSTICS.0.lock().unwrap().clear();
                 unknown.store(true, Ordering::Relaxed);
                 // A panic fails this test; no catch_unwind masks it.
-                game.open_native_screen(pos, Some(pos), 2, "minecraft:generic_9x1", None);
+                seed_native_menu(game, 2, "minecraft:generic_9x1");
+                game.open_native_screen(pos, Some(pos), None);
                 assert!(
                     game.mod_screen.is_none(),
                     "unknown icon must refuse, not retain the prior screen"

@@ -24,23 +24,14 @@ impl Game<'_> {
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl Game<'_> {
-    /// The block of the mod screen that is open (`native_screen`), as the
-    /// server named it when the block opened its menu type; None when no mod
-    /// screen is open. 401.
+    /// The opener position for the currently shown mod menu, if known.
     pub(in crate::game) fn screen_pos(&self) -> Option<[i32; 3]> {
-        self.shown_native_screen()?.pos()
+        self.shown_native_screen()?.menu.pos
     }
     /// Borrow the open mod screen's bytes, or an empty slice if no bytes arrived.
     /// Returns `None` when no mod screen is showing. @API:menu_extra_data@.
     pub(in crate::game) fn screen_extra_data(&self) -> Option<&[u8]> {
-        let screen = self.shown_native_screen()?;
-        Some(
-            screen
-                .menu
-                .extra
-                .as_ref()
-                .map_or(&[], |extra| extra.data.as_slice()),
-        )
+        Some(self.shown_native_screen()?.menu.extra.as_slice())
     }
     /// The `sunrise:menu_extra` payload the server sent just before its
     /// `OpenScreen`, in the layout its revision query in configuration chose:

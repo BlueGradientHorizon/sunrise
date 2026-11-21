@@ -125,25 +125,24 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
             crate::game::native_entity_refs::tests::with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "tips").unwrap();
-                game.remote
-                    .as_mut()
-                    .unwrap()
-                    .menu
-                    .set(Some((1, "minecraft:generic_9x3".into())));
+                let generation = seed_native_menu(game, 1, "minecraft:generic_9x3");
                 game.screen = Screen::Inventory;
                 game.container = Some((1, 2, 3));
                 game.mod_screen = Some(OpenNativeScreen {
                     menu: OpenNativeMenu {
                         key: (1, 2, 3),
                         window: 1,
+                        generation,
                         name: "minecraft:generic_9x3".into(),
                         block: Some("tips:chest".into()),
+                        pos: None,
                         mod_type: None,
                         data: Vec::new(),
-                        extra: None,
+                        extra: Vec::new(),
                     },
                     layout_revision: 0,
                     slot_moves: Default::default(),
+                    shown: true,
                     screen: mod_api::MenuScreenLayout {
                         width: 176.0,
                         height: 166.0,

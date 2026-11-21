@@ -130,9 +130,9 @@ impl Game<'_> {
     /// the one place the game's screen changes. A different screen runs
     /// `screen_opening` first (`ScreenEvent.Opening`: a mod may keep the
     /// current screen or open its own), then `screen_closing` for the screen
-    /// it replaces. The same screen
-    /// again, a game with no mod listening to either, and a server's or a guest's `Game`
-    /// are a plain assignment.
+    /// it replaces. A game with no mod listening to either, and a server's
+    /// or a guest's `Game`, assign the screen directly. A new native menu
+    /// can take over the already shown `Inventory` screen in place.
     pub(super) fn set_screen(&mut self, screen: Screen) {
         self.set_screen_with(screen, |_| {});
     }
@@ -140,7 +140,12 @@ impl Game<'_> {
     /// before it applies: what a screen's own `onClose` does only when it really
     /// closes (a container screen's close packet).
     pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
+        let opening_native =
+            screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
         if self.screen == screen {
+            if opening_native {
+                self.apply_screen_with_mod_book(screen, None);
+            }
             return;
         }
         let mut screen = screen;
@@ -152,13 +157,23 @@ impl Game<'_> {
                 self.decide_screen(&current, &new, self.screen != Screen::Playing)
             };
             match decision {
-                ScreenDecision::Keep => return,
+                ScreenDecision::Keep => {
+                    // Reject only the opening just staged, never the menu
+                    // that an unrelated veto is keeping on screen.
+                    if opening_native {
+                        self.remote_close_container();
+                    }
+                    return;
+                }
                 ScreenDecision::ModScreen(mod_id) => {
                     screen = Screen::Mod;
                     owner = Some(mod_id);
                 }
                 ScreenDecision::Vanilla(target) => {
                     before(self);
+                    if opening_native && self.active_native_screen().is_some() {
+                        self.remote_close_container();
+                    }
                     self.open_screen_target(target);
                     if self.title.is_some() {
                         // A title screen: told here, so the frame's observer
@@ -286,6 +301,11 @@ impl Game<'_> {
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
+        // `before` may already have closed it. Overlays that keep Inventory
+        // underneath don't pass through this replacement path.
+        if screen != Screen::Inventory && self.active_native_screen().is_some() {
+            self.remote_close_container();
+        }
         self.screen = screen;
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
@@ -653,10 +673,13 @@ fn shake_pose(shake: Shake) -> glam::Mat4 {
 
 /// The layout and local slot state of the mod screen on this client.
 pub(super) struct OpenNativeScreen {
+    /// Fixed for the opening; slot moves have their own revision.
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
     screen: mod_api::MenuScreenLayout,
     menu: OpenNativeMenu,
+    /// Installed as the window's screen, not merely staged for ScreenOpening.
+    shown: bool,
 }
 
 /// The menu the screen presents: where its slots are stored, the opener,
@@ -664,13 +687,29 @@ pub(super) struct OpenNativeScreen {
 struct OpenNativeMenu {
     key: Pos,
     window: i32,
+    generation: u64,
     /// The menu's type, which its screen hooks are keyed by.
     name: String,
-    /// The mod block whose menu it is; none for a menu opened without one.
+    /// The mod block whose matching container opened the menu, if any.
     block: Option<String>,
+    pos: Option<[i32; 3]>,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
-    extra: Option<sunrise_protocol::menu_extra::Message>,
+    extra: Vec<u8>,
+}
+
+#[cfg(test)]
+fn seed_native_menu(game: &mut Game<'_>, window: i32, name: &str) -> u64 {
+    if game.remote.is_none() {
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Native screen fixture").unwrap();
+    }
+    if game.remote.as_ref().unwrap().menu.as_ref().is_some() {
+        game.remote_close_local();
+    }
+    let menu = &mut game.remote.as_mut().unwrap().menu;
+    menu.set(Some((window, name.to_owned())));
+    menu.generation
 }
 
 /// Where a mod moved the open screen's slots after it opened, over the
@@ -744,17 +783,23 @@ impl SlotMoves {
 }
 
 impl Game<'_> {
-    /// The registered layout resolved for this client's window, including while it opens.
+    /// The staged or shown native screen belonging to this opening, not a
+    /// prior opening of the same numeric window id.
+    fn active_native_screen(&self) -> Option<&OpenNativeScreen> {
+        let screen = self.mod_screen.as_ref()?;
+        let remote = &self.remote.as_ref()?.menu;
+        (remote.generation == screen.menu.generation && remote.as_ref()?.0 == screen.menu.window)
+            .then_some(screen)
+    }
+
+    /// The menu type resolved for this client's opening, including in ScreenOpening.
     pub(in crate::game) fn native_screen_menu_type(
         &self,
         window: i32,
         name: &str,
     ) -> Option<&'static sunrise_client::containers::ModMenuType> {
-        self.mod_screen
-            .as_ref()
-            .filter(|screen| screen.menu.window == window && screen.menu.name == name)?
-            .menu
-            .mod_type
+        let menu = &self.active_native_screen()?.menu;
+        (menu.window == window && menu.name == name).then_some(menu.mod_type)?
     }
 }
 
@@ -769,19 +814,8 @@ impl OpenNativeScreen {
     pub(in crate::game) fn commit_slot_moves(&self) {
         self.slot_moves.commit();
     }
-    /// The block the menu is of: where the server said, else the clicked
-    /// block its slots are under (a server without `sunrise:menu_extra`).
-    fn pos(&self) -> Option<[i32; 3]> {
-        match &self.menu.extra {
-            Some(extra) => extra.pos,
-            None if self.menu.key.0 != i32::MIN => {
-                Some([self.menu.key.0, self.menu.key.1, self.menu.key.2])
-            }
-            None => None,
-        }
-    }
-    /// Data slot `id` of window `window`'s menu: false for another window's
-    /// (an old or replaced one), which this screen leaves alone.
+    /// Data slot `index` of window `window`'s menu: false for another window.
+    /// The caller resolves the shown opening before passing it a packet.
     fn set_data(&mut self, window: i32, index: usize, value: i32) -> bool {
         if window != self.menu.window {
             return false;
@@ -2789,7 +2823,7 @@ impl Game<'_> {
             self.native_screen_draw(mod_api::__private::ScreenDrawCall {
                 menu: &s.menu.name,
                 block: s.menu.block.as_deref(),
-                pos: s.pos(),
+                pos: s.menu.pos,
                 data: &s.menu.data,
                 origin: [ox, oy],
                 pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
@@ -2928,7 +2962,7 @@ impl Game<'_> {
             return;
         };
         let menu_slot = slot.and_then(|slot| {
-            Self::menu_slot_index(self.native_screen_menu()?, slot).map(|slot| slot as u32)
+            Self::menu_slot_index(&screen.menu.name, slot).map(|slot| slot as u32)
         });
         let (ox, oy) = self.inventory_origin(batch);
         let at = [self.cursor.0 - ox, self.cursor.1 - oy];

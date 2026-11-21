@@ -17,16 +17,16 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn set_preset_editor_dimensions(&self, dimensions: Compound) -> bool;
     /// Side: client.
-    /// The block of the mod screen that is open (`screen`), as the
-    /// server named it when the block opened its menu type; None when no mod
-    /// screen is open. 401.
+    /// The opener position of the currently shown mod menu, if supplied.
+    /// When a server explicitly omits the position, returns `None`.
     #[access(ClientSetup)]
     fn screen_pos(&self) -> Option<[i32; 3]>;
     /// Side: client.
     /// The open mod screen's one-time context from `menu_extra_data` or
     /// `PlayerRef::open_mod_menu`, borrowed for the duration of the host borrow.
     /// Returns `None` when no mod screen is showing, and `Some(&[])` when a
-    /// mod screen is showing but no bytes arrived for its window. @API:menu_extra_data@.
+    /// mod screen is showing but no bytes arrived for this opening. Reopening the same
+    /// window id does not reuse the previous bytes. @API:menu_extra_data@.
     #[access(ClientSetup)]
     fn screen_extra_data(&self) -> Option<&[u8]>;
     /// Side: client.
@@ -58,8 +58,9 @@ pub trait ScreensClientHost {
     /// next frame the slot is a vanilla slot at that position: the hovered slot (the 18 by 18
     /// box around it), its highlight, its contents, its empty-slot icon and the recipe book's
     /// ghost items; a hidden one is none of these. A position outside the image is allowed.
-    /// The change lasts until the screen closes, and the next open starts from the declared
-    /// layout. Only the mod that owns the open screen moves its slots: the mod that registered
+    /// The change lasts for this opening; a replacement starts from the declared layout,
+    /// even if it reuses the same window id. Only the mod that owns the open screen moves
+    /// its slots: the mod that registered
     /// its recipe-book layout (`MenusRegistrar`), with or without a screen part, else the mod
     /// whose screen part lays it out. Nothing is sent:
     /// the server's menu keeps every slot, so a hidden slot keeps its

@@ -67,54 +67,70 @@ impl Game<'_> {
         let opens = container.and_then(|c| mod_menu(c.menu.as_deref()?).map(|(m, _)| m));
         (opens == Some(menu)).then(|| block.to_string())
     }
-    /// A menu opened on this client with its slots under `key`, at `target`:
-    /// its screen is `opened_screen`'s. `extra` is what the server sent for
-    /// this window first.
+    /// Stage the current remote opening's screen for the window. Its slots
+    /// are stored under `key`; `extra` was already matched to this opening.
     pub(in crate::game) fn open_native_screen(
         &mut self,
         key: Pos,
         target: Option<Pos>,
-        window: i32,
-        menu: &str,
         extra: Option<sunrise_protocol::menu_extra::Message>,
     ) {
-        self.clear_mod_book_placement_screen();
-        self.mod_screen = None;
-        if let Some((block, mut screen)) = self.opened_screen(menu, target) {
-            let mod_type = sunrise_client::containers::mod_menu_type(menu);
-            if let Some(kind) = mod_type {
-                screen.slots.truncate(kind.slots);
-            }
-            // Check sprite identifiers once at the client declaration boundary.
-            for slot in screen.slots.iter_mut().flatten() {
-                if let Some(icon) = &slot.no_item_icon
-                    && self.gui.atlas.gui_rect(icon).is_none()
-                {
-                    let of = block.as_deref().unwrap_or(menu);
-                    log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
-                    return;
-                }
-            }
-            self.mod_screen = Some(OpenNativeScreen {
-                menu: OpenNativeMenu {
-                    key,
-                    window,
-                    name: menu.to_owned(),
-                    block,
-                    mod_type,
-                    data: Vec::new(),
-                    extra,
-                },
-                slot_moves: Default::default(),
-                layout_revision: {
-                    static NEXT: std::sync::atomic::AtomicU64 =
-                        std::sync::atomic::AtomicU64::new(1);
-                    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                },
-                screen,
-            });
-            self.begin_mod_book_placement();
-            self.ensure_mod_book_catalog();
+        if self.is_logical_server() || self.lan_acting.is_some() {
+            return;
         }
+        let Some(remote) = self.remote.as_ref() else {
+            return;
+        };
+        let Some((window, name)) = remote.menu.as_ref() else {
+            return;
+        };
+        let Some((block, mut screen)) = self.opened_screen(name, target) else {
+            return;
+        };
+        let mod_type = sunrise_client::containers::mod_menu_type(name);
+        if let Some(kind) = mod_type {
+            screen.slots.truncate(kind.slots);
+        }
+        // Check sprite identifiers once at the client declaration boundary.
+        for slot in screen.slots.iter().flatten() {
+            if let Some(icon) = &slot.no_item_icon
+                && self.gui.atlas.gui_rect(icon).is_none()
+            {
+                let of = block.as_deref().unwrap_or(name);
+                log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
+                return;
+            }
+        }
+        // The server can explicitly say there is no position. Only without
+        // its extra data do we use the clicked block the slots are under.
+        let (pos, extra) = extra.map_or_else(
+            || {
+                (
+                    (key.0 != i32::MIN).then_some([key.0, key.1, key.2]),
+                    Vec::new(),
+                )
+            },
+            |extra| (extra.pos, extra.data),
+        );
+        self.mod_screen = Some(OpenNativeScreen {
+            menu: OpenNativeMenu {
+                key,
+                window: *window,
+                generation: remote.menu.generation,
+                name: name.clone(),
+                block,
+                pos,
+                mod_type,
+                data: Vec::new(),
+                extra,
+            },
+            slot_moves: Default::default(),
+            layout_revision: {
+                static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            },
+            screen,
+            shown: false,
+        });
     }
 }
