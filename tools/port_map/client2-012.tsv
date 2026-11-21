@@ -83,7 +83,7 @@ CodepointMap.remove	skip:java		codepoint lookup table; Sunrise uses HashMap and 
 CodepointMap.forEach	skip:java		codepoint lookup table; Sunrise uses HashMap and BTreeSet
 CodepointMap.keySet	skip:java		codepoint lookup table; Sunrise uses HashMap and BTreeSet
 FontManager.createFontSet	port	crates/sunrise-client-render/src/font.rs::Font::load_set	a font's providers into a set
-FontManager.reload	port	crates/sunrise-client-render/src/hud/atlas.rs::HudAtlas::pack	fonts are rebuilt with the atlas (Font::load at hud.rs:582); no async reload
+FontManager.reload	port	crates/sunrise-client-render/src/hud/atlas.rs::HudAtlas::pack	fonts are rebuilt with the atlas (Font::load from hud/atlas.rs); no async reload
 FontManager.safeLoad	inline	crates/sunrise-client-render/src/font.rs::Font::load_set	a TrueType provider that fails to load is dropped; a bitmap sheet that fails warns
 FontManager.resolveProviders	port	crates/sunrise-client-render/src/font.rs::providers	reference expansion in order, depth 8; no dependency sort
 FontManager.finalizeProviderLoading	skip:java		prewarm of glyph lookups; the fallback is the missing box that Font::resolve gives
@@ -110,8 +110,8 @@ FontSet.hasFishyAdvance	port	crates/sunrise-client-render/src/font.rs::fishy_adv
 FontSet.computeGlyphInfo	port	crates/sunrise-client-render/src/font.rs::Font::resolve	any is the first provider's glyph, fishy or not (Font::glyph_of, drawn and measured); nonFishy is the first with a good advance, then the missing glyph (Font::glyph_non_fishy, what getRandomGlyph draws)
 FontSet.DelayedBake.get	skip:java		lazy bake into the atlas; Font::resolve bakes at once
 FontTexture.dumpContents	skip:debug		writes the atlas to a PNG for debugging
-GlyphRenderTypes.createForGrayscaleTexture	skip:ui		one textured quad path for all glyphs (hud.rs text_styled)
-GlyphRenderTypes.createForColorTexture	skip:ui		one textured quad path for all glyphs (hud.rs text_styled)
+GlyphRenderTypes.createForGrayscaleTexture	skip:ui		one textured quad path for all glyphs (hud/batch.rs text_styled)
+GlyphRenderTypes.createForColorTexture	skip:ui		one textured quad path for all glyphs (hud/batch.rs text_styled)
 GlyphRenderTypes.select	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry	gap: minor: normal and see-through only; polygon-offset text has no draw path
 GlyphStitcher.reset	port	crates/sunrise-client-render/src/font.rs::Font::reset_cache	atlas cursor rewound
 GlyphStitcher.stitch	port	crates/sunrise-client-render/src/font.rs::Region::place	rectangle placed in the atlas region
