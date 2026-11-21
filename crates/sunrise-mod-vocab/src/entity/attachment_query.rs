@@ -147,7 +147,7 @@ mod tests {
         let query = batch.query(&KEY).unwrap();
         let row = query.iter().next().unwrap().unwrap();
         assert_eq!(row.holder, holder);
-        assert_eq!(row.with_value(|value| *value), Ok(7));
+        assert_eq!(row.with_value(None, |value| *value), Ok(7));
         let token = row.write_token();
         assert_eq!(token.validate(&index.lock().unwrap()), Ok(()));
         assert_eq!(
@@ -166,6 +166,6 @@ mod tests {
             token.validate(&index.lock().unwrap()),
             Err(AttachmentRowError::StaleHolder)
         );
-        assert_eq!(row.with_value(|value| *value), Ok(7));
+        assert_eq!(row.with_value(None, |value| *value), Ok(7));
     }
 }

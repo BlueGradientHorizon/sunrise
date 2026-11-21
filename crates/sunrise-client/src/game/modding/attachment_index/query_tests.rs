@@ -17,7 +17,7 @@ fn values(game: &Game<'_>) -> Vec<u32> {
     host.query(&VALUE)
         .unwrap()
         .iter()
-        .map(|row| row.unwrap().with_value(|value| *value).unwrap())
+        .map(|row| row.unwrap().with_value(game.attachment_read_scope(), |value| *value).unwrap())
         .collect()
 }
 
@@ -35,7 +35,7 @@ fn query_snapshot_dimension_and_stale_writes() {
         let batch = game.query_mut(&VALUE).unwrap();
         let row = batch.iter().next().unwrap().unwrap();
         VALUE.set(game, Holder::Chunk([2, 3]), 11).unwrap();
-        assert_eq!(row.with_value(|value| *value).unwrap(), 10);
+        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 10);
         assert_eq!(values(game), [11]);
         game.enter_level(Dim::Nether).unwrap();
         assert!(values(game).is_empty());
@@ -54,7 +54,7 @@ fn query_snapshot_dimension_and_stale_writes() {
         assert_eq!(values(game), [12]);
         let retained = game.world.chunks.remove(&(2, 3)).unwrap();
         assert!(values(game).is_empty());
-        assert_eq!(row.with_value(|value| *value).unwrap(), 10);
+        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 10);
         assert_eq!(
             row.remove(game),
             Err(mod_api::AttachmentRowError::StaleHolder)
@@ -105,7 +105,7 @@ fn query_writes_join_transaction_journal_without_implicit_commit() {
         });
         assert_eq!(aborted, Err(()));
         assert_eq!(values(game), [10]);
-        assert_eq!(row.with_value(|value| *value).unwrap(), 10);
+        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 10);
         let committed: Result<(), ()> = game.transaction(|host, _| {
             let current = host.query_mut(&VALUE).unwrap();
             current
@@ -149,8 +149,8 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
         let mut retained_iter = reader.iter();
         let read_row = retained_iter.next().unwrap().unwrap();
         let write_row = writer.iter().next().unwrap().unwrap();
-        assert_eq!(read_row.with_value(|value| *value), Ok(11));
-        assert_eq!(write_row.with_value(|value| *value), Ok(11));
+        assert_eq!(read_row.with_value(game.attachment_read_scope(), |value| *value), Ok(11));
+        assert_eq!(write_row.with_value(game.attachment_read_scope(), |value| *value), Ok(11));
         assert_eq!(reader.get(scoped_holder), Ok(Some(11)));
         game.transaction_close(&seal, false);
 
@@ -164,9 +164,9 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
             writer.iter().next(),
             Some(Err(OutsideTransaction))
         ));
-        assert_eq!(read_row.with_value(|value| *value), Err(OutsideTransaction));
+        assert_eq!(read_row.with_value(game.attachment_read_scope(), |value| *value), Err(OutsideTransaction));
         assert_eq!(
-            write_row.with_value(|value| *value),
+            write_row.with_value(game.attachment_read_scope(), |value| *value),
             Err(OutsideTransaction)
         );
         assert_eq!(write_row.set(game, 99), Err(OutsideTransaction));

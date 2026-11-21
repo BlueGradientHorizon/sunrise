@@ -138,12 +138,13 @@ fn contribution(holder: AttachmentHolder, value: &u32) -> u64 {
     u64::from(entity.id()) + u64::from(*value)
 }
 fn api(host: &dyn Host) -> u64 {
+    let scope = host.attachment_read_scope();
     host.query(&VALUE)
         .unwrap()
         .iter()
         .map(|row| {
             let row = row.unwrap();
-            row.with_value(|value| contribution(row.holder, value))
+            row.with_value(scope, |value| contribution(row.holder, value))
                 .unwrap()
         })
         .sum()
@@ -165,6 +166,7 @@ fn timed(rounds: u32, mut f: impl FnMut() -> u64) -> f64 {
     start.elapsed().as_secs_f64() * 1e6 / f64::from(rounds)
 }
 fn warm(host: &BenchHost) -> f64 {
+    let scope = host.attachment_read_scope();
     let rows = host.raw();
     let batch = host.query(&VALUE).unwrap();
     assert_eq!(api(host), 99_990_000);
@@ -191,7 +193,7 @@ fn warm(host: &BenchHost) -> f64 {
                 .iter()
                 .map(|row| {
                     let row = row.unwrap();
-                    row.with_value(|value| contribution(row.holder, value))
+                    row.with_value(scope, |value| contribution(row.holder, value))
                         .unwrap()
                 })
                 .sum()
@@ -223,6 +225,7 @@ fn cold() {
         let mut eager = Vec::new();
         for _ in 0..9 {
             let host = BenchHost::new(true, true);
+            let scope = host.attachment_read_scope();
             let start = Instant::now();
             let (sum, counts) = measured(|| {
                 host.query(&VALUE)
@@ -231,7 +234,7 @@ fn cold() {
                     .take(limit)
                     .map(|row| {
                         let row = row.unwrap();
-                        row.with_value(|value| contribution(row.holder, value))
+                        row.with_value(scope, |value| contribution(row.holder, value))
                             .unwrap()
                     })
                     .sum::<u64>()
@@ -239,13 +242,14 @@ fn cold() {
             lazy.push(start.elapsed().as_secs_f64() * 1e6);
             assert_eq!(sum, (limit * (limit - 1)) as u64);
             let host = BenchHost::new(true, true);
+            let scope = host.attachment_read_scope();
             let start = Instant::now();
             let (_, eager_counts) = measured(|| {
                 // Eager policy measured using the very same production decode path.
                 let batch = host.query(&VALUE).unwrap();
                 for row in batch.iter() {
                     row.unwrap()
-                        .with_value(|value| {
+                        .with_value(scope, |value| {
                             black_box(value);
                         })
                         .unwrap();
@@ -254,7 +258,7 @@ fn cold() {
                     batch
                         .iter()
                         .take(limit)
-                        .map(|row| row.unwrap().with_value(|value| *value).unwrap() as u64)
+                        .map(|row| row.unwrap().with_value(scope, |value| *value).unwrap() as u64)
                         .sum::<u64>(),
                 );
             });

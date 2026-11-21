@@ -20,7 +20,7 @@ fn capture(game: &Game<'_>) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)
             let row = row.unwrap();
             (
                 row.holder,
-                row.with_value(|value| *value).unwrap(),
+                row.with_value(game.attachment_read_scope(), |value| *value).unwrap(),
                 row.write_token(),
             )
         })

@@ -25,7 +25,7 @@ fn values(game: &Game<'_>) -> Vec<i32> {
         .query(&VALUE)
         .unwrap()
         .iter()
-        .map(|row| row.unwrap().with_value(|value| *value).unwrap())
+        .map(|row| row.unwrap().with_value(game.attachment_read_scope(), |value| *value).unwrap())
         .collect()
 }
 fn client<'a>(game: &'a mut Game<'_>) -> &'a mut Remote {
@@ -90,7 +90,7 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
         let token = row.write_token();
         sync(game, Holder::Level, 42);
         assert_eq!(values(game), [42]);
-        assert_eq!(row.with_value(|value| *value).unwrap(), 41);
+        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 41);
         client(game).attachments.remove(&Holder::Level);
         assert!(values(game).is_empty());
         assert_eq!(
