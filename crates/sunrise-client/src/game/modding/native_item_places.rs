@@ -4099,7 +4099,9 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_scratch_stack_lives_in_its_transaction_and_keeps_its_item() {
-        use mod_api::{FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
+        use mod_api::{
+            FLUIDS, ITEM_FLUIDS, ScratchError, StackWriteError, resource_util::move_resources,
+        };
         with_game(|game| {
             let level = with_cauldron(game);
             let cauldron = game.world.block(2, 64, 0);
@@ -4108,18 +4110,26 @@ pub(super) mod tests {
             let buckets = ItemResource::of(&bucket);
             let stick = ItemResource::of(&api("minecraft:stick", 1));
             let host: &mut dyn ServerHost = game;
-            // Made in a transaction that aborts, it goes with it.
-            let made = host.transaction(|host, tx| {
-                Err::<(), _>(host.scratch_stack(tx, bucket.clone()).unwrap().unwrap())
+
+            // An aborted loan discards its slot and leaves an escaped handle dead.
+            let aborted = host.scratch_stack(bucket.clone(), |host, tx, place| {
+                assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                assert_eq!(place.amount(host), 3);
+                Err::<(), _>(place.clone())
             });
-            let lost = match made {
-                Err(TransactionError::Aborted(lost)) => lost,
+            let escaped = match aborted {
+                Err(ScratchError::Aborted(escaped)) => escaped,
                 other => panic!("expected aborted scratch stack, got {other:?}"),
             };
-            let gone = host.transaction(|host, tx| Ok::<_, ()>(host.scratch_take(tx, &lost)));
-            assert_eq!(gone, Ok(None));
-            let got = host.transaction(|host, tx| {
-                let place = host.scratch_stack(tx, bucket.clone()).unwrap().unwrap();
+            assert_eq!(escaped.amount(host), 0);
+            assert_eq!(
+                host.transaction(|host, tx| Ok::<_, ()>(escaped.insert(host, tx, &buckets, 1))),
+                Ok(0)
+            );
+
+            // A committed loan accepts same-item inserts up to max stack, refuses different
+            // items and fluid-fill item changes, and publishes the updated stack only on commit.
+            let committed = host.scratch_stack(bucket.clone(), |host, tx, place| {
                 assert_eq!(place.insert(host, tx, &buckets, 2), 2);
                 // Another item has nowhere to go: a scratch stack doesn't spill.
                 assert_eq!(place.insert(host, tx, &stick, 1), 0);
@@ -4129,48 +4139,193 @@ pub(super) mod tests {
                 let held = place.capability(host, &ITEM_FLUIDS).unwrap();
                 let filled = move_resources(host, &block, &held, |_| true, 1000, Some(tx));
                 assert_eq!(filled, Ok(0));
-                Ok::<_, ()>(host.scratch_take(tx, &place))
+                // Same-item inserts cap at the item's max stack size (16 for buckets).
+                assert_eq!(place.insert(host, tx, &buckets, 20), 13);
+                assert_eq!(place.amount(host), 16);
+                assert_eq!(place.insert(host, tx, &buckets, 1), 0);
+                Ok::<_, ()>(place.clone())
             });
-            assert_eq!(got, Ok(Some(api("minecraft:bucket", 3))));
+            let (done_place, published) = committed.expect("committed scratch stack");
+            assert_eq!(published, Some(api("minecraft:bucket", 16)));
+            assert_eq!(done_place.amount(host), 0);
+            assert_eq!(
+                host.transaction(|host, tx| Ok::<_, ()>(done_place.insert(host, tx, &buckets, 1))),
+                Ok(0)
+            );
+
+            // An invalid initial stack fails before the closure runs.
+            let mut oversized = bucket;
+            oversized.set_count(17).unwrap();
+            let invalid = host.scratch_stack(oversized, |_, _, _| -> Result<(), ()> {
+                panic!("invalid scratch stack must not run closure");
+            });
+            assert_eq!(
+                invalid,
+                Err(ScratchError::Stack(StackWriteError::CountExceeded {
+                    maximum: 16,
+                }))
+            );
+
             assert_eq!(game.world.block(2, 64, 0), cauldron);
+            assert_eq!(game.live_scratch_count(), 0);
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_scratch_stack_merges_into_its_parent_and_ends_with_the_outermost() {
+        use mod_api::ScratchError;
+        use std::panic::{AssertUnwindSafe, catch_unwind};
         with_game(|game| {
             open_to_lan(game);
-            let bucket = ItemStack::new("minecraft:bucket", 1)
-                .try_into_api()
-                .unwrap();
+            let mut player = guest(1);
+            player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 10));
+            game.lan.as_mut().unwrap().hub.guests.push(player);
+            let api = |name, count| ItemStack::new(name, count).try_into_api().unwrap();
+            let bucket = api("minecraft:bucket", 1);
             let buckets = ItemResource::of(&bucket);
-            let host: &mut dyn ServerHost = game;
-            let place = host.transaction(|host, _| {
-                // Made and filled in a child that commits: the parent keeps it as it was left.
-                let place = host
-                    .transaction(|host, tx| {
-                        let place = host.scratch_stack(tx, bucket.clone()).unwrap().unwrap();
-                        assert_eq!(place.insert(host, tx, &buckets, 1), 1);
-                        Ok::<_, ()>(place)
+            let slot = ItemPlace::PlayerSlot {
+                player: 123,
+                slot: 0,
+            };
+
+            // A nested transaction that commits inside `scratch_stack` stays provisional:
+            // aborting the enclosing `scratch_stack` rolls back both the scratch slot and world
+            // state, and invalidates any escaped handle.
+            {
+                let host: &mut dyn ServerHost = game;
+                let provisional_abort = host.scratch_stack(bucket.clone(), |host, _, place| {
+                    host.transaction(|host, tx| {
+                        assert_eq!(slot.extract(host, tx, &buckets, 2), 2);
+                        assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                        assert_eq!(place.amount(host), 3);
+                        Ok::<_, ()>(())
                     })
                     .unwrap();
-                assert_eq!(place.amount(host), 2);
-                // A child that writes it and aborts puts it back.
-                let aborted = host.transaction(|host, tx| {
-                    assert_eq!(place.insert(host, tx, &buckets, 3), 3);
-                    assert_eq!(place.amount(host), 5);
-                    Err::<(), _>(())
+                    assert_eq!(place.amount(host), 3);
+                    assert_eq!(slot.amount(host), 8);
+                    Err::<(), _>(place.clone())
                 });
-                assert_eq!(aborted, Err(TransactionError::Aborted(())));
-                assert_eq!(place.amount(host), 2);
-                Ok::<_, ()>(place)
+                let aborted_place = match provisional_abort {
+                    Err(ScratchError::Aborted(place)) => place,
+                    other => panic!("expected aborted scratch stack, got {other:?}"),
+                };
+                assert_eq!(aborted_place.amount(host), 0);
+                assert_eq!(slot.amount(host), 10);
+
+                // Inside a committing `scratch_stack`: a committed child stays provisional until
+                // the loan commits, an aborted child restores the scratch slot BEFORE fallback
+                // runs, and committing the loan publishes both the final stack and world writes.
+                let committed = host.scratch_stack(bucket.clone(), |host, tx, place| {
+                    host.transaction(|host, tx| {
+                        assert_eq!(slot.extract(host, tx, &buckets, 1), 1);
+                        assert_eq!(place.insert(host, tx, &buckets, 1), 1);
+                        Ok::<_, ()>(())
+                    })
+                    .unwrap();
+                    assert_eq!(place.amount(host), 2);
+                    assert_eq!(slot.amount(host), 9);
+
+                    let aborted = host.transaction(|host, tx| {
+                        assert_eq!(slot.extract(host, tx, &buckets, 3), 3);
+                        assert_eq!(place.insert(host, tx, &buckets, 3), 3);
+                        assert_eq!(place.amount(host), 5);
+                        Err::<(), _>(())
+                    });
+                    assert_eq!(aborted, Err(TransactionError::Aborted(())));
+                    assert_eq!(place.amount(host), 2);
+                    assert_eq!(slot.amount(host), 9);
+
+                    // Fallback sees the restored scratch slot and commits with the loan.
+                    assert_eq!(slot.extract(host, tx, &buckets, 2), 2);
+                    assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                    assert_eq!(place.amount(host), 4);
+                    Ok::<_, ()>(())
+                });
+                assert_eq!(committed, Ok(((), Some(api("minecraft:bucket", 4)))));
+                assert_eq!(slot.amount(host), 7);
+
+                // A `scratch_stack` nested inside a longer-lived outer `host.transaction`
+                // invalidates its escaped handle immediately on exit while the outer transaction
+                // is still open.
+                let outer_host = host.transaction(|host, outer_tx| {
+                    let (escaped, published) = host
+                        .scratch_stack(bucket.clone(), |host, tx, place| {
+                            assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                            Ok::<_, ()>(place.clone())
+                        })
+                        .unwrap();
+                    assert_eq!(published, Some(api("minecraft:bucket", 3)));
+                    assert_eq!(escaped.amount(host), 0);
+                    assert_eq!(escaped.insert(host, outer_tx, &buckets, 1), 0);
+                    Ok::<_, ()>(())
+                });
+                assert_eq!(outer_host, Ok(()));
+            }
+
+            // On the real `Game` journal, a nested `scratch_stack` inside a longer-lived outer
+            // transaction (whether it commits or aborts) leaves zero live scratch slots and zero
+            // `scratch_kept` entries on the outer frame while that outer frame is still open.
+            let outer_journal = game.storage_transaction(|game, outer_tx| {
+                let (escaped, published) = game
+                    .scratch_stack(bucket.clone(), |host, tx, place| {
+                        host.transaction(|host, inner_tx| {
+                            assert_eq!(place.insert(host, inner_tx, &buckets, 2), 2);
+                            Ok::<_, ()>(())
+                        })
+                        .unwrap();
+                        assert_eq!(place.insert(host, tx, &buckets, 1), 1);
+                        Ok::<_, ()>(place.clone())
+                    })
+                    .unwrap();
+                assert_eq!(published, Some(api("minecraft:bucket", 4)));
+                assert_eq!(escaped.amount(game), 0);
+                assert_eq!(escaped.insert(game, outer_tx, &buckets, 1), 0);
+                assert_eq!(game.live_scratch_count(), 0);
+                assert_eq!(game.current_scratch_kept_count(), 0);
+
+                let aborted = game.scratch_stack(bucket.clone(), |host, tx, place| {
+                    assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                    Err::<(), _>(place.clone())
+                });
+                let aborted_escaped = match aborted {
+                    Err(ScratchError::Aborted(place)) => place,
+                    other => panic!("expected aborted nested scratch stack, got {other:?}"),
+                };
+                assert_eq!(aborted_escaped.amount(game), 0);
+                assert_eq!(aborted_escaped.insert(game, outer_tx, &buckets, 1), 0);
+                assert_eq!(game.live_scratch_count(), 0);
+                assert_eq!(game.current_scratch_kept_count(), 0);
+                Ok::<_, ()>(())
             });
-            // The outermost close ends it: nothing reads or takes it after.
-            let place = place.unwrap();
-            assert_eq!(place.amount(host), 0);
-            let taken = host.transaction(|host, tx| Ok::<_, ()>(host.scratch_take(tx, &place)));
-            assert_eq!(taken, Ok(None));
+            assert_eq!(outer_journal, Ok(()));
+
+            // A panic unwind inside `scratch_stack` restores world state and cleans up the live
+            // scratch slot with zero leak.
+            let before_panic = slot.amount(game);
+            let mut escaped_from_panic = None;
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                let _ = game.scratch_stack(bucket, |host, tx, place| -> Result<(), ()> {
+                    escaped_from_panic = Some(place.clone());
+                    assert_eq!(slot.extract(host, tx, &buckets, 2), 2);
+                    assert_eq!(place.insert(host, tx, &buckets, 2), 2);
+                    assert_eq!(place.amount(host), 3);
+                    panic!("broken scratch callback");
+                });
+            }));
+            assert!(panicked.is_err());
+            assert_eq!(slot.amount(game), before_panic);
+            assert_eq!(game.live_scratch_count(), 0);
+            assert_eq!(game.current_scratch_kept_count(), 0);
+            assert!(!game.has_open_transaction());
+            let escaped_from_panic = escaped_from_panic.expect("captured place before panic");
+            assert_eq!(escaped_from_panic.amount(game), 0);
+            assert_eq!(
+                game.transaction(|host, tx| Ok::<_, ()>(
+                    escaped_from_panic.insert(host, tx, &buckets, 1)
+                )),
+                Ok(0)
+            );
         });
     }
 

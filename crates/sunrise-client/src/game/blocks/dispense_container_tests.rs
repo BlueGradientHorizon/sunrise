@@ -258,6 +258,56 @@ fn a_container_that_could_give_picks_up_first_and_its_event_comes_before_the_cli
         let given = dispense(game, full.unwrap());
         assert_eq!(front(game), state(game, "minecraft:water"));
         assert_eq!(item(&given), Some(("minecraft:paper".into(), 1)));
+
+        // Restore-before-fallback: holding 1500 of 2000 mB facing a 1000 mB water source,
+        // `try_pickup_world_fluid` mutates the lent scratch slot to 2000 mB (500 mB accepted)
+        // and then aborts because the full bucket did not fit. The abort must restore the lent
+        // scratch slot to 1500 mB before `try_place_fluid` runs and extracts 1000 mB, leaving
+        // 500 mB (not 1000 mB).
+        let mut almost_full = ItemStack::new("minecraft:paper", 1);
+        almost_full.data_mut().set_other(
+            "minecraft:custom_data",
+            Some(Tag::compound([
+                ("id", Tag::String("minecraft:water".into())),
+                ("amount", Tag::Int(1500)),
+            ])),
+        );
+        game.creatures.lan_sounds.clear();
+        dispense_fixture::start_recording();
+        let placed = dispense(game, almost_full);
+        let lines = dispense_fixture::stop_recording();
+        assert_eq!(front(game), state(game, "minecraft:water"));
+        assert_eq!(item(&placed), Some(("minecraft:paper".into(), 1)));
+        let data = placed
+            .as_ref()
+            .unwrap()
+            .custom_data()
+            .expect("restored tank retains 500 mB after fallback placement");
+        assert_eq!(
+            data.get(&JavaString::from("id")),
+            Some(&Tag::String("minecraft:water".into()))
+        );
+        assert_eq!(data.get(&JavaString::from("amount")), Some(&Tag::Int(500)));
+        let place_event = lines
+            .iter()
+            .position(|line| line.ends_with("minecraft:fluid_place"));
+        let click = lines.iter().position(|line| line.starts_with("L 1000 "));
+        assert!(place_event.is_some() && place_event < click, "{lines:?}");
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.ends_with("minecraft:fluid_pickup")),
+            "{lines:?}"
+        );
+        let sounds: Vec<_> = game
+            .creatures
+            .lan_sounds
+            .iter()
+            .map(|s| s.sound.clone())
+            .collect();
+        assert_eq!(sounds, ["minecraft:item.bucket.empty"]);
+        assert!(game.dropped.is_empty());
+        assert_eq!(game.live_scratch_count(), 0);
     });
 }
 
