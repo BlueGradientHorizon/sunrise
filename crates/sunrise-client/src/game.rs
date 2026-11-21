@@ -1222,8 +1222,8 @@ struct Game<'a> {
     /// Scratch for the copies a frame draws through the terrain materials.
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
-    /// `DebugRenderer.renderers`: the ids `debug_renderer_draw` is asked about.
-    debug_renderers: Vec<String>,
+    /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
+    debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.

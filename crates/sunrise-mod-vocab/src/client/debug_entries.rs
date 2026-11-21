@@ -1,7 +1,7 @@
 //! Named entries and world-space renderers a native mod adds to the debug screen (NeoForge's
 //! `RegisterDebugEntriesEvent`, `RegisterDebugRenderersEvent`).
 
-use crate::ClientHost;
+use crate::{ClientHost, WorldDrawContext, WorldRenderView};
 
 // no wire: this callable and its captures stay in the client process.
 /// Appends lines for one registered F3 text entry. The host is borrowed for this draw.
@@ -46,13 +46,47 @@ impl DebugEntry {
     }
 }
 
-/// A world-space debug renderer a native mod pushes at each renderer list refresh.
-#[derive(Clone, Debug, PartialEq, Eq)]
-// exhaustive: a mod builds it with a literal, an id
-#[derive(sunrise_mod_api_macros::Wire)]
+type DebugRendererDraw =
+    dyn Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext) + Send + Sync + 'static;
+
+// no wire: the renderer owns a process-local draw callback.
+/// A world-space debug renderer owned by the client until its renderer list next refreshes.
 pub struct DebugRenderer {
-    /// The id of the [`DebugEntry::renderer`] toggle that switches it, like `mymod:pipe_network`.
-    pub id: String,
+    id: String,
+    draw: Box<DebugRendererDraw>,
+}
+
+impl DebugRenderer {
+    /// Bind drawing to the ID of a [`DebugEntry::renderer`] toggle, such as `mymod:pipe_network`.
+    /// The client calls `draw` for each world view while the toggle is active, under the
+    /// registering mod's identity. Capture any renderer-specific state in the callback.
+    pub fn new(
+        id: String,
+        draw: impl Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext)
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            id,
+            draw: Box::new(draw),
+        }
+    }
+
+    /// The full ID of the renderer's switch in the debug options and profile.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Run this renderer's callback with the current world view and drawing context.
+    pub fn draw(
+        &self,
+        host: &dyn ClientHost,
+        view: &WorldRenderView,
+        draw: &mut dyn WorldDrawContext,
+    ) {
+        (self.draw)(host, view, draw);
+    }
 }
 
 /// The vanilla groups a debug entry's lines can join (`DebugScreenDisplayer.addToGroup`).

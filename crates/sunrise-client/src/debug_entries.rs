@@ -484,23 +484,32 @@ impl DebugEntries {
     pub fn enabled_version(&self) -> u64 {
         self.version
     }
-    /// `DebugRenderer.refreshRendererList`'s new list: the ids of the `renderers` mods pushed
-    /// whose renderer entry is on, in their order. An id with no entry a mod declared as a
-    /// renderer is logged and left out, and an id pushed twice counts once.
+    /// `DebugRenderer.refreshRendererList`: keep the owned renderers whose switches are on, in
+    /// registration order. A missing renderer switch is logged; the first active renderer for
+    /// an ID wins.
     pub fn active_renderers(
         &self,
-        renderers: Vec<DebugRenderer>,
+        renderers: Vec<Answered<DebugRenderer>>,
         overlay: bool,
         reduced: bool,
-    ) -> Vec<String> {
-        let mut active: Vec<String> = Vec::new();
-        for DebugRenderer { id } in renderers {
-            let declared =
-                id.contains(':') && entry(&id).is_some_and(|e| e.category == Category::Renderer);
-            if !declared {
-                log::warn!("debug renderer {id} has no renderer entry; it is left out");
-            } else if self.enabled(&id, overlay, reduced) && !active.contains(&id) {
-                active.push(id);
+    ) -> Vec<Answered<DebugRenderer>> {
+        let mut active: Vec<Answered<DebugRenderer>> = Vec::new();
+        for renderer in renderers {
+            let id = renderer.answer.id();
+            let Some(declared) =
+                entry(id).filter(|e| id.contains(':') && e.category == Category::Renderer)
+            else {
+                log::warn!(
+                    "{}: debug renderer {id} has no renderer entry; it is left out",
+                    renderer.mod_id
+                );
+                continue;
+            };
+            if (declared.reduced || !reduced)
+                && self.status(id).shown(overlay)
+                && !active.iter().any(|kept| kept.answer.id() == id)
+            {
+                active.push(renderer);
             }
         }
         active

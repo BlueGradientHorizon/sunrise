@@ -68,8 +68,31 @@ fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDe
 ```
 
 The client keeps the closure and calls it as your mod only while the entry is visible.
-Reduced debug info hides it, even if it is set to always on. Push `DebugEntry::renderer(id)`
-instead to list a world-space renderer toggle with the same ID and no text.
+Reduced debug info hides it, even if it is set to always on.
+
+## Registering world-space debug renderers
+
+Push `DebugEntry::renderer(id)` in `Hooks::register_debug_entries` at client startup to
+create the toggle. In `Hooks::register_debug_renderers`, push `DebugRenderer::new(id, draw)`
+with the same ID. Use the callback's `ClientHost`, `WorldRenderView` and `WorldDrawContext` to
+draw, and capture any state specific to this renderer instead of handling an ID in a draw hook.
+
+```rust,ignore
+use mod_api::{DebugRenderer, RegisterDebugRenderersEvent, RegistrationContext, WorldDepth, WorldLine};
+
+fn register_debug_renderers(&self, _: &RegistrationContext, event: &mut RegisterDebugRenderersEvent<'_>) {
+    let line = WorldLine::new([0.0, 65.0, 0.0], [2.0, 65.0, 0.0], 0xFF00_FF00, 2.0, WorldDepth::Tested);
+    event.renderers.push(DebugRenderer::new("example:guide_line".into(), move |_host, _view, draw| {
+        let _ = draw.lines(std::slice::from_ref(&line));
+    }));
+}
+```
+
+The client collects a fresh list at startup, login and when the debug selection changes. Push all
+your renderers on each refresh, even if their toggles are off. The first active registration for
+a switch wins. Only installed callbacks run in a world view, as their registering mods, after
+`submit_custom_geometry` and within its shared draw limits. A toggle that is off or hidden by
+reduced debug info does not draw.
 
 ## Gradient fills
 

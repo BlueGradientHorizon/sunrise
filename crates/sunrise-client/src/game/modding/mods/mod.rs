@@ -501,9 +501,10 @@ pub(super) fn register_gui_layers(role: ExecutionRole) {
     Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
     sunrise_client::gui_layers::freeze(layers);
 }
-/// The native mods' debug renderers now (`native_register_debug_renderers`), asked at each
-/// refresh of the list (`Game::refresh_debug_renderers`).
-pub(super) fn debug_renderers(role: ExecutionRole) -> Vec<mod_api::DebugRenderer> {
+/// Collect the native mods' owned debug renderers and their owners on each list refresh.
+pub(super) fn debug_renderers(
+    role: ExecutionRole,
+) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
     let mut renderers = Vec::new();
     if role.is_client() {
         Game::native_register_debug_renderers(&RegistrationContext::new(), &mut renderers);

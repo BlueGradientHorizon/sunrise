@@ -1,10 +1,12 @@
 //! The typed submission surface; renderer storage is never exposed to mods.
 use super::Game;
 use super::mods;
+use crate::game::host::draw::GameWorldDrawContext;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, ModelRef, NameTagOptions, PipelineDrawError,
     PipelineQuad, RenderLevelStage, RenderPipelineRef, WorldDrawUsage, WorldLine, WorldQuad,
+    content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_client::mesher::Vertex;
 use sunrise_client::screen_effects::{CameraQuads, sampling};
@@ -38,8 +40,8 @@ impl Game<'_> {
         let sampling = flags.map_or(0, sampling);
         draw.push(corners, uv, [r.u0, r.v0, r.u1, r.v1], argb, sampling)
     }
-    /// `DebugRenderer.refreshRendererList`: the active renderers are replaced by those the mods
-    /// push now whose entries are on. Runs at start, at login and when the selection changes.
+    /// `DebugRenderer.refreshRendererList`: replace the active callbacks with newly collected
+    /// ones whose entries are on. Runs at start, at login and when the selection changes.
     pub(in crate::game) fn refresh_debug_renderers(&mut self) {
         let renderers = mods::debug_renderers(self.options.execution_role);
         let reduced = self.reduced_debug_info();
@@ -89,8 +91,15 @@ impl Game<'_> {
         draw.begin_stage(*last);
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
-        for id in &self.debug_renderers {
-            self.native_debug_renderer_draw(id, &view, draw);
+        for renderer in &self.debug_renderers {
+            let _owner = enter_native_mod(ModCall {
+                id: renderer.mod_id,
+                hook: "debug_renderer_draw",
+                part: None,
+            });
+            renderer
+                .answer
+                .draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
         }
         self.native_render_level_stage(*last, &view, draw);
         self.commit_model_instances(draw, DVec3::from(camera), entities);
@@ -424,7 +433,6 @@ impl Game<'_> {
 }
 #[cfg(test)]
 mod tests {
-    use super::super::host::draw::GameWorldDrawContext;
     use super::*;
     use glam::{DVec3, Mat4, Quat, Vec3};
     use mod_api::{
