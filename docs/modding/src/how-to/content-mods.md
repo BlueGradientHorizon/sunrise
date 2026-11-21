@@ -975,14 +975,20 @@ the mod is there; once it is gone, the load clamps the base into the bounds and 
 world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
-fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
+fields)` (NeoForge's `NewDatapackRegistryEvent`).
 `path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
 each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
 registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
 the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
+of its own. The game loads entries from mod content and enabled data packs.
+
+Client-only packages cannot declare datapack registries. A `side = "server"` package can declare
+`DatapackRegistrySync::ServerOnly` (entries are never sent) or `DatapackRegistrySync::Optional`
+(entries are sent only to clients that offer the same registry and schema). Neither declaration by
+itself requires a client to install the mod. A `DatapackRegistrySync::Required` declaration requires
+`side = "both"`; otherwise the game refuses the server-only package at load and names the registry.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
 `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry

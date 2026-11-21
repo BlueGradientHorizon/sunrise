@@ -36,7 +36,7 @@ pub fn install_process_datapack_registry_declarations(
 /// ([`Registrar::declare_datapack_registry`](DatapackRegistriesRegistrar::declare_datapack_registry)).
 pub trait DatapackRegistriesRegistrar {
     /// Declare a datapack registry of the mod's own (NeoForge's
-    /// `DataPackRegistryEvent.NewRegistry`): `path` in the mod's namespace
+    /// `NewDatapackRegistryEvent`): `path` in the mod's namespace
     /// (`spell` of `example` is `example:spell`), the flat record `fields` an
     /// entry has, and how clients receive the entries.
     ///
@@ -47,8 +47,13 @@ pub trait DatapackRegistriesRegistrar {
     /// declare, a missing required key or an out-of-range value fails the
     /// entry; a default never stands in for invalid data.
     ///
-    /// Only both-side packages may declare datapack registries. Refused,
-    /// naming the mod: a key outside the mod's namespace (a vanilla
+    /// Client-only packages cannot declare datapack registries. Server-only
+    /// packages may declare [`DatapackRegistrySync::ServerOnly`] and
+    /// [`DatapackRegistrySync::Optional`] registries. A
+    /// [`DatapackRegistrySync::Required`] declaration needs a both-side
+    /// package; the game refuses the server-only package at load, naming the registry.
+    ///
+    /// Also refused, naming the mod: a key outside the mod's namespace (a vanilla
     /// registry's included), a malformed key, a duplicate (of this mod's or
     /// another's, caught where the declarations join), an empty or repeated
     /// field name, unusable bounds, or a default that is not a value of its

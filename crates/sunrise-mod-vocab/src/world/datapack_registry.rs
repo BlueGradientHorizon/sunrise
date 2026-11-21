@@ -13,9 +13,11 @@ pub enum DatapackRegistrySync {
     /// Entries stay on the server; a client needs nothing of the mod for them.
     #[default]
     ServerOnly,
-    /// Clients receive the entries, and a client without the mod is refused.
+    /// A joining client must offer the registry with the same schema to receive
+    /// it and join. The declaring package must be both-side.
     Required,
-    /// Clients with the mod receive the entries; others join without them.
+    /// Send entries only to clients that offer the registry with the same schema.
+    /// This declaration does not require clients to install the mod.
     Optional,
 }
 
@@ -112,7 +114,7 @@ impl DatapackField {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum DatapackRegistrationError {
-    /// Only both-side packages may declare datapack registries.
+    /// A client-only package cannot declare a datapack registry.
     WrongSide,
     /// The registry's key is malformed, empty or in a namespace the
     /// declaring mod does not own (a vanilla registry's included).

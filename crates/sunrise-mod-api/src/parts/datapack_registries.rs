@@ -11,7 +11,7 @@ impl DatapackRegistriesRegistrar for PartRegistrar {
         let result = (|| {
             if mod_vocab::__private::parts_installation::loaded_mods()
                 .get(self.mod_id)
-                .is_some_and(|package| package.side() != crate::Side::Both)
+                .is_some_and(|package| package.side() == crate::Side::Client)
             {
                 return Err(DatapackRegistrationError::WrongSide);
             }
@@ -121,6 +121,52 @@ mod tests {
                 .iter()
                 .all(|refusal| refusal.contains("mod example"))
         );
+    }
+
+    #[test]
+    fn server_package_requires_clients_only_for_required_registries() {
+        use DatapackRegistrySync::{Optional, Required, ServerOnly};
+
+        let package = crate::PackageInfo::new(
+            "example".into(),
+            "1".into(),
+            crate::PackageKind::Code,
+            crate::Side::Server,
+            vec!["example".into()],
+            vec![],
+        );
+        crate::load_state::with_test_package_inventory(vec![package], || {
+            crate::testing::with_mods(Default::default(), || {
+                for (required, reason) in [
+                    (false, None),
+                    (
+                        true,
+                        Some("declares the required datapack registry example:shared"),
+                    ),
+                ] {
+                    let mut registrar = PartRegistrar::new("example");
+                    registrar
+                        .declare_datapack_registry("local", ServerOnly, power())
+                        .unwrap();
+                    registrar
+                        .declare_datapack_registry("offered", Optional, power())
+                        .unwrap();
+                    if required {
+                        registrar
+                            .declare_datapack_registry("shared", Required, power())
+                            .unwrap();
+                    }
+                    // No payload channels are registered in either installation.
+                    super::super::install_registrar(registrar, &crate::parts::tests::rule_schema())
+                        .unwrap();
+                    assert_eq!(
+                        crate::__private::client_requirement("example").as_deref(),
+                        reason
+                    );
+                    assert_eq!(crate::__private::client_requirement("unrelated"), None);
+                }
+            });
+        });
     }
 
     #[test]
