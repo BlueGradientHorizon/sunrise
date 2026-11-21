@@ -2,15 +2,21 @@ use super::*;
 use crate::{ClientHost, ItemStack};
 
 // no wire: in-process behavior called with a borrowed stack and client host.
-/// Client-only main-hand input, separate from normal item use on either side.
-/// Register one owner for an item with [`ItemsRegistrar::register_client_item_use`].
-/// Every callback receives the original stack and its hotbar slot (0–8), never a replacement.
+/// Client-only main-hand input. Capturing it does not make the player use or block with the
+/// item. For ordinary item use on both sides, use [`ItemPart::use_item`] and
+/// [`ItemPart::release_using`]. Register one owner for an item with
+/// [`ItemsRegistrar::register_client_item_use`].
+///
+/// Every callback receives the original stack snapshot and its hotbar slot (0–8), never a
+/// replacement. Track the capture in these callbacks, not through the living-item use reads.
+/// A disabled owner receives no callbacks.
 pub trait ClientItemUseBehavior: Send + Sync + 'static {
     /// Consume a main-hand use input before the client handles the crosshair target.
     fn use_item(&self, host: &mut dyn ClientHost, stack: &ItemStack, slot: u32);
 
-    /// Run only on input release while the player can still use the same item kind in the
-    /// original slot. `ticks_held` counts elapsed held ticks.
+    /// Run only on input release while the same item kind is still selected in the original
+    /// slot and the player can still use it. The game clears the capture before calling this.
+    /// `ticks_held` counts elapsed held ticks.
     fn release_using(
         &self,
         _host: &mut dyn ClientHost,
@@ -20,8 +26,10 @@ pub trait ClientItemUseBehavior: Send + Sync + 'static {
     ) {
     }
 
-    /// Run after [`Self::release_using`] on a valid release, or alone when use is reset,
-    /// while the owner is enabled. `ticks_held` counts elapsed held ticks.
+    /// Clean up after [`Self::release_using`] on a valid release, or on its own when the
+    /// capture resets (for example, when the player switches slots, dies or disconnects).
+    /// The game clears the capture before the end callbacks. `ticks_held` counts elapsed held
+    /// ticks.
     fn on_stop_using(
         &self,
         _host: &mut dyn ClientHost,
@@ -214,8 +222,9 @@ pub trait ItemsRegistrar {
 
     /// Register the sole client input behavior for `item` in [`crate::Hooks::register`]. An
     /// enabled owner consumes main-hand use input before crosshair handling, without sending a
-    /// use or release packet. This does not affect off-hand input or normal item use on either
-    /// side. Any registered item may be used; two registrations for one item refuse the load.
+    /// use or release packet. This intercepts only main-hand input; it does not enter ordinary
+    /// item use or blocking state on either side. Any registered item may be used; a second
+    /// registration for the same item refuses startup, even from the same mod.
     fn register_client_item_use(
         &mut self,
         item: crate::ItemKey,
