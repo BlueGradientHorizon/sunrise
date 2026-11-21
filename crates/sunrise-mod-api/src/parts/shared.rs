@@ -42,6 +42,7 @@ pub struct PartRegistrar {
     pub(crate) biome_modifiers: Vec<BiomeModifierDeclaration>,
     pub(crate) biome_regions: Vec<BiomeRegionDeclaration>,
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
+    pub(crate) configs: Vec<mod_vocab::__private::RegisteredConfig>,
     pub(crate) menu_screen_factories: HashMap<String, HashMap<usize, MenuScreenRegistration>>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
     pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
@@ -106,6 +107,7 @@ impl PartRegistrar {
             biome_modifiers: Vec::new(),
             biome_regions: Vec::new(),
             datapack_registries: Vec::new(),
+            configs: Vec::new(),
             recipe_book_types: HashMap::new(),
             recipe_book_fields: HashMap::new(),
             recipe_book_filters: HashMap::new(),
@@ -318,6 +320,7 @@ pub(crate) fn install_registrar(
             regions
         },
         datapack_registries: registrar.datapack_registries,
+        configs: registrar.configs,
         menu_screen_factories: registrar.menu_screen_factories,
         menu_recipe_books: registrar.menu_recipe_books,
         menu_slot_exclusions: registrar.menu_slot_exclusions,

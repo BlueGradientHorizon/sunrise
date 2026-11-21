@@ -167,7 +167,7 @@ pub enum ConfigKind {
 }
 impl ConfigKind {
     /// The default file name's suffix, as NeoForge's.
-    fn suffix(self) -> &'static str {
+    pub(crate) fn suffix(self) -> &'static str {
         match self {
             Self::Client => "client",
             Self::Common => "common",

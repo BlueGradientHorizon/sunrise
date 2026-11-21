@@ -1,0 +1,27 @@
+ids = [
+    "trait:Registrar",
+    "trait:ConfigSpecsRegistrar",
+    "method:ConfigSpecsRegistrar::register_config",
+    "type:ConfigSpec",
+    "handle:ConfigSpec::new",
+    "handle:ConfigSpec::file",
+    "type:ConfigEvent",
+    "type:ConfigEvent.Loading",
+    "type:ConfigEvent.Reloading",
+    "type:ConfigEvent.Unloading",
+    "type:ConfigSnapshot",
+    "type:ConfigSnapshot.mod_id",
+    "type:ConfigSnapshot.kind",
+    "type:ConfigSnapshot.file",
+    "type:ConfigSnapshot.path",
+    "type:ConfigSnapshot.text",
+    "type:ConfigListener",
+    "type:ConfigRegistrationError",
+    "type:ConfigRegistrationError.Duplicate",
+]
+why = "Freeze config declarations with the registering mod's identity and declaration order before file I/O. This follows NeoForge/FML's ModContainer.registerConfig and ConfigTracker.trackConfig: the registered filename is unique across config kinds and mods. ModConfig.setConfig sends ModConfigEvent only to the owning container. Native callbacks retain their owner across worlds, so a panic disables only that callback, while a returned error is reported on each call."
+migrate = """
+At the config loader cutover, replace `Hooks::register_configs` appending `Config::new(mod_id, kind, default)` with `r.register_config(ConfigSpec::new(kind, default), listener)` in `Hooks::register`. The registrar supplies the owner ID for `<mod id>-<kind>.toml`. Change `Config::file(name)` to `ConfigSpec::file(path)` (any `Into<PathBuf>`); handle `Err(ConfigRegistrationError::Duplicate { file, owner })` as a refused declaration. The first declaration stays registered. A test fixture that implements `Registrar` itself must now also implement `ConfigSpecsRegistrar`.
+
+Use `None` if the file needs no notification. Otherwise pass `Some(Arc::new(|host: HostSide<'_>, event: ConfigEvent, config: &ConfigSnapshot| { /* handle the event */ Ok(()) }))`. Move the bodies of `config_loading`, `config_reloading`, and `config_unloading` into the `ConfigEvent::Loading`, `ConfigEvent::Reloading`, and `ConfigEvent::Unloading` match arms, respectively, with a wildcard arm for future events. Do not filter by `mod_id`: only this config's listener is called. `ConfigSnapshot` replaces `ConfigFile` in the listener; read `config.file` for the registered `PathBuf`, `config.path` for the actual filesystem path, and `config.text` for the file contents. Return `Err(message)` to report a failure without disabling future calls.
+"""

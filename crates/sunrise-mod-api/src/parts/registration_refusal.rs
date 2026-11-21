@@ -55,6 +55,7 @@ impl PartRegistrar {
             spawn_placements,
             entity_part_states,
             biome_regions,
+            configs,
             controllers,
             arm_poses,
             structure_types,
@@ -119,6 +120,8 @@ mod tests {
                 .transform(|data: &crate::Compound, _: crate::StructureTransform| Ok(data.clone()))
                 .build();
             r.block_entity_part(&kind, Callback).unwrap();
+            r.register_config(crate::ConfigSpec::new(crate::ConfigKind::Common, ""), None)
+                .unwrap();
             cx.refuse("bootstrap failed: café\nmissing bridge");
             cx.refuse("ignored");
             cx.warn("test.warn.bridge", &["missing"]);
@@ -133,6 +136,8 @@ mod tests {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             r.declare_fluid("soup");
             r.declare_biome_region("kept", region()).unwrap();
+            r.register_config(crate::ConfigSpec::new(crate::ConfigKind::Common, ""), None)
+                .unwrap();
         }
     }
 
@@ -244,6 +249,14 @@ mod tests {
                 .map(|d| (d.mod_id.as_str(), d.id.as_str(), d.region.weight))
                 .collect::<Vec<_>>(),
             [("healthy", "healthy:kept", 5), ("later", "later:kept", 5)]
+        );
+        assert_eq!(
+            registrar
+                .configs
+                .iter()
+                .map(|config| config.mod_id())
+                .collect::<Vec<_>>(),
+            ["healthy", "later"]
         );
         assert!(registrar.block_entity_types.is_empty());
         assert!(registrar.block_entity_transforms.is_empty());

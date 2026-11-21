@@ -12,6 +12,13 @@ A mod keeps its options in one of two ways:
 
 ## Config files
 
+The startup registrar accepts `register_config(ConfigSpec::new(kind, default_text), listener)` in
+`Hooks::register`. The default filename uses the registering mod's ID, and `.file(path)` names a different
+file. A filename already registered by any mod or config kind returns `ConfigRegistrationError::Duplicate`
+and keeps the first declaration. The optional `Arc<ConfigListener>` is bound to that config's owner and
+receives a `ConfigEvent` and `&ConfigSnapshot` with both the registered filename and the path used on disk.
+Registering a specification does not open the file or call its listener.
+
 Config files sit in the game's shared `config/` folder, beside `options.txt` (beside `server.properties` on a
 dedicated server), as Fabric and NeoForge mods' do. Your mod picks its own names: a folder `config/<mod id>/`, or
 files `config/<mod id>.<ext>` and `config/<mod id>-<rest>`.

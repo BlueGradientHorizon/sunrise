@@ -8,6 +8,7 @@ pub(crate) struct Installed {
     pub(crate) epoch: u64,
     pub(crate) dependencies: Arc<crate::__private::EffectiveDependencies>,
     pub(crate) effect_ticks: crate::parts::effects::ResolvedEffectTicks,
+    pub(crate) configs: Vec<crate::configs::RegisteredConfig>,
     pub(crate) menu_screen_factories:
         HashMap<String, HashMap<usize, crate::parts::menus::MenuScreenRegistration>>,
     pub(crate) menu_recipe_books: HashMap<String, crate::parts::menus::MenuBookDeclaration>,
