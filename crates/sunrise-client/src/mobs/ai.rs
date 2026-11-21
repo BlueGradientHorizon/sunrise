@@ -3195,9 +3195,13 @@ impl Mob {
     /// block (`onClimbable`, cached by the last tick), nor a ridden horse
     /// (`AbstractHorse.isPushable` is `!isVehicle`).
     pub fn pushable(&self) -> bool {
+        self.pushable_on(self.on_climbable)
+    }
+
+    fn pushable_on(&self, climbable: bool) -> bool {
         self.alive()
             && !matches!(self.species(), Species::Bat | Species::Shulker)
-            && !self.on_climbable
+            && !climbable
             && (self.species() != Species::Creaking || super::creaking::can_move(self))
             && (self.species() != Species::Warden || !super::warden::digging_or_emerging(self))
             && !(super::equine::is_equine(self.species()) && super::equine::is_vehicle(self))
@@ -3301,6 +3305,13 @@ fn apply_entity_pushes(
     resumed: bool,
     player_before_hurt: Option<([i32; 4], u32)>,
 ) {
+    if resumed {
+        m.on_climbable = on_climbable(m, w);
+        if m.no_physics {
+            super::world::give_push_targets(targets);
+            return;
+        }
+    }
     let self_pushable = m.pushable() && !super::equine::is_vehicle(m);
     let root = root_vehicle(w, m.id, m.extra.mount);
     for &(who, _, join) in &targets {
@@ -3326,19 +3337,23 @@ fn apply_entity_pushes(
                 let Some(peer) = w.seen(id).filter(|peer| !peer.removed) else {
                     continue;
                 };
-                if let Some(join) = join
-                    && !w
+                let pushable = if let Some(join) = join {
+                    let Some(live) = w
                         .live_mobs
                         .and_then(|mobs| mobs.find(id))
-                        .is_some_and(|mob| mob.join == join && !mob.removed)
-                {
-                    continue;
-                }
+                        .filter(|mob| mob.join == join && !mob.removed && !mob.no_physics)
+                    else {
+                        continue;
+                    };
+                    live.pushable_on(on_climbable(live, w))
+                } else {
+                    peer.pushable
+                };
                 (
                     peer.position,
                     peer.sleeping,
                     root_vehicle(w, id, peer.vehicle) == root,
-                    peer.pushable && !peer.is_vehicle,
+                    pushable && !peer.is_vehicle,
                 )
             }
         };

@@ -159,13 +159,16 @@ impl Game<'_> {
         let mut cursor = 0;
         // Sounds the tick's hits queued, appended to the level's queue once the level is dropped.
         let mut hit_sounds: Vec<super::NativeSound> = Vec::new();
-        use sunrise_client::mobs::ai::{MobContinuation, Pause};
+        use sunrise_client::mobs::{
+            ai::{MobContinuation, Pause},
+            player_selection::{PlayerSelection, TickPlayer},
+        };
         let mut resume = None;
         // Keep uncommon landing/hurt data out of the ordinary tick result.
         let mut mob_pause: Option<MobContinuation> = None;
         let mut resume_brain = None;
         let mut resume_air_answer = None;
-        let mut resume_selection = None;
+        let mut resume_selection: Option<PlayerSelection> = None;
         // An invalid removed vehicle is retried once at this rider's own
         // eligible entity tick, never from the later global positioning pass.
         let mut retried_rider = None;
@@ -519,13 +522,33 @@ impl Game<'_> {
                         Some(conn) => self.guest_identity(conn),
                     };
                     // A listener can redirect to any real player in this level. Keep
-                    // immutable views for this tick so changing selection never
-                    // invalidates a view a goal already borrowed. No allocation is
-                    // made when nobody listens for target changes.
+                    // immutable views during the borrow so changing selection
+                    // never invalidates a view a goal already holds. No allocation
+                    // is made when nobody listens for target changes.
                     let selection = if resuming {
-                        resume_selection.take()
+                        let mut selection = resume_selection.take();
+                        if matches!(resume, Some(Pause::ResumeMob))
+                            && let Some(selection) = &mut selection
+                        {
+                            selection.refresh_views(|player| {
+                                let (view, identity) = if player.connection == seen_guest {
+                                    (active_player.as_ref(), active_identity)
+                                } else if let Some(conn) = player.connection {
+                                    (
+                                        guests.iter().find(|g| g.0 == conn).map(|g| &g.1),
+                                        self.guest_identity(conn),
+                                    )
+                                } else {
+                                    (base.player.as_ref(), base.player_identity)
+                                };
+                                view.filter(|_| {
+                                    identity.is_some_and(|(_, id)| id == player.entity_id)
+                                })
+                                .cloned()
+                            });
+                        }
+                        selection
                     } else if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
-                        use sunrise_client::mobs::player_selection::{PlayerSelection, TickPlayer};
                         let mut players = Vec::new();
                         if let (Some(view), Some((_, entity_id))) =
                             (&active_player, active_identity)
