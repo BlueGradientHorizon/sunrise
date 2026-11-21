@@ -551,9 +551,14 @@ class WorkflowTests(unittest.TestCase):
 
     def test_the_surface_is_checked_at_the_pick_and_again_before_the_tag(self):
         jobs = workflow("nightly-build.yml")["jobs"]
+        # Every stable release's mod API is judged at the pick, before any approval, build or signature.
         pick = next(step for step in jobs["pick"]["steps"] if "stable-mod-api" in step.get("run", ""))
-        self.assertEqual(pick["env"]["BREAK_GLASS"], "true")
-        self.assertIn("steps.pick.outputs.break_glass == 'true'", pick["if"])
+        self.assertEqual(pick["env"]["BREAK_GLASS"], "${{ steps.pick.outputs.break_glass }}")
+        self.assertIn("inputs.kind == 'stable'", pick["if"])
+        self.assertNotIn("break_glass", pick["if"])
+        steps = jobs["pick"]["steps"]
+        rust = next(step for step in steps if step.get("name", "").startswith("The pinned Rust"))
+        self.assertLess(steps.index(rust), steps.index(pick), "the parent's sunrise-stage is built with cargo")
         publish = jobs["publish"]
         self.assertEqual(publish["steps"][0]["with"]["fetch-depth"], "0")
         check = next(step for step in publish["steps"] if "stable-mod-api" in step.get("run", ""))

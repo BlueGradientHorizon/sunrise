@@ -1,7 +1,9 @@
+import contextlib
 from contextlib import chdir
 import hashlib
 import io
 import json
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -48,11 +50,40 @@ def sdk_assets(sha, surface, content_api, functions, *, function_header=None):
     return assets
 
 
+TOOL = "/judge/sunrise-stage"
+
+
+def signed_release_file(tag, *names):
+    """A published stable release's signed sunrise-release.json, naming the commit its tag names now."""
+    return {nightly.RELEASE_FILE: json.dumps({"commit": nightly.train.origin_tags()[tag]}).encode()}
+
+
 class StableModApiTests(unittest.TestCase):
     def setUp(self):
         directory = self.enterContext(tempfile.TemporaryDirectory())
         self.notes = Path(directory) / "nightly-notes.md"
         self.notes.write_text("Existing notes.\n")
+        self.release_file = self.enterContext(mock.patch.object(nightly, "release_assets",
+                                                                side_effect=signed_release_file))
+        self.stage = self.enterContext(mock.patch.object(nightly, "parent_stage", return_value=TOOL))
+        self.unpacked = []
+        self.enterContext(mock.patch.object(nightly, "unpack",
+                                            side_effect=lambda sha, into: self.unpacked.append((sha, into.name))))
+
+    def judge(self, parent_tree, candidate_tree, verdict="identical", calls=None):
+        """subprocess.run as the parent's sunrise-stage answers: it exports each tree's surface, and diffs."""
+        def run(args, *, cwd=None, env=None, check=False, capture_output=False, text=False):
+            self.assertEqual(args[0], TOOL, "only the parent's own tool runs")
+            self.assertFalse({"GH_TOKEN", "RUSTC_WRAPPER"} & env.keys())
+            if calls is not None:
+                calls.append(args)
+            if args[1] == "surface":
+                surface = parent_tree if Path(args[2]).name == "parent-tree" else candidate_tree
+                Path(args[3]).write_text(json.dumps(surface))
+            else:
+                Path(args[-1]).write_text(json.dumps({"verdict": verdict}))
+            return subprocess.CompletedProcess(args, 0, "", "")
+        return run
 
     def test_same_line_accepts_only_changes_allowed_by_the_version_step(self):
         cases = (
@@ -77,13 +108,8 @@ class StableModApiTests(unittest.TestCase):
                 def verified(sha, *names):
                     return {name: assets[sha][name] for name in names}
 
-                def compare(args, *, check):
-                    self.assertTrue(check)
-                    before, after, option, report = args[args.index("surface-diff") + 1:]
-                    self.assertEqual(json.loads(Path(before).read_text()), SURFACE)
-                    self.assertEqual(json.loads(Path(after).read_text()), surface)
-                    self.assertEqual(option, "--json")
-                    Path(report).write_text(json.dumps({"verdict": verdict}))
+                calls = []
+                compare = self.judge(SURFACE, surface, verdict, calls)
 
                 pages = [[release("26.3-0.1.9"), release("26.2-2.0.1"), release(tag),
                           release("26.3-0.2.0", draft=True), release("26.3-0.1.20", prerelease=True),
@@ -96,7 +122,8 @@ class StableModApiTests(unittest.TestCase):
                         mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                         mock.patch.object(nightly, "released_assets", side_effect=verified), \
-                        mock.patch.object(nightly.subprocess, "run", side_effect=compare) as diff:
+                        mock.patch.dict(nightly.os.environ, {"GH_TOKEN": "secret", "RUSTC_WRAPPER": "sccache"}), \
+                        mock.patch.object(nightly.subprocess, "run", side_effect=compare):
                     if error:
                         with self.assertRaisesRegex(SystemExit, error):
                             nightly.stable_mod_api(HEAD, tag, self.notes)
@@ -108,13 +135,15 @@ class StableModApiTests(unittest.TestCase):
                                          "- Changed: `body_change`\n- Removed: `removed`\n"
                                          "- Changed: `signature_change`\n")
                     lineage.assert_called_once_with(HEAD, tag, OLD, PREVIOUS)
-                    diff.assert_called_once()
+                    # The parent's tool exported both trees, then diffed its own exports.
+                    self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff"])
+                    self.assertEqual([Path(name).name for name in calls[-1][2:4]], ["parent.json", "candidate.json"])
+                self.stage.assert_called_with(OLD, mock.ANY)
 
     def test_a_break_glass_release_keeps_its_parents_surface_judged_by_the_parents_own_stage(self):
         # The parent's own sunrise-stage exports both trees itself: a candidate whose own exporter hides a change
         # (its published surface.json unchanged) is still refused.
         tag = "26.3-0.1.11"
-        tool = "/judge/sunrise-stage"
         other = {**SURFACE, "hash": "other"}
         for published, parent_tree, candidate_tree, error in (
                 (SURFACE, SURFACE, SURFACE, None),
@@ -122,67 +151,80 @@ class StableModApiTests(unittest.TestCase):
                 (SURFACE, SURFACE, other, "exports a different surface from 26.3-0.1.11's tree"),
                 (SURFACE, other, other, "does not export its published surface.json")):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, published, "1", {})}
-            calls, unpacked = [], []
-
-            def run(args, *, check, cwd=None, env=None):
-                calls.append(args)
-                if args[1] == "surface":
-                    tree = Path(args[2]).name
-                    Path(args[3]).write_text(json.dumps(parent_tree if tree == "parent-tree" else candidate_tree))
-                    self.assertNotIn("RUSTC_WRAPPER", env)
-                else:
-                    Path(args[-1]).write_text(json.dumps({"verdict": "identical"}))
-
-            with self.subTest(error=error), \
-                    mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true", "RUSTC_WRAPPER": "sccache"}), \
+            calls = []
+            self.unpacked.clear()
+            with self.subTest(error=error), mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                     mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}), \
                     mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
-                    mock.patch.object(nightly, "parent_stage", return_value=tool) as stage, \
-                    mock.patch.object(nightly, "unpack", side_effect=lambda sha, into: unpacked.append((sha, into.name))), \
-                    mock.patch.object(nightly.subprocess, "run", side_effect=run):
+                    mock.patch.object(nightly.subprocess, "run", side_effect=self.judge(parent_tree, candidate_tree,
+                                                                                         calls=calls)):
                 if error:
                     with self.assertRaisesRegex(SystemExit, error):
                         nightly.stable_mod_api(HEAD, tag, self.notes)
                     self.assertNotIn("surface-diff", [args[1] for args in calls])
                     continue
                 nightly.stable_mod_api(HEAD, tag, self.notes)
-            stage.assert_called_once()
-            self.assertEqual(stage.call_args.args[0], OLD, "built from the parent")
-            self.assertEqual(unpacked, [(OLD, "parent-tree"), (HEAD, "candidate-tree")])
-            self.assertEqual([args[:2] for args in calls], [[tool, "surface"]] * 2 + [[tool, "surface-diff"]])
-            self.assertEqual([Path(name).name for name in calls[-1][2:4]], ["parent.json", "candidate.json"])
+            self.assertEqual(self.unpacked, [(OLD, "parent-tree"), (HEAD, "candidate-tree")])
+            self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff"])
 
-    def test_the_parents_stage_is_built_from_its_tree_alone(self):
-        with tempfile.TemporaryDirectory() as directory:
-            work = Path(directory)
-            with mock.patch.dict(nightly.os.environ, {"CARGO_TARGET_DIR": "/elsewhere", "RUSTC_WRAPPER": "sccache"}), \
-                    mock.patch.object(nightly, "unpack") as unpack, \
-                    mock.patch.object(nightly.subprocess, "run") as run:
-                tool = nightly.parent_stage(OLD, work)
-            unpack.assert_called_once_with(OLD, work / "judge")
-            args, kwargs = run.call_args
-            self.assertEqual(kwargs["cwd"], work / "judge", "no .cargo/config.toml of the candidate's checkout")
-            self.assertEqual(args[0][args[0].index("--target-dir") + 1], str(work / "judge-target"))
-            self.assertFalse({"CARGO_TARGET_DIR", "RUSTC_WRAPPER"} & kwargs["env"].keys())
-            self.assertEqual(tool, str(work / "judge-target" / "debug" / "sunrise-stage"))
-            # The tree is a plain extraction: the checkout gains no worktree.
-            repo = work / "repo"
-            repo.mkdir()
-            git = nightly.git
-            with chdir(repo):
-                git("init", "-q")
-                Path("a.txt").write_text("a\n")
-                git("add", "a.txt")
-                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
-                nightly.unpack("HEAD", work / "tree")
-                self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
-                self.assertEqual(len(git("worktree", "list").splitlines()), 1)
+    def test_an_ordinary_release_is_judged_by_the_parents_tool_too(self):
+        # Not only break-glass: a candidate whose own exporter would hide a break is diffed from the parent tool's
+        # export of its tree, and a tree that tool cannot read is refused, never judged by the candidate's tool.
+        tag = "26.3-0.1.11"
+        assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, SURFACE, "1", {})}
+        common = (mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]),
+                  mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}),
+                  mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"),
+                  mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]))
+        with contextlib.ExitStack() as stack:
+            for patch in common:
+                stack.enter_context(patch)
+            stack.enter_context(mock.patch.object(nightly.subprocess, "run",
+                                                  side_effect=self.judge(SURFACE, BREAKING, "breaking")))
+            with self.assertRaisesRegex(SystemExit, "patch release after 26.3-0.1.10: mod API is breaking"):
+                nightly.stable_mod_api(HEAD, tag, self.notes)
+
+        def unreadable(args, **kwargs):
+            if Path(args[2]).name == "candidate-tree":
+                return subprocess.CompletedProcess(args, 1, "", "unknown key")
+            Path(args[3]).write_text(json.dumps(SURFACE))
+            return subprocess.CompletedProcess(args, 0, "", "")
+        with contextlib.ExitStack() as stack:
+            for patch in common:
+                stack.enter_context(patch)
+            stack.enter_context(mock.patch.object(nightly.subprocess, "run", side_effect=unreadable))
+            with self.assertRaisesRegex(SystemExit, f"sunrise-stage cannot export candidate {HEAD}: unknown key"):
+                nightly.stable_mod_api(HEAD, tag, self.notes)
+
+    def test_a_moved_parent_tag_or_a_version_that_skips_a_step_is_refused(self):
+        tags = {PREVIOUS: OLD}
+        with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
+                mock.patch.object(nightly.train, "origin_tags", return_value=tags), mock.patch.object(nightly, "git"), \
+                mock.patch.object(nightly, "released_assets") as inputs:
+            # The tag now names another commit than the release's own signed file.
+            self.release_file.side_effect = lambda tag, *names: {nightly.RELEASE_FILE: json.dumps({"commit": "9" * 40}).encode()}
+            with self.assertRaisesRegex(SystemExit, f"the tag {PREVIOUS} names {OLD}, but its signed"):
+                nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
+            self.release_file.side_effect = signed_release_file
+            for tag in ("26.3-0.2.1", "26.3-1.0.1", "26.3-1.1.0"):
+                with self.subTest(tag=tag), self.assertRaisesRegex(SystemExit, f"{tag} does not follow {PREVIOUS}"):
+                    nightly.stable_mod_api(HEAD, tag, self.notes)
+        inputs.assert_not_called()
+        with mock.patch.object(nightly.train, "gh_json", return_value=[[]]), \
+                mock.patch.object(nightly.train, "origin_tags", return_value={}), \
+                self.assertRaisesRegex(SystemExit, "the first stable release on 26.3 is 26.3-0.1.0, not 26.3-0.2.0"):
+            nightly.stable_mod_api(HEAD, "26.3-0.2.0", self.notes)
+        for parent, tag in ((None, "26.3-0.1.0"), (PREVIOUS, "26.3-0.1.11"), (PREVIOUS, "26.3-0.1.15"),
+                            (PREVIOUS, "26.3-0.2.0"), (PREVIOUS, "26.3-1.0.0")):
+            with self.subTest(parent=parent, tag=tag):
+                found = nightly.train.Release(parent, OLD, "") if parent else None
+                self.assertEqual(nightly.stable_step(tag, found), "")
 
     def test_a_break_glass_release_needs_a_published_parent_on_its_line(self):
         for pages, tags, tag, error in (
-                ([[]], {}, "26.3-0.1.1", "needs a published stable release to compare with"),
+                ([[]], {}, "26.3-0.1.0", "needs a published stable release to compare with"),
                 ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-1.0.0", "is a patch of 26.3-0.1.10, not 26.3-1.0.0"),
                 ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-0.2.0", "is a patch of 26.3-0.1.10, not 26.3-0.2.0")):
             with self.subTest(tag=tag), mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
@@ -251,27 +293,6 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly.train, "gh_json", return_value=[[]]):
                 self.assertIsNone(nightly.stable_parent("26.3-0.1.0"), "the first release's own tag is not an orphan")
 
-    def test_download_only_returns_assets_verified_under_their_sdk_tag(self):
-        files = {nightly.SDK_INDEX: b"index", nightly.SDK_SURFACE: b"surface"}
-
-        def download(*args):
-            folder = Path(args[args.index("--dir") + 1])
-            for name, data in files.items():
-                (folder / name).write_bytes(data)
-            (folder / "SHA256SUMS").write_text("".join(
-                f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()))
-
-        with mock.patch.object(nightly, "gh", side_effect=download), \
-                mock.patch.object(nightly.subprocess, "run") as verify:
-            verify.return_value = mock.Mock(returncode=0)
-            self.assertEqual(nightly.released_assets(HEAD, *files), files)
-            args = verify.call_args.args[0]
-            self.assertEqual(args[args.index("--tag") + 1:-1],
-                             [f"sdk-{HEAD}", "--only", nightly.SDK_INDEX, "--only", nightly.SDK_SURFACE])
-            verify.return_value = mock.Mock(returncode=1, stderr="bad signature")
-            with self.assertRaisesRegex(SystemExit, "signature does not check"):
-                nightly.released_assets(HEAD, *files)
-
     def test_an_sdk_asset_must_match_its_index(self):
         assets = sdk_assets(OLD, SURFACE, "1", {})
         assets[nightly.SDK_SURFACE] += b"\n"
@@ -332,3 +353,59 @@ class StableModApiTests(unittest.TestCase):
         listing = self.notes.with_name("changed-mixin-targets.md")
         self.assertIn(f"- Added: `{target}`", listing.read_text())
         self.assertIn(f"/releases/download/26.3-0.1.11/{listing.name}", self.notes.read_text())
+
+
+class JudgeBuildTests(unittest.TestCase):
+    def test_the_parents_stage_is_built_from_its_tree_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            with mock.patch.dict(nightly.os.environ, {"CARGO_TARGET_DIR": "/elsewhere", "RUSTC_WRAPPER": "sccache"}), \
+                    mock.patch.object(nightly, "unpack") as unpack, \
+                    mock.patch.object(nightly.subprocess, "run") as run:
+                tool = nightly.parent_stage(OLD, work)
+            unpack.assert_called_once_with(OLD, work / "judge")
+            args, kwargs = run.call_args
+            self.assertEqual(kwargs["cwd"], work / "judge", "no .cargo/config.toml of the candidate's checkout")
+            self.assertEqual(args[0][args[0].index("--target-dir") + 1], str(work / "judge-target"))
+            self.assertFalse({"CARGO_TARGET_DIR", "RUSTC_WRAPPER"} & kwargs["env"].keys())
+            self.assertEqual(tool, str(work / "judge-target" / "debug" / "sunrise-stage"))
+            # The tree is a plain extraction: the checkout gains no worktree.
+            repo = work / "repo"
+            repo.mkdir()
+            git = nightly.git
+            with chdir(repo):
+                git("init", "-q")
+                Path("a.txt").write_text("a\n")
+                git("add", "a.txt")
+                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
+                nightly.unpack("HEAD", work / "tree")
+                self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
+                self.assertEqual(len(git("worktree", "list").splitlines()), 1)
+
+    def test_download_only_returns_assets_verified_under_their_sdk_tag(self):
+        files = {nightly.SDK_INDEX: b"index", nightly.SDK_SURFACE: b"surface"}
+
+        def download(*args):
+            folder = Path(args[args.index("--dir") + 1])
+            for name, data in files.items():
+                (folder / name).write_bytes(data)
+            (folder / "SHA256SUMS").write_text("".join(
+                f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()))
+
+        with mock.patch.object(nightly, "gh", side_effect=download), \
+                mock.patch.dict(nightly.os.environ, {"GH_TOKEN": "secret"}), \
+                mock.patch.object(nightly.subprocess, "run") as verify:
+            verify.return_value = mock.Mock(returncode=0)
+            self.assertEqual(nightly.released_assets(HEAD, *files), files)
+            args = verify.call_args.args[0]
+            self.assertEqual(args[args.index("--tag") + 1:-1],
+                             [f"sdk-{HEAD}", "--only", nightly.SDK_INDEX, "--only", nightly.SDK_SURFACE])
+            self.assertNotIn("GH_TOKEN", verify.call_args.kwargs["env"], "cargo never sees the job's token")
+            self.assertEqual(verify.call_args.kwargs["cwd"], nightly.REPOSITORY)
+            # A stable release's own files, under its own tag.
+            nightly.release_assets("26.3-0.1.0", nightly.SDK_INDEX)
+            args = verify.call_args.args[0]
+            self.assertEqual(args[args.index("--tag") + 1], "26.3-0.1.0")
+            verify.return_value = mock.Mock(returncode=1, stderr="bad signature")
+            with self.assertRaisesRegex(SystemExit, "signature does not check"):
+                nightly.released_assets(HEAD, *files)

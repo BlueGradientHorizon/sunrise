@@ -245,16 +245,19 @@ jobs:
           path: sdk.json
           if-no-files-found: error
           retention-days: 3
-      # A break-glass release's surface rules before anything is approved, built or signed: unchanged surface.json, an
-      # identical diff and content API against the one published parent (publish checks them again before the tag).
-      - name: A break-glass release keeps its parent's mod API (stable-mod-api)
-        if: steps.pick.outputs.break_glass == 'true' && steps.pick.outputs.sdk != 'false'
+      # A stable release's mod API rules before anything is approved, built or signed, judged by the published parent's
+      # own sunrise-stage: the version step, and the surface diff its step allows (a break-glass release's surface
+      # unchanged). Publish checks them again before the tag.
+      - name: A stable release keeps its line's mod API promise (stable-mod-api)
+        if: >-
+          inputs.kind == 'stable' && steps.pick.outputs.build == 'true' &&
+          github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
         continue-on-error: ${{ steps.mode.outputs.publish != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.pick.outputs.sha }}
           TAG: ${{ steps.pick.outputs.tag }}
-          BREAK_GLASS: 'true'
+          BREAK_GLASS: ${{ steps.pick.outputs.break_glass }}
         run: |
           : > "$RUNNER_TEMP/mod-api.md"
           python3 tools/ci/nightly.py stable-mod-api "$SHA" "$TAG" "$RUNNER_TEMP/mod-api.md"
