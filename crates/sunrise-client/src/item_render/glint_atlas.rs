@@ -117,7 +117,7 @@ fn mip_level_for(entries: &[Entry], max_mip: u32) -> u32 {
     let max_mip = max_mip.min(30);
     let mut min_texel = u32::MAX;
     let mut lowest_bit = 1u32 << max_mip;
-    for (_, &w, &h) in entries {
+    for &(_, w, h) in entries {
         min_texel = min_texel.min(w.min(h));
         lowest_bit = lowest_bit.min((1u32 << w.trailing_zeros()).min(1u32 << h.trailing_zeros()));
     }
