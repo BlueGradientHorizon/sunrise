@@ -1,5 +1,4 @@
 //! The `screen_mouse_button_pressed_pre` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0093
 
 pub trait Hooks {
     /// A mouse button went down over the open screen

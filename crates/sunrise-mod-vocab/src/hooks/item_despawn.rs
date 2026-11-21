@@ -1,5 +1,4 @@
 //! The `item_despawn` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0230
 
 pub trait Hooks {
     /// A dropped item entity reached its 6000-tick lifetime and is about to be

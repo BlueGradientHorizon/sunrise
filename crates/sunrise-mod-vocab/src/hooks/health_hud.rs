@@ -1,5 +1,4 @@
 //! The `health_hud` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0056
 
 pub trait Hooks {
     /// The player-health HUD rows, once a frame the HUD draws them
