@@ -318,16 +318,20 @@ The category lists are in `crates/sunrise-mod-package/src/index/page.rs`.
 A version can declare `sunrise = "26.3-0.1.0"`: the tag is the Minecraft version (dotted numbers, matching `game`),
 a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field is optional during migration.
 `registry check`, `registry review` and `registry build` accept `--releases <file>`: a JSON array of objects with
-`tag` and `commit` (40 hex digits, published as lowercase), one per stable release. With that file, declared tags must be in the
-list. When package files are checked, a native package's `[native] sunrise` pin must match the named commit. The
-workflow supplies the file.
+`tag` and `commit` (40 hex digits, published as lowercase), one per stable release. A declared tag must be in the
+list, and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
+files are checked, a native package's `[native] sunrise` pin must match the named commit. Once a version is listed
+with `sunrise`, `registry review` refuses changing or removing it.
 
 `cargo sunrise-mod registry releases --out releases.json` discovers published, non-draft stable releases
 from `sunrise-org/sunrise` (no prereleases), resolves lightweight and annotated tags to full commits, and
 sorts the rows by tag. A failed listing or tag lookup leaves the output unchanged. The command uses
 `GH_TOKEN`, then `GITHUB_TOKEN`, if set; public releases can also be read without a token. Discovery does
 not verify an SDK signature. The workflow must verify the corresponding signed SDK separately before
-supplying its data to the offline `registry check`, `review` and `build` commands.
+supplying its data and the release list to the offline `registry check`, `review` and `build` commands.
+
+An entry with neither versions nor a Nightly source publishes nothing and keeps its id; its id, kind and owners are
+still checked.
 
 ### Nightly source
 

@@ -53,7 +53,7 @@ impl Checkout {
             .map(|(entry, _)| (entry.id.as_str(), &entry.kind))
             .collect();
         for collection in collections {
-            errors.extend(collection.check(|id| listed.get(id).copied()));
+            errors.extend(collection.check(false, |id| listed.get(id).copied()));
         }
         errors
     }
