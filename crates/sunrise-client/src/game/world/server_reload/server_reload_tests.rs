@@ -8,7 +8,7 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -45,9 +45,24 @@ impl ServerReloadListener for CheckListener {
         _: &ServerReloadContext,
     ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         if self.0.load(Ordering::Relaxed) {
+            #[derive(Debug)]
+            struct Rejected(AtomicUsize);
+
+            impl std::fmt::Display for Rejected {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.write_str("rejected new machine data")
+                }
+            }
+            impl std::error::Error for Rejected {
+                fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                    // Fail the test promptly if formatting keeps calling back into the cycle.
+                    assert!(self.0.fetch_add(1, Ordering::Relaxed) < 3);
+                    Some(self)
+                }
+            }
             return Err(ReloadResourceError::new(
                 Identifier::parse("reload_test:value").unwrap(),
-                std::io::Error::other("rejected new machine data"),
+                Rejected(AtomicUsize::new(0)),
             ));
         }
         Ok(Box::new(|| {}))
@@ -510,22 +525,23 @@ fn server_reload_delivers_mod_files_overrides_and_preserves_all_data_on_failure(
             write(&data, "4");
             write(&function, "say new");
             reject.store(true, Ordering::Relaxed);
+            game.chat_capture = Some(Vec::new());
             assert!(!game.run_command("reload"));
+            let replies = game.chat_capture.take().unwrap();
+            let replies: Vec<_> = replies.iter().map(|reply| reply.plain()).collect();
+            assert!(
+                replies.iter().any(|reply| {
+                    reply.contains("reload listener reload_test:check: reload_test:value: rejected new machine data")
+                        && reply.contains("[circular error source]")
+                }),
+                "expected circular source diagnostic in command replies: {replies:?}"
+            );
             assert_eq!(
                 *live.lock().unwrap(),
                 8,
                 "earlier successful prepare must not publish"
             );
             assert_eq!(game.fns.store.functions["reload_test:keep"], old_function);
-            let error = game
-                .reload_datapacks(true, &game.level.enabled_features.clone())
-                .err()
-                .unwrap()
-                .to_string();
-            assert!(
-                error.contains("reload listener reload_test:check: reload_test:value"),
-                "{error}"
-            );
             assert!(!game.run_command("datapack disable \"file/test\""));
             assert_eq!(
                 std::fs::read(world.join("datapacks.json")).unwrap(),

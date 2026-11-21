@@ -13,7 +13,8 @@ pub trait ConfigurationTask: Send + 'static {
     /// Start this task exactly once. Call [`ConfigurationTaskContext::finish`] or
     /// [`ConfigurationTaskContext::fail`], or leave it pending for a tick or a reply.
     /// A finish request takes effect after the callback commits and publishes its
-    /// deferred sends.
+    /// deferred sends. A panic rolls back the callback and fails this peer's admission,
+    /// naming the mod in the log and error toast rather than crashing the server.
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
 
     /// Poll a pending task, at most once per server tick after its start. By default

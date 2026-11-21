@@ -67,9 +67,10 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
 inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID matching vanilla's `ModelLayerLocation`; any namespace (including `minecraft`) is
-accepted, while an exact collision with a vanilla layer key in `entity-models.json`
-fails client startup.
+ID matching vanilla's `ModelLayerLocation`. Include both separators even when a
+component is empty. Namespace and path follow vanilla's `Identifier` rules, and the
+layer can be any string. An exact collision with a vanilla layer key in
+`entity-models.json` fails client startup.
 
 When multiple registrations share an ID, the last registration wins and overwritten
 suppliers never run. The game calls each winning supplier once when it freezes the

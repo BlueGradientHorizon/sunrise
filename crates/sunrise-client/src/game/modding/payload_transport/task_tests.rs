@@ -27,6 +27,7 @@ enum Case {
     Panic,
     Duplicates,
     SendRefusal,
+    SendRefusalPanic,
     ConcurrentPeers,
 }
 struct Fixture {
@@ -294,6 +295,12 @@ impl ConfigurationTask for Task {
                 ));
                 context.finish();
             }
+            (Case::SendRefusalPanic, 0) => {
+                context
+                    .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![42]))
+                    .unwrap();
+                context.finish();
+            }
             _ => context.finish(),
         }
     }
@@ -432,6 +439,7 @@ fn serving_game_drives_configuration_tasks() {
             "panic",
             "duplicates",
             "send_refusal",
+            "send_refusal_panic",
         ],
     ) {
         return;
@@ -446,8 +454,15 @@ fn serving_game_drives_configuration_tasks() {
         "panic" => Case::Panic,
         "duplicates" => Case::Duplicates,
         "send_refusal" => Case::SendRefusal,
+        "send_refusal_panic" => Case::SendRefusalPanic,
         _ => unreachable!(),
     };
+    // Each case is a fresh subprocess, so this installs the real process-wide crash hook.
+    let crash_home =
+        matches!(case, Case::Panic | Case::SendRefusalPanic).then(|| tempfile::tempdir().unwrap());
+    if let Some(home) = &crash_home {
+        sunrise_client::crash::install(home.path().to_owned(), "client");
+    }
     let fixture = Arc::new(Fixture::new(case));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -459,7 +474,10 @@ fn serving_game_drives_configuration_tasks() {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let port = publish_task_server(game);
                 use sunrise_protocol::packets::{Empty, configuration as cfg, play};
-                let (mut c, known) = if matches!(case, Case::Vanilla | Case::SendRefusal) {
+                let (mut c, known) = if matches!(
+                    case,
+                    Case::Vanilla | Case::SendRefusal | Case::SendRefusalPanic
+                ) {
                     vanilla_peer(port)
                 } else {
                     let (c, _, known) = super::config_tests::configuration_peer(port, "ConfigPeer");
@@ -496,8 +514,12 @@ fn serving_game_drives_configuration_tasks() {
                             let starts = fixture.starts.lock().unwrap();
                             match case {
                                 Case::Failure => assert_eq!(*starts, [kind("first")]),
-                                Case::Panic => {
-                                    assert!(fixture.panic_staged_payload.load(Ordering::Relaxed));
+                                Case::Panic | Case::SendRefusalPanic => {
+                                    if matches!(case, Case::Panic) {
+                                        assert!(
+                                            fixture.panic_staged_payload.load(Ordering::Relaxed)
+                                        );
+                                    }
                                     assert!(
                                         reason.contains("Configuration task callback panicked"),
                                         "{reason}"
@@ -509,7 +531,10 @@ fn serving_game_drives_configuration_tasks() {
                             break;
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
-                            assert!(!matches!(case, Case::Failure | Case::Panic));
+                            assert!(!matches!(
+                                case,
+                                Case::Failure | Case::Panic | Case::SendRefusalPanic
+                            ));
                             assert_eq!(
                                 replies.next(),
                                 None,
@@ -538,6 +563,14 @@ fn serving_game_drives_configuration_tasks() {
                         }
                         _ => {}
                     }
+                }
+                if let Some(home) = &crash_home {
+                    assert!(!sunrise_client::crash::server_crashed());
+                    assert!(!home.path().join("crash-reports").exists());
+                    assert!(
+                        mod_api::__private::game::take_mod_error_toasts()
+                            .contains(&("task_fixture", "ConfigurationTask::start"))
+                    );
                 }
                 assert_eq!(
                     fixture.type_reads.load(Ordering::Relaxed),

@@ -36,9 +36,11 @@ Both prepare contexts lend converted IDs through `context.list()` and bytes thro
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
 its message. `error.resource()` borrows the failing resource ID,
 `std::error::Error::source(&error)` exposes its original cause, and formatting `error` walks the
-full `Error::source()` chain in logs and `/reload` replies. Registration returns typed
-`ReloadOrderError` values without poisoning the reload if the caller handles the `Err`. No
-listener applies until every prepare succeeds.
+`Error::source()` chain in logs and `/reload` replies, stopping at a circular reference and
+marking it. Handle an invalid registration's `Err(ReloadOrderError)` in the registration hook;
+the failed call leaves the existing registry unchanged. To fail a reload, return a
+`ReloadResourceError` from a listener's prepare step. No listener applies until every prepare
+succeeds.
 
 Outside a listener, `host.resource(pack_type, &identifier)` reads one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and

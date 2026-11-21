@@ -44,7 +44,7 @@ ids = [
     "type:ConfigurationTaskError.WrongContext",
     "method:IPayloadContext::finish_configuration_task",
 ]
-why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs (matching NeoForge RegisterConfigurationTasksEvent.register, ServerPayloadContext.finishCurrentTask, and vanilla ServerConfigurationPacketListenerImpl). Registration is an infallible FIFO queue with no empty/duplicate rejection, completion matches the running task's Identifier on the receiving connection across both main-thread and network-thread server configuration handlers without transaction-layer staging, and a refused payload send returns Err without failing the task session."
+why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs (matching NeoForge RegisterConfigurationTasksEvent.register, ServerPayloadContext.finishCurrentTask, and vanilla ServerConfigurationPacketListenerImpl). Registration is an infallible FIFO queue with no empty/duplicate rejection, completion matches the running task's Identifier on the receiving connection across both main-thread and network-thread server configuration handlers without transaction-layer staging, and a refused payload send returns Err without failing the task session. A start or tick panic, including an unwrapped send refusal, rolls back and disconnects only that configuring peer, following vanilla ServerConfigurationPacketListenerImpl.startNextTask/tick's per-connection error path, with a log and mod error toast instead of a fatal server crash."
 migrate = """
 In `Hooks::register_configuration_tasks` (now version 3), replace \
 `event.tasks.push(ConfigurationTask::new(id))` with `event.register(MyTask { id, ... })`. \
@@ -61,7 +61,9 @@ and keep state on `self`. In either callback, replace `event.connection.has_chan
 with `context.has_channel(host, channel)`, and `event.connection.send_payload(host, channel, bytes)` \
 with `context.send_payload(host, channel, bytes)`. `host.configuration_send_payload` takes \
 `ConfigurationConnection`. A refused send returns `Err(ConfigurationTaskError::Payload(_))` \
-without automatically failing the task session. Replace `connection.finish(host, task_type)`, \
+without automatically failing the task session. Handle the refusal if the peer should still \
+be admitted; panicking (including unwrapping the refusal) rolls back this callback and fails \
+this peer, not the server. Replace `connection.finish(host, task_type)`, \
 `host.configuration_finish(connection, task_type)` or `event.finished = true` with \
 `context.finish()`. Replace `connection.fail(host, reason)` and \
 `host.configuration_fail(connection, reason)` with `context.fail(reason)`.

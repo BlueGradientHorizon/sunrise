@@ -284,7 +284,7 @@ pub mod built {
 /// What the game reads of handles and calls on the API's own types.
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
-    pub use crate::callback_owner::take_mod_error_toasts;
+    pub use crate::callback_owner::{report_mod_panic, take_mod_error_toasts};
     use crate::*;
     use std::fmt::Debug;
 

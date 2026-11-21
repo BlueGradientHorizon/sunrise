@@ -12,8 +12,9 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>` matching vanilla's `ModelLayerLocation`; malformed
-IDs are logged and dropped. Any namespace (including `minecraft`) is allowed, while an exact
+IDs have the form `<namespace>:<path>#<layer>` matching vanilla's `ModelLayerLocation`. Both
+separators are required; namespace and path follow vanilla `Identifier` rules and may be empty.
+The layer string is unrestricted, including empty. Malformed IDs are logged and dropped. An exact
 collision with a vanilla layer key in `entity-models.json` fails client startup (matching vanilla
 `LayerDefinitions.createRoots`). When multiple registrations target the same ID, the last
 registration wins (matching NeoForge `ClientHooks.registerLayerDefinition`).
@@ -52,7 +53,7 @@ The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions",
-        version = 3
+        version = 4
     )]
     fn register_layer_definitions(layers: &mut Vec<Answered<LayerDefinitionRegistration>>);
 }

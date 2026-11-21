@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static MOD_ERROR_TOASTS: Mutex<Vec<(&'static str, &'static str)>> = Mutex::new(Vec::new());
 
-pub(crate) fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {
+/// Report a contained callback panic to the log and queue its mod error toast.
+pub fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {
     log::error!("mod {mod_id}: {kind} `{operation}` panicked; it is disabled for this session");
     MOD_ERROR_TOASTS
         .lock()

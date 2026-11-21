@@ -1488,10 +1488,11 @@ impl Game<'_> {
     }
 
     fn reload_failure(error: ReloadStageError) -> sunrise_client::command::CommandError {
-        log::warn!("Sunrise: {error}");
+        let diagnostic = error.to_string();
+        log::warn!("Sunrise: {diagnostic}");
         sunrise_client::command::CommandError::new(
             Text::translate("commands.reload.failure", &[])
-                .append(Text::literal(format!("\n{error}"))),
+                .append(Text::literal(format!("\n{diagnostic}"))),
         )
     }
 

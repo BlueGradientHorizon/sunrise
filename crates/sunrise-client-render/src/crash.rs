@@ -17,7 +17,6 @@ pub use mod_api::content::crash::{clear_detail, enter_native_mod, set_detail};
 use mod_platform::content::crash::details;
 #[cfg(test)]
 pub use mod_platform::content::crash::{clear_detail, enter_native_mod, set_detail};
-use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -28,11 +27,6 @@ use chrono::{DateTime, Local};
 use sunrise_system::{command_output, machine_arch};
 
 static REPORTED: AtomicBool = AtomicBool::new(false);
-
-thread_local! {
-    /// The message of the last panic `contain` caught on this thread, from the hook.
-    static CAUGHT: RefCell<Option<String>> = const { RefCell::new(None) };
-}
 
 /// `message`, with the native mod hook this thread is inside, if any, and the converted package
 /// the hook's runtime is executing.
@@ -85,14 +79,12 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
             refusal.report();
             Err(refusal.to_string())
         }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
+        Err(payload) => Err(payload_text(&*payload)),
     }
 }
 
-/// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
-/// return. False for any other panic.
+/// For the hook: log a panic inside a shared containment boundary with its stack and mod
+/// attribution. The boundary that catches the unwind owns its payload. False for other panics.
 fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
     if !mod_api::__private::is_contained() {
         return false;
@@ -110,7 +102,6 @@ fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    CAUGHT.with(|c| *c.borrow_mut() = Some(message));
     true
 }
 
@@ -1363,6 +1354,21 @@ mod tests {
         let outer = contain(|| contain(|| -> u8 { panic!("inner") }));
         assert!(outer.unwrap().unwrap_err().contains("inner"));
         assert!(!mod_api::__private::is_contained());
+    }
+
+    #[test]
+    fn containment_reports_its_own_resumed_panic_after_an_independent_mod_panic() {
+        with_claimed_panics(contained_panic, || {
+            let earlier = {
+                let _contained = mod_api::__private::enter_contained();
+                let _mod = mod_api::__private::enter("earlier_mod", "earlier_hook");
+                std::panic::catch_unwind(|| panic!("earlier mod callback panic"))
+            };
+            assert!(earlier.is_err());
+            let later =
+                contain::<()>(|| std::panic::resume_unwind(Box::new("later resumed panic")));
+            assert_eq!(later, Err("later resumed panic".to_owned()));
+        });
     }
 
     #[test]

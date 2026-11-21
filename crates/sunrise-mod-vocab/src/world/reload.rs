@@ -5,12 +5,15 @@ use crate::{
     FileToIdConverter, Identifier,
     world::reload_order::{ReloadOrder, ReloadOrderError},
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
 /// An error loading a resource, with its ID and the original cause available
 /// through [`Self::resource`] and [`std::error::Error::source`]. Formatting
-/// walks the full `Error::source()` chain so nested causes appear in logs and
-/// `/reload` replies.
+/// includes the `Error::source()` chain in logs and `/reload` replies, marking
+/// a circular source instead of following it repeatedly.
 // no wire: retains the native error and its source chain in this process.
 #[derive(Debug)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
@@ -37,9 +40,15 @@ impl ReloadResourceError {
 }
 impl std::fmt::Display for ReloadResourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.resource, self.source)?;
-        let mut next = self.source.source();
+        write!(f, "{}", self.resource)?;
+        let mut seen = HashSet::new();
+        let mut next: Option<&(dyn std::error::Error + 'static)> = Some(self.source.as_ref());
         while let Some(cause) = next {
+            // Keep the trait object's metadata as well as its address: nested zero-sized
+            // errors of different types can share the same address.
+            if !seen.insert(std::ptr::from_ref(cause)) {
+                return f.write_str(": [circular error source]");
+            }
             write!(f, ": {cause}")?;
             next = cause.source();
         }

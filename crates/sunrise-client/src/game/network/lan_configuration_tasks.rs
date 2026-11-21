@@ -3,6 +3,7 @@ use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
+        game::report_mod_panic,
     },
     ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
@@ -20,11 +21,22 @@ impl Game<'_> {
     fn configuration_callback(
         &mut self,
         session: &Arc<Session>,
+        owner: Option<(&'static str, &'static str)>,
         callback: impl FnOnce(&mut Self) -> Result<Option<usize>, String>,
     ) -> bool {
         let seal = self.transaction_open();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
-            .unwrap_or_else(|_| Err("Configuration task callback panicked".into()));
+        let result = {
+            // The installed hook must not relay a recovered task panic as a fatal server crash.
+            let _contained = mod_api::__private::enter_contained();
+            let _mod = owner.map(|(id, operation)| mod_api::__private::enter(id, operation));
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
+        }
+        .unwrap_or_else(|_| {
+            if let Some((id, operation)) = owner {
+                report_mod_panic(id, "configuration task callback", operation);
+            }
+            Err("Configuration task callback panicked".into())
+        });
         let ordinal = match result {
             Ok(ordinal) => ordinal,
             Err(reason) => {
@@ -60,7 +72,7 @@ impl Game<'_> {
                     .configuration_tasks
                     .insert(&request);
                 let mut registration = ConfigurationTaskRegistration::default();
-                if self.configuration_callback(&request.session, |game| {
+                if self.configuration_callback(&request.session, None, |game| {
                     game.native_register_configuration_tasks(
                         request.connection,
                         request.player,
@@ -123,15 +135,13 @@ impl Game<'_> {
                     };
                     // No map borrow or session lock survives extraction. The callback
                     // can use the Host (including this session) and its transaction.
-                    let commit = self.configuration_callback(&session, |game| {
-                        let call = if turn.start {
-                            "ConfigurationTask::start"
-                        } else {
-                            "ConfigurationTask::tick"
-                        };
-                        let _mod = task
-                            .owner
-                            .map(|owner| mod_api::__private::enter(owner, call));
+                    let operation = if turn.start {
+                        "ConfigurationTask::start"
+                    } else {
+                        "ConfigurationTask::tick"
+                    };
+                    let owner = task.owner.map(|id| (id, operation));
+                    let commit = self.configuration_callback(&session, owner, |game| {
                         let mut outcome = ConfigurationTaskOutcome::Pending;
                         let mut context = configuration_task_context(connection, &mut outcome);
                         if turn.start {

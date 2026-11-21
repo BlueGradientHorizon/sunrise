@@ -216,10 +216,10 @@ const BUILTIN_REQUIRED_PIPELINES: &[&str] = &[
 const BUILTIN_OPTIONAL_PIPELINES: &[&str] = &["pipeline/wireframe", "pipeline/wireframe_multidraw"];
 
 /// Publish the mods' registrations once at startup, as `register_render_pipelines` left them.
-/// Duplicate pipeline IDs (including collisions with vanilla's built-in required or optional
-/// pipeline registries) fail client startup without committing the table, matching NeoForge's
-/// `RegisterRenderPipelinesEvent` (`RenderPipelines.registerCustomPipelines`). A pipeline's place
-/// in the list is its slot.
+/// Mod pipeline IDs are unique across the table because lookup uses the ID alone. Check each
+/// mod ID against the corresponding vanilla required or optional registry, as NeoForge's
+/// `RenderPipelines.registerCustomPipelines` does. A collision fails startup without committing
+/// the table. A pipeline's place in the list is its slot.
 pub fn register(pipelines: Vec<RenderPipeline>) -> Result<(), String> {
     register_into(&REGISTERED, pipelines)
 }
@@ -228,13 +228,12 @@ fn register_into(
     slot: &OnceLock<Vec<RenderPipeline>>,
     pipelines: Vec<RenderPipeline>,
 ) -> Result<(), String> {
-    let mut seen_required: BTreeMap<&Identifier, &str> = BTreeMap::new();
-    let mut seen_optional: BTreeMap<&Identifier, &str> = BTreeMap::new();
+    let mut seen = BTreeMap::new();
     for pipeline in &pipelines {
-        let (builtins, seen, kind) = if pipeline.optional {
-            (BUILTIN_OPTIONAL_PIPELINES, &mut seen_optional, "optional")
+        let (builtins, kind) = if pipeline.optional {
+            (BUILTIN_OPTIONAL_PIPELINES, "optional")
         } else {
-            (BUILTIN_REQUIRED_PIPELINES, &mut seen_required, "required")
+            (BUILTIN_REQUIRED_PIPELINES, "required")
         };
         if pipeline.id.namespace() == "minecraft"
             && builtins.binary_search(&pipeline.id.path()).is_ok()
@@ -247,7 +246,7 @@ fn register_into(
         }
         if let Some(first_owner) = seen.insert(&pipeline.id, pipeline.owner()) {
             return Err(format!(
-                "Duplicate {kind} render pipeline registration: {} (registered by {} and {})",
+                "Duplicate render pipeline registration: {} (registered by {} and {})",
                 pipeline.id,
                 first_owner,
                 pipeline.owner()
@@ -773,11 +772,11 @@ fn pipeline_fragment(input: PipelineInput) -> vec4<f32> {
             },
         );
 
-        // Mod/mod duplicate fails naming the ID and both mods.
+        // Mod IDs collide even across required and optional registrations: lookup uses only the ID.
         mod_platform::testing::with_mods(
             vec![
                 ModEntry::new("first", Box::new(Register(&[("shared:glow", false)]))),
-                ModEntry::new("second", Box::new(Register(&[("shared:glow", false)]))),
+                ModEntry::new("second", Box::new(Register(&[("shared:glow", true)]))),
             ]
             .into(),
             || {

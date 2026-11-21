@@ -91,7 +91,8 @@ deferred sends commit.
 A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
 without failing the task session, so the task can handle it, call
 `context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
-task callback and closes that client with the configuration-error reason. Check
+task callback and closes that client with the configuration-error reason. A panic
+is logged and shown in a mod error toast; it does not crash the server. Check
 the channel before sending to an optional or vanilla peer, then request
 completion or explain why it cannot join.
 

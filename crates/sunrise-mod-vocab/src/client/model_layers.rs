@@ -502,8 +502,9 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// Any valid `<namespace>:<path>#<layer>` syntax is accepted (including `minecraft:` for
-    /// non-vanilla layer keys). When multiple registrations share an ID, the last supplier wins
+    /// Use `<namespace>:<path>#<layer>` with both delimiters. The namespace and path follow
+    /// vanilla `Identifier` rules (including empty components), and the layer can be any string,
+    /// including empty. When multiple registrations share an ID, the last supplier wins
     /// and overwritten suppliers never run (matching NeoForge's
     /// `ClientHooks.registerLayerDefinition`). Exact collisions with vanilla layer keys in
     /// `entity-models.json` fail client startup (matching vanilla's

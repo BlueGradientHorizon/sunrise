@@ -3,11 +3,11 @@
 pub trait Hooks {
     /// Register render pipelines, once at client startup (NeoForge's
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
-    /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
-    /// at startup and again on every resource reload. Any valid pipeline id is accepted; duplicate
-    /// pipeline ids — including collisions with vanilla's built-in required or optional pipeline
-    /// registries — fail client startup (matching NeoForge's
-    /// `RenderPipelines.registerCustomPipelines`). A required pipeline whose shader is missing or
+    /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them alongside its
+    /// own at startup and on every resource reload. Mod pipelines share one ID table: a duplicate
+    /// fails startup even if one is required and the other optional. Each registration is also
+    /// checked against the corresponding vanilla registry, as in NeoForge's
+    /// `RenderPipelines.registerCustomPipelines`. A required pipeline whose shader is missing or
     /// doesn't build fails the load: the game does not start, and a reload fails and keeps the
     /// previous resources. An [optional](RenderPipeline::optional()) one is logged and resolves to
     /// [`RenderPipelineError::Invalid`].
@@ -61,7 +61,9 @@ pipeline again, so a resource pack can replace a shader; a handle from before th
 `Stale`.
 
 A pipeline is required unless it is registered with `.optional()` (NeoForge's
-`registerPipeline` and `registerOptionalPipeline`). When a load cannot build a required pipeline,
+`registerPipeline` and `registerOptionalPipeline`). Give every mod pipeline a distinct ID even if
+the build policies differ: mod pipeline lookup uses only the ID. Vanilla collisions are checked
+against the matching required or optional registry. When a load cannot build a required pipeline,
 because its file is missing, refused or turned down by the GPU, the whole load fails and names it:
 the game does not start, and a reload keeps the previous resources and handles, then drops the
 selected resource packs and tries again, as vanilla does with any failed reload. An optional
@@ -80,7 +82,7 @@ game reaches."#]
         collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
         context = "registration",
         neoforge = "RegisterRenderPipelinesEvent",
-        version = 3
+        version = 4
     )]
     fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
 }

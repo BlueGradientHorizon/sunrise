@@ -1717,9 +1717,9 @@ still go on each event or registrar.
 
 - `component_types(context, event)` runs once before content loads. Call `event.register(id)` with each owned namespaced ID. Duplicates, invalid IDs and the `minecraft` namespace stop startup. `native_component`, `native_set_component` and `native_remove_component` read, set and remove registered components, including item defaults. Values use NBT and must fit the network reader limits.
 
-- `create_skull_models`, `map_decoration_types`, `register_entity_spectator_shaders`, `register_fluid_models`, `register_render_pipelines` and `register_texture_atlases` take one entry per `event.register(entry)` call. `block_entity_type_add_blocks` adds memberships with `event.modify(kind, blocks)` or `event.modify_matching(predicate, blocks)`; `event.types` lists registered types, not additions. These registration methods stage entries in listener order. A listener cannot read, edit or remove earlier registrations; a phase refusal discards only that listener's additions. `register_render_pipelines` (version 3, matching NeoForge `RegisterRenderPipelinesEvent`) accepts any valid pipeline `Identifier` without a namespace ownership gate and fails client startup on duplicate pipeline IDs. Fluid models and texture atlases are collected again on resource reload. Atlas timing and duplicate handling are unchanged.
+- `create_skull_models`, `map_decoration_types`, `register_entity_spectator_shaders`, `register_fluid_models`, `register_render_pipelines` and `register_texture_atlases` take one entry per `event.register(entry)` call. `block_entity_type_add_blocks` adds memberships with `event.modify(kind, blocks)` or `event.modify_matching(predicate, blocks)`; `event.types` lists registered types, not additions. These registration methods stage entries in listener order. A listener cannot read, edit or remove earlier registrations; a phase refusal discards only that listener's additions. `register_render_pipelines` (version 4) accepts any valid pipeline `Identifier` without a namespace ownership gate. Mod pipeline IDs are unique across required and optional registrations; collisions with vanilla are checked in the matching registry as in NeoForge `RegisterRenderPipelinesEvent`. Fluid models and texture atlases are collected again on resource reload. Atlas timing and duplicate handling are unchanged.
 
-- `register_layer_definitions(context, event)` (version 3, matching NeoForge `ClientHooks.registerLayerDefinition` and vanilla `LayerDefinitions.createRoots`) binds each `<namespace>:<path>#<layer>` ID to an owned `Send + Sync + 'static` supplier with `event.register(id, supplier)`. Any namespace (including `minecraft`) is allowed; duplicate mod registrations keep the last supplier per ID before invoking suppliers, and an exact collision with a vanilla layer key in `entity-models.json` fails client startup. Each winning supplier runs once in registration order at client startup when the layer table freezes. The game keeps their definitions, not the suppliers. Baking through `ClientHost::bake_layer` and reloading resources reuse the definitions.
+- `register_layer_definitions(context, event)` (version 4, matching NeoForge `ClientHooks.registerLayerDefinition` and vanilla `LayerDefinitions.createRoots`) binds each `<namespace>:<path>#<layer>` ID to an owned `Send + Sync + 'static` supplier with `event.register(id, supplier)`. Both delimiters are required; the namespace and path follow vanilla `Identifier` rules and may be empty, and the layer can be any string. Duplicate mod registrations keep the last supplier per ID before invoking suppliers, and an exact collision with a vanilla layer key in `entity-models.json` fails client startup. Each winning supplier runs once in registration order at client startup when the layer table freezes. The game keeps their definitions, not the suppliers. Baking through `ClientHost::bake_layer` and reloading resources reuse the definitions.
 
 - [explosions](#explosions) for server mods: `LevelRef::explode(host, source, center, radius, fire, interaction, settings)`
   sets one off as `Level.explode` does, with an optional source entity, `ExplosionInteraction::None`, `Block`, `Mob`, `Tnt`
@@ -2026,13 +2026,15 @@ table refusal does not roll back actions that already ran. As vanilla's
 skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — or
 introducing a dependency cycle — aborts the whole reload: all pending actions are dropped
 without running and the old mod data and vanilla function library are kept. A handled
-registration error from `add_listener` or `add_dependency` returns `Err(ReloadOrderError)`
-without mutating or poisoning the registry. A panic in `prepare` or an apply is not recovered:
+registration error from `add_listener`, `add_retained_listener` or `add_dependency` returns
+`Err(ReloadOrderError)` without mutating or poisoning the registry. Handle it at registration;
+return a `ReloadResourceError` in a listener's prepare step to fail the reload. A panic in `prepare` or an apply is not recovered:
 it stops the server, and the crash report names the listener and the mod that registered it.
 Wrap the original error in `ReloadResourceError::new(id, cause)` to keep its source chain;
 `resource()` borrows the resource ID, `std::error::Error::source` exposes the cause, and
-formatting the error walks the full `Error::source()` chain. The diagnostic names the listener,
-the resource and the full cause chain; world open fails, and `/reload` reports the failure. A
+formatting the error walks the `Error::source()` chain, marking a circular reference and
+stopping there. The diagnostic names the listener, the resource and the causes; world open
+fails, and `/reload` reports the failure. A
 failed `/datapack` change also preserves the selected packs on disk.
 
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the

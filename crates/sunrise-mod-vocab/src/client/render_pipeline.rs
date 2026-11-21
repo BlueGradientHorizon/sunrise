@@ -10,7 +10,8 @@ use crate::{Identifier, WorldDepth};
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct RenderPipeline {
     owner: String,
-    /// The pipeline's own name (`mymod:glow`).
+    /// The pipeline's own name (`mymod:glow`). Unique among all mod pipelines,
+    /// regardless of whether they are required or optional.
     pub id: Identifier,
     /// The fragment shader (`mymod:glow` is `assets/mymod/shaders/pipeline/glow.wgsl`), as the
     /// mod's assets or a resource pack supply it.

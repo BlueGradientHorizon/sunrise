@@ -77,7 +77,13 @@ fn register_into(
     for (index, entry) in layers.iter().enumerate() {
         let id = entry.answer.id.as_str();
         let mod_id = entry.mod_id;
-        if !is_valid_layer_id(id) {
+        let valid = id
+            .split_once('#')
+            .and_then(|(location, _)| location.split_once(':'))
+            .is_some_and(|(namespace, path)| {
+                mod_api::Identifier::from_parts(namespace, path).is_ok()
+            });
+        if !valid {
             log::warn!("Mod {mod_id}: model layer {id:?} is not <namespace>:<path>#<layer>");
             continue;
         }
@@ -124,13 +130,6 @@ fn register_into(
 /// The realized definition of the layer a native mod registered as `id`.
 pub fn registered(id: &str) -> Option<&'static LayerDefinition> {
     REGISTERED.get()?.get(id)
-}
-
-fn is_valid_layer_id(id: &str) -> bool {
-    let Some((location, layer)) = id.split_once('#') else {
-        return false;
-    };
-    mod_api::Identifier::parse_namespaced(location).is_some() && !layer.is_empty()
 }
 
 #[cfg(test)]
@@ -187,7 +186,13 @@ mod tests {
                         &[
                             ("minecraft:golem#main", 1),
                             ("first:golem#main", 6),
-                            ("first:golem#armor:outer", 4),
+                            ("first:golem#armor:outer#extra", 4),
+                            ("first:golem#", 13),
+                            ("first:#main", 14),
+                            (":golem#main", 15),
+                            ("first:golem", 21),
+                            ("golem#main", 22),
+                            ("First:golem#main", 23),
                         ],
                         calls.clone(),
                     )),
@@ -209,12 +214,18 @@ mod tests {
                 );
                 assert!(calls.lock().unwrap().is_empty());
                 register(suppliers, &vanilla_root).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 12]);
+                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 13, 14, 15, 12]);
 
-                let custom_mc = registered("minecraft:golem#main").unwrap().bake_root();
-                assert_eq!(custom_mc.get_child("head").unwrap().y, 1.0);
-                let colon_layer = registered("first:golem#armor:outer").unwrap().bake_root();
-                assert_eq!(colon_layer.get_child("head").unwrap().y, 4.0);
+                for (id, expected) in [
+                    ("minecraft:golem#main", 1.0),
+                    ("first:golem#armor:outer#extra", 4.0),
+                    ("first:golem#", 13.0),
+                    ("first:#main", 14.0),
+                    (":golem#main", 15.0),
+                ] {
+                    let model = registered(id).unwrap().bake_root();
+                    assert_eq!(model.get_child("head").unwrap().y, expected, "{id}");
+                }
                 for _ in 0..2 {
                     let model = registered("first:golem#main").unwrap().bake_root();
                     assert_eq!(model.get_child("head").unwrap().y, 9.0);
@@ -228,7 +239,7 @@ mod tests {
                     &mut late,
                 );
                 register(late, &vanilla_root).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 12]);
+                assert_eq!(*calls.lock().unwrap(), [1, 9, 4, 13, 14, 15, 12]);
             },
         );
         let _ = std::fs::remove_dir_all(&vanilla_root);
@@ -321,24 +332,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    #[test]
-    fn layer_ids_follow_vanilla_model_layer_location_syntax() {
-        assert!(is_valid_layer_id("mymod:golem#main"));
-        assert!(is_valid_layer_id("my_mod:mobs/golem.v2#outer_armor"));
-        assert!(is_valid_layer_id("minecraft:zombie#main"));
-        assert!(is_valid_layer_id("minecraft:golem#main"));
-        assert!(is_valid_layer_id("mymod:golem#armor:outer"));
-        assert!(is_valid_layer_id("mymod:golem#a#b"));
-        for bad in [
-            "mymod:golem",
-            "golem#main",
-            "mymod:#main",
-            "mymod:golem#",
-            "MyMod:golem#main",
-        ] {
-            assert!(!is_valid_layer_id(bad), "{bad}");
-        }
-    }
     /// `HumanoidModel.createMesh(CubeDeformation.NONE, 0)` built with these
     /// builders bakes what vanilla baked for the zombie
     /// (`minecraft:zombie#main` in the prepared `entity-models.json`):
