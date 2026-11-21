@@ -673,7 +673,7 @@ impl Game<'_> {
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
         // Loot and break effects cannot be rolled back by the level journal.
-        if self.transaction_current().is_some()
+        if self.has_open_transaction()
             || !self.native_level_write_allowed(level, pos)
             || self.dim.key() != level.dimension()
         {
@@ -3504,7 +3504,7 @@ pub(super) mod tests {
             );
             assert_ne!(overworld_actor, nether_actor);
             let host: &mut dyn mod_api::ServerHost = game;
-            let aborted: Result<(), ()> = host.transaction(|host, _| {
+            let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
                 attachment.set(host, holder, 99).unwrap();
                 Err(())
             });
@@ -3527,10 +3527,11 @@ pub(super) mod tests {
                 &sunrise_client::items::ItemStack::new("minecraft:stick", 1),
             ));
             let host: &mut dyn mod_api::ServerHost = game;
-            let rolled_back: Result<(), ()> = host.transaction(|host, tx| {
-                assert_eq!(place.insert(host, tx, &sticks, 1), 1);
-                Err(())
-            });
+            let rolled_back: Result<(), mod_api::TransactionError<()>> =
+                host.transaction(|host, tx| {
+                    assert_eq!(place.insert(host, tx, &sticks, 1), 1);
+                    Err(())
+                });
             assert!(rolled_back.is_err());
             assert!(place.with_stack(game, |_| ()).is_none());
             assert_eq!(
@@ -4647,7 +4648,7 @@ pub(super) mod tests {
         assert_eq!(game.world.modified.clone(), dirty_before);
         assert_eq!(game.world.block(5, 64, 0), block_before);
         let host: &mut dyn mod_api::ServerHost = &mut game;
-        let aborted: Result<(), ()> = host.transaction(|host, _| {
+        let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, _| {
             assert!(level.send_block_updated(host, [6, 64, 0]));
             Err(())
         });

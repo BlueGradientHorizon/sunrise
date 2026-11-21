@@ -1,0 +1,79 @@
+ids = [
+    "type:Transaction",
+    "type:TransactionSeal",
+    "handle:TransactionSeal::transaction",
+    "type:TransactionContext",
+    "handle:TransactionContext::depth",
+    "type:TransactionError",
+    "type:TransactionError.Unavailable",
+    "type:TransactionError.Aborted",
+    "type:TransactionUnavailable",
+    "type:TransactionLifecycle",
+    "trait:HostTransaction",
+    "method:HostTransaction::transaction",
+    "method:ServerHost::with_transaction_scope",
+    "method:ServerHost::transaction_matches",
+    "fn:run_transaction",
+    "method:prelude::ModStateServerHost::transaction_open",
+    "method:prelude::ModStateServerHost::transaction_close",
+    "method:prelude::ModStateServerHost::transaction_current",
+    "method:prelude::ModStateServerHost::transaction_depth",
+    "handle:BlockEntityTickScope::transaction",
+    # The IPayloadContext trait's caller contract is unchanged; the new methods carry the delta.
+    "method:IPayloadContext::with_transaction_scope",
+    "handle:IPayloadContext::transaction",
+    "method:prelude::ItemsServerHost::scratch_stack",
+    "method:prelude::ItemsServerHost::scratch_take",
+    "method:prelude::ItemsServerHost::scratch_slots",
+    "method:prelude::ItemsServerHost::scratch_take_slots",
+    "trait:ResourceHandler",
+    "method:ResourceHandler::set_max_stack_size",
+    "method:ResourceHandler::insert_at",
+    "method:ResourceHandler::extract_at",
+    "method:ResourceHandler::insert",
+    "method:ResourceHandler::extract",
+    "trait:EnergyHandler",
+    "method:EnergyHandler::insert",
+    "method:EnergyHandler::extract",
+    "trait:ItemStorage",
+    "method:ItemStorage::insert",
+    "method:ItemStorage::extract",
+    "trait:PlaceProvider",
+    "method:PlaceProvider::insert",
+    "method:PlaceProvider::extract",
+    "handle:ItemPlace::insert",
+    "handle:ItemPlace::extract",
+    "handle:ItemPlace::exchange",
+    "handle:ItemPlace::on_crafted_by",
+    "handle:ItemPlace::edit",
+    "handle:ItemComponentHandler::write",
+    "handle:BlockEntityRef::set_item_slot",
+    "handle:LevelRef::pickup_fluid",
+    "handle:LevelRef::place_fluid",
+    "handle:LevelRef::play_fluid_effects",
+    "fn:move_energy",
+    "fn:transfer",
+    "fn:transfer_matching",
+    "type:StorageError.TransactionUnavailable",
+    "fn:resource_util::insert_stacking",
+    "fn:resource_util::extract_first",
+    "fn:resource_util::find_extractable_resource",
+    "fn:resource_util::move_resources",
+    "fn:resource_util::move_resources_stacking",
+    "fn:resource_util::move_first",
+    "fn:resource_util::move_first_stacking",
+    "type:PartStateError",
+    "type:PartStateError.Unavailable",
+]
+why = "Write authority is now lent by a server-thread transaction and cannot be stored, encoded, or closed by a caller. The innermost-frame check follows NeoForge 26.3's TransactionManager.validateCurrentTransaction and TransactionManager.open. Scope refusal stays distinct from moving nothing, following the failure boundary of NeoForge's ResourceHandlerUtil.insertStacking, extractFirst, findExtractableResource and moveInternal. Vanilla's HopperBlockEntity.tryMoveItems and AbstractContainerMenu.doClick still determine the underlying transfer and menu rules. Aborting drops deferred packets; a root commit passes them to the ordinary sender without a separate transaction budget. Configuration completion still follows committed sends, preserving ServerConfigurationPacketListenerImpl.finishCurrentTask ordering."
+migrate = '''
+Import `mod_api::{HostTransaction, TransactionContext, TransactionError}`. Replace `run_transaction(host, |host, tx| …)` with `host.transaction(|host, tx| …)`. Replace `let seal = host.transaction_open(); … seal.transaction() … host.transaction_close(&seal, commit)` with `host.transaction(|host, tx| { … })`, using the closure's `host` and `tx` for every write. Return `Ok(value)` to commit or `Err(error)` to abort; unwinding also aborts journaled work. There is no mod-callable close operation. Both `run_transaction` and the old `HostTransaction::transaction` could lend the concrete or generic host; the new `HostTransaction::transaction` always lends `&mut dyn ServerHost`. Change explicit callback host types and the helpers called with that host from `&mut H` / `&mut Self` to `&mut dyn ServerHost`, or use an inferred callback argument. Move concrete-host-only setup and assertions before or after the transaction, not into the loan. Replace transaction result annotations `Result<T, E>` with `Result<T, TransactionError<E>>`. Match `Err(TransactionError::Aborted(error))` for a closure error and `Err(TransactionError::Unavailable)` when the closure did not run.
+
+Change `&Transaction` to `&TransactionContext` in helper parameters and in implementations of `ResourceHandler`, `EnergyHandler`, `ItemStorage` and `PlaceProvider`. The context does not implement `Wire` or `Clone`, is `!Send` and `!Sync`, and cannot outlive the closure. Pass its borrow directly to handler, item-place, component, block-entity slot, world-fluid and scratch-place writes, as well as `move_energy`, `transfer` and `transfer_matching`. For `resource_util` helpers pass `Some(tx)` from the current closure, or `None` to start at the root only when no transaction is open. The wrong context (foreign or ancestor, or `None` while a parent is open for an optional-context helper) panics even for a zero-amount request; it never means zero moved or ordinary refusal. Use the child context inside every nested closure. Replace `host.transaction_depth(tx): Option<u32>` with `tx.depth(): usize` (zero for the root; not a liveness check), and `host.transaction_current().is_none()` with `host.transaction_matches(None)`. Use `host.transaction_matches(Some(tx))` to check an existing loan; it does not obtain one. If you need a context, pass it down from the enclosing closure or open another scope. `host.transaction_lifecycle()` still reads the journal phase, but `TransactionLifecycle` no longer implements `Wire`.
+
+An override of `ResourceHandler::insert` or `extract` now returns `Result<u32, TransactionError<Overanswered>>` instead of `Result<u32, Overanswered>`. Use `Err(TransactionError::Aborted(overanswer))` for an overanswer and propagate `Err(TransactionError::Unavailable)` when a needed scope is refused. The same change applies to callers of those methods, `move_energy`, `insert_stacking`, `move_resources`, `move_resources_stacking`, `move_first`, and `move_first_stacking`: keep successful answers as before and update the `Err` match. `extract_first` and `find_extractable_resource` change from `Option<T>` to `Result<Option<T>, TransactionError<Overanswered>>`; match `Ok(Some(value))`, `Ok(None)`, and `Err(error)` separately. When returning a helper result from a transaction, the outer result wraps a helper error in `TransactionError::Aborted`; handle both layers. `transfer` and `transfer_matching` retain `Result<u64, StorageError>`; handle the new `StorageError::TransactionUnavailable` separately from no transfer or an unavailable provider.
+
+Keep using `event.subject.transaction(|tick, tx| …)` in a block-entity tick, with the new result type. Alternate `tick.host()` and `tick.with_view(…)` as before. In a server main-thread payload handler, use `cx.transaction(|cx, tx| …)` on `&mut dyn IPayloadContext` if a savepoint must include payload replies, configuration task completion and writes via `cx.server_host()`. Reborrow the payload context after each host borrow. It also returns `Result<T, TransactionError<E>>`. For a custom host or payload test double that supports transactions, implement its `with_transaction_scope` to lend the receiver and current context and commit only when the callback returns `true`. Implement `ServerHost::transaction_matches` to match only the innermost frame or no frame for `None`. A custom server test host can delegate to `testing::FakeJournal::with_scope` and `matches`.
+
+For `BlockEntityPartState::edit_state` and `EntityPartState::edit_state`, handle `PartStateError::Unavailable`: the host did not open a transaction and the edit closure did not run.
+'''

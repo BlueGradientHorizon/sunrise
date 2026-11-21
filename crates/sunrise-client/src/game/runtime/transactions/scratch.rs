@@ -6,7 +6,7 @@
 //! (`ItemPlace::ScratchSlots`, as `DispenseFluidContainer` runs a dispensed container) may
 //! change it, and catches what its first slot doesn't take in its second.
 use super::{Game, HashMap, frame_token};
-use mod_api::{ItemPlace, Transaction};
+use mod_api::{ItemPlace, TransactionContext};
 use std::sync::Arc;
 use sunrise_client::items::ItemStack;
 
@@ -46,10 +46,11 @@ impl Game<'_> {
     /// `scratch_stack`: holds `stack` in the open transaction `tx`, as a new scratch place.
     pub(in crate::game) fn scratch_stack(
         &mut self,
-        tx: &Transaction,
+        tx: &TransactionContext,
         stack: ItemStack,
     ) -> Option<ItemPlace> {
-        if !self.transaction_holds(tx) || stack.count == 0 {
+        self.assert_current_transaction(tx);
+        if stack.count == 0 {
             return None;
         }
         let item = Some(stack.item.clone());
@@ -59,10 +60,11 @@ impl Game<'_> {
     /// two-slot place whose item may change.
     pub(in crate::game) fn scratch_slots(
         &mut self,
-        tx: &Transaction,
+        tx: &TransactionContext,
         stack: ItemStack,
     ) -> Option<ItemPlace> {
-        if !self.transaction_holds(tx) || stack.count == 0 {
+        self.assert_current_transaction(tx);
+        if stack.count == 0 {
             return None;
         }
         self.hold_scratch(None, stack).map(ItemPlace::ScratchSlots)
@@ -82,13 +84,14 @@ impl Game<'_> {
     /// `scratch_take`: the stack at scratch place `place`, which ends.
     pub(in crate::game) fn scratch_take(
         &mut self,
-        tx: &Transaction,
+        tx: &TransactionContext,
         place: &ItemPlace,
     ) -> Option<ItemStack> {
+        self.assert_current_transaction(tx);
         let ItemPlace::Scratch(id) = place else {
             return None;
         };
-        if !self.transaction_holds(tx) || !self.transactions.first()?.scratch.contains_key(id) {
+        if !self.transactions.first()?.scratch.contains_key(id) {
             return None;
         }
         self.keep_scratch(*id);
@@ -97,13 +100,14 @@ impl Game<'_> {
     /// `scratch_take_slots`: both slots of two-slot place `place`, which ends.
     pub(in crate::game) fn scratch_take_slots(
         &mut self,
-        tx: &Transaction,
+        tx: &TransactionContext,
         place: &ItemPlace,
     ) -> Option<(Option<ItemStack>, Option<ItemStack>)> {
+        self.assert_current_transaction(tx);
         let ItemPlace::ScratchSlots(id) = place else {
             return None;
         };
-        if !self.transaction_holds(tx) || !self.transactions.first()?.scratch.contains_key(id) {
+        if !self.transactions.first()?.scratch.contains_key(id) {
             return None;
         }
         self.keep_scratch(*id);

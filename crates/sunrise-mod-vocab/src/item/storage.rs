@@ -22,7 +22,7 @@
 use crate::content::resource::{Ends, move_once};
 use crate::{
     BlockSide, Capability, CapabilityKey, ITEMS, ItemResource, ResourceHandler, ServerHost,
-    Transaction,
+    TransactionContext, TransactionError,
 };
 use std::{marker::PhantomData, ops::ControlFlow};
 
@@ -39,6 +39,8 @@ pub enum StorageError {
         /// The mod whose handler answered, or "the game".
         owner: String,
     },
+    /// The host refused to open the transfer savepoint.
+    TransactionUnavailable,
     /// The handler could not answer.
     Unavailable {
         /// The provider whose handler was asked, or "the game".
@@ -64,7 +66,8 @@ impl From<crate::Overanswered> for StorageError {
 
 /// A block's items by kind: how much of one kind it holds and has room for, and its writes, by
 /// kind and in transactions, as a [`ResourceHandler`] is written. Stateless and given the host,
-/// as every capability handler is. Amounts are 64-bit: a million items is one call.
+/// as every capability handler is. Writes require the innermost context on that host.
+/// Amounts are 64-bit: a million items is one call.
 pub trait ItemStorage {
     /// How much of `resource` it holds.
     fn amount(
@@ -85,7 +88,7 @@ pub trait ItemStorage {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64;
@@ -94,7 +97,7 @@ pub trait ItemStorage {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64;
@@ -189,10 +192,11 @@ impl ItemStorage for GameStorage {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         crate::backend_mut_of(host)
             .map_or(0, |b| b.container_insert_kind(self.0, resource, amount, tx))
             .min(amount)
@@ -200,10 +204,11 @@ impl ItemStorage for GameStorage {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         crate::backend_mut_of(host)
             .map_or(0, |b| {
                 b.container_extract_kind(self.0, resource, amount, tx)
@@ -237,7 +242,7 @@ impl Slots {
     fn fill(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         left: &mut u64,
         pick: impl Fn(&mut dyn ServerHost, usize) -> bool,
@@ -297,10 +302,11 @@ impl ItemStorage for Slots {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut left = amount;
         self.fill(host, tx, resource, &mut left, |host, index| {
             self.holds(host, index, resource)
@@ -313,10 +319,11 @@ impl ItemStorage for Slots {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let mut left = amount;
         for index in 0..self.0.size(host) {
             if left == 0 {
@@ -350,23 +357,24 @@ impl ItemStorage for Slots {
 /// Extract from `from` first, then offer the extracted amount to `to` in the same journal. If
 /// `to` takes only part, roll back and retry once with that amount. A handler that answers more
 /// than it was asked rolls back the move with [`StorageError::Overanswered`]. If `from` has none
-/// or `to` has no room, neither is asked to transfer anything.
+/// or `to` has no room, neither is asked to transfer anything. A refused transfer savepoint
+/// returns [`StorageError::TransactionUnavailable`].
 pub fn transfer(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
     to: &Capability<dyn ItemStorage>,
     resource: &ItemResource,
     max: u64,
-    tx: &Transaction,
+    tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
-    let _ = tx;
+    crate::item::transaction::assert_transaction_matches(host, Some(tx));
     let want = max
         .min(from.amount(host, resource)?)
         .min(to.space_for(host, resource)?);
     if want == 0 {
         return Ok(0);
     }
-    Ok(move_once(
+    move_once(
         host,
         Ends {
             from,
@@ -376,7 +384,11 @@ pub fn transfer(
         want,
         |host, tx, want| from.extract(host, tx, resource, want),
         |host, tx, out| Ok(to.insert(host, tx, resource, out)),
-    )?)
+    )
+    .map_err(|error| match error {
+        TransactionError::Aborted(over) => over.into(),
+        TransactionError::Unavailable => StorageError::TransactionUnavailable,
+    })
 }
 
 /// Moves up to `max` of what `filter` accepts out of `from` into `to` (NeoForge's
@@ -394,8 +406,9 @@ pub fn transfer_matching(
     to: &Capability<dyn ItemStorage>,
     filter: impl Fn(&ItemResource) -> bool,
     max: u64,
-    tx: &Transaction,
+    tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
+    crate::item::transaction::assert_transaction_matches(host, Some(tx));
     let mut moved = 0;
     let mut tried_prefix = 0;
     while moved < max {
@@ -429,7 +442,7 @@ mod tests {
     use super::*;
     use crate::prelude::ItemsHost;
     use crate::testing::FakeHost;
-    use crate::{HostTransaction, Identifier, ItemStack, Tag};
+    use crate::{HostTransaction, Identifier, ItemStack, Tag, TransactionError};
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::hash::BuildHasher;
@@ -484,7 +497,13 @@ mod tests {
             self.0.calls.set(self.0.calls.get() + 1);
             Ok(self.0.room - self.0.held.borrow().values().sum::<u64>())
         }
-        fn insert(&self, h: &mut dyn ServerHost, _: &Transaction, r: &ItemResource, n: u64) -> u64 {
+        fn insert(
+            &self,
+            h: &mut dyn ServerHost,
+            _: &TransactionContext,
+            r: &ItemResource,
+            n: u64,
+        ) -> u64 {
             let went = n.min(self.space_for(h, r).unwrap());
             *self.0.held.borrow_mut().entry(r.clone()).or_default() += went;
             went
@@ -492,7 +511,7 @@ mod tests {
         fn extract(
             &self,
             h: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             r: &ItemResource,
             n: u64,
         ) -> u64 {
@@ -570,7 +589,7 @@ mod tests {
         chest(&mut host, [0, 64, 0], &[Some((&r[0], 10)), None]);
         let storage = storage_at(&mut host, [0, 64, 0]);
         let host: &mut dyn ServerHost = &mut host;
-        let aborted: Result<(), ()> = host.transaction(|host, tx| {
+        let aborted: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
             assert_eq!(storage.insert(host, tx, &r[0], 70), 70);
             Err(())
         });
@@ -633,7 +652,7 @@ mod tests {
             fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,
@@ -643,7 +662,7 @@ mod tests {
             fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &Transaction,
+                _: &TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,
@@ -761,11 +780,11 @@ mod tests {
             fn insert(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 kind: &ItemResource,
                 amount: u64,
             ) -> u64 {
-                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                assert!(host.transaction_matches(Some(tx)));
                 let amount = amount.min(self.space_for(host, kind).unwrap());
                 if amount > 0 {
                     self.entries.borrow_mut().push((kind.clone(), amount));
@@ -775,11 +794,11 @@ mod tests {
             fn extract(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 kind: &ItemResource,
                 amount: u64,
             ) -> u64 {
-                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                assert!(host.transaction_matches(Some(tx)));
                 let mut entries = self.entries.borrow_mut();
                 let Some(index) = entries.iter().position(|(held, _)| held == kind) else {
                     return 0;
@@ -865,7 +884,7 @@ mod tests {
                 (&b, &a)
             };
             let kind = &r[(round % 3 % 2) as usize];
-            let result: Result<u64, ()> = host.transaction(|host, tx| {
+            let result: Result<u64, TransactionError<()>> = host.transaction(|host, tx| {
                 let moved =
                     transfer(host, from, to, kind, round + 1, tx).expect("test transfer succeeds");
                 // Every third round aborts after it wrote.

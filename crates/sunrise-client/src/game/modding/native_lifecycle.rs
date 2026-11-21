@@ -304,11 +304,10 @@ impl Game<'_> {
                     if mod_api::__private::mod_index(owner)
                         .is_some_and(mod_api::__private::mod_index_on)
                     {
-                        let _: Result<(), std::convert::Infallible> =
-                            mod_api::run_transaction(game, |game, _| {
-                                task(game);
-                                Ok(())
-                            });
+                        game.storage_scope(|game, _| {
+                            task(game);
+                            ((), true)
+                        });
                     } else {
                         drop(task);
                     }

@@ -94,9 +94,10 @@ A fluid container can pick up and place fluid in the world as a bucket does
 | `fluid_util::try_place_fluid(host, source, player, level, pos, validate)` | Takes a bucket of the first fluid of `source` that comes out whole and places it at `pos`; `validate` refuses a waterloggable block that won't take it |
 | `fluid_util::first_stack_contained(host, place)` | Reads what the container at an `ItemPlace` holds at its first non-empty index |
 
-The three that move fluid each run in a transaction of its own, nested in one you have
-open. Under them, `level.pickup_fluid(host, pos, player, tx)` and
-`level.place_fluid(host, pos, fluid, player, validate, tx)` decide everything at the
+The three that move fluid each run in their own transaction, nested in one you have
+open. The world-fluid writes they use take the innermost `&TransactionContext` and
+panic if you pass a context from another frame. `level.pickup_fluid(host, pos, player, tx)`
+and `level.place_fluid(host, pos, fluid, player, validate, tx)` decide everything at the
 call against the world as the transaction has it and write the block at once, so a
 second pickup of the same source in the transaction gets nothing. A block the fluid
 replaces has its drops made at the call, with the block as it is and its block entity kept

@@ -57,8 +57,9 @@ Keep the contents in the stack and use these methods to access it:
 | `place.extract(host, tx, &resource, amount)` | How much was extracted |
 | `place.exchange(host, tx, &resource, amount)` | How much was exchanged, or 0 if the exchange fails |
 
-Each write runs in its own transaction nested in `tx`. Aborting restores changes at every
-level of nested items. If a handler answers more than requested, the move is undone and the
+Pass the innermost `&TransactionContext` to every write, including scratch-place operations.
+A foreign or ancestor context panics. Exchange uses a nested transaction so aborting restores
+changes at every level of nested items. If a handler answers more than requested, the move is undone and the
 game warns once, naming the mod.
 
 ## Exchanging one item
@@ -128,8 +129,8 @@ copies the source stack's own value or removal; if the source inherits, the targ
 
 For a player's slot (including armour and off hand), hand, or a mob's or armour stand's
 `ItemPlace::Equipment`, the game resolves the slot before calling the editor. An empty or
-unreadable slot (`ItemPlaceEditError::NotHeld`), an unavailable backend, or a closed transaction
-(`Unavailable`) refuses before calling the editor. After the callback, the game validates the
+unreadable slot (`ItemPlaceEditError::NotHeld`) or an unavailable backend (`Unavailable`)
+refuses before calling the editor. Passing the wrong transaction context panics before that check. After the callback, the game validates the
 changed overrides together, including the resulting stack limits. If it returns `Stack(error)`,
 none of the edits were applied. Unchanged overrides are not rewritten. The usual inventory,
 menu and equipment sync sends the change without replaying equip sounds, events or attribute

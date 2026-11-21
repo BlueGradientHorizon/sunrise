@@ -427,7 +427,7 @@ impl Game<'_> {
                     item: held.item.to_string(),
                 };
                 let failures = mod_api::runtime::isolated_failures();
-                mod_api::run_transaction(self, |game, _| {
+                self.storage_transaction(|game, _| {
                     game.journal_player(player);
                     if callback.handler.fire(game, &input, &plan) != CauldronFire::Applied
                         || mod_api::runtime::isolated_failures() != failures

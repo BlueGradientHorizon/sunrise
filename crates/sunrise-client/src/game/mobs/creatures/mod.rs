@@ -5513,7 +5513,7 @@ impl Game<'_> {
         };
         let dimension = self.dim;
         let failures = mod_api::runtime::isolated_failures();
-        let _: std::result::Result<(), ()> = mod_api::run_transaction(self, |game, _| {
+        let _: std::result::Result<(), ()> = self.storage_transaction(|game, _| {
             let (mut target, _, cancel) =
                 game.native_pearl_teleport(owner, pearl.id, from, pearl.previous, 0.0, hit);
             if mod_api::runtime::isolated_failures() != failures {

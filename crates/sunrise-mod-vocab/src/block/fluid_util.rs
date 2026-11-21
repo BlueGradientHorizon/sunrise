@@ -10,7 +10,7 @@ use crate::content::resource::{Ends, move_once};
 use crate::{
     Capability, Direction, DispenseItemEvent, Dispensed, FLUIDS, FluidResource, FluidStack,
     GameEventContext, Hand, HostTransaction, ITEM_FLUIDS, ItemPlace, LevelRef, PlayerRef,
-    ResourceHandler, ServerHost, SoundSource,
+    ResourceHandler, ServerHost, SoundSource, TransactionError,
 };
 
 /// `FluidType.BUCKET_VOLUME`: what a source block holds, and what a placement takes.
@@ -89,11 +89,12 @@ pub fn interact_with_handler(
         return false;
     };
     let moved = match move_first(host, handler, &item) {
-        Some(moved) => (moved, true),
-        None => match move_first(host, &item, handler) {
-            Some(moved) => (moved, false),
-            None => return false,
+        Ok(Some(moved)) => (moved, true),
+        Ok(None) => match move_first(host, &item, handler) {
+            Ok(Some(moved)) => (moved, false),
+            Ok(None) | Err(()) => return false,
         },
+        Err(()) => return false,
     };
     let (moved, pickup) = moved;
     let fluid = FluidResource::of(&moved);
@@ -169,7 +170,7 @@ pub fn try_pickup_fluid(
     }
     let handler = level.capability(host, &FLUIDS, pos, side)?;
     host.transaction(|host, tx| {
-        let moved = move_first(host, &handler, destination).ok_or(())?;
+        let moved = move_first(host, &handler, destination)?.ok_or(())?;
         if let Some(fluid) = moved.key() {
             level.play_fluid_effects(host, pos, fluid, true, player, tx);
         }
@@ -293,7 +294,7 @@ pub fn dispense_container(
         Ok((_, Some(changed))) => {
             host.dispense_with_remainder(event.dimension, event.pos, event.facing, stack, changed)
         }
-        Err(()) => host.dispense_default(event.dimension, event.pos, event.facing, stack),
+        Err(_) => host.dispense_default(event.dimension, event.pos, event.facing, stack),
     };
     Some((left.ok()?, 1000))
 }
@@ -319,7 +320,7 @@ fn move_first(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ResourceHandler<FluidResource>>,
     to: &Capability<dyn ResourceHandler<FluidResource>>,
-) -> Option<FluidStack> {
+) -> Result<Option<FluidStack>, ()> {
     for index in 0..from.size(host) {
         let Some(fluid) = from.resource(host, index) else {
             continue;
@@ -337,11 +338,18 @@ fn move_first(
             |host, tx, want| from.extract_at(host, tx, index, &fluid, want),
             |host, tx, out| to.insert(host, tx, &fluid, out),
         );
-        if let Ok(moved) = moved
-            && moved > 0
-        {
-            return Some(fluid.to_stack(moved));
+        match moved {
+            Ok(moved) if moved > 0 => return Ok(Some(fluid.to_stack(moved))),
+            Err(TransactionError::Unavailable) => {
+                log::warn!(
+                    "Fluid transfer from {} to {} could not open a transaction",
+                    from.owner(),
+                    to.owner()
+                );
+                return Err(());
+            }
+            _ => {}
         }
     }
-    None
+    Ok(None)
 }

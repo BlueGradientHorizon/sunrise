@@ -255,7 +255,8 @@ fn explicit_notices_observe_tentative_writes_and_survive_abort() {
                     host.transaction(|host, inner| {
                         assert_eq!(items.insert_at(host, inner, 0, &sticks, 3), 3);
                         Ok::<_, ()>(())
-                    })?;
+                    })
+                    .unwrap();
                     assert!(changes.0.lock().unwrap().is_empty());
                     Ok::<_, ()>(())
                 }),
@@ -641,7 +642,8 @@ fn notices_come_in_first_write_order_once_each_whatever_the_journal_keeps() {
                 host.transaction(|host, inner| {
                     assert_eq!(second.insert_at(host, inner, 3, &sticks, 5), 5);
                     Ok::<_, ()>(())
-                })?;
+                })
+                .unwrap();
                 assert_eq!(first.insert_at(host, tx, 1, &sticks, 1), 1);
                 assert!(
                     changes.0.lock().unwrap().is_empty(),
@@ -701,7 +703,7 @@ fn default_items_notifies_for_committed_mod_container_writes() {
                     assert_eq!(items.insert_at(host, tx, 0, &stick, 32), 32);
                     Err::<(), _>(())
                 }),
-                Err(())
+                Err(TransactionError::Aborted(()))
             );
             assert_eq!(items.amount(game, 0), 0);
             assert!(changes.0.lock().unwrap().is_empty());
@@ -713,7 +715,8 @@ fn default_items_notifies_for_committed_mod_container_writes() {
                     host.transaction(|host, inner| {
                         assert_eq!(items.insert_at(host, inner, 1, &stick, 32), 32);
                         Ok::<_, ()>(())
-                    })?;
+                    })
+                    .unwrap();
                     assert!(changes.0.lock().unwrap().is_empty());
                     Ok::<_, ()>(())
                 }),
@@ -766,28 +769,26 @@ fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
             );
             let host: &mut dyn ServerHost = game;
             assert_eq!(host.transaction_lifecycle(), TransactionLifecycle::None);
-            assert_eq!(host.transaction_current(), None);
-            // A helper given no transaction writes in the open one, which the abort undoes.
+            assert!(host.transaction_matches(None));
             let aborted = host.transaction(|host, outer| {
                 assert_eq!(host.transaction_lifecycle(), TransactionLifecycle::Open);
-                assert_eq!(host.transaction_depth(outer), Some(0));
+                assert_eq!(outer.depth(), 0);
+                assert!(host.transaction_matches(Some(outer)));
                 host.transaction(|host, inner| {
-                    assert_eq!(host.transaction_depth(inner), Some(1));
-                    assert_eq!(host.transaction_current().as_ref(), Some(inner));
-                    let current = host.transaction_current().unwrap();
-                    assert_eq!(items.insert_at(host, &current, 0, &sticks, 4), 4);
+                    assert_eq!(inner.depth(), 1);
+                    assert!(!host.transaction_matches(Some(outer)));
+                    assert!(host.transaction_matches(Some(inner)));
+                    assert_eq!(items.insert_at(host, inner, 0, &sticks, 4), 4);
                     Ok::<_, ()>(())
-                })?;
+                })
+                .unwrap();
+                assert!(host.transaction_matches(Some(outer)));
                 assert_eq!(items.amount(host, 0), 4);
                 Err::<(), ()>(())
             });
-            assert!(aborted.is_err());
+            assert_eq!(aborted, Err(TransactionError::Aborted(())));
             assert_eq!(items.amount(host, 0), 0);
-            // The closed transaction is no longer open.
-            let closed =
-                host.transaction(|_, tx| Ok::<_, ()>(mod_api::__private::transaction_token(tx)));
-            let closed = mod_api::__private::transaction_of(closed.unwrap());
-            assert_eq!(host.transaction_depth(&closed), None);
+            assert!(host.transaction_matches(None));
             // The notice of a committed write runs while the root closes.
             LIFECYCLES.lock().unwrap().clear();
             let committed = host.transaction(|host, tx| {
@@ -1008,7 +1009,7 @@ fn bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects()
                 changes.0.lock().unwrap().clear();
                 game.world.modified.clear();
                 game.world.block_log = Some(Vec::new());
-                let aborted: Result<(), ()> = game.transaction(|host, tx| {
+                let aborted: Result<(), ()> = game.storage_transaction(|host, tx| {
                     match operation {
                         "insert" => {
                             assert_eq!(items.insert_at(host, tx, 2, &book, 1), 1);

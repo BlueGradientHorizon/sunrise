@@ -6,8 +6,8 @@ use crate::game::{
     stations::{Kind as StationKind, Station},
 };
 use mod_api::{
-    Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, HostBlockStates, ItemPlace,
-    ItemResource, ModEntry, Mods, Registrar, ServerHost,
+    Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, HostBlockStates, HostTransaction,
+    ItemPlace, ItemResource, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::cell::{Cell, RefCell};
 use sunrise_client::items::ItemStack;
@@ -56,8 +56,12 @@ fn write_dirt(host: &mut dyn ServerHost) {
         player: 12,
         slot: 20,
     };
-    let tx = host.transaction_current().expect("inside the action");
-    assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
+    assert!(!host.transaction_matches(None), "inside the action");
+    host.transaction(|host, tx| {
+        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+        Ok::<_, ()>(())
+    })
+    .unwrap();
 }
 
 fn replace_backing(host: &mut dyn ServerHost) {
@@ -89,7 +93,7 @@ impl Hooks for Mod {
         event: &mut GrindstonePlaceEvent,
     ) -> mod_api::Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
-        assert!(host.transaction_current().is_some());
+        assert!(!host.transaction_matches(None));
         let s = SCRIPT.with(|s| s.borrow().clone());
         if s.replace_backing {
             replace_backing(host);
@@ -120,7 +124,7 @@ impl Hooks for Mod {
     ) -> mod_api::Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
         TAKE_XP.set(Some(event.take.xp));
-        assert!(host.transaction_current().is_some());
+        assert!(!host.transaction_matches(None));
         let s = SCRIPT.with(|s| s.borrow().clone());
         if s.replace_backing {
             replace_backing(host);
@@ -545,24 +549,25 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
             script(Script::default());
 
             for commit in [false, true] {
-                let outer = game.transaction_open();
-                click(game, window, 2, 0);
-                assert_eq!(slot(game, 0), None);
-                assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0].carried,
-                    Some(ItemStack::new("minecraft:dirt", 1))
-                );
-                assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
-                assert!(
-                    rx.try_recv().is_err(),
-                    "published station content before commit"
-                );
-                assert_eq!(
-                    game.lan_events.len(),
-                    events,
-                    "published level event before commit"
-                );
-                game.transaction_close(&outer, commit);
+                game.storage_scope(|game, _| {
+                    click(game, window, 2, 0);
+                    assert_eq!(slot(game, 0), None);
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0].carried,
+                        Some(ItemStack::new("minecraft:dirt", 1))
+                    );
+                    assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
+                    assert!(
+                        rx.try_recv().is_err(),
+                        "published station content before commit"
+                    );
+                    assert_eq!(
+                        game.lan_events.len(),
+                        events,
+                        "published level event before commit"
+                    );
+                    ((), commit)
+                });
                 if !commit {
                     assert_eq!(slot(game, 0), Some(original.clone()));
                     assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));

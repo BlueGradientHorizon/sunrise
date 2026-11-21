@@ -160,8 +160,8 @@ impl<'a> ItemStackView<'a> {
 /// The editor cannot leave the callback:
 ///
 /// ```compile_fail
-/// use mod_api::{ItemComponentEditor, ItemPlace, ServerHost, Transaction};
-/// fn keep_editor(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+/// use mod_api::{ItemComponentEditor, ItemPlace, ServerHost, TransactionContext};
+/// fn keep_editor(place: &ItemPlace, host: &mut dyn ServerHost, tx: &TransactionContext) {
 ///     let mut saved: Option<&mut ItemComponentEditor<'_>> = None;
 ///     let _ = place.edit(host, tx, |editor| { saved = Some(editor); });
 ///     let _ = saved;
@@ -171,8 +171,8 @@ impl<'a> ItemStackView<'a> {
 /// The callback cannot use the host already borrowed by the edit:
 ///
 /// ```compile_fail
-/// use mod_api::{ItemPlace, ServerHost, Transaction};
-/// fn reread(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+/// use mod_api::{ItemPlace, ServerHost, TransactionContext};
+/// fn reread(place: &ItemPlace, host: &mut dyn ServerHost, tx: &TransactionContext) {
 ///     let _ = place.edit(host, tx, |_| { let _ = place.with_stack(host, |s| s.count()); });
 /// }
 /// ```
@@ -570,7 +570,7 @@ impl crate::NoBackend for StackWriteError {
 pub enum CraftedByError {
     /// The place is not a menu slot or the carried stack, or it no longer holds a stack.
     NotHeld,
-    /// The host has no server game backend, or the transaction or place is no longer usable.
+    /// The host has no server game backend, or the place is no longer usable.
     Unavailable,
 }
 

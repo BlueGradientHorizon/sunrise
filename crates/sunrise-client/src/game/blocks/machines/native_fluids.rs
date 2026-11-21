@@ -4,7 +4,7 @@
 //! client's copy, and only on the level in place.
 use super::Game;
 use super::cauldron_contents::{self, CauldronContent, CauldronContents, EMPTY_CAULDRON};
-use mod_api::{BlockSide, FluidStack, Transaction};
+use mod_api::{BlockSide, FluidStack, TransactionContext};
 use std::sync::Arc;
 use sunrise_client::containers::{BlockEntity, ModFluidTanks};
 use sunrise_core::geometry::Direction;
@@ -353,11 +353,9 @@ impl Game<'_> {
         at: BlockSide,
         tank: usize,
         fluid: FluidStack,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        if !self.transaction_holds(tx) {
-            return Some(fluid).filter(|fluid| fluid.amount > 0);
-        }
+        self.assert_current_transaction(tx);
         if fluid.amount == 0 {
             return None;
         }
@@ -415,11 +413,9 @@ impl Game<'_> {
         at: BlockSide,
         tank: usize,
         max: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        if !self.transaction_holds(tx) {
-            return None;
-        }
+        self.assert_current_transaction(tx);
         let max = mb(max);
         match self.capability_tanks(at)? {
             FluidAt::Mod(tanks) => {
@@ -961,7 +957,7 @@ mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             index: usize,
             resource: &mod_api::FluidResource,
             amount: u32,
@@ -985,7 +981,7 @@ mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             index: usize,
             resource: &mod_api::FluidResource,
             amount: u32,
@@ -1326,10 +1322,11 @@ mod tests {
                 );
                 assert_eq!(source.amount(game, 1), 800);
                 assert_eq!(target.amount(game, 1), 700);
-                let abort: Result<(), ()> = game.transaction(|host, tx| {
-                    assert_eq!(target.insert_at(host, tx, 1, &water, 200), 200);
-                    Err(())
-                });
+                let abort: Result<(), mod_api::TransactionError<()>> =
+                    game.transaction(|host, tx| {
+                        assert_eq!(target.insert_at(host, tx, 1, &water, 200), 200);
+                        Err(())
+                    });
                 assert!(abort.is_err());
                 assert_eq!(target.amount(game, 1), 700);
                 assert_eq!(

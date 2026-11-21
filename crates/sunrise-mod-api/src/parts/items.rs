@@ -169,7 +169,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -188,7 +188,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -215,7 +215,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -225,7 +225,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -315,7 +315,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -335,7 +335,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -369,7 +369,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -386,7 +386,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -408,7 +408,7 @@ pub mod tests {
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             [damage / 100, damage % 100][index]
         }
-        fn rewrite(&self, host: &mut dyn ServerHost, tx: &Transaction, damage: u32) -> bool {
+        fn rewrite(&self, host: &mut dyn ServerHost, tx: &TransactionContext, damage: u32) -> bool {
             let case = ItemResource::of(&stack("test:case", 1, damage));
             self.0.exchange(host, tx, &case, 1) == 1
         }
@@ -440,7 +440,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -457,7 +457,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -466,7 +466,7 @@ pub mod tests {
                 return 0;
             }
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
-            let tried: Result<(), ()> = host.transaction(|host, tx| {
+            let tried: Result<(), crate::TransactionError<()>> = host.transaction(|host, tx| {
                 self.rewrite(host, tx, damage % 100);
                 Err(())
             });
@@ -496,7 +496,7 @@ pub mod tests {
         fn insert(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             key: u64,
             resource: &ItemResource,
             amount: u32,
@@ -518,7 +518,7 @@ pub mod tests {
         fn extract(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             key: u64,
             resource: &ItemResource,
             amount: u32,
@@ -555,7 +555,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -565,7 +565,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -750,8 +750,9 @@ pub mod tests {
             slot: usize,
             resource: &ItemResource,
             amount: u32,
-            _: &Transaction,
+            tx: &TransactionContext,
         ) -> Result<Option<ItemStack>, crate::StackWriteError> {
+            self.journal.assert_current(tx);
             let Some(stack) = resource.to_stack(amount) else {
                 return Ok(None);
             };
@@ -780,8 +781,9 @@ pub mod tests {
             _: BlockSide,
             slot: usize,
             max: u32,
-            _: &Transaction,
+            tx: &TransactionContext,
         ) -> Option<ItemStack> {
+            self.journal.assert_current(tx);
             let most = if self.whole_extract { max } else { 1 };
             let split = self.slots.get_mut(slot)?.take()?.split(most);
             self.slots[slot] = split.remainder;
@@ -828,21 +830,35 @@ pub mod tests {
                 self,
             ))
         }
+        fn with_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ) -> bool,
+        ) -> Result<(), crate::TransactionUnavailable> {
+            FakeJournal::with_scope(
+                self,
+                |shelf| &mut shelf.journal,
+                |shelf| shelf.slots.clone(),
+                |shelf, slots| shelf.slots = slots,
+                callback,
+            )
+        }
+        fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
+            self.journal.matches(tx)
+        }
     }
     #[cfg(test)]
     mod_api::impl_server_host_areas!(Shelf, except(mod_state));
     #[cfg(test)]
     impl crate::prelude::ModStateServerHost for Shelf {
-        fn transaction_open(&mut self) -> TransactionSeal {
-            self.journal.open(self.slots.clone())
-        }
-        fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
-            if let Some(slots) = self.journal.close(seal, commit) {
-                self.slots = slots;
+        fn transaction_lifecycle(&self) -> crate::TransactionLifecycle {
+            if self.journal.depth() == 0 {
+                crate::TransactionLifecycle::None
+            } else {
+                crate::TransactionLifecycle::Open
             }
-        }
-        fn transaction_current(&self) -> Option<Transaction> {
-            self.journal.current()
         }
     }
 
@@ -890,7 +906,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             amount: u32,
@@ -900,7 +916,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             _: &ItemResource,
             amount: u32,
@@ -923,9 +939,9 @@ pub mod tests {
         let host: &mut dyn ServerHost = &mut player;
         let pouch = HAND.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
-        let aborted: Result<(), u32> =
+        let aborted: Result<(), crate::TransactionError<u32>> =
             host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
-        assert_eq!(aborted, Err(3));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(3)));
         assert_eq!(main_hand(&player), Some(stack("test:pouch", 2, 0)));
         assert!(player_of(&player).given.is_empty());
         // One of the two pouches is filled: it leaves the hand for the player, the other stays.
@@ -948,7 +964,7 @@ pub mod tests {
         fn rewrite(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             energy: u32,
             moved: u32,
         ) -> u32 {
@@ -966,14 +982,14 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
             1000
         }
-        fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
+        fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
             let held = self.amount(host);
             match amount.min(1000 - held) {
                 0 => 0,
                 went => self.rewrite(host, tx, held + went, went),
             }
         }
-        fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
+        fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
             let held = self.amount(host);
             match amount.min(held) {
                 0 => 0,
@@ -1006,7 +1022,7 @@ pub mod tests {
             let moved = move_energy(host, &other, &hand, 400, tx);
             Err::<(), _>(moved)
         });
-        assert_eq!(aborted, Err(Ok(400)));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(Ok(400))));
         assert_eq!(player_of(&player).slots[&9], stack("test:cell", 1, 1000));
         assert_eq!(main_hand(&player), Some(stack("test:cell", 1, 600)));
         // An item no mod answers for has no energy.
@@ -1023,7 +1039,7 @@ pub mod tests {
         let mut player = player_world(Some(stack("test:cell", 3, 0)));
         let host: &mut dyn ServerHost = &mut player;
         let aborted = host.transaction(|host, tx| Err::<(), _>(battery.insert(host, tx, 300)));
-        assert_eq!(aborted, Err(250));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(250)));
         assert_eq!(main_hand(&player), Some(stack("test:cell", 3, 0)));
         assert!(player_of(&player).given.is_empty());
         // The limit moves 250 of 300: one of the three is charged and splits off.
@@ -1051,7 +1067,7 @@ pub mod tests {
         let host: &mut dyn ServerHost = &mut player;
         let aborted =
             host.transaction(|host, tx| Err::<(), _>(canteen.insert_at(host, tx, 0, &water, 1000)));
-        assert_eq!(aborted, Err(1000));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(1000)));
         assert_eq!(main_hand(&player), Some(stack("test:case", 3, 0)));
         assert!(player_of(&player).given.is_empty());
         let host: &mut dyn ServerHost = &mut player;
@@ -1202,7 +1218,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             n: u32,
@@ -1212,7 +1228,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -1273,8 +1289,10 @@ pub mod tests {
         let owner = "doubler".to_owned();
         assert_eq!(
             moved,
-            Err(mod_vocab::__private::parts_installation::overanswered(
-                owner
+            Err(crate::TransactionError::Aborted(
+                crate::TransactionError::Aborted(
+                    mod_vocab::__private::parts_installation::overanswered(owner)
+                )
             ))
         );
         assert_eq!(
@@ -1606,9 +1624,9 @@ pub mod tests {
         let host: &mut dyn ServerHost = &mut player;
         let pouch = in_bag.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
-        let aborted: Result<(), u32> =
+        let aborted: Result<(), crate::TransactionError<u32>> =
             host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
-        assert_eq!(aborted, Err(3));
+        assert_eq!(aborted, Err(crate::TransactionError::Aborted(3)));
         assert_eq!(main_hand(&player), Some(stack("test:bag", 2, 1)));
         assert!(player_of(&player).given.is_empty());
     }
@@ -1660,7 +1678,7 @@ pub mod tests {
             fn insert_at(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: usize,
                 r: &ItemResource,
                 n: u32,
@@ -1678,7 +1696,7 @@ pub mod tests {
             fn extract_at(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 i: usize,
                 r: &ItemResource,
                 n: u32,
@@ -1700,7 +1718,7 @@ pub mod tests {
             fn insert(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: u64,
                 r: &ItemResource,
                 n: u32,
@@ -1710,7 +1728,7 @@ pub mod tests {
             fn extract(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: u64,
                 r: &ItemResource,
                 n: u32,

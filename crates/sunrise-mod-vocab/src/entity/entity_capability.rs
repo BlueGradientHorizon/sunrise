@@ -4,7 +4,7 @@
 use crate::{
     Capability, ComponentId, Direction, EnergyHandler, EntityRef, EquipmentSlot, FluidResource,
     Host, ItemPlace, ItemResource, Overanswered, PREVENT_ARMOR_CHANGE, ProvidedBy, ResourceHandler,
-    ServerHost, Tag, Transaction, backend_of,
+    ServerHost, Tag, TransactionContext, TransactionError, backend_of,
 };
 use std::marker::PhantomData;
 
@@ -177,11 +177,12 @@ impl ResourceHandler<ItemResource> for ContainerItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -191,11 +192,12 @@ impl ResourceHandler<ItemResource> for ContainerItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -277,11 +279,12 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -291,11 +294,12 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
@@ -338,7 +342,7 @@ impl PlayerItems {
 /// empty place or one with the same item, up to `limit`.
 fn fill(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     place: &ItemPlace,
     resource: &ItemResource,
     amount: u32,
@@ -427,11 +431,12 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -441,11 +446,12 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(place) = self.place(host, index) else {
             return 0;
         };
@@ -465,10 +471,11 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !live(host, self.entity) {
             return Ok(0);
         }

@@ -5,7 +5,7 @@
 //! listener made. The fixtures need prepared resources.
 use crate::game::native_guest_turn_tests::{register_test_menu, with_guests};
 use mod_api::{
-    BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
+    BlockEntityPart, Flow, Hooks, HostTransaction, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
     MenuClickedEvent, MenuQuickMoveEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::{
@@ -73,8 +73,12 @@ fn write_dirt(host: &mut dyn ServerHost) {
         player: 12,
         slot: 20,
     };
-    let tx = host.transaction_current().expect("inside the action");
-    assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
+    assert!(!host.transaction_matches(None), "inside the action");
+    host.transaction(|host, tx| {
+        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+        Ok::<_, ()>(())
+    })
+    .unwrap();
 }
 
 struct Part;
@@ -88,7 +92,7 @@ impl BlockEntityPart for Part {
         event: &mut MenuQuickMoveEvent<'_>,
     ) -> Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
-        IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
+        IN_ACTION.with(|a| a.borrow_mut().push(!host.transaction_matches(None)));
         let s = SCRIPT.with(|s| s.borrow().clone());
         let stone = |count| {
             mod_api::ItemStack::new(
@@ -123,11 +127,15 @@ impl BlockEntityPart for Part {
             let items = level
                 .capability(host, &ITEMS, [2, 64, 1], None)
                 .expect("the second block's items");
-            let tx = host.transaction_current().expect("inside the action");
-            assert_eq!(
-                items.insert_at(host, &tx, 0, &ItemResource::of(&stone(1)), 4),
-                4
-            );
+            assert!(!host.transaction_matches(None), "inside the action");
+            host.transaction(|host, tx| {
+                assert_eq!(
+                    items.insert_at(host, tx, 0, &ItemResource::of(&stone(1)), 4),
+                    4
+                );
+                Ok::<_, ()>(())
+            })
+            .unwrap();
             event.stack.as_mut().unwrap().set_count(6).unwrap();
         }
         if s.panic {
@@ -223,7 +231,7 @@ impl Hooks for Mod {
     }
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
         DISPATCHES.set(DISPATCHES.get() + 1);
-        IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
+        IN_ACTION.with(|a| a.borrow_mut().push(!host.transaction_matches(None)));
         // Guest 12's menu from `open_native_menu`.
         assert_eq!((event.uuid, event.window), (12, 5));
         let s = SCRIPT.with(|s| s.borrow().clone());
@@ -322,10 +330,11 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
                 write_dirt: true,
                 ..Script::default()
             });
-            let seal = game.transaction_open();
-            click(game);
-            assert_eq!(inventory(game, 20), 2);
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                click(game);
+                assert_eq!(inventory(game, 20), 2);
+                ((), false)
+            });
             assert_eq!(inventory(game, 20), 0);
             // Rows 79 and 84: a write and then a panic: the write is undone and the callback
             // is not heard on a subsequent click.
@@ -568,10 +577,11 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
                 take: true,
                 ..Script::default()
             });
-            let seal = game.transaction_open();
-            click(game);
-            assert_eq!(depot(game), (1, 4, 5, 0));
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                click(game);
+                assert_eq!(depot(game), (1, 4, 5, 0));
+                ((), false)
+            });
             assert_eq!(depot(game), (10, 0, 0, 0));
             // Rows 79 and 84: a panic aborts the live write inside the click's savepoint.
             open_depot(game);
@@ -769,9 +779,10 @@ fn an_untaken_quick_move_that_wrote_to_another_block_is_undone_and_routed_once()
             // back in it, the second block is empty, and the inventory holds what the first
             // click routed there.
             let window = open_depot(game);
-            let seal = game.transaction_open();
-            game.lan_guest_packet(12, container_click(window, 0, 1));
-            game.transaction_close(&seal, false);
+            game.storage_scope(|game, _| {
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+                ((), false)
+            });
             assert_eq!(stone_everywhere(game), (10, 0, inventory));
         });
     });

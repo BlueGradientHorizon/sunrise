@@ -179,7 +179,7 @@ entity is out of the world during the call, as in `menu_button`. Nothing is aske
 ## Crafted-by processing for held stacks
 
 After delivering an item into a menu slot or onto the cursor, server-side code can use the
-held `place`, the caller's transaction `tx`, and the actual crafted count `amount` (`i32`):
+held `place`, the caller's innermost `&TransactionContext` (`tx`), and the actual crafted count `amount` (`i32`):
 
 ```rust,ignore
 place.on_crafted_by(host, tx, amount)?;
@@ -293,13 +293,18 @@ reads and writes nothing. `menu.cursor()` is that menu's cursor (`ItemPlace::Pla
 `forPlayerCursor`), which reaches nothing once the menu is gone, so a kept cursor never reaches the next menu's. The player's screen follows with the tick's container sync.
 
 ```rust,ignore
+use mod_api::{HostTransaction, TransactionError};
+
 // Put four of the menu's offered emeralds into slot 0 of the open chest, or nothing.
 let (slot, cursor) = (ItemPlace::MenuSlot { menu, slot: 0 }, menu.cursor());
-host.transaction(|host, tx| {
+let moved: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
     let took = cursor.extract(host, tx, &emerald, 4);
     if took == 4 && slot.insert(host, tx, &emerald, 4) == 4 { Ok(()) } else { Err(()) }
-})
+});
 ```
+
+`moved` distinguishes a refused move (`Aborted(())`) from a host that could not open
+its transaction (`Unavailable`).
 
 `menu_clicked` (contract version 2) and `menu_quick_move` (contract version 4, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
 through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A

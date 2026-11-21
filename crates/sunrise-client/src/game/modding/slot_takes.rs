@@ -77,7 +77,7 @@ impl Game<'_> {
         };
         let revision = api.revision();
         let failures = mod_api::runtime::isolated_failures();
-        mod_api::run_transaction(self, |game, _| {
+        self.storage_transaction(|game, _| {
             game.native_menu_slot_take(&mut api, player, menu, *slot, &taken, left.as_ref());
             if mod_api::runtime::isolated_failures() != failures {
                 return Err(());

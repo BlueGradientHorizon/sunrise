@@ -10,7 +10,7 @@ use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
-    ItemStackView, LivingRef, MenuSlotBacking, Transaction,
+    ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
 use sunrise_client::{
     first_person::Hand,
@@ -329,7 +329,7 @@ impl Game<'_> {
     pub(super) fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
     ) -> Result<(), ItemPlaceEditError> {
         self.edit_resolved_stack(
@@ -346,14 +346,15 @@ impl Game<'_> {
     fn edit_resolved_stack<P>(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         prepare: impl FnOnce(
             EquipmentRead<'_>,
             &Items,
         ) -> Result<Option<(P, GearEdits)>, ItemPlaceEditError>,
         apply: impl FnOnce(&mut ItemStack, P),
     ) -> Result<(), ItemPlaceEditError> {
-        if !self.places_simulated() || !self.transaction_holds(tx) {
+        self.assert_current_transaction(tx);
+        if !self.places_simulated() {
             return Err(ItemPlaceEditError::Unavailable);
         }
         match *place {
@@ -481,12 +482,10 @@ impl Game<'_> {
     pub(super) fn game_on_crafted_by(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), CraftedByError> {
-        if !self.transaction_holds(tx) {
-            return Err(CraftedByError::Unavailable);
-        }
+        self.assert_current_transaction(tx);
         let (menu, slot) = match *place {
             ItemPlace::MenuSlot { menu, slot } => (menu, Some(slot)),
             ItemPlace::PlayerCursor { menu } => (menu, None),
@@ -527,7 +526,7 @@ impl Game<'_> {
                 .data()
                 .is_some_and(|data| data.map_post_processing.is_some())
         {
-            mod_api::run_transaction(self, |game, tx| {
+            self.storage_transaction(|game, tx| {
                 let maps = game.level_maps([&held]);
                 Menu::map_crafted(Some(&maps), &mut held);
                 // Reserve before calling the handler, which can make other maps. A refusal
@@ -580,15 +579,13 @@ impl Game<'_> {
         place: &ItemPlace,
         resource: &ItemStack,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u32 {
+        self.assert_current_transaction(tx);
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
         };
-        if !self.transaction_holds(tx) {
-            return 0;
-        }
         if !self.places_simulated() || stack.count == 0 {
             return 0;
         }
@@ -723,15 +720,13 @@ impl Game<'_> {
         place: &ItemPlace,
         resource: &ItemStack,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u32 {
+        self.assert_current_transaction(tx);
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
         };
-        if !self.transaction_holds(tx) {
-            return 0;
-        }
         if !self.places_simulated() {
             return 0;
         }
@@ -890,7 +885,7 @@ pub(super) mod tests {
     use mod_api::ServerHost;
     use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
-        ItemResource, MenuRef,
+        ItemResource, MenuRef, TransactionError,
     };
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_client::{
@@ -1089,7 +1084,7 @@ pub(super) mod tests {
                     );
                     Err::<(), ()>(())
                 }),
-                Err(())
+                Err(TransactionError::Aborted(()))
             );
             assert_eq!(inventory(game), before);
 
@@ -1109,8 +1104,8 @@ pub(super) mod tests {
                 let acting_before = game.inventory.clone();
                 assert!(!has_body(game));
                 assert_eq!(
-                    mod_api::run_transaction(game, |game, _| {
-                        let child = mod_api::run_transaction(game, |game, tx| {
+                    game.storage_transaction(|game, _| {
+                        let child = game.storage_transaction(|game, tx| {
                             hand.edit(game, tx, |stack| {
                                 stack.copy_component_from(&source, "minecraft:custom_name");
                             })
@@ -1321,7 +1316,7 @@ pub(super) mod tests {
                 assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(()));
+            assert_eq!(result, Err(TransactionError::Aborted(())));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(
                 game.audio.capture.as_ref().unwrap().is_empty(),
@@ -1334,10 +1329,11 @@ pub(super) mod tests {
                 host.transaction(|host, tx| {
                     assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Ok::<(), ()>(())
-                })?;
+                })
+                .unwrap();
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(()));
+            assert_eq!(result, Err(TransactionError::Aborted(())));
             assert!(game.armor_stands[0].equipment.get(4).is_none());
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
@@ -1349,11 +1345,12 @@ pub(super) mod tests {
                     assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Err::<(), ()>(())
                 });
-                assert_eq!(aborted, Err(()));
+                assert_eq!(aborted, Err(TransactionError::Aborted(())));
                 host.transaction(|host, tx| {
                     assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Ok::<(), ()>(())
-                })?;
+                })
+                .unwrap();
                 assert!(super::super::dispense_fixture::stop_recording().is_empty());
                 super::super::dispense_fixture::start_recording();
                 Ok::<(), ()>(())
@@ -1566,17 +1563,26 @@ pub(super) mod tests {
                     game.transaction(|host, tx| {
                         place.edit(host, tx, |_| panic!("a refused place ran its editor"))
                     }),
-                    Err(ItemPlaceEditError::UnsupportedPlace)
+                    Err(TransactionError::Aborted(
+                        ItemPlaceEditError::UnsupportedPlace
+                    ))
                 );
             }
-            let closed = game.transaction_open();
-            game.transaction_close(&closed, true);
-            assert_eq!(
-                hand.edit(game, closed.transaction(), |_| {
-                    panic!("closed transaction ran editor")
-                }),
-                Err(ItemPlaceEditError::Unavailable)
-            );
+            let mut edited = false;
+            let mismatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                game.storage_transaction(|game, outer| {
+                    game.storage_transaction(|game, _| {
+                        let _ = hand.edit(game, outer, |_| edited = true);
+                        Ok::<(), ()>(())
+                    })
+                })
+            }))
+            .expect_err("an ancestor write must panic");
+            assert!(!edited, "an ancestor write must not call its editor");
+            assert!(mismatch.downcast_ref::<String>().is_some_and(|message| {
+                message.contains("does not match the host's innermost open transaction")
+            }));
+            assert!(game.transactions.is_empty());
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
@@ -1831,7 +1837,7 @@ pub(super) mod tests {
                     }
                     Err::<(), ()>(())
                 });
-                assert_eq!(rolled_back, Err(()));
+                assert_eq!(rolled_back, Err(TransactionError::Aborted(())));
                 assert_eq!(
                     living.attribute_base(game, "minecraft:gravity"),
                     Some(gravity)
@@ -1900,7 +1906,7 @@ pub(super) mod tests {
                 );
                 Err::<(), ()>(())
             });
-            assert_eq!(result, Err(()));
+            assert_eq!(result, Err(TransactionError::Aborted(())));
             assert_eq!(place.resource(game), Some(before));
             assert_eq!(
                 armor(game),
@@ -1960,7 +1966,7 @@ pub(super) mod tests {
                     ));
                     Err::<(), ()>(())
                 });
-                assert_eq!(child, Err(()));
+                assert_eq!(child, Err(TransactionError::Aborted(())));
                 assert_eq!(place.resource(host), Some(resource));
                 assert_eq!(gravity(host), 0.625);
                 Ok::<(), ()>(())
@@ -2446,7 +2452,10 @@ pub(super) mod tests {
                 cursor.on_crafted_by(host, tx, 3)?;
                 Err::<(), CraftedByError>(CraftedByError::Unavailable)
             });
-            assert_eq!(aborted, Err(CraftedByError::Unavailable));
+            assert_eq!(
+                aborted,
+                Err(TransactionError::Aborted(CraftedByError::Unavailable))
+            );
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.carried, Some(map.clone()));
             let conn = guest.conn;
@@ -2556,44 +2565,44 @@ pub(super) mod tests {
                 index.get("data").unwrap().get("map").unwrap().clone()
             };
 
-            let root = game.transaction_open();
-            let tx = game.transaction_current().unwrap();
-            cursor.on_crafted_by(game, &tx, 1).unwrap();
-            let child = game.transaction_open();
-            let child_tx = game.transaction_current().unwrap();
-            slot.on_crafted_by(game, &child_tx, 1).unwrap();
-            assert_eq!(held_ids(game), [Some(source + 1), Some(source + 2)]);
+            let _ = game.storage_transaction(|game, tx| {
+                cursor.on_crafted_by(game, tx, 1).unwrap();
+                let _ = game.storage_transaction(|game, child_tx| {
+                    slot.on_crafted_by(game, child_tx, 1).unwrap();
+                    assert_eq!(held_ids(game), [Some(source + 1), Some(source + 2)]);
 
-            // A held map derived from the parent's pending copy can find the new map.
-            let mut derived = game.menu_carried(menu).flatten().unwrap();
-            derived.data_mut().map_post_processing = Some(0);
-            let maps = game.level_maps([&derived]);
-            Menu::map_crafted(Some(&maps), &mut derived);
-            assert_eq!(map_id(&derived), Some(source + 3));
-            game.register_made_maps(maps);
-            let chained = game.map(source + 3).unwrap();
-            assert_eq!(chained.scale, 1);
-            assert!(chained.locked);
+                    // A held map derived from the parent's pending copy can find the new map.
+                    let mut derived = game.menu_carried(menu).flatten().unwrap();
+                    derived.data_mut().map_post_processing = Some(0);
+                    let maps = game.level_maps([&derived]);
+                    Menu::map_crafted(Some(&maps), &mut derived);
+                    assert_eq!(map_id(&derived), Some(source + 3));
+                    game.register_made_maps(maps);
+                    let chained = game.map(source + 3).unwrap();
+                    assert_eq!(chained.scale, 1);
+                    assert!(chained.locked);
+                    Err::<(), ()>(())
+                });
+                assert_eq!(held_ids(game), [Some(source + 1), Some(source)]);
+                assert!(game.map(source + 2).is_none());
+                assert!(game.map(source + 3).is_none());
 
-            game.transaction_close(&child, false);
-            assert_eq!(held_ids(game), [Some(source + 1), Some(source)]);
-            assert!(game.map(source + 2).is_none());
-            assert!(game.map(source + 3).is_none());
+                game.storage_transaction(|game, child_tx| {
+                    slot.on_crafted_by(game, child_tx, 1).unwrap();
+                    Ok::<(), ()>(())
+                })
+                .unwrap();
+                assert_eq!(held_ids(game), [Some(source + 1), Some(source + 2)]);
+                assert!(game.map(source + 2).unwrap().locked);
 
-            let child = game.transaction_open();
-            let child_tx = game.transaction_current().unwrap();
-            slot.on_crafted_by(game, &child_tx, 1).unwrap();
-            game.transaction_close(&child, true);
-            assert_eq!(held_ids(game), [Some(source + 1), Some(source + 2)]);
-            assert!(game.map(source + 2).unwrap().locked);
-
-            // Child commit still isn't a save boundary. Root abort restores both slots and IDs.
-            game.save_maps();
-            assert_eq!(saved_counter(), Tag::Int(source));
-            for id in [source + 1, source + 2, source + 3] {
-                assert!(!maps_dir.join(format!("{id}.dat")).exists());
-            }
-            game.transaction_close(&root, false);
+                // Child commit still isn't a save boundary. Root abort restores both slots and IDs.
+                game.save_maps();
+                assert_eq!(saved_counter(), Tag::Int(source));
+                for id in [source + 1, source + 2, source + 3] {
+                    assert!(!maps_dir.join(format!("{id}.dat")).exists());
+                }
+                Err::<(), ()>(())
+            });
             game.save_maps();
             assert_eq!(saved_counter(), Tag::Int(source));
             assert_eq!(game.peek_map_id(), source + 1);
@@ -2860,7 +2869,10 @@ pub(super) mod tests {
                     }
                 })
             };
-            assert_eq!(moved(host, false), Err((9, [3, 3, 3])));
+            assert_eq!(
+                moved(host, false),
+                Err(TransactionError::Aborted((9, [3, 3, 3])))
+            );
             assert_eq!(held(game), before);
             let host: &mut dyn ServerHost = game;
             assert_eq!(moved(host, true), Ok((9, [3, 3, 3])));
@@ -3239,6 +3251,10 @@ pub(super) mod tests {
             }
             Ok(())
         })
+        .map_err(|err| match err {
+            TransactionError::Aborted(()) => (),
+            other => panic!("unexpected transaction error: {other:?}"),
+        })
     }
 
     /// A seller with 3 diamonds in slot 0 and a buyer with 5 emeralds in slot 0, beside
@@ -3529,7 +3545,7 @@ pub(super) mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &mod_api::Transaction,
+            _: &mod_api::TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -3555,7 +3571,7 @@ pub(super) mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &mod_api::Transaction,
+            _: &mod_api::TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -3679,7 +3695,7 @@ pub(super) mod tests {
             fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &mod_api::Transaction,
+                _: &mod_api::TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 amount: u32,
@@ -3689,7 +3705,7 @@ pub(super) mod tests {
             fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &mod_api::Transaction,
+                _: &mod_api::TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,
@@ -4096,7 +4112,10 @@ pub(super) mod tests {
             let made = host.transaction(|host, tx| {
                 Err::<(), _>(host.scratch_stack(tx, bucket.clone()).unwrap().unwrap())
             });
-            let lost = made.unwrap_err();
+            let lost = match made {
+                Err(TransactionError::Aborted(lost)) => lost,
+                other => panic!("expected aborted scratch stack, got {other:?}"),
+            };
             let gone = host.transaction(|host, tx| Ok::<_, ()>(host.scratch_take(tx, &lost)));
             assert_eq!(gone, Ok(None));
             let got = host.transaction(|host, tx| {
@@ -4143,7 +4162,7 @@ pub(super) mod tests {
                     assert_eq!(place.amount(host), 5);
                     Err::<(), _>(())
                 });
-                assert_eq!(aborted, Err(()));
+                assert_eq!(aborted, Err(TransactionError::Aborted(())));
                 assert_eq!(place.amount(host), 2);
                 Ok::<_, ()>(place)
             });

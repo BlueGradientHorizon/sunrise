@@ -1,8 +1,6 @@
 use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game, with_game_at};
-use mod_api::{
-    BlockEntityPart, BlockEntityTickEvent, BlockPart, Hooks, HostTransaction, ModEntry, Registrar,
-};
+use mod_api::{BlockEntityPart, BlockEntityTickEvent, BlockPart, Hooks, ModEntry, Registrar};
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
@@ -105,7 +103,7 @@ fn retaking_the_view_checks_the_instance_and_state() {
 fn read_only_and_noop_loans_do_not_journal_or_dirty() {
     with_game(|game| {
         let subject = place_subject(game, KIND);
-        let result: Result<(), ()> = game.transaction(|game, _| {
+        let result: Result<(), ()> = game.storage_transaction(|game, _| {
             let mut access = access(game, subject);
             BlockEntityTickScope::new(&mut access)
                 .with_view(|mut view| {
@@ -139,7 +137,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
         game.world.modified.clear();
         let mut access = access(game, subject);
         let mut scope = BlockEntityTickScope::new(&mut access);
-        let result: Result<(), ()> = scope.transaction(|scope, _| {
+        let result: Result<(), mod_api::TransactionError<()>> = scope.transaction(|scope, _| {
             scope
                 .with_view(|mut view| {
                     assert!(view.set_data_slot(0, 24));
@@ -163,7 +161,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 .ok_or(())?;
             Err(())
         });
-        assert_eq!(result, Err(()));
+        assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
         scope
             .with_view(|view| {
                 assert_eq!(view.data_slots(), [23]);

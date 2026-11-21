@@ -887,6 +887,15 @@ pub mod tests {
             fn host(&mut self) -> &mut dyn ServerHost {
                 unreachable!()
             }
+            fn with_transaction_scope(
+                &mut self,
+                _: &mut dyn for<'loan> FnMut(
+                    &'loan mut dyn BlockEntityTickAccess,
+                    &'loan mod_vocab::TransactionContext,
+                ) -> bool,
+            ) -> Result<(), mod_vocab::TransactionUnavailable> {
+                unreachable!()
+            }
         }
         let tick = |kind: &str| {
             let kind = mod_vocab::__private::block_entity_type_key(kind).unwrap();
