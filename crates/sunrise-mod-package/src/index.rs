@@ -528,6 +528,39 @@ impl Index {
         Ok(read.validated(local_files))
     }
 
+    /// Apply archive takedowns, then advertise only targets with an available record.
+    fn prune_native_binaries(&mut self) {
+        let mut builds: BTreeMap<&str, &str> = self
+            .releases
+            .iter()
+            .flatten()
+            .map(|release| (release.tag.as_str(), release.commit.as_str()))
+            .collect();
+        if let Some(nightly) = &self.nightly_build {
+            builds.insert("nightly", &nightly.commit);
+        }
+        for project in &mut self.projects {
+            for version in &mut project.versions {
+                version.native_binaries.retain(|binary| {
+                    !self
+                        .revoked
+                        .iter()
+                        .any(|r| r.covers(&project.id, &binary.file.sha256))
+                });
+                for (release, verdict) in &mut version.verdicts {
+                    verdict.targets.retain(|target| {
+                        builds.get(release.as_str()).is_some_and(|build| {
+                            version
+                                .native_binaries
+                                .iter()
+                                .any(|binary| binary.build == *build && binary.target == *target)
+                        })
+                    });
+                }
+            }
+        }
+    }
+
     /// Every rule a reader relies on: unique valid ids, at least one
     /// version or a Nightly source each, plain file names with the kind's extension, `https`
     /// URLs, hex hashes, keys and signatures that decode, and each

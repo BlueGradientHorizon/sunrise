@@ -315,6 +315,50 @@ fn taking_down_an_archive_does_not_require_it_or_hide_another_host() {
 }
 
 #[test]
+fn raw_writer_omits_a_taken_down_archive_from_the_repo_release_cache() {
+    let release = Release::new("source.smod");
+    release.use_descriptor("valid");
+    let original = release.build();
+    let version = &original.project(ID).unwrap().versions[0];
+    let client = version.native_binary(BUILD, TARGET).unwrap();
+    let root = release.0.0.path();
+    release.0.edit(ID, |t| {
+        let (page, _) = t.split_once("[[versions]]").unwrap();
+        page.replace(
+            "source='https://github.com/Test-Author/Release_Probe'",
+            "repo='Test-Author/Release_Probe'",
+        )
+    });
+    let cache = registry::Cache {
+        versions: vec![version.clone()],
+        ..Default::default()
+    };
+    fs::create_dir_all(root.join("head/versions")).unwrap();
+    fs::write(
+        root.join(format!("head/versions/{ID}.json")),
+        serde_json::to_vec(&cache).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        root.join("head/revoked.toml"),
+        format!(
+            "[[revoked]]\nid='{ID}'\nsha256='{}'\nreason='Withdrawn test archive.'\n",
+            client.file.sha256
+        ),
+    )
+    .unwrap();
+    release.build();
+    let built: Index = serde_json::from_slice(&fs::read(root.join("index.json")).unwrap()).unwrap();
+    let row = &built.project(ID).unwrap().versions[0];
+    assert_eq!(row.file, version.file);
+    assert_eq!(row.native_binaries, version.native_binaries[1..]);
+    assert_eq!(
+        row.verdicts[BUILD_TAG].targets,
+        [format!("{TARGET}-server")]
+    );
+}
+
+#[test]
 fn registry_refuses_invalid_signed_build_submissions() {
     for (source, descriptor, message) in [
         ("source.smod", "missing-host", "must cover every SDK host"),

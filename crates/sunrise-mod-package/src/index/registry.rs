@@ -1121,7 +1121,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         return Err(errors);
     }
     projects.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(Index {
+    let mut index = Index {
         schema: SCHEMA,
         generated: src.generated.clone(),
         projects,
@@ -1131,7 +1131,9 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         collections,
         revoked: checkout.revoked.clone(),
         left_out: Vec::new(),
-    })
+    };
+    index.prune_native_binaries();
+    Ok(index)
 }
 
 /// What GitHub counts for the registry, gathered by its publish workflow (this crate makes no

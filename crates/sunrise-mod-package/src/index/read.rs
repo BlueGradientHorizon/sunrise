@@ -2,7 +2,7 @@
 use super::{Index, LeftOut, NativeBinary, NativeBinaryRefusal, Project, Version, check_binary};
 use serde::Deserialize;
 use serde_json::{Value, value::RawValue};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 pub(super) struct ReadIndex {
@@ -68,35 +68,7 @@ impl ReadIndex {
             }
         }
         index.keep_valid(local_files);
-        let mut builds: BTreeMap<&str, &str> = index
-            .releases
-            .iter()
-            .flatten()
-            .map(|release| (release.tag.as_str(), release.commit.as_str()))
-            .collect();
-        if let Some(nightly) = &index.nightly_build {
-            builds.insert("nightly", &nightly.commit);
-        }
-        for project in &mut index.projects {
-            for version in &mut project.versions {
-                version.native_binaries.retain(|binary| {
-                    !index
-                        .revoked
-                        .iter()
-                        .any(|r| r.covers(&project.id, &binary.file.sha256))
-                });
-                for (release, verdict) in &mut version.verdicts {
-                    verdict.targets.retain(|target| {
-                        builds.get(release.as_str()).is_some_and(|build| {
-                            version
-                                .native_binaries
-                                .iter()
-                                .any(|binary| binary.build == *build && binary.target == *target)
-                        })
-                    });
-                }
-            }
-        }
+        index.prune_native_binaries();
         index
     }
 }
