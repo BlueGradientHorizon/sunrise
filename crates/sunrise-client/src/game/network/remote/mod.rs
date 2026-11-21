@@ -2625,6 +2625,31 @@ pub(crate) mod tests {
         (reader, writer)
     }
 
+    /// The test server offers its payload manifest and reads the client's offer.
+    pub(super) fn offer_test_payloads(
+        reader: &mut sunrise_protocol::connection::ConnReader,
+        writer: &mut sunrise_protocol::connection::ConnWriter,
+        manifest: &sunrise_protocol::payload_negotiation::Manifest,
+    ) {
+        use sunrise_protocol::{
+            packets::configuration as cfg,
+            payload_negotiation::{CHANNEL, Control},
+        };
+        writer
+            .send(
+                &cfg::Clientbound::CustomPayload(cfg::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: Control::Offer(manifest.clone()).encode().unwrap(),
+                })
+                .encode(),
+            )
+            .unwrap();
+        let (id, body) = reader.recv().unwrap();
+        assert!(
+            matches!(cfg::Serverbound::decode(id, &body).unwrap(), cfg::Serverbound::CustomPayload(p) if p.channel == CHANNEL)
+        );
+    }
+
     /// Spawns the connected client in the overworld as entity 7, profile 42.
     pub(super) fn spawn_menu_test(
         game: &mut super::Game<'_>,

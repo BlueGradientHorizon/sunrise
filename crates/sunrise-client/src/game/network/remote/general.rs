@@ -851,7 +851,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn atomic_pairing_bundle_spawns_general_row_with_synced_attachments() {
-        use sunrise_client::net::Event;
+        use super::super::tests::{connect_play_test, offer_test_payloads, spawn_menu_test};
+        use sunrise_client::{net::Event, raw_payloads};
         use sunrise_protocol::{
             attachment_sync,
             packets::{Empty, configuration::CustomPayload},
@@ -862,8 +863,11 @@ mod tests {
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                let (_reader, mut writer) = super::super::tests::connect_play_test(game, |_, _| {});
-                super::super::tests::spawn_menu_test(game);
+                let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
+                let (_reader, mut writer) = connect_play_test(game, |reader, writer| {
+                    offer_test_payloads(reader, writer, &local.manifest);
+                });
+                spawn_menu_test(game);
                 let sync = C::CustomPayload(CustomPayload {
                     channel: attachment_sync::CHANNEL.into(),
                     data: attachment_sync::encode(&attachment_message(15, true, Some(42))).unwrap(),
