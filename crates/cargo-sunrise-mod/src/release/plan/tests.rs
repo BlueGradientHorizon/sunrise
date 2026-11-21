@@ -430,6 +430,47 @@ fn staging_a_rebuild_authenticates_both_sdks_before_emitting_any_output() {
 }
 
 #[test]
+fn the_plan_output_cannot_replace_any_sdk_data() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let data = root.join("sdk-data");
+    let child = data.join(SOURCE);
+    let alias = root.join("other");
+    fs::create_dir(&alias).unwrap();
+    let aliased_data = alias.join("../sdk-data");
+    let base = sdk_fetch::Base::Folder(root.to_owned());
+    let key = signed_sdk(root, SOURCE, &[(LINUX, sdk::Side::Client)]);
+    let at = root.join(ID);
+    project(&at);
+    let releases = stable_list(&[(GAME_TAG, SOURCE)]);
+    let output = aliased_data.join(SOURCE).join("sdk.json");
+    // Even when the nested parent will only exist after a successful fetch, refuse overlap first.
+    let selection = initial(&at, "v0.1.0", &releases).unwrap();
+    let error = stage(Some(selection), &base, &[key], &data, &output).unwrap_err();
+    assert!(error.contains("--out"), "{error}");
+    assert!(!data.exists());
+    fs::create_dir_all(&child).unwrap();
+    for name in ["sdk.json", "surface.json"] {
+        fs::write(child.join(name), format!("keep {name}\r\n")).unwrap();
+    }
+    for out in [
+        aliased_data.clone(),
+        output,
+        aliased_data.join(SOURCE).join("surface.json"),
+    ] {
+        // A scheduled no-op still writes an output file, so it must honor this boundary too.
+        let error = stage(None, &base, &[], &data, &out).unwrap_err();
+        assert!(error.contains("--out"), "{error}");
+    }
+    for name in ["sdk.json", "surface.json"] {
+        assert_eq!(
+            fs::read(child.join(name)).unwrap(),
+            format!("keep {name}\r\n").as_bytes()
+        );
+    }
+}
+
+#[test]
 fn no_rebuild_writes_a_null_plan_without_reading_an_sdk() {
     let scratch = tempfile::tempdir().unwrap();
     let data = scratch.path().join("sdk-data");

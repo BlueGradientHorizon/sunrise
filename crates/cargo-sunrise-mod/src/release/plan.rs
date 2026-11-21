@@ -2,7 +2,11 @@
 use super::{AssetName, releases, version};
 use crate::{bounded, internals::atomic_write, options::Options, sdk_fetch};
 use serde::Serialize;
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Component, Path, PathBuf},
+};
 use sunrise_mod_package::{
     index::{
         self, SunriseRelease,
@@ -376,6 +380,51 @@ fn rebuild<'a>(
     no_pair()
 }
 
+/// Resolve aliases in existing parents, then compare the names that the write will create.
+/// A future SDK subdirectory does not exist yet, so canonicalizing the whole path would miss it.
+fn output_identity(path: &Path) -> Result<PathBuf, String> {
+    let invalid = |error| format!("{}: {error}", path.display());
+    let absolute = std::path::absolute(path).map_err(invalid)?;
+    let leaf = absolute
+        .file_name()
+        .ok_or_else(|| format!("{}: name an output", path.display()))?;
+    let parent = absolute
+        .parent()
+        .expect("an absolute path with a file name has a parent");
+    for ancestor in parent.ancestors() {
+        match dunce::canonicalize(ancestor) {
+            Ok(mut resolved) => {
+                let suffix = parent.strip_prefix(ancestor).expect("from ancestors");
+                for part in suffix.components() {
+                    match part {
+                        Component::ParentDir => {
+                            resolved.pop();
+                        }
+                        Component::Normal(part) => resolved.push(part),
+                        Component::CurDir => (),
+                        _ => unreachable!("a relative suffix"),
+                    }
+                }
+                resolved.push(leaf);
+                #[cfg(windows)]
+                let resolved = resolved
+                    .components()
+                    .map(|part| {
+                        part.as_os_str()
+                            .to_string_lossy()
+                            .trim_end_matches(['.', ' '])
+                            .to_uppercase()
+                    })
+                    .collect();
+                return Ok(resolved);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+            Err(error) => return Err(invalid(error)),
+        }
+    }
+    Err(format!("{}: no existing parent", path.display()))
+}
+
 fn stage(
     selection: Option<Selection<'_>>,
     base: &sdk_fetch::Base,
@@ -383,6 +432,9 @@ fn stage(
     data: &Path,
     out: &Path,
 ) -> Result<(), String> {
+    if output_identity(out)?.starts_with(output_identity(data)?) {
+        return Err("--out must be outside --sdk-data".into());
+    }
     let (mut output, mut staged) = (
         Output {
             schema: 1,
