@@ -100,15 +100,15 @@ mod tests {
             &mut self,
             key_code: u32,
             _scan_code: u32,
-            _modifiers: u32,
+            modifiers: u32,
             _draft: &mut PresetEditorDraft<'_>,
         ) -> bool {
-            // Consume Tab (GLFW 258) ahead of menu focus navigation.
-            if key_code == 258 {
+            // Consume Shift+Tab ahead of menu focus navigation, plus either Shift on its own.
+            if key_code == 258 && modifiers == 1 {
                 self.keys.fetch_add(1, Ordering::Relaxed);
                 return true;
             }
-            false
+            matches!(key_code, 340 | 344)
         }
 
         fn char_typed(
@@ -315,17 +315,39 @@ mod tests {
                     game.native_screen_render_post(&mut batch, &view);
                     assert!(batch.vertices.len() > after_editor_vertices);
                     assert!(game.preset_editor_mouse_clicked(MouseButton::Left));
-                    // IME and the socket both send characters independently of the key path.
+                    // The window's keyboard gate must swallow the IME's composing key (e.g.
+                    // Enter accepting the candidate) before it can reach the footer.
+                    game.handle_window_event_inner(
+                        &NoopLoop,
+                        winit::event::WindowEvent::Ime(winit::event::Ime::Preedit(
+                            "e".into(),
+                            Some((0, 1)),
+                        )),
+                        None,
+                    );
+                    assert!(game.ime_suppresses_key());
                     game.handle_window_event_inner(
                         &NoopLoop,
                         winit::event::WindowEvent::Ime(winit::event::Ime::Commit("é!x".into())),
                         None,
                     );
+                    assert!(!sunrise_client::preedit::composing());
+                    sunrise_client::preedit::reset();
+                    // The socket passes a held modifier into the editor, then releases both keys.
                     let (reply, _) = std::sync::mpsc::channel();
+                    for input in [
+                        "key shift down",
+                        "key tab tap",
+                        "key shift up",
+                        "key shift tap",
+                    ] {
+                        game.control_command(input, &reply, &NoopLoop).unwrap();
+                    }
+                    assert!(!game.has_shift_down());
+                    assert!(!game.physical_keys.contains(&KeyCode::Tab));
+                    assert!(!game.physical_keys.contains(&KeyCode::ShiftLeft));
                     game.control_command("type Ωx", &reply, &NoopLoop).unwrap();
-                    // Tab is consumed by the editor; Q is declined by both the editor and its widgets.
-                    game.control_command("key tab tap", &reply, &NoopLoop)
-                        .unwrap();
+                    // Q is declined by both the editor and its widgets.
                     game.preset_editor_key_pressed(&NoopLoop, KeyCode::KeyQ, false)
                         .unwrap();
                     assert_eq!(*key_post.lock().unwrap(), ["key.keyboard.q"]);

@@ -2,31 +2,25 @@
 //! registration time so a resource load resolves each model's loader directly.
 use mod_api::{
     __private::game::{CallbackOwner, ModelLoaderRegistration},
-    Answered, ModelLoaderFn, ModelLoaderInput, ModelLoaderQuad,
+    Answered, ModelLoaderInput, ModelLoaderQuad, ModelLoaderSchema, ModelLoaderTexture,
 };
-use serde_json::Value;
 use std::{
     collections::BTreeMap,
     sync::{Arc, OnceLock},
 };
 use sunrise_assets::{
-    model::Direction as FaceDirection,
-    model_loaders::{LoaderGeometry, LoaderQuad},
+    model::{CuboidModel, Direction as FaceDirection},
+    model_loaders::{LoaderProvider, LoaderQuad, LoaderSchema, LoaderTexture},
 };
 use sunrise_core::geometry::Direction;
 
-struct BoundModelLoader {
-    owner: CallbackOwner,
-    bake: Arc<ModelLoaderFn>,
-}
-
-static LOADERS: OnceLock<Arc<BTreeMap<String, BoundModelLoader>>> = OnceLock::new();
+static LOADERS: OnceLock<Arc<BTreeMap<String, LoaderProvider>>> = OnceLock::new();
 
 #[cfg(test)]
 pub(crate) static PANIC_NOTICE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
-static LOADERS_FIXTURE: std::sync::Mutex<Option<Arc<BTreeMap<String, BoundModelLoader>>>> =
+static LOADERS_FIXTURE: std::sync::Mutex<Option<Arc<BTreeMap<String, LoaderProvider>>>> =
     std::sync::Mutex::new(None);
 
 #[cfg(test)]
@@ -34,12 +28,15 @@ static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
 
 fn freeze(
     loaders: Vec<Answered<ModelLoaderRegistration>>,
-) -> (BTreeMap<String, BoundModelLoader>, Vec<String>) {
+) -> (BTreeMap<String, LoaderProvider>, Vec<String>) {
     let mut bound = BTreeMap::new();
     let mut kept = Vec::new();
     for Answered { answer, mod_id, .. } in loaders {
         let key = answer.id.to_string();
-        if matches!(key.as_str(), "neoforge:composite" | "neoforge:obj") {
+        if matches!(
+            key.as_str(),
+            "neoforge:composite" | "neoforge:obj" | "fusion:model"
+        ) {
             log::error!("Mod {mod_id}: model loader {key} collides with a built-in model loader");
             continue;
         }
@@ -53,13 +50,37 @@ fn freeze(
             log::error!("Model loader {key} has no installed owner {mod_id}");
             continue;
         };
-        bound.insert(
-            key.clone(),
-            BoundModelLoader {
-                owner,
-                bake: answer.bake,
+        let schema = match answer.schema {
+            ModelLoaderSchema::Custom => LoaderSchema::Custom,
+            ModelLoaderSchema::ModelProperties => LoaderSchema::ModelProperties,
+            ModelLoaderSchema::Cuboids => LoaderSchema::Cuboids,
+        };
+        let loader = key.clone();
+        let bake = Arc::new(
+            move |model: &str,
+                  config: &str,
+                  textures: &BTreeMap<String, String>|
+                  -> Result<Vec<LoaderQuad>, String> {
+                let _phase = mod_api::__private::PhaseOwner::scope(
+                    mod_api::__private::ModPhase::Registration,
+                );
+                let input = ModelLoaderInput {
+                    model,
+                    config,
+                    textures,
+                };
+                let quads = owner
+                    .call("model loader", "bake_model_loader", || {
+                        (answer.bake)(&input)
+                    })
+                    .map_err(|reason| format!("loader {loader}: {reason}"))?
+                    .map_err(|reason| {
+                        format!("mod {} loader {loader} refused it: {reason}", owner.id())
+                    })?;
+                Ok(checked(&loader, model, quads))
             },
         );
+        bound.insert(key.clone(), LoaderProvider { schema, bake });
         kept.push(key);
     }
     (bound, kept)
@@ -67,7 +88,7 @@ fn freeze(
 
 /// Binds the model loaders native mods registered once at start, before resources load. Any valid
 /// `Identifier` (including `minecraft:` and empty-path ids) is accepted; built-in loader
-/// collisions (`neoforge:composite`, `neoforge:obj`) and duplicates are logged as errors and left
+/// collisions (`neoforge:composite`, `neoforge:obj`, `fusion:model`) and duplicates are logged as errors and left
 /// out. Returns the ids kept, in registration order.
 pub fn register(loaders: Vec<Answered<ModelLoaderRegistration>>) -> Vec<String> {
     let (bound, kept) = freeze(loaders);
@@ -78,7 +99,7 @@ pub fn register(loaders: Vec<Answered<ModelLoaderRegistration>>) -> Vec<String> 
     kept
 }
 
-fn active_loaders() -> Option<Arc<BTreeMap<String, BoundModelLoader>>> {
+fn active_loaders() -> Option<Arc<BTreeMap<String, LoaderProvider>>> {
     #[cfg(test)]
     if let Some(fixture) = LOADERS_FIXTURE
         .lock()
@@ -90,45 +111,10 @@ fn active_loaders() -> Option<Arc<BTreeMap<String, BoundModelLoader>>> {
     LOADERS.get().cloned()
 }
 
-/// What the mods' bound loaders answer, for a model library (`ModelLibrary::with_loaders`). It runs
-/// on the resource loader, as a registration.
-pub struct ModLoaders;
-
-impl LoaderGeometry for ModLoaders {
-    fn quads(
-        &self,
-        loader: &str,
-        model: &str,
-        config: &Value,
-        textures: &BTreeMap<String, String>,
-    ) -> Result<Option<Vec<LoaderQuad>>, String> {
-        let Some(loaders) = active_loaders() else {
-            return Ok(None);
-        };
-        let Some(entry) = loaders.get(loader) else {
-            return Ok(None);
-        };
-        let config = sunrise_core::json_nbt::json_to_tag(config)
-            .map_err(|reason| format!("loader {loader}: {reason}"))?;
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-        let input = ModelLoaderInput {
-            model,
-            config: &config,
-            textures,
-        };
-        let quads = entry
-            .owner
-            .call("model loader", "bake_model_loader", || (entry.bake)(&input))
-            .map_err(|reason| format!("loader {loader}: {reason}"))?
-            .map_err(|reason| {
-                format!(
-                    "mod {} loader {loader} refused it: {reason}",
-                    entry.owner.id()
-                )
-            })?;
-        Ok(Some(checked(loader, model, quads)))
-    }
+/// The client selects a provider before decoding the model's fields.
+pub(crate) fn decode_model(text: &str) -> Result<CuboidModel, sunrise_assets::DecodeError> {
+    let loaders = active_loaders();
+    CuboidModel::from_json_with_loaders(text, &|id| loaders.as_ref()?.get(id).cloned())
 }
 
 /// The quads a mod answered, as the baker takes them: a quad with a position or UV that isn't
@@ -150,7 +136,10 @@ fn checked(loader: &str, model: &str, quads: Vec<ModelLoaderQuad>) -> Vec<Loader
             Some(LoaderQuad {
                 positions: quad.positions,
                 uvs: quad.uvs,
-                texture: quad.texture.trim_start_matches('#').to_owned(),
+                texture: match quad.texture {
+                    ModelLoaderTexture::Slot(slot) => LoaderTexture::Slot(slot),
+                    ModelLoaderTexture::Sprite(sprite) => LoaderTexture::Sprite(sprite.to_string()),
+                },
                 cull: quad.cull.map(face),
                 tint_index: quad.tint_index,
                 shade: quad.shade,
@@ -180,10 +169,9 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use sunrise_assets::{
         bake::{BlockModelTransform, bake_block_model},
-        model::CuboidModel,
         resolve::ModelLibrary,
+        resource_source::{Resource, ResourceSource},
     };
-    use sunrise_core::nbt::Tag;
 
     struct LoadersFixture;
 
@@ -224,7 +212,7 @@ mod tests {
                 [x, 1.0, 0.5],
             ],
             uvs: [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
-            texture: texture.into(),
+            texture: ModelLoaderTexture::Slot(texture.into()),
             cull: Some(Direction::Up),
             tint_index: -1,
             shade: true,
@@ -248,7 +236,7 @@ mod tests {
         );
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].positions[0][0], 0.5);
-        assert_eq!(kept[0].texture, "side", "a #reference names the same key");
+        assert_eq!(kept[0].texture, LoaderTexture::Slot("#side".into()));
         assert_eq!(kept[0].cull, Some(FaceDirection::Up));
     }
 
@@ -261,33 +249,45 @@ mod tests {
             _: &RegistrationContext,
             event: &mut mod_api::RegisterModelLoadersEvent<'_>,
         ) {
-            event.register(Identifier::parse("rendtest:panel").unwrap(), |input| {
-                let width = match input.config.get("width") {
-                    Some(Tag::Byte(width)) => f32::from(*width) / 16.0,
-                    _ => 1.0,
-                };
-                assert_eq!(
-                    input.textures.get("side").map(String::as_str),
-                    Some("minecraft:block/panel")
-                );
-                Ok(vec![quad("side", width)])
-            });
+            event.register(
+                Identifier::parse("rendtest:panel").unwrap(),
+                ModelLoaderSchema::ModelProperties,
+                |input| {
+                    #[derive(serde::Deserialize)]
+                    struct PanelConfig {
+                        elements: PanelElements,
+                    }
+                    #[derive(serde::Deserialize)]
+                    struct PanelElements {
+                        width: u8,
+                    }
+                    let config: PanelConfig =
+                        serde_json::from_str(input.config).map_err(|e| e.to_string())?;
+                    assert_eq!(
+                        input.textures.get("side").map(String::as_str),
+                        Some("minecraft:block/panel")
+                    );
+                    Ok(vec![quad("#side", f32::from(config.elements.width) / 16.0)])
+                },
+            );
         }
     }
 
     /// The registered loader's quads are baked with the model; a reload, a new library over the
-    /// model as the packs now give it, asks again; with no bound loader the model has no quads.
+    /// model as the packs now give it, asks again. An absent required loader uses the missing model.
     #[test]
     fn a_mods_loader_bakes_its_quads_and_answers_again_on_reload() {
         let library = |width: u8| {
             let json = format!(
-                r#"{{"loader":"rendtest:panel","width":{width},"textures":{{"side":"block/panel"}}}}"#
+                r#"{{"loader":"rendtest:panel","elements":{{"width":{width}}},"textures":{{"side":"block/panel"}}}}"#
             );
-            ModelLibrary::new(
-                [("t:panel".to_owned(), CuboidModel::from_json(&json).unwrap())].into(),
-            )
-            .unwrap()
-            .with_loaders(Arc::new(ModLoaders))
+            let source = ResourceSource::indexed(BTreeMap::from([(
+                "assets/t/models/panel.json".into(),
+                Resource::bytes(json.into_bytes()),
+            )]));
+            crate::model_library::ParsedModels::load(&source)
+                .block_library(&source, vec!["t:panel".into()])
+                .unwrap()
         };
         let widths = |library: &ModelLibrary| {
             bake_block_model(
@@ -315,7 +315,13 @@ mod tests {
             );
         });
         mod_platform::testing::with_mods(Vec::new().into(), || {
-            assert!(widths(&library(8)).is_empty());
+            let missing = widths(&library(8));
+            assert_eq!(missing.len(), 6);
+            assert!(
+                missing
+                    .iter()
+                    .all(|(_, sprite)| sprite == "minecraft:missingno")
+            );
         });
     }
 
@@ -331,17 +337,24 @@ mod tests {
             ) {
                 event.register(
                     Identifier::parse("minecraft:rendtest_first").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
                     |_| Ok(vec![quad("side", 0.25)]),
                 );
-                event.register(Identifier::parse("rendtest:").unwrap(), |_| {
-                    Ok(vec![quad("side", 0.5)])
-                });
-                event.register(Identifier::parse("neoforge:composite").unwrap(), |_| {
-                    Ok(vec![quad("side", 1.0)])
-                });
-                event.register(Identifier::parse("neoforge:obj").unwrap(), |_| {
-                    Ok(vec![quad("side", 1.0)])
-                });
+                event.register(
+                    Identifier::parse("rendtest:").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
+                    |_| Ok(vec![quad("side", 0.5)]),
+                );
+                event.register(
+                    Identifier::parse("neoforge:composite").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
+                    |_| Ok(vec![quad("side", 1.0)]),
+                );
+                event.register(
+                    Identifier::parse("neoforge:obj").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
+                    |_| Ok(vec![quad("side", 1.0)]),
+                );
             }
         }
         struct Second;
@@ -354,6 +367,7 @@ mod tests {
             ) {
                 event.register(
                     Identifier::parse("minecraft:rendtest_first").unwrap(),
+                    ModelLoaderSchema::ModelProperties,
                     |_| Ok(vec![quad("side", 0.75)]),
                 );
             }
@@ -370,39 +384,15 @@ mod tests {
             assert_eq!(kept, ["minecraft:rendtest_first", "rendtest:"]);
             let textures =
                 BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
-            let baked = ModLoaders
-                .quads(
-                    "minecraft:rendtest_first",
-                    "t:vanilla_ns",
-                    &serde_json::json!({"loader": "minecraft:rendtest_first"}),
-                    &textures,
-                )
-                .unwrap()
+            let loaders = active_loaders().unwrap();
+            let baked = (loaders["minecraft:rendtest_first"].bake)("t:vanilla_ns", "{}", &textures)
                 .unwrap();
             assert_eq!(baked.len(), 1);
             assert_eq!(baked[0].positions[0][0], 0.25, "first registration wins");
-            let empty_path = ModLoaders
-                .quads(
-                    "rendtest:",
-                    "t:empty_path",
-                    &serde_json::json!({"loader": "rendtest:"}),
-                    &textures,
-                )
-                .unwrap()
-                .unwrap();
+            let empty_path = (loaders["rendtest:"].bake)("t:empty_path", "{}", &textures).unwrap();
             assert_eq!(empty_path.len(), 1);
             assert_eq!(empty_path[0].positions[0][0], 0.5);
-            assert!(
-                ModLoaders
-                    .quads(
-                        "rendtest:unregistered",
-                        "t:unknown",
-                        &serde_json::json!({}),
-                        &textures,
-                    )
-                    .unwrap()
-                    .is_none()
-            );
+            assert!(!loaders.contains_key("rendtest:unregistered"));
         });
     }
 
@@ -423,10 +413,14 @@ mod tests {
                 event: &mut mod_api::RegisterModelLoadersEvent<'_>,
             ) {
                 let calls = Arc::clone(&self.0);
-                event.register(Identifier::parse("rendtest:panics").unwrap(), move |_| {
-                    calls.fetch_add(1, Ordering::Relaxed);
-                    panic!("boom");
-                });
+                event.register(
+                    Identifier::parse("rendtest:panics").unwrap(),
+                    ModelLoaderSchema::Custom,
+                    move |_| {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        panic!("boom");
+                    },
+                );
             }
         }
 
@@ -439,13 +433,17 @@ mod tests {
                 event: &mut mod_api::RegisterModelLoadersEvent<'_>,
             ) {
                 let calls = Arc::clone(&self.0);
-                event.register(Identifier::parse("rendtest:flaky").unwrap(), move |_| {
-                    if calls.fetch_add(1, Ordering::Relaxed) == 0 {
-                        Err("bad config".into())
-                    } else {
-                        Ok(vec![quad("side", 0.5)])
-                    }
-                });
+                event.register(
+                    Identifier::parse("rendtest:flaky").unwrap(),
+                    ModelLoaderSchema::Custom,
+                    move |_| {
+                        if calls.fetch_add(1, Ordering::Relaxed) == 0 {
+                            Err("bad config".into())
+                        } else {
+                            Ok(vec![quad("side", 0.5)])
+                        }
+                    },
+                );
             }
         }
 
@@ -465,14 +463,11 @@ mod tests {
 
             let textures =
                 BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
-            let cfg = serde_json::json!({});
-
+            let loaders = active_loaders().unwrap();
+            let panics = &loaders["rendtest:panics"].bake;
+            let flaky = &loaders["rendtest:flaky"].bake;
             let _ = take_callback_panic_notices();
-            assert!(
-                ModLoaders
-                    .quads("rendtest:panics", "t:p", &cfg, &textures)
-                    .is_err()
-            );
+            assert!(panics("t:p", "{}", &textures).is_err());
             assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
             let notices = take_callback_panic_notices();
             assert!(
@@ -480,25 +475,14 @@ mod tests {
                 "expected panic notice, got {notices:?}"
             );
             // Disabled after panic: second call does not invoke the callback again.
-            assert!(
-                ModLoaders
-                    .quads("rendtest:panics", "t:p", &cfg, &textures)
-                    .is_err()
-            );
+            assert!(panics("t:p", "{}", &textures).is_err());
             assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
 
             // Non-panic Err does not latch or queue a panic notice.
-            assert!(
-                ModLoaders
-                    .quads("rendtest:flaky", "t:f", &cfg, &textures)
-                    .is_err()
-            );
+            assert!(flaky("t:f", "{}", &textures).is_err());
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
             assert!(take_callback_panic_notices().is_empty());
-            let recovered = ModLoaders
-                .quads("rendtest:flaky", "t:f", &cfg, &textures)
-                .unwrap()
-                .unwrap();
+            let recovered = flaky("t:f", "{}", &textures).unwrap();
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
             assert_eq!(recovered.len(), 1);
             assert_eq!(recovered[0].positions[0][0], 0.5);

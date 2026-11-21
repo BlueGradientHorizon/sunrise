@@ -46,7 +46,9 @@ impl ParsedModels {
             .collect();
         let parsed = crate::par::par_map(&files, |(_, path)| {
             let text = source.read_to_string(path).ok()?;
-            CuboidModel::from_json(&text).ok().map(Arc::new)
+            crate::mod_model_loaders::decode_model(&text)
+                .ok()
+                .map(Arc::new)
         });
         let models = files
             .into_iter()
@@ -99,7 +101,7 @@ impl ParsedModels {
                             name.split_once(':').ok_or("invalid model identifier")?;
                         let text = source
                             .read_to_string(&format!("assets/{namespace}/models/{path}.json"))?;
-                        Ok(CuboidModel::from_json(&text)?)
+                        Ok(crate::mod_model_loaders::decode_model(&text)?)
                     };
                     match read() {
                         Ok(model) => Arc::new(model),
@@ -115,20 +117,12 @@ impl ParsedModels {
             pending.extend(model.referenced_models());
             models.insert(name, model);
         }
-        Ok(ModelLibrary::from_shared(models)?
-            .with_assets(Arc::new(RootAssets(source.clone())))
-            .with_loaders(Arc::new(crate::mod_model_loaders::ModLoaders)))
+        Ok(ModelLibrary::from_shared(models)?.with_assets(Arc::new(RootAssets(source.clone()))))
     }
     pub fn into_item_library(self) -> std::result::Result<Arc<ModelLibrary>, String> {
         let source = self.source;
         ModelLibrary::with_shared_item_generator(self.models)
-            .map(|library| {
-                Arc::new(
-                    library
-                        .with_assets(Arc::new(RootAssets(source)))
-                        .with_loaders(Arc::new(crate::mod_model_loaders::ModLoaders)),
-                )
-            })
+            .map(|library| Arc::new(library.with_assets(Arc::new(RootAssets(source)))))
             .map_err(|e| format!("item models: {e:?}"))
     }
 }

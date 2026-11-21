@@ -3,7 +3,10 @@
 //! Absent geometry differs from an explicit empty element list. Explicit null
 //! elements, faces and display transforms are retained as the native decoder
 //! does; render preparation must diagnose these before baking.
-use crate::json::*;
+use crate::{
+    json::*,
+    model_loaders::{LoaderProvider, LoaderSchema, RegisteredLoader},
+};
 use serde_json::value::RawValue;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -56,7 +59,7 @@ pub enum TextureSlot {
     Reference(String),
     Material(Material),
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CuboidModel {
     pub parent: Option<String>,
     pub loader: Option<Loader>,
@@ -86,14 +89,12 @@ pub enum Loader {
         shade_quads: Option<bool>,
         mtl_override: Option<String>,
     },
-    /// A non-built-in loader ([`crate::model_loaders`]): keeps the canonicalized loader id and
-    /// the model's JSON object so resolution can ask the bound [`crate::model_loaders::LoaderGeometry`]
-    /// table without a global pre-registration list.
-    Custom {
-        kind: String,
-        optional: bool,
-        config: Arc<serde_json::Value>,
-    },
+    /// Fusion uses the cuboid geometry here and resolves its connected textures separately.
+    Fusion,
+    /// A native provider selected before any cuboid fields are decoded.
+    Registered(Arc<RegisteredLoader>),
+    /// A required provider is absent. Resource resolution reports this error for the model.
+    Missing(String),
 }
 /// NeoForge's `neoforge_data` of an element or a face; a face's keys win.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -226,15 +227,39 @@ impl CuboidModel {
     /// Like the native stream entry point, this reads one value and leaves
     /// trailing input unread. The pinned native entry point uses strict JSON.
     pub fn from_json(json: &str) -> Result<Self> {
+        Self::from_json_with_loaders(json, &|_| None)
+    }
+
+    /// Select native loaders at the resource boundary, including for inline composite children.
+    pub fn from_json_with_loaders(
+        json: &str,
+        loaders: &dyn Fn(&str) -> Option<LoaderProvider>,
+    ) -> Result<Self> {
         let raw = serde_json::Deserializer::from_str(json.strip_prefix('\u{feff}').unwrap_or(json))
             .into_iter::<&RawValue>()
             .next()
             .ok_or_else(|| error("empty model input"))??;
         validate_number_tokens(raw)?;
-        Self::decode(raw)
+        Self::decode(raw, loaders)
     }
-    fn decode(raw: &RawValue) -> Result<Self> {
+
+    fn decode(raw: &RawValue, loaders: &dyn Fn(&str) -> Option<LoaderProvider>) -> Result<Self> {
         let obj = object(raw)?;
+        let loader = match obj.get("loader").filter(|raw| raw.get() != "null") {
+            Some(declaration) => Loader::decode(declaration, raw, &obj, loaders)?,
+            None => None,
+        };
+        let schema = match &loader {
+            Some(Loader::Registered(registered)) => registered.schema(),
+            Some(Loader::Missing(_)) => LoaderSchema::Custom,
+            _ => LoaderSchema::Cuboids,
+        };
+        if schema == LoaderSchema::Custom {
+            return Ok(Self {
+                loader,
+                ..Self::default()
+            });
+        }
         let parent = obj
             .get("parent")
             .map(|r| primitive_string(r))
@@ -245,11 +270,6 @@ impl CuboidModel {
         } else {
             Some(identifier(&parent)?)
         };
-        let loader = obj
-            .get("loader")
-            .filter(|raw| raw.get() != "null")
-            .map(|raw| Loader::decode(raw, &obj))
-            .transpose()?;
         let ambient_occlusion = obj
             .get("ambientocclusion")
             .map(|r| boolean(r))
@@ -268,15 +288,18 @@ impl CuboidModel {
                 textures.insert(key, texture(raw)?);
             }
         }
-        let elements = obj
-            .get("elements")
-            .map(|raw| {
-                array(raw)?
-                    .into_iter()
-                    .map(|raw| nullable(raw, Element::decode))
-                    .collect::<Result<Vec<_>>>()
-            })
-            .transpose()?;
+        let elements = if schema == LoaderSchema::Cuboids {
+            obj.get("elements")
+                .map(|raw| {
+                    array(raw)?
+                        .into_iter()
+                        .map(|raw| nullable(raw, Element::decode))
+                        .collect::<Result<Vec<_>>>()
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let display = obj
             .get("display")
             .map(|r| ItemTransforms::decode(r))
@@ -320,9 +343,14 @@ fn visibility(obj: &Object<'_>) -> Result<BTreeMap<String, bool>> {
     Ok(visibility)
 }
 impl Loader {
-    fn decode(raw: &RawValue, obj: &Object<'_>) -> Result<Self> {
-        let (name, optional) = if raw.get().starts_with('{') {
-            let declaration = object(raw)?;
+    fn decode(
+        declaration: &RawValue,
+        model: &RawValue,
+        obj: &Object<'_>,
+        loaders: &dyn Fn(&str) -> Option<LoaderProvider>,
+    ) -> Result<Option<Self>> {
+        let (name, optional) = if declaration.get().starts_with('{') {
+            let declaration = object(declaration)?;
             let id = primitive_string(required(&declaration, "id")?)?;
             let optional = declaration
                 .get("optional")
@@ -331,21 +359,21 @@ impl Loader {
                 .unwrap_or(false);
             (id, optional)
         } else {
-            (primitive_string(raw)?, false)
+            (primitive_string(declaration)?, false)
         };
         let canonical = identifier(&name)?;
-        match canonical.as_str() {
+        let loader = match canonical.as_str() {
             "neoforge:composite" => {
                 let mut children = Vec::new();
                 if let Some(raw) = obj.get("children") {
                     for (name, raw) in ordered_object(raw)? {
-                        children.push((name, Arc::new(CuboidModel::decode(raw)?)));
+                        children.push((name, Arc::new(CuboidModel::decode(raw, loaders)?)));
                     }
                 }
-                Ok(Self::Composite {
+                Self::Composite {
                     children,
                     visibility: visibility(obj)?,
-                })
+                }
             }
             "neoforge:obj" => {
                 let optional = |key: &str| {
@@ -354,7 +382,7 @@ impl Loader {
                         .map(|raw| primitive_string(raw))
                         .transpose()
                 };
-                Ok(Self::Obj {
+                Self::Obj {
                     model: identifier(&optional("model")?.ok_or_else(|| error("missing model"))?)?,
                     flip_v: obj
                         .get("flip_v")
@@ -365,22 +393,20 @@ impl Loader {
                     mtl_override: optional("mtl_override")?
                         .map(|name| identifier(&name))
                         .transpose()?,
-                })
-            }
-            _ => {
-                let mut config = serde_json::Map::new();
-                for (key, raw) in obj {
-                    let value = serde_json::from_str(raw.get())
-                        .map_err(|_| error("invalid model loader data"))?;
-                    config.insert(key.clone(), value);
                 }
-                Ok(Self::Custom {
-                    kind: canonical,
-                    optional,
-                    config: Arc::new(serde_json::Value::Object(config)),
-                })
             }
-        }
+            "fusion:model" => Self::Fusion,
+            _ => match loaders(&canonical) {
+                Some(provider) => Self::Registered(Arc::new(RegisteredLoader::new(
+                    canonical,
+                    model.get().to_owned(),
+                    provider,
+                ))),
+                None if optional => return Ok(None),
+                None => Self::Missing(canonical),
+            },
+        };
+        Ok(Some(loader))
     }
 }
 fn nullable<T>(raw: &RawValue, decode: impl FnOnce(&RawValue) -> Result<T>) -> Result<Option<T>> {

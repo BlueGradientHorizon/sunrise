@@ -741,13 +741,20 @@ impl Game<'_> {
                 }
                 // A bound world preset editor handles keys even when no world is loaded.
                 if self.preset_editor_title().is_some() {
+                    self.press_modifier_key(key, action != "up");
                     if action == "up" {
-                        let _ = self.screen_key_released(key);
+                        self.physical_keys.remove(&key);
+                        self.screen_key_released(key);
                     } else {
-                        self.preset_editor_key_pressed(event_loop, key, action == "repeat")?;
+                        self.physical_keys.insert(key);
+                        let result =
+                            self.preset_editor_key_pressed(event_loop, key, action == "repeat");
                         if action == "tap" {
-                            let _ = self.screen_key_released(key);
+                            self.press_modifier_key(key, false);
+                            self.physical_keys.remove(&key);
+                            self.screen_key_released(key);
                         }
+                        result?;
                     }
                     return ok();
                 }

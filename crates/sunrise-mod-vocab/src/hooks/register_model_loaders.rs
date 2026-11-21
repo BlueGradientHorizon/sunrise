@@ -3,19 +3,20 @@
 pub trait Hooks {
     /// Register the model loaders a mod adds (NeoForge's `ModelEvent.RegisterLoaders`). Asked once
     /// at start on the client, before resources load. Use [`RegisterModelLoadersEvent::register`]
-    /// to bind each loader identifier to its bake callback; a model whose `loader` names a
-    /// registered id invokes that callback once per load or reload and bakes its quads with the
-    /// model's elements. Any valid `<namespace>:<path>` identifier is accepted; duplicates and
-    /// collisions with built-in loaders (`neoforge:composite`, `neoforge:obj`) are rejected as
-    /// registration errors.
+    /// to bind each loader identifier to its schema and bake callback. Each model and set of
+    /// resolved texture slots invokes that callback once per load or reload. The callback's quads
+    /// replace the cuboid geometry unless the loader explicitly delegates to the cuboid decoder.
+    /// Duplicates and collisions with built-ins (`neoforge:composite`, `neoforge:obj`,
+    /// `fusion:model`) are registration errors.
     #[notes = r#"## Model loaders
 
 A model JSON may name a `loader`: NeoForge's `neoforge:composite` and `neoforge:obj` are built in, and a mod
 registers one of its own (NeoForge's `ModelEvent.RegisterLoaders`) once at client startup via
-`Hooks::register_model_loaders`. Call `event.register(id, loader)` to bind the loader identifier directly to
-its bake callback; when a model naming that loader is resolved on each resource load and reload, the game
-calls the bound loader directly without scanning other mods. A loader is for geometry the vanilla `elements`
-can't express; a model that only needs cuboids uses `elements`.
+`Hooks::register_model_loaders`. Call `event.register(id, schema, loader)` to bind a loader identifier to
+its schema and bake callback. `ModelLoaderSchema::Custom` leaves every model field except `loader` to your
+callback. Use `ModelLoaderSchema::ModelProperties` to decode standard fields such as `parent`, `textures`
+and `display`, but supply your own geometry. Use `ModelLoaderSchema::Cuboids` to decode and bake the model's
+cuboid elements alongside your quads.
 
 ```rust,ignore
 fn register_model_loaders(
@@ -23,7 +24,7 @@ fn register_model_loaders(
     _context: &RegistrationContext,
     event: &mut RegisterModelLoadersEvent<'_>,
 ) {
-    event.register(Identifier::parse("example:pillar").unwrap(), |_input| {
+    event.register(Identifier::parse("example:pillar").unwrap(), ModelLoaderSchema::ModelProperties, |_input| {
         // The north face of a 4-pixel post in the middle of the block.
         Ok(vec![ModelLoaderQuad {
             positions: [
@@ -33,7 +34,7 @@ fn register_model_loaders(
                 [0.625, 1.0, 0.375],
             ],
             uvs: [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
-            texture: "side".into(),
+            texture: ModelLoaderTexture::Slot("side".into()),
             cull: None,
             tint_index: -1,
             shade: true,
@@ -42,14 +43,14 @@ fn register_model_loaders(
 }
 ```
 
-`ModelLoaderInput` hands the callback the model's identifier (`input.model`), its whole JSON object converted
-to a `Tag` (`input.config`), and its resolved texture slots (`input.textures`). A quad's `texture` is a key
-of the model's `textures`, resolved through its parents as an element face's is. Quads are in block units,
-the way an obj model's are, and the blockstate variant's rotation moves them whole. Each model is asked once
-per load.
+`ModelLoaderInput` gives the callback the model identifier (`input.model`), the original JSON object as a
+string (`input.config`), and the resolved standard texture slots (`input.textures`). A quad can name one of
+those slots (`ModelLoaderTexture::Slot`) or directly name a sprite (`ModelLoaderTexture::Sprite`). Quads are
+in block units, and the blockstate variant's rotation moves them whole. A model and effective slot set are
+baked once per load, even when several variants reference them.
 
 Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted. Duplicate registrations and
-collisions with `neoforge:composite` or `neoforge:obj` are logged as registration errors and the first
+collisions with `neoforge:composite`, `neoforge:obj` or `fusion:model` are registration errors; the first
 registration stands. A loader ID written as a string, or as an object with `id` and no `optional` flag,
 is required. When the loader is absent, only `"loader": {"id":"example:pillar","optional":true}` uses
 ordinary cuboid geometry. A required loader that is absent or a present loader that returns `Err(reason)`

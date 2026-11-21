@@ -11518,7 +11518,7 @@ impl Game<'_> {
                 let text = key_event
                     .text
                     .as_deref()
-                    .filter(|_| !self.text_field_focused());
+                    .filter(|_| self.preset_editor_title().is_none() && !self.text_field_focused());
                 self.held_key_text.pressed(key, text);
             } else {
                 self.held_key_text.released(key);
@@ -11531,8 +11531,7 @@ impl Game<'_> {
             event: key_event, ..
         } = &event
             && key_event.state == ElementState::Pressed
-            && (self.text_field_focused() || self.preset_editor_title().is_some())
-            && sunrise_client::preedit::should_suppress_key()
+            && self.ime_suppresses_key()
         {
             return;
         }

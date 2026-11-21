@@ -117,6 +117,23 @@ fn register_select_item_model_property(
 - A panic in a decoder, per-stack callback or select key equality disables that mod's callback for the
   session, logs an error, and shows an error toast naming the mod.
 
+## Geometry loaders (`register_model_loaders`)
+
+A model file under `assets/<namespace>/models/` can name a loader. This is separate from a custom
+item model type: the loader bakes the referenced geometry once per resource load, not per item stack.
+
+Bind a loader with `event.register(id, schema, bake)`. The callback receives the original model JSON
+in `input.config`. Choose `ModelLoaderSchema::Custom` to own the schema, `ModelProperties` to use
+standard parent, texture, and display fields while replacing geometry, or `Cuboids` to bake standard
+cuboid elements as well as your quads. An empty replacement draws no geometry. Return a
+`ModelLoaderQuad` with `ModelLoaderTexture::Slot(name)` to use a resolved texture slot or
+`ModelLoaderTexture::Sprite(id)` to name the sprite directly.
+
+A string `"loader": "example:loader"` is required. Use `"loader": {"id":"example:loader","optional":true}`
+to keep ordinary cuboid decoding when that provider is absent. An absent required loader or a refusal
+from a present loader produces the missing model, with a diagnostic. A later resource load invokes
+non-panicking providers again.
+
 ## Conditional properties (`item_model_property`)
 
 Conditional `minecraft:condition` properties still evaluate through

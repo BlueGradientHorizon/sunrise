@@ -1,10 +1,34 @@
 //! The model loaders a mod registers (`register_model_loaders`, NeoForge's
 //! `ModelEvent.RegisterLoaders`) and the geometry they bake.
-use crate::{Direction, Identifier, RegisterModelLoadersEvent, Tag};
+use crate::{Direction, Identifier, RegisterModelLoadersEvent};
 use std::{collections::BTreeMap, sync::Arc};
 
-/// One quad a model loader adds to a model whose `loader` it registered
-/// (`register_model_loaders`), baked with the model's elements: turned with the
+/// Which standard model fields a loader delegates to the cuboid decoder.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// no wire: selects the engine decoder for an in-process loader registration.
+// exhaustive: these are the standard fields the cuboid decoder can supply.
+pub enum ModelLoaderSchema {
+    /// The loader owns the entire JSON schema (apart from the `loader` declaration).
+    Custom,
+    /// Use the standard parent, texture slots, display properties and visibility, but replace
+    /// all cuboid geometry. The loader can give `elements` its own meaning.
+    ModelProperties,
+    /// Decode and bake standard cuboid elements too, before the loader's quads.
+    Cuboids,
+}
+
+/// How a registered model loader names a quad's sprite.
+#[derive(Clone, Debug, PartialEq, Eq)]
+// no wire: emitted by an in-process model loader as part of its baked geometry.
+// exhaustive: a loader either names a sprite directly or refers to a model slot.
+pub enum ModelLoaderTexture {
+    /// A key in the model's resolved texture slots (`side`, or `#side`).
+    Slot(String),
+    /// A sprite identifier independent of the cuboid model's texture slots.
+    Sprite(Identifier),
+}
+
+/// One quad baked by a registered model loader (`register_model_loaders`): turned with the
 /// blockstate variant, culled and shaded as element faces are.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: mods construct quads and the game reads every field
@@ -15,8 +39,8 @@ pub struct ModelLoaderQuad {
     pub positions: [[f32; 3]; 4],
     /// Each corner's texture coordinates, 0 to 1 across the sprite.
     pub uvs: [[f32; 2]; 4],
-    /// The texture: a key of the model's `textures` (`side`, or `#side`).
-    pub texture: String,
+    /// The sprite, or a key in the model's standard texture slots.
+    pub texture: ModelLoaderTexture,
     /// The face whose solid neighbour hides the quad; `None` never culls.
     pub cull: Option<Direction>,
     /// The tint index a block tint source colours it by; -1 is none.
@@ -31,9 +55,10 @@ pub struct ModelLoaderQuad {
 pub struct ModelLoaderInput<'a> {
     /// The model's identifier (`mymod:block/pillar`).
     pub model: &'a str,
-    /// The model's whole JSON object converted to a `Tag`.
-    pub config: &'a Tag,
-    /// The model's resolved texture slots (`slot -> sprite identifier`), including inherited slots.
+    /// The model's original JSON object. Deserialize it with your loader's own schema.
+    pub config: &'a str,
+    /// Resolved cuboid texture slots (`slot -> sprite identifier`), including inherited slots.
+    /// [`ModelLoaderSchema::Custom`] does not decode texture slots from its own JSON.
     pub textures: &'a BTreeMap<String, String>,
 }
 
@@ -46,9 +71,10 @@ impl RegisterModelLoadersEvent<'_> {
     /// Register a model loader under `id` (NeoForge's `ModelEvent.RegisterLoaders`).
     ///
     /// Any valid `<namespace>:<path>` identifier is accepted; duplicates and collisions with the
-    /// built-in loaders (`neoforge:composite`, `neoforge:obj`) are rejected as registration errors.
-    /// The loader callback runs once per model on each resource load and reload, never per frame.
-    pub fn register<F>(&mut self, id: Identifier, loader: F)
+    /// built-in loaders (`neoforge:composite`, `neoforge:obj`, `fusion:model`) are rejected as
+    /// registration errors. `schema` explicitly selects which fields use the cuboid decoder.
+    /// The callback runs once per model and resolved slot set per resource load, never per frame.
+    pub fn register<F>(&mut self, id: Identifier, schema: ModelLoaderSchema, loader: F)
     where
         F: Fn(&ModelLoaderInput<'_>) -> Result<Vec<ModelLoaderQuad>, String>
             + Send
@@ -57,6 +83,7 @@ impl RegisterModelLoadersEvent<'_> {
     {
         self.loaders.push(ModelLoaderRegistration {
             id,
+            schema,
             bake: Arc::new(loader),
         });
     }
@@ -69,6 +96,8 @@ impl RegisterModelLoadersEvent<'_> {
 pub struct ModelLoaderRegistration {
     /// The loader identifier.
     pub id: Identifier,
+    /// Which model fields the engine parses before bake.
+    pub schema: ModelLoaderSchema,
     /// The bake callback invoked when a model naming this loader is resolved.
     pub bake: Arc<ModelLoaderFn>,
 }

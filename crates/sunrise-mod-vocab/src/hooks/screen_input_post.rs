@@ -54,7 +54,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.KeyPressed.Post",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn screen_key_pressed_post(
         screen: &ScreenView<'_>,
@@ -87,7 +88,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "ScreenEvent.CharacterTyped.Post",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn screen_char_typed_post(
         screen: &ScreenView<'_>,

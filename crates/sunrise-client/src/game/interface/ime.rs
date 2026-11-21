@@ -91,19 +91,27 @@ impl Game<'_> {
         }
     }
 
+    /// The input method consumes composing key presses even if the editor has no built-in caret.
+    pub(super) fn ime_suppresses_key(&mut self) -> bool {
+        (self.text_field_focused() || self.preset_editor_title().is_some())
+            && preedit::should_suppress_key()
+    }
+
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
     pub(super) fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
         let taken = self.text_field_focused();
+        let bound_editor = self.preset_editor_title().is_some();
         let event = PreeditEvent::from_winit(text, cursor);
-        // ScreenEvent.Preedit.Pre, then the screen's handler (the focused
-        // field takes it), then Preedit.Post when no field did.
         let shown = event.clone().unwrap_or_default();
-        if self.dispatch_preedit_pre_hook(&shown) {
-            return;
+        let canceled = self.dispatch_preedit_pre_hook(&shown);
+        // The editor receives committed text, not an overlay. Remember the input method's
+        // composition even when Pre cancels delivery to the screen, as KeyboardHandler does.
+        if bound_editor || !canceled {
+            preedit::set_preedit(event.filter(|_| taken || bound_editor));
         }
-        preedit::set_preedit(event.filter(|_| taken));
-        if !taken {
+        // Tracking the composition does not mean a focused widget handled the event.
+        if !canceled && !taken {
             self.dispatch_preedit_post_hook(&shown);
         }
     }

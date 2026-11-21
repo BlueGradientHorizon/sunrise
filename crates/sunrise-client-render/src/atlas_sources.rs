@@ -588,25 +588,6 @@ pub fn definition(
     }
 }
 
-/// Every atlas definition of a resource tree (`atlases/*.json`) in the namespaces `keep`
-/// accepts, by atlas id.
-pub fn atlases(
-    source: &crate::resource_source::ResourceSource,
-    mods: &dyn ModSources,
-    keep: &dyn Fn(&str) -> bool,
-) -> BTreeMap<String, Vec<SpriteSource>> {
-    source
-        .list_under("assets", &["atlases"])
-        .into_iter()
-        .filter_map(|file| {
-            let (namespace, path) = file.strip_prefix("assets/")?.split_once("/atlases/")?;
-            let name = path.strip_suffix(".json")?;
-            let id = Identifier::parse(&format!("{namespace}:{name}")).ok()?;
-            keep(namespace).then(|| Some((id.to_string(), definition(source, mods, &id)?)))?
-        })
-        .collect()
-}
-
 /// The resources of the load being listed, for one callback of a mod's source: it answers only
 /// until the call returns, then lets go of the load, so a reader a source keeps reads nothing and
 /// holds nothing.
@@ -685,10 +666,9 @@ pub fn registered(
         .collect()
 }
 
-/// Every atlas definition of a resource tree with the sprites its merged definition lists.
-/// Each registered source is run for every client atlas that lists it (`SpriteSourceList.list`).
-/// The block sprites, item masks, HUD atlas and glint atlas read this shared listing; atlases
-/// registered by mods are listed under their own IDs by [`registered`].
+/// Sprite listings of the engine atlases (`AtlasManager.KNOWN_ATLASES`). A definition on its own
+/// does not register an atlas. Mod-registered atlases are listed under their own IDs by
+/// [`registered`], even when several atlas IDs use the same definition.
 #[derive(Debug, Default)]
 pub struct Listing {
     atlases: BTreeMap<String, Listed>,
@@ -697,13 +677,30 @@ impl Listing {
     /// The listing of `source`, asking `mods` for each entry of a registered type.
     pub fn build(source: &crate::resource_source::ResourceSource, mods: &dyn ModSources) -> Self {
         let textures = sorted_textures(source);
-        let atlases = atlases(source, mods, &|_| true)
-            .into_iter()
-            .filter_map(|(atlas, sources)| {
-                let id = Identifier::parse(&atlas).ok()?;
-                Some((atlas, list_atlas(source, &textures, mods, &id, &sources)))
-            })
-            .collect();
+        let atlases = [
+            "banner_patterns",
+            "blocks",
+            "items",
+            "chests",
+            "decorated_pot",
+            "gui",
+            "map_decorations",
+            "paintings",
+            "particles",
+            "shield_patterns",
+            "shulker_boxes",
+            "celestials",
+        ]
+        .into_iter()
+        .filter_map(|atlas| {
+            let id = Identifier::parse(atlas).expect("known engine atlas id");
+            let sources = definition(source, mods, &id)?;
+            Some((
+                id.to_string(),
+                list_atlas(source, &textures, mods, &id, &sources),
+            ))
+        })
+        .collect();
         Self { atlases }
     }
     /// The sprites `atlas` lists; none for an atlas without a definition.
@@ -1017,10 +1014,11 @@ mod tests {
         );
         let textures = list_textures(&source);
         assert_eq!(textures, ["demo:item/x", "zzz:item/z"]);
-        let atlases = atlases(&source, &Mods::none(), &|_| true);
-        assert_eq!(atlases.keys().collect::<Vec<_>>(), [&"demo:custom/nested"]);
+        let atlas = Identifier::parse("demo:atlas").unwrap();
+        let definition = Identifier::parse("demo:custom/nested").unwrap();
+        let atlases = registered(&source, &Mods::none(), &[(&atlas, &definition)]);
         assert!(
-            matches!(list(&atlases["demo:custom/nested"], &textures, &mut no_mods).sprites.get("demo:renamed"), Some(SpriteOrigin::File(texture)) if texture == "demo:item/x")
+            matches!(atlases[&atlas].sprites.get("demo:renamed"), Some(SpriteOrigin::File(texture)) if texture == "demo:item/x")
         );
     }
 
@@ -1367,9 +1365,8 @@ mod tests {
         assert!(kept.read(name).is_none() && kept.read_stack(name).is_empty());
     }
 
-    /// An atlas a mod registered is listed under its own id from its definition, and two atlases
-    /// sharing one definition are each asked, with their own id and answer. A separate listing
-    /// uses the IDs of the resource definitions, not the registered atlas IDs.
+    /// An atlas a mod registered is listed under its own id from its definition. Two atlases
+    /// sharing one definition are each asked, but the definition is not itself an engine atlas.
     #[test]
     fn registered_atlases_are_asked_by_their_own_id() {
         use sunrise_assets::resource_source::Resource;
@@ -1409,6 +1406,7 @@ mod tests {
             listed[&second].sprites.keys().collect::<Vec<_>>(),
             ["demo:from_second"]
         );
+        assert!(Listing::build(&source, &mods).atlases().next().is_none());
         let mut asked = mods.asked.lock().unwrap().clone();
         asked.sort();
         assert_eq!(
