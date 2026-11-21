@@ -946,7 +946,24 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
             .bool_at(sunrise_client::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
     fn entity_exists(&self, id: &str) -> bool {
-        self.game.res.mob_types().contains_key(id) || self.game.entity_type_exists(id)
+        self.game.res.mob_types().contains_key(id)
+            || self.game.entity_type_exists(id)
+            || super::general::general_type_catalog().slot(id).is_some()
+    }
+    fn other_entity_type(
+        &self,
+        id: &str,
+    ) -> Option<sunrise_client::mobs::spawner::SpawnerTypeFacts> {
+        self.game
+            .spawners
+            .entity_types
+            .as_ref()
+            .and_then(|types| types.get(id).copied().flatten())
+            .or_else(|| {
+                let catalog = super::general::general_type_catalog();
+                let (width, height) = catalog.dimensions(catalog.slot(id)?);
+                Some(sunrise_client::mobs::spawner::SpawnerTypeFacts::general_entity(width, height))
+            })
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         let mobs = self

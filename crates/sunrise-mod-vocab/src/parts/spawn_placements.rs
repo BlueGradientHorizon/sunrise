@@ -40,7 +40,10 @@ pub trait SpawnPlacementsRegistrar {
     /// `RegisterSpawnPlacementsEvent.register`). Request `kind` from `r.entity_type_key`
     /// with the full registry id. Any registered entity type is eligible, including
     /// `minecraft:ender_dragon` (which has a vanilla entry) and non-mob types such as
-    /// `minecraft:arrow` (which do not). Registration does not add a spawn path for a type.
+    /// `minecraft:arrow` (which do not). Ordinary and trial spawners check the resolved
+    /// entity type's predicate before attempting to create it, even for non-mobs.
+    /// Ordinary spawners with custom rules skip the predicate; trial spawners check
+    /// custom rules afterward. Registration does not add a spawn path for a type.
     ///
     /// If the type has no vanilla entry, its first registration needs both `placement`
     /// (where it may stand) and `heightmap` (how chunk generation finds the surface).

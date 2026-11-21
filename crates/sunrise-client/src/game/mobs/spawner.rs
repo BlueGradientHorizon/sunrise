@@ -6,13 +6,16 @@ use super::{
     Game,
     creatures::{Finalized, SpawnReason},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use sunrise_client::{
     Result,
     containers::BlockEntity,
     mobs::{
         Mob, Who,
-        spawner::{SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
+        spawner::{
+            SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn,
+            SpawnerTypeFacts,
+        },
         trial_spawner::{TrialSpawnerExt, TrialState},
     },
     particles::{ParticleOptions, ParticleType},
@@ -39,8 +42,8 @@ pub(super) enum Planned {
 /// What the spawner code keeps between ticks.
 #[derive(Default)]
 pub(super) struct SpawnerState {
-    /// Every entity type id (`EntityType.byString`), read once.
-    entity_types: Option<HashSet<String>>,
+    /// Every entity type id and its pre-creation spawner facts, read once.
+    pub(super) entity_types: Option<HashMap<String, Option<SpawnerTypeFacts>>>,
     /// The mob shown in each spawner and the id it was made for
     /// (`getOrCreateDisplayEntity`).
     displays: HashMap<Pos, (String, Mob)>,
@@ -52,7 +55,7 @@ impl Game<'_> {
         self.spawners
             .entity_types
             .as_ref()
-            .is_some_and(|t| t.contains(id))
+            .is_some_and(|t| t.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
     pub(super) fn entity_types_loaded(&self) -> bool {
@@ -65,19 +68,8 @@ impl Game<'_> {
         if self.spawners.entity_types.is_some() {
             return;
         }
-        let path = self.options.resources.join("entity-types.json");
-        let types = std::fs::read(path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-            .and_then(|v| {
-                v.as_object().map(|o| {
-                    o.keys()
-                        .map(|k| sunrise_client::command::args::normalize(k))
-                        .collect()
-                })
-            })
-            .unwrap_or_default();
-        self.spawners.entity_types = Some(types);
+        self.spawners.entity_types =
+            Some(SpawnerTypeFacts::load_all(&self.options.resources).unwrap_or_default());
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
     /// every block entity's (`client_tick_spawners`).
@@ -144,6 +136,7 @@ impl Game<'_> {
             spawner.spawn_delay -= 1;
             return Ok(());
         }
+        self.load_entity_types();
         let pos = [key.0, key.1, key.2];
         let mut random = std::mem::replace(
             &mut self.world.random,

@@ -8,12 +8,15 @@
 //! what the spawner asks of the level goes through [`SpawnerLevel`], so the
 //! game and a differential test world answer the same questions.
 use super::{
-    Species,
-    spawn_rules::{self, Reason},
+    MobType, Species,
+    spawn_rules::{self, Reason, SpawnEntityType},
     spawn_selection::{self, Category, NaturalLevel},
+    species,
 };
 use crate::chunk::block_entity::Next;
 pub use crate::chunk::block_entity::{CustomSpawnRules, SpawnData, Spawner};
+use serde_json::Value;
+use std::{collections::HashMap, fs, path::Path};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::{geometry::Aabb, geometry::Vec3, random::RandomSource};
 
@@ -237,6 +240,82 @@ pub struct SpawnerAdded {
     pub mob: bool,
 }
 
+/// The type facts read by spawners before constructing an entity.
+#[derive(Clone, Copy)]
+pub struct SpawnerTypeFacts {
+    species: Option<Species>,
+    allowed_in_peaceful: bool,
+    category: Category,
+    half_width: f64,
+    height: f64,
+}
+
+impl SpawnerTypeFacts {
+    /// A native general entity's declared box. It is a non-mob in the misc category.
+    pub fn general_entity(width: f64, height: f64) -> Self {
+        Self {
+            species: None,
+            allowed_in_peaceful: true,
+            category: Category::Misc,
+            half_width: width / 2.0,
+            height,
+        }
+    }
+
+    /// Read entity type ids and their spawner facts from the prepared export.
+    /// A row without spawner facts still identifies a type for other registry readers.
+    pub fn load_all(root: &Path) -> crate::Result<HashMap<String, Option<Self>>> {
+        let rows: HashMap<String, Value> =
+            serde_json::from_slice(&fs::read(root.join("entity-types.json"))?)?;
+        Ok(rows
+            .into_iter()
+            .map(|(id, row)| {
+                let id = crate::command::args::normalize(&id);
+                let facts = match (
+                    row["category"].as_str(),
+                    row["width"].as_f64(),
+                    row["height"].as_f64(),
+                ) {
+                    (Some(category), Some(width), Some(height)) => {
+                        let def = id
+                            .strip_prefix("minecraft:")
+                            .and_then(|name| species::ALL.iter().find(|def| def.name == name));
+                        let species = def.map(|def| def.species);
+                        let (half_width, height) =
+                            spawn_selection::spawn_extents(species, width as f32, height as f32);
+                        Some(Self {
+                            species,
+                            allowed_in_peaceful: row["allowed_in_peaceful"]
+                                .as_bool()
+                                .unwrap_or_else(|| {
+                                    def.is_none_or(|def| !def.flags(false).not_in_peaceful)
+                                }),
+                            category: Category::from_name(category),
+                            half_width,
+                            height,
+                        })
+                    }
+                    _ => None,
+                };
+                (id, facts)
+            })
+            .collect())
+    }
+
+    pub(super) fn placement_type(self, id: &str) -> SpawnEntityType<'_> {
+        SpawnEntityType {
+            id,
+            species: self.species,
+            allowed_in_peaceful: self.allowed_in_peaceful,
+        }
+    }
+
+    /// `EntityType.getSpawnAABB`, with the type's pre-creation extents.
+    pub(super) fn spawn_aabb(self, at: [f64; 3]) -> Aabb {
+        spawn_selection::spawn_box_at(at, self.half_width, self.height)
+    }
+}
+
 /// What a spawner reads from the level besides the spawn rules.
 pub trait SpawnerLevel: NaturalLevel {
     /// `hasNearbyAlivePlayer`: a living non-spectator closer than `range`
@@ -244,8 +323,31 @@ pub trait SpawnerLevel: NaturalLevel {
     fn alive_player_near(&self, x: f64, y: f64, z: f64, range: f64) -> bool;
     /// The `spawner_blocks_work` game rule.
     fn spawner_blocks_work(&self) -> bool;
-    /// `EntityType.byString`: the entity type exists.
+    /// `EntityType.byString`: the entity type exists, for the display entity.
     fn entity_exists(&self, id: &str) -> bool;
+    /// Registry facts for an entity type not backed by the mob table.
+    fn other_entity_type(&self, id: &str) -> Option<SpawnerTypeFacts>;
+    /// `EntityType.byString`: resolve placement facts independently of whether
+    /// the spawner can create this type as a mob.
+    fn spawner_type(&self, id: &str) -> Option<(SpawnerTypeFacts, Option<&MobType>)> {
+        if let Some(mob) = self.mob_type(id) {
+            let species = Some(mob.species);
+            let (half_width, height) =
+                spawn_selection::spawn_extents(species, mob.width as f32, mob.height as f32);
+            Some((
+                SpawnerTypeFacts {
+                    species,
+                    allowed_in_peaceful: mob.allowed_in_peaceful(),
+                    category: Category::from_name(&mob.category),
+                    half_width,
+                    height,
+                },
+                Some(mob),
+            ))
+        } else {
+            self.other_entity_type(id).map(|facts| (facts, None))
+        }
+    }
     /// Entities of the exact class of `id` whose box meets `bounds`.
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize;
 }
@@ -486,7 +588,10 @@ impl SpawnerExt for Spawner {
         let mut added: Vec<Aabb> = Vec::new();
         for _ in 0..self.spawn_count {
             // EntityType.by: an unknown type delays.
-            let Some(id) = data.id().filter(|id| l.entity_exists(id)) else {
+            let Some((id, kind, mob)) = data.id().and_then(|id| {
+                let (kind, mob) = l.spawner_type(&id)?;
+                Some((id, kind, mob))
+            }) else {
                 self.delay(random, events);
                 return;
             };
@@ -504,22 +609,7 @@ impl SpawnerExt for Spawner {
                     [x, y, z]
                 }
             };
-            let kind = l.mob_type(&id);
-            let (species, width, height, category) = match kind {
-                Some(t) => (
-                    Some(t.species),
-                    t.width as f32,
-                    t.height as f32,
-                    Category::from_name(&t.category),
-                ),
-                // Entity types Sunrise cannot create: a unit box, misc.
-                None => (None, 1.0, 1.0, Category::Misc),
-            };
-            let spawn_box = match species {
-                Some(s) => spawn_selection::spawn_aabb(s, at[0], at[1], at[2], width, height),
-                None => spawn_selection::spawn_box(at[0], at[1], at[2], width, height),
-            };
-            if !l.no_collision(spawn_box) {
+            if !l.no_collision(kind.spawn_aabb(at)) {
                 continue;
             }
             let block = [
@@ -528,7 +618,7 @@ impl SpawnerExt for Spawner {
                 at[2].floor() as i32,
             ];
             if let Some(rules) = data.custom_spawn_rules {
-                if !category.friendly() && l.peaceful() {
+                if !kind.category.friendly() && l.peaceful() {
                     continue;
                 }
                 if !SpawnData::valid_position(rules, l, block[0], block[1], block[2]) {
@@ -536,20 +626,25 @@ impl SpawnerExt for Spawner {
                 }
                 // Custom rules skip SpawnPlacements, not the type check in
                 // EntityType.loadEntityRecursive.
-                if l.peaceful() && kind.is_some_and(|t| !t.allowed_in_peaceful()) {
+                if l.peaceful() && !kind.allowed_in_peaceful {
                     self.delay(random, events);
                     return;
                 }
-            } else if let Some(t) = kind
-                && !spawn_rules::check_spawn_rules(t.into(), l, Reason::Spawner, random, block)
-            {
+            } else if !spawn_rules::check_spawn_rules(
+                kind.placement_type(&id),
+                l,
+                Reason::Spawner,
+                random,
+                block,
+            ) {
                 continue;
             }
             // loadEntityRecursive: a type the game cannot create delays.
-            let Some(s) = species else {
+            let Some(mob) = mob else {
                 self.delay(random, events);
                 return;
             };
+            let s = mob.species;
             let around = Aabb::new(
                 Vec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])),
                 Vec3::new(
@@ -581,8 +676,8 @@ impl SpawnerExt for Spawner {
                 placed[0],
                 placed[1],
                 placed[2],
-                width * scale,
-                height * scale,
+                mob.width as f32 * scale,
+                mob.height as f32 * scale,
             );
             let pending = spawn_selection::Pending {
                 yaw,

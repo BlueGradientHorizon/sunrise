@@ -1077,7 +1077,8 @@ impl TrialSpawnerExt for TrialSpawner {
     ) -> Option<Uuid> {
         let data = self.next_or_create(random, events).clone();
         // EntityType.by: an unknown type spawns nothing.
-        let id = data.id().filter(|id| l.entity_exists(id))?;
+        let id = data.id()?;
+        let (kind, mob) = l.spawner_type(&id)?;
         let at = match spawner::read_pos(data.entity.get(&JavaString::from("Pos"))) {
             Some(p) => p,
             None => {
@@ -1090,15 +1091,17 @@ impl TrialSpawnerExt for TrialSpawner {
                 [x, y, z]
             }
         };
-        // Entity types Sunrise cannot create spawn nothing.
-        let kind = l.mob_type(&id)?;
-        let (species, width, height) = (kind.species, kind.width as f32, kind.height as f32);
-        let spawn_box = spawn_selection::spawn_aabb(species, at[0], at[1], at[2], width, height);
-        if !l.no_collision(spawn_box) || !in_line_of_sight(l, center(pos), at) {
+        if !l.no_collision(kind.spawn_aabb(at)) || !in_line_of_sight(l, center(pos), at) {
             return None;
         }
         let block = at.map(|v| v.floor() as i32);
-        if !spawn_rules::check_spawn_rules(kind.into(), l, Reason::TrialSpawner, random, block) {
+        if !spawn_rules::check_spawn_rules(
+            kind.placement_type(&id),
+            l,
+            Reason::TrialSpawner,
+            random,
+            block,
+        ) {
             return None;
         }
         if let Some(rules) = data.custom_spawn_rules
@@ -1106,6 +1109,9 @@ impl TrialSpawnerExt for TrialSpawner {
         {
             return None;
         }
+        // loadEntityRecursive: entity types Sunrise cannot create spawn nothing.
+        let mob = mob?;
+        let species = mob.species;
         let yaw = random.next_float() * 360.0;
         let placed = spawner::entity_position(species, at);
         let own = placed.map(|v| v.floor() as i32);
@@ -1114,8 +1120,8 @@ impl TrialSpawnerExt for TrialSpawner {
             placed[0],
             placed[1],
             placed[2],
-            width * scale,
-            height * scale,
+            mob.width as f32 * scale,
+            mob.height as f32 * scale,
         );
         let pending = spawn_selection::Pending {
             yaw,

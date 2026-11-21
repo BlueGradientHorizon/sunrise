@@ -137,15 +137,27 @@ fn immune_tag(s: Species) -> Option<&'static str> {
 }
 /// `BlockState.isValidSpawn(level, pos, type)` for the block at a position.
 pub fn is_valid_spawn<L: SpawnLevel>(s: Species, l: &L, x: i32, y: i32, z: i32) -> bool {
-    if name(l, x, y, z) == "minecraft:magma_block" {
-        return fire_immune(s);
-    }
     let bit = match s {
         Species::Ocelot | Species::Parrot => data::VALID_SPAWN_LEAVES,
         Species::PolarBear => data::VALID_SPAWN_ICE,
         _ => data::VALID_SPAWN,
     };
-    flags(l, x, y, z) & bit != 0
+    valid_spawn_surface(l, x, y, z, bit, fire_immune(s))
+}
+
+fn valid_spawn_surface<L: SpawnLevel>(
+    l: &L,
+    x: i32,
+    y: i32,
+    z: i32,
+    bit: u16,
+    fire_immune: bool,
+) -> bool {
+    if name(l, x, y, z) == "minecraft:magma_block" {
+        fire_immune
+    } else {
+        flags(l, x, y, z) & bit != 0
+    }
 }
 /// `NaturalSpawner.isValidEmptySpawnBlock` for an entity type.
 pub fn is_valid_empty_spawn<L: SpawnLevel>(s: Species, l: &L, x: i32, y: i32, z: i32) -> bool {
@@ -288,17 +300,27 @@ impl<'a> From<&'a MobType> for SpawnEntityType<'a> {
 
 /// `SpawnPlacements.checkSpawnRules` for the resolved entity type, then
 /// `MobSpawnEvent.SpawnPlacementCheck` through [`SpawnLevel::placement_check`].
-pub fn check_spawn_rules<L: SpawnLevel>(
+pub fn check_spawn_rules<L: SpawnLevel, R: RandomSource>(
     kind: SpawnEntityType<'_>,
     l: &L,
     reason: Reason,
-    random: &mut impl RandomSource,
+    random: &mut R,
     at: [i32; 3],
 ) -> bool {
     if !kind.allowed_in_peaceful && l.peaceful() {
         return false;
     }
     let [x, y, z] = at;
+    let vanilla = |random: &mut R| match kind.species {
+        Some(s) => placement_predicate(s, l, reason, random, x, y, z),
+        // The dragon has no Species row, but SpawnPlacements registers it with
+        // Mob.checkMobSpawnRules, including access to magma (it is fire immune).
+        None if kind.id == "minecraft:ender_dragon" => {
+            is_spawner(reason) || valid_spawn_surface(l, x, y - 1, z, data::VALID_SPAWN, true)
+        }
+        // SpawnPlacements.checkSpawnRules accepts types without an entry.
+        None => true,
+    };
     let allowed = match l.mob_data().mod_spawns.get(kind.id) {
         Some(row) => {
             let pos = BlockPos::new(x, y, z);
@@ -313,18 +335,14 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
                         Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
-                        None => kind.species.is_none_or(|s| {
-                            placement_predicate(s, l, reason, ctx.random.0, x, y, z)
-                        }),
+                        None => vanilla(ctx.random.0),
                     };
                     (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
                         && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
                 }
             }
         }
-        None => kind
-            .species
-            .is_none_or(|s| placement_predicate(s, l, reason, random, x, y, z)),
+        None => vanilla(random),
     };
     l.placement_check(kind.id, reason, at, allowed, &mut SpawnRandom(random))
 }
@@ -1030,6 +1048,42 @@ mod mod_spawn_rule_tests {
             let kind = mob_kind(entity, Species::Zombie);
             check_spawn_rules((&kind).into(), self, reason, &mut LegacyRandom::new(7), at)
         }
+    }
+
+    #[test]
+    fn dragon_placement_keeps_its_vanilla_surface_requirement() {
+        let mut level = Flat::new(&[]);
+        level.peaceful = true; // The dragon is allowed in Peaceful.
+        let dragon = SpawnEntityType {
+            id: "minecraft:ender_dragon",
+            species: None,
+            allowed_in_peaceful: true,
+        };
+        let mut random = LegacyRandom::new(7);
+        // Mob.checkMobSpawnRules accepts a spawner in midair, but needs a
+        // valid surface for a natural spawn. Neither path draws random numbers.
+        assert!(!check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Natural,
+            &mut random,
+            [0, 2, 0]
+        ));
+        assert!(check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Spawner,
+            &mut random,
+            [0, 2, 0]
+        ));
+        assert!(check_spawn_rules(
+            dragon,
+            &level,
+            Reason::Natural,
+            &mut random,
+            [0, 1, 0]
+        ));
+        assert_eq!(random.next_int(), JAVA_DRAWS[0]);
     }
 
     fn mob_kind(entity: &str, species: Species) -> MobType {

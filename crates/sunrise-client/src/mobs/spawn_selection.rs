@@ -597,10 +597,13 @@ pub fn contains_any_liquid<L: SpawnLevel>(l: &L, b: Aabb) -> bool {
 }
 /// `EntityDimensions.makeBoundingBox`: the half width is a float.
 pub fn spawn_box(x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let half = f64::from(width / 2.0);
+    spawn_box_at([x, y, z], f64::from(width / 2.0), f64::from(height))
+}
+
+pub(super) fn spawn_box_at([x, y, z]: [f64; 3], half_width: f64, height: f64) -> Aabb {
     Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(height), z + half),
+        Vec3::new(x - half_width, y, z - half_width),
+        Vec3::new(x + half_width, y + height, z + half_width),
     )
 }
 /// `EntityType.spawnDimensionsScale`: cube mobs are checked for room at
@@ -612,14 +615,16 @@ fn spawn_dimensions_scale(s: Species) -> f32 {
         _ => 1.0,
     }
 }
+/// The half-width and height used by `EntityType.getSpawnAABB`.
+pub(super) fn spawn_extents(s: Option<Species>, width: f32, height: f32) -> (f64, f64) {
+    let scale = s.map_or(1.0, spawn_dimensions_scale);
+    (f64::from(scale * width / 2.0), f64::from(scale * height))
+}
+
 /// `EntityType.getSpawnAABB`.
 pub fn spawn_aabb(s: Species, x: f64, y: f64, z: f64, width: f32, height: f32) -> Aabb {
-    let scale = spawn_dimensions_scale(s);
-    let half = f64::from(scale * width / 2.0);
-    Aabb::new(
-        Vec3::new(x - half, y, z - half),
-        Vec3::new(x + half, y + f64::from(scale * height), z + half),
-    )
+    let (half, height) = spawn_extents(Some(s), width, height);
+    spawn_box_at([x, y, z], half, height)
 }
 /// The mob a position check is about, which the site has not created yet
 /// (vanilla creates it before the check).

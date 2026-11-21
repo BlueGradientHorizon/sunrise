@@ -72,7 +72,9 @@ level, omit the light test. Draw any additional randomness from `ctx.random()`. 
 helper also draws from that stream. Short-circuited predicates don't draw, and draws that did
 happen are not rolled back if the spawn is later refused. Registered predicates run only where
 vanilla uses `SpawnPlacements.checkSpawnRules`; patrols and village sieges call their built-in
-predicates directly instead.
+predicates directly instead. Spawners and trial spawners check the resolved type, including
+non-mobs, before attempting to create an entity. Ordinary spawners with custom spawn rules
+skip the placement check; trial spawners check their custom rules afterward.
 
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
