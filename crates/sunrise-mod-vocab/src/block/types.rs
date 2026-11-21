@@ -466,8 +466,10 @@ pub struct BlockClick<'a> {
 }
 
 /// The server's staged writes during a step-on Part call.
+// hidden: the generated dispatch passes this buffer from the engine, never the Part.
 #[doc(hidden)]
 // no wire: the engine owns this call-local staging buffer; Parts only borrow it.
+#[non_exhaustive]
 #[derive(Clone, Default)]
 pub struct StepOnWrites {
     server: bool,
@@ -476,6 +478,7 @@ pub struct StepOnWrites {
 }
 
 impl StepOnWrites {
+    // hidden: only the engine chooses to lend server write access.
     #[doc(hidden)]
     pub fn server() -> Self {
         Self {
@@ -484,6 +487,7 @@ impl StepOnWrites {
         }
     }
 
+    // hidden: only the engine may validate and drain the staged writes.
     #[doc(hidden)]
     pub fn into_writes(self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
         (self.block, self.entity)
