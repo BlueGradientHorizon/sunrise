@@ -683,12 +683,14 @@ impl BlockEntities {
             .filter(move |((cx, cz), _)| !far(*cx, x) && !far(*cz, z))
             .flat_map(|(_, set)| set)
     }
-    /// The block entities in the chunks within `radius` blocks of `x`, `z`, in no order (by
-    /// chunk, so far ones are skipped whole; the caller checks each distance). One taken out is
-    /// not there. It looks up every chunk of the square, so `radius` stays a few chunks.
+    /// The block entities in chunks that can contain a block centre within `radius` of `x`, `z`,
+    /// in no order. The caller checks the exact distance; a taken-out entity is not there.
+    /// It looks up every chunk of the square, so `radius` stays a few chunks.
     pub fn near(&self, x: f64, z: f64, radius: f64) -> impl Iterator<Item = (&Pos, &BlockEntity)> {
         let chunks = move |at: f64| {
-            ((at - radius) / 16.0).floor() as i32..=((at + radius) / 16.0).floor() as i32
+            // Renderers measure from the centre, but the index uses integer block positions.
+            ((at - radius - 0.5) / 16.0).floor() as i32
+                ..=((at + radius - 0.5) / 16.0).floor() as i32
         };
         let zs = chunks(z);
         chunks(x)
@@ -1361,14 +1363,13 @@ mod tests {
             };
             assert_eq!(keys(&a), keys(&b), "step {step}");
             let (x, z, radius) = (roll(100) as f64 - 50.0, roll(100) as f64 - 50.0, 20.0);
-            let span = |at: f64| {
-                ((at - radius) / 16.0).floor() as i32..=((at + radius) / 16.0).floor() as i32
+            let intersects = |chunk: i32, at: f64| {
+                let first = f64::from(chunk * 16) + 0.5;
+                first <= at + radius && first + 16.0 > at - radius
             };
             let mut scanned: Vec<Pos> = b
                 .keys()
-                .filter(|p| {
-                    span(x).contains(&chunk_of(**p).0) && span(z).contains(&chunk_of(**p).1)
-                })
+                .filter(|p| intersects(p.0 >> 4, x) && intersects(p.2 >> 4, z))
                 .copied()
                 .collect();
             scanned.sort();
