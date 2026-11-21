@@ -40,12 +40,6 @@ impl Hooks for Keys {
     }
 }
 
-fn down(game: &Game<'_>, id: &str) -> bool {
-    ClientInputClientHost::is_down(game, "keys", id)
-}
-fn click(game: &mut Game<'_>, id: &str) -> bool {
-    ClientInputClientHost::consume_click(game, "keys", id)
-}
 fn line(game: &mut Game<'_>, line: &str) {
     game.replay_line(line, &NoLoop);
 }
@@ -69,14 +63,20 @@ fn a_control_socket_key_counts_as_a_window_key() {
     with_client_game(|game| {
         game.apply_settings();
         game.set_screen(Screen::Playing);
+        let zoom =
+            ClientInputClientHost::mod_key_mapping(game, "keys", "zoom").unwrap();
+        let boost =
+            ClientInputClientHost::mod_key_mapping(game, "keys", "boost").unwrap();
+        let grab =
+            ClientInputClientHost::mod_key_mapping(game, "keys", "grab").unwrap();
         heard();
 
         // A tap: one click, consumed once; held only while down; `input_key` hears one press
         // and one release.
         line(game, "key z tap");
-        assert!(!down(game, "zoom"));
-        assert!(click(game, "zoom"));
-        assert!(!click(game, "zoom"));
+        assert!(!zoom.is_down(game).unwrap());
+        assert!(zoom.consume_click(game).unwrap());
+        assert!(!zoom.consume_click(game).unwrap());
         assert_eq!(heard(), ["key.keyboard.z Press", "key.keyboard.z Release"]);
         // The window's tap takes the same route.
         let raw = sunrise_client::keybinds::raw_key_code(winit::keyboard::PhysicalKey::Code(
@@ -84,36 +84,36 @@ fn a_control_socket_key_counts_as_a_window_key() {
         ));
         let z = Some("key.keyboard.z");
         game.key_input(z, z, raw, KeyAction::Press, 0);
-        assert!(down(game, "zoom"));
+        assert!(zoom.is_down(game).unwrap());
         game.key_input(z, z, raw, KeyAction::Release, 0);
-        assert!(!down(game, "zoom"));
-        assert!(click(game, "zoom"));
-        assert!(!click(game, "zoom"));
+        assert!(!zoom.is_down(game).unwrap());
+        assert!(zoom.consume_click(game).unwrap());
+        assert!(!zoom.consume_click(game).unwrap());
         assert_eq!(heard(), ["key.keyboard.z Press", "key.keyboard.z Release"]);
 
         // Held with two repeats: three clicks.
         line(game, "key z down");
         line(game, "key z repeat");
         line(game, "key z repeat");
-        assert!(down(game, "zoom"));
+        assert!(zoom.is_down(game).unwrap());
         line(game, "key z up");
-        assert!(!down(game, "zoom"));
-        let clicks: Vec<bool> = (0..4).map(|_| click(game, "zoom")).collect();
+        assert!(!zoom.is_down(game).unwrap());
+        let clicks: Vec<bool> = (0..4).map(|_| zoom.consume_click(game).unwrap()).collect();
         assert_eq!(clicks, [true, true, true, false]);
         assert_eq!(heard().len(), 4);
 
         // A screen opening drops the clicks at once, even closed again before anyone looks.
         line(game, "key z tap");
         game.set_screen(Screen::Inventory);
-        assert!(!click(game, "zoom"));
+        assert!(!zoom.consume_click(game).unwrap());
         line(game, "key z tap");
         game.set_screen(Screen::Playing);
-        assert!(!click(game, "zoom"), "pressed behind the screen");
+        assert!(!zoom.consume_click(game).unwrap(), "pressed behind the screen");
         line(game, "key z down");
         game.set_screen(Screen::Inventory);
         game.set_screen(Screen::Playing);
-        assert!(!down(game, "zoom"));
-        assert!(!click(game, "zoom"));
+        assert!(!zoom.is_down(game).unwrap());
+        assert!(!zoom.consume_click(game).unwrap());
         line(game, "key z up");
         // An overlay too.
         line(game, "key z tap");
@@ -121,17 +121,17 @@ fn a_control_socket_key_counts_as_a_window_key() {
             game.link_prompt = Some("https://example.com".into());
         });
         game.link_prompt = None;
-        assert!(!click(game, "zoom"));
+        assert!(!zoom.consume_click(game).unwrap());
 
         // Shift + Z counts only with shift held; Z alone counts with it too.
         line(game, "key z tap");
-        assert!(!click(game, "boost"));
+        assert!(!boost.consume_click(game).unwrap());
         line(game, "key shift down");
         line(game, "key z tap");
         line(game, "key shift up");
-        assert!(click(game, "boost"));
-        assert!(!click(game, "boost"));
-        let clicks: Vec<bool> = (0..3).map(|_| click(game, "zoom")).collect();
+        assert!(boost.consume_click(game).unwrap());
+        assert!(!boost.consume_click(game).unwrap());
+        let clicks: Vec<bool> = (0..3).map(|_| zoom.consume_click(game).unwrap()).collect();
         assert_eq!(clicks, [true, true, false]);
 
         // Rebound in Controls to X: Z no longer counts, X does.
@@ -141,17 +141,17 @@ fn a_control_socket_key_counts_as_a_window_key() {
         game.apply_settings();
         line(game, "key z tap");
         line(game, "key x tap");
-        let clicks: Vec<bool> = (0..2).map(|_| click(game, "zoom")).collect();
+        let clicks: Vec<bool> = (0..2).map(|_| zoom.consume_click(game).unwrap()).collect();
         assert_eq!(clicks, [true, false]);
 
         // A mouse press counts for a mapping on its button.
         line(game, "mouse left click");
-        assert!(click(game, "grab"));
-        assert!(!click(game, "grab"));
+        assert!(grab.consume_click(game).unwrap());
+        assert!(!grab.consume_click(game).unwrap());
 
         // Another mod's id, or an unregistered one, has nothing.
         assert!(!ClientInputClientHost::consume_click(game, "other", "zoom"));
-        assert!(!click(game, "missing"));
+        assert!(!ClientInputClientHost::consume_click(game, "keys", "missing"));
     });
 }
 
@@ -194,24 +194,30 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                 )
             };
 
+            let zoom =
+                ClientInputClientHost::mod_key_mapping(game, "keys", "zoom").unwrap();
+            let boost =
+                ClientInputClientHost::mod_key_mapping(game, "keys", "boost").unwrap();
+            let grab =
+                ClientInputClientHost::mod_key_mapping(game, "keys", "grab").unwrap();
             // Rebound to X with control: Z no longer counts; X counts only with control held.
-            assert_eq!(set(game, "zoom", "key.keyboard.x", 2), Ok(()));
+            assert_eq!(zoom.set_binding(game, "key.keyboard.x", ClientModifiers::new(2)), Ok(()));
             assert_eq!(
                 key(game, "zoom"),
                 Some(("key.keyboard.x".into(), ClientModifiers::new(2)))
             );
             line(game, "key z tap");
             line(game, "key x tap");
-            assert!(!click(game, "zoom"));
+            assert!(!zoom.consume_click(game).unwrap());
             line(game, "key control down");
             line(game, "key x tap");
             line(game, "key control up");
-            assert!(click(game, "zoom"));
+            assert!(zoom.consume_click(game).unwrap());
             // Saved as Controls saves it: the next start reads exactly this binding.
             assert_eq!(saved("zoom"), ("key.keyboard.x".to_owned(), 2));
 
             // A modifier key bound on its own is the key, not a modifier held with itself.
-            assert_eq!(set(game, "boost", "key.keyboard.left.shift", 1), Ok(()));
+            assert_eq!(boost.set_binding(game, "key.keyboard.left.shift", ClientModifiers::new(1)), Ok(()));
             assert_eq!(
                 key(game, "boost"),
                 Some(("key.keyboard.left.shift".into(), ClientModifiers::new(0)))
@@ -220,16 +226,13 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
 
             // Reset: the declared default is back, Z counts again, and the saved list holds no
             // binding of it any more (the default answers).
-            assert_eq!(
-                ClientInputClientHost::reset_mod_key(game, "keys", "zoom"),
-                Ok(())
-            );
+            assert_eq!(zoom.reset_binding(game), Ok(()));
             assert_eq!(
                 key(game, "zoom"),
                 Some(("key.keyboard.z".into(), ClientModifiers::new(0)))
             );
             line(game, "key z tap");
-            assert!(click(game, "zoom"));
+            assert!(zoom.consume_click(game).unwrap());
             assert_eq!(saved("zoom"), ("default".to_owned(), 99));
 
             // Refusals change nothing, in the game or in the saved list.
@@ -281,14 +284,14 @@ fn a_mod_rebinds_and_resets_its_own_mapping() {
                         part: None,
                     },
                 );
-                assert_eq!(set(game, "zoom", "key.keyboard.y", 0), Ok(()));
+                assert_eq!(zoom.set_binding(game, "key.keyboard.y", ClientModifiers::new(0)), Ok(()));
             }
             assert_eq!(saved("zoom"), ("key.keyboard.y".to_owned(), 0));
 
             // A mouse button and "no key" are bindings too.
-            assert_eq!(set(game, "grab", "key.mouse.right", 0), Ok(()));
+            assert_eq!(grab.set_binding(game, "key.mouse.right", ClientModifiers::new(0)), Ok(()));
             assert_eq!(saved("grab"), ("key.mouse.right".to_owned(), 0));
-            assert_eq!(set(game, "grab", "key.keyboard.unknown", 0), Ok(()));
+            assert_eq!(grab.set_binding(game, "key.keyboard.unknown", ClientModifiers::new(0)), Ok(()));
             assert_eq!(saved("grab"), ("key.keyboard.unknown".to_owned(), 0));
         });
     });

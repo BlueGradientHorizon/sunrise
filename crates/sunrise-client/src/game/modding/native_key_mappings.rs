@@ -230,6 +230,9 @@ mod tests {
                     modifiers: 0,
                     context: sunrise_client::keymapping::MappingContext::InGame,
                 }]);
+            let pending =
+                mod_api::prelude::ClientInputClientHost::mod_key_mapping(game, "test", "pending")
+                    .unwrap();
             game.native_input.mappings.input(
                 "key.keyboard.k",
                 sunrise_client::keymapping::KeyAction::Press,
@@ -240,7 +243,7 @@ mod tests {
             game.open_hud_editor(false);
             assert!(matches!(game.screen, crate::game::Screen::HudEditor));
             game.close_hud_editor();
-            assert!(!game.consume_click("test", "pending"));
+            assert!(!pending.consume_click(game).unwrap());
         });
     }
 }
