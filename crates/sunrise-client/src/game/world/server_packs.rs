@@ -74,6 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
+            .chain(self.mod_fault.as_ref())
             .filter_map(|t| t.slot)
     }
 }
@@ -98,6 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
+    /// Red error toast shown when a mod callback panics and is disabled for the session.
+    pub(super) mod_fault: Option<SystemToast>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -527,11 +530,32 @@ impl Game<'_> {
         }
     }
 
+    /// Drains panicked mod callbacks reported since the last frame into a red error toast,
+    /// resetting any shown fault toast like `add_chunk_io_toasts`.
+    fn add_mod_fault_toasts(&mut self) {
+        for fault in mod_api::__private::take_callback_faults() {
+            let new = SystemToast::new(
+                Text::tr("sunrise.mods.callback_panicked.title", &[&fault.mod_id]),
+                Some(Text::tr(
+                    "sunrise.mods.callback_panicked.description",
+                    &[&fault.callback],
+                )),
+            )
+            .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
+            if let Some(shown) = &mut self.server_packs.mod_fault {
+                shown.reset_from(new);
+            } else {
+                self.server_packs.mod_fault = self.add_system_toast(new);
+            }
+        }
+    }
+
     /// The download notifiers' toasts, each in a free 32-pixel slot of the
     /// `ToastManager` (`hidden`, F1, keeps them timing out undrawn).
     pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
+        self.add_mod_fault_toasts();
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
         for slot_toast in packs
@@ -540,6 +564,7 @@ impl Game<'_> {
             .map(|n| &mut n.toast)
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
+            .chain(std::iter::once(&mut packs.mod_fault))
         {
             let Some(toast) = slot_toast else {
                 continue;
