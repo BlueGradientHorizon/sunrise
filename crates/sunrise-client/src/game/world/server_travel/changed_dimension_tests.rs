@@ -7,7 +7,8 @@ use crate::game::{
     native_entity_refs::tests::with_game_role,
 };
 use mod_api::{
-    Hooks, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent, ServerHost,
+    Hooks, LevelDimension, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent,
+    ServerHost,
 };
 use std::sync::{
     Arc, Mutex,
@@ -51,6 +52,26 @@ impl Hooks for MoveRespawn {
         event: &mut PlayerRespawnPositionEvent,
     ) {
         event.position[0] += 10.0;
+    }
+}
+
+struct KeepRespawn;
+
+#[mod_api::__subscriptions]
+impl Hooks for KeepRespawn {
+    fn player_respawn_position(&self, _: &mut dyn ServerHost, _: &mut PlayerRespawnPositionEvent) {}
+}
+
+struct CrossLevelRespawn;
+
+#[mod_api::__subscriptions]
+impl Hooks for CrossLevelRespawn {
+    fn player_respawn_position(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut PlayerRespawnPositionEvent,
+    ) {
+        *event.level = LevelDimension::Nether;
     }
 }
 
@@ -591,6 +612,33 @@ fn credits_world_spawn_fallback_resets_player_tick_count() {
 
 #[test]
 #[ignore = "daily"]
+fn credits_respawn_position_unchanged_resets_player_tick_count() {
+    let mods = vec![ModEntry::new("keep-respawn", Box::new(KeepRespawn))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let entity = game.entity(CONN).unwrap();
+            game.as_guest(CONN, |game| {
+                game.player.as_mut().unwrap().health.tick_count = 41;
+            })
+            .unwrap();
+            prepare_end_exit(game, false);
+            game.handle_server_portal(CONN);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .play
+                .get_mut(&CONN)
+                .unwrap()
+                .respawn_requested = true;
+            game.handle_server_portal(CONN);
+            finish_trip(game, Dim::Overworld);
+            assert_eq!(entity.tick_count(game), Some(0));
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn credits_missing_respawn_point_resets_player_tick_count() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
@@ -621,6 +669,33 @@ fn credits_missing_respawn_point_resets_player_tick_count() {
 #[ignore = "daily"]
 fn credits_respawn_position_redirect_resets_player_tick_count() {
     let mods = vec![ModEntry::new("move-respawn", Box::new(MoveRespawn))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let entity = game.entity(CONN).unwrap();
+            game.as_guest(CONN, |game| {
+                game.player.as_mut().unwrap().health.tick_count = 41;
+            })
+            .unwrap();
+            prepare_end_exit(game, false);
+            game.handle_server_portal(CONN);
+            game.lan
+                .as_mut()
+                .unwrap()
+                .play
+                .get_mut(&CONN)
+                .unwrap()
+                .respawn_requested = true;
+            game.handle_server_portal(CONN);
+            finish_trip(game, Dim::Overworld);
+            assert_eq!(entity.tick_count(game), Some(0));
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn credits_respawn_position_cross_dimension_resets_player_tick_count() {
+    let mods = vec![ModEntry::new("cross-respawn", Box::new(CrossLevelRespawn))].into();
     mod_platform::testing::with_mods(mods, || {
         with_server(ExecutionRole::DedicatedServer, |game| {
             let entity = game.entity(CONN).unwrap();

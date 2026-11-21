@@ -1452,6 +1452,11 @@ impl Game<'_> {
                     Some(d) => {
                         self.apply_respawn_copy(trip.conn, &d, trip.missing);
                         if d.to.dim != trip.dim {
+                            if trip.credits_respawn
+                                && let Some(host) = self.lan.as_mut()
+                            {
+                                let _ = host.hub.update_guest(trip.conn, Self::finish_credits_body);
+                            }
                             self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                             self.respawn_into_other_level(trip.conn, d.to);
                             continue;
