@@ -141,6 +141,9 @@ impl<T> Consumer<T> {
     ) -> Result<OwnedReceipt<T>, std::sync::mpsc::RecvTimeoutError> {
         self.receiver.recv_timeout_owned(timeout)
     }
+    pub(super) fn close_reader_admission(&self) {
+        self.receiver.close_wait_admission();
+    }
     /// Only values already published at the beginning of this turn. New replies
     /// append behind these values and cannot feed back into the same actor turn.
     pub fn take_turn(&self) -> Vec<OwnedReceipt<T>> {

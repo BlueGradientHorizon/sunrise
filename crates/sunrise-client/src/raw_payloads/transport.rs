@@ -89,6 +89,17 @@ impl Transport {
         let epoch = connection.wait_for_configuration()?;
         Ok(PlayTransition(Some((connection.clone(), epoch))))
     }
+    /// If configuration had no Offer, there is no old payload work to wait
+    /// for. Install its declarations and commit before resuming the reader.
+    pub(crate) fn accept_empty_and_play(
+        &self,
+        publish: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        match &self.connection {
+            Some(connection) => connection.commit_play(connection.accept(&[])?, publish),
+            None => publish(),
+        }
+    }
     pub fn close(&self) {
         if let Some(connection) = &self.connection {
             connection.close();
