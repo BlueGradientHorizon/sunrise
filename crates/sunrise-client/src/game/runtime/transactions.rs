@@ -959,14 +959,16 @@ impl Game<'_> {
             }
         }
     }
-    /// Closes every transaction left open, as aborted. Run before each tick, as a backstop:
-    /// `host.transaction` is the only way in, and its drop guard closes each one it opens, so
-    /// none is left open by a mod.
+    /// Aborts abandoned frames before the next operation can join them. Call only when
+    /// there is no caller-owned frame; the tick start also uses this as a backstop.
     pub(super) fn abort_open_transactions(&mut self) {
         while !self.transactions.is_empty() {
             self.close_storage_transaction(false);
         }
-        self.world.block_entities.publish_retirement();
+        // If called during a root close, the enclosing close still owns retirement.
+        if self.transactions.closing.is_none() {
+            self.world.block_entities.publish_retirement();
+        }
     }
 
     /// `ComposterWrapper.transactionalRandom`: snapshot only the position's private owner,

@@ -18,8 +18,9 @@ impl IngredientDefinition {
     /// run many times during crafting and placement; answer consistently for the same input.
     /// Its context and stack are read-only and borrowed for the call. A nonempty candidate
     /// list filters by item before the test; an empty list has no filter for manual matching
-    /// but prevents recipe-book placement. A panic rejects the stack and disables this mod's
-    /// predicate for the ingredient kind for the rest of the session.
+    /// but prevents recipe-book placement. A panic rejects the stack and disables only this
+    /// occurrence's predicate for the rest of the session, including after reloading the
+    /// same definition.
     pub fn new(
         items: Vec<String>,
         test: impl for<'a> Fn(&dyn LoopContext, IngredientStack<'a>) -> bool + Send + Sync + 'static,
@@ -41,8 +42,8 @@ pub struct IngredientPredicate {
 }
 
 impl IngredientPredicate {
-    /// Test this stack as the owning mod. A panic is reported with the owner's name, and this
-    /// mod's predicate for the same ingredient kind then answers `false` for the session.
+    /// Test this stack as the owning mod. A panic is reported with the owner's name, and only
+    /// this occurrence's predicate then answers `false` for the session, even after reload.
     pub fn test(&self, context: &dyn LoopContext, stack: IngredientStack<'_>) -> bool {
         self.callback
             .call(|| (self.test)(context, stack))
@@ -66,18 +67,23 @@ impl fmt::Debug for IngredientPredicate {
     }
 }
 
-/// Split out the ordered candidate IDs and bind the test to its engine-resolved mod slot and kind.
+/// Split out the ordered candidate IDs and bind the test to its engine-resolved mod slot and definition key.
 pub fn bind_ingredient_predicate(
     owner: &'static str,
     mod_index: usize,
-    kind: &str,
+    definition_key: &str,
     definition: IngredientDefinition,
 ) -> (Vec<String>, IngredientPredicate) {
     let IngredientDefinition { items, test } = definition;
     (
         items,
         IngredientPredicate {
-            callback: RetainedCallback::new(owner, mod_index, "ingredient_predicate", kind),
+            callback: RetainedCallback::new(
+                owner,
+                mod_index,
+                "ingredient_predicate",
+                definition_key,
+            ),
             test,
         },
     )

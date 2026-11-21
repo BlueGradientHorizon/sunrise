@@ -19,8 +19,9 @@ borrow values from the registration call.
 A panic fails the command, is logged with the mod's name and queues an error toast
 on a local client. That mod's executor for the registered usage is disabled for the
 session, even if the tree is rebuilt. Other usages still run. If the caller already
-had a transaction, the panicking invocation's journaled writes are undone. The
-game does not implicitly open a transaction for an ordinary command, and
+had a transaction, the panicking invocation's journaled writes are undone. A failed
+invocation also aborts any transactions the executor opened and left unfinished.
+The game does not implicitly open a transaction for an ordinary command, and
 unjournaled effects are not undone. Like a vanilla command throwing an unexpected
 exception, a panicking executor does not run the command's `execute store` callbacks.
 

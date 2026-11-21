@@ -119,8 +119,9 @@ impl Ingredient {
     /// `Ingredient.test`: whether `stack` fits the candidate list and custom
     /// predicate (`ICustomIngredient.test`). An empty custom list retains the
     /// predicate without item filtering, but cannot be placed by the recipe book.
-    /// A bound predicate rejects when its defining mod is disabled; it never dispatches
-    /// to other mods. An empty tag never matches; a host without a game refuses every stack.
+    /// A bound predicate rejects when its defining mod is disabled or this occurrence's
+    /// predicate has panicked; it never dispatches to other mods. An empty tag never
+    /// matches; a host without a game refuses every stack.
     pub fn test(&self, host: &dyn Host, stack: &ItemStack) -> bool {
         backend_of(host).is_some_and(|backend| backend.recipe_ingredient_test(self, stack))
     }

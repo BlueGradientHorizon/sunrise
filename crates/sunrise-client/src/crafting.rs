@@ -1873,6 +1873,7 @@ impl ResolvedSources {
 
 fn resolve_custom_ingredient(
     name: &str,
+    occurrence: usize,
     value: &Value,
     kind: &str,
     listener: Option<&LoadContext>,
@@ -1913,10 +1914,14 @@ fn resolve_custom_ingredient(
     // Only dispatch creates Answered, from the installed subscriber table.
     let owner = mod_api::__private::mod_index(definition.mod_id)
         .expect("ingredient dispatch names an installed mod");
+    // The load origin separates client and server definitions. Decoding the same recipe
+    // gives each custom occurrence the same ordinal, even for identical ingredient JSON.
+    let origin = context.origin();
+    let key = format!("{origin:?}:{name:?}:{occurrence}:{value}");
     let (mut items, predicate) = mod_api::__private::bind_ingredient_predicate(
         definition.mod_id,
         owner,
-        kind,
+        &key,
         definition.answer,
     );
     mod_api::__private::dedup_keep_order(&mut items);
@@ -1947,11 +1952,21 @@ fn decode_vanilla_recipe(
     let text = |k: &str| v[k].as_str().unwrap_or("").to_owned();
     let custom_error = std::cell::RefCell::new(None::<String>);
     let failure = std::cell::RefCell::new(None::<String>);
+    let custom_occurrence = std::cell::Cell::new(0);
     let ingredient = |value: &Value| {
         let parsed = match input {
             IngredientInput::File(listener) => {
                 Ingredient::parse_with_error(value, items, &|value, kind| {
-                    resolve_custom_ingredient(name, value, kind, listener, &custom_error)
+                    let occurrence = custom_occurrence.get();
+                    custom_occurrence.set(occurrence + 1);
+                    resolve_custom_ingredient(
+                        name,
+                        occurrence,
+                        value,
+                        kind,
+                        listener,
+                        &custom_error,
+                    )
                 })
             }
             IngredientInput::Network(_) => Ingredient::decode_candidates(value),

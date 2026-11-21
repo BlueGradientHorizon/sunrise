@@ -90,8 +90,10 @@ impl Command {
     /// Return `Some(n)` for success with result `n` (including zero), or `None` for
     /// failure. A failed executor or disabled owner never gives another mod a turn.
     /// A panic is reported with the mod's name and disables this usage's executor for the
-    /// session. It aborts writes in an enclosing transaction's journal, not unjournaled effects,
-    /// and does not publish a command result to `execute store`.
+    /// session. It aborts the executor's writes in the caller's open transaction and does
+    /// not publish a result to `execute store`. A failed invocation also aborts any
+    /// transaction the executor opened and left unfinished. Ordinary commands do not get
+    /// an implicit transaction, and neither failure undoes unjournaled effects.
     /// Only a parse from the current server dispatcher can reach this executor.
     /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(

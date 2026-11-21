@@ -2212,6 +2212,9 @@ impl Game<'_> {
         let result = callback.call(|| call(self, &origin, &command));
         if let Some(seal) = savepoint {
             self.transaction_close(&seal, result.is_ok());
+        } else if !matches!(result, Ok(Some(_))) && !self.transactions.is_empty() {
+            // No caller-owned frame existed: every open frame belongs to this invocation.
+            self.abort_open_transactions();
         }
         match result {
             Ok(Some(value)) => Ok(value),
@@ -3616,6 +3619,8 @@ mod tests {
         use std::sync::atomic::AtomicUsize;
         const JOURNALED: [i32; 3] = [2, 70, 2];
         const UNJOURNALED: [i32; 3] = [3, 70, 2];
+        const ABANDONED: [i32; 3] = [4, 70, 2];
+        const REFUSED: [i32; 3] = [5, 70, 2];
         struct Executors(Arc<AtomicUsize>);
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Executors {
@@ -3624,9 +3629,19 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
-                for (usage, pos) in [("journalboom", JOURNALED), ("plainboom", UNJOURNALED)] {
+                for (usage, pos, opens_root) in [
+                    ("journalboom", JOURNALED, false),
+                    ("plainboom", UNJOURNALED, false),
+                    ("rootboom", ABANDONED, true),
+                    ("ordinaryfailure", REFUSED, true),
+                ] {
+                    let refuses = self.0.clone();
                     event.commands.push(mod_api::Command::new(usage).executes(
                         move |host, _, _| {
+                            if opens_root {
+                                let _root = host.transaction_open();
+                                let _child = host.transaction_open();
+                            }
                             let level = host.level("minecraft:overworld").unwrap();
                             let state = host.block_state_id("minecraft:stone").unwrap();
                             if level.set_block(host, pos, state, mod_api::BlockUpdateFlags::NONE)
@@ -3634,19 +3649,14 @@ mod tests {
                             {
                                 return None;
                             }
+                            if usage == "ordinaryfailure" {
+                                refuses.fetch_add(1, Ordering::Relaxed);
+                                return None;
+                            }
                             panic!("executor regression panic");
                         },
                     ));
                 }
-                let refuses = self.0.clone();
-                event
-                    .commands
-                    .push(
-                        mod_api::Command::new("ordinaryfailure").executes(move |_, _, _| {
-                            refuses.fetch_add(1, Ordering::Relaxed);
-                            None
-                        }),
-                    );
                 event
                     .commands
                     .push(mod_api::Command::new("worksagain").executes(|_, _, _| Some(7)));
@@ -3687,6 +3697,10 @@ mod tests {
                         game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]),
                         air
                     );
+                    assert_eq!(
+                        game.transaction_current().as_ref(),
+                        Some(seal.transaction())
+                    );
                     game.transaction_close(&seal, true);
                     let failure = game
                         .execute_line("plainboom", game.server_source())
@@ -3698,13 +3712,25 @@ mod tests {
                         stone
                     );
 
-                    game.build_native_commands(&[]);
+                    let failure = game
+                        .execute_line("rootboom", game.server_source())
+                        .unwrap_err();
+                    assert!(failure.unexpected);
+                    assert!(game.transaction_current().is_none());
                     assert_eq!(
-                        game.execute_line("journalboom", game.server_source())
-                            .unwrap_err()
-                            .key,
-                        "command.unknown.command"
+                        game.world.block(ABANDONED[0], ABANDONED[1], ABANDONED[2]),
+                        air
                     );
+
+                    game.build_native_commands(&[]);
+                    for usage in ["journalboom", "rootboom"] {
+                        assert_eq!(
+                            game.execute_line(usage, game.server_source())
+                                .unwrap_err()
+                                .key,
+                            "command.unknown.command"
+                        );
+                    }
                     assert_eq!(game.execute_line("worksagain", game.server_source()), Ok(7));
                     for _ in 0..2 {
                         assert_eq!(
@@ -3713,6 +3739,8 @@ mod tests {
                                 .key,
                             "command.unknown.command"
                         );
+                        assert!(game.transaction_current().is_none());
+                        assert_eq!(game.world.block(REFUSED[0], REFUSED[1], REFUSED[2]), air);
                     }
                     assert_eq!(refuses.load(Ordering::Relaxed), 2);
                     assert_eq!(
@@ -3720,7 +3748,7 @@ mod tests {
                         [mod_api::__private::HookPanicReport {
                             mod_id: "executor_owner",
                             hook: "command_executor",
-                        }; 2]
+                        }; 3]
                     );
                 })
             },
