@@ -4218,13 +4218,6 @@ struct Game<'a> {
     lan_ender_menus: Vec<(u32, sunrise_core::nbt::Tag)>,
     /// Live attachments and original snapshots retained during player replacement.
     player_state: original_player::PlayerState,
-    /// The block the acting player is breaking (`break_block`): its destroy
-    /// event, and the ones before it, are the player's own (`Level.levelEvent`
-    /// with the player excluded); the events after it are not.
-    lan_break_pos: Option<[i32; 3]>,
-    /// Where a player's break puts the block's own drops instead of popping
-    /// them (`PlayerRef::destroy_block` with `into_inventory`).
-    break_collect: Option<Vec<ItemStack>>,
     /// The name of the guest `lan_acting` acts for (`Player.getName`).
     lan_acting_name: Option<String>,
     /// Their UUID (`Player.getUUID`).
@@ -6509,29 +6502,33 @@ impl Game<'_> {
         self.with_level(|b, level, ticks| b.set_block(level, ticks, at, cracked, 260));
         cracked
     }
-    fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
+    fn break_block_as_player(
+        &mut self,
+        pos: [i32; 3],
+        collect: Option<&mut Vec<ItemStack>>,
+    ) -> Result<bool> {
+        let [x, y, z] = pos;
+        let state = self.world.block(x, y, z);
+        // An absent block (also what the level reads for an unloaded chunk) has
+        // no subject for the break callback.
+        if self.res.behaviours().is_air(state) {
+            return Ok(false);
+        }
         // DebugStickItem.canDestroyBlock: a left click selects a property and
         // never destroys the block.
-        if !self.debug_stick_can_destroy(pos)? {
-            return Ok(false);
-        }
-        // ServerPlayerGameMode.destroyBlock.
-        if self.block_action_restricted(pos) {
-            return Ok(false);
-        }
-        if !self
-            .res
-            .items()
-            .can_destroy_block(self.held(), self.creative)
+        if !self.debug_stick_can_destroy(pos)?
+            || !self
+                .res
+                .items()
+                .can_destroy_block(self.held(), self.creative)
         {
             return Ok(false);
         }
-        // ServerPlayerGameMode.destroyBlock (and MultiPlayerGameMode.destroyBlock
-        // on the client): a GameMasterBlock stays when the player cannot use
-        // game master blocks (Player.canUseGameMasterBlocks).
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        if !self.can_use_game_master_blocks()
-            && is_game_master_block(&self.res.facts().get(state).name)
+        // ServerPlayerGameMode.destroyBlock: game-master permission and game-mode
+        // restrictions still apply to direct destruction.
+        if (!self.can_use_game_master_blocks()
+            && is_game_master_block(&self.res.facts().get(state).name))
+            || self.block_action_restricted(pos)
         {
             return Ok(false);
         }
@@ -6540,7 +6537,9 @@ impl Game<'_> {
         let mut canceled = false;
         let mut exp_to_drop = None;
         self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        if canceled {
+        // The hook can break this block itself. Do not run the removal effects
+        // for a block that is no longer there.
+        if canceled || self.res.behaviours().is_air(self.world.block(x, y, z)) {
             return Ok(false);
         }
         self.input_feedback(sunrise_client::input_source::Feedback::BlockBroken);
@@ -6639,7 +6638,7 @@ impl Game<'_> {
                     (stacks, exp_to_drop),
                 );
                 let canceled = dropped.canceled;
-                if let Some(kept) = self.break_collect.as_mut() {
+                if let Some(kept) = collect {
                     kept.extend(dropped.items.into_iter().map(|item| item.stack));
                     if dropped.experience > 0 {
                         self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), dropped.experience);
@@ -13804,8 +13803,6 @@ impl<'a> Game<'a> {
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
             player_state: Default::default(),
-            lan_break_pos: None,
-            break_collect: None,
             guest_packets: Vec::new(),
             guest_cooldowns: Vec::new(),
             guest_entity_events: Vec::new(),

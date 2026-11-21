@@ -2,15 +2,18 @@
 
 `PlayerRef::destroy_block(host, pos, into_inventory)` breaks a block as that player breaks it,
 through vanilla's `ServerPlayerGameMode.destroyBlock`, as FTB Ultimine does for each block of a
-vein. The player's own checks hold (game mode, the tool's `can_break`, game master blocks, spawn
-protection, bedrock), and the break is the player's: `break_block` and `player_destroyed_block`
-hear it, the loot is rolled for the held tool and its enchantments, `block_drops` sees the drops
-with the player as `breaker`, and the tool wears, the mined statistic counts and the player gets
-the exhaustion. The player needn't reach or look at the block. It is true when the block was
-removed. With `into_inventory`, the drops `block_drops` leaves go to the player's inventory, and
-what doesn't fit drops from them.
+vein. Game mode, the main-hand item's restrictions, game-master permissions and the
+`break_block` veto still apply. This is not a dig packet: there is no check for spawn protection,
+reach or mining progress. For example, a survival player can directly destroy bedrock.
 
-For a player in another level than the hook's it breaks nothing and returns false: a break lands in the world, and the hook's level is the one in place.
+`player_destroyed_block` hears a successful removal. Loot is rolled for the main-hand item and
+its enchantments; `block_drops` sees the player as `breaker`; and item wear, statistics and
+exhaustion follow the player's break path. With `into_inventory`, the block's remaining item
+drops go to the player's inventory after `block_drops`, and overflow drops from them.
+
+The result is `true` only if this call removed the block. It is `false` for a player who is dead
+or not present in the hook's level, an absent block, a refusal or veto, or a block a listener
+already removed.
 
 ## A vein miner
 
@@ -76,7 +79,6 @@ breaker too when other players can break the same blocks while the vein runs. Wh
 sets loose (a torch losing its support, a container's contents) is not the block's own drop and
 still drops where it was.
 
-Keep a guard like `busy`: the engine only bounds the nesting as a safety net of Sunrise's own, not
-found in the reference. A break started from
-inside eight others is refused with `false`, which ends an unguarded listener's recursion but not
-its eight levels of work.
+Keep a guard like `busy` when a listener starts breaks of its own. Chained calls have no fixed
+nesting limit, and the origin is still present when `break_block` first fires. Without a guard,
+a listener that asks to break the same live block can call itself indefinitely.

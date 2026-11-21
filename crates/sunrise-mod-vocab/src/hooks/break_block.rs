@@ -10,7 +10,8 @@ pub trait Hooks {
     /// the experience sample later, after item drops are prepared;
     /// `None` keeps sampling. A subscribed block part's `exp_drop` answer is
     /// supplied as this event's initial amount. `block_drops` sees and may change that
-    /// amount afterwards; cancellation or disabled block drops suppresses it.
+    /// amount afterwards; cancellation or disabled block drops suppresses it. If a listener
+    /// already removed the block, the outer break does not apply removal effects again.
     /// Server-side, for every player of the world (the
     /// helpers read the acting one). Diverges from upstream: renamed from
     /// `destroy_block`, to NeoForge's `BreakBlockEvent`.
