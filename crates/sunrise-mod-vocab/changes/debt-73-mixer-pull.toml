@@ -23,8 +23,9 @@ frames and returns zero. Treat `AudioRefusal::WorkerUnavailable` like any other 
 No signature changes are needed for panic containment. If `open_audio_stream` now returns \
 `AudioRefusal::PullDisabled`, stop trying to open pull streams until the client restarts and fix the \
 source panic reported in the log. When the owner or its pull callbacks are disabled, a pull handle \
-with a live source reports `AudioStreamState::Stopped` once the worker retires its job. If the source \
-already returned `AudioRead::Eof` and was dropped without panicking, let its queued PCM drain normally. \
+with a live source reports `AudioStreamState::Stopped` once the worker retires its job. A source \
+returning `AudioRead::Eof` is still live until it is dropped successfully with the owner still enabled. \
+Only if normal EOF retirement already completed should you expect its queued PCM to drain. \
 For a network or other async producer, replace `host.open_audio_stream(&spec)` with \
 `host.open_push_audio_stream(&spec)` and keep calling `stream.push(&samples)` on the producer thread. \
 Use the returned accepted frame count times the channel count to find the refused suffix; drop it or retry \

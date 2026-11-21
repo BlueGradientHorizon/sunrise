@@ -13,7 +13,8 @@ pub trait AudioClientHost {
     /// `SoundInstance.getStream`. The mixer takes ownership and calls [`AudioStream::read`]
     /// serially on the output's shared worker as it needs frames, with no `Host` or world borrow.
     /// The device callback requests PCM but never calls or waits for the source. A short or dry
-    /// read is retried on later demand. EOF lets ready frames drain before playback stops.
+    /// read is retried on later demand. [`AudioRead::Eof`] lets ready frames drain only after the
+    /// worker drops the source normally with the owner still enabled.
     /// [`AudioStreamRef::push`] always returns zero on this handle.
     ///
     /// Refuses with [`AudioRefusal`] when playback is unavailable, the spec is invalid, a stream

@@ -25,14 +25,17 @@ pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 /// at EOF or after stop, without waiting for another device callback. A source panic, including
 /// during destruction after rejected admission, wakes the worker to retire this mod's other live
 /// pull sources without waiting for output. Disabling the owning mod also retires its live
-/// sources. Streams whose sources already retired normally at EOF drain their queued PCM.
+/// sources. Returning EOF does not complete normal retirement: the worker still has to drop the
+/// source successfully while the owner is enabled. Only then does queued PCM drain at EOF.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
     /// stream's [`StreamSpec`] format. The buffer is cleared before each call. Report only
     /// frames supplied; a count larger than the offered buffer stops the stream and is logged.
-    /// A panic stops this stream and disables this mod's pull callbacks for the session, with a
-    /// log and an error toast naming the mod. Other mods' streams continue.
+    /// The worker discards an in-flight read's result if the mod or its pull callbacks are disabled
+    /// before it accepts the result. A panic stops this stream and disables this mod's pull
+    /// callbacks for the session, with a log and an error toast naming the mod. Other mods'
+    /// streams continue.
     fn read(&mut self, pcm: &mut [i16]) -> AudioRead;
 }
 
@@ -44,8 +47,9 @@ pub enum AudioRead {
     /// The number of whole interleaved frames written, not the number of samples. A short read
     /// plays what is ready; zero is temporary silence. The worker retries on later demand.
     Frames(usize),
-    /// Permanently out of PCM. Return this on a separate read after reporting any final frames;
-    /// the mixer plays them for their full duration before stopping the stream.
+    /// Permanently out of PCM. Return this on a separate read after reporting any final frames.
+    /// The mixer drains the queued PCM if the worker drops the source normally and the owner is
+    /// still enabled. Otherwise the stream stops without draining.
     Eof,
 }
 
@@ -90,11 +94,11 @@ pub enum AudioStreamState {
     /// The audio is still consumed, so no latency builds up.
     Unplaced,
     /// Over: `stop` was called, the handle was dropped, or the game's sound output went away.
-    /// A pull stream also stops after an invalid frame count, a source panic, or retirement of
-    /// its live source because the owning mod or its pull callbacks were disabled. A source panic
+    /// A pull stream also stops after an invalid frame count, a source panic, failed source
+    /// destruction, or retirement of its live source because its owner was disabled. A source panic
     /// wakes the worker to retire the mod's live pull jobs even without another device callback.
-    /// If this source retired normally at EOF, it stops once the queued PCM drains. A stopped
-    /// stream never plays again.
+    /// Only a source already dropped normally at [`AudioRead::Eof`] while its owner was enabled
+    /// drains its queued PCM. A stopped stream never plays again.
     #[default]
     Stopped,
 }
@@ -315,7 +319,9 @@ impl AudioStreamRef {
         self.source.set_volume(volume)
     }
     /// Whether the stream is open and placed, unplaced or stopped. A dry or muted stream is
-    /// still [`AudioStreamState::Playing`] if it is open and placed.
+    /// still [`AudioStreamState::Playing`] if it is open and placed. If the worker retires its
+    /// live pull source after the owner was disabled, this returns [`AudioStreamState::Stopped`]
+    /// without waiting for queued PCM to drain.
     pub fn state(&self) -> AudioStreamState {
         self.source.state()
     }

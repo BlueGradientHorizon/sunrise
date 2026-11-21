@@ -174,12 +174,9 @@ impl PullOwner {
         !self.pull_disabled() && self.index.is_none_or(mod_index_on)
     }
 
-    /// Destruction runs mod code even for a disabled owner. True if the source panicked.
+    /// Destruction runs mod code even for a disabled owner. True if it completed normally.
     pub(super) fn drop_source(&self, source: Box<dyn AudioStream>) -> bool {
-        matches!(
-            self.call("AudioStream drop", || drop(source)),
-            Err(CallError::Panicked(_))
-        )
+        self.call("AudioStream drop", || drop(source)).is_ok()
     }
 
     fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, CallError> {
@@ -238,12 +235,7 @@ impl PullJob {
         pcm.fill(0);
         let source = self.source.as_mut().expect("live pull job owns its source");
         match self.owner.call("AudioStream::read", || source.read(pcm)) {
-            Ok(AudioRead::Frames(0)) | Err(CallError::Refused(_)) => true,
-            Ok(AudioRead::Frames(frames)) if frames <= missing => {
-                self.ring.publish_frames(tail, &pcm[..frames * channels]);
-                true
-            }
-            Ok(AudioRead::Frames(frames)) => {
+            Ok(AudioRead::Frames(frames)) if frames > missing => {
                 log::warn!(
                     "mod {}: AudioStream::read returned {frames} frames with room for {missing}; stopping this stream",
                     self.owner.id,
@@ -251,8 +243,20 @@ impl PullJob {
                 false
             }
             Err(CallError::Panicked(_)) => false,
+            // A rejected source can poison the owner on the opening thread during this read.
+            _ if !self.owner.enabled() => false,
+            Ok(AudioRead::Frames(0)) | Err(CallError::Refused(_)) => true,
+            Ok(AudioRead::Frames(frames)) => {
+                self.ring.publish_frames(tail, &pcm[..frames * channels]);
+                true
+            }
             Ok(AudioRead::Eof) => {
-                self.demand.eof.store(true, Release);
+                let source = self.source.take().expect("live pull job owns its source");
+                // Destruction is still mod code. Only commit normal EOF retirement after it
+                // succeeds, at the last enabled check before publishing EOF to the mixer.
+                if self.owner.drop_source(source) && self.owner.enabled() {
+                    self.demand.eof.store(true, Release);
+                }
                 false
             }
         }
@@ -265,10 +269,8 @@ impl Drop for PullJob {
         if !self.demand.eof.load(Relaxed) {
             self.control.stop();
         }
-        if let Some(source) = self.source.take()
-            && self.owner.drop_source(source)
-        {
-            self.control.stop();
+        if let Some(source) = self.source.take() {
+            self.owner.drop_source(source);
         }
     }
 }
@@ -732,6 +734,110 @@ mod tests {
             "the idle sibling was not dropped without another output callback"
         );
         assert_eq!(sibling.state(), AudioStreamState::Stopped);
+    }
+
+    #[test]
+    fn rejected_source_panic_stops_a_sibling_before_eof_drain() {
+        struct PauseAtEof {
+            waiting: Sender<()>,
+            resume: Receiver<()>,
+        }
+
+        impl Drop for PauseAtEof {
+            fn drop(&mut self) {
+                if self.waiting.send(()).is_ok() {
+                    let _ = self.resume.recv_timeout(Duration::from_secs(1));
+                }
+            }
+        }
+
+        struct Rejected;
+        impl AudioStream for Rejected {
+            fn read(&mut self, _: &mut [i16]) -> AudioRead {
+                AudioRead::Frames(0)
+            }
+        }
+        impl Drop for Rejected {
+            fn drop(&mut self) {
+                panic!("rejected source destructor");
+            }
+        }
+
+        for (pause_in_read, boundary) in [(true, "EOF read"), (false, "EOF destruction")] {
+            let (waiting, reached) = mpsc::channel();
+            let (resume, released) = mpsc::channel();
+            let mut pause = Some(PauseAtEof {
+                waiting,
+                resume: released,
+            });
+            let mut first = true;
+            let mut rig = Rig::new(move |pcm| {
+                if std::mem::take(&mut first) {
+                    pcm[..4].fill(16_384);
+                    return AudioRead::Frames(2);
+                }
+                if pause_in_read {
+                    drop(pause.take());
+                }
+                AudioRead::Eof
+            });
+            // Queue two frames and ask for one more without ever running the mixer.
+            request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+            assert!(rig.refill());
+            request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+
+            // The original job is already admitted. A zero-slot queue rejects the next open.
+            let (reject, _rejecting) = mpsc::sync_channel(0);
+            rig.pool.state().worker.as_mut().unwrap().sender = reject;
+            let mut job = rig.job.take().unwrap();
+            let scratch = &mut rig.scratch;
+            thread::scope(|scope| {
+                let worker = scope.spawn(move || assert!(!job.refill(scratch)));
+                reached
+                    .recv_timeout(Duration::from_secs(1))
+                    .expect("sibling did not reach EOF");
+                let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
+                assert!(matches!(
+                    rig.pool
+                        .open(&rig.mixer, "mod", &spec, Some(Box::new(Rejected))),
+                    Err(AudioRefusal::WorkerUnavailable)
+                ));
+                assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
+                resume.send(()).unwrap();
+                worker.join().unwrap();
+            });
+            assert_eq!(rig.stream.state(), AudioStreamState::Stopped, "{boundary}");
+            assert_eq!(rig.play::<8>(), [0.0; 8], "{boundary} must not drain");
+        }
+    }
+
+    #[test]
+    fn a_refused_source_destruction_does_not_commit_eof_drain() {
+        struct RefuseOnDrop;
+        impl Drop for RefuseOnDrop {
+            fn drop(&mut self) {
+                mod_api::__private::refuse("test_drop", mod_api::__private::ModPhase::Reloading);
+            }
+        }
+
+        let source = RefuseOnDrop;
+        let mut first = true;
+        let mut rig = Rig::new(move |pcm| {
+            let _owned = &source;
+            if std::mem::take(&mut first) {
+                pcm[..4].fill(16_384);
+                AudioRead::Frames(2)
+            } else {
+                AudioRead::Eof
+            }
+        });
+        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+        assert!(rig.refill());
+        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+        assert!(!rig.refill());
+        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+        assert_eq!(rig.play::<8>(), [0.0; 8]);
+        assert!(rig.pool.take_pull_panics().is_empty());
     }
 
     #[test]
