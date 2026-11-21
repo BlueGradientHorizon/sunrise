@@ -27,8 +27,11 @@ with the line to write instead:
 A registry build checks the staged mod's `Cargo.toml` and each local crate it reaches, including
 build, dev and target-specific dependencies. Keep authored path dependencies inside the mod and
 under its packaged source tree, and use `package = "…"` if the dependency's alias differs from
-its package name. To link another mod, declare it in `sunrise-mod.toml`; the builder adds the Cargo
-path to its staged library. Don't put that path in your own `Cargo.toml`.
+its package name. The generated `sunrise-internals` facade uses the alias `internals` unless you
+name it differently. If the alias is already used in `[dependencies]`, the registry build reports
+the conflict. Give one dependency a different alias with `package = "…"` and use that alias in Rust
+imports. To link another mod, declare it in `sunrise-mod.toml`; the builder adds the Cargo path to
+its staged library. Don't put that path in your own `Cargo.toml`.
 
 The builder takes the API and internals from the pinned SDK, not from crates.io. For other registry
 crates, use crates.io and keep the mod's `Cargo.lock` up to date with

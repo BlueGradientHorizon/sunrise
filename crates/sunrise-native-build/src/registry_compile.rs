@@ -47,6 +47,41 @@ fn check_log_template(template: &str, native_log: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn add_facade_dependencies(
+    project: &api::Project<'_>,
+    manifest: &mut toml::Table,
+    facade_relative: &str,
+    facade_package: &str,
+) -> Result<(), String> {
+    let dependencies = manifest
+        .entry("dependencies")
+        .or_insert_with(|| toml::Table::new().into())
+        .as_table_mut()
+        .ok_or("invalid dependencies")?;
+    for (alias, library) in project.api_dependencies() {
+        if library != "internals" {
+            continue;
+        }
+        let entry = match dependencies.entry(alias) {
+            toml::map::Entry::Vacant(entry) => entry,
+            toml::map::Entry::Occupied(entry) => {
+                return Err(trf(
+                    "{mod}: Cargo.toml dependency alias `{alias}` is already in use; rename the dependency or give `sunrise-internals` a different alias.",
+                    &[("mod", &project.bundle.manifest.id), ("alias", entry.key())],
+                ));
+            }
+        };
+        entry.insert(
+            toml::toml! {
+                path = (format!("../../{facade_relative}"))
+                package = facade_package
+            }
+            .into(),
+        );
+    }
+    Ok(())
+}
+
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
@@ -154,7 +189,6 @@ pub fn compile(
                 fs::write(dest.join(local).join("Cargo.toml"), manifest.to_string())
                     .map_err(|e| e.to_string())
             })?;
-        wanted.extend(requests);
         // Only the builder creates cross-mod paths, from declared edges and actual stage members.
         // The facade edge below likewise points to the exact package and path generated for this mod.
         let targets: Vec<_> = declared[index]
@@ -231,18 +265,14 @@ pub fn compile(
                 externs.insert(name, path);
             }
         }
-        if internals::needed(&bundle.manifest)
-            || project
-                .api_dependencies()
-                .iter()
-                .any(|(_, package)| *package == "internals")
-        {
+        if internals::needed(&bundle.manifest) || project.uses_internals() {
             let facade = &generated[id.as_str()];
             let facade_relative = internals::relative(id);
+            let facade_package = internals::package(id);
+            add_facade_dependencies(project, &mut manifest, &facade_relative, &facade_package)?;
             let facade_dir = out.join(&facade_relative);
             fs::create_dir_all(facade_dir.join("src")).map_err(|e| e.to_string())?;
             fs::write(facade_dir.join("src/lib.rs"), &facade.source).map_err(|e| e.to_string())?;
-            let facade_package = internals::package(id);
             let facade_manifest = toml::toml! { [package] name = (facade_package.clone()) version = "0.0.0" edition = "2024" };
             fs::write(facade_dir.join("Cargo.toml"), facade_manifest.to_string())
                 .map_err(|e| e.to_string())?;
@@ -265,20 +295,6 @@ pub fn compile(
                 },
             );
             members.push(facade_relative.clone());
-            let dependencies = manifest
-                .entry("dependencies")
-                .or_insert_with(|| toml::Table::new().into())
-                .as_table_mut()
-                .ok_or("invalid dependencies")?;
-            let aliases: Vec<_> = project
-                .api_dependencies()
-                .into_iter()
-                .filter(|(_, package)| *package == "internals")
-                .map(|(name, _)| name)
-                .collect();
-            for alias in aliases {
-                dependencies.insert(alias, toml::toml! { path = (format!("../../{facade_relative}")) package = (facade_package.clone()) }.into());
-            }
             generated_facades.insert(facade_package.clone(), project.package.as_str());
             wrapper_deps.insert(
                 format!("mod_{position}_internals"),
@@ -286,6 +302,7 @@ pub fn compile(
             );
         }
         fs::write(dest.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
+        wanted.extend(requests);
         bindings.insert(
             dest,
             registry_rustc::Bindings {
@@ -688,6 +705,63 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn generated_facade_cannot_replace_an_authored_registry_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        super::super::tests::write_bundle(dir.path(), "bake", "");
+        let bundle = super::super::bundle_in(dir.path()).unwrap().unwrap();
+        for (sdk_key, expected_alias) in [
+            ("sunrise-internals", None),
+            ("game-internals", Some("game_internals")),
+        ] {
+            let cargo = format!(
+                r#"
+                [package]
+                name = "bake"
+                version = "0.1.0"
+                [dependencies]
+                sunrise-mod-api = {{ path = ".sunrise/sdk/api/crates/sunrise-mod-api" }}
+                {sdk_key} = {{ package = "sunrise-internals", path = ".sunrise/sdk/api/crates/sunrise-internals" }}
+                internals = {{ package = "itoa", version = "1" }}
+                "#
+            );
+            let project = api::Project::parse(&bundle, &cargo).unwrap();
+            let (mut manifest, wanted) =
+                super::super::crates::rewrite_closure(&project, dir.path(), |_, _| {
+                    unreachable!("fixture has no local dependencies")
+                })
+                .unwrap();
+            let result = add_facade_dependencies(
+                &project,
+                &mut manifest,
+                "native-internals/bake",
+                "sunrise-internals-bake",
+            );
+            let dependencies = &manifest["dependencies"];
+            assert_eq!(dependencies["internals"]["package"].as_str(), Some("itoa"));
+            assert_eq!(dependencies["internals"]["version"].as_str(), Some("1"));
+            assert_eq!(wanted.len(), 1);
+            assert_eq!(wanted[0].name, "itoa");
+            if let Some(alias) = expected_alias {
+                result.unwrap();
+                assert_eq!(
+                    dependencies[alias]["package"].as_str(),
+                    Some("sunrise-internals-bake")
+                );
+                assert_eq!(
+                    dependencies[alias]["path"].as_str(),
+                    Some("../../native-internals/bake")
+                );
+            } else {
+                let error = result.unwrap_err();
+                assert!(
+                    error.contains("bake: Cargo.toml dependency alias `internals`"),
+                    "{error}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn forwarding_sdk_requires_one_logger_slot_in_its_template() {
