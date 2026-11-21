@@ -234,6 +234,15 @@ impl Entry {
         if self.owners.is_empty() {
             errors.push(format!("{id}: needs at least one owner (a GitHub login)"));
         }
+        for owner in &self.owners {
+            if owner.trim().is_empty() {
+                errors.push(format!("{id}: an owner is blank: give a GitHub login"));
+            } else if owner.trim_start().starts_with(TODO) {
+                errors.push(format!(
+                    "{id}: the owner is still the {TODO} that `cargo sunrise-mod publish` wrote: replace it with your own text in mods/{id}.toml"
+                ));
+            }
+        }
         if let Some(error) = owner_ids_error(&self.owners, &self.owner_ids) {
             errors.push(format!("{id}: {error}"));
         }
@@ -266,7 +275,6 @@ impl Entry {
             ("source", &self.source),
         ]
         .into_iter()
-        .chain(self.owners.iter().map(|o| ("owner", o.as_str())))
         .chain(self.authors.iter().map(|a| ("author", a.as_str())))
         .chain(self.categories.iter().map(|c| ("category", c.as_str())))
         .chain(self.tags.iter().map(|t| ("tag", t.as_str())));
@@ -731,10 +739,21 @@ fn has_versions(entry: &Entry, cache: Option<&Cache>) -> bool {
 fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Project, Vec<String>> {
     let entry = &entry.resolved(&cache.page);
     let no_versions = !has_versions(entry, Some(cache));
-    let mut errors = entry.check_page(no_versions && entry.nightly.is_some());
+    let nightly_only = no_versions && entry.nightly.is_some();
+    let mut errors = entry.check_page(nightly_only);
     let id = &entry.id;
     if !valid_id(id) || crate::manifest::RESERVED_IDS.contains(&id.as_str()) {
         return Err(errors);
+    }
+    if nightly_only {
+        // Its images are optional, but the ones it has are kept in the registry like any other's.
+        let icon = entry.icon.as_deref();
+        errors.extend(
+            icon.and_then(|icon| rules::check_icon_path(id, Some(icon)))
+                .into_iter()
+                .chain(rules::check_screenshot_paths(&entry.screenshots))
+                .map(|problem| format!("{id}: {problem}")),
+        );
     }
     let icon = entry
         .icon
@@ -1093,7 +1112,17 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
     let empty = Cache::default();
     for (entry, cache) in checkout.listed() {
         match project_with_cache(entry, cache.unwrap_or(&empty), src) {
-            Ok(p) => projects.push(p),
+            Ok(mut p) => {
+                // A takedown of the whole project covers its unreviewed source as well as its
+                // files; one that names a hash covers that file alone.
+                let taken_down = |r: &Revoked| r.id == p.id && r.sha256.is_none();
+                if checkout.revoked.iter().any(taken_down) {
+                    p.nightly = None;
+                }
+                if p.nightly.is_some() || !p.versions.is_empty() {
+                    projects.push(p);
+                }
+            }
             Err(e) => errors.extend(e),
         }
     }
