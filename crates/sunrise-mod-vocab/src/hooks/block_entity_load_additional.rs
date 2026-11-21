@@ -2,11 +2,13 @@
 
 pub trait Hooks {
     /// The engine applied saved data to this mod block entity on the logical
-    /// server (`BlockEntity.loadAdditional`). `tag` is the applied mod payload;
-    /// the read-only level host sees the new data. `event.pos` and `event.level` are the
-    /// instance's own `worldPosition` and level, so a listener can store the applied data under its
-    /// dimension and position, also after a later `/data merge`. The notice cannot change the
-    /// tag or write to the world.
+    /// server (`BlockEntity.loadAdditional`). `tag` is the applied mod payload, and
+    /// `event.subject` is a [`BlockEntityLevelReadScope`](mod_api::BlockEntityLevelReadScope):
+    /// `with_view` lends a read-only [`BlockEntityReadView`](mod_api::BlockEntityReadView)
+    /// carrying the instance's handle, `worldPosition`, level, block state and updated
+    /// data, and `host()` borrows `&dyn LevelHost`, so a listener can store the applied
+    /// data under its dimension and position, also after a later `/data merge`. The notice
+    /// cannot change the tag or write to the world.
     ///
     /// This runs for chunk loads, block data commands, cloning, structure and
     /// block-item placement with data, and falling blocks that carry data.

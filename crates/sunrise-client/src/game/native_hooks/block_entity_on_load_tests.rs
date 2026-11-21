@@ -5,8 +5,8 @@ mod tests {
     };
     use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
-        Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntityTicksEvent, BlocksEvent, Hooks,
-        Host, HostSide, ModEntry, Registrar, RegistrationContext,
+        Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
+        BlockEntityTicksEvent, BlocksEvent, Hooks, Host, ModEntry, Registrar, RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::{
@@ -30,21 +30,23 @@ mod tests {
             });
         }
 
-        fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
-            let (pos, data) = match host {
-                HostSide::Server(h) => (
-                    event.entity.position(h).unwrap(),
-                    event.entity.data(h).unwrap(),
-                ),
-                HostSide::Client(h) => (
-                    event.entity.position(h).unwrap(),
-                    event.entity.data(h).unwrap(),
-                ),
-            };
-            let Some(mod_api::Tag::Int(count)) = data.get(&"count".into()) else {
-                panic!("saved count missing")
-            };
-            self.0.lock().unwrap().push((pos[0], *count));
+        fn block_entity_on_load(&self, event: &mut BlockEntityOnLoadEvent<'_>) {
+            let (pos, count) = match &mut event.subject {
+                BlockEntitySideScope::Server(scope) => scope.with_view(|view| {
+                    let Some(mod_api::Tag::Int(count)) = view.nbt().get(&"count".into()) else {
+                        panic!("saved count missing")
+                    };
+                    (view.position(), *count)
+                }),
+                BlockEntitySideScope::Client(scope) => scope.with_view(|view| {
+                    let Some(mod_api::Tag::Int(count)) = view.nbt().get(&"count".into()) else {
+                        panic!("saved count missing")
+                    };
+                    (view.position(), *count)
+                }),
+            }
+            .expect("live resident block entity");
+            self.0.lock().unwrap().push((pos[0], count));
         }
     }
     struct User(Log, &'static [&'static str]);

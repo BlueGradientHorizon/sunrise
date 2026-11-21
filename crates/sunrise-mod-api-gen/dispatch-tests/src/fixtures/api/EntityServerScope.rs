@@ -1,1 +1,1 @@
-pub struct EntityServerScope<'a>(std::marker::PhantomData<&'a mut ()>);
+pub struct EntityServerScope<'a>(pub std::marker::PhantomData<&'a mut ()>);

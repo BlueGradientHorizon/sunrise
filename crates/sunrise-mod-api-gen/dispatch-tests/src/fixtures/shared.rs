@@ -43,9 +43,6 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
-        pub(in crate::tests) fn entity_type_name(_: u32) -> Option<&'static str> {
-            Some("test:entity")
-        }
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
@@ -607,11 +604,7 @@ impl EntityPart for Mod {
     fn entity_subscribed(&self) -> &'static [Option<HookId>] {
         &[]
     }
-    fn general_entity_tick(
-        &self,
-        _host: &mut dyn ServerHost,
-        event: &mut GeneralEntityTickEvent<'_>,
-    ) {
+    fn general_entity_tick(&self, event: &mut GeneralEntityTickEvent<'_>) {
         assert_eq!(event.kind, "mymod:robot");
         self.calls.lock().unwrap().push(self.id);
     }

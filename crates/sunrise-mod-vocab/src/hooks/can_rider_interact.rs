@@ -5,7 +5,11 @@ pub trait Hooks {
     /// pick despite sharing the camera's root vehicle. Mirrors NeoForge's
     /// `IEntityExtension.canRiderInteract`, false by default. Only parts attached
     /// to the candidate's type are asked, in dependency order; `allowed` starts
-    /// false and the last write wins. Asked only at the same-vehicle branch of
+    /// false and the last write wins. `event.subject` is an
+    /// [`EntityClientScope`](mod_api::EntityClientScope): `with_view` lends a
+    /// read-only [`EntityClientView`](mod_api::EntityClientView) of the candidate
+    /// (handle, kind, position, rotation, UUID), and `host()` borrows `&mut dyn ClientHost`
+    /// sequentially. Asked only at the same-vehicle branch of
     /// `ProjectileUtil.getEntityHitResult`, after a non-inside ray intersection
     /// qualifies against the running nearest distance. True lets this candidate
     /// update that distance normally. Inside-box selection does not ask it.

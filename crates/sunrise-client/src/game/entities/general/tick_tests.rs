@@ -66,21 +66,22 @@ struct Counter {
 
 #[mod_api::sunrise_part]
 impl EntityPart for Counter {
-    fn general_entity_tick(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut GeneralEntityTickEvent<'_>,
-    ) {
-        let holder = Holder::Entity(event.entity.id());
+    fn general_entity_tick(&self, event: &mut GeneralEntityTickEvent<'_>) {
+        let entity = event
+            .subject
+            .with_view(|view| view.handle())
+            .expect("live resident general entity");
+        let host = event.subject.host();
+        let holder = Holder::Entity(entity.id());
         let value = COUNTER.get(host, holder).unwrap() + 1;
         COUNTER.set(host, holder, value).unwrap();
-        if self.panicking_on() == Some(event.entity.id())
+        if self.panicking_on() == Some(entity.id())
             && !self.fired.swap(true, std::sync::atomic::Ordering::Relaxed)
         {
             panic!("general entity tick boom");
         }
         let action = std::mem::replace(&mut *self.action.lock().unwrap(), OnTick::Nothing);
-        let other = |id: u32| mod_api::EntityRef::new(event.entity.epoch(), id);
+        let other = |id: u32| mod_api::EntityRef::new(entity.epoch(), id);
         match action {
             OnTick::Nothing => {}
             OnTick::Remove(id) => {
@@ -90,11 +91,8 @@ impl EntityPart for Counter {
                 assert!(other(id).stop_riding(host));
             }
         }
-        self.events
-            .lock()
-            .unwrap()
-            .push((event.entity.id(), "tick"));
-        self.trace.lock().unwrap().push(event.entity.id());
+        self.events.lock().unwrap().push((entity.id(), "tick"));
+        self.trace.lock().unwrap().push(entity.id());
     }
 }
 

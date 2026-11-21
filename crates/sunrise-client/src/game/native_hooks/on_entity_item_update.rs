@@ -196,9 +196,7 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
 #[cfg(test)]
 mod on_entity_item_update_tests {
     use super::*;
-    use mod_api::{
-        Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext, ServerHost,
-    };
+    use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
     use std::sync::{Arc, Mutex};
     use sunrise_client::chunk::Chunk;
 
@@ -215,30 +213,29 @@ mod on_entity_item_update_tests {
 
     #[mod_api::sunrise_part]
     impl ItemPart for Update {
-        fn on_entity_item_update(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut OnEntityItemUpdateEvent<'_>,
-        ) -> Flow {
+        fn on_entity_item_update(&self, event: &mut OnEntityItemUpdateEvent<'_>) -> Flow {
+            let handle = event
+                .subject
+                .with_view(|view| view.handle())
+                .expect("live resident item entity");
             ORDER.with(|order| {
-                order
-                    .borrow_mut()
-                    .push((event.item.entity().id(), "update"))
+                order.borrow_mut().push((handle.entity().id(), "update"));
             });
-            self.heard.lock().unwrap().push(event.item.entity().id());
+            self.heard.lock().unwrap().push(handle.entity().id());
             if self.remove {
                 assert!(
-                    event
-                        .item
+                    handle
                         .entity()
-                        .remove(host, mod_api::RemovalReason::Discarded)
+                        .remove(event.subject.host(), mod_api::RemovalReason::Discarded)
                 );
-                assert_eq!(event.item.entity().position(host), None);
-                assert!(!event.item.set_pickup_delay(host, 7));
+                assert!(event.subject.with_view(|_| ()).is_none());
                 return Flow::Continue;
             }
-            assert!(event.item.set_pickup_delay(host, 7));
-            if self.cancels && (!self.mixed || event.item.entity().id().is_multiple_of(2)) {
+            assert_eq!(
+                event.subject.with_view(|mut view| view.set_pickup_delay(7)),
+                Some(true)
+            );
+            if self.cancels && (!self.mixed || handle.entity().id().is_multiple_of(2)) {
                 Flow::Cancel
             } else {
                 Flow::Continue

@@ -176,8 +176,10 @@ load or an unchanged result.
 
 Implement `BlockEntityPart::block_entity_load_additional` to refresh mod-owned state after the server
 applies a saved payload, including `/data merge` and `/data modify`, cloning, structure and item
-placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload, `event.pos` and `event.level` name the instance, and the
-read-only level host already sees the updated instance. `block_entity_on_load` follows when that
+placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload, and
+`event.subject` is a `BlockEntityLevelReadScope<'_>`: `with_view` lends a read-only
+`BlockEntityReadView` carrying the instance's handle, position, level, block state and updated data,
+and `host()` borrows the read-only `LevelHost`. `block_entity_on_load` follows when that
 instance is new; it also fires for a fresh placement that had no saved data.
 
 Direct Mod API `merge_data` and `replace_data` writes and transaction restores do not fire the
