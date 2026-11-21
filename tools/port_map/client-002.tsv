@@ -112,7 +112,7 @@ ClientPacketListener.openSendConfirmationWindow	port	crates/sunrise-client/src/g
 ClientPacketListener.openCommandSendConfirmationWindow	port	crates/sunrise-client/src/game/network/remote_chat.rs::Game::answer_command_prompt	Run Command sends it
 ClientPacketListener.openSignedCommandSendConfirmationWindow	port	crates/sunrise-client/src/game/network/remote_chat.rs::Game::answer_command_prompt	into the chat box, or the clipboard over a screen; a kept chat draft is not put before it
 ClientPacketListener.broadcastClientInformation	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::tick_remote_level	gap: minor: only view distance and chat visibility are sent, and only when they change
-ClientPacketListener.notifyPlayerLoaded	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::tick_remote_level	gap: minor: gated on the player's column being lit, not on its sections being compiled
+ClientPacketListener.notifyPlayerLoaded	port	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_client_load	sends PlayerLoaded when the load tracker is ready
 ClientPacketListener.setKeyPair	port	crates/sunrise-client/src/game/network/remote_chat.rs::Game::update_chat_session	only for the account's own profile id; a new session when the pair changes
 ClientRegistryLayer.createRegistryAccess	skip:data		registry layers come from Sunrise's own tables
 ClientSuggestionProvider.getOnlinePlayerNames	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_online_names	sorted names of the server's player list
@@ -127,7 +127,7 @@ LegacyServerPinger.channelActive	skip:other		legacy pre-1.7 server-list ping, no
 LegacyServerPinger.channelRead0	skip:other		legacy pre-1.7 server-list ping, not used by this client
 LevelLoadTracker.startClientLoad	port	crates/sunrise-client-render/src/level_loading.rs::LevelLoadTracker::start_client_load	state WaitingForServer until the loading start game event, 30 000 ms out, with the screen's reason; the player and level vanilla keeps in that state are passed to tick_client_load instead
 LevelLoadTracker.isLevelReady	port	crates/sunrise-client-render/src/level_loading.rs::LevelLoadTracker::is_level_ready	ready once the ready time plus the close delay (500 ms for a new world, 0 for a respawn) has passed
-LevelLoadTracker.getPlayerCompiledSectionCallback	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::tick_remote_level	gap: minor: the gate is the column being lit, not the section being compiled
+LevelLoadTracker.getPlayerCompiledSectionCallback	inline	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_client_load	the renderer checks that the player's section is compiled and visible; only headless mode waits for the surrounding columns to be lit and the fade to elapse
 LevelLoadTracker.WaitingForPlayerChunk.isReady	port	crates/sunrise-client-render/src/level_loading.rs::LevelLoadTracker::tick_client_load	the 30 s timeout and the spectator, dead and outside-build-height exemptions
 LevelLoadTracker.WaitingForServer.loadingPacketsReceived	port	crates/sunrise-client-render/src/level_loading.rs::LevelLoadTracker::loading_packets_received	GameEvent 13 (LEVEL_CHUNKS_LOAD_START) moves the wait on to the player's chunk
 MultiPlayerGameMode.startPrediction	port	crates/sunrise-client/src/game/network/remote/mod.rs::Game::next_sequence	gap: minor: only the sequence number; each caller builds and sends its own packet

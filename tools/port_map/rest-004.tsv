@@ -101,7 +101,7 @@ net/minecraft/client/main/Main#getQuickPlayVariant	port	crates/sunrise-client/sr
 net/minecraft/client/main/Main#parseArgument	inline	crates/sunrise-client/src/game/launch_options.rs::Options::parse	the argument loop itself (Options::read is the wrapper that feeds it std::env::args)
 net/minecraft/client/main/Main#hasValidUuid	skip:other		the --uuid argument is what reaches it, and Sunrise's client parses none (game/launch_options.rs::Options::parse takes its own flags)
 net/minecraft/client/main/Main#isUuidValid	skip:other		the check behind hasValidUuid, which no --uuid argument reaches
-AbstractClientPlayer.getPlayerInfo	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_pushes	the entity id -> uuid -> tab entry lookups stand in for the PlayerInfo; the name, team and game mode are read from that entry
+AbstractClientPlayer.getPlayerInfo	inline	crates/sunrise-client/src/game/network/remote/sync.rs::Game::remote_pushes	the entity id -> uuid -> tab entry lookups stand in for the PlayerInfo; the name, team and game mode are read from that entry
 AbstractClientPlayer.getSkin	port	crates/sunrise-client/src/game/network/remote/status.rs::Game::update_remote_skins	the downloaded skin and slim flag, else DefaultPlayerSkin by uuid, as PlayerInfo.getSkin
 AbstractClientPlayer.getParrotVariantOnShoulder	port	crates/sunrise-client/src/mobs/render.rs::shoulder_parrot	the shoulder slot's stored variant picks the parrot texture and model in the layer
 ClientInput.makeJump	inline	crates/sunrise-client/src/motion.rs::MotionWorld::controlled_simulation_tick	gap: minor: carries the auto-jump flag; no separate jump input
@@ -146,5 +146,5 @@ LocalPlayer.getRopeHoldPosition	port	crates/sunrise-client/src/game/entities/lea
 LocalPlayer.raycastHitResult	port	crates/sunrise-client/src/game/items/hand.rs::GameHands::hit	gap: minor: block fallback is Game::pick; no separate item attack-range pass
 LocalPlayer.filterHitResult	inline	crates/sunrise-client/src/game.rs::Game::pick	gap: minor: reach is applied inside the clip; no miss direction is returned
 LocalPlayerResolver.fetchByName	missing		minor: unsure: no player-list lookup by name on the client
-LocalPlayerResolver.fetchById	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::remote_pushes	the uuid -> tab entry lookup is inline wherever a player's name, team or skin is needed
+LocalPlayerResolver.fetchById	inline	crates/sunrise-client/src/game/network/remote/sync.rs::Game::remote_pushes	the uuid -> tab entry lookup is inline wherever a player's name, team or skin is needed
 Options.mouseWheelSensitivity	port	crates/sunrise-client-render/src/options_ui_wheel.rs::kind	IntRange(-200, 100) through logMouse/unlogMouse: the slider runs over 10^(i/100), 0.01 to 10.0
