@@ -1351,11 +1351,12 @@ impl Game<'_> {
         if !passed && counted {
             self.game_tests.failed.push(info.key.clone());
         }
-        // The runner's batch listener.
+        // GameTestRunner's batch listener clears forces in testInfo.getLevel(),
+        // the level tick_test runs with in place.
         if passed {
             self.remove_test_barriers(info.pos);
         } else if halt {
-            self.release_forced_chunks();
+            self.streaming.clear_forced();
             self.clear_game_tests();
             return;
         }
@@ -1365,7 +1366,7 @@ impl Game<'_> {
         runner.batch_pending = runner.batch_pending.saturating_sub(1);
         if runner.batch_pending == 0 {
             let next = runner.current + 1;
-            self.release_forced_chunks();
+            self.streaming.clear_forced();
             self.run_batch(next);
         }
     }

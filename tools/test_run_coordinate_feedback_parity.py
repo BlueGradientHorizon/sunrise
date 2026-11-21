@@ -62,6 +62,9 @@ def generate(java, build):
             commands.reply(f'execute in minecraft:{dim} run fill 0 199 0 31 199 31 stone')
             commands.reply(f'execute in minecraft:{dim} run fill 0 200 0 31 215 31 air')
         commands.reply('setworldspawn 4 200 4')
+        # The Overworld scene owns its setup and inspection tickets. Keep the
+        # Nether tickets to check that an Overworld test leaves them alone.
+        commands.reply('execute in overworld run forceload remove all')
         commands.reply('save-all flush')
     finally:
         server.stop()
@@ -90,6 +93,7 @@ def run(label, command, client_command, build, world, java):
         commands.reply('tick freeze')
         commands.reply('scoreboard objectives add coords dummy')
         for scene, dim, x in SCENES:
+            commands.reply(f'execute in overworld run forceload add {int(x)} 8')
             commands.reply(f'execute in minecraft:{dim} run tp Alice {x} 200.0 8.5 30 15')
             client.sync(['Alice'])
             commands.passed('execute if entity @a[name=Alice,type=player,nbt={UUID:[I;' +
@@ -124,13 +128,21 @@ def run(label, command, client_command, build, world, java):
             clocks.append(dict(scene=scene, before=start, after=game_time(server), elapsed=8))
             client.sync(['Alice'])
             sound.dump(client, scene)
-            # Actual created block and completion, independent of coordinate feedback.
+            commands.reply('execute store success score nether_force coords in the_nether '
+                           f'run forceload query {int(x)} 8')
+            commands.passed('execute if score nether_force coords matches 1')
+            # GameTestRunner removes the Overworld force. Request our own ticket
+            # for inspecting the completed block rather than relying on residency.
+            commands.reply('execute store success score probe_force coords in overworld '
+                           f'run forceload add {int(x)} 11')
+            commands.passed('execute if score probe_force coords matches 1')
             p = f'{int(x)} 200 11'
             commands.passed(f'execute in overworld if block {p} test_instance_block')
             for field, expected in [('test', 'minecraft:always_pass'), ('status', 'finished')]:
                 text = commands.reply(f'execute in overworld run data get block {p} data.{field}')
                 assert expected in text, (scene, field, text)
             commands.reply(f'execute in overworld run data get block {p}')
+            commands.reply(f'execute in overworld run forceload remove {int(x)} 11')
             commands.reply('data get entity Alice')
             client.sync(['Alice'])
             sound.dump(client, scene)
