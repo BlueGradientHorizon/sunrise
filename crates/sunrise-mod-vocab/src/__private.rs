@@ -1,9 +1,6 @@
 //! The game's side of the mod API: the installed tables, the reload machinery, the structs the
 //! game fills for its hooks (`built`) and what it reads of handles and the API's own types
 //! (`game`). None of it is part of the API a mod is written against.
-pub use crate::client::special_model_renderers::{
-    BakedSpecialModelRenderer, SpecialModelSubmission,
-};
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;

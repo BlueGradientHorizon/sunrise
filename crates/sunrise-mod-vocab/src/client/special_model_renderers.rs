@@ -15,9 +15,11 @@ use sunrise_core::nbt::Tag;
 // no wire: a borrowed view of one resource definition, used only during decode.
 /// The inline fields of the special model's `model` object, excluding the dispatch key `type`.
 #[derive(Clone, Copy)]
+#[non_exhaustive]
 pub struct SpecialModelConfig<'a>(&'a Map<String, Value>);
 
 impl<'a> SpecialModelConfig<'a> {
+    // hidden: only the engine supplies the decoder-validated object.
     #[doc(hidden)]
     /// Borrow the object validated by the engine's item definition decoder.
     pub fn new(fields: &'a Map<String, Value>) -> Self {
@@ -40,6 +42,7 @@ impl<'a> SpecialModelConfig<'a> {
 // no wire: process-local decoder and bake callbacks.
 /// A decoder paired with a bake function for one special model type.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct SpecialModelFactory(Arc<BakeSpecialModel>);
 
 type BakeSpecialModel = dyn for<'a> Fn(
@@ -72,6 +75,7 @@ impl SpecialModelFactory {
         }))
     }
 
+    // hidden: the resource loader owns factory invocation.
     #[doc(hidden)]
     /// Run the factory at the engine's item definition load boundary.
     pub fn bake(
@@ -135,15 +139,18 @@ impl SpecialModelQuad {
 /// lease only in the resource load in which it was baked; already resolved item states keep
 /// their geometry across reloads.
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct SpecialModelGeometry(Arc<dyn Any + Send + Sync>);
 
 impl SpecialModelGeometry {
+    // hidden: only the engine can wrap its validated baked geometry.
     #[doc(hidden)]
     /// Store validated, engine-owned geometry produced by a bake context.
     pub fn new(geometry: impl Any + Send + Sync) -> Self {
         Self(Arc::new(geometry))
     }
 
+    // hidden: the engine owns the concrete baked geometry type.
     #[doc(hidden)]
     /// Borrow the baked payload in the engine that produced it.
     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
@@ -163,6 +170,7 @@ pub struct SpecialModelStack<'a> {
 }
 
 impl<'a> SpecialModelStack<'a> {
+    // hidden: the engine lends the live component lookup during submit.
     #[doc(hidden)]
     /// Borrow the engine's view of the effective stack components.
     pub fn new(
@@ -229,6 +237,7 @@ pub struct SpecialModelContext {
 
 impl SpecialModelContext {
     /// The context of one drawn item; only the game builds one, mods read it.
+    // hidden: the engine assembles the draw state from its current item render.
     #[doc(hidden)]
     pub const fn new(
         display: ItemDisplayContext,
@@ -250,6 +259,7 @@ impl SpecialModelContext {
 pub struct SpecialModelCollector<'a>(&'a mut dyn SpecialModelSubmission);
 
 impl<'a> SpecialModelCollector<'a> {
+    // hidden: the engine binds its frame-local geometry and nested item submission queue.
     #[doc(hidden)]
     /// Borrow an engine submission destination for this scope.
     pub fn new(sink: &'a mut dyn SpecialModelSubmission) -> Self {
