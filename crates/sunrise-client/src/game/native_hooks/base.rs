@@ -4617,16 +4617,25 @@ impl Game<'_> {
     pub(in crate::game) fn transfer_recipe(&mut self, book_id: i32) {
         self.transfer_viewer_recipe(book_id);
     }
-    /// Creative mode only: gives the player `count` of `item`
+    /// Creative mode only: gives the local player `count` of `item`
     /// (`minecraft:diamond`) as taking it from the creative inventory does
     /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
     /// hotbar, then the inventory. The count is cut to one stack.
-    pub(in crate::game) fn give(
+    pub(in crate::game) fn player_give_creative(
         &mut self,
+        player: mod_api::PlayerRef,
         item: mod_api::ItemKey,
         count: u32,
-    ) -> Result<(), String> {
-        let item = mod_api::__private::item_key_id(item).ok_or("unknown item key")?;
+    ) -> Result<(), mod_api::CreativeGiveError> {
+        use mod_api::CreativeGiveError;
+        if self.is_logical_server() || self.player.is_none() || self.res.rest.get().is_none() {
+            return Err(CreativeGiveError::Unavailable);
+        }
+        let local = self.local_player().ok_or(CreativeGiveError::Unavailable)?;
+        if local != player {
+            return Err(CreativeGiveError::Stale);
+        }
+        let item = mod_api::__private::item_key_id(item).ok_or(CreativeGiveError::UnknownItem)?;
         self.recipe_give(item, count)
     }
 }

@@ -54,8 +54,25 @@ ids = [
     "handle:LevelRef::visit_columns",
     "handle:LevelRef::visit_structure_template",
     "handle:LevelRef::place_template",
+    "trait:prelude::MenusServerHost",
+    "trait:prelude::RecipesServerHost",
+    "method:prelude::MenusServerHost::open_menu",
+    "method:prelude::MenusServerHost::menu",
+    "method:prelude::MenusServerHost::close_menu",
+    "method:prelude::MenusServerHost::menu_set_items",
+    "method:prelude::RecipesServerHost::place_recipe_in_grid",
+    "method:prelude::ItemsClientHost::give",
+    "type:OpenMenuError",
+    "type:MenuItemsRefusal",
+    "type:RecipePlaceError",
+    "type:CreativeGiveError",
+    "handle:PlayerRef::open_chest_menu",
+    "handle:PlayerRef::menu",
+    "handle:MenuRef::set_items",
+    "handle:MenuRef::place_recipe_in_grid",
+    "handle:PlayerRef::give_creative",
 ]
-why = "Block writes, dispenser actions, bulk block edits, column reads, generator surface reads, structure template reads/placement, and entity summoning now name their level, block-entity sync names the live holder, entity killing names the live entity, experience-orb reads and writes live on ExperienceOrbRef without live save-width fencing, and collision, column, surface, template, and experience-orb queries visit the named level without building a list or enforcing invented server column/block caps. These paths follow vanilla 26.3 Level.setBlock and LevelChunk.setBlockState, ServerLevel.sendBlockUpdated, DispenserBlock.dispenseFrom and DefaultDispenseItemBehavior.execute/consumeWithRemainder, BlockState.getCollisionShape with VoxelShape.forAllBoxes, SummonCommand.createEntity and ServerLevel.tryAddFreshEntityWithPassengers, Entity.kill and LivingEntity.kill (genericKill hurtServer with Float.MAX_VALUE and LivingEntity.isAlive), Level.getEntities(EntityTypeTest.forClass(ExperienceOrb.class), ...), ExperienceOrb (DATA_VALUE SynchedEntityData<Integer>, int age, ExtraCodecs.POSITIVE_INT count, with addAdditionalSaveData truncating Value and Age to (short) only at save time), and PlaceCommand.placeTemplate / PlaceCommand.checkLoaded / StructureTemplate.placeInWorld. NeoForge's Level.markAndNotifyBlock preserves update flags, and DispenseFluidContainer.execute uses the same default and remainder paths."
+why = "Block writes, dispenser actions, bulk block edits, column reads, generator surface reads, structure template reads/placement, and entity summoning now name their level, block-entity sync names the live holder, entity killing names the live entity, experience-orb reads and writes live on ExperienceOrbRef without live save-width fencing, collision, column, surface, template, and experience-orb queries visit the named level without building a list or enforcing invented server column/block caps, and native menu operations, recipe-grid placement, and client creative item giving now live on PlayerRef and MenuRef with typed errors. These paths follow vanilla 26.3 Level.setBlock and LevelChunk.setBlockState, ServerLevel.sendBlockUpdated, DispenserBlock.dispenseFrom and DefaultDispenseItemBehavior.execute/consumeWithRemainder, BlockState.getCollisionShape with VoxelShape.forAllBoxes, SummonCommand.createEntity and ServerLevel.tryAddFreshEntityWithPassengers, Entity.kill and LivingEntity.kill (genericKill hurtServer with Float.MAX_VALUE and LivingEntity.isAlive), Level.getEntities(EntityTypeTest.forClass(ExperienceOrb.class), ...), ExperienceOrb (DATA_VALUE SynchedEntityData<Integer>, int age, ExtraCodecs.POSITIVE_INT count, with addAdditionalSaveData truncating Value and Age to (short) only at save time), PlaceCommand.placeTemplate / PlaceCommand.checkLoaded / StructureTemplate.placeInWorld, ServerPlayer.openMenu, AbstractContainerMenu.sendAllDataToRemote, RecipeBookMenu.handlePlacement, and ServerGamePacketListenerImpl.handleSetCreativeModeSlot / Inventory.add. NeoForge's Level.markAndNotifyBlock preserves update flags, and DispenseFluidContainer.execute uses the same default and remainder paths."
 migrate = '''
 Remove explicit imports of BlockStatesServerHost, BlockEntitiesServerHost and ClientViewHost; keep ServerHost for writes and Host for shared reads. Resolve the desired LevelRef with `host.level(dimension)` and handle a missing level before calling its methods.
 
@@ -74,4 +91,11 @@ Remove explicit imports of BlockStatesServerHost, BlockEntitiesServerHost and Cl
 - `host.read_columns(dimension, columns, heightmap, range)` and `ColumnBlocks` → `level.visit_columns(host, columns, heightmap, range, &mut |slice: ColumnBlockSlice<'_>| core::ops::ControlFlow::Continue(()))`. Works on active and parked server levels with no 1,048,576-block cap and returns `Result<(), ColumnReadError>`.
 - `host.structure_template(id, at, rotation, mirror)`, `StructureTemplateSnapshot`, and `StructureTemplateBlock` → `level.visit_structure_template(host, id, at, rotation, mirror, &mut |block: StructureTemplateBlockView<'_>| core::ops::ControlFlow::Continue(()))` returning `Result<[i32; 3], StructureTemplateError>`.
 - `host.place_template(source, at, pivot, rotation, mirror)` → `level.place_template(host, source, at, pivot, rotation, mirror)`. Works on active and parked server levels and returns `Result<(), StructureTemplateError>` instead of `Result<(), String>`.
+- Remove explicit imports of `MenusServerHost` and `RecipesServerHost`.
+- `host.open_menu(uuid, rows, title, items, replace)` → `player.open_chest_menu(host, rows, title, items, replace)`. Resolve `player` with `host.player(uuid)`. Returns `Result<Option<i32>, OpenMenuError>` (with `OpenMenuError::Stack(StackWriteError)` for invalid stacks, `OpenMenuError::ClickInProgress` during an active menu click, `OpenMenuError::PlayerUnavailable` for a stale/unconnected player, and `Ok(None)` for `rows` outside `1..=6`).
+- `host.menu(uuid, window)` → `player.menu(host, window)`. Returns `Result<Option<MenuRef>, LevelReadError>`.
+- `host.close_menu(uuid)` → `menu.close_container(host)` on the player's open `MenuRef` (from `player.menu(host, window)` or `player.container_menu(host)`).
+- `host.menu_set_items(uuid, window, items)` → `menu.set_items(host, items)` on the open `MenuRef`. `MenuItemsRefusal` gains `Unavailable` for non-world phases.
+- `host.place_recipe_in_grid(recipe, w, h, grid_slots, clear_slots, use_max_items)` → `menu.place_recipe_in_grid(host, recipe, w, h, &grid_slots, &clear_slots, use_max_items)` on the acting player's open `MenuRef` (e.g. `host.players().acting_player().and_then(|p| p.container_menu(host))`). Takes slices `&[u16]` instead of owned `Vec<u16>` and returns `Result<bool, RecipePlaceError>` instead of `Result<bool, String>`.
+- `host.give(item, count)` on `ClientHost` → `player.give_creative(host, item, count)` on the local `PlayerRef` (`host.local_player()`). Returns `Result<(), CreativeGiveError>` (`Unavailable`, `Stale`, `NotCreative`, `UnknownItem`, `NoRoom`) instead of `Result<(), String>`.
 '''

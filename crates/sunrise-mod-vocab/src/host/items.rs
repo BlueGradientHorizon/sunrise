@@ -142,13 +142,6 @@ pub trait ItemsServerHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ItemsClientHost {
     /// Side: client.
-    /// Creative mode only: gives the player `count` of `item`
-    /// (`minecraft:diamond`) as taking it from the creative inventory does
-    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
-    /// hotbar, then the inventory. The count is cut to one stack.
-    #[access(WorldOnly)]
-    fn give(&mut self, item: ItemKey, count: u32) -> Result<(), String>;
-    /// Side: client.
     /// The creative search tab's final display order, for ranking stacks in inventory sorters.
     /// This requests the same catalog as the creative screen (using the player's permission and
     /// Operator Items Tab option). On a miss it dispatches the creative build hook. During setup,

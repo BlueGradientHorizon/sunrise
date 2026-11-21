@@ -181,4 +181,19 @@ pub trait PlayersClientBackendMut {
         book: &RecipeBookTypeKey,
         settings: RecipeBookSettings,
     ) -> bool;
+    /// Side: client.
+    /// Creative mode only: gives the local player `count` of `item`
+    /// (`minecraft:diamond`) as taking it from the creative inventory does
+    /// (`ServerboundSetCreativeModeSlot`): the selected slot first, then the
+    /// hotbar, then the inventory. The count is cut to one stack.
+    /// Refuses outside a client world (`Unavailable`), for a stale or non-local
+    /// handle (`Stale`), outside creative mode (`NotCreative`), for an unknown
+    /// item (`UnknownItem`), or when the inventory has no room (`NoRoom`).
+    #[access(WorldOnly)]
+    fn player_give_creative(
+        &mut self,
+        player: PlayerRef,
+        item: ItemKey,
+        count: u32,
+    ) -> Result<(), CreativeGiveError>;
 }

@@ -339,7 +339,7 @@ as `PlayerRef::container_menu` does. It is `None` for crafting tables, merchants
 lecterns and mount inventories. A supported menu's permanently excluded slots are inaccessible
 but keep their backing indices. `replace` is the Java `MenuProvider`'s choice
 (`shouldTriggerClientSideContainerClosingOnOpen`), as for
-[`open_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
+[`PlayerRef::open_chest_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
 `MenuReplace::CloseFirst`, vanilla's default, first sends the client a close for the old
 window, which centres the mouse again; `MenuReplace::InPlace` sends none, so the client keeps
 its screen and its mouse where they are until the new screen replaces it, as when one

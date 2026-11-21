@@ -1409,7 +1409,8 @@ pub struct ProfileProperty<'a> {
 }
 
 // no wire: An in-process result of a native menu open, not a transported payload.
-/// Why [`PlayerRef::open_mod_menu`] opened nothing.
+/// Why [`PlayerRef::open_mod_menu`], [`PlayerRef::open_chest_menu`], or
+/// [`PlayerRef::open_ender_chest`] opened nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum OpenMenuError {
@@ -1431,11 +1432,19 @@ pub enum OpenMenuError {
     DataCountMismatch,
     /// The title cannot be encoded as vanilla network NBT.
     TitleNotEncodable,
+    /// One of the stacks was refused at the game's item conversion boundary.
+    Stack(StackWriteError),
 }
 
 impl From<crate::text::TextFormError> for OpenMenuError {
     fn from(error: crate::text::TextFormError) -> Self {
         Self::Title(error)
+    }
+}
+
+impl From<StackWriteError> for OpenMenuError {
+    fn from(error: StackWriteError) -> Self {
+        Self::Stack(error)
     }
 }
 
@@ -1479,23 +1488,24 @@ impl NoBackend for RespawnRefusal {
     }
 }
 
-/// Why `menu_set_items` replaced nothing. Nothing is sent when one comes back.
+/// Why [`MenuRef::set_items`] replaced nothing. Nothing is sent when one comes back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum MenuItemsRefusal {
     /// The call was made on a client; menus are the server's.
     Client,
-    /// No player of that UUID is online and placed.
+    /// The menu's player is not online and placed.
     NoPlayer,
-    /// The window is not the player's open `open_menu` menu: another window, a menu the game
-    /// opened (a chest, a trade), or none open.
+    /// The handle is stale or not an open native menu (`open_chest_menu` or `open_mod_menu`).
     NotOpen,
     /// One of the stacks was refused at the game's item conversion boundary: an item the world
     /// lacks, a count or damage the item does not allow.
     Stack(StackWriteError),
     /// The window owns its slots. Write them through [`ItemPlace::MenuSlot`](crate::ItemPlace::MenuSlot).
     OwnedSlots,
+    /// The call is not available in this phase or host state.
+    Unavailable,
 }
 
 impl From<StackWriteError> for MenuItemsRefusal {
@@ -1504,9 +1514,85 @@ impl From<StackWriteError> for MenuItemsRefusal {
     }
 }
 
+impl crate::AccessRefusal for MenuItemsRefusal {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
 impl NoBackend for MenuItemsRefusal {
     fn no_backend() -> Self {
         Self::NoPlayer
+    }
+}
+
+/// Why [`MenuRef::place_recipe_in_grid`] placed nothing (`RecipeBookMenu.handlePlacement`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub enum RecipePlaceError {
+    /// The call is not available in this phase, host state, or menu state.
+    Unavailable,
+    /// Called outside the `recipe_book_place` hook.
+    OutsideHook,
+    /// The handle does not name the open menu handling the current recipe-book click.
+    WrongMenu,
+    /// `place_recipe_in_grid` was already called for this click.
+    AlreadyPlaced,
+    /// `recipe` is not the recipe clicked in this `recipe_book_place` event.
+    WrongRecipe,
+    /// The recipe cannot be placed.
+    NotPlaceable,
+    /// The grid size, slot list, or recipe shape does not fit the menu.
+    InvalidLayout,
+    /// A cleared or grid slot is hidden on this menu.
+    HiddenSlot(u16),
+    /// A cleared or grid slot has no backing storage.
+    UnbackedSlot(u16),
+    /// A slot refused pickup.
+    Denied,
+    /// The player has no room for the cleared items outside creative mode.
+    NoRoom,
+    /// The player or the menu changed during placement.
+    Changed,
+}
+
+impl crate::AccessRefusal for RecipePlaceError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl NoBackend for RecipePlaceError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+/// Why [`PlayerRef::give_creative`] gave nothing (`ServerboundSetCreativeModeSlot`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub enum CreativeGiveError {
+    /// Not in a client world, resources are not ready, or the call is unavailable in this phase.
+    Unavailable,
+    /// The handle is stale or does not name the local player.
+    Stale,
+    /// The local player is not in creative mode.
+    NotCreative,
+    /// The item key does not resolve to an item in this world.
+    UnknownItem,
+    /// The player's inventory had no room for the stack.
+    NoRoom,
+}
+
+impl crate::AccessRefusal for CreativeGiveError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl NoBackend for CreativeGiveError {
+    fn no_backend() -> Self {
+        Self::Unavailable
     }
 }
 

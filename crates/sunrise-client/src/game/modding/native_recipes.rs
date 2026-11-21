@@ -313,19 +313,37 @@ impl Game<'_> {
             .find(|category| category.recipe_type == kind)
             .cloned()
     }
-    /// `give`: `count` of `item`, refused outside a world, unless
-    /// creative and for an item the game doesn't have.
-    pub(super) fn recipe_give(&mut self, item: &str, count: u32) -> Result<(), String> {
+    /// `PlayerRef::give_creative`: `count` of `item`, refused outside a world, unless
+    /// creative, for an item the game doesn't have, or when the inventory has no room.
+    pub(super) fn recipe_give(
+        &mut self,
+        item: &str,
+        count: u32,
+    ) -> Result<(), mod_api::CreativeGiveError> {
+        use mod_api::CreativeGiveError;
         if self.player.is_none() || self.res.rest.get().is_none() {
-            return Err("not in a world".into());
+            return Err(CreativeGiveError::Unavailable);
         }
         if !self.creative {
-            return Err("only in creative mode".into());
+            return Err(CreativeGiveError::NotCreative);
         }
-        if self.res.items().get(item).is_none() {
-            return Err(format!("no item {item}"));
+        let max = self
+            .res
+            .items()
+            .get(item)
+            .ok_or(CreativeGiveError::UnknownItem)?
+            .max_stack;
+        let requested = count.clamp(1, 99).min(max);
+        let left = self.add_stack_to_inventory(ItemStack {
+            item: item.into(),
+            // One stack at most, as the creative inventory hands out.
+            count: requested,
+            damage: 0,
+            extra: None,
+        });
+        if left.is_some_and(|rem| rem.count == requested) {
+            return Err(CreativeGiveError::NoRoom);
         }
-        self.mod_give(item, count.clamp(1, 99), "");
         Ok(())
     }
     /// `place_recipe`: refused as `recipes.place` refuses it.
@@ -340,28 +358,6 @@ impl Game<'_> {
         }
         self.mod_place_recipe(book_id, all);
         Ok(())
-    }
-    /// `recipes.give`: a creative player takes the stack as from the
-    /// creative inventory; a server hears it as `SetCreativeModeSlot`
-    /// through the inventory's sync, and refuses it unless creative.
-    pub(super) fn mod_give(&mut self, item: &str, count: u32, components: &str) {
-        let Some(max) = self.items().get(item).map(|i| i.max_stack) else {
-            return;
-        };
-        if !self.creative {
-            return;
-        }
-        let (damage, extra) = sunrise_client::item_data::command_components(components)
-            .map_or((0, None), |tag| {
-                sunrise_client::item_data::decode_components(Some(&tag))
-            });
-        let _ = self.add_stack_to_inventory(ItemStack {
-            item: item.into(),
-            // One stack at most, as the creative inventory hands out.
-            count: count.min(max),
-            damage,
-            extra,
-        });
     }
     /// The tables, made on the first call; none while the world resources
     /// they come from are still loading behind the title on a slow start.
