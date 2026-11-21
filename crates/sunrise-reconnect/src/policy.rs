@@ -328,6 +328,18 @@ mod tests {
     }
 
     #[test]
+    fn known_keys_decide_before_text_and_refusals_beat_retry_keywords() {
+        let reason = "Banned during a server restart";
+        assert!(allowed(
+            reason,
+            Some("multiplayer.disconnect.server_shutdown"),
+            true,
+        ));
+        assert!(!allowed(reason, None, true));
+        assert!(allowed("Server closed", Some("unknown.disconnect"), true));
+    }
+
+    #[test]
     fn online_mode_login_failures() {
         // The client's join with the session service (net.rs: Err, with
         // vanilla's disconnect.loginFailedInfo texts and the inner key).
