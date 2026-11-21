@@ -5,8 +5,9 @@
 # installed.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise    (a stable release, whose line
-#   updates then follow)
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise
+#
+# A stable release's tag (26.3-0.1.0) puts the server on that stable line, which `sunrise-server update` then follows.
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own

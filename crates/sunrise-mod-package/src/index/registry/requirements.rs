@@ -1,7 +1,8 @@
 //! Advisory check of the packaged Cargo requirements against the pinned game's crates.io versions.
 use super::{Entry, Kind, Review, hex64, read_regular};
 use crate::index::{MAX_FILE, sha256};
-use semver::{Comparator, Op, Prerelease, Version, VersionReq};
+use crate::native_route::game_registry_pin_conflicts;
+use semver::{Prerelease, Version, VersionReq};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read, Seek};
@@ -176,7 +177,7 @@ fn manifest_conflicts<R: Read + Seek>(
             }
             let compatible: Vec<_> = game
                 .iter()
-                .filter(|pin| overlaps_caret(&requirement, pin))
+                .filter(|pin| accepts_another_on_line(&requirement, pin))
                 .map(Version::to_string)
                 .collect();
             if !compatible.is_empty() {
@@ -209,21 +210,19 @@ fn local_path(dir: &Path, path: &str) -> Option<PathBuf> {
     Some(inside)
 }
 
-/// Without the registry index, check whether any version could satisfy both requirements.
-fn overlaps_caret(requirement: &VersionReq, pin: &Version) -> bool {
-    let game = Comparator {
-        op: Op::Caret,
-        major: pin.major,
-        minor: Some(pin.minor),
-        patch: Some(pin.patch),
-        pre: pin.pre.clone(),
+/// Without the registry index, check whether the requirement accepts a version that a build
+/// would have to put in place of the game's pin.
+fn accepts_another_on_line(requirement: &VersionReq, pin: &Version) -> bool {
+    let matches = |version: Version| {
+        game_registry_pin_conflicts(pin, &version) && requirement.matches(&version)
     };
-    let matches = |version: Version| game.matches(&version) && requirement.matches(&version);
-    // The first matching stable version must be on or immediately after a comparison boundary.
-    // Partial comparators cover a whole major or minor; advance the last specified component.
-    std::iter::once(&game)
-        .chain(&requirement.comparators)
-        .any(|cmp| {
+    // The first matching stable version is the lowest of the pin's major or minor, the release
+    // of a prerelease pin, or on or immediately after a comparison boundary. Partial comparators cover a whole major or minor;
+    // advance the last specified component.
+    matches(Version::new(pin.major, 0, 0))
+        || matches(Version::new(pin.major, pin.minor, 0))
+        || matches(Version::new(pin.major, pin.minor, pin.patch))
+        || requirement.comparators.iter().any(|cmp| {
             let (major, minor, patch) = (cmp.major, cmp.minor.unwrap_or(0), cmp.patch.unwrap_or(0));
             let next = cmp
                 .patch

@@ -6,9 +6,12 @@
 # can't be verified is not installed. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
-#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0    (a stable release, whose line updates then follow)
+#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0
 #   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0 --dir /opt/sunrise --bin /usr/local/bin
-#   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild   (an archive you have)
+#   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild
+#
+# A stable release's tag (26.3-0.1.0) puts the server on that stable line, which `sunrise-server update` then
+# follows. --archive installs an archive you have, such as your own build.
 #
 # It needs curl, tar or unzip, and sha256sum or shasum; it never asks for sudo (pick folders you can write).
 # Releases go to <dir>/releases/<version>, <dir>/current points at the one in use, and <bin>/sunrise-server
@@ -44,7 +47,7 @@ while [ $# -gt 0 ]; do
     --archive) [ $# -ge 2 ] || die "--archive needs a file"; ARCHIVE=$2; shift 2 ;;
     # For CI fixtures only (never in the docs): GitHub's own SHA-256 is all that is checked.
     --insecure-checksum-only) INSECURE=yes; shift ;;
-    -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0" 2>/dev/null || true; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
 done
