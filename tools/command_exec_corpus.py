@@ -8283,6 +8283,55 @@ def explosion_creaking_heart_experience():
                        f'/forceload remove {x0} {z0}')
 
 
+def _cloud_water_coord(base, offset):
+    if '.' not in offset:
+        return str(base + int(offset))
+    whole, frac = offset.split('.', 1)
+    return f'{base + int(whole)}.{frac}'
+
+
+# #2359: AreaEffectCloud water fall-distance cases (vanilla 26.3).
+CLOUD_WATER_ORIGIN = (4928, 260, 4928)
+CLOUD_WATER_BLOCK = (1, 0, 0)
+CLOUD_WATER_CASES = (
+    ('beside_water', '0.5', '0', '0.5', None, '20.0', 200),
+    ('dry', '20.5', '0', '0.5', None, '20.0', 200),
+    ('small_radius_dry', '0.5', '0', '0.5', '0.4', '20.0', 200),
+    ('edge_touching_water', '4.5', '0', '0.5', '3.0', '12.5', 200),
+    ('edge_outside_water', '5.0', '0', '0.5', '3.0', '12.5', 200),
+    ('above_water', '0.5', '1', '0.5', '3.0', '7.25', 200),
+)
+
+
+def area_effect_cloud_water_fall():
+    """#2359 (vanilla 26.3): AreaEffectCloud fall_distance when its box touches water vs stays dry."""
+    x0, y0, z0 = CLOUD_WATER_ORIGIN
+    bx, by, bz = CLOUD_WATER_BLOCK
+    chunks = [[(x0 >> 4) + dx, (z0 >> 4) + dz] for dx in range(-2, 4) for dz in range(-2, 3)]
+    ops = [cmd(f'/forceload add {x0} {z0} {x0 + 31} {z0 + 15}', False),
+           {'op': 'wait_chunks', 'chunks': chunks},
+           cmd('/tick freeze', False),
+           cmd(f'/setblock {x0 + bx} {y0 + by} {z0 + bz} minecraft:water', expect_result=1)]
+    for n, (_, dx, dy, dz, radius, fall, duration) in enumerate(CLOUD_WATER_CASES, 1):
+        x, y, z = _cloud_water_coord(x0, dx), _cloud_water_coord(y0, dy), _cloud_water_coord(z0, dz)
+        nbt = f'UUID:[I;2359,0,{n},1],fall_distance:{fall}d,Duration:{duration}'
+        if radius is not None:
+            nbt += f',Radius:{radius}f'
+        ops.append(cmd(f'/summon minecraft:area_effect_cloud {x} {y} {z} {{{nbt}}}', expect_result=1))
+
+    def reads():
+        for n in range(1, len(CLOUD_WATER_CASES) + 1):
+            ops.append(cmd(f'/data get entity 00000937-0000-0000-0000-{n:04x}00000001 fall_distance'))
+
+    reads()
+    ops += [cmd('/tick unfreeze', False), {'op': 'tick', 'n': 1}, cmd('/tick freeze', False)]
+    reads()
+    return ops + setup('/tick unfreeze',
+                       f'/kill @e[type=minecraft:area_effect_cloud,x={x0},y={y0 - 4},z={z0},dx=32,dy=16,dz=16]',
+                       f'/setblock {x0 + bx} {y0 + by} {z0 + bz} air',
+                       f'/forceload remove {x0} {z0} {x0 + 31} {z0 + 15}')
+
+
 def groups():
     try:
         from .spectral_duration_corpus import cases as spectral_saved_duration
@@ -8612,6 +8661,7 @@ def groups():
         ('vehicle ground and fall', vehicle_ground_and_fall()),
         ('vehicle saved ground and fall', vehicle_saved_ground_and_fall()),
         ('ravager saved movement speed', ravager_saved_movement_speed()),
+        ('area effect cloud water fall distance', area_effect_cloud_water_fall()),
         # Last: it leaves the player in other food than it found.
         (player_food.GROUP, player_food.cases(cmd, setup)),
     ]

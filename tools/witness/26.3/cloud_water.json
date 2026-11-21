@@ -1,0 +1,104 @@
+{
+  "minecraft": "26.3",
+  "oracle": "dev.sunriselab.parity.VanillaCommandExecOracle",
+  "group": "area effect cloud water fall distance",
+  "record_cmd": "python3 tools/test_command_exec_parity.py --record-cloud-water",
+  "server_jar_sha1": "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c",
+  "water_offset": [
+    1,
+    0,
+    0
+  ],
+  "cases": [
+    {
+      "name": "beside_water",
+      "offset": [
+        "0.5",
+        "0",
+        "0.5"
+      ],
+      "radius": null,
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "tick0_fall_distance": "20.0d",
+      "tick0_fall_bits": "4034000000000000",
+      "tick1_fall_distance": "0.0d",
+      "tick1_fall_bits": "0000000000000000"
+    },
+    {
+      "name": "dry",
+      "offset": [
+        "20.5",
+        "0",
+        "0.5"
+      ],
+      "radius": null,
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "tick0_fall_distance": "20.0d",
+      "tick0_fall_bits": "4034000000000000",
+      "tick1_fall_distance": "20.0d",
+      "tick1_fall_bits": "4034000000000000"
+    },
+    {
+      "name": "small_radius_dry",
+      "offset": [
+        "0.5",
+        "0",
+        "0.5"
+      ],
+      "radius": "0.4",
+      "initial_fall_distance": "20.0",
+      "duration": 200,
+      "tick0_fall_distance": "20.0d",
+      "tick0_fall_bits": "4034000000000000",
+      "tick1_fall_distance": "20.0d",
+      "tick1_fall_bits": "4034000000000000"
+    },
+    {
+      "name": "edge_touching_water",
+      "offset": [
+        "4.5",
+        "0",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "12.5",
+      "duration": 200,
+      "tick0_fall_distance": "12.5d",
+      "tick0_fall_bits": "4029000000000000",
+      "tick1_fall_distance": "0.0d",
+      "tick1_fall_bits": "0000000000000000"
+    },
+    {
+      "name": "edge_outside_water",
+      "offset": [
+        "5.0",
+        "0",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "12.5",
+      "duration": 200,
+      "tick0_fall_distance": "12.5d",
+      "tick0_fall_bits": "4029000000000000",
+      "tick1_fall_distance": "12.5d",
+      "tick1_fall_bits": "4029000000000000"
+    },
+    {
+      "name": "above_water",
+      "offset": [
+        "0.5",
+        "1",
+        "0.5"
+      ],
+      "radius": "3.0",
+      "initial_fall_distance": "7.25",
+      "duration": 200,
+      "tick0_fall_distance": "7.25d",
+      "tick0_fall_bits": "401d000000000000",
+      "tick1_fall_distance": "7.25d",
+      "tick1_fall_bits": "401d000000000000"
+    }
+  ]
+}

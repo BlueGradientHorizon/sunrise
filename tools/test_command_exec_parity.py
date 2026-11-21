@@ -22,6 +22,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -195,6 +196,8 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-cloud-water', action='store_true',
+                        help='record tools/witness/26.3/cloud_water.json from the vanilla 26.3 oracle only')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -511,6 +514,10 @@ def main():
         # Generated scripts (tools/parity_fuzz.py): the common setup, then the file's [name, ops] groups only.
         groups = [('setup', corpus_module.group_setup()),
                   *[(name, ops) for name, ops in json.loads(args.groups_file.read_text(encoding='utf-8'))]]
+    if args.record_cloud_water:
+        groups = [('setup', corpus_module.group_setup()),
+                  ('area effect cloud water fall distance', corpus_module.area_effect_cloud_water_fall())]
+        args.reference_only = True
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -592,6 +599,15 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
+        if args.record_cloud_water:
+            witness = extract_cloud_water_witness(groups, reference, lock)
+            witness_path = lab.ROOT / 'tools' / 'witness' / lock['minecraft']['version'] / 'cloud_water.json'
+            witness_path.parent.mkdir(parents=True, exist_ok=True)
+            witness_path.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
+            print(f'Recorded {witness_path.relative_to(lab.ROOT)} ({len(witness["cases"])} cases, vanilla {lock["minecraft"]["version"]})')
+            return
+        if any(name == 'area effect cloud water fall distance' for name, _ in groups):
+            verify_cloud_water_witness(groups, reference, lock)
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
@@ -684,6 +700,8 @@ def main():
         n = sum(1 for op in lines if op['op'] in ('falling', 'destroy_progress', 'weather_state', 'chunk_ready', 'server_distances', 'map_state', 'frame_map_state', 'light', 'player_state', 'player_loop', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or (op['op'] == 'cmd' and op.get('record', True)) or (op['op'] == 'tick' and op.get('record')))
         commands_by_group.append((name, index, index + n))
         index += n
+    if any(name == 'area effect cloud water fall distance' for name, _ in groups):
+        verify_cloud_water_witness(groups, vanilla, lock)
     mismatches = []
     failed_positions = set()
     for position, (v, r) in enumerate(zip(vanilla, rust)):
@@ -898,6 +916,68 @@ def compare(v, r, comparison=None):
             return None
         return 'results'
     return None
+
+
+def extract_cloud_water_witness(groups, records, lock):
+    """Build the 26.3 cloud-water witness directly from VanillaCommandExecOracle's /data get output."""
+    index = 0
+    slice_records = None
+    for name, lines in groups:
+        n = sum(1 for op in lines if op['op'] in ('falling', 'destroy_progress', 'weather_state', 'chunk_ready', 'server_distances', 'map_state', 'frame_map_state', 'light', 'player_state', 'player_loop', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or (op['op'] == 'cmd' and op.get('record', True)) or (op['op'] == 'tick' and op.get('record')))
+        if name == 'area effect cloud water fall distance':
+            slice_records = records[index:index + n]
+            break
+        index += n
+    if slice_records is None:
+        sys.exit('missing area effect cloud water fall distance group')
+    reads = {}
+    marker = ' has the following entity data: '
+    for row in slice_records:
+        match = re.fullmatch(r'/data get entity (00000937-0000-0000-0000-[0-9a-f]{12}) fall_distance', row.get('cmd', ''))
+        if not match:
+            continue
+        text = ''.join(span[0] for span in row['messages'][0])
+        if marker not in text:
+            sys.exit(f'unexpected vanilla /data get feedback: {row}')
+        raw = text.split(marker, 1)[1]
+        if not raw.endswith('d'):
+            sys.exit(f'expected double SNBT for fall_distance, got {raw!r}')
+        reads.setdefault(match.group(1), []).append(raw)
+    cases = []
+    for n, (case_name, dx, dy, dz, radius, fall, duration) in enumerate(corpus_module.CLOUD_WATER_CASES, 1):
+        uid = f'00000937-0000-0000-0000-{n:04x}00000001'
+        values = reads.get(uid)
+        if not values or len(values) != 2:
+            sys.exit(f'expected 2 fall_distance reads for {case_name} ({uid}), got {values!r}')
+        tick0_raw, tick1_raw = values
+        cases.append({
+            'name': case_name,
+            'offset': [dx, dy, dz],
+            'radius': radius,
+            'initial_fall_distance': fall,
+            'duration': duration,
+            'tick0_fall_distance': tick0_raw,
+            'tick0_fall_bits': struct.pack('>d', float(tick0_raw[:-1])).hex(),
+            'tick1_fall_distance': tick1_raw,
+            'tick1_fall_bits': struct.pack('>d', float(tick1_raw[:-1])).hex(),
+        })
+    return {
+        'minecraft': lock['minecraft']['version'],
+        'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+        'group': 'area effect cloud water fall distance',
+        'record_cmd': 'python3 tools/test_command_exec_parity.py --record-cloud-water',
+        'server_jar_sha1': lock['minecraft']['server_sha1'],
+        'water_offset': list(corpus_module.CLOUD_WATER_BLOCK),
+        'cases': cases,
+    }
+
+
+def verify_cloud_water_witness(groups, records, lock):
+    witness_path = lab.ROOT / 'tools' / 'witness' / lock['minecraft']['version'] / 'cloud_water.json'
+    expected = json.loads(witness_path.read_text(encoding='utf-8'))
+    actual = extract_cloud_water_witness(groups, records, lock)
+    if actual != expected:
+        sys.exit(f'live vanilla {lock["minecraft"]["version"]} output differs from {witness_path.relative_to(lab.ROOT)}')
 
 
 def render(record):
