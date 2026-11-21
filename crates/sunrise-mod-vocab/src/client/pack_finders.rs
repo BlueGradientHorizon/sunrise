@@ -61,7 +61,8 @@ pub struct PackRegistration {
     pub title: Text,
     /// The pack's source label and experiment classification.
     pub source: PackSource,
-    /// Require this pack in every selection, preventing it from being disabled.
+    /// Require this pack in every selection, including recovery from a failed client resource
+    /// pack load. Reordering required packs alone does not trigger recovery.
     pub always_active: bool,
     /// The default insertion position of an always-active pack.
     pub position: PackPosition,

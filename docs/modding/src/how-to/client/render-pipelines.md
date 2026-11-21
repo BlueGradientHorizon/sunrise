@@ -78,8 +78,12 @@ event.register(
 
 | Policy | When a resource load cannot build it |
 | --- | --- |
-| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. At startup the game does not start. A resource reload fails and keeps the previous resources, so handles from before it still draw; then, as vanilla does with any failed reload, the selected resource packs are dropped and the reload runs again. |
+| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. Startup cannot finish with a broken required pipeline. A failed resource reload keeps the previous resources, so handles from before it still draw. |
 | Optional (`.optional()`) | The log has one line naming the pipeline and why. It resolves to `RenderPipelineError::Invalid`, and every other pipeline builds and draws. |
+
+Client resource pack recovery resets the saved selection before reloading, and only runs if an
+optional pack was selected. Required packs and mod content still load; if recovery fails, the error
+is reported and the optional selection stays cleared.
 
 A load cannot build a pipeline when its shader file is missing, the file is refused, or the GPU
 rejects the shader. The game never panics over a pipeline's shader.

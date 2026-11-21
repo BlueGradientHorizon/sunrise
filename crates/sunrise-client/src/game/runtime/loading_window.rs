@@ -325,12 +325,6 @@ pub(super) fn start_game<'a>(
     game.refresh_debug_renderers();
     game.rest_loader = rest_loader;
     game.ui.vanilla_root = vanilla_root;
-    if pack_error.is_some() {
-        // Minecraft.clearResourcePacksOnError: the selection is cleared and
-        // saved, so the next launch starts without the packs.
-        game.settings.resource_packs.clear();
-        game.settings.save(&Game::options_path());
-    }
     if game.options.benchmark.is_some() {
         // The same conditions on every machine: no VSync, no frame cap, no
         // pause or idle limit without focus. In memory only, never saved.

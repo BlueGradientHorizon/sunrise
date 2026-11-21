@@ -562,7 +562,41 @@ pub(super) fn load_resources(
         role,
         progress,
         publish,
+        &mut || unreachable!("fixture without pack recovery"),
         &mods::ModsState::default(),
+    )
+}
+
+/// A launch without an interactive title owns its settings on the loading thread.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn load_resources_sync(
+    roots: packs::PackRoots,
+    additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
+    launch_world: Option<&str>,
+    vanilla_root: &std::path::Path,
+    settings: &mut Settings,
+    started: Instant,
+    role: impl Into<mods::LoadRole>,
+    progress: &Progress,
+    mod_sources: &mods::ModsState,
+) -> Result<Loaded> {
+    let snapshot = settings.clone();
+    load_resources_for_mods(
+        roots,
+        additional_data,
+        launch_world,
+        vanilla_root,
+        &snapshot,
+        started,
+        false,
+        role,
+        progress,
+        &mut |_, _| {},
+        &mut || {
+            packs::clear_selection(settings);
+            Ok(())
+        },
+        mod_sources,
     )
 }
 
@@ -571,7 +605,8 @@ pub(super) fn load_resources(
 /// world to open, whose data is preloaded during startup.
 ///
 /// The owning mod state supplies the same cached condition table used to build
-/// content roots and reload data.
+/// content roots and reload data. Recovery clears the settings owner's selection
+/// before reopening the required resource packs over the accepted content root.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn load_resources_for_mods(
     roots: packs::PackRoots,
@@ -584,6 +619,7 @@ pub(super) fn load_resources_for_mods(
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
     publish: &mut dyn FnMut(UiResources, &std::path::Path),
+    clear_pack_selection: &mut dyn FnMut() -> Result<()>,
     mod_sources: &mods::ModsState,
 ) -> Result<Loaded> {
     let load_role: mods::LoadRole = role.into();
@@ -593,15 +629,16 @@ pub(super) fn load_resources_for_mods(
         selected,
         cleared,
     } = roots;
+    let mut recover = |failure: &str, required: &[sunrise_client::packs::Pack]| -> Result<_> {
+        log::warn!("Sunrise: resource packs failed to load: {failure}");
+        clear_pack_selection()?;
+        packs::layer_client_packs(&base, required).map_err(Into::into)
+    };
     let (resolved, mut rollback, mut pack_error) = match (selected, cleared) {
         (Ok(selected), cleared) => (selected, cleared, None),
         (Err(error), Some(required)) => {
-            log::warn!("Sunrise: resource packs not applied: {error}");
-            (
-                packs::layer_client_packs(&base, &required)?,
-                None,
-                Some(error.to_string()),
-            )
+            let failure = error.to_string();
+            (recover(&failure, &required)?, None, Some(failure))
         }
         (Err(error), None) => return Err(error.into()),
     };
@@ -700,14 +737,9 @@ pub(super) fn load_resources_for_mods(
             (Err(e), Ok(Ok(_)), _, None) => return Err(e),
             (Ok(_), Ok(Ok(_)), Err(e), None) => return Err(e.into()),
         };
-        log::warn!(
-            "Sunrise: resource packs failed to load ({failure}); clearing the client selection"
-        );
+        resolved =
+            client_reload::stage_texture_atlases(recover(&failure, &required)?, &texture_atlases);
         pack_error = Some(failure);
-        resolved = client_reload::stage_texture_atlases(
-            packs::layer_client_packs(&base, &required)?,
-            &texture_atlases,
-        );
     };
     // The same prepared gameplay root supplies entity keys and spawner facts,
     // regardless of which client resource layers loaded successfully.

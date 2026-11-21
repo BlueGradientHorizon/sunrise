@@ -189,6 +189,8 @@ pub(super) struct Loaded {
 /// ready, then the core bundle with a handle to the rest worker.
 pub(super) enum LoaderMsg {
     Ui(UiResources, PathBuf),
+    /// Save on the thread that owns settings before the worker rebuilds pack layers.
+    ClearPackSelection(std::sync::mpsc::Sender<()>),
     Done(std::result::Result<Loaded, LoaderFailure>),
 }
 

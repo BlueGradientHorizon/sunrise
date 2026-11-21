@@ -11,7 +11,8 @@ use motion_ids::{motion_at, motion_block_entity};
 #[cfg(test)]
 use resource_load::load_resources;
 use resource_load::{
-    Progress, launch_world, load_resources_for_mods, named_scope, synchronous_startup,
+    Progress, launch_world, load_resources_for_mods, load_resources_sync, named_scope,
+    synchronous_startup,
 };
 /// The content tables the world plays with, as field-level borrows: the
 /// world's data packs' over the game's own. The `Game::items`/`recipes`/
@@ -13978,17 +13979,15 @@ pub(crate) fn run_with(
             &options.mods,
         )?
     };
-    let mut loaded = load_resources_for_mods(
+    let mut loaded = load_resources_sync(
         roots,
         pack_finders::data_packs(&options.mods),
         launch_world(&options),
         &vanilla_root,
-        &early_settings,
+        &mut early_settings,
         started,
-        false,
         mods::LoadRole::startup(options.execution_role),
         &Progress::new(),
-        &mut |_, _| {},
         &options.mods,
     )?;
     let gui = loaded.gui.ok_or("missing menu bundle")?;
@@ -14009,7 +14008,7 @@ pub(crate) fn run_with(
         vanilla_root,
         started,
         loaded.rest_loader,
-        None,
+        Some(early_settings),
         None,
         std::mem::take(&mut loaded.client_applies),
         loaded.entity_models,

@@ -423,6 +423,15 @@ pub(super) fn spawn_loader(
                             &mut |gui, root| {
                                 let _ = sender.send(LoaderMsg::Ui(gui, root.to_path_buf()));
                             },
+                            &mut || {
+                                // The menu owns live settings; do not save the worker's snapshot.
+                                let (saved, wait) = std::sync::mpsc::channel();
+                                sender
+                                    .send(LoaderMsg::ClearPackSelection(saved))
+                                    .map_err(|_| "loading screen closed during pack recovery")?;
+                                wait.recv()?;
+                                Ok(())
+                            },
                             &mod_sources,
                         )
                     });
@@ -439,6 +448,12 @@ impl Loading {
             loop {
                 match self.receiver.try_recv() {
                     Ok(LoaderMsg::Ui(gui, root)) => self.set_ui(gui, root),
+                    Ok(LoaderMsg::ClearPackSelection(saved)) => {
+                        packs::clear_selection(&mut self.settings);
+                        self.menu.options.pack_selection.clear();
+                        self.menu.options.pack_screen = None;
+                        let _ = saved.send(());
+                    }
                     Ok(LoaderMsg::Done(result)) => {
                         self.loaded = Some(result);
                         self.delivered = true;

@@ -56,6 +56,20 @@ pub(super) struct PackRoots {
     pub(super) cleared: Option<Vec<Pack>>,
 }
 
+impl PackRoots {
+    fn for_selection(base: ResourceRoot, all: &[Pack], ids: &[String], server: &[Pack]) -> Self {
+        let mut enabled = packs::enabled(all, ids);
+        let cleared = packs::has_optional_pack(&enabled).then(|| packs::enabled(all, &[]));
+        enabled.extend_from_slice(server);
+        let selected = layer_client_packs(&base, &enabled);
+        Self {
+            base,
+            selected,
+            cleared,
+        }
+    }
+}
+
 impl From<ResourceRoot> for PackRoots {
     fn from(base: ResourceRoot) -> Self {
         Self {
@@ -80,16 +94,19 @@ pub(super) fn startup_root(
         mod_api::PackType::ClientResources,
         mod_sources,
     ));
-    let mut enabled = packs::enabled(&all, selected);
-    let cleared = packs::has_optional_pack(&enabled).then(|| packs::enabled(&all, &[]));
-    enabled.extend_from_slice(server);
     let base = super::mods::content_root(vanilla, mod_sources)?;
-    let selected = layer_client_packs(&base, &enabled);
-    Ok(PackRoots {
-        base,
-        selected,
-        cleared,
-    })
+    Ok(PackRoots::for_selection(base, &all, selected, server))
+}
+
+/// `Minecraft.clearResourcePacksOnError`: save the empty selection before rebuilding its layers.
+pub(super) fn clear_selection(settings: &mut super::Settings) {
+    log::info!("Caught error loading resourcepacks, removing all selected resourcepacks");
+    settings.resource_packs.clear();
+    settings.file.set(
+        "incompatibleResourcePacks",
+        sunrise_client::options_file::V::List(Vec::new()),
+    );
+    settings.save(&Game::options_path());
 }
 
 /// Client packs overlay assets only, never the prepared tables or passive server data.
@@ -357,10 +374,7 @@ impl Game<'_> {
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
         if packs::has_optional_pack(&packs::enabled(&all, &self.settings.resource_packs)) {
-            // clearResourcePacksOnError.
-            log::info!("Caught error loading resourcepacks, removing all selected resourcepacks");
-            self.settings.resource_packs.clear();
-            self.settings.save(&Self::options_path());
+            clear_selection(&mut self.settings);
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
                 let title = sunrise_client::text::Text::translate("resourcePack.load_fail", &[]);

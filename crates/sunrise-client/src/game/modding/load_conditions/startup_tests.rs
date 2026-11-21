@@ -90,6 +90,7 @@ fn startup_recipe_uses_registered_condition() {
                 crate::game::execution_role::ExecutionRole::IntegratedServer,
                 &crate::game::Progress::new(),
                 &mut |_, _| unreachable!(),
+                &mut || unreachable!("the server has no client pack selection"),
                 &crate::game::mods::ModsState::default(),
             )
             .expect("startup must accept a mod-registered condition in a recipe");
