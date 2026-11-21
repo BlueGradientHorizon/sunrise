@@ -194,9 +194,8 @@ impl ModRecipe {
         .ok()
         .flatten()
     }
-    pub fn written(&self) -> Result<String, String> {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.loaded.write()))
-            .unwrap_or_else(|_| Err("serializer panicked".into()))
+    pub fn written(&self) -> Result<Option<String>, String> {
+        self.loaded.write()
     }
 }
 
@@ -311,11 +310,4 @@ pub fn sync_recipe_types(requested: &[String]) -> Vec<String> {
     types.sort();
     types.dedup();
     types
-}
-/// Resolve file serializers to recipe types at the content transport boundary.
-pub fn file_has_type(file: &Value, types: &[String]) -> bool {
-    file["type"]
-        .as_str()
-        .and_then(|id| recipe_type("sync", id).ok())
-        .is_some_and(|kind| types.contains(&kind))
 }

@@ -820,9 +820,6 @@ mod tests {
                                 "minecraft:menu".into(),
                                 sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
                             );
-                        let _phase = mod_api::__private::PhaseOwner::scope(
-                            mod_api::__private::ModPhase::World,
-                        );
                         test(game, &opening);
                     })
                 },

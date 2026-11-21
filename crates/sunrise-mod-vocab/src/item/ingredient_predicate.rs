@@ -1,5 +1,5 @@
 //! Retained ingredient predicates and their borrowed stack input.
-use crate::{ItemKey, LoopContext, Tag};
+use crate::{ItemKey, LoopContext, Tag, runtime::RetainedCallback};
 use std::{fmt, sync::Arc};
 
 type IngredientTest = dyn for<'a> Fn(&dyn LoopContext, IngredientStack<'a>) -> bool + Send + Sync;
@@ -18,7 +18,9 @@ impl IngredientDefinition {
     /// run many times during crafting and placement; answer consistently for the same input.
     /// Its context and stack are read-only and borrowed for the call. A nonempty candidate
     /// list filters by item before the test; an empty list has no filter for manual matching
-    /// but prevents recipe-book placement.
+    /// but prevents recipe-book placement. A panic rejects the stack and disables only this
+    /// occurrence's predicate for the rest of the session, including after reloading the
+    /// same definition.
     pub fn new(
         items: Vec<String>,
         test: impl for<'a> Fn(&dyn LoopContext, IngredientStack<'a>) -> bool + Send + Sync + 'static,
@@ -35,19 +37,17 @@ impl IngredientDefinition {
 /// Engine-owned predicate bound to the mod that defined this ingredient.
 #[derive(Clone)]
 pub struct IngredientPredicate {
-    owner: &'static str,
-    mod_index: usize,
+    callback: RetainedCallback,
     test: Arc<IngredientTest>,
 }
 
 impl IngredientPredicate {
-    /// Test this stack as the owning mod, or refuse it when that mod is disabled.
+    /// Test this stack as the owning mod. A panic is reported with the owner's name, and only
+    /// this occurrence's predicate then answers `false` for the session, even after reload.
     pub fn test(&self, context: &dyn LoopContext, stack: IngredientStack<'_>) -> bool {
-        if !crate::__private::mod_index_on(self.mod_index) {
-            return false;
-        }
-        let _call = crate::__private::enter(self.owner, "ingredient_predicate");
-        (self.test)(context, stack)
+        self.callback
+            .call(|| (self.test)(context, stack))
+            .unwrap_or(false)
     }
 }
 
@@ -62,24 +62,28 @@ impl Eq for IngredientPredicate {}
 impl fmt::Debug for IngredientPredicate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IngredientPredicate")
-            .field("owner", &self.owner)
-            .field("mod_index", &self.mod_index)
+            .field("callback", &self.callback)
             .finish_non_exhaustive()
     }
 }
 
-/// Split out the ordered candidate IDs and bind the test to its engine-resolved mod slot.
+/// Split out the ordered candidate IDs and bind the test to its engine-resolved mod slot and definition key.
 pub fn bind_ingredient_predicate(
     owner: &'static str,
     mod_index: usize,
+    definition_key: &str,
     definition: IngredientDefinition,
 ) -> (Vec<String>, IngredientPredicate) {
     let IngredientDefinition { items, test } = definition;
     (
         items,
         IngredientPredicate {
-            owner,
-            mod_index,
+            callback: RetainedCallback::new(
+                owner,
+                mod_index,
+                "ingredient_predicate",
+                definition_key,
+            ),
             test,
         },
     )

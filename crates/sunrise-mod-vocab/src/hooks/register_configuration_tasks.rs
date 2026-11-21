@@ -6,9 +6,13 @@ pub trait Hooks {
     /// to check what the peer negotiated and `event.register(task)` to give this
     /// connection an owned task. An empty or duplicate type, or a panic while reading it,
     /// refuses admission. A panic disables that task implementation for the owning mod.
-    /// If a listener or its task-type callback hits a phase refusal, discard only that
-    /// listener's staged tasks, reserved types and diagnostic; other registrations stand. Tasks start in registration order and can
-    /// finish, wait or fail this peer.
+    /// If a listener panics or its task-type callback hits a phase refusal, discard only that
+    /// listener's staged tasks, reserved types, diagnostic and journaled writes; other listeners
+    /// still configure the same peer, and only a panicking registration callback is disabled for
+    /// later peers. Tasks start in registration order and can finish, wait or fail this peer.
+    /// Delayed tasks complete via `IPayloadContext::finish_configuration_task`
+    /// with their task type from either a server main-thread or network-thread
+    /// configuration payload handler.
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
     #[hook(

@@ -432,19 +432,45 @@ impl ApplicationHandler for Game<'_> {
             sunrise_threads::system_menu::suppress(hwnd);
         }
         drop(window_step);
-        match self.new_renderer(window.clone()) {
-            Ok(r) => {
-                self.renderer = Some(r);
-                self.world_renderer_ready = true;
-            }
-            Err(e) => {
-                self.error = Some(e);
-                event_loop.exit();
-                return;
-            }
-        }
+        let pending = self.pending_initial_models.take();
+        let renderer = match &pending {
+            Some(start) => self.renderer_for(window.clone(), &start.models.pack, &start.models.gui),
+            None => self.new_renderer(window.clone()),
+        };
         self.resize_state = Some(self.resize_state_of(window.inner_size()));
         self.window = Some(window);
+        if let Some(pending) = pending {
+            match self.apply_pending_client_start(*pending, renderer.map(Some)) {
+                Ok(true) => {
+                    self.settings.file.set(
+                        "startedCleanly",
+                        sunrise_client::options_file::V::Bool(true),
+                    );
+                    self.settings.save(&Game::options_path());
+                }
+                Ok(false) => {
+                    event_loop.exit();
+                    return;
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    event_loop.exit();
+                    return;
+                }
+            }
+        } else {
+            match renderer {
+                Ok(renderer) => {
+                    self.renderer = Some(renderer);
+                    self.world_renderer_ready = true;
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    event_loop.exit();
+                    return;
+                }
+            }
+        }
         self.ime_allowed = false;
         self.ime_area = None;
         self.apply_settings();

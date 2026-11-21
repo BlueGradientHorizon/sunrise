@@ -40,8 +40,9 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   Each executable usage keeps its own permission: an operator-only `foo` remains unavailable to ordinary players
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
   `foo` itself. Optional arguments make their preceding prefixes executable at that usage's level; if several
-  usages execute at the same prefix, the lowest executable level wins, with the first registration at that level
-  supplying the executor. A rejected usage does not change the permissions of accepted usages.
+  accepted usages execute at the same node, each later accepted registration overwrites that node's executor
+  (matching Brigadier's `CommandNode.addChild`) together with Sunrise's paired execution permission level
+  for that node. A rejected usage does not change the permissions of accepted usages.
   Clients receive the accepted command tree, never its executor bindings. When argument alternatives consume the same input without errors, an
   executable alternative takes precedence over a denied one; equally valid alternatives keep registration order.
   A name vanilla has, or a usage that doesn't parse, is left out with a warning in the log.
@@ -725,8 +726,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `event.validation` shows that controller's tickets read from the save when the level loaded, before they take hold
   (NeoForge's `TicketHelper` is per controller): a ticket a mod adds in `level_load` is not among them and is never
   removed by it, and a ticket of another controller is not shown. Every mod that implements the hook is called, but
-  only the owner's view holds anything; a controller without a validator keeps all of its tickets. The tickets that
-  survive then force their chunks. `block_tickets()` gives each block position and `entity_tickets()` each entity UUID
+  only the owner's view holds anything; a controller without a validator keeps all of its tickets. Removals take
+  effect in the callback's view immediately but only publish if the callback completes without panic or phase refusal.
+  The tickets that survive then force their chunks. `block_tickets()` gives each block position and `entity_tickets()` each entity UUID
   with a `TicketSet`, the chunks it
   holds apart by kind (`non_natural_spawning` and `natural_spawning`, as NeoForge's `TicketSet`). A plain and a
   natural-spawning ticket on one chunk are two tickets. `remove_block_tickets(pos)` and `remove_entity_tickets(uuid)`
@@ -1708,23 +1710,21 @@ one, where vanilla gives the `by` one.
 `&RegistrationContext` before their event; `Hooks::register` takes it after
 its `Registrar`. `context.mods()` returns a read-only `LoadedMods` view whose
 `ids()` lists startup code and selected content packages in dispatch order.
-`context.registry("minecraft:item")` lists a built-in registry's names in ID order and
-`context.setting(mod_id, key)` reads a loaded mod's setting, so a mod can validate the keys it
-declares before its Parts are finalized. Both read one view the engine captures before the first
-registration hook runs: every registration step sees the same registries (as `registries.json`
-lists them, without what mods declare during registration) and the settings on disk at that
-moment, whatever the dispatch order. A read fails with a `RegistrationReadError` rather than
-panicking: `InvalidRegistryName` for a name that is not a namespaced identifier,
-`UnknownRegistry`, `InvalidSettingKey` for an empty key or one naming a path, `UnknownMod` for a
-package that is not loaded, and `Unavailable` when the engine supplied no data. These contexts are
-supplied by the engine and have no game `Host`, handle constructors or transactions. Declarations
-still go on each event or registrar.
+`context.registry("minecraft:item")` borrows a built-in registry's names in ID order as
+`Option<&[String]>`, `context.setting(mod_id, key)` borrows a captured setting as `Option<&str>`,
+and `context.instance_dir()` borrows the startup instance directory as `Option<&InstanceDirectory>`,
+so a mod can validate the keys it declares before its Parts are finalized. All three read one view
+the engine captures before the first registration hook runs: every registration step sees the same
+registries (as `registries.json` lists them, without what mods declare during registration) and the
+settings on disk at that moment, whatever the dispatch order. Missing registries, unset keys, and a
+context with no engine snapshot return `None`. These contexts are supplied by the engine and have no
+game `Host`, handle constructors or transactions. Declarations still go on each event or registrar.
 
 - `component_types(context, event)` runs once before content loads. Call `event.register(id)` with each owned namespaced ID. Duplicates, invalid IDs and the `minecraft` namespace stop startup. `native_component`, `native_set_component` and `native_remove_component` read, set and remove registered components, including item defaults. Values use NBT and must fit the network reader limits.
 
-- `create_skull_models`, `map_decoration_types`, `register_entity_spectator_shaders`, `register_fluid_models`, `register_render_pipelines` and `register_texture_atlases` take one entry per `event.register(entry)` call. `block_entity_type_add_blocks` adds memberships with `event.modify(kind, blocks)` or `event.modify_matching(predicate, blocks)`; `event.types` lists registered types, not additions. These registration methods stage entries in listener order. A listener cannot read, edit or remove earlier registrations; a phase refusal discards only that listener's additions. Fluid models and texture atlases are collected again on resource reload. Atlas timing and duplicate handling are unchanged.
+- `create_skull_models`, `map_decoration_types`, `register_entity_spectator_shaders`, `register_fluid_models`, `register_render_pipelines` and `register_texture_atlases` take one entry per `event.register(entry)` call. `block_entity_type_add_blocks` adds memberships with `event.modify(kind, blocks)` or `event.modify_matching(predicate, blocks)`; `event.types` lists registered types, not additions. These registration methods stage entries in listener order. A listener cannot read, edit or remove earlier registrations; a phase refusal discards only that listener's additions. `register_render_pipelines` (version 4) accepts any valid pipeline `Identifier` without a namespace ownership gate. Mod pipeline IDs are unique across required and optional registrations; collisions with vanilla are checked in the matching registry as in NeoForge `RegisterRenderPipelinesEvent`. Fluid models and texture atlases are collected again on resource reload. Atlas timing and duplicate handling are unchanged.
 
-- `register_layer_definitions(context, event)` binds each layer ID to an owned `Send + Sync + 'static` supplier with `event.register(id, supplier)`. Accepted suppliers run once in registration order at client startup when the layer table freezes. The game keeps their definitions, not the suppliers. Baking through `ClientHost::bake_layer` and reloading resources reuse the definitions.
+- `register_layer_definitions(context, event)` (version 4, matching NeoForge `ClientHooks.registerLayerDefinition` and vanilla `LayerDefinitions.createRoots`) binds each `<namespace>:<path>#<layer>` ID to an owned `Send + Sync + 'static` supplier with `event.register(id, supplier)`. Both delimiters are required; the namespace and path follow vanilla `Identifier` rules and may be empty, and the layer can be any string. Duplicate mod registrations keep the last supplier per ID before invoking suppliers, and an exact collision with a vanilla layer key in `entity-models.json` fails client startup. Each winning supplier runs once in registration order at client startup when the layer table freezes. The game keeps their definitions, not the suppliers. Baking through `ClientHost::bake_layer` and reloading resources reuse the definitions.
 
 - [explosions](#explosions) for server mods: `LevelRef::explode(host, source, center, radius, fire, interaction, settings)`
   sets one off as `Level.explode` does, with an optional source entity, `ExplosionInteraction::None`, `Block`, `Mob`, `Tnt`
@@ -1839,13 +1839,13 @@ still go on each event or registrar.
 `screen_opening(current, new, outcome)` (`ScreenEvent.Opening`), `screen_closing(screen)` (`ScreenEvent.Closing`) and `screen_init_post(screen)` (`ScreenEvent.Init.Post`) take a `ScreenView`. Every change of the game's screen (all of the game's screen assignments) goes through `Game::set_screen`, which mirrors `Gui.setScreen`: when a different screen would open, `screen_opening` fires first with the screen that is open (`current`) and the one about to open (`new`; the id `playing` is vanilla's null, no screen), and answers `ScreenOpening::Cancel` (the current screen stays), `ScreenOpening::ModScreen` (the answering mod's own screen opens instead, if it can open there: over the world or the title's screens, not over a book, a prompt or a loading world) or `ScreenOpening::Vanilla(ScreenTarget)` (another vanilla screen that takes no arguments opens instead, as it opens on its own: `Pause`, `Options`, `Inventory`, `Advancements`, `Stats` and `Chat` in a world, `Title`, `WorldSelect`, `WorldCreate`, `Multiplayer`, `AddServer` and `DirectConnect` on the title; a target that can't open there, a title screen in a world or a world's screen on the title, keeps the screen asked for and the game logs it); the replacement fires nothing again; the first mod to answer wins, and the dispatch records its id, so a mod can open only its own screen. Then `screen_closing` fires for the screen being left (never for `playing`), and the new screen opens. The same screen again fires nothing, and a game where no mod listens to `screen_opening` or `screen_closing` assigns the screen with no event. `screen_init_post` is still observed once per frame (an open or a resize). The screens of the game's `Screen` list (inventory, containers, pause, options, chat, creative, stats, advancements, mod screens, dead, win…) announce themselves in `set_screen`, before they change, and honour every answer. The overlays drawn over gameplay (sign editors, book edit/sign/view and lectern screens, dialogs, and the command, link, code-of-conduct and server-pack prompts) open through `Game::open_screen_overlay`, which fires `screen_opening` before the overlay is set and honours the answers in the same way (a canceled server-pack prompt leaves its packs unanswered, a canceled code of conduct leaves the server waiting, as in NeoForge), then `screen_closing` for an overlay it replaces. The title's own screens (`world_select`, `world_create`, `world_edit`, `multiplayer`, `onboarding`…) open in the same way: `Title::set_mode` asks for the screen while a mod listens to `screen_opening` or `screen_closing`, and the game fires `screen_opening` (from the title screen shown) and `screen_closing` for the one left before it applies it, after the window event or control command that asked; `Cancel` keeps the screen shown, `ModScreen` opens the mod's own screen over the title (drawn and fed input by the screen hooks as over the world; closing it returns to the title screen), and `Vanilla` opens another title screen. The multiplayer list's own steps (`add_server`, `edit_server`, `direct_connect`, `server_delete`, `friends_join`, and back to `multiplayer`) are title screens too and go the same way. The title appearing as a whole (at startup, when a world closes, after a disconnect or a failed join) and going (when a world opens) goes through `Game::show_title` and `Game::hide_title`: `screen_opening` (from no screen to the title's screen, or back) and `screen_closing` for what it leaves fire before the change, and `screen_init_post` follows an appearance; a `Cancel` doesn't keep the title shut when there is no world to show instead, nor keep it open over a world that opens; an appearing title honours `ModScreen` and `Vanilla`. Still announced by the per-frame observer, through the same function and in the same order but after the change, so a mod's answer can't keep it shut: an overlay's closing. Overlay views use the full window as their rectangle and have no menu or title; anvil rename remains part of its inventory screen. Dialog states share the `dialog` id. A menu swapped inside the open inventory screen is not a change of screen.
 
 - `client_resources_reloaded()` fires on the render thread after successful client resource-pack application: the atlas, models, renderer and client caches already use the new resources. It covers selection/F3+T and server-pack reloads. Failed staging or application and initial startup do not fire it. This is a completion notification, not a reload-listener registration or staging API.
-- `texture_atlas_stitched(atlas)` (NeoForge's `TextureAtlasStitchedEvent`) fires on the render thread once per atlas the resources publish, `TextureAtlas::Blocks` and then `TextureAtlas::Gui`: on the first load before `client_setup`, and after every successful reload before `client_resources_reloaded`. A failed reload fires nothing, and the old sprites stay right. Sunrise packs vanilla's many atlases into these two: the block sprite arrays (`texture_sprites` answers a `SpriteRef`) and the GUI atlas of GUI sprites, particles and flat item and block textures (`gui_sprite` answers an `AtlasRegion`). Look up the sprites a mod draws here, once, and keep them until that atlas is stitched again; never by name every frame. `TextureAtlas` is `#[non_exhaustive]`. A dedicated server never fires it.
+- `texture_atlas_stitched(atlas)` (NeoForge's `TextureAtlasStitchedEvent`) fires on the render thread once per atlas the resources publish, `TextureAtlas::Blocks` and then `TextureAtlas::Gui`: on the first load before `client_setup`, and before `client_resources_reloaded` on later reloads. The atlas notifications run at the model manager's apply step, before listeners ordered after that anchor. A refused prepare fires nothing, and the old sprites stay right. Sunrise packs vanilla's many atlases into these two: the block sprite arrays (`texture_sprites` answers a `SpriteRef`) and the GUI atlas of GUI sprites, particles and flat item and block textures (`gui_sprite` answers an `AtlasRegion`). Look up the sprites a mod draws here, once, and keep them until that atlas is stitched again; never by name every frame. `TextureAtlas` is `#[non_exhaustive]`. A dedicated server never fires it.
 
 - `client_stopped` fires after the client shutdown finishes. `game_shutting_down` fires after that on clients and after the dedicated server stops, with a side-typed host. Both fire once on orderly process exit. There is no separate `client_started`: `client_setup` covers that moment.
 
 - `client_stopping()` (Fabric's `ClientLifecycleEvents.CLIENT_STOPPING`; NeoForge has no event for it) fires once per game process, on the render thread, when the game shuts down: after the world the player was in is left and saved, with the settings and resources still held, so a listener can read them through the `ClientHost` and save its own client state. Closing the window, a quit shortcut and the stop signals reach it; a crash does not. A dedicated server has no client and never fires it. Listeners are pure functions of the `ClientHost` reads and the mod's own state. Tick-time effect: none, it fires once at exit. Diverges from upstream: new hook.
 
-- `client_setup()` (NeoForge's `FMLClientSetupEvent`) fires once per game process on the render thread, after the first client load has applied and before the title screen's first frame, with the `ClientHost`. It is the moment `client_resources_reloaded` skips: that one never runs at initial startup and runs after every later reload, while this one runs once and never again. Returning to the title screen and opening another world is not a new start. NeoForge's `DeferredWorkQueue` has no counterpart (the listener already runs on the thread that would drain it; work a mod wants in parallel is its own). A dedicated server has no client and never fires it; `FMLDedicatedServerSetupEvent` is `server_about_to_start`. A failing listener is handled like any other listener of a hook. Listeners are pure functions of the `ClientHost` reads and the mod's own state.
+- `client_setup` (NeoForge's `FMLClientSetupEvent`) fires once per game process on the render thread, after the first client load has applied and before the title screen's first frame. It receives `&mut dyn ClientSetupContext` and `&mut ClientSetupEvent`, not a `ClientHost`; setup can use published resources and client setup operations, but it cannot open worlds or transactions. `client_resources_reloaded` skips initial startup and runs after later reloads; returning to the title or opening another world does not repeat setup. NeoForge's `DeferredWorkQueue` has no counterpart (the listener already runs on the thread that would drain it). A dedicated server has no client and never fires this hook; `server_about_to_start` covers its setup.
 
 - `vanilla_game_event(dimension, event, pos, cause, affected_state, cancel)` (NeoForge's `VanillaGameEvent`) fires on the server for every vanilla game event before the sculk sensors, wardens and allays hear it; canceling keeps them from hearing it. `cause` is the network id of the entity that caused it (`GameEvent.Context.sourceEntity`, None for none) and `affected_state` is the block state the event touched (`GameEvent.Context.affectedState`): the block a player broke or placed, the block a mob stepped on, and None where vanilla passes none (`Context.of(entity)`). Contract version `2`: version `1` had no `affected_state`. With no listener the cost is one `listened` branch per event. Diverges from upstream.
 
@@ -1949,8 +1949,10 @@ tick. Declarations support linear size/opacity curves and constant gravity/frict
 code, register a provider with `register_particle_providers` ("Particle providers"). A provider replaces the
 declared motion (its tick moves the particle) but the declared spawn values still seed it.
 
-`register_particle_groups(context, event)` binds a namespaced `Identifier` to a factory with
-`event.register(id, factory)` once at client startup. The factory captures owned data
+`register_particle_groups(context, event)` binds a namespaced `Identifier` (any nonempty
+namespace and path, including `minecraft`) to a factory with `event.register(id, factory)` once
+at client startup. Duplicate IDs fail client startup without invoking any factory (matching
+NeoForge's `RegisterParticleGroupsEvent`, version 3). The factory captures owned data
 (`Send + Sync + 'static`) and returns a `ParticleGroup` with its blend and particle types,
 not its ID. The engine calls an accepted factory once per particle engine construction.
 A sprite reload resolves particle types against those groups without running factories again.
@@ -2023,31 +2025,42 @@ changing live state and returns a `Box<dyn FnOnce() + Send + 'static>` using
 `Box::new(move || { /* publish parsed state */ })`. The action owns its prepared state and the
 runner consumes it once on the server's owning thread. All listeners prepare before **any** apply
 runs. Do not read another listener's new published state in prepare: dependencies order both
-phases but do not remove this barrier. Publication cannot report an error, and a later server
-table refusal does not roll back actions that already ran. As vanilla's
+phases but do not remove this barrier. Listener actions cannot report an error. A refusal
+while preparing world tables comes before any listener applies. As vanilla's
 `SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
-skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — like
-any preparation, registration or ordering error — aborts the whole reload: all pending actions
-are dropped without running and the old mod data and vanilla function library are kept. A
-panic in `prepare` or an apply is not recovered: it stops the server, and the crash
-report names the listener and the mod that registered it. Wrap the original error in
-`ReloadResourceError::new(id, cause)` to keep its source chain; `resource()` borrows the
-resource ID and `std::error::Error::source` exposes the cause. The diagnostic names the
-listener and the resource; world open fails, and `/reload` reports the failure. A failed `/datapack` change also preserves the selected packs on disk.
+skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — or
+introducing a dependency cycle — aborts the whole reload: all pending actions are dropped
+without running and the old mod data and vanilla function library are kept. A handled
+registration error from `add_listener`, `add_retained_listener` or `add_dependency` returns
+`Err(ReloadOrderError)` without mutating or poisoning the registry and is logged each time.
+A panicking or phase-refused registration contributes no listener declarations or edges.
+A panic in prepare or apply logs the mod and listener, shows the mod error toast on the local
+client, and skips that listener for the session without stopping the other applies. The game does
+not admit that listener's new retained object. An apply action must publish any private state
+it owns atomically: the game cannot undo writes to native mod memory.
+Wrap the original error in `ReloadResourceError::new(id, cause)` to keep its source chain;
+`resource()` borrows the resource ID and `std::error::Error::source` exposes the cause.
+`Display` gives just the resource ID. Reload diagnostics walk the source chain once, marking
+a circular reference and stopping there. The log and `/reload` reply name the listener, the
+resource and the causes. A
+failed `/datapack` change also preserves the selected packs on disk.
 
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
-IDs as typed variants: unknown names fail immediately, and cycles fail after registration.
-`VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
-`last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
-listeners run after vanilla by default, in registration order; an explicit dependency before
-`functions()` works without a false cycle. Use these anchors rather than their string values.
-`event.listeners.get_registry().iter()` borrows the registered names in registration order,
-including the boundaries. `event.listeners.get_graph().iter()` borrows `(first, second)`
-name pairs in edge insertion order. These views borrow the registration in progress: copy
-only the IDs you need to keep or use after registering another listener or dependency.
-`event.listeners.get_last_vanilla_listener()` borrows the effective default anchor: the
-built-in global loot modifier listener is registered after the function library and becomes
-the anchor. Use `VanillaServerListeners::functions()` to target the function library itself.
+IDs as typed variants: unknown names fail immediately without latching a failure, and cycles fail
+after registration. `VanillaServerListeners::functions()` names Sunrise's function-library
+listener, with no synthetic `minecraft:first` or `minecraft:last` boundary nodes or automatic
+boundary edges. This anchor and dependency ends use `Identifier`. Mod listeners without a path to
+or from a vanilla listener run after vanilla by default, in registration order. Dependencies
+before or after `VanillaServerListeners::functions()` order both the real function-file read and
+the function-library admission. Use the named anchor rather than its string value. `event.listeners.get_registry().iter()` borrows the registered names in registration
+order, starting with the vanilla anchor. `event.listeners.get_graph().iter()` borrows
+`(first, second)` name pairs in edge insertion order. These views borrow the registration in
+progress: copy only the IDs you need to keep or use after registering another listener or
+dependency. `event.listeners.get_last_vanilla_listener()` always borrows
+`VanillaServerListeners::functions()` (matching NeoForge's
+`SortedReloadListenerEvent.getLastVanillaListener`); the built-in global loot modifier listener
+(`neoforge:loot_modifiers`) is registered before mod hooks without replacing it or adding a
+pre-wired edge.
 The reads give names, not the listener objects NeoForge exposes (a mod keeps its own listener's
 `Arc`, and its name is the one it registered it under). `prepare` returns a boxed `FnOnce() + Send + 'static` action. Sunrise does not expose
 NeoForge's condition context here.
@@ -2059,8 +2072,9 @@ reads the object back from any server hook through
 `host.reload_resources().listener(&key)` — an `Arc<T>` of the live object the last successful
 reload installed, as NeoForge's `ReloadableServerResources.getListener`. Registration rules and
 prepare/apply semantics are `add_listener`'s. Retention follows the reload: a new reload
-registers fresh objects and the store is replaced whole by the first successful apply, so a key
-held across a reload keeps addressing the new object. Before the first successful reload, or
+registers fresh objects and the store is replaced whole by each successful reload, so a key
+held across a reload addresses the new object unless the owning listener was skipped. A skipped
+listener keeps its previous object, when one exists. Before the first successful reload, or
 for a key whose id or type does not match a registration, `listener` gives `None`.
 
 ```rust,ignore
@@ -2091,7 +2105,11 @@ impl ServerReloadListener for MachineData {
 struct MyMod(Arc<MachineData>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_server_reload_listeners(&self, _host: &dyn Host, event: &mut AddServerReloadListenersEvent<'_>) {
+    fn add_server_reload_listeners(
+        &self,
+        _context: &dyn ReloadContext,
+        event: &mut AddServerReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:machines").unwrap(),
             FileToIdConverter::json("machines").unwrap(),
@@ -2127,28 +2145,31 @@ language files arrive key-wise merged across the packs, as vanilla loads them.
 Prepare and apply semantics, error handling, crash attribution and dependency ordering match
 those of [server listeners](#server-data-reload-listeners). Client registry reads return owned IDs.
 `ClientReloadListener::prepare` parses without changing live state and returns a boxed
-`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare,
-registration or ordering error aborts the reload and drops pending actions without running them.
-A panic names the listener and its registering mod in the crash report.
-`VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
-26.3 `Minecraft` registration order; `first()` and `last()` are the ordering boundaries. Mod applies run on the main thread after the staged pack is
-published, before `client_resources_reloaded`. Listeners are registered fresh for every
-load: the initial resource load registers them once, before any prepare runs (as
-NeoForge's construction-time event does — no game exists yet, and a host read during
-registration panics), prepares them beside the rest of the load on the loading thread —
-the title screen's loader worker or the direct launch, one path — and the game applies
-them once it owns the assets; every later reload — F3+T, a pack change, a server's
-packs — registers through the game the same way. A listener whose prepare fails on the
-initial load leaves the game running without mod reload listeners, logged as a
-warning. NeoForge's client event offers no
+`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare error or
+dependency cycle aborts the reload and drops pending actions without running them, while a
+handled registration error leaves the registry unmutated and does not poison the reload.
+A panic follows the same named log, toast, and session-disablement path as on the server.
+`VanillaClientListeners::model_manager()` names Sunrise's single modeled vanilla client
+reload anchor; `first()` and `last()` alias `model_manager()` (the Sunrise counterparts of
+NeoForge's `VanillaClientListeners.FIRST`/`LAST`), with no synthetic boundary nodes or automatic
+edges. Only dangling non-`minecraft` listeners are linked after the anchor during topological
+sorting (matching NeoForge's `ReloadListenerSort`). Dependencies on that anchor run mod
+prepares before or after the actual build, and applies on the corresponding side of
+model publication on the game thread. First, the atlas uploads fire `texture_atlas_stitched`
+with the previous model store (none on startup). `model_baking_completed` fires in the model
+manager's apply once the new store is installed. All applies precede `client_resources_reloaded`.
+On the initial load, registration uses an empty host because no game exists yet; a host
+read not admitted by the phase gate is a refusal. The first load, F3+T, pack changes and server packs all
+respect the same prepare/apply ordering. A failed initial prepare refuses the load,
+rather than publishing a generation with its listener state missing. NeoForge's client event offers no
 retained listeners, and Sunrise has none: the `Arc` the mod registers with is the listener's
 own live state.
 
 ```rust,ignore
 use std::sync::{Arc, RwLock};
 use mod_api::{
-    self, AddClientReloadListenersEvent, ClientHost, ClientReloadContext, ClientReloadListener,
-    FileToIdConverter, Hooks, Identifier, ReloadResourceError,
+    self, AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+    ClientReloadListenerContext, FileToIdConverter, Hooks, Identifier, ReloadResourceError,
 };
 
 #[derive(Default)]
@@ -2172,7 +2193,11 @@ impl ClientReloadListener for Theme {
 struct MyMod(Arc<Theme>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_client_reload_listeners(&self, _host: &dyn ClientHost, event: &mut AddClientReloadListenersEvent<'_>) {
+    fn add_client_reload_listeners(
+        &self,
+        _context: &dyn ClientReloadListenerContext,
+        event: &mut AddClientReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:theme").unwrap(),
             FileToIdConverter::json("ui").unwrap(),
@@ -2218,7 +2243,7 @@ registration path.
   tick, and `music_layers(layers)` lists looping tracks played over it, each easing to its own volume (stems that
   grow fuller).
 
-- A server's recipes reach its Sunrise clients, as NeoForge's `OnDatapackSyncEvent.sendRecipes` and `RecipesReceivedEvent`: on the server, `native_datapack_sync(player, recipe_types)` takes the recipe types (`minecraft:smelting`, `mymod:crusher`) a mod's client half needs, asked once the joining player exists, after admission and before their recipes are sent; `player` is a required `PlayerRef`. Reload asks once per online player, at most once per player per reload, before re-sending their recipes; with nobody online it is not asked. Configuration tags precede admission; Sunrise sends their final recipes (data packs merged, load conditions held) to that Sunrise client when it joins and after each `/reload`, in payloads within the clientbound cap, and nothing to a vanilla client. On the client the recipe helpers (`native_recipes`, `native_recipes_of_type`) then give the server's recipes of those types in place of the window's own, single player included, and `recipes_received(recipe_types)` says they came. No type asked: nothing is sent and nothing changes; none asked after a load that asked some: the clients go back to their own recipes and `recipes_received` comes with no types.
+- A server's recipes reach its Sunrise clients, as NeoForge's `OnDatapackSyncEvent.sendRecipes` and `RecipesReceivedEvent`: on the server, `native_datapack_sync(player, recipe_types)` takes the recipe types (`minecraft:smelting`, `mymod:crusher`) a mod's client half needs, asked once the joining player exists, after admission and before their recipes are sent; `player` is a required `PlayerRef`. Reload asks once per online player, at most once per player per reload, before re-sending their recipes; with nobody online it is not asked. Configuration tags precede admission; Sunrise sends their final recipes (data packs merged, load conditions held) to that Sunrise client when it joins and after each `/reload`, in payloads within the clientbound cap, and nothing to a vanilla client. On the client the recipe helpers (`native_recipes`, `native_recipes_of_type`) then give the server's recipes of those types in place of the window's own, single player included, and `recipes_received(recipe_types)` says they came. Vanilla recipe serializers send resolved item candidates, not native ingredient predicates; mod serializers send their own writer's output. Unsent types retain their already-loaded local recipes. No type asked: nothing is sent and nothing changes; none asked after a load that asked some: the clients go back to their own recipes and `recipes_received` comes with no types.
 - `level.recipe_for(host, &recipe_type, &inputs)` matches through the game's crafting, cooking, stonecutting and smithing matchers, including data-pack recipes of those vanilla types. `RecipeInput` has Crafting, Single and Smithing variants. A `RecipeMatch` carries recipe id, typed output, ordered remainders, experience and processing time. Valid non-matching input is `Ok(None)`; malformed input, invalid items and unavailable levels are typed errors. Mod-owned types return `RecipeLookupError::NotMatchable`: cache `recipes_of_type` once per load/reload and match in mod memory, with no per-tick host crossing. Dynamic custom outputs/contextual predicates stay mod-owned. Lookup does not consume inputs; cache the result until the input changes.
 
 - `input_key(key, layout_key, raw_code, action, modifiers)` (version 2) runs after a real window keyboard event finishes handling, including shortcuts, screen consumption and repeats (`InputEvent.Key`). key is vanilla's name for the physical key (`key.keyboard.a`; `key.keyboard.unknown` for one it doesn't name; `getKey`), layout_key its name for the key the layout produced (`getKeycode`: a letter or digit names itself, so AZERTY's key at QWERTY's W is `key.keyboard.z`; a named key keeps the physical name; `None` otherwise), raw_code the platform scan code, or winit's native code for a key it doesn't identify, so unnamed keys stay apart (`getScanCode`; stable within a platform only), action is `KeyAction::Press`, `Repeat` or `Release`, and modifiers use the screen hooks' GLFW bits, captured before handling. Not cancellable. Foreign-window and OS synthetic focus events skip it. Window callback only: pad, focus and control-socket input are not window key events.
@@ -2316,7 +2341,7 @@ registration path.
 
 - A player finishing a sign: `native_sign_changed(player, name, dimension, pos, front, lines, cancel)` is heard when a player sends the text they wrote on a sign they were editing, right before it goes on the sign, once the checks have passed, on a server, with the player's state swapped in (`PlayerRef::tell` reaches them). A mod may rewrite `lines` (four lines of plain text) or set `cancel` so the sign keeps its old text; a waxed sign is not told.
 
-- Models no blockstate names, as in NeoForge's `ModelEvent.RegisterStandalone`: `standalone_models(context, event)` runs once at client startup (not on integrated or dedicated servers). Call `event.register_model(id)` for a plain file, or `event.register(id, dependencies, baker)` to assemble declared model files during resource loads. The baker owns its captures (`Send + Sync + 'static`) and may run on a resource worker; the `StandaloneModelBakeContext` is borrowed only for that invocation. Use its `append_dependency(id, quarter_turns, uvlock)` to append quads in call order with the blockstate baker's centered negative XYZ quarter-turns and inverse-face UV locking. A missing dependency, undeclared or failed append (even if ignored), or failed callback drops the entire result and logs the registering mod, not the source namespace. A successfully baked file wins over a baker with the same ID; otherwise the first successful baker wins. Resolve each result's `Identifier` through `host.render_assets().model(&id)` in `model_baking_completed`, retaining its opaque `ModelRef` between frames. `BlockEntityDrawContext::model(model, tint)` consumes that handle under the draw pose in `block_entity_submit` or `render_living_pre`, with `tint` (`0xAARRGGBB`) on tinted faces, alpha included; use `0xFFFFFFFF` for no tint. Missing or unbaked names return `ModelError::UnknownModel`. Successful resource replacement invalidates old handles with `ModelError::StaleModel`; failed reloads keep them usable. Drawing errors append no geometry. Lookup never reads or bakes files, and results are quads rather than arbitrary mod-defined baked types.
+- Models no blockstate names, as in NeoForge's `ModelEvent.RegisterStandalone`: `standalone_models(context, event)` runs once at client startup (not on integrated or dedicated servers). Call `event.register_model(id)` for a plain file, or `event.register(id, dependencies, baker)` to assemble declared model files during resource loads. The baker owns its captures (`Send + Sync + 'static`) and may run on a resource worker; the `StandaloneModelBakeContext` is borrowed only for that invocation. Use its `append_dependency(id, quarter_turns, uvlock)` to append quads in call order with the blockstate baker's centered negative XYZ quarter-turns and inverse-face UV locking. A failed `append_dependency` leaves the assembly unchanged and returns `Err`; the baker's returned `Result` controls whether the model is published (`Ok(())`) or discarded (`Err(_)`). A missing dependency or `Err` return drops the result for that load and logs the registering mod, not the source namespace, and the baker runs again on later resource reloads; only a panic disables the callback for the session. A successfully baked file wins over a baker with the same ID; otherwise the first successful baker wins. Resolve each result's `Identifier` through `host.render_assets().model(&id)` in `model_baking_completed`, retaining its opaque `ModelRef` between frames. `BlockEntityDrawContext::model(model, tint)` consumes that handle under the draw pose in `block_entity_submit` or `render_living_pre`, with `tint` (`0xAARRGGBB`) on tinted faces, alpha included; use `0xFFFFFFFF` for no tint. Missing or unbaked names return `ModelError::UnknownModel`. Successful resource replacement invalidates old handles with `ModelError::StaleModel`; failed reloads keep them usable. Drawing errors append no geometry. Lookup never reads or bakes files, and results are quads rather than arbitrary mod-defined baked types.
 
 - A player opening and closing any menu on a server, on the single player server thread and on a dedicated server: `player_container_open(player, name, dimension, menu_type, pos, menu)` and `player_container_close(...)` (NeoForge's `PlayerContainerEvent.Open` and `.Close`), with the menu type's name and, for a block's menu, its position. They run with the player's state swapped in. Unlike the viewer count of a mod container (`mod_container_viewers`) they name the player and cover every menu: chests, furnaces, crafting tables, trades, a mod's own. The open is heard synchronously after construction, the open packet is queued and full contents sent, with the new menu already current; failed construction and the player's own inventory are excluded. Even inside one tick, open precedes close; replacement closes the old menu before the new open. Each open has one close, also when the player leaves. The synchronous timing is unchanged; version 2 adds `menu: Option<MenuRef>` during open and names the type string `menu_type` on both notices. Crafting tables, merchants, workstations, lecterns, mount inventories and hidden-slot menus have no handle yet.
 
@@ -2366,7 +2391,7 @@ registration path.
 - A frame's two moments, as NeoForge's `RenderFrameEvent.Pre` and `.Post`: `render_frame_pre(host, event)` runs once a frame (in a world or not) after Sunrise's extras and just before the frame is rendered, and `render_frame_post` right after it was rendered; both carry the frame's time as `event.elapsed`, `world_partial_tick` (captured world interpolation, held while paused or frozen), and `partial_tick` (advancing window interpolation). Outside a world both use the window clock. Pre reports the value about to be drawn; post retains the same snapshot even if a listener changes the clock or screen. Client side; a frame with no listener costs one branch.
 - Items a mod's own recipe type takes in a station slot. `recipe_property_sets(context, additions)` is asked once per load, after the recipes are resolved, with the `DataLoadContext` of the load that owns them (`origin()` `ServerDataLoad` on a server, `ClientPreload` on a client's own load), and again after `/reload`. Push one `RecipePropertyAddition::new(set, items)` per set to add to (`minecraft:furnace_input`, `blast_furnace_input`, `smoker_input`, `campfire_input`, `smithing_template`, `smithing_base`, `smithing_addition`, `brewing_input`, `brewing_reagent`); the vanilla recipes' items stay in. The furnace shift-click, the smithing and brewing slots and the set a client is sent read the one answer, so the client predicts what the server accepts. A new key in the listener's manifest-owned namespaces or in a content package it serves (`served_by`) creates a custom set, synchronized to clients alongside vanilla sets. Later listeners may extend an existing set. `Host::mod_recipe_property_contains` and the same `LoopContext` query take the set key and an `ItemKey`; a mod menu's `menu_slot_rules` reads that generation for both server acceptance and client prediction. These queries cover mod-created sets only, returning false for unknown or vanilla keys. Invalid keys, new foreign keys, unknown vanilla keys and air are logged and skipped; an item the registry does not know is ignored. The answer must be the same every time.
 
-- The in-world HUD's two moments, as NeoForge's `RenderGuiEvent.Pre` and `.Post`: `render_gui_pre(host, event)` runs once a frame in a world, before any vanilla HUD layer, and a mod that returns `Flow::Cancel` hides the whole HUD as F1 does (no layer, no `gui_layer_pre` or `gui_layer_post`, no `render_gui_post`, no chat or toasts); it is not heard under F1 or while a server dialog or the connection screen covers the window. `render_gui_post(host, draw, corners)` runs after the boss overlay and before the health and contextual HUD layers. Client side; a frame with no listener costs one branch each.
+- The in-world HUD's two moments, as NeoForge's `RenderGuiEvent.Pre` and `.Post`: `render_gui_pre(host, event)` runs once a frame in a world, before any vanilla HUD layer. `Flow::Cancel` hides the layers, `gui_layer_pre`, `gui_layer_post`, `render_gui_post`, chat and ordinary toasts. Mandatory mod-error toasts still draw unless the player hides them. The hook is not heard under F1 or while a server dialog or the connection screen covers the window. `render_gui_post(host, draw, corners)` runs after the boss overlay and before the health and contextual HUD layers. Client side; a frame with no listener costs one branch each.
 - Lowering the frame rate limit: `framerate_limit(focused, minimized, in_world, limit)` is asked each frame with the limit Sunrise is about to use (Max Framerate after the inactivity throttle and Battery Mode, 260 for unlimited), whether the window has focus, whether it is minimised and whether a world is open. A mod may lower `limit`, for example to throttle a window in the background as Dynamic FPS does; Sunrise keeps the lower of its own limit and the mod's and ignores values below 1.
 - The camera type F5 cycles to: `camera_type_cycle(host, event)` runs when `key.togglePerspective` cycles the window's
   camera type (`Minecraft.handleKeybinds`), with `previous` and vanilla's `next` (first person, third person behind, third

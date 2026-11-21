@@ -2,7 +2,8 @@
 //! server ticks, owned by the world's lifecycle and dropped with it.
 
 use mod_api::{
-    __private::game::allocate_task_id, MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
+    __private::game::{CallbackOwner, allocate_task_id},
+    MAX_PENDING_TASKS, ScheduleError, ServerHost, TaskId,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -13,6 +14,13 @@ pub(super) type ServerTask = Box<dyn FnOnce(&mut dyn ServerHost)>;
 /// The owning mod's `[mod] id` (when scheduled inside a mod call) and its callable, detached from
 /// the scheduler.
 pub(super) type PendingTask = (Option<&'static str>, ServerTask);
+
+pub(super) fn dispose_pending_task((owner, task): PendingTask) {
+    match owner {
+        Some(id) => CallbackOwner::dispose_scheduled_task(id, task),
+        None => CallbackOwner::call_engine(|| drop(task)),
+    }
+}
 
 /// Runs every item `next` yields through `run`, even when one run panics: the other items still
 /// run, and the first panic comes back for the caller to put back in flight once it has restored
@@ -81,7 +89,7 @@ impl ScheduledTasks {
 
     /// Withdraw `id` if it is still waiting. `TaskId` is an opaque capability, so holding it
     /// suffices to cancel the task. The caller gets the detached owner and callable back only once
-    /// all bookkeeping is updated, so dropping captures under the scheduling owner's scope is safe.
+    /// all bookkeeping is updated, so captures can be disposed under the scheduling owner's policy.
     pub(super) fn cancel(&mut self, id: TaskId) -> Option<PendingTask> {
         let &due = self.due.get(&id)?;
         self.remove(due, id)
@@ -106,9 +114,8 @@ impl ScheduledTasks {
     /// Globally unique task ids are never reset, so retained ids cannot alias tasks in a new world.
     pub(super) fn clear(&mut self) {
         let mut retired = std::mem::take(self).queue.into_values();
-        let panic = run_all(&mut retired, Iterator::next, |_, (owner, task)| {
-            let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
-            drop(task);
+        let panic = run_all(&mut retired, Iterator::next, |_, task| {
+            dispose_pending_task(task)
         });
         if let Some(payload) = panic {
             resume_unwind(payload);
@@ -247,30 +254,6 @@ mod tests {
         let mut tasks = ScheduledTasks::default();
         tasks.schedule(A, u32::MAX, Box::new(|_| {})).unwrap();
         assert!(advance(&mut tasks).is_empty());
-    }
-
-    #[test]
-    fn closing_the_world_detaches_all_tasks_and_does_not_reuse_ids() {
-        let mut tasks = ScheduledTasks::default();
-        let panics = PanicOnDrop;
-        let stale_first = tasks
-            .schedule(A, 1, Box::new(move |_| drop(panics)))
-            .unwrap();
-        let capture = Rc::new(());
-        let owned = Rc::clone(&capture);
-        let stale_second = tasks
-            .schedule(None, 1, Box::new(move |_| drop(owned)))
-            .unwrap();
-        let panic = catch_unwind(AssertUnwindSafe(|| tasks.clear())).unwrap_err();
-        assert_eq!(panic.downcast_ref::<&str>(), Some(&"destructor panicked"));
-        assert_eq!(Rc::strong_count(&capture), 1);
-        assert!(advance(&mut tasks).is_empty());
-        let fresh = tasks.schedule(A, 1, Box::new(|_| {})).unwrap();
-        assert_ne!(fresh, stale_first);
-        assert_ne!(fresh, stale_second);
-        assert!(tasks.cancel(stale_first).is_none());
-        assert!(tasks.cancel(stale_second).is_none());
-        assert!(tasks.cancel(fresh).is_some());
     }
 
     #[test]

@@ -27,9 +27,7 @@ pub struct Backend {
     pub set_detail: fn(&'static str, String),
     pub clear_detail: fn(&'static str),
     pub details: fn() -> Vec<(&'static str, String)>,
-    pub current_phase: fn() -> crate::__private::ModPhase,
-    pub phase_state: fn() -> crate::__private::PhaseState,
-    pub set_phase: fn(crate::__private::PhaseState),
+    pub registration_open: fn() -> bool,
     pub packages: fn() -> std::sync::Arc<[crate::PackageInfo]>,
     pub namespace_authority: fn() -> std::sync::Arc<crate::parts::NamespaceAuthority>,
     pub owns_namespace: fn(&str, &str) -> bool,
@@ -44,8 +42,6 @@ pub struct Backend {
 pub struct Diagnostics {
     pub first_broken_warning: fn(&str) -> bool,
     pub first_off_thread_warning: fn() -> bool,
-    pub first_output_refusal: fn(crate::HookId, &'static str) -> bool,
-    pub reset_output_refusals: fn(),
 }
 
 /// Plain per-call instrumentation data. The platform must validate the pool
@@ -116,6 +112,14 @@ impl ModGuard {
     pub(crate) fn unattributed() -> Self {
         let mut guard = Self::empty();
         guard.owner = Some(crate::content::crash::push(None));
+        guard
+    }
+
+    /// Vocab-only fixtures have no platform instrumentation backend.
+    #[cfg(test)]
+    pub(crate) fn fixture_owner(call: ModCall) -> Self {
+        let mut guard = Self::empty();
+        guard.owner = Some(crate::content::crash::push(Some(call)));
         guard
     }
 

@@ -3231,6 +3231,8 @@ struct Game<'a> {
     /// server tables' last build: what `data_maps_updated` fires for.
     data_map_registries: Vec<String>,
     /// This game's resource packs (`reload_packs` replaces them).
+    pending_initial_models: Option<Box<initial_client_models::PendingClientStart>>,
+    stitching_block_atlas: Option<Arc<RenderAssets>>,
     pack: PackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     gui: UiResources,
@@ -3696,7 +3698,6 @@ struct Game<'a> {
     tutorial_toasts: Vec<tutorial::HintToast>,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
     narrator_toast: Option<sunrise_client::toasts::SystemToast>,
-    mod_callback_toasts: Vec<sunrise_client::toasts::SystemToast>,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -3975,7 +3976,6 @@ struct Game<'a> {
     held_out: Vec<u32>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
-    mod_phase: mod_api::__private::PhaseOwner,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
     /// The mod whose own screen is open (`Screen::Mod`).
@@ -7104,7 +7104,6 @@ impl Game<'_> {
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
         self.draw_narrator_toast(&mut batch);
-        self.draw_mod_callback_toasts(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -7252,9 +7251,9 @@ impl Game<'_> {
         if !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre can hide the HUD without changing the player's hide-GUI setting.
-        let hide_hud = self.ui.hide_gui || self.replay.playing();
-        let show_hud = !hide_hud && !gui_canceled;
+        // RenderGuiEvent.Pre can hide the HUD, not the mandatory diagnostics outside it.
+        let presentation_hidden = self.ui.hide_gui || self.replay.playing();
+        let show_hud = !presentation_hidden && !gui_canceled;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7621,7 +7620,7 @@ impl Game<'_> {
         // after this point and so over what a mod drew.
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, hide_hud, gui_canceled);
+        self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);
@@ -8886,7 +8885,9 @@ impl Game<'_> {
         self.score = Default::default();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.reset_creative_contents();
-        let stack = self.open_world_datapacks(&level.enabled_features)?;
+        let stack = self
+            .open_world_datapacks(&level.enabled_features)
+            .map_err(|error| error.diagnostic())?;
         let root = self.options.resources.clone();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.
@@ -13106,28 +13107,28 @@ impl<'a> Game<'a> {
         audio: Audio,
         prepared: Option<GameCpuResources>,
     ) -> Result<Self> {
-        let phase = match Self::mod_phase_for_construction() {
-            mod_api::__private::ModPhase::Packages if cfg!(test) => {
-                mod_api::__private::ModPhase::World
-            }
-            mod_api::__private::ModPhase::Packages => mod_api::__private::ModPhase::Setup,
-            phase => phase,
-        };
-        let mod_phase = mod_api::__private::PhaseOwner::new(phase);
+        Self::construct(res, pack, gui, options, settings, audio, prepared, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn construct(
+        res: &'a Arc<Resources>,
+        pack: PackResources,
+        gui: UiResources,
+        options: Options,
+        settings: Settings,
+        audio: Audio,
+        prepared: Option<GameCpuResources>,
+        initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
+    ) -> Result<Self> {
+        #[cfg(test)]
+        Self::initialize_mod_runtime_for_tests();
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
-        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         let loop_side = options.execution_role.loop_side();
         let root = options.resources.clone();
         let mod_sources = options.mods.clone();
         let registry = pack.assets.registry;
-        // Until a world is opened the streamer is idle.
-        let mut streaming = Streaming::new(
-            Arc::new(TestTerrain::new(registry, res.biomes())?),
-            pack.context.clone(),
-            1,
-        );
-        streaming.paused = true;
         let level = Level::default();
         let save = Arc::new(SaveDir::new(
             std::env::current_dir()?
@@ -13172,6 +13173,34 @@ impl<'a> Game<'a> {
                 .map(|states| -> sunrise_client::particles::BlockStates { states })
         });
         let resource_source = pack.source.clone();
+        let (pack, gui) = if let Some(initial) = initial {
+            let mut unpublished = pack.clone();
+            unpublished.render = Arc::new(RenderAssets::unpublished());
+            let context = &pack.context;
+            unpublished.context = Arc::new(WorkerContext {
+                assets: context.assets.clone(),
+                render: unpublished.render.clone(),
+                tables: context.tables.clone(),
+                biomes: context.biomes.clone(),
+                light: context.light.clone(),
+                hidden_states: context.hidden_states.clone(),
+                part_tables: context.part_tables.clone(),
+            });
+            unpublished.layer_names = Default::default();
+            let metrics = UiResources::server(&pack.source)?;
+            *initial = Some(initial_client_models::InitialModelGeneration { pack, gui });
+            (unpublished, metrics)
+        } else {
+            (pack, gui)
+        };
+        // Until a world is opened the streamer is idle.
+        let mut streaming = Streaming::new(
+            Arc::new(TestTerrain::new(registry, res.biomes())?),
+            pack.context.clone(),
+            1,
+        );
+        streaming.paused = true;
+        let standalone_geometry = native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         let mut game = Game {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(
                 &options.resources,
@@ -13200,6 +13229,8 @@ impl<'a> Game<'a> {
             health_resources: res.motion().health.clone(),
             damage_tag_generation: 1,
             data_map_registries: Vec::new(),
+            pending_initial_models: None,
+            stitching_block_atlas: None,
             pack,
             gui,
             instance_groups: Default::default(),
@@ -13461,7 +13492,6 @@ impl<'a> Game<'a> {
             tutorial,
             tutorial_toasts: Vec::new(),
             narrator_toast: None,
-            mod_callback_toasts: Vec::new(),
             narration: Default::default(),
             options_from_title: false,
             dragging: false,
@@ -13632,7 +13662,6 @@ impl<'a> Game<'a> {
             lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
             native_configs: Default::default(),
-            mod_phase,
             native_net: Default::default(),
             native_mod_screen: None,
             sky_darken_memo: Default::default(),
@@ -13912,54 +13941,54 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     mods::validate_startup_packages(&options.mods)?;
-    let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
-    mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
-    crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
-    // The structure types those mods registered, handed to the engine before
-    // any world opens, as its StructureRegistry reads them.
-    if sunrise_world::worldgen::structure::mod_types::install_mod_structure_types(
-        native_structure_types::installed_structure_types(),
-    )
-    .is_err()
     {
-        log::warn!("Mod structure types already installed; keeping the first table");
+        let _registration = mod_api::__private::RegistrationGuard::open();
+        crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
+        // The structure types those mods registered, handed to the engine before
+        // any world opens, as its StructureRegistry reads them.
+        if sunrise_world::worldgen::structure::mod_types::install_mod_structure_types(
+            native_structure_types::installed_structure_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod structure types already installed; keeping the first table");
+        }
+        // Their feature types, before any world decodes its configured features.
+        if sunrise_world::worldgen::mod_features::install_mod_feature_types(
+            native_feature_types::installed_feature_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod feature types already installed; keeping the first table");
+        }
+        // The levels they registered, below the data packs of every world opened.
+        if sunrise_world::worldgen::overrides::install_mod_dimensions(
+            native_dimensions::installed_dimensions(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod dimensions already installed; keeping the first table");
+        }
+        // Their chunk generators and biome sources, which those levels' and the packs' stems name.
+        native_chunk_generator::install();
+        native_biome_source::install();
+        mods::register_components(&vanilla_root)?;
+        mods::register_standalone_models(options.execution_role);
+        mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
+        mods::register_debug_entries(options.execution_role);
+        mods::register_gui_layers(options.execution_role);
+        mods::register_map_decoration_types();
+        mods::register_range_select_item_model_properties(options.execution_role);
+        mods::register_select_item_model_properties(options.execution_role);
+        mods::register_resource_sources(options.execution_role);
+        mods::register_enchantment_damage_effects();
+        mods::register_client_presentations(options.execution_role)?;
+        mods::register_meshing(options.execution_role);
+        mods::register_particles(options.execution_role)?;
+        mods::freeze_declarations();
     }
-    // Their feature types, before any world decodes its configured features.
-    if sunrise_world::worldgen::mod_features::install_mod_feature_types(
-        native_feature_types::installed_feature_types(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod feature types already installed; keeping the first table");
-    }
-    // The levels they registered, below the data packs of every world opened.
-    if sunrise_world::worldgen::overrides::install_mod_dimensions(
-        native_dimensions::installed_dimensions(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod dimensions already installed; keeping the first table");
-    }
-    // Their chunk generators and biome sources, which those levels' and the packs' stems name.
-    native_chunk_generator::install();
-    native_biome_source::install();
-    mods::register_components(&vanilla_root)?;
-    mods::register_standalone_models(options.execution_role);
-    mods::register_layer_definitions(options.execution_role, &vanilla_root);
-    mods::register_debug_entries(options.execution_role);
-    mods::register_gui_layers(options.execution_role);
-    mods::register_map_decoration_types();
-    mods::register_range_select_item_model_properties(options.execution_role);
-    mods::register_select_item_model_properties(options.execution_role);
-    mods::register_resource_sources(options.execution_role);
-    mods::register_enchantment_damage_effects();
-    mods::register_client_presentations(options.execution_role);
-    mods::register_meshing(options.execution_role);
-    mods::register_particles(options.execution_role);
-    mods::freeze_declarations();
-    mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
     if options.execution_role.is_client() {
@@ -14039,10 +14068,11 @@ pub(crate) fn run_with(
         None,
         std::mem::take(&mut loaded.client_applies),
         loaded.entity_models,
+        None,
     )?;
     if let Some(mut game) = game {
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-        if game.options.execution_role.is_client() {
+        if game.options.is_client_start() && game.options.headless {
             game.settings.file.set(
                 "startedCleanly",
                 sunrise_client::options_file::V::Bool(true),

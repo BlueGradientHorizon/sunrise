@@ -35,39 +35,22 @@ impl SlotRules for Game<'_> {
         let read = |container, index| context.slot(container, index)?.try_into_api().ok();
         let view = mod_api::MenuSlotContext::new(context.player, context.pos, &read);
         // A listener that panics is a failed ask, not a failed click: the slot's own answers
-        // stand (the dispatch writes nothing back from a failed pass), the failure is logged by
-        // name, and the click goes on. The next ask, and the next click, are asked as ever.
-        let asked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            mod_api::__private::contain_refusal(
-                mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
-                || {
-                    let (mut place, mut pickup, mut maximum) =
-                        (*may_place, *may_pickup, *max_stack);
-                    self.native_menu_slot_rules(mod_api::__private::MenuSlotRulesCall {
-                        menu,
-                        slot,
-                        container: context.container,
-                        stack: &stack,
-                        context: &view,
-                        may_place: &mut place,
-                        may_pickup: &mut pickup,
-                        max_stack: &mut maximum,
-                    });
-                    (place, pickup, maximum)
-                },
-            )
-        }));
-        match asked {
-            Ok(Ok(answers)) => (*may_place, *may_pickup, *max_stack) = answers,
-            Ok(Err(refusal)) => {
-                refusal.report();
-                log::warn!(
-                    "menu_slot_rules: a listener was refused for {menu} slot {slot}: {refusal}; the slot's own answers stand"
-                );
-            }
-            Err(_) => log::error!(
-                "menu_slot_rules: a listener failed for {menu} slot {slot}; the slot's own answers stand"
-            ),
+        // stand (the dispatcher disables that mod's `menu_slot_rules` for the session and
+        // reports it once), and the click goes on.
+        let failures = mod_api::runtime::isolated_failures();
+        let (mut place, mut pickup, mut maximum) = (*may_place, *may_pickup, *max_stack);
+        self.native_menu_slot_rules(mod_api::__private::MenuSlotRulesCall {
+            menu,
+            slot,
+            container: context.container,
+            stack: &stack,
+            context: &view,
+            may_place: &mut place,
+            may_pickup: &mut pickup,
+            max_stack: &mut maximum,
+        });
+        if mod_api::runtime::isolated_failures() == failures {
+            (*may_place, *may_pickup, *max_stack) = (place, pickup, maximum);
         }
     }
 }

@@ -446,11 +446,10 @@ impl Game<'_> {
                 let (own, rest): (Vec<_>, Vec<_>) =
                     loaded.into_iter().partition(|t| t.controller == slot);
                 let mut validation =
-                    mod_api::world::mod_chunk_tickets::ControllerTickets::new(owner, own.clone());
+                    mod_api::world::mod_chunk_tickets::ControllerTickets::new(owner, own);
                 self.native_validate_tickets(dim.id(), controller, &mut validation);
-                let removed = validation.into_removed();
                 loaded = rest;
-                loaded.extend(own.into_iter().filter(|t| !removed.contains(t)));
+                loaded.extend(validation.into_loaded());
             }
         }
         if let Some(streaming) = self.mod_ticket_streaming_mut(dim) {
@@ -1980,22 +1979,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_level_ref_draws_from_its_levels_own_stream() {
-        use mod_api::{
-            __private::{ModPhase, PhaseOwner},
-            LevelRef, ServerHost,
-        };
+        use mod_api::{LevelRef, ServerHost};
         use sunrise_core::random::RandomSource;
 
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
-            {
-                let _phase = PhaseOwner::scope(ModPhase::Reloading);
-                assert!(
-                    level
-                        .with_random::<()>(game, |_| unreachable!("reload lent a world stream"))
-                        .is_none()
-                );
-            }
             // The level in place: the draws advance `World.random` itself.
             let mut expected = game.world.random.clone();
             let host: &mut dyn ServerHost = game;

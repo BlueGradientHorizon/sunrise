@@ -1209,6 +1209,7 @@ impl Game<'_> {
         let mut sync = sync::sync_data(
             &self.options.resources,
             &self.res.core.item_data,
+            self.items(),
             &self.pack_files(),
         )?;
         let features = self.enabled_feature_ids().to_vec();
@@ -1230,6 +1231,7 @@ impl Game<'_> {
                 sync::server_sources(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )?
                 .as_ref(),
@@ -2125,8 +2127,11 @@ impl Game<'_> {
                         let converted: std::result::Result<_, mod_api::text::TextFormError> =
                             (|| {
                                 Ok((
-                                    api_text.try_into_engine(&())?,
-                                    replies.try_into_engine(&())?,
+                                    sunrise_client_lib::api_text::to_serialized_engine(&api_text)?,
+                                    replies
+                                        .iter()
+                                        .map(sunrise_client_lib::api_text::to_serialized_engine)
+                                        .collect::<std::result::Result<Vec<_>, _>>()?,
                                 ))
                             })();
                         match converted {
@@ -3871,12 +3876,16 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3894,13 +3903,21 @@ mod tests {
         // A missing root makes an accidental second disk read fail, rather
         // than merely comparing equal snapshots loaded twice.
         let absent = root.join("no-such-resources");
-        initialize_world_sync_data(&mut cache, &absent, &PackOverlay::NONE, &damage, &item_data)
-            .unwrap();
-        let opened = cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap();
+        initialize_world_sync_data(
+            &mut cache,
+            &absent,
+            &PackOverlay::NONE,
+            &damage,
+            &item_data,
+            &items,
+        )
+        .unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&preloaded, &opened));
         assert!(Arc::ptr_eq(
             &opened,
-            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data).unwrap()
+            &cached_sync_data(&mut cache, &absent, &PackOverlay::NONE, &item_data, &items).unwrap()
         ));
     }
 
@@ -3920,12 +3937,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items = Arc::new(
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap(),
+        );
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -3944,6 +3966,7 @@ mod tests {
             let barrier = barrier.clone();
             let root = root.clone();
             let item_data = item_data.clone();
+            let items = items.clone();
             std::thread::spawn(move || {
                 barrier.wait();
                 for _ in 0..32 {
@@ -3952,6 +3975,7 @@ mod tests {
                         &root,
                         &PackOverlay::NONE,
                         &item_data,
+                        &items,
                     )
                     .unwrap();
                 }
@@ -3970,10 +3994,17 @@ mod tests {
             &overlay,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
-        let opened =
-            cached_sync_data(&mut cache.lock().unwrap(), &root, &overlay, &item_data).unwrap();
+        let opened = cached_sync_data(
+            &mut cache.lock().unwrap(),
+            &root,
+            &overlay,
+            &item_data,
+            &items,
+        )
+        .unwrap();
         worker.join().unwrap();
         assert!(!Arc::ptr_eq(&preloaded, &opened));
         let id = opened
@@ -3984,6 +4015,7 @@ mod tests {
             &root,
             &PackOverlay::NONE,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -4012,13 +4044,17 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let preloaded = Arc::new(
             SyncData::load(
                 &root,
                 &PackOverlay::NONE,
                 item_data.defaults(),
-                &super::sync::server_sources(&root, &item_data, &PackOverlay::NONE).unwrap(),
+                &super::sync::server_sources(&root, &item_data, &items, &PackOverlay::NONE)
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -4041,6 +4077,7 @@ mod tests {
                 &PackOverlay::new(&files),
                 &damage,
                 &item_data,
+                &items,
             )
             .unwrap();
             assert!(cache.data.is_none(), "{key} must not eagerly load SyncData");
@@ -4053,6 +4090,7 @@ mod tests {
             &PackOverlay::NONE,
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(
@@ -4073,6 +4111,9 @@ mod tests {
             .join("../../.local/sunrise-client")
             .join(sunrise_core::VANILLA_VERSION);
         let item_data = sync_test_items(&root);
+        let items =
+            sunrise_client::items::Items::catalog(&root, &PackOverlay::NONE, item_data.defaults())
+                .unwrap();
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let initial = vec![(
             "dialog/demo:before".into(),
@@ -4092,10 +4133,11 @@ mod tests {
             packed_registries: Some(std::sync::Arc::new(packed)),
             ..SyncCache::default()
         };
-        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data).unwrap();
+        initialize_world_sync_data(&mut cache, &root, &initial, &damage, &item_data, &items)
+            .unwrap();
         assert!(cache.data.is_none());
         // A late vanilla helper cannot install its overlay over this world.
-        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(cache.data.is_none());
         let changed = vec![
             (
@@ -4121,7 +4163,7 @@ mod tests {
         let overlay = PackOverlay::new(&changed);
         assert!(prepare_sync_reload(&mut cache, &overlay).is_none());
         let health = damage.reload_tags(&root, &overlay).unwrap();
-        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data).unwrap();
+        let wire = cached_sync_data(&mut cache, &root, &overlay, &item_data, &items).unwrap();
         assert!(wire.id("minecraft:damage_type", "demo:too_late").is_none());
         assert!(health.id("demo:too_late").is_none());
         assert!(wire.id("minecraft:dialog", "demo:before").is_some());
@@ -4160,9 +4202,10 @@ mod tests {
         // The next world's initial load can register the previously-late type.
         let next = Catalog::load(&root, &overlay).unwrap();
         let mut next_cache = SyncCache::default();
-        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data).unwrap();
+        initialize_world_sync_data(&mut next_cache, &root, &overlay, &next, &item_data, &items)
+            .unwrap();
         assert!(
-            cached_sync_data(&mut next_cache, &root, &overlay, &item_data)
+            cached_sync_data(&mut next_cache, &root, &overlay, &item_data, &items)
                 .unwrap()
                 .id("minecraft:damage_type", "demo:too_late")
                 .is_some()
@@ -4225,6 +4268,12 @@ mod tests {
             .expect("prepared test resources require registries.json");
         std::fs::copy(report, root.join("registries.json")).unwrap();
         let item_data = sync_test_items(&prepared);
+        let items = sunrise_client::items::Items::catalog(
+            &prepared,
+            &PackOverlay::NONE,
+            item_data.defaults(),
+        )
+        .unwrap();
         let damage = Catalog::load(&prepared, &PackOverlay::NONE).unwrap();
         let files = vec![(
             "recipe/demo:unrelated".into(),
@@ -4237,17 +4286,20 @@ mod tests {
             &PackOverlay::new(&files),
             &damage,
             &item_data,
+            &items,
         )
         .unwrap();
         assert!(cache.data.is_none());
         assert!(prepare_sync_reload(&mut cache, &PackOverlay::NONE).is_none());
-        let opened = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let opened =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(opened.content_identity.is_some());
         // Changing the root invalidates the cache. Instead remove the private
         // fixture's files: an accidental reload at the same root must now fail.
         std::fs::remove_dir_all(&root).unwrap();
         assert!(sunrise_protocol::registry::Builtin::find(&root).is_none());
-        let reused = cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data).unwrap();
+        let reused =
+            cached_sync_data(&mut cache, &root, &PackOverlay::NONE, &item_data, &items).unwrap();
         assert!(Arc::ptr_eq(&opened, &reused));
     }
 
@@ -4898,6 +4950,7 @@ mod tests {
             let builtin = super::sync::sync_data(
                 &game.options.resources,
                 &game.res.core.item_data,
+                game.items(),
                 &game.pack_files(),
             )
             .unwrap()

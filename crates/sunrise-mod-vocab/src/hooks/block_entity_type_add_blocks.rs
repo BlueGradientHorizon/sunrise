@@ -36,7 +36,7 @@ change the frozen validity sets or wire IDs. No listener means no added membersh
         out = "additions",
         registration_append = "custom",
         neoforge = "BlockEntityTypeAddBlocksEvent",
-        version = 2
+        version = 3
     )]
     fn block_entity_type_add_blocks(
         types: &[mod_api::BlockEntityTypeKey],

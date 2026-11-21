@@ -2294,7 +2294,7 @@ fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
 pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
     let mut out = Vec::new();
     for top in ["assets", "data"] {
-        walk(root, &root.join(top), &mut out)?;
+        walk(root, &root.join(top), &mut out, Some(MAX_FILES))?;
     }
     Ok(out)
 }
@@ -2302,16 +2302,18 @@ pub(crate) fn folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
 /// The files under a package folder's `runtime/`, as `(name below it, bytes)`. Symbolic links and
 /// other non-files are refused, not followed.
 pub(crate) fn runtime_folder_files(root: &Path) -> Result<Vec<(String, u64)>, String> {
+    let runtime_root = root.join(crate::manifest::RUNTIME_DIR);
     let mut out = Vec::new();
-    walk(root, &root.join(crate::manifest::RUNTIME_DIR), &mut out)?;
-    let prefix = format!("{}/", crate::manifest::RUNTIME_DIR);
-    for (name, _) in &mut out {
-        *name = name.strip_prefix(&prefix).unwrap_or(name).to_owned();
-    }
+    walk(&runtime_root, &runtime_root, &mut out, None)?;
     Ok(out)
 }
 
-fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), String> {
+fn walk(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, u64)>,
+    max_files: Option<usize>,
+) -> Result<(), String> {
     match std::fs::symlink_metadata(dir) {
         Ok(m) if !m.is_dir() => {
             return Err(format!(
@@ -2328,7 +2330,7 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
         let path = entry.map_err(|e| e.to_string())?.path();
         let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         if meta.is_dir() {
-            walk(root, &path, out)?;
+            walk(root, &path, out, max_files)?;
         } else if meta.is_file() {
             let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
             let parts: Option<Vec<&str>> = rel.iter().map(|p| p.to_str()).collect();
@@ -2340,8 +2342,10 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, u64)>) -> Result<(), Str
                 path.display()
             ));
         }
-        if out.len() > MAX_FILES {
-            return Err(format!("more than {MAX_FILES} content files"));
+        if let Some(max) = max_files
+            && out.len() > max
+        {
+            return Err(format!("more than {max} content files"));
         }
     }
     Ok(())

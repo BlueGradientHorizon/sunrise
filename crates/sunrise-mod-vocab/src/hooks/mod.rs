@@ -4,9 +4,8 @@
 //! files with `syn` and builds the `Hooks` trait, its dispatch, the game's entry points and the
 //! rustdoc from them. Lint checks these files directly with `rustfmt`. What the game does for a mod, the host
 //! methods and the handles', is not declared here but written by hand, one file per area, in `../host/<area>.rs`.
-//! Each host method has one `#[access(Level)]` declaration; its default and the game's forwarder
-//! are generated. Implement the same-named inherent `Game` method, without a `native_` prefix.
-//! Hook entry points keep their `native_` names.
+//! Each host method's default and the game's forwarder are generated. Implement the same-named
+//! inherent `Game` method, without a `native_` prefix. Hook entry points keep their `native_` names.
 //!
 //! Each hook has its own file: a bodiless `fn name(parameters);` with its rustdoc. List the
 //! parameters in vocabulary types, before they become event fields, a reply, or a cancellation.
@@ -26,10 +25,10 @@
 //! | `side` | `"server"`, `"client"` or `"both"`; required |
 //! | `contract` | `"listen"`, `"cancel"`, `"collect"` or `"replace"`; required |
 //! | `out` | the event field a cancel, collect or replace hook writes; not for `"listen"` |
+//! | `staged_surface` | Engine-only marker naming the mutable registrar or GUI draw field of a flat global listen hook. The fire adapter hands its owner one listener thunk at a time, under that listener's mod scope. Only an accepted callback publishes the batch. This is not a mod-facing parameter. |
 //! | `scope`, `key` | a Part method: the kind of Part (`"block"`, `"block_entity"`, `"item"`, `"menu"`, `"fluid"`, `"entity"`) and the hook argument naming what it is attached to |
 //! | `answered_by` | `"mod"`: a global replace hook whose output also names the mod that answered, or a global collect hook whose output is `Vec<Answered<T>>`: each mod pushes `T`s into its own empty batch and dispatch names that mod on each entry |
-//! | `isolate` | `true` on a global cancel hook: its dispatch runs every listener inside `catch_unwind` — one that unwinds keeps the **requested** outputs (its writes roll back), is skipped by this hook for the session, and no later listener runs on that invocation (#2414 ruling). On a global collect hook with `answered_by = "mod"` a listener that unwinds loses only its own batch and is skipped by this hook for the session; the other listeners still answer |
-//! | `output_validator` | a path on an `isolate` cancel hook: `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` takes the scalar/vector outputs in declaration order for each set and checks a listener's proposal against the preceding accepted one. A refusal rolls back all outputs including cancellation, logs the mod and field once per tick, and lets later listeners run. An accepted cancellation cannot be cleared. |
+//! | `output_validator` | A path on a global cancel hook with `Copy` outputs. In the shared cancel dispatch, `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` takes both sets in declaration order. It checks only completed proposals. A refusal rejects the whole proposal, including cancellation, reports the mod and field every time, and does not disable the callback. Later eligible listeners see the accepted outputs; these validated hooks do not clear an accepted cancellation. |
 //! | `host`, `context` | `"read"` or `"level"`; `"registration"`, `"data_load"`, `"loop"` or `"worldgen"` |
 //! | `neoforge`, `fabric`, `paper` | the counterpart's name, or a list of them, for the rustdoc and the gap lists |
 //! | `cancellable` | whether the NeoForge counterpart event is cancellable (documentation, not the contract) |

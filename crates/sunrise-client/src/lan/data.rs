@@ -435,8 +435,7 @@ impl SyncData {
             advancements: super::advancements::ServerAdvancements::load(
                 Path::new(""),
                 &sunrise_world::loot::PackOverlay::NONE,
-                BTreeMap::new(),
-                HashMap::new(),
+                super::recipes::BookProjections::default(),
             ),
             content_identity: None,
         }
@@ -787,23 +786,6 @@ impl SyncData {
         } else {
             None
         };
-        let damage = sunrise_client_core::registries::RegistryIds {
-            ids: dynamic
-                .registries
-                .get("minecraft:damage_type")
-                .into_iter()
-                .flatten()
-                .map(|(name, _)| name.clone())
-                .collect(),
-            tags: tags
-                .registries
-                .iter()
-                .find(|registry| registry.registry == "minecraft:damage_type")
-                .into_iter()
-                .flat_map(|registry| &registry.tags)
-                .map(|tag| tag.name.clone())
-                .collect(),
-        };
         let mut sync = Self {
             effect_particle_ids: Default::default(),
             content_identity,
@@ -820,29 +802,22 @@ impl SyncData {
             advancements: match kept.filter(|_| mode == SyncLoad::SameFiles) {
                 Some(kept) => kept.advancements.clone(),
                 None => {
-                    let (recipes, groups) = startup::time("sync.network_recipes", || {
-                        super::recipes::network_recipes(
-                            resources,
-                            overlay,
-                            defaults,
-                            sources,
-                            damage,
-                            packed.as_deref(),
-                        )
+                    let projections = startup::time("sync.book_projections", || {
+                        super::recipes::book_projections(sources)
                     })
                     .map_err(|error| error.to_string())?;
                     startup::time("sync.advancements", || {
                         let tree = advancements
                             .cloned()
                             .unwrap_or_else(|| Tree::shared(&resources.join("data"), overlay));
-                        super::advancements::ServerAdvancements::from_tree(tree, recipes, groups)
+                        super::advancements::ServerAdvancements::from_tree(tree, projections)
                     })
                 }
             },
             packed_registries: packed,
         };
         let (recipes, buttons) = startup::time("sync.update_recipes", || {
-            super::recipes::update_recipes(&sync.advancements.recipes, &sync, sources)
+            super::recipes::update_recipes(&sync, sources)
         });
         sync.recipes = recipes;
         sync.stonecutter_buttons = Arc::new(buttons);

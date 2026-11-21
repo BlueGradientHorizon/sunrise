@@ -6875,7 +6875,6 @@ mod tests {
             &data,
             &sunrise_world::loot::PackOverlay::NONE,
             Default::default(),
-            Default::default(),
         );
         assert_eq!(
             sync.advancements.selectable("minecraft:root"),

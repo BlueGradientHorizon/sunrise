@@ -35,7 +35,6 @@ use sunrise_client::{
     effects::EffectInstance,
     fast_hash::FxHashSet,
     items::ItemStack,
-    lan::configuration_tasks::ConfigurationCompletion,
     living_attributes::ModifierChanges,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, World},
@@ -66,8 +65,6 @@ pub(super) struct OpenTransactions {
     levels: Vec<Level>,
     pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     closing: Option<TransactionLifecycle>,
-    /// Root completions, including those from transactions committed by its listeners.
-    closing_configuration_completions: Vec<ConfigurationCompletion>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
@@ -199,18 +196,11 @@ impl std::ops::DerefMut for OpenTransactions {
 struct ClosingPhase<'a, 'g> {
     game: &'a mut Game<'g>,
     outer: Option<TransactionLifecycle>,
-    keep_completions: usize,
 }
 
 impl Drop for ClosingPhase<'_, '_> {
     fn drop(&mut self) {
         self.game.transactions.closing = self.outer;
-        // An abort or unwind discards the completions this close added, even if a listener
-        // catches the panic and the enclosing root close continues.
-        self.game
-            .transactions
-            .closing_configuration_completions
-            .truncate(self.keep_completions);
     }
 }
 
@@ -338,8 +328,6 @@ pub(super) struct Level {
     pub(in crate::game) trades: super::lan_trade_decisions::Journal,
     pub(in crate::game) packets: Option<sunrise_client::lan::conn::transaction_packets::Scope>,
     captured_packets: Vec<sunrise_client::lan::conn::transaction_packets::Packets>,
-    /// Configuration advances only once the root has published every deferred send.
-    configuration_completions: Vec<ConfigurationCompletion>,
     action: Option<decision::ActiveAction>,
     /// The scratch stacks (`ItemPlace::Scratch`), live: kept by the outermost transaction only.
     scratch: HashMap<u64, scratch::Scratch>,
@@ -653,6 +641,18 @@ impl Game<'_> {
             trace.lock().unwrap().push(entry);
         }
     }
+    /// Pending payloads in the innermost transaction (before publication).
+    #[cfg(test)]
+    pub(in crate::game) fn pending_transaction_payloads(&self) -> usize {
+        self.transactions
+            .last()
+            .unwrap()
+            .after
+            .iter()
+            .filter(|after| matches!(after, After::Payload(_)))
+            .count()
+    }
+
     /// Opens a transaction, nested in the open one if any (`Transaction.open`), and gives back
     /// the seal that ends it.
     pub(in crate::game) fn transaction_open(&mut self) -> TransactionSeal {
@@ -721,37 +721,6 @@ impl Game<'_> {
         let level = self.transactions.last()?;
         Some(mod_api::__private::transaction_of(level.token))
     }
-    /// Stage completion on the current frame, or on the callback's own frame even if it
-    /// left a child open. A missing frame never publishes anything.
-    pub(in crate::game) fn journal_configuration_completion(
-        &mut self,
-        seal: Option<&TransactionSeal>,
-        completion: ConfigurationCompletion,
-    ) -> bool {
-        let frame = match seal {
-            Some(seal) => self.transaction_frame_for_seal(seal),
-            None => self.transactions.last_mut(),
-        };
-        let Some(frame) = frame else {
-            return false;
-        };
-        frame.configuration_completions.push(completion);
-        true
-    }
-    /// Discard this handler's completions without rolling back its other committed effects.
-    /// Any children it abandoned will be aborted by `transaction_close`.
-    pub(in crate::game) fn discard_configuration_completions(&mut self, seal: &TransactionSeal) {
-        if let Some(frame) = self.transaction_frame_for_seal(seal) {
-            frame.configuration_completions.clear();
-        }
-    }
-    fn transaction_frame_for_seal(&mut self, seal: &TransactionSeal) -> Option<&mut Level> {
-        let (token, close) = mod_api::__private::seal_tokens(seal);
-        self.transactions
-            .iter_mut()
-            .rev()
-            .find(|level| level.token == token && level.close_token == close)
-    }
     /// `transaction_depth`: how deeply `tx` is nested, 0 for the outermost.
     pub(in crate::game) fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
         let named = mod_api::__private::transaction_token(tx);
@@ -783,42 +752,21 @@ impl Game<'_> {
         // The root's own close, not one a root-commit listener opened: what the transactions
         // removed is final now, so it retires (`defer_retirement`).
         let root = self.transactions.is_empty() && outer.is_none();
-        let keep_completions = self.transactions.closing_configuration_completions.len();
-        let mut guard = ClosingPhase {
-            game: self,
-            outer,
-            keep_completions,
-        };
+        let guard = ClosingPhase { game: self, outer };
         #[cfg(test)]
         guard
             .game
             .trace_storage_attempt(if commit { "commit" } else { "abort" }.into());
-        let commit = commit
-            && !(level.packets.is_some()
-                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         guard.game.close_level(level, commit);
         if root {
             guard.game.world.block_entities.publish_retirement();
-            if commit {
-                for completion in guard
-                    .game
-                    .transactions
-                    .closing_configuration_completions
-                    .drain(..)
-                {
-                    completion.publish();
-                }
-            }
-        } else if commit {
-            guard.keep_completions = guard
-                .game
-                .transactions
-                .closing_configuration_completions
-                .len();
         }
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
+        let commit = commit
+            && !(level.packets.is_some()
+                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()
@@ -932,9 +880,6 @@ impl Game<'_> {
                 }
                 outer.menu_data.extend(level.menu_data);
                 outer.captured_packets.extend(level.captured_packets);
-                outer
-                    .configuration_completions
-                    .extend(level.configuration_completions);
                 for (holder, kept) in level.attachments {
                     outer.attachments.entry(holder).or_insert(kept);
                 }
@@ -964,9 +909,6 @@ impl Game<'_> {
                 }
             }
             (true, None) => {
-                self.transactions
-                    .closing_configuration_completions
-                    .append(&mut level.configuration_completions);
                 // The commit is in place before the effects run: a join one causes (a placed
                 // item's leftover spawning) never announces what the transaction added and removed.
                 self.commit_entity_journal(lifetimes, |game| game.root_commit(level));
@@ -994,14 +936,16 @@ impl Game<'_> {
             }
         }
     }
-    /// Closes every transaction left open, as aborted. Run before each tick, as a backstop:
-    /// `host.transaction` is the only way in, and its drop guard closes each one it opens, so
-    /// none is left open by a mod.
+    /// Aborts abandoned frames before the next operation can join them. Call only when
+    /// there is no caller-owned frame; the tick start also uses this as a backstop.
     pub(super) fn abort_open_transactions(&mut self) {
         while !self.transactions.is_empty() {
             self.close_storage_transaction(false);
         }
-        self.world.block_entities.publish_retirement();
+        // If called during a root close, the enclosing close still owns retirement.
+        if self.transactions.closing.is_none() {
+            self.world.block_entities.publish_retirement();
+        }
     }
 
     /// `ComposterWrapper.transactionalRandom`: snapshot only the position's private owner,

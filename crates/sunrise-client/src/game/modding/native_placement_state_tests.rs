@@ -250,14 +250,6 @@ fn placement_refusals_are_typed() {
                 Err(LevelReadError::Stale)
             );
         }
-        {
-            use mod_api::__private::{ModPhase, PhaseOwner};
-            let _setup = PhaseOwner::scope(ModPhase::Setup);
-            assert_eq!(
-                level.state_for_placement(game, stone, &context),
-                Err(LevelReadError::Unavailable)
-            );
-        }
         let unknown = mod_api::__private::parts_installation::block_key(u32::MAX);
         assert_eq!(level.state_for_placement(game, unknown, &context), Ok(None));
         context.item = Some(mod_api::__private::parts_installation::item_key(u32::MAX));

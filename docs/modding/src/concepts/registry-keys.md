@@ -328,8 +328,8 @@ validates an explicit output override and `grindstone_take` validates supplied r
 not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged
 edits and the different cancellation outcomes.
 
-Recursive `Clone`, `Eq` and `Drop` of a tree a mod itself built are ordinary Rust ownership,
-not part of the boundary guarantee.
+`Text` copies and drops its component tree without using the call stack for depth. Component
+equality and formatting are not part of the serialization boundary guarantee.
 
 `Text::new(content)` constructs any content kind without exposing an engine value.
 The content, NBT-source, object, click and hover enums are exhaustive protocol enums;

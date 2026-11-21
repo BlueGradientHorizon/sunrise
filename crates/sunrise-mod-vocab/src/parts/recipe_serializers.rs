@@ -14,6 +14,8 @@ pub trait RecipeSerializer: Send + Sync + 'static {
     fn decode(&self, json: &str) -> Result<Self::Value, String>;
     /// Write an equivalent JSON object for Sunrise client synchronization.
     /// The game supplies the registered serializer ID as `type` and applies the packet limits.
+    /// Return `Err` to omit this recipe without disabling the writer. A panic disables this
+    /// serializer's writer for the session and reports the mod by name.
     fn write(&self, value: &Self::Value) -> Result<String, String>;
 }
 struct ReadOnly<S>(S);

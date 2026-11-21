@@ -33,7 +33,7 @@ impl RecipePropertyAddition {
 // no wire: an ingredient can hold an in-process predicate bound to its defining mod.
 /// A set of accepted items (expanded from an item, list or tag), and the
 /// items in its `HolderSet` order (`Ingredient.display`'s `TagSlotDisplay`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug)]
 // exhaustive: placement providers and the game construct complete ingredient values
 pub struct Ingredient {
     /// Full candidate set; non-simple predicates test the concrete stack.
@@ -119,18 +119,103 @@ impl Ingredient {
     /// `Ingredient.test`: whether `stack` fits the candidate list and custom
     /// predicate (`ICustomIngredient.test`). An empty custom list retains the
     /// predicate without item filtering, but cannot be placed by the recipe book.
-    /// A bound predicate rejects when its defining mod is disabled; it never dispatches
-    /// to other mods. An empty tag never matches; a host without a game refuses every stack.
+    /// A bound predicate rejects when its defining mod is disabled or this occurrence's
+    /// predicate has panicked; it never dispatches to other mods. An empty tag never
+    /// matches; a host without a game refuses every stack.
     pub fn test(&self, host: &dyn Host, stack: &ItemStack) -> bool {
         backend_of(host).is_some_and(|backend| backend.recipe_ingredient_test(self, stack))
+    }
+}
+impl Clone for Ingredient {
+    fn clone(&self) -> Self {
+        let clone_leaf = |node: &Self| Self {
+            items: node.items.clone(),
+            order: node.order.clone(),
+            custom: node.custom.clone(),
+            children: None,
+            rule: node.rule.clone(),
+            display: node.display.clone(),
+        };
+        let Some((root_shape, root_kids)) = &self.children else {
+            return clone_leaf(self);
+        };
+        let mut stack: Vec<(&Self, Shape, std::slice::Iter<'_, Self>, Vec<Self>)> = vec![(
+            self,
+            root_shape.clone(),
+            root_kids.iter(),
+            Vec::with_capacity(root_kids.len()),
+        )];
+        loop {
+            let next = stack.last_mut().expect("non-empty clone stack").2.next();
+            if let Some(child) = next {
+                if let Some((shape, kids)) = &child.children {
+                    stack.push((
+                        child,
+                        shape.clone(),
+                        kids.iter(),
+                        Vec::with_capacity(kids.len()),
+                    ));
+                } else {
+                    stack
+                        .last_mut()
+                        .expect("non-empty clone stack")
+                        .3
+                        .push(clone_leaf(child));
+                }
+            } else {
+                let (node, shape, _, children) = stack.pop().expect("non-empty clone stack");
+                let mut cloned = clone_leaf(node);
+                cloned.children = Some((shape, children));
+                if let Some(parent) = stack.last_mut() {
+                    parent.3.push(cloned);
+                } else {
+                    return cloned;
+                }
+            }
+        }
+    }
+}
+impl PartialEq for Ingredient {
+    fn eq(&self, other: &Self) -> bool {
+        let mut pending = vec![(self, other)];
+        while let Some((a, b)) = pending.pop() {
+            if a.items != b.items
+                || a.order != b.order
+                || a.custom != b.custom
+                || a.rule != b.rule
+                || a.display != b.display
+            {
+                return false;
+            }
+            match (&a.children, &b.children) {
+                (None, None) => {}
+                (Some((sa, ka)), Some((sb, kb))) if sa == sb && ka.len() == kb.len() => {
+                    pending.extend(ka.iter().zip(kb.iter()));
+                }
+                _ => return false,
+            }
+        }
+        true
+    }
+}
+impl Drop for Ingredient {
+    fn drop(&mut self) {
+        let Some((_, mut stack)) = self.children.take() else {
+            return;
+        };
+        while let Some(mut node) = stack.pop() {
+            if let Some((_, mut kids)) = node.children.take() {
+                stack.append(&mut kids);
+            }
+        }
     }
 }
 // no wire: a recipe snapshot may include ingredients backed by native predicates.
 /// A recipe in force (`RecipeManager.getAllRecipesFor`), whatever its type
 /// (vanilla's or a mod's own): its typed parts, and its file for whatever a
-/// mod's own type keeps there. `json` is the data-pack file's JSON, read by a
-/// mod at reload; host parsing helpers accept JSON text. Bound predicates live in the
-/// parsed ingredients alone. This snapshot is in-process; send data-only values instead.
+/// mod's own type keeps there. The host parsing helpers accept JSON text.
+/// Bound predicates live in the parsed ingredients alone. This snapshot is in-process;
+/// send data-only values instead.
 ///
 /// A recipe the game could not parse (an ingredient it cannot read, no
 /// result) is not in force and is not listed.
@@ -166,7 +251,9 @@ pub struct Recipe {
     /// shaped, shapeless, cooking and mod-defined types. The ingredient roles,
     /// bounds and templates come from the game's canonical parse.
     pub rule: Option<RecipeRule>,
-    /// The recipe's file, as the data pack wrote it.
+    /// The locally loaded recipe's file. For a server-synced recipe, this is
+    /// what its serializer sent: resolved item lists for vanilla serializers,
+    /// or the registered mod serializer's written JSON for its own kinds.
     pub json: Arc<Value>,
 }
 impl Recipe {

@@ -8,6 +8,7 @@ pub trait Hooks {
     /// radius and caches it per section while it meshes, as it does vanilla's grass, foliage and
     /// water. Asked once at start on the client, before `register_block_tint_sources` and before
     /// resources load.
+    /// If this listener panics or a phase call is refused, none of its registrations take effect.
     #[notes = r#"## Colour resolvers
 
 A colour resolver (vanilla's `ColorResolver`, NeoForge's `RegisterColorHandlersEvent.ColorResolvers`) is a colour
@@ -61,7 +62,9 @@ and ask the resolver again."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "listen",
+        staged_surface = "resolvers",
         context = "registration",
         neoforge = "RegisterColorHandlersEvent.ColorResolvers"
     )]

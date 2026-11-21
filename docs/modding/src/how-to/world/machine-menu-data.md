@@ -444,6 +444,10 @@ send that button to the server. The active menu's server `MenuPart` handles acce
 in `menu_button` after the normal window and menu checks and `menu_button_valid`. Do not use a client hit test or
 opening data as authority. A block-backed menu also supplies its backing block entity;
 a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
+Write proposed button changes through `event.entity` and `event.carried`. A panicking button
+callback publishes neither the detached block entity (including one-shot update fields) nor
+cursor edits. A panic in the block's [`menu_quick_move`](../../concepts/capabilities/menu-slots.md#writing-slot-storage)
+also refuses the move before publishing any detached slot, remainder or queued update.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
 blockless menus when its recipe slots have native slot backing. The declaring mod supplies the
 screen through its registered factory. Set `MenuScreenLayout::recipe_book` to the bound book;

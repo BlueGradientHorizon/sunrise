@@ -8,8 +8,10 @@ use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 /// The uncompressed disk NBT budget is 65,536 bytes per named `value` tag,
 /// 64 container levels in that value, and 1,048,576 bytes for the entire
 /// named attachment compound, including unknown data. Anything that would
-/// exceed a limit or require truncation is refused. Any refusal poisons the
-/// job even if the listener ignores its error.
+/// exceed a limit or require truncation is refused. A codec or budget failure
+/// refuses publication even if the listener ignores its error. Dispatch discards
+/// that listener's edits so later listeners can still work on the accepted envelopes.
+/// Each operation still runs independently and reports its own refusal.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ChunkDiskData {
@@ -59,9 +61,6 @@ impl ChunkDiskData {
         key: &AttachmentType<T>,
         apply: impl FnOnce(&mut Attachments) -> Result<R, AttachmentError>,
     ) -> Result<R, ChunkDiskFailure> {
-        if let Some(failure) = &self.failure {
-            return Err(failure.clone());
-        }
         let key_name = format!("{}:{}", key.namespace, key.name);
         let result = (|| {
             if key.codec.is_none() {
@@ -75,14 +74,24 @@ impl ChunkDiskData {
             self.entries = encoded;
             Ok(value)
         })();
-        if let Err(error) = &result {
-            self.failure = Some(error.clone());
-        }
-        result
+        result.map_err(|mut error: ChunkDiskFailure| {
+            if let Some(call) = crate::content::crash::current_native_call() {
+                error.mod_id = call.id.into();
+                log::warn!(
+                    "mod {} hook {} attachment {key_name} refused: {} (at {})",
+                    call.id,
+                    call.hook,
+                    error.reason,
+                    error.key
+                );
+            }
+            self.failure.get_or_insert_with(|| error.clone());
+            error
+        })
     }
 
     /// Run a nested local savepoint. An explicit abort restores the prior
-    /// envelopes; a codec or budget refusal still poisons the outer job.
+    /// envelopes; a codec or budget refusal still prevents the job from publishing.
     pub fn transaction<R, E>(
         &mut self,
         apply: impl FnOnce(&mut Self) -> Result<R, E>,
@@ -95,15 +104,11 @@ impl ChunkDiskData {
         result
     }
 
-    /// The first refusal. A listener cannot clear it or publish tentative edits.
+    /// The first refusal of the active callback, or the job's first failure after dispatch.
+    /// A refusal does not block later operations in this callback or in other callbacks.
+    /// Use each operation's returned error to diagnose that operation.
     pub fn failure(&self) -> Option<&ChunkDiskFailure> {
         self.failure.as_ref()
-    }
-
-    pub(crate) fn refuse(&mut self, error: ChunkDiskFailure) {
-        if self.failure.is_none() {
-            self.failure = Some(error);
-        }
     }
 
     pub(crate) fn attribute_failure(&mut self, error: ChunkDiskFailure) {

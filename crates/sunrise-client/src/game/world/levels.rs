@@ -1396,7 +1396,6 @@ impl Game<'_> {
     }
 
     fn tick_server_body(&mut self, paused: bool) -> Result<()> {
-        mod_api::__private::reset_output_refusals();
         // A panic something caught left a game that carried on: its record ends with the tick.
         self.interrupted_turns.clear();
         // `tickRateManager.tick()` once per server tick, before any level
@@ -2458,7 +2457,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             {
                 let mut resources = None;
                 let mut game = open_game(&mut resources, &root, home.path(), &world);
@@ -2568,7 +2566,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mut resources = None;
             let game = open_game(&mut resources, &root, home.path(), &world);
             assert_eq!(game.dim, Dim::Nether);

@@ -321,9 +321,11 @@ returns `OpenMenuError::ClickInProgress`. `close_menu` and `MenuRef::close_conta
 successful commit. An abort leaves the window and its items in place and sends no close packet.
 `menu_set_items` changes also roll back without sending a packet if the action aborts.
 
-`menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
-menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder
-holds what is left in the clicked slot (`None` empties it).
+`menu_quick_move` v3 runs as one action too. A panicking `menu_quick_move` publishes neither the detached
+block entity (including one-shot update fields) nor the stack remainder or handled answer. A panic, an
+invalid answer, or a Host write to a player's inventory, cursor or menu storage, refuses that move instead
+of falling back to the game's routing. An answer's optional remainder holds what is left in the clicked
+slot (`None` empties it).
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill

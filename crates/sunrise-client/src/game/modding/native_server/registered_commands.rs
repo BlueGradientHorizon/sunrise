@@ -7,13 +7,14 @@ use super::{
     CommandArguments, CommandExecutorSlots, Game, command_arguments, command_tree_for,
     register_command_nodes,
 };
-use mod_api::__private::{CommandExecutor, mod_index, split_command_registration};
+use mod_api::__private::{
+    CommandExecutor, RetainedCallback, mod_index, split_command_registration,
+};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
 
 pub(super) struct RegisteredExecutor {
-    pub(super) owner: &'static str,
-    pub(super) mod_index: usize,
+    pub(super) callback: RetainedCallback,
     pub(super) call: Arc<CommandExecutor>,
 }
 
@@ -69,14 +70,9 @@ impl Game<'_> {
                 let owner = registration.mod_id;
                 let mod_index = mod_index(owner)?;
                 let (command, call) = split_command_registration(registration.answer);
-                Some((
-                    command,
-                    RegisteredExecutor {
-                        owner,
-                        mod_index,
-                        call,
-                    },
-                ))
+                let callback =
+                    RetainedCallback::new(owner, mod_index, "command_executor", &command.usage);
+                Some((command, RegisteredExecutor { callback, call }))
             })
             .unzip();
         let vanilla = sunrise_client::command::vanilla::session_dispatcher(

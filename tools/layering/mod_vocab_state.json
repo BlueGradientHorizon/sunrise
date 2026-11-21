@@ -214,16 +214,6 @@
     "category": "immutable cache",
     "reason": "Bounded interning for decoded static strings; entries are immutable, shared by value, and never evicted."
   },
-  "world/phase_refusal.rs::SCOPE": {
-    "type": "Cell<Option<Scope>>",
-    "category": "reentrancy guard",
-    "reason": "Per-thread record of the mod and hook whose listener call is in flight and whether a refusal has latched, which the gate reads to contain a wrong-phase Host call."
-  },
-  "world/phase_refusal.rs::report::LOGGED": {
-    "type": "OnceLock<Mutex<HashSet<(&'staticstr,&'staticstr)>>>",
-    "category": "reentrancy guard",
-    "reason": "Process-wide set of the (mod, operation) pairs whose refusal has been logged, so a refusing hook names the operation once and not on every call."
-  },
   "world/scheduler.rs::allocate::NEXT_ID": {
     "type": "AtomicU64",
     "category": "monotonic counter",

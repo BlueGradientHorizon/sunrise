@@ -14,7 +14,9 @@ Reload preparation runs in-process. Vanilla's `SimpleJsonResourceReloadListener.
 `FileToIdConverter` to select local resources and handles parsing errors there. NeoForge uses
 `VanillaClientListeners` and `VanillaServerListeners` to name listeners for
 `SortedReloadListenerEvent.addDependency`. These helpers, prepare contexts and errors have no
-reload wire format. Encoding a file error as an ID and message also discarded its original cause.
+reload wire format. Encoding a file error as an ID and message also discarded its original cause;
+`ReloadResourceError`'s `Display` now walks the full `Error::source()` chain so logs and `/reload`
+replies preserve nested causes.
 """
 migrate = """
 Replace `ReloadResourceError::from((id, message))` with `ReloadResourceError::new(id, cause)`.
@@ -22,8 +24,8 @@ Pass the original error when you have one; for validation, define a typed valida
 implementing `std::error::Error + Send + Sync + 'static`, or wrap a standalone message with
 `std::io::Error::other(message)`. Instead of converting `&error` to `(Identifier, String)`, use
 `error.resource()` for the ID, `std::error::Error::source(&error)` for the cause, and `Display`
-for logging. Return the error directly from `prepare`; applying still waits for all prepares to
-succeed.
+for logging (its formatted output now walks the full `Error::source()` chain automatically). Return
+the error directly from `prepare`; applying still waits for all prepares to succeed.
 
 Remove `Wire` encoding and decoding of reload errors and prepare contexts. Borrow IDs and bytes
 from the context passed into `prepare` with `list()` and `read(&id)`. Match `ReloadOrderError`

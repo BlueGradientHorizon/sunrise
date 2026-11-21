@@ -1,8 +1,8 @@
-//! Configuration admission through the serving Game and its main-thread payload executor.
+//! Configuration admission through the serving Game and its payload executors.
 use mod_api::{
-    ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, ConfigurationTaskRef,
-    ConfigurationTaskRegistrationError, Hooks, IPayloadContext, IPayloadHandler, Identifier,
-    ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
+    ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, Hooks, IPayloadContext,
+    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadContextError, PayloadId, Registrar,
+    ServerHost,
 };
 use std::{
     sync::{
@@ -19,17 +19,21 @@ fn kind(name: &str) -> Identifier {
 #[derive(Clone, Copy)]
 enum Case {
     Reply,
+    NetworkReply,
     Stale,
     Failure,
     Vanilla,
     Tick,
     Panic,
-    Refusal,
+    Duplicates,
+    SendRefusal,
+    SendRefusalPanic,
     ConcurrentPeers,
+    RetainedConnection,
 }
 struct Fixture {
     case: Case,
-    instances: Mutex<[Option<ConfigurationTaskRef>; 2]>,
+    connection: Mutex<Option<mod_api::ConfigurationConnection>>,
     starts: Mutex<Vec<Identifier>>,
     joins: Mutex<Vec<String>>,
     type_reads: AtomicUsize,
@@ -43,50 +47,121 @@ impl IPayloadHandler for Reply {
         bytes: PayloadBytes,
         context: &mut dyn IPayloadContext,
     ) -> Result<(), mod_api::PayloadHandleError> {
-        assert_eq!(std::thread::current().name(), Some("Server thread"));
-        let [first, second] = *self.0.instances.lock().unwrap();
-        let first = first.unwrap();
+        if matches!(self.0.case, Case::NetworkReply) {
+            assert_ne!(std::thread::current().name(), Some("Server thread"));
+            assert!(matches!(
+                context.server_host(),
+                Err(PayloadContextError::WrongThread)
+            ));
+        } else {
+            assert_eq!(std::thread::current().name(), Some("Server thread"));
+        }
         let reply = match bytes.0.as_slice() {
-            [step @ (7 | 8)] => {
+            [7] => {
                 assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
-                // Open a child explicitly: the scoped reply context needs its own mutable
-                // borrow to finish, so it cannot be used inside the host's closure guard.
+                let connection = self.0.connection.lock().unwrap().unwrap();
+                // Main-thread completion takes effect directly in the session without
+                // waiting for handler return or transaction close, so it is neither
+                // deferred nor rolled back when an inner child transaction aborts.
                 let child = context.server_host().unwrap().transaction_open();
-                context.finish_configuration_task(first).unwrap();
+                context.finish_configuration_task(&kind("first")).unwrap();
                 context
                     .server_host()
                     .unwrap()
-                    .transaction_close(&child, *step == 8);
-                *step + 1
+                    .transaction_close(&child, false);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                // Sending is scoped to the live configuration connection, not
+                // to whether a task is running on it.
+                context
+                    .server_host()
+                    .unwrap()
+                    .configuration_send_payload(
+                        connection,
+                        &PayloadId(CHANNEL.into()),
+                        PayloadBytes(vec![77]),
+                    )
+                    .unwrap();
+                8
             }
-            [10] => {
+            [9] => {
+                assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("first")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                10
+            }
+            [11] => {
                 assert_eq!(
                     *self.0.starts.lock().unwrap(),
                     [kind("first"), kind("second")]
                 );
                 assert_eq!(
-                    context.finish_configuration_task(first),
-                    Err(ConfigurationTaskError::StaleTask)
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
                 );
-                11
-            }
-            [11] => {
-                context.finish_configuration_task(second.unwrap()).unwrap();
                 12
             }
-            [13] => {
-                // B replies to its challenge with the instance saved for A instead.
-                assert_ne!(first, second.unwrap());
+            [12] => {
+                context.finish_configuration_task(&kind("second")).unwrap();
                 assert_eq!(
-                    context.finish_configuration_task(first),
-                    Err(ConfigurationTaskError::WrongConnection)
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::NotRunning)
                 );
-                14
+                13
             }
-            [step @ (15 | 16)] => {
-                let instance = if *step == 15 { first } else { second.unwrap() };
-                context.finish_configuration_task(instance).unwrap();
+            [14] => {
+                // B is running `second` and attempts to finish A's running `first` task.
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                22
+            }
+            [15] => {
+                context.finish_configuration_task(&kind("first")).unwrap();
                 17
+            }
+            [16] => {
+                context.finish_configuration_task(&kind("second")).unwrap();
+                17
+            }
+            [18] => {
+                assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("first")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                19
+            }
+            [20] => {
+                assert_eq!(
+                    *self.0.starts.lock().unwrap(),
+                    [kind("first"), kind("second")]
+                );
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("second")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                21
             }
             other => panic!("unexpected configuration request: {other:?}"),
         };
@@ -99,11 +174,16 @@ impl IPayloadHandler for Reply {
 #[sunrise_mod_api_macros::__subscriptions]
 impl Hooks for Mod {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+        let thread = if matches!(self.0.case, Case::NetworkReply) {
+            mod_api::HandlerThread::Network
+        } else {
+            mod_api::HandlerThread::Main
+        };
         registrar
             .payload_handlers()
             .registrar("1")
             .optional()
-            .executes_on(mod_api::HandlerThread::Main)
+            .executes_on(thread)
             .configuration_bidirectional(
                 PayloadId(CHANNEL.into()),
                 Arc::new(Reply(self.0.clone())),
@@ -123,13 +203,19 @@ impl Hooks for Mod {
         };
         if matches!(self.0.case, Case::ConcurrentPeers) {
             if let Some(slot) = PEER_NAMES.iter().position(|&name| name == event.name) {
-                event.register(task(kind("first"), slot)).unwrap();
+                let id = if slot == 0 {
+                    kind("first")
+                } else {
+                    kind("second")
+                };
+                event.register(task(id, slot));
             }
             return;
         }
         if event.name != "ConfigPeer" {
             return;
         }
+        *self.0.connection.lock().unwrap() = Some(event.connection);
         if matches!(self.0.case, Case::Vanilla) {
             assert!(
                 !event
@@ -138,20 +224,10 @@ impl Hooks for Mod {
             );
             return;
         }
-        event.register(task(kind("first"), 0)).unwrap();
-        event.register(task(kind("second"), 1)).unwrap();
-        if matches!(self.0.case, Case::Refusal) {
-            let duplicate = event.register(task(kind("first"), 0));
-            assert_eq!(
-                duplicate,
-                Err(ConfigurationTaskRegistrationError::DuplicateType(kind(
-                    "first"
-                )))
-            );
-            let empty =
-                event.register(task(Identifier::from_parts("task_fixture", "").unwrap(), 0));
-            assert_eq!(empty, Err(ConfigurationTaskRegistrationError::EmptyType));
-            // Do not fail the connection explicitly: even ignored refusals abort admission.
+        event.register(task(kind("first"), 0));
+        event.register(task(kind("second"), 1));
+        if matches!(self.0.case, Case::Duplicates) {
+            event.register(task(kind("first"), 0));
         }
     }
     fn player_logged_in(
@@ -179,16 +255,20 @@ impl ConfigurationTask for Task {
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
         self.fixture.starts.lock().unwrap().push(self.id.clone());
-        self.fixture.instances.lock().unwrap()[self.slot] = Some(context.instance());
         match (self.fixture.case, self.slot) {
-            (Case::Reply, 0) | (Case::Stale, 1) | (Case::ConcurrentPeers, _) => {
+            (Case::Reply, 0)
+            | (Case::NetworkReply, _)
+            | (Case::Stale, _)
+            | (Case::ConcurrentPeers, _) => {
                 let channel = PayloadId(CHANNEL.into());
                 assert!(context.has_channel(host, &channel));
-                let challenge = match self.fixture.case {
-                    Case::Reply => 7,
-                    Case::Stale => 10,
-                    // Give the two connections distinct reply selectors even though the task type is the same.
-                    _ => 15 + self.slot as u8,
+                let challenge = match (self.fixture.case, self.slot) {
+                    (Case::Reply, _) => 7,
+                    (Case::Stale, 0) => 9,
+                    (Case::Stale, _) => 11,
+                    (Case::NetworkReply, 0) => 18,
+                    (Case::NetworkReply, _) => 20,
+                    (_, slot) => 15 + slot as u8,
                 };
                 context
                     .send_payload(host, &channel, PayloadBytes(vec![challenge]))
@@ -198,6 +278,11 @@ impl ConfigurationTask for Task {
                 context.finish();
                 context.fail("fixture failure");
                 context.finish(); // Cannot overwrite failure.
+            }
+            (Case::RetainedConnection, 0) => {
+                context
+                    .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![1]))
+                    .unwrap();
             }
             (Case::Tick, 0) => self.waiting = true,
             (Case::Panic, 0) => {
@@ -209,6 +294,21 @@ impl ConfigurationTask for Task {
                     .panic_staged_payload
                     .store(true, Ordering::Relaxed);
                 panic!("fixture panic after staging completion and a payload");
+            }
+            (Case::SendRefusal, 0) => {
+                let channel = PayloadId(CHANNEL.into());
+                assert!(!context.has_channel(host, &channel));
+                assert!(matches!(
+                    context.send_payload(host, &channel, PayloadBytes(vec![42])),
+                    Err(ConfigurationTaskError::Payload(_))
+                ));
+                context.finish();
+            }
+            (Case::SendRefusalPanic, 0) => {
+                context
+                    .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![42]))
+                    .unwrap();
+                context.finish();
             }
             _ => context.finish(),
         }
@@ -320,7 +420,7 @@ impl Fixture {
     fn new(case: Case) -> Self {
         Self {
             case,
-            instances: Mutex::new([None; 2]),
+            connection: Mutex::new(None),
             starts: Mutex::new(Vec::new()),
             joins: Mutex::new(Vec::new()),
             type_reads: AtomicUsize::new(0),
@@ -339,21 +439,39 @@ fn serving_game_drives_configuration_tasks() {
         NAME,
         "SUNRISE_TASK_CHILD",
         &[
-            "reply", "stale", "failure", "vanilla", "tick", "panic", "refusal",
+            "reply",
+            "network_reply",
+            "stale",
+            "failure",
+            "vanilla",
+            "tick",
+            "panic",
+            "duplicates",
+            "send_refusal",
+            "send_refusal_panic",
         ],
     ) {
         return;
     }
     let case = match std::env::var("SUNRISE_TASK_CHILD").unwrap().as_str() {
         "reply" => Case::Reply,
+        "network_reply" => Case::NetworkReply,
         "stale" => Case::Stale,
         "failure" => Case::Failure,
         "vanilla" => Case::Vanilla,
         "tick" => Case::Tick,
         "panic" => Case::Panic,
-        "refusal" => Case::Refusal,
+        "duplicates" => Case::Duplicates,
+        "send_refusal" => Case::SendRefusal,
+        "send_refusal_panic" => Case::SendRefusalPanic,
         _ => unreachable!(),
     };
+    // Each case is a fresh subprocess, so this installs the real process-wide crash hook.
+    let crash_home =
+        matches!(case, Case::Panic | Case::SendRefusalPanic).then(|| tempfile::tempdir().unwrap());
+    if let Some(home) = &crash_home {
+        sunrise_client::crash::install(home.path().to_owned(), "client");
+    }
     let fixture = Arc::new(Fixture::new(case));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -365,7 +483,10 @@ fn serving_game_drives_configuration_tasks() {
             super::super::native_entity_refs::tests::with_client_game(|game| {
                 let port = publish_task_server(game);
                 use sunrise_protocol::packets::{Empty, configuration as cfg, play};
-                let (mut c, known) = if matches!(case, Case::Vanilla) {
+                let (mut c, known) = if matches!(
+                    case,
+                    Case::Vanilla | Case::SendRefusal | Case::SendRefusalPanic
+                ) {
                     vanilla_peer(port)
                 } else {
                     let (c, _, known) = super::config_tests::configuration_peer(port, "ConfigPeer");
@@ -374,8 +495,9 @@ fn serving_game_drives_configuration_tasks() {
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
                     .unwrap();
                 let mut replies = match case {
-                    Case::Reply => &[7_u8, 8, 9][..],
-                    Case::Stale => &[10, 11, 12],
+                    Case::Reply => &[7_u8, 77, 8][..],
+                    Case::NetworkReply => &[18, 19, 20, 21],
+                    Case::Stale => &[9, 10, 11, 12, 13],
                     _ => &[],
                 }
                 .iter()
@@ -386,7 +508,7 @@ fn serving_game_drives_configuration_tasks() {
                         cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
                             let expected = replies.next().expect("too many configuration replies");
                             assert_eq!(p.data, [expected]);
-                            if matches!(expected, 7 | 8 | 10 | 11) {
+                            if matches!(expected, 7 | 9 | 11 | 12 | 18 | 20) {
                                 c.send(&cfg::Serverbound::CustomPayload(p).encode())
                                     .unwrap();
                             }
@@ -401,38 +523,38 @@ fn serving_game_drives_configuration_tasks() {
                             let starts = fixture.starts.lock().unwrap();
                             match case {
                                 Case::Failure => assert_eq!(*starts, [kind("first")]),
-                                Case::Panic => {
-                                    assert!(fixture.panic_staged_payload.load(Ordering::Relaxed));
+                                Case::Panic | Case::SendRefusalPanic => {
+                                    if matches!(case, Case::Panic) {
+                                        assert!(
+                                            fixture.panic_staged_payload.load(Ordering::Relaxed)
+                                        );
+                                    }
                                     assert!(
-                                        reason.contains("Configuration task callback panicked"),
+                                        reason.contains("mod task_fixture: ConfigurationTask::start (task_fixture:first) panicked"),
                                         "{reason}"
                                     );
                                     assert_eq!(*starts, [kind("first")]);
-                                }
-                                Case::Refusal => {
-                                    assert!(starts.is_empty());
-                                    assert!(
-                                        reason.contains(
-                                            "Duplicate configuration task type: task_fixture:first"
-                                        ),
-                                        "{reason}"
-                                    );
                                 }
                                 _ => panic!("unexpected configuration disconnect: {reason}"),
                             }
                             break;
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
-                            assert!(!matches!(case, Case::Failure | Case::Panic | Case::Refusal));
+                            assert!(!matches!(
+                                case,
+                                Case::Failure | Case::Panic | Case::SendRefusalPanic
+                            ));
                             assert_eq!(
                                 replies.next(),
                                 None,
                                 "FinishConfiguration overtook a reply"
                             );
-                            let expected = if matches!(case, Case::Vanilla) {
-                                vec![]
-                            } else {
-                                vec![kind("first"), kind("second")]
+                            let expected = match case {
+                                Case::Vanilla => vec![],
+                                Case::Duplicates => {
+                                    vec![kind("first"), kind("second"), kind("first")]
+                                }
+                                _ => vec![kind("first"), kind("second")],
                             };
                             assert_eq!(*fixture.starts.lock().unwrap(), expected);
                             c.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
@@ -451,18 +573,212 @@ fn serving_game_drives_configuration_tasks() {
                         _ => {}
                     }
                 }
+                if let Some(home) = &crash_home {
+                    assert!(!sunrise_client::crash::server_crashed());
+                    assert!(!home.path().join("crash-reports").exists());
+                    assert!(mod_api::__private::take_hook_panics().contains(
+                        &mod_api::__private::HookPanicReport {
+                            mod_id: "task_fixture",
+                            hook: "ConfigurationTask::start",
+                        }
+                    ));
+                }
                 assert_eq!(
                     fixture.type_reads.load(Ordering::Relaxed),
                     match case {
                         Case::Vanilla => 0,
-                        Case::Refusal => 4,
+                        Case::Duplicates => 3,
                         _ => 2,
                     }
                 );
+                if matches!(case, Case::Panic) {
+                    // The same serving Game admits another peer without calling the
+                    // disabled task again. Another task of that mod still runs.
+                    let (mut peer, _, known) =
+                        super::config_tests::configuration_peer(port, "ConfigPeer");
+                    peer.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
+                        .unwrap();
+                    loop {
+                        let (id, body) = peer.recv().unwrap();
+                        match cfg::Clientbound::decode(id, &body).unwrap() {
+                            cfg::Clientbound::FinishConfiguration(_) => break,
+                            cfg::Clientbound::Disconnect(reason) => {
+                                panic!("second peer refused: {reason:?}")
+                            }
+                            cfg::Clientbound::CustomPayload(p) => assert_ne!(p.channel, CHANNEL),
+                            _ => {}
+                        }
+                    }
+                    assert_eq!(
+                        *fixture.starts.lock().unwrap(),
+                        [kind("first"), kind("second")]
+                    );
+                }
                 game.leave_server(None).unwrap();
             });
         },
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
+    use mod_api::RegisterConfigurationTasksEvent;
+    use sunrise_protocol::packets::{Empty, configuration as cfg, play};
+    const NAME: &str = "game::payload_transport::task_tests::a_panicking_registration_does_not_fail_the_peer_or_leave_its_task";
+    super::tests::require_resources();
+    if super::super::native_entity_refs::tests::run_fresh_cases(
+        NAME,
+        "SUNRISE_TASK_REGISTRATION_PANIC_CHILD",
+        &["panic"],
+    ) {
+        return;
+    }
+
+    struct Listener {
+        panics: bool,
+        calls: Arc<AtomicUsize>,
+        started: Arc<AtomicUsize>,
+        discarded: Arc<AtomicUsize>,
+    }
+    struct RegistrationTask {
+        id: Identifier,
+        started: Arc<AtomicUsize>,
+        discard_probe: Option<Arc<AtomicUsize>>,
+    }
+    impl ConfigurationTask for RegistrationTask {
+        fn task_type(&self) -> &Identifier {
+            &self.id
+        }
+        fn start(&mut self, _: &mut dyn ServerHost, ctx: &mut ConfigurationTaskContext<'_>) {
+            self.started.fetch_add(1, Ordering::Relaxed);
+            ctx.finish();
+        }
+    }
+    impl Drop for RegistrationTask {
+        fn drop(&mut self) {
+            if let Some(discarded) = &self.discard_probe {
+                discarded.fetch_add(1, Ordering::Relaxed);
+                panic!("failed task also panics on disposal");
+            }
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn register_configuration_tasks(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            if !PEER_NAMES.contains(&event.name) {
+                return;
+            }
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            event.register(RegistrationTask {
+                id: kind("shared"),
+                started: self.started.clone(),
+                discard_probe: self.panics.then(|| self.discarded.clone()),
+            });
+            host.configuration_send_payload(
+                event.connection,
+                &PayloadId(CHANNEL.into()),
+                PayloadBytes(vec![if self.panics { 99 } else { 1 }]),
+            )
+            .unwrap();
+            assert!(!self.panics, "registration fails after appending a task");
+        }
+    }
+
+    let scratch = tempfile::tempdir().unwrap();
+    sunrise_client::crash::install(scratch.path().to_path_buf(), "client");
+    let failed = Arc::new(AtomicUsize::new(0));
+    let healthy = Arc::new(AtomicUsize::new(0));
+    let started = Arc::new(AtomicUsize::new(0));
+    let discarded = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new(
+            "broken_tasks",
+            Box::new(Listener {
+                panics: true,
+                calls: failed.clone(),
+                started: started.clone(),
+                discarded: discarded.clone(),
+            }),
+        ),
+        ModEntry::new(
+            "healthy_tasks",
+            Box::new(Listener {
+                panics: false,
+                calls: healthy.clone(),
+                started: started.clone(),
+                discarded: discarded.clone(),
+            }),
+        ),
+        // Registers the same negotiated channel as the other task fixtures.
+        ModEntry::new(
+            "task_fixture",
+            Box::new(Mod(Arc::new(Fixture::new(Case::Vanilla)))),
+        ),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let port = publish_task_server(game);
+            for name in PEER_NAMES {
+                let (mut peer, _, packs) = super::config_tests::configuration_peer(port, name);
+                peer.send(&cfg::Serverbound::SelectKnownPacks(packs).encode())
+                    .unwrap();
+                let mut payloads = Vec::new();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match cfg::Clientbound::decode(id, &body).unwrap() {
+                        cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
+                            payloads.push(p.data);
+                        }
+                        cfg::Clientbound::KeepAlive(p) => {
+                            peer.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
+                        }
+                        cfg::Clientbound::FinishConfiguration(_) => break,
+                        cfg::Clientbound::Disconnect(p) => {
+                            panic!("healthy tasks could not finish admission: {p:?}")
+                        }
+                        _ => {}
+                    }
+                }
+                assert_eq!(
+                    payloads,
+                    [vec![1]],
+                    "only the healthy listener's queued send commits"
+                );
+                peer.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match play::Clientbound::decode(id, &body).unwrap() {
+                        play::Clientbound::Login(_) => break,
+                        play::Clientbound::Disconnect(p) => {
+                            panic!("disconnected before Play: {p:?}")
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            assert_eq!(failed.load(Ordering::Relaxed), 1);
+            assert_eq!(healthy.load(Ordering::Relaxed), 2);
+            assert_eq!(started.load(Ordering::Relaxed), 2);
+            assert_eq!(discarded.load(Ordering::Relaxed), 1);
+            assert!(!sunrise_client::crash::server_crashed());
+            assert!(!scratch.path().join("crash-reports").exists());
+            assert_eq!(
+                mod_api::__private::take_hook_panics().as_slice(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "broken_tasks",
+                    hook: "register_configuration_tasks",
+                },]
+            );
+            game.leave_server(None).unwrap();
+        });
+    });
 }
 
 #[test]
@@ -523,22 +839,20 @@ fn peer_completion_rejects_other_connections() {
                 .unwrap();
             };
 
-            // Both challenges are outstanding, each from the first task of the same type.
+            // Both challenges are outstanding: A runs `first`, B runs `second`.
             assert_eq!(next(&mut a), Some(vec![15]));
             assert_eq!(next(&mut b), Some(vec![16]));
-            assert_eq!(
-                *fixture.starts.lock().unwrap(),
-                [kind("first"), kind("first")]
-            );
-            reply(&mut b, 13);
-            assert_eq!(
-                next(&mut b),
-                Some(vec![14]),
-                "B did not report WrongConnection"
-            );
+            {
+                let starts = fixture.starts.lock().unwrap();
+                assert_eq!(starts.len(), 2);
+                assert!(starts.contains(&kind("first")));
+                assert!(starts.contains(&kind("second")));
+            }
+            reply(&mut b, 14);
+            assert_eq!(next(&mut b), Some(vec![22]), "B did not report WrongType");
 
             // A premature advance of either connection would put FinishConfiguration
-            // before its own reply, or make the handler's own-instance completion fail.
+            // before its own reply, or make the handler's own completion fail.
             for (peer, step) in [(&mut a, 15), (&mut b, 16)] {
                 reply(peer, step);
                 assert_eq!(next(peer), Some(vec![17]), "own task must still be running");
@@ -568,4 +882,81 @@ fn peer_completion_rejects_other_connections() {
             game.leave_server(None).unwrap();
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
+    use sunrise_protocol::{
+        attachment_sync, packets::configuration as cfg, payload_negotiation::Phase,
+    };
+    super::tests::require_resources();
+    if super::super::native_entity_refs::tests::run_fresh_cases(
+        "game::payload_transport::task_tests::retained_configuration_host_send_refuses_play_while_session_is_registered",
+        "SUNRISE_TASK_RETAINED_CONNECTION_CHILD",
+        &["play"],
+    ) {
+        return;
+    }
+    let fixture = Arc::new(Fixture::new(Case::RetainedConnection));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "task_fixture",
+            Box::new(Mod(fixture.clone())),
+        )]
+        .into(),
+        || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let port = publish_task_server(game);
+                let (mut peer, _, known) =
+                    super::config_tests::configuration_peer(port, "ConfigPeer");
+                peer.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match cfg::Clientbound::decode(id, &body).unwrap() {
+                        cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => break,
+                        cfg::Clientbound::Disconnect(reason) => panic!("peer refused: {reason:?}"),
+                        _ => {}
+                    }
+                }
+                let connection = fixture.connection.lock().unwrap().unwrap();
+                game.integrated
+                    .as_ref()
+                    .unwrap()
+                    .call(move |server| {
+                        let session = server.configuration_session(connection).unwrap().clone();
+                        let transport = session.transport();
+                        assert_eq!(transport.epoch().unwrap().phase, Phase::Configuration);
+                        // Do these two I/O transition steps between ticks while the
+                        // configuration writer is still open and the handle is in the map.
+                        session.close();
+                        transport.finish_configuration().unwrap();
+                        let channel = PayloadId(attachment_sync::CHANNEL.into());
+                        assert_eq!(
+                            transport
+                                .epoch()
+                                .unwrap()
+                                .peer
+                                .can_send(Phase::Play, &channel),
+                            Ok(())
+                        );
+                        let seal = server.transaction_open();
+                        let host: &mut dyn ServerHost = server;
+                        let result = host.configuration_send_payload(
+                            connection,
+                            &channel,
+                            PayloadBytes(vec![1]),
+                        );
+                        let queued = server.pending_transaction_payloads();
+                        server.transaction_close(&seal, false);
+                        assert_eq!(result, Err(ConfigurationTaskError::Disconnected));
+                        assert_eq!(queued, 0);
+                    })
+                    .unwrap();
+                drop(peer);
+                game.leave_server(None).unwrap();
+            });
+        },
+    );
 }

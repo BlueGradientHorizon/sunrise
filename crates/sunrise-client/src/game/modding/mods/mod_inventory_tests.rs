@@ -109,7 +109,7 @@ impl mod_api::ServerReloadListener for Guard {
 impl Hooks for Guard {
     fn add_server_reload_listeners(
         &self,
-        _: &dyn mod_api::Host,
+        _: &dyn mod_api::ReloadContext,
         event: &mut mod_api::AddServerReloadListenersEvent<'_>,
     ) {
         event
@@ -224,6 +224,7 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     crate::game::lan::sync::server_sources(
                         &game.options.resources,
                         &game.res.core.item_data,
+                        game.items(),
                         &game.pack_files(),
                     )
                     .unwrap()

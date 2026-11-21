@@ -110,6 +110,9 @@ impl<'a> OwningChunkDisk<'a> {
 impl Host for OwningChunkDisk<'_> {}
 crate::impl_host_areas!(OwningChunkDisk<'_>, except(levels, config));
 impl prelude::LevelsHost for OwningChunkDisk<'_> {
+    fn lit_block_name(&self, _: [i32; 3]) -> Option<crate::BlockKey> {
+        None
+    }
     fn is_loaded(&self, id: &str) -> bool {
         self.resources.mods().get(id).is_some()
     }
@@ -157,11 +160,12 @@ pub use job::ChunkDiskJob;
 #[path = "chunk_disk/tests.rs"]
 mod tests;
 
-/// Fence listener unwinds before publication.
-pub(crate) fn invoke(mod_id: &str, call: impl FnOnce()) -> Result<(), ChunkDiskFailure> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).map_err(|_| ChunkDiskFailure {
+/// Build the job refusal recorded when a chunk-disk listener unwinds through
+/// [`crate::runtime::invoke`].
+pub(crate) fn unwound_failure(mod_id: &'static str) -> ChunkDiskFailure {
+    ChunkDiskFailure {
         mod_id: mod_id.into(),
         key: String::new(),
         reason: "native listener unwound".into(),
-    })
+    }
 }

@@ -369,73 +369,69 @@ mod tests {
             }
         }
 
-        let screens = TransitionScreens::new([(
-            "broken_presentation",
-            DimensionTransitionScreen::new(
-                "test:broken".into(),
-                DimensionTransition::Incoming("test:b".into()),
-                |_, _| Box::new(BrokenDrop),
-            ),
-        )]);
-        let registration = screens.select(key("test:b"), key("test:a")).unwrap();
-        for disconnect in [false, true] {
-            let mut tracker = LevelLoadTracker::new(0);
-            tracker.start_client_load(0, Reason::Other);
-            let presentation = registration
-                .factory_owner
-                .call(
-                    "dimension transition screen",
-                    "dimension_transition_screen_factory",
-                    || registration.factory.create(&Client, tracker.reason.into()),
-                )
-                .unwrap();
-            tracker.set_transition_screen(ActiveTransitionScreen::new(
-                registration.draw_owner.clone(),
-                presentation,
-            ));
-            assert_eq!(
-                tracker.transition_screen().unwrap().draw(
-                    &Client,
-                    tracker.reason.into(),
-                    None,
-                    &mut Canvas::default(),
+        mod_api::testing::with_dispatch(Vec::new().into(), || {
+            let screens = TransitionScreens::new([(
+                "broken_presentation",
+                DimensionTransitionScreen::new(
+                    "test:broken".into(),
+                    DimensionTransition::Incoming("test:b".into()),
+                    |_, _| Box::new(BrokenDrop),
                 ),
-                !disconnect
-            );
-            if disconnect {
-                // A later load still runs the factory, but drawing is already disabled.
-                // Dropping the tracker, as disconnect does, still retires the instance.
-                drop(tracker);
-            } else {
-                tracker.loading_packets_received();
-                tracker.player_section_ready();
-                tracker.tick_client_load(
-                    1,
-                    PlayerCheck {
-                        outside_build_height: false,
-                        spectator: false,
-                        alive: true,
-                    },
+            )]);
+            let registration = screens.select(key("test:b"), key("test:a")).unwrap();
+            for disconnect in [false, true] {
+                let mut tracker = LevelLoadTracker::new(0);
+                tracker.start_client_load(0, Reason::Other);
+                let presentation = registration
+                    .factory_owner
+                    .call(
+                        "dimension transition screen",
+                        "dimension_transition_screen_factory",
+                        || registration.factory.create(&Client, tracker.reason.into()),
+                    )
+                    .unwrap();
+                tracker.set_transition_screen(ActiveTransitionScreen::new(
+                    registration.draw_owner.clone(),
+                    presentation,
+                ));
+                assert_eq!(
+                    tracker.transition_screen().unwrap().draw(
+                        &Client,
+                        tracker.reason.into(),
+                        None,
+                        &mut Canvas::default(),
+                    ),
+                    !disconnect
                 );
-                assert!(tracker.is_level_ready(1));
-                tracker.finish();
-                assert!(!tracker.is_active());
-                assert!(tracker.transition_screen().is_none());
+                if disconnect {
+                    // A later load still runs the factory, but drawing is already disabled.
+                    // Dropping the tracker, as disconnect does, still retires the instance.
+                    drop(tracker);
+                } else {
+                    tracker.loading_packets_received();
+                    tracker.player_section_ready();
+                    tracker.tick_client_load(
+                        1,
+                        PlayerCheck {
+                            outside_build_height: false,
+                            spectator: false,
+                            alive: true,
+                        },
+                    );
+                    assert!(tracker.is_level_ready(1));
+                    tracker.finish();
+                    assert!(!tracker.is_active());
+                    assert!(tracker.transition_screen().is_none());
+                }
+                let notices = mod_api::__private::take_hook_panics();
+                let relevant: Vec<_> = notices
+                    .iter()
+                    .filter(|notice| notice.mod_id == "broken_presentation")
+                    .map(|notice| notice.hook)
+                    .collect();
+                assert_eq!(relevant, ["dimension_transition_screen_drop"]);
             }
-            let notices = mod_api::__private::game::take_callback_panic_notices();
-            let relevant: Vec<_> = notices
-                .iter()
-                .filter(|notice| notice.mod_id == "broken_presentation")
-                .map(|notice| (notice.operation, notice.message.as_str()))
-                .collect();
-            assert_eq!(
-                relevant,
-                [(
-                    "dimension_transition_screen_drop",
-                    "presentation destructor failed"
-                )]
-            );
-        }
+        });
     }
 
     #[test]

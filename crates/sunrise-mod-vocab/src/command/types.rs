@@ -48,8 +48,9 @@ pub fn split_command_registration(
 /// words; the server merges them into one tree. A public `foo bar` lets everyone traverse
 /// `foo`, but does not by itself make an operator-only `foo` executable. Optional arguments
 /// allow a usage to execute at their preceding prefixes too. If accepted usages execute at
-/// the same node, the one requiring the lowest level supplies both permission and executor;
-/// the first such registration wins on ties.
+/// the same node, each later accepted registration overwrites that node's executor (matching
+/// Brigadier's `CommandNode.addChild`) and updates Sunrise's paired execution permission
+/// level for that node.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
@@ -88,6 +89,11 @@ impl Command {
     /// `execute as`; feedback respects silence, track-output and the acting player.
     /// Return `Some(n)` for success with result `n` (including zero), or `None` for
     /// failure. A failed executor or disabled owner never gives another mod a turn.
+    /// A panic is reported with the mod's name and disables this usage's executor for the
+    /// session. It aborts the executor's writes in the caller's open transaction and does
+    /// not publish a result to `execute store`. A failed invocation also aborts any
+    /// transaction the executor opened and left unfinished. Ordinary commands do not get
+    /// an implicit transaction, and neither failure undoes unjournaled effects.
     /// Only a parse from the current server dispatcher can reach this executor.
     /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(

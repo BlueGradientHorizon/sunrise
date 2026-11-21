@@ -120,6 +120,18 @@ pub struct ProfessionDeclarations {
     entries: Vec<(String, ProfessionDefinition)>,
 }
 impl ProfessionDeclarations {
+    /// Append this listener's declarations only if its registration succeeds.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn VillagerProfessions) -> bool,
+    ) {
+        let mut tail = Self::default();
+        if listen(&mut tail) {
+            self.entries.append(&mut tail.entries);
+        }
+    }
+
     /// Consume the collected declarations, retaining the engine-recorded owner.
     // hidden: only the game consumes the collected declarations.
     #[doc(hidden)]

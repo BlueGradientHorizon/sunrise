@@ -261,51 +261,6 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 
 #[test]
 #[ignore = "daily"]
-fn a_refused_gui_layer_does_not_leave_partial_paint() {
-    crate::game::in_own_process(
-        "game::gui_layer_tests::a_refused_gui_layer_does_not_leave_partial_paint",
-        || {
-            struct RefusedLayer;
-            #[mod_api::__subscriptions]
-            impl Hooks for RefusedLayer {
-                fn register_gui_layers(
-                    &self,
-                    _: &RegistrationContext,
-                    event: &mut RegisterGuiLayersEvent<'_>,
-                ) {
-                    assert!(event.layers.register(
-                        "hud_test:refused".into(),
-                        GuiLayerPlacement::AboveAll,
-                        Box::new(|_, draw| {
-                            draw.fill([0.0, 0.0, 4.0, 4.0], 0xFFFF_0000);
-                            log("refused");
-                            mod_api::__private::refuse(
-                                "test layer refusal",
-                                mod_api::__private::ModPhase::Setup,
-                            );
-                        }),
-                    ));
-                }
-            }
-            with_client_game(|game| {
-                mod_platform::__private::install(
-                    vec![ModEntry::new("refused_layer", Box::new(RefusedLayer))].into(),
-                );
-                mods::register_gui_layers(ExecutionRole::Client);
-                for _ in 0..2 {
-                    let mut batch = HudBatch::scratch([320, 240]);
-                    game.hud_layer_next = Some(0);
-                    game.draw_mod_gui_layers(None, &mut batch);
-                    assert!(batch.vertices.is_empty());
-                }
-                assert_eq!(take(), ["refused", "refused"]);
-            });
-        },
-    );
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
     use sunrise_client::hud::{Blend, rgba};
 

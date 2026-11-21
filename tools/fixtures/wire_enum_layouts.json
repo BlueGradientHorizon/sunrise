@@ -833,9 +833,7 @@
     "crate::content::payloads::PeerPolicy",
     "crate::item::item_stack::StackError",
     "crate::world::phase::DataLoadOrigin",
-    "crate::world::phase::LoadAccess",
     "crate::world::phase::LoopSide",
-    "crate::world::phase::ModPhase",
     "crate::world::phase::PackageKind"
   ]
 }

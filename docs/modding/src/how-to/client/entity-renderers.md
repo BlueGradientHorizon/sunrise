@@ -179,8 +179,9 @@ registrations and resolves each type's renderer on every resource load, the firs
 reload (F3+T, a resource pack change), so a frame dispatches by slot, with no lookup by name and no
 scan over the mods.
 
-- A later registration for a type replaces the earlier one silently, whichever mod made it, as in
-  NeoForge, also for a vanilla type.
+- A later successful registration for a type replaces the earlier one silently, whichever mod made
+  it, as in NeoForge, also for a vanilla type. A [failed registration callback](../../concepts/load-phases.md#registration-and-setup)
+  does not replace the earlier renderer.
 - A type the game does not know is logged with its id and left out; nothing panics.
 - `submit` returns `Ok(())` to keep what it drew. A renderer that returns an `Err` or panics is logged once and asked no more until the next resource
   load (a reload resolves it again); what it drew that frame is dropped, and until then its type draws

@@ -28,15 +28,8 @@ pub enum ScheduleError {
     /// The scheduling mod already has `MAX_PENDING_TASKS` tasks waiting; a warning naming the mod
     /// is logged.
     TooMany,
-    /// The current phase disallows world access, the server world is not open or opening,
-    /// or all task IDs have been used.
+    /// The server world is not open or opening, or all task IDs have been used.
     Unavailable,
-}
-
-impl crate::AccessRefusal for ScheduleError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
 }
 
 /// How many tasks one mod may have waiting at once.

@@ -2073,13 +2073,12 @@ impl Game<'_> {
                     if let Ok(stack) = stack.try_into_api() {
                         let mut added = Vec::new();
                         appender.append(self, &stack, &context, &mut added);
-                        let converted: Result<Vec<_>, mod_api::text::TextFormError> = added
-                            .into_iter()
-                            .map(|(text, color)| Ok((text.try_into_engine(&())?, color)))
-                            .collect();
-                        if let Ok(converted) = converted {
-                            out.extend(converted);
-                        }
+                        out.extend(added.into_iter().map(|(text, color)| {
+                            (
+                                sunrise_client_lib::api_text::to_engine_inprocess(&text),
+                                color,
+                            )
+                        }));
                     }
                 },
                 appenders
@@ -2106,9 +2105,15 @@ impl Game<'_> {
                 creative,
                 lines: &mut api_lines,
             });
-            if let Ok(converted) = api_lines.try_into_engine(&()) {
-                lines = converted;
-            }
+            lines = api_lines
+                .into_iter()
+                .map(|(text, color)| {
+                    (
+                        sunrise_client_lib::api_text::to_engine_inprocess(&text),
+                        color,
+                    )
+                })
+                .collect();
         }
         lines
     }
@@ -3102,9 +3107,16 @@ mod tests {
                 event: &mut AddAttributeTooltipsEvent<'_>,
             ) {
                 assert!(event.shown);
-                event
-                    .lines
-                    .push((mod_api::Text::literal("Rune: warding"), u32::MAX));
+                event.lines.push((
+                    {
+                        let mut line = mod_api::Text::literal("Rune: warding");
+                        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                            line = mod_api::Text::literal("").append(line);
+                        }
+                        line
+                    },
+                    u32::MAX,
+                ));
             }
         }
         let mods: Mods = vec![ModEntry::new("runes", Box::new(Mod))].into();
@@ -3177,8 +3189,12 @@ mod tests {
                         }));
                     }
                     3 => {
+                        let mut name = mod_api::Text::literal("Name");
+                        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                            name = mod_api::Text::literal("").append(name);
+                        }
                         *event.elements = vec![
-                            TooltipElement::Text(mod_api::Text::literal("Name"), u32::MAX),
+                            TooltipElement::Text(name, u32::MAX),
                             TooltipElement::Image(TooltipImage {
                                 source: mod_api::TooltipImageSource::ItemPart(event.stack.clone()),
                                 size: [12.0, 16.0],
@@ -3243,7 +3259,9 @@ mod tests {
                 MODE.store(3, Ordering::Relaxed);
                 let mixed = gather(game).unwrap();
                 assert_eq!(mixed.len(), 4);
-                assert!(matches!(mixed[0], tooltip::Element::Text(_, _)));
+                assert!(
+                    matches!(&mixed[0], tooltip::Element::Text(text, _) if text.plain() == "Name")
+                );
                 assert!(matches!(mixed[1], tooltip::Element::Image(_)));
                 assert!(matches!(mixed[2], tooltip::Element::Text(_, _)));
                 assert!(matches!(mixed[3], tooltip::Element::Text(_, _)));

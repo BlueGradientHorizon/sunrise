@@ -14,9 +14,7 @@ pub use registrar::{
 mod typed;
 pub use typed::{PayloadToken, ToClient, ToServer};
 
-use crate::{
-    ClientHost, ConfigurationTaskError, ConfigurationTaskRef, PlayerRef, ServerHost, Text,
-};
+use crate::{ClientHost, ConfigurationTaskError, PlayerRef, ServerHost, Text};
 use std::sync::Arc;
 
 /// Opaque application bytes. The transport never prepends a mod envelope.
@@ -310,24 +308,32 @@ pub trait IPayloadContext {
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<u32, PayloadSendError>;
-    /// In a server main-thread configuration handler, request completion of the exact
-    /// running task for this receiving peer. Pass the server-local instance captured
-    /// when sending the original challenge: never take an instance from the wire or
-    /// substitute the task running when the reply arrives.
+    /// In a server configuration payload handler (on either the main thread or the
+    /// network thread), complete the running configuration task matching `task_type`
+    /// on this receiving connection (matching NeoForge's
+    /// `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)` and vanilla's
+    /// `ServerConfigurationPacketListenerImpl.finishCurrentTask`).
     ///
-    /// A different live peer's instance returns `WrongConnection`; a no-longer-current
-    /// task on this connection returns `StaleTask`. `WrongContext` means this is not a
-    /// server main-thread configuration handler with a transaction; `Disconnected`
-    /// means the connection or its configuration epoch has ended. No refusal advances a task.
-    /// Completion takes effect only after the outermost transaction commits and
-    /// publishes its deferred sends. Abort, handler failure, or explicitly disconnecting
-    /// this peer discards the request.
+    /// Returns `WrongType` if the currently running task on this connection has a
+    /// different type, `NotRunning` if no configuration task is currently running or
+    /// completion was already requested, `WrongContext` if called on the client or
+    /// outside the configuration phase, and `Disconnected` if the connection or its
+    /// configuration epoch has ended or a disconnect was already requested. No refusal
+    /// advances a task.
+    ///
+    /// On the main thread, completion takes effect immediately in the configuration
+    /// session (without transaction staging; the server advances to the next task or
+    /// `FinishConfiguration` on the next tick, after this handler's replies commit).
+    /// On the network thread, completion is bound to the currently running task turn
+    /// and publishes inside the same active-epoch gate as staged replies after they
+    /// succeed; handler failure, an explicit disconnect, or epoch invalidation discards
+    /// that staged completion.
     fn finish_configuration_task(
         &mut self,
-        instance: ConfigurationTaskRef,
+        task_type: &crate::Identifier,
     ) -> Result<(), ConfigurationTaskError>;
-    /// Disconnect this session with the supplied component. This discards any configuration
-    /// task completion staged by the handler.
+    /// Disconnect this session with the supplied component. On the network thread this
+    /// also discards any staged configuration task completion from this handler.
     fn disconnect(&mut self, reason: Text);
     /// Run now on the main thread or schedule there from the network executor.
     /// Failure of the work is reported as a named session failure.

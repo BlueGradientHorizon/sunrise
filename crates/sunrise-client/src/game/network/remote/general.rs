@@ -542,8 +542,7 @@ mod tests {
         }
 
         mod_platform::__private::initialize().unwrap();
-        let _registration =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let _registration = mod_api::__private::RegistrationGuard::open();
         let calls = Events::default();
         let mods = vec![
             mod_api::ModEntry::new("mymod", Box::new(Declare)),
@@ -551,8 +550,6 @@ mod tests {
         ];
         mod_platform::testing::with_mods(mods.into(), || {
             with_client_game(|game| {
-                let _world =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 let mut pipe = logged_in(game);
                 // The two closer boxes also meet the ray: one cannot be picked, and one has
                 // not received its snapshot. Neither may win over the ready package.
@@ -615,8 +612,6 @@ mod tests {
                     guest.motion = Some(Box::new(body));
                 });
                 game.reset_entity_residency();
-                let _world =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 assert_eq!(
                     game.guest_interact(1, 0, id, Hand::Main, [0.0, 1.65, -0.25]),
                     Ok(true)
@@ -698,8 +693,7 @@ mod tests {
             return;
         }
         mod_platform::__private::initialize().unwrap();
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let _phase = mod_api::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
@@ -742,8 +736,6 @@ mod tests {
                 }))
                 .unwrap();
                 game.handle_packet(position(1)).unwrap();
-                let _world =
-                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                 game.handle_packet(spawn_facing(9, "mymod:missile", [2.5, 70.0, 0.5], 90.0))
                     .unwrap();
                 game.handle_packet(spawn(12, "mymod:missile", [0.5, 70.0, 0.5]))
@@ -871,8 +863,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_window_keeps_moves_and_drops_the_rows_it_is_shown() {
         mod_platform::__private::initialize().unwrap();
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let _phase = mod_api::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();

@@ -110,6 +110,7 @@ fn simplicity_follows_all_children_and_custom_display_base() {
         mod_api::__private::bind_ingredient_predicate(
             "fixture",
             0,
+            "fixture:custom",
             mod_api::IngredientDefinition::new(vec![], |_, _| false),
         )
         .1,
@@ -120,6 +121,10 @@ fn simplicity_follows_all_children_and_custom_display_base() {
 #[test]
 fn builtin_kinds_bypass_mod_resolution_and_honor_type_key_priority() {
     let load = load();
+    let mut items = Items::empty();
+    items
+        .block_tag_order
+        .insert("minecraft:logs".into(), Vec::new());
     for source in [
         r#"{"type":"neoforge:components","items":"minecraft:diamond_sword","components":{"minecraft:damage":5}}"#,
         r#"{"type":"neoforge:block_tag","tag":"minecraft:logs"}"#,
@@ -134,6 +139,7 @@ fn builtin_kinds_bypass_mod_resolution_and_honor_type_key_priority() {
         // a mod kind would refuse the recipe.
         let sources = crate::crafting::ResolvedSources::resolve(
             vec![("fixture:builtin".into(), file.clone())],
+            &items,
             &load,
         )
         .unwrap();
@@ -1285,9 +1291,8 @@ fn optional_codec_json_null_uses_defaults_without_weakening_required_fields() {
 
 #[test]
 fn custom_model_data_recipe_decodes_ordered_lists_and_matches_without_allocating() {
-    use crate::crafting::{Recipes, ResolvedRecipe, ResolvedSources};
+    use crate::crafting::{Recipes, ResolvedSources};
     use serde_json::json;
-    use std::sync::Arc;
     use sunrise_core::nbt::JavaString;
     use sunrise_world::loot::PackOverlay;
 
@@ -1337,16 +1342,20 @@ fn custom_model_data_recipe_decodes_ordered_lists_and_matches_without_allocating
         Some(&expected),
     );
     let named = |name: &str, ingredient: serde_json::Value| {
-        let file = Arc::new(json!({
-            "type": "minecraft:crafting_shaped", "pattern": ["A"],
-            "key": {"A": ingredient}, "result": {"id": "minecraft:diamond", "count": 2}
-        }));
-        ResolvedRecipe::fixture(name.into(), file)
+        (
+            name.to_owned(),
+            json!({
+                "type": "minecraft:crafting_shaped", "pattern": ["A"],
+                "key": {"A": ingredient}, "result": {"id": "minecraft:diamond", "count": 2}
+            }),
+        )
     };
-    let sources = ResolvedSources {
-        recipes: vec![named("fixture:model", source.clone())],
-        ..ResolvedSources::default()
-    };
+    let sources = ResolvedSources::resolve(
+        vec![named("fixture:model", source.clone())],
+        &items,
+        &load(),
+    )
+    .unwrap();
     for invalid in [
         json!(3),
         json!({"floats": 1}),

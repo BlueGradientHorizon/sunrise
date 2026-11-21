@@ -243,10 +243,6 @@ impl Game<'_> {
         reload: bool,
         root: &std::path::Path,
     ) -> Result<super::condition_reload_state::StagedWorldTables> {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server tables on their owning thread");
         // The ask of this load, both here and on `/reload`: a native mod
         // recomputes the pack files it contributes every time.
         let mut contributed = Vec::new();
@@ -338,15 +334,28 @@ impl Game<'_> {
             &overlay,
         ));
         let datapack_candidate = self.datapack_candidate(stack, &conditions);
+        let install_items_result = match &packed_registry_definitions {
+            Ok(packed) => {
+                packed.install_items(&mut items, root, &overlay, self.res.item_defaults())
+            }
+            Err(_) => Ok(()),
+        };
+        // Item damage predicates use the same frozen registry as player hurt.
+        Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
+        items.bind_component_damage_catalog(&health.damage);
+        if let Ok(loot) = &loot {
+            items.component_defaults = loot.component_defaults().clone();
+        }
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
-            lan::sync::prepare_server_sources(root, &self.res.core.item_data, &overlay)
+            lan::sync::prepare_server_sources(root, &self.res.core.item_data, &items, &overlay)
         } else {
             lan::sync::load_sources(
                 root,
                 &self.res.core.item_data,
+                &items,
                 self.options.execution_role.data_load_origin(),
                 &overlay,
             )
@@ -359,6 +368,7 @@ impl Game<'_> {
                     let errors = [
                         packed.err(),
                         conditions.err(),
+                        install_items_result.err().map(ToString::to_string),
                         loot.as_ref().err().map(ToString::to_string),
                         datapack_candidate.as_ref().err().map(ToString::to_string),
                         sources.as_ref().err().map(ToString::to_string),
@@ -370,18 +380,9 @@ impl Game<'_> {
                     return Err(errors.into());
                 }
             };
-        packed_registry_definitions.install_items(
-            &mut items,
-            root,
-            &overlay,
-            self.res.item_defaults(),
-        )?;
-        // Item damage predicates use the same frozen registry as player hurt.
-        Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
-        items.bind_component_damage_catalog(&health.damage);
+        install_items_result?;
         let sources = sources?;
         let mut loot = loot?;
-        items.component_defaults = loot.component_defaults().clone();
         let recipes = Recipes::from_resolved(root, &items, &overlay, &sources)?;
         let mut stations = sunrise_client::stations::StationData::from_sources(
             root,
@@ -867,6 +868,7 @@ impl Game<'_> {
                     let sources = lan::sync::prepare_server_sources(
                         root,
                         &self.res.core.item_data,
+                        items,
                         &overlay,
                     )?;
                     sources.check()?;

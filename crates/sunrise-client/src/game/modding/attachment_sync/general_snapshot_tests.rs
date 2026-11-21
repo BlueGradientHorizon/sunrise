@@ -37,7 +37,7 @@ impl mod_api::Hooks for Declare {
 /// A server game with `sync_route:robot` declared and `sync_route:value` synced.
 fn with_robot(test: impl FnOnce(&mut super::super::Game<'_>)) {
     mod_platform::__private::initialize().unwrap();
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_api::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("sync_route", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -45,7 +45,6 @@ fn with_robot(test: impl FnOnce(&mut super::super::Game<'_>)) {
             game.native_level_opened(crate::game::Dim::Overworld);
             game.build_registries();
             game.reset_entity_residency();
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             test(game)
         })
     });

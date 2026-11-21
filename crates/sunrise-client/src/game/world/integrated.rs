@@ -1409,7 +1409,7 @@ fn serve(
     });
     let opening = Opening {
         world,
-        sync: preload_sync_data(&res.core.item_data),
+        sync: preload_sync_data(&res.core.item_data, res.shared_items()),
     };
     let mut server = match startup::time("server.game_new", || {
         server_game(res, pack, options, settings)
@@ -1453,14 +1453,6 @@ impl Game<'_> {
             .spawn(move || {
                 let run = || -> Result<()> {
                     let mut server = server_game(&res, pack, options, settings)?;
-                    // The oracle supplies an already-open synthetic world rather
-                    // than running the normal config and startup lifecycle.
-                    server
-                        .mod_phase
-                        .advance(mod_api::__private::ModPhase::Config)?;
-                    server
-                        .mod_phase
-                        .advance(mod_api::__private::ModPhase::World)?;
                     match fixture {
                         ComponentHarness::Dispenser(spec) => server.dispense_fixture(&spec),
                         ComponentHarness::Sculk(spec) => server.sculk_fixture(&spec),

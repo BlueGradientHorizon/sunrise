@@ -1,5 +1,5 @@
 //! Cold engine lookup of registered crafting recipe owners.
-use crate::__private::RegisteredRecipeSerializer;
+use crate::__private::InstalledRecipeSerializer;
 
 /// Enabled kind IDs, including kinds whose last recipe disappeared on reload.
 pub fn crafting_recipe_kinds() -> Vec<String> {
@@ -7,7 +7,7 @@ pub fn crafting_recipe_kinds() -> Vec<String> {
 }
 
 /// A registered serializer's produced recipe type and retained owner.
-pub fn recipe_serializer(name: &str) -> Option<(String, RegisteredRecipeSerializer)> {
+pub fn recipe_serializer(name: &str) -> Option<(String, InstalledRecipeSerializer)> {
     crate::parts::installed_recipe_serializer(name)
 }
 
