@@ -253,6 +253,223 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
 }
 
 #[test]
+fn generated_function_digests_reach_native_check_and_the_published_verdict() {
+    use crate::sdk_fetch::{BUILD_DATA, CACHE, CacheStamp, PinnedSdk, SURFACE, keys};
+    use mod_surface::uses::{Origin, Used, Uses};
+    use sunrise_native_build::{check, contract::CONTRACT};
+
+    let r = Registry::new();
+    let root = r.0.path();
+    let source = root.join("source/crates/sunrise-client");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(
+        source.join("Cargo.toml"),
+        "[package]\nname='sunrise-client'\n",
+    )
+    .unwrap();
+    fs::write(source.join("src/lib.rs"), "pub mod game;").unwrap();
+
+    let project = root.join("patched");
+    let data = project.join(CACHE);
+    let manifest_name = sunrise_mod_package::manifest::MANIFEST;
+    let rev = sunrise_mod_package::mixins_tool::REV;
+    let manifest = format!(
+        "id='patched'\nname='Patched'\nversion='1.0.0'\napi='0.2'\n[native]\ngame='26.3'\nsunrise='{RELEASE_PIN}'\nmixins='{rev}'\n\
+        [[native.mixin]]\nid='patch'\ntarget='{TARGET}'\nkind='HEAD'\nhelper='src/helper.rs'\n"
+    );
+    let cargo = "[package]\nname='patched'\nversion='1.0.0'\n[dependencies]\nsunrise-mod-api={path='.sunrise/sdk/api/crates/sunrise-mod-api'}\n";
+    fs::create_dir_all(project.join("src")).unwrap();
+    for (file, text) in [
+        (manifest_name, manifest.as_str()),
+        ("Cargo.toml", cargo),
+        ("src/lib.rs", ""),
+        ("src/helper.rs", "{}"),
+    ] {
+        fs::write(project.join(file), text).unwrap();
+    }
+    let body = "26.3-0.1.1";
+    let declaration = "26.3-0.1.2";
+    let legacy_build = "26.3-0.1.3";
+    let mixed = "26.3-0.1.4";
+    let reformatted = "26.3-0.1.5";
+    let builds = [
+        (
+            RELEASE_TAG,
+            RELEASE_PIN.to_owned(),
+            "api",
+            "pub fn example() -> u8 { 0 }",
+        ),
+        (body, "b".repeat(40), "api", "pub fn example() -> u8 { 1 }"),
+        (
+            declaration,
+            "c".repeat(40),
+            "api",
+            "pub(crate) fn example() -> u8 { 0 }",
+        ),
+        (
+            legacy_build,
+            "d".repeat(40),
+            "api",
+            "pub fn example() -> u8 { 1 }",
+        ),
+        (
+            mixed,
+            "e".repeat(40),
+            "changed-api",
+            "pub fn example() -> u8 { 1 }",
+        ),
+        (
+            reformatted,
+            "f".repeat(40),
+            "api",
+            "pub fn example()->u8{/* comment */ 0}",
+        ),
+    ];
+    let releases = root.join("releases.json");
+    fs::write(
+        &releases,
+        json!(
+            builds
+                .iter()
+                .map(|(tag, commit, _, _)| json!({"tag":tag,"commit":commit}))
+                .collect::<Vec<_>>()
+        )
+        .to_string(),
+    )
+    .unwrap();
+    for (tag, commit, api, text) in &builds {
+        fs::write(source.join("src/game.rs"), text).unwrap();
+        let mut functions =
+            sunrise_mod_api_gen::functions::index(&root.join("source"), &Default::default())
+                .unwrap()
+                .functions;
+        if *tag == legacy_build {
+            functions.get_mut(TARGET).unwrap().digests = None;
+        }
+        sdk(
+            &data,
+            commit,
+            mod_surface::SCHEMA,
+            api,
+            API,
+            json!(functions),
+        );
+    }
+    let pinned = PinnedSdk {
+        build: RELEASE_PIN.into(),
+        name: RELEASE_TAG.into(),
+        dir: data.join(RELEASE_PIN),
+        surface: data.join(RELEASE_PIN).join(SURFACE),
+    };
+    CacheStamp::new(RELEASE_PIN, &keys())
+        .write(&pinned.dir)
+        .unwrap();
+    let uses = Uses {
+        items: vec![Used {
+            entry: Entry::plain("fn:example".into(), "api".into()),
+            origin: Origin::Source {
+                file: "src/lib.rs".into(),
+                line: 1,
+            },
+            note: None,
+        }],
+    };
+    let mut table = crate::uses_table::table(&uses, &project, &pinned).unwrap();
+    assert_eq!(table.schema, USES_SCHEMA);
+    let packed = table.to_json();
+    fs::write(project.join(USES_FILE), &packed).unwrap();
+    let native_check = |commit: &str| {
+        let dir = data.join(commit);
+        serde_json::to_value(
+            check::check(&check::Plan {
+                contract: CONTRACT,
+                mods: project.clone(),
+                build: commit.into(),
+                surface: Some(dir.join(SURFACE)),
+                build_data: Some(dir.join(BUILD_DATA)),
+            })
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    let id = format!("game:fn:{TARGET}");
+    let body_message = format!("the game's function `{TARGET}` (body changed)");
+    let declaration_message = format!("the game's function `{TARGET}` (declaration changed)");
+    let does_not_fit = |id| {
+        json!({"kind": "does-not-fit", "made_for": RELEASE_PIN,
+                                 "misfits": [{"id": id, "change": "changed"}]})
+    };
+    for (build, message) in [(1, &body_message), (2, &declaration_message), (3, &id)] {
+        let reply = native_check(&builds[build].1);
+        assert_eq!(reply["route"], Value::Null, "{reply}");
+        assert_eq!(
+            reply["mods"][0]["verdict"],
+            does_not_fit(message),
+            "{reply}"
+        );
+    }
+    let reply = native_check(&builds[5].1);
+    assert_eq!(reply["mods"][0]["verdict"]["kind"], "fits", "{reply}");
+
+    table.schema = 3;
+    for entry in &mut table.entries {
+        entry.game_code = None;
+    }
+    fs::write(project.join(USES_FILE), table.to_json()).unwrap();
+    let reply = native_check(&builds[1].1);
+    assert_eq!(reply["mods"][0]["verdict"], does_not_fit(&id), "{reply}");
+
+    let mut malformed: Value = serde_json::from_str(&packed).unwrap();
+    malformed["entries"][1]["game_code"]["functions"][TARGET]
+        .as_object_mut()
+        .unwrap()
+        .remove("body");
+    fs::write(project.join(USES_FILE), malformed.to_string()).unwrap();
+    let reply = native_check(&builds[1].1);
+    assert_eq!(
+        reply["mods"][0]["verdict"],
+        json!({
+            "kind": "no-list", "made_for": RELEASE_PIN, "why": "unreadable"
+        }),
+        "{reply}"
+    );
+
+    r.add_package(
+        "patched",
+        "1.0.0",
+        "26.3",
+        "native-mod",
+        &[
+            (manifest_name, &manifest),
+            ("Cargo.toml", cargo),
+            ("src/lib.rs", ""),
+            ("src/helper.rs", "{}"),
+            (USES_FILE, &packed),
+        ],
+    );
+    r.pin_source("patched", RELEASE_TAG);
+    let index = r
+        .build(&[
+            "--releases",
+            releases.to_str().unwrap(),
+            "--sdk-data",
+            data.to_str().unwrap(),
+        ])
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&index.project("patched").unwrap().versions[0].verdicts).unwrap(),
+        json!({
+            (RELEASE_TAG): {"verdict": "made-for", "targets": []},
+            (body): {"verdict": "rebuild", "review": [TARGET], "targets": []},
+            (declaration): {"verdict": "breaks", "changed": [declaration_message], "targets": []},
+            (legacy_build): {"verdict": "breaks", "changed": [id], "targets": []},
+            (mixed): {"verdict": "breaks", "changed": ["fn:example", body_message], "targets": []},
+            (reformatted): {"verdict": "fits", "targets": []},
+        })
+    );
+}
+
+#[test]
 fn versions_without_sunrise_do_not_need_sdk_data() {
     let r = Registry::new();
     r.add("legacy", "1.0.0", "26.3", "");
