@@ -273,35 +273,40 @@ impl Game<'_> {
         };
         // Park the opener's window-0 cursor and build the first contents from
         // their inventory, even when an open through BlockEntityRef runs in their turn.
-        if self
-            .with_own_record(gi, |host, _| {
-                if host
-                    .hub
-                    .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
-                    .is_none()
+        let Some(menu_generation) = self.with_own_record(gi, |host, _| {
+            if host
+                .hub
+                .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
+                .is_none()
+            {
+                if let Some(container) = previous_window
+                    && super::super::native_menus::open_menu_of(host, conn).is_none()
                 {
-                    if let Some(container) = previous_window
-                        && super::super::native_menus::open_menu_of(host, conn).is_none()
-                    {
-                        host.hub
-                            .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
-                    }
-                    return None;
-                }
-                if !hidden.is_empty() {
                     host.hub
-                        .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
+                        .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
                 }
-                Some(())
-            })
-            .is_none()
-        {
+                return None;
+            }
+            if !hidden.is_empty() {
+                host.hub
+                    .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
+            }
+            Some(host.hub.guest(conn)?.menu_generation)
+        }) else {
             return MenuOpen::Refused;
-        }
+        };
         // ChestMenu and ShulkerBoxMenu own startOpen, including a ChestMenu
         // backed by PlayerEnderChestContainer with an active ender chest.
         self.guest_container_opener(conn, pos, true);
-        self.player_menu_opening(conn);
+        // The game-event listener can close or replace the installed menu.
+        if self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .is_some_and(|guest| guest.menu.is_some() && guest.menu_generation == menu_generation)
+        {
+            self.player_menu_opening(conn);
+        }
         MenuOpen::Opened
     }
 
@@ -451,11 +456,14 @@ impl Game<'_> {
             return;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
-        let shulker = super::super::storage::is_shulker_box(&self.res.facts().get(state).name);
+        let name = &self.res.facts().get(state).name;
+        let shulker = super::super::storage::is_shulker_box(name);
+        // Resolve the sound before the game event; its listener can replace the block.
+        let sound = self.resolve_container_sound(pos, name, open);
         // ContainerOpenersCounter calls onOpen/onClose before the game event;
         // ShulkerBoxBlockEntity emits its game event before playing its sound.
-        if !shulker {
-            self.container_edge_sound(pos, open);
+        if !shulker && let Some((sound, at)) = sound {
+            self.play_container_sound(sound, at);
         }
         let event = if open {
             "minecraft:container_open"
@@ -475,8 +483,8 @@ impl Game<'_> {
         } else {
             self.as_guest(conn, post);
         }
-        if shulker {
-            self.container_edge_sound(pos, open);
+        if shulker && let Some((sound, at)) = sound {
+            self.play_container_sound(sound, at);
         }
     }
 
