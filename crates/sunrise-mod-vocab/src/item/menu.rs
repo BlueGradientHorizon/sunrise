@@ -295,11 +295,10 @@ pub struct AnvilCraftInputs<'a> {
     pub output: &'a ItemStack,
 }
 
-/// One of a menu's own (non-player) containers: the key a `menu_slot_rules` ask names its slot's
-/// container by (`event.container`, with `event.slot` indexing inside it) and
-/// [`MenuSlotContext::slot`] reads by. A plain menu has `Main` only; a mod menu type with a
-/// crafting grid keeps its grid slots in `Grid` and its crafted result in `Result` (slot 0);
-/// a slot of the player's inventory is `Player`'s.
+/// One of a menu's containers: the key a `menu_slot_rules` ask names its slot's container by
+/// (`event.container`, with `event.slot` indexing inside it) and [`MenuSlotContext::slot`] reads
+/// by. A plain menu has `Main` and `Player`; a mod menu type with a crafting grid keeps its grid
+/// slots in `Grid` and its crafted result in `Result` (slot 0).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -311,14 +310,14 @@ pub enum MenuContainer {
     Grid,
     /// A crafting grid's result slot.
     Result,
-    /// The player's inventory. A rule can be asked about one of its slots, but
-    /// [`MenuSlotContext::slot`] does not read them.
+    /// The player's inventory, using vanilla `Inventory` indices: `0..36` inventory, `36..40`
+    /// armor (feet, legs, chest, head) and `40` offhand.
     Player,
 }
-/// The menu's player, its block entity and a read-only view of its staged slots for one
+/// The menu's player, its block entity and a read-only view of its live slots for one
 /// `menu_slot_rules` ask, on either the server or the predicting client. Read only the slots
 /// needed to answer the rule; the view cannot outlive the ask.
-// no wire: this view borrows the click planner's staged slots.
+// no wire: this view borrows the menu's live slots during a click.
 #[non_exhaustive]
 pub struct MenuSlotContext<'a> {
     /// The UUID of the player whose menu it is; None where no player is known.
@@ -329,9 +328,8 @@ pub struct MenuSlotContext<'a> {
     read: &'a dyn Fn(MenuContainer, usize) -> Option<ItemStack>,
 }
 impl<'a> MenuSlotContext<'a> {
-    /// Lend a read of the menu's staged slots, with the player and block position of this ask.
-    /// The reader returns `None` for empty, absent or unrepresentable slots, including every
-    /// player inventory slot.
+    /// Lend a read of the menu's live slots, with the player and block position of this ask.
+    /// The reader returns `None` for empty, absent or unrepresentable slots.
     pub fn new(
         player: Option<u128>,
         pos: Option<[i32; 3]>,
@@ -341,7 +339,8 @@ impl<'a> MenuSlotContext<'a> {
     }
 
     /// Read one slot at its backing index, converting just that stack to an API value.
-    /// Returns `None` if it is empty, absent, cannot be represented, or belongs to `Player`.
+    /// Returns `None` if it is empty, absent or cannot be represented. For `Player`, indices follow
+    /// vanilla `Inventory`: `0..36` inventory, `36..40` armor (feet-to-head) and `40` offhand.
     pub fn slot(&self, container: MenuContainer, index: usize) -> Option<ItemStack> {
         (self.read)(container, index)
     }

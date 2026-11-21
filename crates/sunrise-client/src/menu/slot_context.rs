@@ -26,27 +26,39 @@ pub fn lan_container(i: usize, container: Option<&[Option<ItemStack>]>) -> MenuC
 impl SlotContext<'_> {
     /// What slot `index` of `container` holds, keyed as `MenuSlotContext::slot`.
     pub fn slot(&self, container: MenuContainer, index: usize) -> Option<&ItemStack> {
-        let slots = match container {
+        match container {
             MenuContainer::Main => {
                 if self.main_crafting.is_some_and(|crafting| {
                     crafting.grid_slots().contains(&index) || index == crafting.result
                 }) {
-                    &[]
+                    None
                 } else {
-                    self.slots
+                    self.slots.get(index).and_then(Option::as_ref)
                 }
             }
-            MenuContainer::Grid => self.grid,
-            MenuContainer::Result => self.result,
-            _ => &[],
-        };
-        slots.get(index).and_then(Option::as_ref)
+            MenuContainer::Grid => self.grid.get(index).and_then(Option::as_ref),
+            MenuContainer::Result => self.result.get(index).and_then(Option::as_ref),
+            MenuContainer::Player => {
+                if let Some(armor) = self.player_armor
+                    && (36..40).contains(&index)
+                {
+                    armor[39 - index].as_ref()
+                } else if let Some(offhand) = self.player_offhand
+                    && index == 40
+                {
+                    offhand.as_ref()
+                } else {
+                    self.player_slots.get(index).and_then(Option::as_ref)
+                }
+            }
+            _ => None,
+        }
     }
 }
 
 impl Menu {
     /// Who and where this menu's `menu_slot_rules` ask about menu slot `s` is: the env's
-    /// player, the menu's block (`set_block_pos`), `s`'s container and the menu's own
+    /// player, the menu's block (`set_block_pos`), `s`'s container and the menu's and player's
     /// containers.
     pub(super) fn slot_context<'s>(&'s self, env: &Env, s: usize) -> SlotContext<'s> {
         let container = self
@@ -62,6 +74,9 @@ impl Menu {
             main_crafting: None,
             grid: &self.state.containers[GRID],
             result: &self.state.containers[RESULT],
+            player_slots: &self.state.containers[PLAYER],
+            player_armor: None,
+            player_offhand: None,
         }
     }
 }
@@ -90,6 +105,6 @@ pub fn apply_menu_slot_rules(
             &mut max_stack,
         );
     }
-    let max_stack = max_stack.clamp(1, CONTAINER_MAX).min(item_max);
+    let max_stack = max_stack.min(CONTAINER_MAX).min(item_max);
     (may_place, may_pickup, max_stack)
 }

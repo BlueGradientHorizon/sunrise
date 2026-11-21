@@ -63,11 +63,12 @@ A rule that depends on more than the stack reads `event.context`, a `MenuSlotCon
 for this ask on either the server or the predicting client. `context.player` is the UUID of
 the player whose menu it is, and `context.pos` locates the block entity the menu belongs to
 (`ContainerLevelAccess`). `event.container` names the container the asked slot is in, and
-`event.slot` indexes inside it. Read a staged slot with `context.slot(container, index)`: use
-`MenuContainer::Main` for the menu's own slots, and on a mod menu type with a crafting grid use
-`Grid` (row by row) and `Result` (its crafted result, slot 0) for those slots. For example, a
-machine can use the view to accept only one upgrade card of each kind, or a grid slot can check
-whether a result is waiting to be taken:
+`event.slot` indexes inside it. Read a live slot with `context.slot(container, index)`: use
+`MenuContainer::Main` for the menu's own slots, `Grid` (row by row) and `Result` (slot 0) on a
+mod menu type with a crafting grid, and `MenuContainer::Player` for the player's inventory
+(`0..36` inventory, `36..40` armor feet-to-head, `40` offhand, matching vanilla `Inventory`).
+For example, a machine can use the view to accept only one upgrade card of each kind, or a grid
+slot can check whether a result is waiting to be taken:
 
 ```rust,ignore
 use mod_api::MenuContainer;
@@ -93,11 +94,12 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
 opened with no block by `player_open_mod_menu`, a vehicle's). `slot` converts just the requested
-stack and returns it as an owned `ItemStack`. It returns `None` for an empty, unavailable, or
-unrepresentable stack, and never reads `MenuContainer::Player`. There is no matrix to enumerate
-or retain. Each live `mayPlace`, `mayPickup` and `getMaxStackSize` check during a click queries
-the parts directly against the current menu slots, matching vanilla `AbstractContainerMenu.doClick`
-and `Slot`.
+stack and returns it as an owned `ItemStack`. It returns `None` for an empty, absent, or
+unrepresentable stack. There is no matrix to enumerate or retain. `event.max_stack` is bounded
+to `0..=99` and the item's stack limit (matching vanilla `Slot.getMaxStackSize` and
+`Container.getMaxStackSize`): setting `0` allows no items to be placed into the slot. Each live
+`mayPlace`, `mayPickup` and `getMaxStackSize` check during a click queries the parts directly
+against the current menu slots, matching vanilla `AbstractContainerMenu.doClick` and `Slot`.
 
 ## Slots that keep what they show
 

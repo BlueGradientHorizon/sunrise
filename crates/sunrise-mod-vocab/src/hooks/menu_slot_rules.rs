@@ -6,10 +6,11 @@ pub trait Hooks {
     /// menus; mounts use `sunrise:mount_inventory`, while player inventory and
     /// the creative picker have no registered type. `slot` is the backing index,
     /// including player inventory slots. The slot's own answers arrive first;
-    /// the maximum is bounded to 1–99 and the item limit. Refusal also prevents
-    /// quick-move top-ups. Runs on server and client prediction with the read
-    /// `Host`: it is a query, so it can neither write nor cancel. Each live
-    /// `may_place`, `may_pickup` and `getMaxStackSize` check during a click
+    /// the maximum is bounded to 0–99 and the item limit (matching vanilla
+    /// `Slot.getMaxStackSize` and `Container.getMaxStackSize`). Refusal also
+    /// prevents quick-move top-ups. Runs on server and client prediction with
+    /// the read `Host`: it is a query, so it can neither write nor cancel. Each
+    /// live `may_place`, `may_pickup` and `getMaxStackSize` check during a click
     /// asks the parts directly against the current menu slots (matching
     /// vanilla `AbstractContainerMenu.doClick` and `Slot`).
     /// Answer quickly from the question and the read-only Host. On a LAN
@@ -17,10 +18,12 @@ pub trait Hooks {
     /// (it answers as if no LAN were open).
     /// `container` is the container `slot` indexes ([`MenuContainer`]): a mod
     /// crafting grid's slots are `Grid`'s and its result `Result`'s slot 0.
-    /// `context` lends the player, the menu's block position and the menu's
-    /// staged slots for this ask ([`MenuSlotContext`]). Read slots on demand
-    /// with `context.slot(container, index)`; player inventory slots are not
-    /// exposed there.
+    /// `context` lends the player, the menu's block position and the live
+    /// slots for this ask ([`MenuSlotContext`]). Read slots on demand with
+    /// `context.slot(container, index)`, covering both the menu's backing
+    /// containers (`Main`, `Grid`, `Result`) and the player's inventory
+    /// (`Player`: `0..36` inventory, `36..40` armor feet-to-head, `40` offhand,
+    /// matching vanilla `Inventory`).
     /// A client without this mod predicts vanilla here; the server corrects it.
     ///
     /// `may_pickup` is `Slot.mayPickup`, answered only for a registered mod

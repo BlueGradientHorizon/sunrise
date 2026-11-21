@@ -91,7 +91,24 @@ impl MenuPart for StagedReader {
         use mod_api::MenuContainer::{Main, Player};
         assert!(event.context.slot(Main, 2).is_none()); // unknown item
         assert!(event.context.slot(Main, usize::MAX).is_none());
-        assert!(event.context.slot(Player, 0).is_none()); // occupied, but not lent
+        // Live player inventory, armor (36..40 feet-to-head) and offhand (40) are readable.
+        let player_stone = event.context.slot(Player, 0).unwrap();
+        assert_eq!(
+            mod_api::__private::item_key_id(player_stone.item()),
+            Some("minecraft:stone")
+        );
+        assert_eq!(player_stone.count(), 1);
+        assert!(event.context.slot(Player, 1).is_none());
+        let boots = event.context.slot(Player, 36).unwrap();
+        assert_eq!(
+            mod_api::__private::item_key_id(boots.item()),
+            Some("minecraft:iron_boots")
+        );
+        let offhand = event.context.slot(Player, 40).unwrap();
+        assert_eq!(
+            mod_api::__private::item_key_id(offhand.item()),
+            Some("minecraft:shield")
+        );
         let ingredient = event.context.slot(Main, 1).unwrap();
         assert_eq!(
             mod_api::__private::item_key_id(ingredient.item()),
@@ -120,6 +137,8 @@ fn staged_slot_rule_reads_hide_unrepresentable_and_player_stacks() {
                 menu.load_slot(1, Some(ItemStack::new("minecraft:oak_planks", 3)));
                 menu.load_slot(2, Some(ItemStack::new("test:unregistered", 1)));
                 menu.set_player_item(0, Some(ItemStack::new("minecraft:stone", 1)));
+                menu.set_player_item(36, Some(ItemStack::new("minecraft:iron_boots", 1)));
+                menu.set_player_item(40, Some(ItemStack::new("minecraft:shield", 1)));
                 assert_eq!(pickup(game, &mut menu), (3, 5));
             });
         },
@@ -150,15 +169,75 @@ fn a_click_asks_the_part_for_each_slot_and_stack_it_consults_in_order() {
 #[test]
 #[ignore = "daily"]
 fn the_answers_are_bounded_to_one_to_ninety_nine_and_the_items_limit() {
+    use sunrise_client::lan::menu::Slots;
+    use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
     with_mods(vec![ModEntry::new("rules", Box::new(Listener))], || {
         with_game(|game| {
-            // A maximum of 0 holds one (the lower bound), 3 holds three, and a huge one holds what
-            // the item stacks to: 64 stone, not 99 and not the answer.
-            for (answer, held) in [(0, 1), (3, 3), (u32::MAX, 64)] {
+            // A maximum of 0 holds none (leaving the slot empty), 3 holds three, and a huge one
+            // holds what the item stacks to: 64 stone, not 99 and not the answer.
+            for (answer, held) in [(0, 0), (3, 3), (u32::MAX, 64)] {
                 reset(Some(answer), false);
                 let mut menu = chest(("minecraft:stone", 64));
                 assert_eq!(pickup(game, &mut menu), (held, 64 - held), "{answer}");
+                if answer == 0 {
+                    assert!(menu.slot(0).is_none());
+                }
             }
+        });
+        // A LAN view click with max_stack == 0 likewise places nothing and leaves no zero-count
+        // stack behind.
+        with_guests(|game| {
+            let pos = (1, 64, 1);
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
+            game.world.block_entities.insert(
+                pos,
+                sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
+            );
+            let host = game.lan.as_mut().unwrap();
+            host.hub.open_container(
+                12,
+                "minecraft:generic_9x3",
+                sunrise_core::nbt::Tag::String("test".into()),
+                pos,
+                Slots::Block(pos),
+                vec![None; 27],
+                None,
+            );
+            let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+            host.hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:stone", 64))
+            });
+            reset(Some(0), false);
+            game.lan_guest_packet(
+                12,
+                Serverbound::ContainerClick(ContainerClick {
+                    container: window,
+                    state: 0,
+                    slot: 0,
+                    button: 0,
+                    input: 0,
+                    changed: Vec::new(),
+                    carried: None,
+                }),
+            );
+            assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref()
+                    .map(|s| s.count),
+                Some(64)
+            );
         });
     });
 }

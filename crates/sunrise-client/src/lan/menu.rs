@@ -593,6 +593,7 @@ impl View<'_> {
         }
     }
     pub fn set(&mut self, i: usize, item: Option<ItemStack>) {
+        let item = item.filter(|s| s.count > 0);
         match &mut self.container {
             Some(c) if i < c.len() => c[i] = item,
             Some(c) => {
@@ -614,6 +615,9 @@ impl View<'_> {
             pos: menu.and_then(|menu| menu.pos).map(|(x, y, z)| [x, y, z]),
             container: crate::menu::lan_container(i, self.container.as_deref()),
             slots,
+            player_slots: &self.guest.inventory,
+            player_armor: Some(&self.guest.armor),
+            player_offhand: Some(&self.guest.offhand),
             ..Default::default()
         };
         let mut index = if i < slots.len() {
@@ -2077,6 +2081,14 @@ pub(crate) mod tests {
         }));
         let planks = Some(ItemStack::new("minecraft:oak_planks", 4));
         let mut g = guest();
+        g.inventory[9] = Some(ItemStack::new("minecraft:stone", 2));
+        g.armor = [
+            Some(ItemStack::new("minecraft:iron_helmet", 1)),
+            Some(ItemStack::new("minecraft:iron_chestplate", 1)),
+            Some(ItemStack::new("minecraft:iron_leggings", 1)),
+            Some(ItemStack::new("minecraft:iron_boots", 1)),
+        ];
+        g.offhand = Some(ItemStack::new("minecraft:shield", 1));
         let slots = Slots::Block(k);
         g.menu = Some(Menu {
             window: 1,
@@ -2130,7 +2142,34 @@ pub(crate) mod tests {
             assert_eq!((index, context.container), (0, Result));
             let (index, context) = view.slot_context(5);
             assert_eq!((index, context.container), (9, Player));
-            assert!(context.slot(Player, index).is_none());
+            assert_eq!(
+                context
+                    .slot(Player, index)
+                    .map(|s| (s.item.as_ref(), s.count)),
+                Some(("minecraft:stone", 2))
+            );
+            assert!(context.slot(Player, 0).is_none());
+            assert_eq!(
+                context.slot(Player, 36).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_boots")
+            );
+            assert_eq!(
+                context.slot(Player, 37).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_leggings")
+            );
+            assert_eq!(
+                context.slot(Player, 38).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_chestplate")
+            );
+            assert_eq!(
+                context.slot(Player, 39).map(|s| s.item.as_ref()),
+                Some("minecraft:iron_helmet")
+            );
+            assert_eq!(
+                context.slot(Player, 40).map(|s| s.item.as_ref()),
+                Some("minecraft:shield")
+            );
+            assert!(context.slot(Player, 41).is_none());
             view.set(1, Some(ItemStack::new("minecraft:birch_log", 3)));
             let (_, context) = view.slot_context(1);
             assert_eq!(
@@ -3378,6 +3417,83 @@ pub(crate) mod tests {
         assert_eq!(
             view.guest.carried,
             Some(ItemStack::new("minecraft:stone", 2))
+        );
+    }
+
+    #[test]
+    fn zero_max_stack_places_nothing_and_leaves_no_zero_count_stack() {
+        struct ZeroMax;
+        impl crate::menu::SlotRules for ZeroMax {
+            fn listens(&self, menu: &str) -> bool {
+                menu == "test:chest"
+            }
+            fn rule(
+                &self,
+                _: &str,
+                _: usize,
+                _: &ItemStack,
+                _: crate::menu::SlotContext<'_>,
+                _: &mut bool,
+                _: &mut bool,
+                max_stack: &mut u32,
+            ) {
+                *max_stack = 0;
+            }
+        }
+        struct ZeroMaxRules(Items);
+        impl Rules for ZeroMaxRules {
+            fn items(&self) -> &Items {
+                &self.0
+            }
+            fn enchantments(&self) -> &Enchantments {
+                enchantments()
+            }
+            fn max_stack(&self, _: &str) -> u32 {
+                64
+            }
+            fn slot_rules(&self) -> Option<&dyn crate::menu::SlotRules> {
+                Some(&ZeroMax)
+            }
+        }
+        let rules = ZeroMaxRules(Items::for_tests(Default::default()));
+        let mut g = guest();
+        g.menu = Some(Menu {
+            window: 1,
+            kind: 0,
+            pos: Some((0, 0, 0)),
+            slots: Slots::Block((0, 0, 0)),
+            size: 1,
+            state: 0,
+            sent: Vec::new(),
+            drag: None,
+            sent_data: Vec::new(),
+            blockless_data: Vec::new(),
+            hidden: Vec::new(),
+            mod_type: None,
+            registry_id: "test:chest".into(),
+            craft: None,
+            links: Vec::new(),
+            asks_still_valid: false,
+        });
+        g.carried = Some(ItemStack::new("minecraft:stone", 8));
+        let mut chest = vec![None];
+        let context = crate::test_resources::loop_context(
+            sunrise_world::native_load_context::LoopSide::Server,
+        );
+        let mut view = View {
+            guest: &mut g,
+            container: Some(&mut chest),
+            shulker: false,
+            container_limits: Vec::new(),
+            hidden: &[],
+            loop_context: &context,
+        };
+        let mut drag = None;
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert_eq!(view.get(0), None);
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stone", 8))
         );
     }
 }

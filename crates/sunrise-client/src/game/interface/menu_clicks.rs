@@ -538,7 +538,12 @@ impl Game<'_> {
                 menu.set_player_item(slot, stack.clone());
             }
         }
-        // The off hand is part of the inventory even when the menu has no slot for it.
+        // Armor and off hand are part of the inventory even when the menu has no slots for them.
+        if !game_of.contains(&Some(500)) {
+            for (i, stack) in self.armor.iter().enumerate() {
+                menu.set_player_item(39 - i, stack.clone());
+            }
+        }
         let offhand_mapped = game_of.contains(&Some(504));
         if !offhand_mapped {
             menu.set_player_item(40, self.offhand.clone());

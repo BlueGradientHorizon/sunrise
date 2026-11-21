@@ -43,10 +43,10 @@ pub struct StackedOutcome {
     pub refused: std::cell::Cell<bool>,
 }
 /// Who and where a `menu_slot_rules` ask is about: the player whose menu it is, the menu's
-/// block, the container the asked slot indexes, and the menu's own containers' slots as they
-/// stand at the time of the ask (read only, borrowed; the player's inventory slots are not in
-/// it). None where the menu has no such thing: a client's prediction knows no other player,
-/// and a menu opened with no block has no `pos`.
+/// block, the container the asked slot indexes, and the menu's and player's live slots as they
+/// stand at the time of the ask (read only, borrowed: player inventory `0..36`, armor `36..40`
+/// feet-to-head, offhand `40`). None where the menu has no such thing: a client's prediction
+/// knows no other player, and a menu opened with no block has no `pos`.
 #[derive(Clone, Copy, Default)]
 pub struct SlotContext<'a> {
     pub player: Option<u128>,
@@ -58,6 +58,9 @@ pub struct SlotContext<'a> {
     pub(crate) main_crafting: Option<crate::containers::ModCrafting>,
     pub(crate) grid: &'a [Option<ItemStack>],
     pub(crate) result: &'a [Option<ItemStack>],
+    pub(crate) player_slots: &'a [Option<ItemStack>],
+    pub(crate) player_armor: Option<&'a [Option<ItemStack>; 4]>,
+    pub(crate) player_offhand: Option<&'a Option<ItemStack>>,
 }
 
 /// `menu_slot_rules` inside a menu click, which cannot reach the game: the game lends the menu

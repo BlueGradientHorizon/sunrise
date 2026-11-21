@@ -437,6 +437,9 @@ impl Game<'_> {
         for i in 0..36 {
             menu.set_player_item(i, g.inventory[i].clone());
         }
+        for (i, stack) in g.armor.iter().enumerate() {
+            menu.set_player_item(39 - i, stack.clone());
+        }
         menu.set_player_item(40, g.offhand.clone());
         menu.selected = g.selected;
         menu.creative = g.creative();

@@ -29,8 +29,8 @@ impl SlotRules for Game<'_> {
         let Ok(stack) = stack.try_into_api() else {
             return;
         };
-        // Lend the staged menu slots. Convert only what the part reads; a stack that cannot
-        // cross the API boundary shows empty, as an absent slot does.
+        // Lend the live menu and player slots. Convert only what the part reads; a stack that
+        // cannot cross the API boundary shows empty, as an absent slot does.
         let read = |container, index| context.slot(container, index)?.try_into_api().ok();
         let view = mod_api::MenuSlotContext::new(context.player, context.pos, &read);
         // A listener that panics is a failed ask, not a failed click: the slot's own answers
@@ -90,6 +90,10 @@ impl Game<'_> {
         for (i, held) in self.inventory.iter().enumerate() {
             view.set_player_item(i, held.clone());
         }
+        for (i, held) in self.armor.iter().enumerate() {
+            view.set_player_item(39 - i, held.clone());
+        }
+        view.set_player_item(40, self.offhand.clone());
         view.load_slot(slot, Some(stack.clone()));
         view.may_pickup(&self.menu_env(), slot)
     }
