@@ -177,9 +177,8 @@ struct KeptBlock {
     flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
     level_host: bool,
-    /// A level-host write only hid the entity from other reads. At commit
-    /// the real Level.setBlock still has to run its removal side effects.
-    replay_removal: bool,
+    /// The original entity at replacement, which may differ from the rollback copy.
+    original_removal: Option<Box<(PlacementEntity, i32)>>,
     /// Generation installed by the most recent tentative placement at this position.
     staged_entity: Option<u64>,
     /// Any tentative write at this position replaced the block with one that does not keep
@@ -232,6 +231,8 @@ pub(super) struct Level {
     connection_groups: HashMap<(Dim, Pos), Option<u64>>,
     /// Level.random before the first transactional level write drew from it.
     level_random: Option<sunrise_core::random::LegacyRandom>,
+    /// Named loot streams before a captured destruction rolled drops.
+    loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -500,6 +501,7 @@ pub(super) enum After {
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     /// `Block.setPlacedBy` effects after its writes have been accepted.
     PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
+    PlacementSpill(Box<super::spill::Spill>),
     /// A tentative block entity replaced again before its cell was published.
     RemovePlacedBlockEntity(Box<PlacementEntity>, i32),
     WitherPattern(sunrise_client::block_pattern::PatternMatch, Vec<[i32; 3]>),
@@ -758,14 +760,16 @@ impl Game<'_> {
                 outer
                     .removed_block_entities
                     .extend(level.removed_block_entities);
-                for (pos, block) in level.blocks {
+                for (pos, mut block) in level.blocks {
                     outer
                         .blocks
                         .entry(pos)
                         .and_modify(|kept| {
                             kept.flags = merge_block_update_flags(kept.flags, block.flags);
                             kept.level_host = block.level_host;
-                            kept.replay_removal |= block.replay_removal;
+                            if kept.original_removal.is_none() {
+                                kept.original_removal = block.original_removal.take();
+                            }
                             kept.staged_entity = block.staged_entity.or(kept.staged_entity);
                             kept.clear_connection_group |= block.clear_connection_group;
                         })
@@ -776,6 +780,9 @@ impl Game<'_> {
                 }
                 if outer.level_random.is_none() {
                     outer.level_random = level.level_random;
+                }
+                if outer.loot_sequences.is_none() {
+                    outer.loot_sequences = level.loot_sequences;
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1398,7 +1405,7 @@ impl Game<'_> {
                     state: old,
                     flags,
                     level_host,
-                    replay_removal: false,
+                    original_removal: None,
                     staged_entity: None,
                     clear_connection_group: false,
                 });
@@ -1438,25 +1445,26 @@ impl Game<'_> {
             .block_entities
             .generation(&pos)
             .is_some_and(|generation| self.is_placement_entity(pos, generation));
+        // Keep the contents at removal, not the rollback snapshot from before a transfer.
+        let removed = PlacementEntity(pos, old, Kept::capture(&self.world, &self.hoppers, pos));
         if staged {
-            // The net block write never sees this intermediate entity. Preserve its contents
-            // at removal (not the rollback snapshot from before placement or transfer).
-            let removed = PlacementEntity(pos, old, Kept::capture(&self.world, &self.hoppers, pos));
+            // The net block write never sees this intermediate generation.
             self.after_commit(After::RemovePlacedBlockEntity(Box::new(removed), flags));
+        } else {
+            self.transactions
+                .last_mut()
+                .unwrap()
+                .blocks
+                .get_mut(&pos)
+                .unwrap()
+                .original_removal = Some(Box::new((removed, flags)));
         }
         self.journal_remove_block_entity(pos);
         if staged {
             self.world.block_names.remove(&pos);
             self.world.forget_block_entity_source(pos);
-            self.hoppers.remove(&pos);
         }
-        if let Some(block) = self
-            .transactions
-            .last_mut()
-            .and_then(|level| level.blocks.get_mut(&pos))
-        {
-            block.replay_removal |= !staged;
-        }
+        self.hoppers.remove(&pos);
     }
     pub(super) fn journal_stage_placement_entity(&mut self, pos: Pos, entity: BlockEntity) {
         self.journal_block_entity(pos);
@@ -1573,6 +1581,20 @@ impl Game<'_> {
                 .get_or_insert_with(|| (*self.world.random).clone());
         }
     }
+    /// Keep random streams and loot-unpacking writes before rolling a captured break.
+    pub(super) fn journal_placement_loot(&mut self, pos: Pos) {
+        self.journal_level_random();
+        self.journal_block_entity(pos);
+        let level = self.transactions.last_mut().unwrap();
+        level
+            .loot_sequences
+            .get_or_insert_with(|| self.rand_sequences.clone());
+        let chunk = (pos.0 >> 4, pos.2 >> 4);
+        level
+            .chunk_marks
+            .entry(chunk)
+            .or_insert_with(|| self.world.modified.mark(chunk));
+    }
     pub(super) fn journal_orb_merge(
         &mut self,
         join: crate::join_seq::JoinSeq,
@@ -1633,6 +1655,11 @@ impl Game<'_> {
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::PlacementEffect(effect) => self.publish_placement_effect(*effect),
+            After::PlacementSpill(spill) => {
+                debug_assert!(self.spill.is_empty());
+                self.spill = *spill;
+                self.flush_spill();
+            }
             After::RemovePlacedBlockEntity(entity, flags) => {
                 self.publish_placed_entity_removal(*entity, flags)
             }
@@ -1826,7 +1853,7 @@ impl Game<'_> {
         }
     }
 
-    fn root_commit(&mut self, level: Level) {
+    fn root_commit(&mut self, mut level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
         for (dim, chunk) in level.save_chunks {
             let world = if dim == self.dim {
@@ -1889,14 +1916,6 @@ impl Game<'_> {
                     }
                 }
                 After::Block(pos, clears_group) => {
-                    let KeptBlock {
-                        state: was,
-                        flags,
-                        level_host,
-                        replay_removal,
-                        staged_entity,
-                        clear_connection_group,
-                    } = level.blocks[&pos];
                     if !told.insert(Err(pos)) {
                         // A later replacement ends the lifetime of a group published
                         // between writes, even though the block's final state is already stored.
@@ -1905,35 +1924,60 @@ impl Game<'_> {
                         }
                         continue;
                     }
+                    let KeptBlock {
+                        state: was,
+                        flags,
+                        level_host,
+                        original_removal,
+                        staged_entity,
+                        clear_connection_group,
+                    } = level.blocks.remove(&pos).unwrap();
                     explicit_group_since_block.remove(&pos);
                     let now = self.world.block(pos.0, pos.1, pos.2);
-                    // Restore an entity that the real write must remove with its side effects,
-                    // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
+                    let same_block = b.block(now) == b.block(was);
+                    let final_is_staged = staged_entity.is_some()
+                        && self.world.block_entities.generation(&pos) == staged_entity;
                     let mut placement_entity = None;
-                    if staged_entity.is_some()
-                        && let Some(kept) = level.block_entities.get(&pos)
-                        && !net_keeps_group
-                    {
-                        // The real replacement removes the original, not the newly staged entity.
-                        // Supply the final placed entity to LevelChunk's creation step.
-                        if self.world.block_entities.generation(&pos) == staged_entity {
-                            let staged = Kept::capture(&self.world, &self.hoppers, pos);
-                            self.world.block_entities.remove(&pos);
-                            placement_entity = Some(Box::new(PlacementEntity(pos, now, staged)));
+                    if final_is_staged && !net_keeps_group {
+                        // Supply the final generation to LevelChunk's creation step, not
+                        // its removal step. The latter gets the generation actually removed.
+                        let staged = Kept::capture(&self.world, &self.hoppers, pos);
+                        self.world.block_entities.remove(&pos);
+                        placement_entity = Some(Box::new(PlacementEntity(pos, now, staged)));
+                    }
+                    if level.removed_block_entities.contains(&pos) && !detached.contains(&pos) {
+                        if let Some(removed) = original_removal {
+                            let (removed, removal_flags) = *removed;
+                            if final_is_staged && net_keeps_group {
+                                // The net write keeps the new generation (or skips the write
+                                // entirely). Publish the original removal separately.
+                                self.publish_placed_entity_removal(removed, removal_flags);
+                            } else if !net_keeps_group
+                                && !self.world.block_entities.contains_key(&pos)
+                            {
+                                removed.install(&mut self.world);
+                            } else if net_keeps_group
+                                && let Some(kept) = level.block_entities.get(&pos)
+                            {
+                                self.restore_removed_block_entity(pos, kept);
+                                if let Some(hopper) = kept.hopper {
+                                    self.hoppers.insert(pos, hopper);
+                                }
+                            }
+                        } else if same_block && let Some(kept) = level.block_entities.get(&pos) {
+                            self.restore_removed_block_entity(pos, kept);
                         }
+                    } else if final_is_staged
+                        && !net_keeps_group
+                        && let Some(kept) = level.block_entities.get(&pos)
+                    {
+                        // The original could be saved-only; the real removal still needs its data.
                         self.world.set_block_entity_extras(pos, kept.extras.clone());
                         if let Some(name) = &kept.name {
                             self.world.block_names.insert(pos, name.clone());
                         }
-                    }
-                    if level.removed_block_entities.contains(&pos)
-                        && !detached.contains(&pos)
-                        && (replay_removal || b.block(now) == b.block(was))
-                        && let Some(kept) = level.block_entities.get(&pos)
-                    {
-                        self.restore_removed_block_entity(pos, kept);
                     }
                     if now != was {
                         // If an intermediate replacement cleared the group even though `was -> now`
@@ -2155,6 +2199,9 @@ impl Game<'_> {
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;
+        }
+        if let Some(sequences) = level.loot_sequences {
+            self.rand_sequences = sequences;
         }
         // The shapes are back: the neighbours that read them (a fluid beside it) are told, as
         // the publish told them.

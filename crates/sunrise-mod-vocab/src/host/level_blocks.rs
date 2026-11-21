@@ -189,6 +189,9 @@ pub trait LevelBlocksBackendMut {
     /// once, in vanilla's random order. `drop` false suppresses resources entirely.
     /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
     /// unloaded/out-of-height position, a parked level, or an open Host transaction.
+    /// During `PlayerRef::place_block`'s `set_placed_by` step only, destruction joins
+    /// the tentative placement: collected loot is available immediately, but the block
+    /// change, drops and break effects are discarded if the placement is canceled.
     #[access(WorldOnly)]
     fn level_destroy_block(
         &mut self,

@@ -74,7 +74,7 @@ impl Game<'_> {
             return Err(Refusal::Fenced);
         }
         let listens = mod_api::__private::listened(HookId::EntityPlace);
-        if !listens && self.transactions.is_empty() {
+        if !listens && self.transactions.is_empty() && !block_listens(HookId::SetPlacedBy, state) {
             if !self
                 .level_set_block(level, pos, state, flags)
                 .map_err(|_| Refusal::Stale)?

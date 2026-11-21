@@ -59,8 +59,11 @@ replaced block see it as it was, and a cancelled drop keeps the replacement.
 
 `LevelRef::set_block` and `LevelRef::remove_block` expose the tentative block state
 right away; block updates and replacement effects wait for the outermost commit.
-`LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
-running loot, experience or break effects.
+`LevelRef::destroy_block` normally returns `Ok(None)` while a transaction is open, before
+running loot, experience or break effects. When called from `set_placed_by` during
+`PlayerRef::place_block`, it instead joins the placement: the destroyed cell is visible
+to the placement hook, collected stacks are returned right away, and spawned drops,
+experience and break effects wait for commit.
 
 Other direct writes are not journaled: direct item-entity stack writes,
 `LivingRef::set_equipment`, and the armor-stand `slot_set` paths take

@@ -1886,14 +1886,13 @@ impl Behaviours {
     ) {
         self.sim(level, ticks).set_placed_by(pos, state);
     }
-    /// Run placement's additional block writes against a tentative level,
+    /// Record a placement operation's writes and effects against a tentative level,
     /// deferring their update passes and effects until acceptance.
-    pub fn capture_set_placed_by<L: LevelAccess + ?Sized>(
+    pub fn capture_placement_operations<L: LevelAccess + ?Sized>(
         &self,
         level: &mut L,
         ticks: &mut Ticks,
-        pos: BlockPos,
-        state: BlockStateId,
+        run: impl FnOnce(&Self, &mut L, &mut Ticks),
     ) -> Vec<super::ticks::PlacementOperation> {
         struct Capture<'a>(&'a mut Ticks);
         impl Drop for Capture<'_> {
@@ -1903,7 +1902,7 @@ impl Behaviours {
         }
         let capture = Capture(ticks);
         capture.0.placement = Some(Vec::new());
-        self.sim(level, capture.0).set_placed_by(pos, state);
+        run(self, level, capture.0);
         capture.0.placement.take().unwrap()
     }
 

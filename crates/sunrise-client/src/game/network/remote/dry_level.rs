@@ -77,8 +77,27 @@ impl crate::game::Game<'_> {
         self.with_level_access(true, |behaviours, level, ticks| {
             let mut dry = DryLevel::new(level);
             dry.random = (*level.world.random).clone();
-            let operations = behaviours.capture_set_placed_by(&mut dry, ticks, pos, state);
+            let operations =
+                behaviours.capture_placement_operations(&mut dry, ticks, |b, dry, ticks| {
+                    b.set_placed_by_state(dry, ticks, pos, state);
+                });
             (operations, dry.random)
+        })
+    }
+
+    /// Trace `Level.destroyBlock` against the staged level. Loot is rolled separately while
+    /// the old block still stands, before the returned write is applied.
+    pub(in crate::game) fn capture_destroy_block(
+        &mut self,
+        pos: BlockPos,
+        drop: bool,
+    ) -> Vec<sunrise_world::level::ticks::PlacementOperation> {
+        self.with_level_access(true, |b, level, ticks| {
+            let drop = drop && level.game_rules().block_drops;
+            let mut dry = DryLevel::new(level);
+            b.capture_placement_operations(&mut dry, ticks, |b, dry, ticks| {
+                b.destroy_block(dry, ticks, pos, drop);
+            })
         })
     }
 

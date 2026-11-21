@@ -593,14 +593,62 @@ impl Game<'_> {
         tool: Option<&ItemStack>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
-        // Loot and break effects cannot be rolled back by the level journal.
-        if self.transaction_current().is_some()
-            || !self.native_level_write_allowed(level, pos)
-            || self.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
             return None;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+        if self.captures_placement() {
+            use super::journal_level_write::JournalLevelWrite;
+            use sunrise_world::level::{
+                LevelEvent,
+                ticks::{PlacementEffect, PlacementOperation},
+            };
+
+            let operations = self.capture_destroy_block(at, drop);
+            return mod_api::run_transaction(self, |game, _| {
+                let mut changed = false;
+                let mut drops = Vec::new();
+                for operation in operations {
+                    match operation {
+                        PlacementOperation::Write(cell, state, flags) => {
+                            let mut writer = JournalLevelWrite::new(game, level).ok_or(())?;
+                            if !writer.write_block([cell.x, cell.y, cell.z], state, flags) {
+                                return Err(());
+                            }
+                            changed = true;
+                        }
+                        PlacementOperation::Effect(PlacementEffect::LevelEvent(
+                            LevelEvent::DropResources { pos, state },
+                        )) => {
+                            // Run the same loot path while the block still stands, so collect
+                            // can return its stacks now. The savepoint owns the random draws,
+                            // loot unpacking and unpublished item entities and experience.
+                            game.journal_placement_loot((pos.x, pos.y, pos.z));
+                            let spill = game.with_level_access(false, |_, level, _| {
+                                debug_assert!(level.spill.is_empty());
+                                level.drop_tool = Some(((pos.x, pos.y, pos.z), tool.cloned()));
+                                level.drop_into = collect.then(Vec::new);
+                                level.drop_resources_now(pos, state);
+                                drops = level.drop_into.take().unwrap_or_default();
+                                std::mem::take(level.spill)
+                            });
+                            if !spill.is_empty() {
+                                game.after_commit(After::PlacementSpill(Box::new(spill)));
+                            }
+                        }
+                        PlacementOperation::Effect(effect) => {
+                            game.after_commit(After::PlacementEffect(Box::new(effect)));
+                        }
+                    }
+                }
+                changed.then_some(drops).ok_or(())
+            })
+            .ok();
+        }
+        // Unrelated Host transactions still refuse destruction.
+        if self.transaction_current().is_some() {
+            return None;
+        }
         let (changed, drops) = self.with_level(|b, level, ticks| {
             level.drop_tool = Some(((pos[0], pos[1], pos[2]), tool.cloned()));
             level.drop_into = collect.then(Vec::new);
