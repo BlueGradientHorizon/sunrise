@@ -3,6 +3,7 @@ use super::native_level_signals::ReadLevel;
 use super::{Dim, Game};
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext, UnresolvedFluid};
+use std::cell::RefCell;
 use sunrise_client::{items::Items, world::World};
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::{
@@ -28,16 +29,24 @@ struct BlockQueryKey {
     query: BlockProviderQuery,
 }
 
-struct ActiveBlockQuery<'a> {
-    key: BlockQueryKey,
-    previous: Option<&'a Self>,
+thread_local! {
+    static ACTIVE_BLOCK_QUERIES: RefCell<Vec<BlockQueryKey>> = const { RefCell::new(Vec::new()) };
 }
 
-scoped_tls_hkt::scoped_thread_local!(static ACTIVE_BLOCK_QUERY: for<'a> &'a ActiveBlockQuery<'a>);
+struct PopBlockQuery;
+
+impl Drop for PopBlockQuery {
+    fn drop(&mut self) {
+        ACTIVE_BLOCK_QUERIES.with(|active| {
+            active.borrow_mut().pop();
+        });
+    }
+}
 
 impl Game<'_> {
     /// A provider may ask another state for its answer. Refuse only a query already active on
-    /// this thread, without allocating or substituting a value. Only actual dispatch enters here.
+    /// this thread, without substituting a value. Only actual dispatch enters here. The vector
+    /// keeps its capacity, so only a new deepest nesting may allocate.
     pub(super) fn with_block_provider_query<R>(
         &self,
         level: Option<LevelRef>,
@@ -53,28 +62,15 @@ impl Game<'_> {
             state,
             query,
         };
-        if !ACTIVE_BLOCK_QUERY.is_set() {
-            return Some(ACTIVE_BLOCK_QUERY.set(
-                &ActiveBlockQuery {
-                    key,
-                    previous: None,
-                },
-                ask,
-            ));
-        }
-        ACTIVE_BLOCK_QUERY.with(|head| {
-            let mut cursor = Some(head);
-            while let Some(node) = cursor {
-                if node.key == key {
-                    return None;
-                }
-                cursor = node.previous;
+        ACTIVE_BLOCK_QUERIES.with(|active| {
+            let mut active = active.borrow_mut();
+            if active.contains(&key) {
+                return None;
             }
-            let node = ActiveBlockQuery {
-                key,
-                previous: Some(head),
-            };
-            Some(ACTIVE_BLOCK_QUERY.set(&node, ask))
+            active.push(key);
+            drop(active);
+            let _pop = PopBlockQuery;
+            Some(ask())
         })
     }
 }
