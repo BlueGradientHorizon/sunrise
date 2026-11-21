@@ -1499,7 +1499,8 @@ pub(crate) trait Hosted {
         self.draw_contents(batch, atlas, cursor);
         phases(crate::screen_draw::RenderPhase::Foreground, batch);
     }
-    /// A press (or a drag with `drag`) at `at`.
+    /// Events a press (or drag with `drag`) produced, for widget tests.
+    #[cfg(test)]
     fn click(
         &mut self,
         s: &mut Settings,
@@ -1520,11 +1521,12 @@ pub(crate) trait Hosted {
         right: bool,
         shift: bool,
     ) -> (Vec<Output>, bool);
-    /// Lets go of a slider or the scrollbar: for a slider (it plays its click), what its change
-    /// does now (`Screen::slider_released`).
+    /// Events a release produced, for widget tests.
+    #[cfg(test)]
     fn release(&mut self) -> Option<Vec<Output>> {
         self.release_with_outcome().0
     }
+    /// Lets go of a slider or scrollbar; returns its events and whether it accepted the release.
     fn release_with_outcome(&mut self) -> (Option<Vec<Output>>, bool);
     /// A controller's or the keyboard's focus is on the row at `rect`: if the list hides part of
     /// it, it scrolls all into view (`AbstractSelectionList.setSelected`). How far the row moved
