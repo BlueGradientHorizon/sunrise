@@ -790,9 +790,10 @@ mod tests {
 
                     // Done and Cancel are taken by the footer, not the editor callback. The
                     // release resolves its own receiver on the screen they have just opened.
+                    // Start the footer sequence outside the preceding press's double-click window.
                     game.cursor = done;
                     assert_eq!(
-                        press(game, left, Some(2010)),
+                        press(game, left, Some(2251)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]
                     );
                     assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
@@ -803,10 +804,10 @@ mod tests {
                     open_editor(game);
                     game.cursor = (20.0, 30.0);
                     // Same hook ID and button as Done, but a different editor instance.
-                    editor_press(game, left, Some(2020), 0, false, true);
+                    editor_press(game, left, Some(2260), 0, false, true);
                     game.cursor = (w / 2.0 + 80.0, h - 18.0);
                     assert_eq!(
-                        press(game, left, Some(2030)),
+                        press(game, left, Some(2270)),
                         [Pre(0, true), Post(PRESET, 0, true, true, false)]
                     );
                     assert_eq!(game.title.as_ref().unwrap().mode.id(), "world_create");
