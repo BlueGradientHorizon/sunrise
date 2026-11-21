@@ -589,6 +589,18 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             }
         }
 
+        fn visit_field(&mut self, field: &'ast syn::Field) {
+            if !conditional(&field.attrs) {
+                syn::visit::visit_field(self, field);
+            }
+        }
+
+        fn visit_variant(&mut self, variant: &'ast syn::Variant) {
+            if !conditional(&variant.attrs) {
+                syn::visit::visit_variant(self, variant);
+            }
+        }
+
         fn visit_trait_item(&mut self, item: &'ast syn::TraitItem) {
             use syn::TraitItem;
             if !conditional(attrs!(TraitItem, item; Const, Fn, Type, Macro)) {

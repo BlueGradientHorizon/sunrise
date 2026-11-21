@@ -633,6 +633,38 @@ fn public_call() { crate::exposed(); }
 }
 
 #[test]
+fn cfg_gated_fields_and_variants_in_inline_modules_do_not_refuse_the_copy() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/lib.rs"),
+        "pub mod game; const fn hidden() -> usize { 1 }",
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+fn gated_field() {
+    mod local { pub struct S { #[cfg(any())] pub f: [u8; crate::hidden()] } }
+}
+fn gated_variant() {
+    mod local { pub enum E { #[cfg(any())] A = crate::hidden() as isize } }
+}
+fn active_field() {
+    mod local { pub struct S { pub f: [u8; crate::hidden()] } }
+}
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    check("gated_field").unwrap();
+    check("gated_variant").unwrap();
+    let (code, why) = check("active_field").unwrap_err();
+    assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+    assert!(why.contains("crate::hidden"), "{why}");
+}
+
+#[test]
 fn inline_modules_check_crate_paths_without_using_the_enclosing_scope() {
     let root = fixture();
     fs::write(
