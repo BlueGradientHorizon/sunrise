@@ -1,4 +1,4 @@
-"""The mace harness's exact cases: how a record is framed and compared, and what proves a Thorns attempt."""
+"""The mace harness's exact cases: record framing, comparison, and equipment proofs."""
 import unittest
 
 from tools import test_mace_parity as mace
@@ -20,6 +20,18 @@ class RecordTests(unittest.TestCase):
         self.assertEqual(mace.exact_record(record), mace.exact_record([*record[1:3][::-1], record[0], *record[3:]]))
         self.assertNotEqual(mace.exact_record(record), mace.exact_record([*record[:3], THORNS, SMASH]))
         self.assertNotEqual(mace.exact_record(record), mace.exact_record(record + [SMASH]))
+
+
+class ArmorProofTests(unittest.TestCase):
+    def test_health_must_differ_between_two_unambiguous_target_rows(self):
+        proof = ('V 0 ', None)
+        equipped = ['V 0 18.0 0 0 0']
+        bare = ['V 0 16.0 0 0 0']
+        self.assertTrue(mace.proven(equipped, bare, proof))
+        self.assertFalse(mace.proven(equipped, equipped, proof))
+        for case, twin in ((equipped, []), ([], bare), (equipped * 2, bare), (equipped, bare * 2)):
+            with self.subTest(case=case, twin=twin):
+                self.assertFalse(mace.proven(case, twin, proof))
 
 
 class ThornsProofTests(unittest.TestCase):

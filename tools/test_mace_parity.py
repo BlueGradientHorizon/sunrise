@@ -264,13 +264,13 @@ def worn_damage(line):
 
 def proven(case_lines, twin_lines, proof):
     """Whether vanilla's case and twin differ where the equipment should decide. For `V 0 `, the health token of
-    the target's line. For a Thorns piece, its damage component: the twin's (the same hit's wear, no Thorns) plus
-    `THORNS_WEAR`, or no piece at all when that reaches its durability and the attempt broke it. The rest of the
-    stack (its enchantments) is not what tells them apart."""
+    exactly one target row per record. For a Thorns piece, its damage component: the twin's (the same hit's wear,
+    no Thorns) plus `THORNS_WEAR`, or no piece at all when that reaches its durability and the attempt broke it.
+    The rest of the stack (its enchantments) is not what tells them apart."""
     prefix, max_damage = proof
     case, twin = ([line for line in lines if line.startswith(prefix)] for lines in (case_lines, twin_lines))
     if prefix == 'V 0 ':
-        return [line.split()[2] for line in case] != [line.split()[2] for line in twin]
+        return len(case) == len(twin) == 1 and case[0].split()[2] != twin[0].split()[2]
     if len(twin) != 1:
         return False
     worn = worn_damage(twin[0]) + THORNS_WEAR
