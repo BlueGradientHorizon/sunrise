@@ -1152,6 +1152,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
+        use super::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
         use sunrise_client::{chunk::Chunk, lan::guest::GuestKind};
@@ -1173,12 +1174,15 @@ mod tests {
                 Ok(true)
             );
             let pos = (0, 64, 0);
-            assert!(!game.lan_open_container(12, (2, 64, 0)));
-            assert!(game.lan_open_container(999, pos));
+            assert_eq!(
+                game.lan_open_container(12, (2, 64, 0)),
+                MenuOpen::NoProvider
+            );
+            assert_eq!(game.lan_open_container(999, pos), MenuOpen::Refused);
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                 guest.kind = GuestKind::Fake;
             });
-            assert!(game.lan_open_container(12, pos));
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
             game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                 guest.kind = GuestKind::Network;
@@ -1186,7 +1190,7 @@ mod tests {
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new("stop_menu", Box::new(StopMenu))].into(),
                 || {
-                    assert!(game.lan_open_container(12, pos));
+                    assert_eq!(game.lan_open_container(12, pos), MenuOpen::Cancelled);
                     assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
                 },
             );
@@ -1197,12 +1201,12 @@ mod tests {
             game.world.set_block_lock(pos, &lock);
             // Simulate the opener already started by the block use before handoff.
             assert!(game.container_openers_changed(pos, true));
-            assert!(game.lan_open_container(12, pos));
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
             assert!(!game.lid_openers.contains_key(&pos));
             game.world
                 .set_block_lock(pos, &Tag::Compound(Default::default()));
-            assert!(game.lan_open_container(12, pos));
+            assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
         });
     }

@@ -28,10 +28,14 @@ impl Game<'_> {
         }
     }
 
-    /// Finish the menu handoff for a guest's use. As in `ChestBlock.useWithoutItem`,
-    /// refusal by `ServerPlayer.openMenu` does not unspend the use. For blocks,
-    /// `false` means there was no menu provider to hand off.
-    pub(in crate::game) fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
+    /// Finish the menu handoff after the guest's use. As in
+    /// `ChestBlock.useWithoutItem`, the block has already decided its use
+    /// result independently of what `ServerPlayer.openMenu` does.
+    pub(in crate::game) fn lan_open_container(
+        &mut self,
+        conn: u32,
+        pos: (i32, i32, i32),
+    ) -> MenuOpen {
         if pos.1 == crate::game::minecarts::CART_KEY_Y {
             return self.lan_open_vehicle_container(conn, pos);
         }
@@ -46,7 +50,7 @@ impl Game<'_> {
             // No menu took ownership of the use's opener.
             self.container_openers_changed(pos, false);
         }
-        opened != MenuOpen::NoProvider
+        opened
     }
 
     pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
@@ -293,21 +297,21 @@ impl Game<'_> {
     /// the vehicle's own `MenuProvider.createMenu` builds - three rows of a
     /// `ChestMenu` for a chest boat or a chest minecart, a `HopperMenu` for a
     /// hopper minecart - titled with the vehicle's name.
-    pub(super) fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
+    fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let entity_type = if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == pos.2) {
             cart.kind.id().to_owned()
         } else if let Some(boat) = self.boats.iter().find(|b| b.id as i32 == pos.2) {
             if !boat.chest {
-                return false;
+                return MenuOpen::NoProvider;
             }
             boat.entity_type()
         } else {
-            return false;
+            return MenuOpen::NoProvider;
         };
         // `createMenu` (ChestMenu.threeRows or a HopperMenu), and
         // `MenuProvider.getDisplayName`, the vehicle's name key.
         let Some((menu, _)) = sunrise_client::containers::vehicle_menu(&entity_type) else {
-            return false;
+            return MenuOpen::NoProvider;
         };
         let title = sunrise_protocol::text::translatable(
             &sunrise_client::containers::vehicle_menu_name(&entity_type),
@@ -315,7 +319,7 @@ impl Game<'_> {
         );
         let slots = Slots::Block(pos);
         let Some(host) = self.lan.as_ref() else {
-            return false;
+            return MenuOpen::Refused;
         };
         // The mods may stop the menu; the click is spent. A fake player is
         // stopped here too: the stand-in the open staged leaves the level
@@ -331,7 +335,7 @@ impl Game<'_> {
             host.hub.guest(conn).is_some_and(|g| g.spectator())
                 && self.boat_loot_pending(self.boats[i].id)
         });
-        if spectator_pending {
+        let denied = if spectator_pending {
             // ServerPlayer.openMenu: the refused spectator's action bar, red.
             let message = sunrise_client::text::Text::translate("container.spectatorCantOpen", &[])
                 .with_color(sunrise_client::text::RED);
@@ -342,8 +346,15 @@ impl Game<'_> {
                     overlay: true,
                 }),
             );
-        }
-        if spectator_pending || self.guest_may_open(conn, menu, None) != Some(true) {
+            Some(MenuOpen::Refused)
+        } else {
+            match self.guest_may_open(conn, menu, None) {
+                Some(true) => None,
+                Some(false) => Some(MenuOpen::Cancelled),
+                None => Some(MenuOpen::Refused),
+            }
+        };
+        if let Some(denied) = denied {
             let viewed = self.lan.as_ref().is_some_and(|host| {
                 host.hub
                     .guests
@@ -358,7 +369,7 @@ impl Game<'_> {
             if !viewed {
                 self.close_cart_container(pos);
             }
-            return true;
+            return denied;
         }
         if let Some(i) = boat
             && self.boat_loot_pending(self.boats[i].id)
@@ -367,7 +378,7 @@ impl Game<'_> {
             self.unpack_boat_loot(i, true);
             // Advancement rewards can remove the boat while generating its loot.
             if !self.boats.iter().any(|boat| boat.id == id) {
-                return false;
+                return MenuOpen::Stale;
             }
         }
         let Some(items) = self
@@ -376,12 +387,12 @@ impl Game<'_> {
             .and_then(|host| host.hub.guest(conn))
             .and_then(|g| slots.read(&self.world, g))
         else {
-            return false;
+            return MenuOpen::Refused;
         };
         // ServerPlayer.openMenu closes the menu that was open.
         self.guest_close_all(conn);
         let Some(gi) = self.guest_index(conn) else {
-            return false;
+            return MenuOpen::Refused;
         };
         if self
             .with_own_record(gi, |host, _| {
@@ -390,10 +401,10 @@ impl Game<'_> {
             })
             .is_none()
         {
-            return false;
+            return MenuOpen::Refused;
         }
         self.player_menu_opening(conn);
-        true
+        MenuOpen::Opened
     }
 
     /// The guest's open container is closing (`AbstractContainerMenu.removed`):
