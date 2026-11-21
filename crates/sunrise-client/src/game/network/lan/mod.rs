@@ -2799,9 +2799,17 @@ impl Game<'_> {
             // An entity that left the level since the last tick (a snowball
             // that hit) is dropped by the tracker below: its event goes out
             // first, as `Level.broadcastEntityEvent` precedes the discard.
-            let (gone, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.lan_entity_events)
-                .into_iter()
-                .partition(|(id, ..)| !entities.iter().any(|e| e.id == *id));
+            // A set of the live ids: a scan of every entity per event is quadratic when
+            // thousands of them die in one tick (`/kill` of a farm).
+            let (gone, later): (Vec<_>, Vec<_>) = if self.lan_entity_events.is_empty() {
+                Default::default()
+            } else {
+                let present: sunrise_core::fast_hash::FxHashSet<_> =
+                    entities.iter().map(|e| e.id).collect();
+                std::mem::take(&mut self.lan_entity_events)
+                    .into_iter()
+                    .partition(|(id, ..)| !present.contains(id))
+            };
             self.lan_entity_events = later;
             for (id, event) in gone {
                 host.hub.entity_event(id, event);
