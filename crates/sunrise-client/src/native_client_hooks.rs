@@ -1,12 +1,13 @@
 //! Callbacks into the executable for native trait mods' client-library hooks.
 use crate::{items::ItemStack, motion::FrictionLevel};
-use mod_api::{BlockSoundCause, BlockSoundType};
+use mod_api::{BlockSoundCause, BlockSoundType, MenuOpeningItem};
 use std::sync::OnceLock;
 use sunrise_core::position::BlockPos;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;
 
-type MenuValidity = fn(&LoopContext, u128, &str, Option<[i32; 3]>, [f64; 3], &mut bool);
+type MenuValidity =
+    fn(&LoopContext, u128, &str, Option<[i32; 3]>, [f64; 3], Option<MenuOpeningItem>, &mut bool);
 
 /// Client-library hooks, installed before any menu, entity or recipe is used.
 pub struct NativeClientHooks {
@@ -14,7 +15,6 @@ pub struct NativeClientHooks {
     pub menu_still_valid_listens: fn(&str) -> bool,
     pub living_heal: fn(&LoopContext, u32, &mut f32, &mut bool),
     pub living_breathe_heard: fn() -> bool,
-    pub farmland_trample: fn(&LoopContext, u32, [i32; 3], u32, f64, &mut bool),
     pub has_mods: fn() -> bool,
     pub player_name_format: fn(&LoopContext, &crate::text::Text, &mut crate::text::Text),
     pub player_tab_list_name_format: fn(&LoopContext, u128, &str, &mut Option<crate::text::Text>),
@@ -108,15 +108,16 @@ pub(crate) fn menu_still_valid(
     menu: &str,
     pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<MenuOpeningItem>,
     valid: &mut bool,
 ) {
     #[cfg(feature = "test-menu-validity")]
     if let Some((ask, _)) = menu_validity_fixture::HOOKS.get() {
-        ask(context, player, menu, pos, eye, valid);
+        ask(context, player, menu, pos, eye, opening_item, valid);
         return;
     }
     if let Some(hooks) = HOOKS.get() {
-        (hooks.menu_still_valid)(context, player, menu, pos, eye, valid);
+        (hooks.menu_still_valid)(context, player, menu, pos, eye, opening_item, valid);
     }
 }
 
@@ -141,19 +142,6 @@ pub(crate) fn living_breathe_heard() -> bool {
     HOOKS
         .get()
         .is_some_and(|hooks| (hooks.living_breathe_heard)())
-}
-
-pub(crate) fn farmland_trample(
-    context: &LoopContext,
-    entity: u32,
-    pos: [i32; 3],
-    state: u32,
-    distance: f64,
-    cancel: &mut bool,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.farmland_trample)(context, entity, pos, state, distance, cancel);
-    }
 }
 
 pub(crate) fn has_mods() -> bool {

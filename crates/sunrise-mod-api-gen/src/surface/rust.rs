@@ -1,7 +1,7 @@
 //! Rust as the surface writes it: one normalising function for types and signatures (paths
 //! relative to `mod_api`, lifetimes kept, one spacing), and each type's wire layout description
 //! for the shape function.
-use crate::index::{Found, Index, ItemId};
+use crate::index::{Found, Index, ItemId, OutsideSeam};
 use mod_source::layouts::{WireForm, Wires};
 use mod_surface::shape::Shape;
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
@@ -130,6 +130,39 @@ pub(super) struct Paths<'p, 'a> {
     /// Generic parameters in scope (and `Self`), written as they are.
     pub(super) params: Vec<String>,
     pub(super) refs: BTreeSet<String>,
+    pub(super) check: Option<(&'p ExternalTypes<'p>, ItemId)>,
+}
+
+/// A visitor cannot return an error. Keep the first disallowed path and its owning item.
+pub(super) struct ExternalTypes<'a> {
+    outside: &'a OutsideSeam,
+    first: std::cell::RefCell<Option<(ItemId, Vec<String>)>>,
+}
+
+impl<'a> ExternalTypes<'a> {
+    pub(super) fn new(outside: &'a OutsideSeam) -> Self {
+        Self {
+            outside,
+            first: Default::default(),
+        }
+    }
+
+    fn inspect(&self, id: ItemId, path: &[String]) {
+        if self.outside.rejects(path) {
+            self.first
+                .borrow_mut()
+                .get_or_insert_with(|| (id, path.to_vec()));
+        }
+    }
+
+    pub(super) fn finish(&self, index: &Index<'_>) -> Result<(), String> {
+        if let Some((id, path)) = self.first.take() {
+            let (_, name) = super::walk::defined(index.item(id)).expect("a named surface item");
+            let owner = format!("{}::{name}", super::module_name(index, id.module));
+            return Err(OutsideSeam::error(&owner, &path));
+        }
+        Ok(())
+    }
 }
 
 /// The id prefix of a public item that a signature can name.
@@ -161,10 +194,16 @@ impl Paths<'_, '_> {
                 }
                 None => vec![segments.last().cloned().unwrap_or_default()],
             },
-            Ok(Found::External(full)) if STD.contains(&full[0].as_str()) => {
-                vec![full.last().cloned().unwrap_or_default()]
+            Ok(Found::External(full)) => {
+                if let Some((check, id)) = self.check {
+                    check.inspect(id, &full);
+                }
+                if STD.contains(&full[0].as_str()) {
+                    vec![full.last().cloned().unwrap_or_default()]
+                } else {
+                    full
+                }
             }
-            Ok(Found::External(full)) => full,
             Err(_) => segments.clone(),
         };
         if written == segments {
@@ -202,12 +241,30 @@ impl VisitMut for Paths<'_, '_> {
 /// The game's crates: types cross as their derive or hand-written impl says, and an opaque type
 /// is written with the public paths of the API.
 pub(super) struct GameWires<'f> {
-    pub(super) forms: &'f HashMap<ItemId, WireForm>,
-    pub(super) ids: &'f HashMap<ItemId, Vec<String>>,
+    forms: &'f HashMap<ItemId, WireForm>,
+    ids: &'f HashMap<ItemId, Vec<String>>,
+    check: Option<&'f ExternalTypes<'f>>,
+    item: std::cell::Cell<Option<ItemId>>,
+}
+
+impl<'f> GameWires<'f> {
+    pub(super) fn new(
+        forms: &'f HashMap<ItemId, WireForm>,
+        ids: &'f HashMap<ItemId, Vec<String>>,
+        check: Option<&'f ExternalTypes<'f>>,
+    ) -> Self {
+        Self {
+            forms,
+            ids,
+            check,
+            item: Default::default(),
+        }
+    }
 }
 
 impl Wires for GameWires<'_> {
     fn form(&self, id: ItemId, attrs: &[syn::Attribute], derives: &[String]) -> Option<WireForm> {
+        self.item.set(Some(id));
         super::wire_forms::form_of(id, attrs, derives, self.forms)
     }
     fn path(&self, id: ItemId) -> Option<&[String]> {
@@ -221,6 +278,7 @@ impl Wires for GameWires<'_> {
             module,
             params: params.to_vec(),
             refs: BTreeSet::new(),
+            check: self.check.zip(self.item.get()),
         };
         paths.visit_type_mut(&mut ty);
         Shape::Opaque(print(ty.to_token_stream()))

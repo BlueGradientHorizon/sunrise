@@ -17,12 +17,6 @@ mod registered_commands;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
 mod selector_tests;
-#[cfg(test)]
-#[path = "native_server/wasm_provider_tests.rs"]
-mod wasm_provider_tests;
-#[cfg(test)]
-#[path = "native_server/wasm_selector_tests.rs"]
-mod wasm_selector_tests;
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
@@ -970,6 +964,36 @@ impl Game<'_> {
             last_death: self.level.last_death.as_ref(),
         })
     }
+    pub(super) fn player_supporting_block(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
+        Ok(self
+            .player_read_both(player)
+            .and_then(|read| read.body()?.ground.supporting_block))
+    }
+
+    pub(super) fn player_on_block(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
+        Ok(self.player_read_both(player).and_then(|read| {
+            let body = read.body();
+            let position = match read {
+                PlayerRead::Acting { .. } => body?.position,
+                PlayerRead::Guest(guest) => {
+                    let [x, y, z] = guest.position;
+                    sunrise_core::geometry::Vec3::new(x, y, z)
+                }
+            };
+            let [x, y, z] = super::native_entity_motion::on_block_position(
+                body.and_then(|motion| motion.ground.supporting_block),
+                position,
+            );
+            Some(mod_api::BlockPos::new(x, y, z))
+        }))
+    }
+
     /// The local player's `Abilities` on a client: what its game mode gives
     /// (`GameType.updatePlayerAbilities`, `mayBuild` among them), then the
     /// flags and speeds `ClientPacketListener.handlePlayerAbilities` took, except
@@ -1013,6 +1037,32 @@ impl Game<'_> {
             return None;
         }
         Some(PlayerRead::Guest(guest))
+    }
+
+    pub(super) fn player_collision_flags(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
+        Ok(self.player_read_both(player).and_then(|read| {
+            // A connected player's position reports do not retain collision
+            // flags, even when its body is swapped in for a server guest turn.
+            let PlayerRead::Acting {
+                body: Some(body), ..
+            } = read
+            else {
+                return None;
+            };
+            if self.lan_acting.is_some() {
+                return None;
+            }
+            let flags = body.collision;
+            Some(mod_api::CollisionFlags::new(
+                flags.horizontal,
+                flags.minor,
+                flags.vertical,
+                flags.below,
+            ))
+        }))
     }
 
     /// `ServerPlayerGameMode.getGameModeForPlayer`; Paper `HumanEntity#getGameMode`.
@@ -1803,6 +1853,7 @@ impl Game<'_> {
         let outer = self.command_source.replace(server);
         let filter = std::mem::replace(&mut self.native_command_filter, true);
         let outer_exec = std::mem::take(&mut self.exec);
+        let outer_results = self.cmds.results.take();
         let outer_capture = capture.then(|| self.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
@@ -1812,6 +1863,7 @@ impl Game<'_> {
             None => Vec::new(),
         };
         self.exec = outer_exec;
+        self.cmds.results = outer_results;
         self.native_command_filter = filter;
         self.command_source = outer;
         (ok, lines)
@@ -1819,9 +1871,6 @@ impl Game<'_> {
     /// The open world's folder (`world/`, beside its `level.dat`): a server
     /// mod keeps its data in a folder of its own there, so the world's
     /// backups carry it. None when no world is open.
-    ///
-    /// Not on wasm: a path in the game's file system, which a wasm mod has none of; a wasm mod
-    /// keeps world data in level attachments.
     pub(super) fn world_dir(&self) -> Option<PathBuf> {
         (!self.world_root.as_os_str().is_empty()).then(|| self.world_root.clone())
     }

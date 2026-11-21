@@ -1500,6 +1500,7 @@ impl Game<'_> {
             let a = &self.armor_stands[i];
             let p = a.position;
             if !super::armor_stands::spared_by_blast(a)
+                && !self.target_removed(&super::commands::Target::Stand(a.id))
                 && self.combat.visits(a.id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
@@ -1521,7 +1522,20 @@ impl Game<'_> {
                     i += 1;
                     continue;
                 }
-                self.break_armor_stand_by_anything(i, damage_type, causing);
+                // The invulnerability callback can move or remove the stand.
+                let index = if self.armor_stands.get(i).is_some_and(|stand| stand.id == id) {
+                    Some(i)
+                } else {
+                    self.armor_stands.iter().position(|stand| stand.id == id)
+                };
+                if let Some(index) = index {
+                    self.break_armor_stand_by_anything(index, damage_type, causing);
+                }
+                // An accepted removal advances the list under us. If the row
+                // stayed, advance the cursor ourselves, even after a refusal.
+                if self.armor_stands.get(i).is_some_and(|stand| stand.id == id) {
+                    i += 1;
+                }
             } else {
                 i += 1;
             }
@@ -1559,11 +1573,10 @@ impl Game<'_> {
         let mut i = 0;
         while i < self.cushions.len() {
             let p = self.cushions[i].position;
-            if self.combat.visits(self.cushions[i].id)
+            if !(self.combat.visits(self.cushions[i].id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
+                && self.break_cushion_by(i, self.explosion_kill_credit()))
             {
-                self.break_cushion_by(i, self.explosion_kill_credit());
-            } else {
                 i += 1;
             }
         }

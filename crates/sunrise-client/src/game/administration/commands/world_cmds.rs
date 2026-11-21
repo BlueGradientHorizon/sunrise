@@ -135,23 +135,22 @@ impl Game<'_> {
 
     // ---- /damage ----------------------------------------------------------------
 
-    /// The `DamageKind` of a damage type id, for the sources the engine's own
-    /// hurt paths take (`DamageCommand`'s, `EntityRef::hurt`'s and a mod
-    /// effect's). A type the engine has no kind of its own for keeps its
-    /// registry id and tags as a `DamageKind::Named`.
+    /// Map an explicit damage type to an engine kind only when the kind
+    /// always resolves back to that id. In particular, the engine's explosion
+    /// factory chooses the type based on the attacker; an explicit registry
+    /// type must not. Other registered types keep their id and tags as `Named`.
     pub(in crate::game) fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
-        match ty.trim_start_matches("minecraft:") {
+        match ty.strip_prefix("minecraft:").unwrap_or(ty) {
             "player_attack" => DamageKind::PlayerAttack,
             "mace_smash" => DamageKind::MaceSmash,
             "spear" => DamageKind::Spear,
             "mob_attack" => DamageKind::MobAttack,
             "mob_attack_no_aggro" => DamageKind::MobAttackNoAggro,
             "arrow" => DamageKind::Arrow,
-            "thrown" | "mob_projectile" => DamageKind::Thrown,
-            "fireball" | "unattributed_fireball" => DamageKind::Fireball,
+            "thrown" => DamageKind::Thrown,
+            "fireball" => DamageKind::Fireball,
             "wither_skull" => DamageKind::WitherSkull,
-            "explosion" | "player_explosion" | "bad_respawn_point" => DamageKind::Explosion,
-            "fall" | "ender_pearl" | "fly_into_wall" => DamageKind::Fall,
+            "fall" => DamageKind::Fall,
             "on_fire" => DamageKind::OnFire,
             "in_fire" => DamageKind::InFire,
             "hot_floor" => DamageKind::HotFloor,
@@ -159,7 +158,7 @@ impl Game<'_> {
             "lava" => DamageKind::Lava,
             "drown" => DamageKind::Drown,
             "dry_out" => DamageKind::DryOut,
-            "magic" | "indirect_magic" | "dragon_breath" => DamageKind::Magic,
+            "magic" => DamageKind::Magic,
             "sting" => DamageKind::Sting,
             "cactus" => DamageKind::Cactus,
             "sweet_berry_bush" => DamageKind::SweetBerryBush,
@@ -1753,11 +1752,11 @@ impl Game<'_> {
         removed_y: Option<f64>,
         notified: bool,
     ) {
-        let Some(v) = self
-            .mob_object(rider)
-            .filter(|mob| !mob.removed)
-            .and_then(|mob| mob.extra.mount)
-        else {
+        let Some(mob) = self.mob_object(rider) else {
+            return;
+        };
+        let removing_rider = mob.removed;
+        let Some(v) = mob.extra.mount else {
             return;
         };
         if cart.is_some_and(|cart| cart.id != v) {
@@ -1769,7 +1768,7 @@ impl Game<'_> {
         // A callback can remove or remount the rider. Do not overwrite its decision.
         if self
             .mob_object(rider)
-            .is_none_or(|mob| mob.removed || mob.extra.mount != Some(v))
+            .is_none_or(|mob| mob.removed != removing_rider || mob.extra.mount != Some(v))
         {
             return;
         }
@@ -1783,6 +1782,14 @@ impl Game<'_> {
             .map(|m| m.id);
         if let Some(vehicle) = self.mob_object_mut(v) {
             vehicle.extra.rider = remaining;
+        }
+        // LivingEntity.dismountVehicle leaves a removed rider at its own position.
+        if removing_rider {
+            if let Some(mob) = self.mob_object_mut(rider) {
+                mob.extra.passenger = false;
+            }
+            self.release_removed_vehicle(v);
+            return;
         }
         let at = if let Some(y) = removed_y {
             self.mob_object(rider).map(|mob| {
@@ -2287,6 +2294,10 @@ mod allay_owner_damage_tests {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "registered_damage_tests.rs"]
+mod registered_damage_tests;
 
 #[cfg(test)]
 mod datapack_damage_tests {

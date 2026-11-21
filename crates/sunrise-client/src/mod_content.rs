@@ -19,6 +19,10 @@ use crate::{
     blocks::MAP_COLORS,
     mobs::data::{PartAnswers, PathComputationType, VALID_EMPTY_SPAWN},
 };
+use mod_api::{
+    __private::{DeclarationKind, DeclarationRefusal},
+    DeclarationError,
+};
 use serde::{Deserialize, Serialize, de};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -33,7 +37,7 @@ use sunrise_core::{
 };
 use sunrise_mod_package::content::{
     Block, BlockEntityType, BlockShapes, Content, ContextCollision, CreativeTab, EntityType,
-    FluidLook, MenuType, MobEffect, Rarity, StateProperty, StateValues,
+    FluidLook, Item, LocalDeclaration, MenuType, MobEffect, Rarity, StateProperty, StateValues,
 };
 use sunrise_mod_package::manifest::{
     JarInputsError, JarRef, collect_jar_requirements, missing_jars,
@@ -114,10 +118,18 @@ pub fn entity_types(mods: &[ContentMod]) -> Vec<&EntityType> {
     types
 }
 
-/// the mods' menu types in registry order, by id as effects are.
-pub fn menu_types(mods: &[ContentMod]) -> Vec<&MenuType> {
-    let mut menus: Vec<&MenuType> = mods.iter().flat_map(|m| &m.content.menu_types).collect();
-    menus.sort_by(|a, b| a.id.cmp(&b.id));
+/// The mods' menu types and their owning package IDs, sorted by menu ID.
+pub fn menu_types(mods: &[ContentMod]) -> Vec<(&MenuType, &str)> {
+    let mut menus: Vec<_> = mods
+        .iter()
+        .flat_map(|m| {
+            m.content
+                .menu_types
+                .iter()
+                .map(|menu| (menu, m.id.as_str()))
+        })
+        .collect();
+    menus.sort_by(|(a, _), (b, _)| a.id.cmp(&b.id));
     menus
 }
 
@@ -163,7 +175,7 @@ pub fn register_world_fluids(
 
 #[path = "mod_content_fluid_declarations.rs"]
 mod fluid_declarations;
-pub use fluid_declarations::{accept_world_fluids, fluid_interactions, set_fluid_interactions};
+pub use fluid_declarations::{fluid_interactions, set_fluid_interactions};
 
 /// How the fluid `id` looks, when a mod declares it.
 pub fn fluid_look(id: &str) -> Option<FluidLook> {
@@ -754,6 +766,7 @@ enum SkylightRule {
 
 /// A block being added: its declaration and where its states go.
 struct NewBlock<'a> {
+    stew_effects: Option<J>,
     decl: &'a Block,
     base_block: Option<KnownBlock<'a>>,
     rename: Rename,
@@ -880,89 +893,108 @@ fn component_types(map: &J) -> BTreeSet<String> {
     }
 }
 
-/// Code declarations, joined to their manifest owner. Each owner's namespaces
-/// validate together, independent of namespace order, with all-or-nothing refusal.
-/// Unknown namespaces become synthetic content-only mods. Checked as files are
-/// ([`sunrise_mod_package::Content::declare`], [`accept_mod`]).
+/// A native package's staged declarations. Its dispatch owner is the map key,
+/// regardless of the namespaces used in these entries.
+#[derive(Clone, Default)]
+pub struct DeclaredContent {
+    pub blocks: Vec<LocalDeclaration<Block>>,
+    pub items: Vec<LocalDeclaration<Item>>,
+    pub types: Vec<BlockEntityType>,
+    pub fluids: Vec<FluidLook>,
+}
+
+/// Join code declarations to their manifest owner, even when no files were admitted.
+/// Validate the independent checks before deciding whether to add the owner's batch.
 pub fn accept_declared(
     mods: &mut Vec<ContentMod>,
-    blocks: &[sunrise_mod_package::content::Block],
-    items: &[sunrise_mod_package::content::Item],
-    types: &[BlockEntityType],
+    declared: &BTreeMap<&'static str, DeclaredContent>,
+    manifests: &[&sunrise_mod_package::Manifest],
     known: &BTreeSet<String>,
-) -> Vec<String> {
-    let owners: BTreeMap<_, _> = mods
-        .iter()
-        .flat_map(|m| {
-            m.content
-                .namespaces
-                .iter()
-                .map(|ns| (ns.clone(), m.id.clone()))
-        })
-        .collect();
-    let owner = |id: &str| {
-        let ns = id.split_once(':').map_or("", |(ns, _)| ns);
-        owners.get(ns).cloned().unwrap_or_else(|| ns.to_owned())
-    };
-    let mut by_owner: BTreeMap<String, (Vec<_>, Vec<_>)> = Default::default();
-    for block in blocks {
-        by_owner
-            .entry(owner(&block.id))
-            .or_default()
-            .0
-            .push(block.clone());
-    }
-    for item in items {
-        by_owner
-            .entry(owner(&item.id))
-            .or_default()
-            .1
-            .push(item.clone());
-    }
-    for kind in types {
-        by_owner.entry(owner(&kind.id)).or_default();
-    }
-    let mut errors = Vec::new();
-    for (id, (blocks, items)) in by_owner {
-        let types = types.iter().filter(|t| owner(&t.id) == id).cloned();
-        let result = match mods.iter().position(|m| m.id == id) {
-            Some(i) => {
-                let mut content = sunrise_mod_package::Content::declared(&mods[i].id);
-                content.namespaces.clone_from(&mods[i].content.namespaces);
-                content.blocks.clone_from(&mods[i].content.blocks);
-                content.items.clone_from(&mods[i].content.items);
-                content
-                    .declare(&blocks, &items)
-                    .and_then(|()| {
-                        let mut added = sunrise_mod_package::Content::declared(&id);
-                        added.blocks.clone_from(&blocks);
-                        added.items.clone_from(&items);
-                        validate_components(&added, known).map_err(|e| e.to_string())
-                    })
-                    .map(|()| {
-                        mods[i].content.blocks.extend(blocks);
-                        mods[i].content.items.extend(items);
-                        mods[i].content.block_entity_types.extend(types);
-                    })
+    errors: &mut Vec<DeclarationRefusal>,
+) -> Result<()> {
+    let mut namespace_error = None;
+    for (&id, batch) in declared {
+        let already_refused = errors.iter().any(|refusal| refusal.mod_id == id);
+        let before = errors.len();
+        let existing = mods.iter().position(|m| m.id == id);
+        let mut content = Content::declared(id);
+        if let Some(manifest) = manifests.iter().find(|m| m.id == id) {
+            content.namespaces = manifest.owned_namespaces().map(str::to_owned).collect();
+        }
+        if let Some(i) = existing {
+            content.blocks.clone_from(&mods[i].content.blocks);
+            content.items.clone_from(&mods[i].content.items);
+        }
+        if let Err(refusals) = content.declare_validated(&batch.blocks, &batch.items) {
+            errors.extend(
+                refusals
+                    .into_iter()
+                    .map(|(kind, error)| DeclarationRefusal::new(id, kind, error)),
+            );
+        }
+        for (kind, name, components) in batch
+            .items
+            .iter()
+            .map(|i| i.get())
+            .map(|i| (DeclarationKind::Item, &i.id, &i.components))
+            .chain(
+                batch
+                    .blocks
+                    .iter()
+                    .map(|b| b.get())
+                    .filter(|b| b.item)
+                    .map(|b| (DeclarationKind::Block, &b.id, &b.components)),
+            )
+        {
+            if let Err(reason) = validate_components_for(components, known) {
+                errors.push(DeclarationRefusal::new(
+                    id,
+                    kind,
+                    DeclarationError::Rejected {
+                        id: name.clone(),
+                        reason: reason.to_string(),
+                    },
+                ));
             }
-            None => {
-                let mut content = sunrise_mod_package::Content::declared(&id);
-                content.declare(&blocks, &items).and_then(|()| {
-                    content.block_entity_types.extend(types);
-                    let candidate = ContentMod {
-                        id: id.clone(),
-                        content,
-                        jars: Vec::new(),
-                    };
-                    accept_mod(mods, candidate, known).map_err(|e| e.to_string())
-                })
+        }
+        if already_refused || errors.len() != before {
+            continue;
+        }
+        let target = if let Some(i) = existing {
+            let target = &mut mods[i].content;
+            target.blocks = content.blocks;
+            target.items = content.items;
+            target
+        } else {
+            if let Some(error) = mods.iter().find_map(|m| {
+                sunrise_mod_package::content::clash(
+                    (&m.id, &m.content.namespaces),
+                    (id, &content.namespaces),
+                )
+            }) {
+                namespace_error.get_or_insert(error);
+                continue;
             }
+            mods.push(ContentMod {
+                id: id.into(),
+                content,
+                jars: vec![],
+            });
+            &mut mods.last_mut().unwrap().content
         };
-        if let Err(e) = result {
-            errors.push(format!("native blocks and items of {id}: {e}"));
+        target.block_entity_types.extend_from_slice(&batch.types);
+        // A file's fluid look still says how the code-declared fluid looks.
+        for fluid in &batch.fluids {
+            match target.fluids.iter_mut().find(|f| f.id == fluid.id) {
+                Some(look) => look.world = fluid.world,
+                None => target.fluids.push(fluid.clone()),
+            }
         }
     }
-    errors
+    match namespace_error {
+        Some(error) => Err(error.into()),
+        None => Ok(()),
+    }
 }
 
 /// Check and accept one mod without disturbing previously accepted mods.
@@ -997,11 +1029,17 @@ fn validate_components(
             .filter(|b| b.item)
             .map(|b| (&b.id, &b.components)),
     ) {
-        let patch = component_patch(id, components)?;
-        patch_components(&mut J::Obj(Vec::new()), &patch, known)
-            .map_err(|e| format!("{id}: {e}"))?;
+        validate_components_for(components, known).map_err(|error| format!("{id}: {error}"))?;
     }
     Ok(())
+}
+
+fn validate_components_for(
+    components: &BTreeMap<String, serde_json::Value>,
+    known: &BTreeSet<String>,
+) -> Result<()> {
+    let patch = component_patch(components)?;
+    Ok(patch_components(&mut J::Obj(Vec::new()), &patch, known)?)
 }
 
 /// An item's component patch on its entry; `known` holds every type a vanilla item has, so typos fail.
@@ -1025,22 +1063,16 @@ fn patch_components(
 }
 
 /// A declared component patch, as the overlay's JSON.
-fn component_patch(
-    id: &str,
-    components: &BTreeMap<String, serde_json::Value>,
-) -> Result<Vec<(String, J)>> {
+fn component_patch(components: &BTreeMap<String, serde_json::Value>) -> Result<Vec<(String, J)>> {
     components
         .iter()
         .map(|(key, value)| {
             if !key.starts_with('!') && sunrise_protocol::item::custom::id(key).is_some() {
                 let tag = sunrise_client_core::scoreboard::json_to_tag(value);
                 sunrise_core::nbt::validate_component_value(&tag)
-                    .map_err(|error| format!("{id}: component {key}: {error}"))?;
+                    .map_err(|error| format!("component {key}: {error}"))?;
             }
-            Ok((
-                key.clone(),
-                serde_json::from_value(value.clone()).map_err(|error| format!("{id}: {error}"))?,
-            ))
+            Ok((key.clone(), serde_json::from_value(value.clone())?))
         })
         .collect()
 }
@@ -1281,6 +1313,23 @@ impl<'a> Plan<'a> {
                 }
             }
         }
+        let effects = mob_effects(mods);
+        let mut stew_effect_ids = BTreeSet::new();
+        if mods.iter().flat_map(|m| &m.content.blocks).any(|b| {
+            b.suspicious_stew_effects
+                .as_ref()
+                .is_some_and(|effects| !effects.is_empty())
+        }) {
+            let registry = read_json(&base.join("registries.json"))?;
+            let Some(J::Obj(entries)) = registry
+                .get("minecraft:mob_effect")
+                .and_then(|r| r.get("entries"))
+            else {
+                return Err("no minecraft:mob_effect entries".into());
+            };
+            stew_effect_ids.extend(entries.iter().map(|(id, _)| id.clone()));
+            stew_effect_ids.extend(effects.iter().map(|effect| effect.id.clone()));
+        }
         let mut blocks = Vec::new();
         let mut next = names.len() as u32;
         let mut sorted: Vec<&ContentMod> = mods.iter().collect();
@@ -1292,6 +1341,33 @@ impl<'a> Plan<'a> {
             let mut declared: Vec<&Block> = m.content.blocks.iter().collect();
             declared.sort_by(|a, b| a.id.cmp(&b.id));
             for decl in declared {
+                let stew_effects = decl
+                    .suspicious_stew_effects
+                    .as_ref()
+                    .map(|effects| {
+                        effects
+                            .iter()
+                            .map(|effect| {
+                                let id = sunrise_core::identifier::Identifier::parse(&effect.id)
+                                    .ok()
+                                    .map(|id| id.to_string());
+                                let id = id.filter(|id| stew_effect_ids.contains(id)).ok_or_else(
+                                    || {
+                                        format!(
+                                            "{}: suspicious_stew_effects: unknown mob effect {:?}",
+                                            decl.id, effect.id
+                                        )
+                                    },
+                                )?;
+                                Ok::<_, String>(J::Obj(vec![
+                                    ("id".into(), J::Str(id)),
+                                    ("duration".into(), J::Num(effect.duration.into())),
+                                ]))
+                            })
+                            .collect::<std::result::Result<Vec<_>, _>>()
+                            .map(J::Arr)
+                    })
+                    .transpose()?;
                 let base_block = match decl.base_block.as_deref() {
                     Some(base) if defaults.contains_key(base) || declared_ids.contains(base) => {
                         Some(KnownBlock(base))
@@ -1356,11 +1432,23 @@ impl<'a> Plan<'a> {
                     };
                     row.get(4)?.get("properties")
                 };
+                let declaration_source = || {
+                    // File declarations take their id from this path. A code declaration
+                    // in the same mod has no file, so name only its block id.
+                    if let Some((namespace, path)) = decl.id.split_once(':') {
+                        let file = format!("data/{namespace}/sunrise/block/{path}.json");
+                        if m.content.files.binary_search(&file).is_ok() {
+                            return format!("{file}: {}", decl.id);
+                        }
+                    }
+                    decl.id.clone()
+                };
                 for key in decl.state_properties.keys() {
                     if properties(default).is_some_and(|p| p.get(key).is_some()) {
                         return Err(format!(
-                            "{}: state property {key} is already on {}",
-                            decl.id, decl.template
+                            "{}: state_properties.{key} is already on {}",
+                            declaration_source(),
+                            decl.template
                         )
                         .into());
                     }
@@ -1369,7 +1457,7 @@ impl<'a> Plan<'a> {
                     if liquid_templates.contains(&decl.template) {
                         return Err(format!(
                             "{}: state_properties.waterlogged cannot be added: template {} is a standalone liquid block",
-                            decl.id, decl.template
+                            declaration_source(), decl.template
                         ).into());
                     }
                     let template_water = water_states
@@ -1378,7 +1466,7 @@ impl<'a> Plan<'a> {
                     if template_water.iter().all(|water| *water) {
                         return Err(format!(
                             "{}: state_properties.waterlogged cannot be added: every state of template {} already holds water",
-                            decl.id, decl.template
+                            declaration_source(), decl.template
                         ).into());
                     }
                 }
@@ -1558,6 +1646,7 @@ impl<'a> Plan<'a> {
                     wanted_sounds.push(s.clone());
                 }
                 blocks.push(NewBlock {
+                    stew_effects,
                     decl,
                     base_block,
                     rename,
@@ -1672,7 +1761,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(item, &b.decl.id),
                     max_stack_size: None,
                     rarity: None,
-                    components: component_patch(&b.decl.id, &b.decl.components)?,
+                    components: component_patch(&b.decl.components)
+                        .map_err(|error| format!("{}: {error}", b.decl.id))?,
                     crafting_remainder: None,
                     block: None,
                     arm_pose: None,
@@ -1693,7 +1783,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(&i.template, &i.id),
                     max_stack_size: i.max_stack_size,
                     rarity: i.rarity,
-                    components: component_patch(&i.id, &i.components)?,
+                    components: component_patch(&i.components)
+                        .map_err(|error| format!("{}: {error}", i.id))?,
                     crafting_remainder: i.crafting_remainder.clone(),
                     block: i.block.clone(),
                     arm_pose: i.arm_pose,
@@ -1722,7 +1813,7 @@ impl<'a> Plan<'a> {
             blocks,
             items,
             vanilla_items,
-            effects: mob_effects(mods),
+            effects,
             fluids: fluids(mods),
             entity_types: entity_types(mods),
             block_entity_types: block_entity_types
@@ -1730,7 +1821,7 @@ impl<'a> Plan<'a> {
                 .map(|(_, kind)| kind)
                 .collect(),
             block_entity_factories,
-            menu_types: menu_types(mods),
+            menu_types: menu_types(mods).into_iter().map(|(menu, _)| menu).collect(),
             states: names.len(),
             defaults,
             sounds,
@@ -2036,6 +2127,14 @@ impl<'a> Plan<'a> {
             };
             let mut v = v.clone();
             v.rename(&i.rename, false);
+            if !components
+                && i.template.is_none()
+                && let Some(fields) = v.get_mut("fields")
+            {
+                // The generated BlockItem points to its new block, not to the
+                // template's main block if the template shared another item.
+                fields.set("block", J::Str(i.rename.to.clone()));
+            }
             if let Some(wall) = &i.wall_block
                 && let Some(fields) = v.get_mut("fields")
             {
@@ -2249,6 +2348,9 @@ impl<'a> Plan<'a> {
                         }
                         if b.decl.properties.vegetation {
                             v.set("declared_vegetation", J::Bool(true));
+                        }
+                        if let Some(effects) = &b.stew_effects {
+                            v.set("suspicious_stew_effects", effects.clone());
                         }
                         blocks.push(v);
                     }
@@ -3712,10 +3814,14 @@ pub fn resolved_resources(
             assets_base = ResourceSource::indexed(files);
         }
     }
-    let mod_layers = loaded
+    let data_layers: std::sync::Arc<[(String, ResourceSource)]> = loaded
         .iter()
         .flat_map(|group| &group.layers)
-        .map(|layer| layer.data.source().clone())
+        .map(|layer| (layer.data.id.clone(), layer.data.source().clone()))
+        .collect();
+    let mod_layers = data_layers
+        .iter()
+        .map(|(_, source)| source.clone())
         .collect();
     let layers = loaded
         .into_iter()
@@ -3741,7 +3847,7 @@ pub fn resolved_resources(
     Ok(ResourceRoot::new(prepared, cache, assets)
         .with_data(
             ResourceSource::indexed(data),
-            ResourceSource::indexed(changes),
+            ResourceSource::indexed_with_sources(changes, data_layers),
         )
         .with_mod_layers(mod_layers))
 }

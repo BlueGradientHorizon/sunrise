@@ -1,5 +1,14 @@
+import base64
+import contextlib
 import datetime as dt
+import hashlib
+import io
 import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -125,6 +134,9 @@ class NightlyTests(unittest.TestCase):
         text = notes(chosen=nightly.Ref("main", sha, None))
         self.assertIn(f"Source: commit {sha}, kept for good as the tag `nightly-source/2026-10-28-0c02067`", text)
 
+    def test_notes_tell_manual_downloaders_the_musl_archive_follows(self):
+        self.assertIn("The optional musl Linux archive follows separately", notes())
+
     def test_the_source_tag_outlives_every_prune(self):
         tag = nightly.source_tag("2026-10-20", "a" * 40)
         self.assertEqual(nightly.stale([{"tagName": tag, "isPrerelease": True}], dt.date(2026, 11, 28), 7), [])
@@ -163,11 +175,243 @@ class ScheduledTests(unittest.TestCase):
         self.assertIn("### Not merged yet (2)\n- Fix 1 (#1) by dev1, at h1, picked by kacpherek", text)
         self.assertIn("### Left out (1)", text)
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+class MuslAttachmentTests(unittest.TestCase):
+    def setUp(self):
+        from tests.test_ci_concurrency import yaml
+
+        self.jobs = yaml.safe_load((WORKFLOWS / "nightly-build.yml").read_text())["jobs"]
+        self.game = yaml.safe_load((WORKFLOWS / "game-build.yml").read_text())["jobs"]
+        self.attach = self.jobs["musl-attach"]
+
+    def test_musl_is_not_a_transitive_dependency_of_sign_or_publish(self):
+        pending = ["sign", "publish"]
+        seen = set()
+        while pending:
+            name = pending.pop()
+            if name not in seen:
+                seen.add(name)
+                needs = self.jobs[name].get("needs", [])
+                pending.extend([needs] if isinstance(needs, str) else needs)
+        self.assertEqual(seen, {"pick", "break-glass-umceko", "break-glass-aria", "break-glass", "exporters", "build",
+                                "complete", "sign", "publish"})
+        self.assertEqual(self.jobs["build"]["needs"], ["pick", "exporters"])
+        self.assertEqual(self.jobs["musl-build"]["needs"], ["pick", "exporters"])
+        for call, part in (("exporters", "exporters"), ("build", "game"), ("musl-build", "musl")):
+            self.assertEqual(self.jobs[call]["uses"], "./.github/workflows/game-build.yml")
+            self.assertEqual(self.jobs[call]["with"]["part"], part)
+            self.assertEqual(self.game[part if part != "game" else "build"]["if"], f"inputs.part == '{part}'")
+        self.assertTrue(all(not row.get("musl") for row in self.game["build"]["strategy"]["matrix"]["include"]))
+        self.assertEqual([row["name"] for row in self.game["musl"]["strategy"]["matrix"]["include"]], ["linux-musl"])
+
+    def test_the_release_environment_attaches_only_after_successful_publication(self):
+        self.assertEqual(set(self.attach["needs"]), {"pick", "publish", "musl-build"})
+        self.assertIn("needs.publish.result == 'success'", self.attach["if"])
+        self.assertEqual(self.attach["environment"], self.jobs["sign"]["environment"])
+        self.assertIn("'release'", self.attach["environment"])
+        self.assertEqual(self.attach["env"]["TAG"], "${{ needs.pick.outputs.tag }}")
+        self.assertEqual(self.attach["steps"][1]["with"], {"name": "musl-archive", "path": "musl"})
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("openssl") and shutil.which("sha256sum"),
+                         "the hosted signing steps use Bash, OpenSSL and sha256sum")
+    def test_musl_signs_and_uploads_only_its_own_checksums_and_archive(self):
+        sign, verify, upload = (step["run"] for step in self.attach["steps"][2:])
+        script_root = WORKFLOWS.parents[1]
+        archive = "sunrise-linux-musl-x86_64.tar.gz"
+        for kind, tag in (("nightly", "nightly"), ("snapshot", "snapshot-2026-11-04-0123456")):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                (root / "musl").mkdir()
+                (root / "musl" / archive).write_bytes(b"musl archive")
+                (root / "tools").symlink_to(script_root / "tools", target_is_directory=True)
+                env = dict(os.environ, KIND=kind, SIGN_FOR=kind, ALSO_FOR=f"{kind}-2026-11-04-0123456", TAG=tag, ARCHIVE=archive,
+                           DRY_RUN="true", EPHEMERAL="yes", GITHUB_REPOSITORY="sunrise-org/sunrise",
+                           SHA="0123456789abcdef", RELEASE_ID="123")
+
+                def shell(script, **overrides):
+                    return subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=root,
+                                          env=dict(env, **overrides), text=True, capture_output=True)
+
+                result = shell(sign)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                # Both signatures checked for real, with OpenSSL and the run's throwaway key, no code of the checkout.
+                result = shell(verify)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr.splitlines(), [f"{kind}: 1 files match SHA256SUMS",
+                                                              f"{env['ALSO_FOR']}: 1 files match SHA256SUMS"])
+                self.assertNotIn("cargo", verify)
+                self.assertTrue((root / "musl/SHA256SUMS-musl.sig").stat().st_size)
+                self.assertTrue((root / "musl/SHA256SUMS-musl.v2.sig").stat().st_size)
+                self.assertFalse((root / "musl/SHA256SUMS").exists())
+                # The attachment itself (nightly.attach) is tested below; here, what the step hands it.
+                stub = 'python3() { printf "%s\\n" "$@" >> uploaded; }\n'
+                dry = shell(stub + upload)
+                self.assertEqual(dry.returncode, 0, dry.stderr)
+                self.assertIn(f"Would append to {tag}", dry.stdout)
+                unknown = shell(stub + upload, DRY_RUN="false", RELEASE_ID="")
+                self.assertNotEqual(unknown.returncode, 0, unknown.stdout)
+                self.assertFalse((root / "uploaded").exists())
+                result = shell(stub + upload, DRY_RUN="false")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((root / "uploaded").read_text().splitlines(), [
+                    "tools/ci/nightly.py", "attach", "123", tag, env["SHA"], "musl/SHA256SUMS-musl",
+                    "musl/SHA256SUMS-musl.sig", "musl/SHA256SUMS-musl.v2.sig", f"musl/{archive}",
+                ])
+
+    def test_musl_failures_file_one_bug_per_step_without_release_writes(self):
+        job = self.jobs["musl-failure"]
+        self.assertEqual(job["permissions"], {"contents": "read", "issues": "write"})
+        for name in ("musl-build", "musl-attach"):
+            self.assertIn(name, job["needs"])
+            for result in ("failure", "cancelled"):
+                self.assertIn(f"needs.{name}.result == '{result}'", job["if"])
+        env = dict(DRY_RUN="false", GITHUB_REF="refs/heads/main", GITHUB_SERVER_URL="https://github.com",
+                   GITHUB_REPOSITORY="sunrise-org/sunrise", GITHUB_RUN_ID="12345", GITHUB_RUN_ATTEMPT="2")
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(nightly.train, "gh_json") as query, \
+                mock.patch.object(nightly, "gh") as gh:
+            query.return_value = [[]]
+            for step in ("build", "sign", "attach"):
+                nightly.report_musl_failure("nightly", step)
+            self.assertEqual(gh.call_count, 3)
+            for step, call in zip(("build", "sign", "attach"), gh.call_args_list):
+                *args, body = call.args
+                self.assertEqual(args, ["issue", "create", "--repo", "sunrise-org/sunrise", "--label", "bug",
+                                        "--title", f"Nightly: musl {step} failed", "--body"])
+                self.assertTrue(body.startswith("> 🤖 Filed by Aria's agent swarm, Dyna, not by Aria.\n\n"))
+                self.assertIn(f"`{step}` step failed", body)
+                self.assertIn("/actions/runs/12345/attempts/2", body)
+            query.return_value = [[], [{"title": "Nightly: musl build failed"}]]
+            nightly.report_musl_failure("nightly", "build")
+            self.assertEqual(gh.call_count, 3)
+            query.reset_mock()
+            with mock.patch.dict(os.environ, DRY_RUN="true"):
+                nightly.report_musl_failure("nightly", "attach")
+            query.assert_not_called()
+            self.assertEqual(gh.call_count, 3)
+
+
+class FakeRelease:
+    """Release 7 of the GitHub API, as `gh api` and the upload address see it."""
+
+    def __init__(self, tag="nightly", commit="c" * 40, assets=()):
+        self.tag, self.commit, self.assets, self.calls, self.fail_after = tag, commit, list(assets), [], None
+
+    def gh(self, *args, check=True):
+        self.calls.append(args)
+        if args[:2] == ("api", "repos/o/r/releases/7") or args[:2] == ("api", "repos/o/r/releases/tags/nightly"):
+            return json.dumps({"id": 7, "tag_name": self.tag, "assets": self.assets,
+                               "upload_url": "https://uploads.github.com/repos/o/r/releases/7/assets{?name,label}"})
+        if args[1].startswith("repos/o/r/git/ref/tags/"):
+            return self.commit
+        if args[:3] == ("api", "--method", "DELETE"):
+            self.assets = [a for a in self.assets if f"/assets/{a['id']}" not in args[3]]
+            return ""
+        raise AssertionError(args)
+
+    def upload(self, url, path):
+        self.upload_url = url
+        if self.fail_after is not None and len(self.uploads()) >= self.fail_after:
+            raise OSError("connection reset")
+        self.calls.append(("upload", path.name))
+        asset = {"id": 100 + len(self.assets), "name": path.name, "state": "uploaded", "size": path.stat().st_size,
+                 "digest": "sha256:" + nightly.file_sha256(path)}
+        self.assets.append(asset)
+        return asset
+
+    def uploads(self):
+        return [call[1] for call in self.calls if call[0] == "upload"]
+
+
+class AttachTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.files = []
+        for name in ("SHA256SUMS-musl", "SHA256SUMS-musl.sig", "sunrise-linux-musl-x86_64.tar.gz"):
+            (Path(folder.name) / name).write_bytes(name.encode())
+            self.files.append(Path(folder.name) / name)
+        env = mock.patch.dict(os.environ, GITHUB_REPOSITORY="o/r", GH_TOKEN="t")
+        env.start()
+        self.addCleanup(env.stop)
+
+    def attach(self, release):
+        with mock.patch.object(nightly, "gh", release.gh), mock.patch.object(nightly, "upload_asset", release.upload):
+            nightly.attach("7", "nightly", "c" * 40, self.files)
+
+    def asset(self, path, data=None, state="uploaded"):
+        data = path.read_bytes() if data is None else data
+        return {"id": 50, "name": path.name, "state": state, "size": len(data),
+                "digest": "sha256:" + nightly.hashlib.sha256(data).hexdigest()}
+
+    def test_uploads_in_order_to_the_release_by_id(self):
+        release = FakeRelease()
+        self.attach(release)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+        self.assertEqual(release.upload_url, "https://uploads.github.com/repos/o/r/releases/7/assets")
+
+    def test_a_release_whose_tag_moved_gets_nothing(self):
+        for release in (FakeRelease(commit="d" * 40), FakeRelease(tag="nightly-2026-11-19")):
+            with self.subTest(tag=release.tag), self.assertRaises(SystemExit):
+                self.attach(release)
+            self.assertEqual(release.uploads(), [])
+
+    def test_a_rerun_after_a_failed_upload_resumes_with_the_rest(self):
+        release = FakeRelease()
+        release.fail_after = 1
+        with self.assertRaises(OSError):
+            self.attach(release)
+        self.assertEqual(release.uploads(), ["SHA256SUMS-musl"])
+        release.fail_after = None
+        self.attach(release)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+
+    def test_a_file_already_there_with_other_bytes_stops_it_and_stays(self):
+        conflicting = self.asset(self.files[1], b"other")
+        release = FakeRelease(assets=[self.asset(self.files[0]), conflicting])
+        with self.assertRaises(SystemExit) as stopped:
+            self.attach(release)
+        self.assertIn("SHA256SUMS-musl.sig is already on release 7 with other bytes", str(stopped.exception))
+        self.assertEqual(release.uploads(), [])
+        self.assertIn(conflicting, release.assets)
+        self.assertFalse([call for call in release.calls if "DELETE" in call])
+
+    def test_only_an_empty_starter_placeholder_is_replaced(self):
+        release = FakeRelease(assets=[self.asset(self.files[0], b"", state="starter")])
+        self.attach(release)
+        self.assertIn(("api", "--method", "DELETE", "repos/o/r/releases/assets/50"), release.calls)
+        self.assertEqual(release.uploads(), [path.name for path in self.files])
+        for data, state in ((b"part", "starter"), (b"", "open")):
+            with self.subTest(state=state, size=len(data)):
+                kept = self.asset(self.files[0], data, state=state)
+                release = FakeRelease(assets=[kept])
+                with self.assertRaises(SystemExit):
+                    self.attach(release)
+                self.assertEqual(release.uploads(), [])
+                self.assertEqual(release.assets, [kept])
+
+    def test_an_asset_without_a_digest_is_compared_by_its_bytes(self):
+        same = dict(self.asset(self.files[0]), digest=None)
+        release = FakeRelease(assets=[same])
+        with mock.patch.object(nightly, "download_asset", return_value=self.files[0].read_bytes()) as download:
+            self.attach(release)
+        download.assert_called_with("o/r", 50)
+        self.assertEqual(release.uploads(), [path.name for path in self.files[1:]])
+
+    def test_the_identity_is_the_release_holding_this_runs_sums(self):
+        sums = self.files[0].with_name("SHA256SUMS")
+        sums.write_bytes(b"sums")
+        for data, found in ((b"sums", True), (b"older sums", False)):
+            release = FakeRelease(assets=[self.asset(sums, data)])
+            with self.subTest(found=found), mock.patch.object(nightly, "gh", release.gh), \
+                    mock.patch.object(nightly, "output") as output:
+                if found:
+                    nightly.release_identity("nightly", "c" * 40, sums)
+                    output.assert_called_once_with(id="7")
+                else:
+                    self.assertRaises(SystemExit, nightly.release_identity, "nightly", "c" * 40, sums)
+                    output.assert_not_called()
 
 
 class FirstNightlyTests(unittest.TestCase):
@@ -183,7 +427,8 @@ class FirstNightlyTests(unittest.TestCase):
                     if args[0] == "ls-remote":
                         return "abc\\trefs/tags/nightly" if existing else ""
                     return ""
-                with mock.patch.object(nightly, "git", side_effect=git), mock.patch.object(nightly, "green_base", side_effect=ReachedGreenBase):
+                with mock.patch.object(nightly, "git", side_effect=git), mock.patch.object(nightly, "green_base", side_effect=ReachedGreenBase), \
+                        mock.patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "DRY_RUN": "false"}):
                     with self.assertRaises(ReachedGreenBase):
                         nightly.pick(False)
                 fetched = next(args for args in calls if args[0] == "fetch")
@@ -260,7 +505,7 @@ class PruneBuildsTests(unittest.TestCase):
         self.assertIn('git archive --format=tar.gz --prefix="sunrise-${SHA:0:7}/" -o sunrise-source.tar.gz "$SHA"',
                       pick)
         sign = build.split("\n  sign:", 1)[1].split("\n  publish:", 1)[0]
-        self.assertIn("dist/sunrise-source.tar.gz", sign.split('sign_release.sh "$KIND"', 1)[1])
+        self.assertIn("dist/sunrise-source.tar.gz", sign.split('sign_release.sh "$SIGN_FOR"', 1)[1])
         publish = build.split("\n  publish:", 1)[1].split("\n  answer:", 1)[0]
         self.assertIn('"dist/sunrise-source.tar.gz#Source of this Nightly', publish)
         self.assertIn('nightly.py keep-source "$SHA" "$DATE"', publish)
@@ -268,7 +513,7 @@ class PruneBuildsTests(unittest.TestCase):
     def test_the_workflow_prunes_on_real_runs_only(self):
         build = (WORKFLOWS / "nightly-build.yml").read_text()
         step = build.split("Old nightly/build-* branches deleted", 1)[1].split("- uses:", 1)[0]
-        self.assertIn("if: steps.mode.outputs.dry_run != 'true'", step)
+        self.assertIn("if: steps.mode.outputs.publish == 'true'", step)
         self.assertIn("prune-builds --days 7", step)
         self.assertIn("GITHUB_STEP_SUMMARY", step)
 
@@ -309,7 +554,7 @@ class SdkPairTests(unittest.TestCase):
                     mock.patch.object(nightly, "git", return_value=NOW), \
                     mock.patch.object(nightly, "sdk_ready", side_effect=AssertionError("build_set checks the SDK")):
                 self.assertEqual(nightly.green_base("sunrise-org/sunrise", "").sha, "a" * 40)
-                gate.assert_called_once_with("nightly", explicit, "")
+                gate.assert_called_once_with("nightly", explicit, "", "")
         with mock.patch.object(nightly.train, "channel_head", side_effect=SystemExit("gate failed")):
             with self.assertRaisesRegex(SystemExit, "gate failed"):
                 nightly.green_base("sunrise-org/sunrise", "")
@@ -418,14 +663,6 @@ class SdkPairTests(unittest.TestCase):
         self.assertFalse(nightly.listed("surface.json", b"index", sums))
         self.assertFalse(nightly.listed("SHA256SUMS", b"index", sums))
 
-    def test_an_sdk_asset_is_trusted_only_under_the_forks_signature_for_its_own_tag(self):
-        command = nightly.signature_check("a" * 40, Path("/tmp/x"), ["sdk.json"])
-        self.assertEqual(command[:6], ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-release-sign"])
-        arguments = command[command.index("--") + 1:]
-        self.assertEqual(arguments, ["verify", "--repository", "sunrise-org/sunrise", "--tag", "sdk-" + "a" * 40,
-                                     "--only", "sdk.json", "/tmp/x"])
-        self.assertNotIn("--publishing", command, "an unsigned SDK is refused, as the launcher refuses it")
-
     def test_the_previous_sdk_is_the_nearest_published_one_behind_the_build(self):
         a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
         # c is not on d's history; b is nearer than a.
@@ -464,3 +701,133 @@ class SdkPairTests(unittest.TestCase):
                         if repo == "sunrise-org/sunrise":
                             state.assert_not_called()
                             requested.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+@unittest.skipUnless(shutil.which("openssl"), "needs the runner's OpenSSL")
+class VerifySumsTests(unittest.TestCase):
+    """verify_sums: a release folder checked as launchers check it, with OpenSSL and no code of the checkout."""
+
+    def setUp(self):
+        self.work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.key, self.public = self.keypair("release")
+        _, self.other = self.keypair("other")
+
+    def keypair(self, name):
+        private = self.work / f"{name}.pem"
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(private)], check=True,
+                       capture_output=True)
+        der = subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout", "-outform", "DER"], check=True,
+                             capture_output=True).stdout
+        return private, base64.b64encode(der[-32:]).decode()
+
+    def release(self, tag, files, signed_for=None, key=None):
+        """A folder with `files`, their SHA256SUMS, and SHA256SUMS.sig signed for `signed_for` (default `tag`)."""
+        folder = self.work / f"release-{len(list(self.work.glob('release-*')))}"
+        folder.mkdir()
+        for name, data in files.items():
+            (folder / name).write_bytes(data)
+        sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()).encode()
+        (folder / "SHA256SUMS").write_bytes(sums)
+        message = self.work / "message"
+        message.write_bytes(f"horizon release {signed_for or tag}\n".encode() + sums)
+        signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(key or self.key), "-rawin", "-in",
+                                    str(message)], check=True, capture_output=True).stdout
+        (folder / "SHA256SUMS.sig").write_text(base64.b64encode(signature).decode() + "\n")
+        return folder
+
+    def verify(self, folder, tag, **kwargs):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            nightly.verify_sums(folder, tag, **{"keys": [self.public], **kwargs})
+        self.assertEqual(out.getvalue(), "", "stdout is its callers' result")
+
+    def test_a_folder_signed_for_its_tag_by_a_release_key_passes(self):
+        files = {"sdk.json": b"index", "surface.json": b"surface"}
+        folder = self.release("26.3-0.1.0", files)
+        self.verify(folder, "26.3-0.1.0")
+        self.verify(folder, "26.3-0.1.0", only=["sdk.json"])
+        self.verify(folder, "26.3-0.1.0", keys=[self.other, self.public])
+
+    def test_a_tampered_folder_another_tag_or_another_key_refuses(self):
+        files = {"sdk.json": b"index", "surface.json": b"surface"}
+        folder = self.release("26.3-0.1.0", files)
+        cases = (("26.3-0.1.1", {}, "isn't signed for `horizon release 26.3-0.1.1`"),
+                 ("26.3-0.1.0", {"keys": [self.other]}, "isn't signed"),
+                 ("26.3-0.1.0", {"only": ["missing.json"]}, "missing.json is not in 26.3-0.1.0's SHA256SUMS"),
+                 ("26.3-0.1.0", {"keys": []}, "no key to check the signature with"),
+                 ("26.3-0.1.0", {"signature": "SHA256SUMS.v2.sig"}, "has no SHA256SUMS.v2.sig"))
+        for tag, kwargs, error in cases:
+            with self.subTest(error=error), self.assertRaisesRegex(SystemExit, error):
+                self.verify(folder, tag, **kwargs)
+        # A file changed after signing: the signed list holds, its bytes don't.
+        (folder / "surface.json").write_bytes(b"tampered")
+        with self.assertRaisesRegex(SystemExit, "26.3-0.1.0's surface.json does not match its SHA256SUMS"):
+            self.verify(folder, "26.3-0.1.0")
+        self.verify(folder, "26.3-0.1.0", only=["sdk.json"])
+        # A list rewritten after signing: the signature no longer covers it.
+        sums = (folder / "SHA256SUMS").read_text().replace(hashlib.sha256(b"surface").hexdigest(),
+                                                           hashlib.sha256(b"tampered").hexdigest())
+        (folder / "SHA256SUMS").write_text(sums)
+        with self.assertRaisesRegex(SystemExit, "isn't signed"):
+            self.verify(folder, "26.3-0.1.0")
+
+    def test_a_malformed_row_or_signature_line_refuses_and_every_repeated_row_is_checked(self):
+        files = {"a.tar.gz": b"a"}
+        folder = self.release("26.3-0.1.0", files)
+        sums = (folder / "SHA256SUMS").read_text()
+        for text, error in ((sums + "not a row\n", "row 'not a row' is not"),
+                            (sums + f"{'0' * 64}  a.tar.gz\n", "a.tar.gz does not match")):
+            with self.subTest(error=error):
+                broken = self.release("26.3-0.1.0", files)
+                (broken / "SHA256SUMS").write_text(text)
+                message = self.work / "message"
+                message.write_bytes(b"horizon release 26.3-0.1.0\n" + text.encode())
+                signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(self.key), "-rawin", "-in",
+                                            str(message)], check=True, capture_output=True).stdout
+                (broken / "SHA256SUMS.sig").write_text(base64.b64encode(signature).decode() + "\n")
+                with self.assertRaisesRegex(SystemExit, error):
+                    self.verify(broken, "26.3-0.1.0", only=["a.tar.gz"])
+        (folder / "SHA256SUMS.sig").write_text((folder / "SHA256SUMS.sig").read_text() + "not-base64!\n")
+        with self.assertRaisesRegex(SystemExit, "line 'not-base64!' is not a base64 Ed25519 signature"):
+            self.verify(folder, "26.3-0.1.0")
+
+    def test_sdk_previous_prints_only_the_build_it_found(self):
+        # sdk-publish.yml reads its stdout as one SHA: the verifier's own report goes to stderr.
+        build = "b" * 40
+        with mock.patch.object(nightly, "previous_sdk", return_value=build), \
+                mock.patch.object(nightly, "release_assets",
+                                  side_effect=lambda tag, *names: print("26.3: 1 files match", file=sys.stderr)
+                                  or {nightly.SDK_SURFACE: b"{}"}), \
+                mock.patch("sys.argv", ["nightly.py", "sdk-previous", "c" * 40, str(self.work / "previous.json")]), \
+                contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+            nightly.main()
+        self.assertEqual(out.getvalue(), build + "\n")
+
+    def test_publishing_before_any_key_warns_and_unsigned_never_passes_once_one_is_listed(self):
+        folder = self.release("nightly", {"a.tar.gz": b"a"})
+        (folder / "SHA256SUMS.sig").unlink()
+        with contextlib.redirect_stderr(io.StringIO()) as out:
+            nightly.verify_sums(folder, "nightly", keys=[], publishing=True)
+        self.assertIn("::warning::nightly: published with SHA256SUMS but unsigned", out.getvalue())
+        with self.assertRaisesRegex(SystemExit, "has no SHA256SUMS.sig"):
+            self.verify(folder, "nightly", publishing=True)
+
+    def test_the_keys_are_mains_never_the_checkouts(self):
+        origin, clone = self.work / "origin", self.work / "clone"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(origin), str(clone)], check=True, capture_output=True)
+        keys = clone / nightly.KEYS_FILE
+        keys.parent.mkdir(parents=True)
+        keys.write_text(f"# main's\n{self.public}\n")
+        for command in (["add", "-A"], ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m",
+                                        "keys"], ["push", "-q", "origin", "main"]):
+            subprocess.run(["git", *command], cwd=clone, check=True)
+        keys.write_text(f"{self.public}\n{self.other}\n")  # a candidate's own copy adds a key
+        with mock.patch.object(nightly, "REPOSITORY", clone), \
+                mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "sunrise-org/sunrise"}):
+            self.assertEqual(nightly.release_keys(), [self.public])
+        with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "someone/fork"}):
+            self.assertEqual(nightly.release_keys(), [], "another repository's releases are trusted by no key")

@@ -1,7 +1,7 @@
 //! The public items of `mod_api`, each under the path a mod writes: the facade crate's root,
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
-use crate::index::{Found, Index, ItemId, uses};
+use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
@@ -55,27 +55,12 @@ pub(super) fn hidden(attrs: &[syn::Attribute]) -> bool {
 }
 
 /// Whether the items under `attrs` are part of a mod's default native build: `test` and every
-/// `feature` are off, `target_arch` is not `wasm32`, anything else is on.
+/// `feature` are off; other configuration keys are assumed on.
 pub(super) fn compiled(attrs: &[syn::Attribute]) -> bool {
     fn holds(meta: &syn::Meta) -> bool {
         match meta {
             syn::Meta::Path(path) => !path.is_ident("test"),
-            syn::Meta::NameValue(pair) => {
-                let value = match &pair.value {
-                    syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Str(text),
-                        ..
-                    }) => text.value(),
-                    _ => String::new(),
-                };
-                if pair.path.is_ident("feature") {
-                    false
-                } else if pair.path.is_ident("target_arch") {
-                    value != "wasm32"
-                } else {
-                    true
-                }
-            }
+            syn::Meta::NameValue(pair) => !pair.path.is_ident("feature"),
             syn::Meta::List(list) => {
                 let Ok(inner) = list.parse_args_with(
                     syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
@@ -121,7 +106,7 @@ pub(super) fn attrs(item: &Item) -> &[syn::Attribute] {
     }
 }
 
-fn defined(item: &Item) -> Option<(&Visibility, String)> {
+pub(super) fn defined(item: &Item) -> Option<(&Visibility, String)> {
     match item {
         Item::Const(i) => Some((&i.vis, i.ident.to_string())),
         Item::Enum(i) => Some((&i.vis, i.ident.to_string())),
@@ -340,7 +325,7 @@ impl<'i, 'a> Walker<'i, 'a> {
     /// Every public item from the facade's root, breadth first, with every public path to it
     /// (each module through at most [`PATHS_PER_MODULE`] paths, never through itself). Names
     /// starting `__` are never followed.
-    pub(super) fn public(&mut self) -> Result<Public, String> {
+    pub(super) fn public(&mut self, outside: &OutsideSeam) -> Result<Public, String> {
         let root = self.index.module(FACADE, &[])?;
         let mut public = Public::default();
         let mut all: HashMap<ItemId, BTreeSet<Vec<String>>> = HashMap::new();
@@ -388,6 +373,11 @@ impl<'i, 'a> Walker<'i, 'a> {
                             && external.len() == 2
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
+                        } else if outside.rejects(&external) {
+                            return Err(OutsideSeam::error(
+                                &format!("mod_api::{}", path.join("::")),
+                                &external,
+                            ));
                         } else {
                             public.notes.push(format!(
                                 "{} re-exports {}, outside the API's crates",

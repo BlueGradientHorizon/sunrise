@@ -31,6 +31,7 @@ fn declaration(id: &str) -> mod_api::__private::GeneralEntityTypeDeclaration {
         save_policy: mod_api::GeneralSavePolicy::Save,
         summonable: true,
         pickable: false,
+        piston_push_reaction: mod_api::PushReaction::PushPull,
         tracking_chunks: 8,
         update_interval: 1,
         payload_version: 1,
@@ -169,6 +170,7 @@ impl mod_api::Hooks for Scene {
                 mod_api::GeneralSavePolicy::Save,
                 true,
                 false,
+                None,
                 8,
                 1,
                 1,
@@ -244,9 +246,8 @@ fn attachment_packet(
 
 /// One frame of the entity pass at `alpha`.
 fn frame(game: &mut Game<'_>, alpha: f64) -> Vec<Vertex> {
-    let mut out = Vec::new();
-    game.mob_geometry(CAMERA, alpha, &mut out);
-    out
+    game.entity_geometry(CAMERA, alpha, None, Vec::new(), &mut Vec::new())
+        .0
 }
 
 /// The scene on a client (its block atlas loaded) joined to a server through memory, with its
@@ -437,26 +438,90 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
     in_scene(
         "general_submission_keeps_lookup_order_across_removal_and_reentry",
         |game, _| {
-            for (id, x) in [(12, 6.0), (8, 8.0)] {
-                game.handle_packet(spawn(id, "test:missile", [x, 321.0, 0.0]))
-                    .unwrap();
-                game.handle_packet(snapshot(id as u32, Some(1))).unwrap();
+            let builtin = game.remote.as_ref().unwrap().builtin.clone();
+            let types = builtin.get("minecraft:entity_type").unwrap();
+            let vanilla = |id, kind| {
+                C::AddEntity(play::AddEntity {
+                    id,
+                    uuid: id as u128,
+                    kind: types.id(kind).unwrap(),
+                    position: [0.0, 321.0, 0.0],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                })
+            };
+            game.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
+                "test:missile",
+                77,
+            )]));
+            for packet in [
+                vanilla(71, "minecraft:armor_stand"),
+                spawn(12, "test:missile", [6.0, 321.0, 0.0]),
+                vanilla(42, "minecraft:zombie"),
+                spawn(8, "test:missile", [8.0, 321.0, 0.0]),
+                snapshot(8, Some(1)),
+            ] {
+                game.handle_packet(packet).unwrap();
             }
             let submitted = |game: &mut Game<'_>| {
-                frame(game, 1.0)
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|quad| quad.iter().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min))
-                    .collect::<Vec<_>>()
+                super::native_render_pair_tests::submitted_bodies(game, |game| frame(game, 1.0)).1
             };
-            assert_eq!(submitted(game), [4.0, 6.0, 8.0]);
+            assert_eq!(submitted(game), [5, 71, 42, 8]);
+            // Arrival of the snapshot reveals the row at its earlier spawn slot, not the tail.
+            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
+            let own_type_spans = game
+                .entity_spans
+                .borrow()
+                .windows(2)
+                .filter(|w| w[0].id == 77 && w[0].start < w[1].start)
+                .count();
+            assert_eq!(own_type_spans, 3);
+            // The later zombie is the row's vehicle, not its render slot.
+            game.handle_packet(C::SetPassengers(play::SetPassengers {
+                vehicle: 42,
+                passengers: vec![12],
+            }))
+            .unwrap();
+            game.position_remote_general_passengers();
+            assert_eq!(
+                game.remote.as_ref().unwrap().passenger_vehicle(12),
+                Some(42)
+            );
+            assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
             game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![12] }))
                 .unwrap();
             game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
                 .unwrap();
             game.handle_packet(snapshot(12, Some(1))).unwrap();
-            assert_eq!(submitted(game), [4.0, 8.0, 6.0]);
+            assert_eq!(submitted(game), [5, 71, 42, 8, 12]);
+
+            game.handle_packet(C::Respawn(play::Respawn {
+                spawn: play::SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:the_end".into(),
+                    seed: 1,
+                    game_type: 0,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: false,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 0,
+                },
+                keep: 0,
+            }))
+            .unwrap();
+            assert_eq!(submitted(game), [] as [u32; 0]);
+            game.handle_packet(vanilla(42, "minecraft:zombie")).unwrap();
+            game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
+                .unwrap();
+            assert_eq!(submitted(game), [42]);
+            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [42, 12]);
         },
     );
 }
@@ -486,7 +551,7 @@ fn a_failing_renderer_is_dropped_until_reload_and_a_type_without_one_draws_nothi
     );
 }
 
-#[path = "../../../../sunrise-mod-wasm/tests/fixture/src/general_renderer.rs"]
+#[path = "native_general_renderers_tests/fixture.rs"]
 mod fixture;
 
 struct NativeProbe;
@@ -572,8 +637,7 @@ fn spawn_row(server: &mut Game<'_>, position: [f64; 3]) -> u32 {
     row.id()
 }
 
-/// Opens an integrated flat world whose window reads the fixture's renderer (`native` or `wasm`
-/// child case), has `place` put a row of the fixture's type with fuel 7 on the server above
+/// Opens an integrated flat world whose window reads the fixture's renderer, has `place` put a row of the fixture's type with fuel 7 on the server above
 /// build height, and checks that the window shows it: the tracker syncs the row and its field
 /// with no injected client packets, and the renderer's quad, whose width is the fuel, is in the
 /// frame's entity pass, before and after a resource reload that leaves the row in place.
@@ -582,21 +646,17 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
     if super::native_entity_refs::tests::run_fresh_cases(
         &format!("game::native_general_renderers_tests::{test}"),
         CASE,
-        &["native", "wasm"],
+        &["game"],
     ) {
         return;
     }
     sunrise_guest_stack::run_on_guest_stack(move || {
         mod_platform::__private::initialize().unwrap();
-        let mods: mod_api::Mods = if std::env::var(CASE).unwrap() == "wasm" {
-            super::block_entity_tick_reply_tests::wasm_mods().into()
-        } else {
-            vec![mod_api::ModEntry::new(
-                "wasm_fixture",
-                Box::new(NativeProbe),
-            )]
-            .into()
-        };
+        let mods = vec![mod_api::ModEntry::new(
+            "general_render_fixture",
+            Box::new(NativeProbe),
+        )]
+        .into();
         let registration =
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         mod_platform::testing::with_mods(mods, || {
@@ -648,21 +708,17 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                         .is_some_and(|r| r.shown)
                 };
                 poll_until(game, ready);
-                let check_quad = |g: &Game<'_>| {
-                    let mut vertices = Vec::new();
-                    g.general_entity_geometry(camera, 1.0, &mut vertices);
+                let check_quad = |g: &mut Game<'_>| {
+                    let ((frame, ..), witnesses) =
+                        super::native_render_pair_tests::capture_body_witnesses(|| {
+                            g.entity_geometry(camera, 1.0, None, Vec::new(), &mut Vec::new())
+                        });
+                    let run = witnesses
+                        .into_iter()
+                        .find(|w| w.id == id)
+                        .expect("the frame's entity pass carries the row's quad");
+                    let vertices = &frame[run.vertices];
                     assert_eq!(vertices.len(), 4);
-                    // The window's entity pass draws the same quad.
-                    let mut frame = Vec::new();
-                    g.mob_geometry(camera, 1.0, &mut frame);
-                    assert!(
-                        frame.windows(4).any(|quad| {
-                            quad.iter()
-                                .map(|v| v.pos)
-                                .eq(vertices.iter().map(|v| v.pos))
-                        }),
-                        "the frame's entity pass carries the row's quad"
-                    );
                     let x = vertices.iter().map(|v| v.pos[0]);
                     assert_eq!(x.clone().fold(f32::INFINITY, f32::min), 0.0);
                     assert_eq!(x.fold(f32::NEG_INFINITY, f32::max), 7.0);
@@ -678,26 +734,22 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
 }
 
 /// The integrated server loads a real general row and syncs its fuel to its window through
-/// the tracker. Both renderer adapters turn that field into geometry, and still do so after
-/// resource reload, with the tracked row left in place.
+/// the tracker. The renderer turns that field into geometry before and after resource reload.
 #[test]
 #[ignore = "daily"]
-fn integrated_general_renderer_reads_synced_fuel_on_native_and_wasm() {
+fn integrated_general_renderer_reads_synced_fuel() {
     integrated_scene(
-        "integrated_general_renderer_reads_synced_fuel_on_native_and_wasm",
+        "integrated_general_renderer_reads_synced_fuel",
         load_saved_row,
     );
 }
 
 /// #2642 end to end: a test mod's general row spawned by `LevelRef::spawn_entity` in an
-/// integrated world is drawn in its window by the type's renderer, on native and Wasm.
+/// integrated world is drawn in its window by the type's renderer.
 #[test]
 #[ignore = "daily"]
-fn a_spawned_general_row_is_drawn_in_its_window_on_native_and_wasm() {
-    integrated_scene(
-        "a_spawned_general_row_is_drawn_in_its_window_on_native_and_wasm",
-        spawn_row,
-    );
+fn a_spawned_general_row_is_drawn_in_its_window() {
+    integrated_scene("a_spawned_general_row_is_drawn_in_its_window", spawn_row);
 }
 
 fn poll_until(game: &mut Game<'_>, ready: impl Fn(&Game<'_>) -> bool) {

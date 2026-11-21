@@ -21,7 +21,7 @@ For stack-derived breaking or eating particles, call
 `add_particle`. This read resolves the ground model with seed 0, preserving all
 layer particle sprites and resource-pack and stack-component overrides. It returns
 `None` for invalid stacks or unavailable resources/provider. It is available in
-Setup, Reloading and World, on native and wasm. Resolve again after resource reloads.
+Setup, Reloading and World. Resolve again after resource reloads.
 It allocates a sprite list only when called; it adds no per-tick work.
 
 ### Tinting an item crumb
@@ -69,8 +69,7 @@ without skylight always reads zero on the sky layer. Currently, an absent chunk 
 reads full sky where present and no block light; below a loaded column both layers read zero. The client light storage
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
-Native dispatch reuses its batch storage once it has enough capacity. Wasm dispatch decodes a new batch from
-the guest's reply, which allocates.
+Dispatch reuses its batch storage once it has enough capacity.
 
 ## Client fireworks
 

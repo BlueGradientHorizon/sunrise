@@ -37,9 +37,12 @@ pub trait ClientRenderClientHost {
     fn item_uses_block_light(&self, stack: &ItemStack, context: ItemDisplayContext) -> bool;
     /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
-    /// from those in use, remeshes every loaded section with them. Call it when your answer changes (a toggle key, a scan
-    /// finishing) and once when the player joins, not every frame: a rebuild takes the workers a
-    /// few seconds. With no part answering, nothing is asked and the mesher keeps its no-mod path.
+    /// from those in use, remeshes every loaded section with them. While a mod listens to
+    /// `section_visibility`, rebuilds meshes in the player's current level and asks about them
+    /// again, except for a first all-air compile with no section geometry contributors. Other
+    /// viewed levels do not call that hook; no NeoForge counterpart has been verified. Call it
+    /// when a decision changes (a toggle key, a scan finishing), not every frame. With no part
+    /// answering or listener, the mesher keeps its no-mod path.
     #[access(WorldOnly)]
     fn refresh_render_visibility(&mut self);
     /// Side: client.
@@ -70,8 +73,7 @@ pub trait ClientRenderClientHost {
     /// already names an image or a GUI sprite, `OverBudget` past the mod's
     /// [`DYNAMIC_TEXTURE_MOD_IMAGES`] images or [`DYNAMIC_TEXTURE_MOD_BYTES`] of pixels, and
     /// `NoSlot` when every slot of the image's class is held. The game keeps a copy of the
-    /// pixels, counted in the byte budget, to upload them again into a rebuilt atlas. Native
-    /// and wasm mods make the same call; the pixels cross as bytes.
+    /// pixels, counted in the byte budget, to upload them again into a rebuilt atlas.
     #[access(WorldOnly)]
     fn create_dynamic_texture(
         &mut self,
