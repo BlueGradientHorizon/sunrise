@@ -25,8 +25,7 @@ impl Game<'_> {
         {
             return false;
         }
-        let changed =
-            self.with_level(|_, level, ticks| level.native_set_block(ticks, pos, state, flags));
+        let changed = self.set_block_live(pos, state, flags, true);
         let _ = self.process_level_events();
         changed
     }

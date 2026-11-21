@@ -8,7 +8,11 @@ pub trait WorldEditServerHost {
     /// For a server mod: the runs made at once, straight into the chunks of the authoritative level `dimension`
     /// (the one being ticked, as for `native_set_block`), with what `fill ... strict` does for block entities (a
     /// block replaced by another loses its block entity, and a new block gets the one `native_set_block` would
-    /// give it, a mod block's included); no neighbour is told, and the chunks changed go to the players whole.
+    /// give it, a mod block's included); no neighbour is told and the replaced block entity's contents do not
+    /// drop. Inside a transaction in this level, the new blocks and entities are visible at once; abort restores
+    /// both. The changed chunks go to the players whole, only after the level's outermost commit.
+    /// At positions also written with `LevelRef::set_block`, strict and ordinary edits commit in
+    /// call order; the strict edit never spills a container or requests neighbor updates.
     /// Runs in chunks not loaded, and the parts of runs outside the column, are left out. The blocks changed, or
     /// why the edit was left out, with nothing changed: another dimension, a client of a server, a palette entry
     /// or predicate that fails typed validation, a run naming a palette entry or filter past the end,

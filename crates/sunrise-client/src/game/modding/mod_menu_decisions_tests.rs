@@ -40,13 +40,13 @@ struct Script {
     change_cursor: bool,
     /// `menu_button`: consume the player's carried stack.
     clear_cursor: bool,
+    /// Put a one-shot update in the detached entity (and edit a slot for `menu_button`).
+    write_update: bool,
     clicked: Option<Flow>,
     write_other_block: bool,
     write_clicked_block: bool,
     continue_after_player_write: bool,
     replace_display: bool,
-    /// Put a one-shot update in the detached entity (and edit a slot for `menu_button`).
-    write_update: bool,
 }
 
 thread_local! {

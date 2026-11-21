@@ -90,6 +90,7 @@ pub trait BlockEntitiesBackend {
 pub trait BlockEntitiesBackendMut {
     /// Side: server.
     /// Change the lock through the same storage used by container opening and saving.
+    /// The lock belongs to this block entity, not to the position or its previous occupant.
     fn block_entity_set_lock(
         &mut self,
         entity: BlockEntityRef,

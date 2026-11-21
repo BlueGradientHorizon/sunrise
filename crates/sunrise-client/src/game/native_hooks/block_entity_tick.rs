@@ -141,6 +141,7 @@ impl TickData<'_> {
 
     fn edit(&mut self) -> &mut EngineBlockEntity {
         self.journal.journal_block_entity_loan(
+            self.dim,
             self.pos,
             &self.loan,
             self.chunks,

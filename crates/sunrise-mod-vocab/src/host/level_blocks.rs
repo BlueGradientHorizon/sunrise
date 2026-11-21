@@ -85,6 +85,16 @@ pub trait LevelBlocksBackendMut {
     /// Set a block (`Level.setBlock`). Stale/unavailable levels and invalid states return
     /// typed errors without mutation. Ok(false) means vanilla refused an unchanged,
     /// unloaded or out-of-height write. Notification follows the supplied update flags.
+    /// Inside a transaction in this level, replacement effects wait for that level's
+    /// outermost commit. The server uses the block entity as it was at replacement,
+    /// including earlier edits. A direct write joins its resident row's drops before removing
+    /// the row and notifying neighbors. A join listener can replace the same position again
+    /// without dropping stacks that already belong to the first replacement's drops.
+    /// The first write only removes the original row; it leaves the listener's replacement
+    /// block entity, its contents and its saved data intact, even at the same block state.
+    /// A new block entity does not inherit the original's saved tag, including its lock.
+    /// A strict bulk edit at the same position does not change which row this write removes.
+    /// Aborting restores the original state and undoes those edits.
     fn level_set_block(
         &mut self,
         level: LevelRef,
@@ -166,7 +176,8 @@ pub trait LevelBlocksBackendMut {
     ) -> Result<bool, LevelWriteError>;
     /// Side: server.
     /// Remove a block in place (`Level.removeBlock`), preserving its fluid.
-    /// In a Host transaction the removal is tentative and its effects wait for commit.
+    /// In a Host transaction the removal is tentative and its effects wait for commit,
+    /// with the same block-entity rules as [`LevelRef::set_block`].
     fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], moved: bool) -> bool;
     /// Side: server.
     /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping

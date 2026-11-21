@@ -3,7 +3,7 @@ impl Game<'_> {
     /// yet. Emptied in one, it stays, empty, until the root commit removes it, so an abort can
     /// put its stack back. False where no such item entity is.
     pub(super) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             let dimension = self.dim.id();
             return self.native_set_item_entity(dimension, id, stack);
         };

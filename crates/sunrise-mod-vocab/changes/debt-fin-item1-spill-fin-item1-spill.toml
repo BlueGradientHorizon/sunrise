@@ -1,0 +1,13 @@
+ids = ["handle:LevelRef::set_block", "handle:LevelRef::remove_block"]
+why = """
+A block write now retires only the block entity that supplied its spill, leaving a replacement
+installed by a drop's join listener, its inventory and its metadata intact. The ordering is still
+vanilla 26.3's LevelChunk.setBlockState and Containers.dropItemStack, with NeoForge's
+EntityJoinLevelEvent in PersistentEntitySectionManager.addEntity during drop insertion.
+"""
+migrate = """
+Keep calling `level.set_block(host, pos, state, flags)` and `level.remove_block(host, pos, moved)`
+as before. Inside `entity_join_level`, if you replace the block that spilled, use
+`level.block_entity(host, pos)` to get the new handle before stocking the replacement or setting
+its data. The outer write no longer deletes that new handle's block entity or metadata when it resumes.
+"""

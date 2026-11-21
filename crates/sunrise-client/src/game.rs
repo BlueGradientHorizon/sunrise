@@ -5376,7 +5376,7 @@ impl Game<'_> {
         let dimension = self.dim.level();
         let rules = self.level_rules();
         let native_authoritative = self.native_authoritative();
-        let liquid_transaction_open = self.transaction_current().is_some();
+        let liquid_transaction_open = self.has_level_transaction();
         let environment = self.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let mut level = GameLevel {
@@ -5510,16 +5510,64 @@ impl Game<'_> {
         state: BlockStateId,
         flags: i32,
     ) -> Result<()> {
-        self.with_level(|b, level, ticks| {
-            b.set_block(
-                level,
-                ticks,
-                BlockPos::new(pos[0], pos[1], pos[2]),
-                state,
-                flags,
-            );
-        });
+        self.set_block_live(pos, state, flags, false);
         self.process_level_events()
+    }
+
+    /// `Level.setBlock` with the full server available at the block-entity drop site.
+    fn set_block_live(
+        &mut self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        flags: i32,
+        create_entity: bool,
+    ) -> bool {
+        let [x, y, z] = pos;
+        let at = BlockPos::new(x, y, z);
+        let previous = self.world.block(x, y, z);
+        let b = self.res.behaviours();
+        if self.remote.is_some()
+            || flags & level_flags::UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS != 0
+            || b.block(previous) == b.block(state)
+            || b.keeps_block_entity(previous, state)
+            || !(self.res.facts().get(previous).block_entity
+                || self.world.block_entities.stateful_entity(previous.0)
+                || self.world.block_entities.get(&(x, y, z)).is_some())
+        {
+            return self.with_level(|b, level, ticks| {
+                let changed = b.set_block(level, ticks, at, state, flags);
+                if create_entity {
+                    level.finish_native_block(pos, previous, state, changed);
+                }
+                changed
+            });
+        }
+        self.ensure_stateful_entity_table();
+        let Some((write, removal, spawns, orbs)) =
+            self.with_level_access(false, |b, level, ticks| {
+                let write = b.begin_block_write(level, ticks, at, state, flags)?;
+                let spawn_start = level.spill.spawns.len();
+                let orb_start = level.spill.orbs.len();
+                let removal = write
+                    .effectful_removal()
+                    .map(|old| level.pre_remove_entity(at, old, true));
+                let spawns = level.spill.spawns.split_off(spawn_start);
+                let orbs = level.spill.orbs.split_off(orb_start);
+                Some((write, removal, spawns, orbs))
+            })
+        else {
+            return false;
+        };
+        self.publish_removal_spawns(spawns, orbs);
+        self.with_level(|b, level, ticks| {
+            let removal_updates =
+                removal.map(|removal| level.finish_remove_entity(at, previous, removal));
+            let changed = b.finish_block_write(level, ticks, write, removal_updates);
+            if create_entity {
+                level.finish_native_block(pos, previous, state, changed);
+            }
+            changed
+        })
     }
     fn attack_block(&mut self, pos: [i32; 3]) -> Result<()> {
         let note = self.with_level(|b, level, ticks| {

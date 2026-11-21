@@ -103,8 +103,10 @@ impl BlockEntityPartState for Press {
     const DATA: &'static AttachmentType<u32> = &PROGRESS;
 }
 r.block_entity_part_with_state(&press, Press)?;
+```
 
-// In block_entity_tick, return the view before borrowing the Host:
+// In BlockEntityPart::block_entity_tick, return the view before borrowing the Host.
+// If an earlier Part replaced the subject, the view is unavailable:
 let Some(entity) = event.subject.with_view(|view| view.handle()) else {
     return;
 };
