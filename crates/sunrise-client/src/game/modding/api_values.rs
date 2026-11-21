@@ -2,6 +2,7 @@
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
+use crate::game::transactions::decision::InvalidReason;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -1205,16 +1206,6 @@ impl TryIntoApi for crate::crafting::RecipeSnapshot {
 /// Install the engine-facing callbacks; snapshots never enter engine storage.
 pub(crate) fn install_stack_hooks() {
     crate::native_stack_hooks::install(crate::native_stack_hooks::StackHooks {
-        ingredient_test: |context, kind, data, stack, accept| {
-            if !mod_api::__private::listened(mod_api::HookId::IngredientTest) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                sunrise_client::crafting::native_hooks::native_ingredient_test(
-                    context, kind, data, &stack, accept,
-                );
-            }
-        },
         enchantments: |stack, target, value| {
             if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
                 return;
@@ -1249,235 +1240,150 @@ pub(crate) fn menu_still_valid(
     mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, valid);
 }
 
-impl TryIntoApi for crate::stations::AnvilResult {
-    type Api = mod_api::item::stations::AnvilResult;
+impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
+    type Api = (Option<ApiStack>, Option<ApiStack>, ApiStack);
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::stations::AnvilResult {
-            result: self.result.try_into_api()?,
-            cost: self.cost,
-            repair_item_count_cost: self.repair_item_count_cost,
-            only_renaming: self.only_renaming,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::stations::AnvilResult {
-    type Engine = crate::stations::AnvilResult;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::stations::AnvilResult {
-            result: self.result.try_into_engine(items)?,
-            cost: self.cost,
-            repair_item_count_cost: self.repair_item_count_cost,
-            only_renaming: self.only_renaming,
-        })
-    }
-}
-impl TryIntoApi for crate::menu::AnvilCraft {
-    type Api = mod_api::item::menu::AnvilCraft;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::AnvilCraft {
-            left: self.left.try_into_api()?,
-            right: self.right.try_into_api()?,
-            output: self.output.try_into_api()?,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
-    type Engine = crate::menu::AnvilCraft;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::AnvilCraft {
-            left: self.left.try_into_engine(items)?,
-            right: self.right.try_into_engine(items)?,
-            output: self.output.try_into_engine(items)?,
-        })
-    }
-}
-impl TryIntoApi for crate::menu::GrindstonePlace {
-    type Api = mod_api::item::menu::GrindstonePlace;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstonePlace {
-            top: self.top.try_into_api()?,
-            bottom: self.bottom.try_into_api()?,
-            vanilla_output: self.vanilla_output.try_into_api()?,
-            output: self.output.try_into_api()?,
-            xp: self.xp,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
-    type Engine = crate::menu::GrindstonePlace;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::GrindstonePlace {
-            top: self.top.try_into_engine(items)?,
-            bottom: self.bottom.try_into_engine(items)?,
-            vanilla_output: self.vanilla_output.try_into_engine(items)?,
-            output: self.output.try_into_engine(items)?,
-            xp: self.xp,
-        })
-    }
-}
-impl TryIntoApi for crate::menu::GrindstoneTake {
-    type Api = mod_api::item::menu::GrindstoneTake;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstoneTake {
-            top: self.top.try_into_api()?,
-            bottom: self.bottom.try_into_api()?,
-            xp: self.xp,
-            new_top: self.new_top.try_into_api()?,
-            new_bottom: self.new_bottom.try_into_api()?,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
-    type Engine = crate::menu::GrindstoneTake;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::GrindstoneTake {
-            top: self.top.try_into_engine(items)?,
-            bottom: self.bottom.try_into_engine(items)?,
-            xp: self.xp,
-            new_top: self.new_top.try_into_engine(items)?,
-            new_bottom: self.new_bottom.try_into_engine(items)?,
-        })
-    }
-}
-
-impl TryIntoApi for crate::menu::AnvilUpdate {
-    type Api = mod_api::item::menu::AnvilUpdate;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let vanilla = mod_api::item::stations::AnvilResult {
-            result: self.vanilla.output.try_into_api()?,
-            cost: self.vanilla.xp_cost,
-            repair_item_count_cost: self.vanilla.material_cost.max(0) as u32,
-            only_renaming: false,
-        };
-        let mut result = mod_api::item::menu::AnvilUpdate::new(
+        Ok((
             self.left.try_into_api()?,
             self.right.try_into_api()?,
-            self.name.clone(),
-            &vanilla,
-        );
-        result.output = self.output.try_into_api()?;
-        result.xp_cost = self.xp_cost;
-        result.material_cost = self.material_cost;
-        Ok(result)
+            self.output.try_into_api()?,
+        ))
     }
 }
 
-impl TryIntoEngine for mod_api::item::menu::AnvilUpdate {
-    type Engine = crate::menu::AnvilUpdate;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::AnvilUpdate {
-            left: self.left.try_into_engine(items)?,
-            right: self.right.try_into_engine(items)?,
-            name: self.name.clone(),
-            vanilla: crate::menu::AnvilVanilla {
-                output: self.vanilla.output.try_into_engine(items)?,
-                xp_cost: self.vanilla.xp_cost,
-                material_cost: self.vanilla.material_cost,
-            },
-            output: self.output.try_into_engine(items)?,
-            xp_cost: self.xp_cost,
-            material_cost: self.material_cost,
-        })
-    }
-}
 impl super::Game<'_> {
     pub(in crate::game) fn api_anvil_update(
         &mut self,
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::AnvilUpdate,
-        cancel: &mut bool,
+        inputs: crate::menu::AnvilUpdateInputs<'_>,
+        result: &mut crate::stations::AnvilResult,
     ) {
-        let Ok(mut api) = value.try_into_api() else {
+        use mod_api::item::menu::{AnvilUpdateEdits, AnvilUpdateInputs, StackResult};
+
+        let Ok(left) = inputs.left.try_into_api() else {
             return;
         };
-        let original = api.clone();
-        self.native_anvil_update(player, entity, pos, &mut api, cancel);
-        if api == original {
+        let Ok(right) = inputs.right.try_into_api() else {
+            return;
+        };
+        let Ok(vanilla_output) = result.result.try_into_api() else {
+            return;
+        };
+        let inputs = AnvilUpdateInputs {
+            left: &left,
+            right: right.as_ref(),
+            name: inputs.name,
+            vanilla_output: vanilla_output.as_ref(),
+            vanilla_xp_cost: result.cost,
+            vanilla_material_cost: i32::try_from(result.repair_item_count_cost).unwrap_or(i32::MAX),
+        };
+        let mut edits = AnvilUpdateEdits {
+            output: StackResult::Keep,
+            xp_cost: inputs.vanilla_xp_cost,
+            material_cost: inputs.vanilla_material_cost,
+        };
+        let mut cancel = false;
+        self.native_anvil_update(player, entity, pos, &inputs, &mut edits, &mut cancel);
+        if cancel {
+            *result = Default::default();
             return;
         }
-        match api.try_into_engine(self.items()) {
-            Ok(result) => *value = result,
-            Err(_) => *cancel = true,
+        // An equal replacement keeps the original engine stack, even if a mod could not write it.
+        if let StackResult::Set(output) = edits.output
+            && output != vanilla_output
+        {
+            let Ok(output) = output.try_into_engine(self.items()) else {
+                *result = Default::default();
+                return;
+            };
+            result.only_renaming &= result.result == output;
+            result.result = output;
         }
+        result.cost = edits.xp_cost;
+        result.repair_item_count_cost = edits.material_cost.max(0) as u32;
     }
     pub(in crate::game) fn api_grindstone_place(
         &mut self,
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::GrindstonePlace,
+        inputs: [Option<&EngineStack>; 3],
         cancel: &mut bool,
-    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
-        let Ok(mut api) = value.try_into_api() else {
-            return Ok(());
+    ) -> Result<crate::menu::GrindstonePlaceEdits, InvalidReason> {
+        use mod_api::item::menu::{GrindstonePlaceEdits, GrindstonePlaceInputs};
+
+        let Ok([top, bottom, vanilla_output]) = inputs.try_into_api() else {
+            return Ok(Default::default());
         };
-        let original = api.clone();
-        self.native_grindstone_place(player, entity, pos, &mut api, cancel);
-        if api == original {
-            return Ok(());
-        }
-        // An answer that is no stack is refused, never read as a cancel.
-        *value = api
+        let inputs = GrindstonePlaceInputs {
+            top: top.as_ref(),
+            bottom: bottom.as_ref(),
+            vanilla_output: vanilla_output.as_ref(),
+        };
+        let mut edits = GrindstonePlaceEdits {
+            output: None,
+            xp: -1,
+        };
+        self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
+
+        // Refuse an invalid replacement before considering cancellation or experience.
+        let output = edits
+            .output
             .try_into_engine(self.items())
-            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
-        Ok(())
+            .map_err(|_| InvalidReason::Count)?;
+        if *cancel {
+            return Ok(Default::default());
+        }
+        if edits.xp < -1 {
+            return Err(InvalidReason::Plan);
+        }
+        Ok(crate::menu::GrindstonePlaceEdits {
+            output,
+            xp: edits.xp,
+        })
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::GrindstoneTake,
+        take: &crate::menu::PendingGrindstoneTake,
         cancel: &mut bool,
-    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
-        let Ok(mut api) = value.try_into_api() else {
-            return Ok(());
+    ) -> Result<crate::menu::GrindstoneTakeEdits, InvalidReason> {
+        use mod_api::item::menu::{GrindstoneTakeEdits, GrindstoneTakeInputs};
+
+        let Ok([top, bottom]) = [take.top.as_ref(), take.bottom.as_ref()].try_into_api() else {
+            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
         };
-        let original = api.clone();
-        self.native_grindstone_take(player, entity, pos, &mut api, cancel);
-        if api == original {
-            return Ok(());
-        }
-        // An answer that is no stack is refused, never read as a cancel.
-        *value = api
+        let inputs = GrindstoneTakeInputs {
+            top: top.as_ref(),
+            bottom: bottom.as_ref(),
+        };
+        let mut edits = GrindstoneTakeEdits {
+            xp: take.xp,
+            new_top: None,
+            new_bottom: None,
+        };
+        self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
+
+        // Invalid replacements refuse the click, even if the listener also cancelled.
+        let [new_top, new_bottom] = [edits.new_top, edits.new_bottom]
             .try_into_engine(self.items())
-            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
-        Ok(())
-    }
-    pub(in crate::game) fn api_anvil_craft_pre(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-        value: &crate::menu::AnvilCraft,
-        cancel: &mut bool,
-    ) {
-        if let Ok(api) = value.try_into_api() {
-            self.native_anvil_craft_pre(player, name, pos, &api, cancel);
+            .map_err(|_| InvalidReason::Count)?;
+        if *cancel {
+            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
         }
-    }
-    pub(in crate::game) fn api_anvil_craft_post(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-        value: &crate::menu::AnvilCraft,
-    ) {
-        if let Ok(api) = value.try_into_api() {
-            self.native_anvil_craft_post(player, name, pos, &api);
+        if edits.xp < -1 {
+            return Err(InvalidReason::Plan);
         }
+        Ok(crate::menu::GrindstoneTakeEdits {
+            xp: edits.xp,
+            new_top,
+            new_bottom,
+        })
     }
 }
 

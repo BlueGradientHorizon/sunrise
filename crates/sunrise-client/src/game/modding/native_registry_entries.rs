@@ -115,6 +115,7 @@ impl Game<'_> {
                 super::lan::sync::sync_data(
                     &self.options.resources,
                     &self.res.core.item_data,
+                    self.items(),
                     &self.pack_files(),
                 )
                 .ok()

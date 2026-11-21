@@ -1336,11 +1336,7 @@ fn tick_advancement_notice_precedes_recipe_reward() {
             &scratch,
             &sunrise_world::loot::PackOverlay::NONE,
             // Rewards must name a recipe registered in the server's index.
-            std::collections::BTreeMap::from([(
-                "testmod:reward".into(),
-                r#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:stone"],"result":{"id":"minecraft:diamond","count":1}}"#.into(),
-            )]),
-            Default::default(),
+            sunrise_client::lan::recipes::BookProjections::single_shapeless("testmod:reward"),
         );
         let reload = std::env::var("SUNRISE_ADVANCEMENT_ORDER_CHILD").as_deref() == Ok("reload");
         let host = game.lan.as_mut().unwrap();

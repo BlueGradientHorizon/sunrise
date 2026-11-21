@@ -286,9 +286,14 @@ impl Game<'_> {
             let tables = self
                 .stage_world_tables(&stack, false, &resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
+            let wire_items = tables
+                .tables
+                .as_ref()
+                .map_or_else(|| self.res.items(), |tables| &tables.items);
             let wire = super::lan::sync::prepare_world_sync_data(
                 &resources,
                 &self.res.core.item_data,
+                wire_items,
                 &super::pack_files(&tables.tables),
                 &tables.health.damage,
                 tables
@@ -1610,18 +1615,16 @@ mod tests {
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
                 if self.offered.load(Ordering::Relaxed) {
+                    let ran = self.ran.clone();
                     event
                         .commands
-                        .push(mod_api::Command::new("fnmod [n:integer]"));
+                        .push(mod_api::Command::new("fnmod [n:integer]").executes(
+                            move |_, _, _| {
+                                ran.fetch_add(1, Ordering::Relaxed);
+                                Some(1)
+                            },
+                        ));
                 }
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                _: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                self.ran.fetch_add(1, Ordering::Relaxed);
-                mod_api::Flow::Cancel
             }
         }
         let offered = Arc::new(AtomicBool::new(true));

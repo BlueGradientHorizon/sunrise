@@ -4464,6 +4464,7 @@ mod query_feedback_tests {
                     nodes: Vec::new(),
                     args: Vec::new(),
                     command: None,
+                    executor: None,
                     range: (0, 0),
                     child: None,
                     literals: vec!["gamerule".into(), input.into()],

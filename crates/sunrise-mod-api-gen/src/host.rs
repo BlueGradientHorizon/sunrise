@@ -796,11 +796,6 @@ fn boundary_value(ty: &Type) -> bool {
             "RecipeTemplate",
             "RecipeTrimPattern",
             "FireworkShapeIngredient",
-            "AnvilResult",
-            "AnvilCraft",
-            "AnvilUpdate",
-            "GrindstonePlace",
-            "GrindstoneTake",
             "ParticleOptions",
         ],
     )

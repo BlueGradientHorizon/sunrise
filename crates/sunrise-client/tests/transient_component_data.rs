@@ -131,8 +131,13 @@ fn component_ingredient_removal_is_rejected_before_station_publication() {
     );
     let items = Items::empty();
     let (sources, messages) = capture(|| {
-        sunrise_client::crafting::ResolvedSources::load(root.path(), &PackOverlay::NONE, &context())
-            .unwrap()
+        sunrise_client::crafting::ResolvedSources::load(
+            root.path(),
+            &items,
+            &PackOverlay::NONE,
+            &context(),
+        )
+        .unwrap()
     });
     assert_eq!(sources.recipes.len(), 1);
     diagnostic(&messages, "a_bad", "minecraft:creative_slot_lock");

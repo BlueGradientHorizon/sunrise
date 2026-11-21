@@ -568,8 +568,6 @@ pub struct View<'a> {
     pub hidden: &'a [usize],
     /// The context the hooks fired inside a click are given.
     pub loop_context: &'a LoopContext,
-    /// The parts' one copy of the container for this click (`menu_slot_rules`).
-    pub slot_snapshot: crate::menu::SlotSnapshot,
 }
 
 impl View<'_> {
@@ -595,7 +593,6 @@ impl View<'_> {
         }
     }
     pub fn set(&mut self, i: usize, item: Option<ItemStack>) {
-        self.slot_snapshot.clear();
         match &mut self.container {
             Some(c) if i < c.len() => c[i] = item,
             Some(c) => {
@@ -617,7 +614,6 @@ impl View<'_> {
             pos: menu.and_then(|menu| menu.pos).map(|(x, y, z)| [x, y, z]),
             container: crate::menu::lan_container(i, self.container.as_deref()),
             slots,
-            snapshot: Some(&self.slot_snapshot),
             ..Default::default()
         };
         let mut index = if i < slots.len() {
@@ -1785,7 +1781,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1817,7 +1812,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1861,7 +1855,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1906,7 +1899,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -1982,7 +1974,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: crate::test_resources::server_loop_context(),
         };
         // Left click with stone in hand over the refused bundle: nothing goes in.
@@ -2017,7 +2008,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: crate::test_resources::server_loop_context(),
         };
         let mut bundle = ItemStack::new("minecraft:bundle", 1);
@@ -2125,7 +2115,6 @@ pub(crate) mod tests {
                 shulker: false,
                 container_limits: Vec::new(),
                 hidden: &[],
-                slot_snapshot: Default::default(),
                 loop_context: crate::test_resources::server_loop_context(),
             };
             let (index, context) = view.slot_context(2);
@@ -2141,14 +2130,7 @@ pub(crate) mod tests {
             assert_eq!((index, context.container), (0, Result));
             let (index, context) = view.slot_context(5);
             assert_eq!((index, context.container), (9, Player));
-            let builds = std::cell::Cell::new(0);
-            let build = || {
-                builds.set(builds.get() + 1);
-                mod_api::MenuSlotContext::new(None, None, Vec::new())
-            };
-            view.slot_snapshot.get_or_init(build);
-            view.slot_snapshot.get_or_init(build);
-            assert_eq!(builds.get(), 1);
+            assert!(context.slot(Player, index).is_none());
             view.set(1, Some(ItemStack::new("minecraft:birch_log", 3)));
             let (_, context) = view.slot_context(1);
             assert_eq!(
@@ -2156,8 +2138,6 @@ pub(crate) mod tests {
                 "minecraft:birch_log"
             );
             assert_eq!(context.slot(Grid, 0).unwrap().count, 3);
-            context.snapshot.unwrap().get_or_init(build);
-            assert_eq!(builds.get(), 2, "a mutation starts a fresh snapshot");
         }
         slots.write(&mut world, &mut g, read);
         let Some(BlockEntity::Mod(m)) = world.block_entities.get(&k) else {
@@ -2313,7 +2293,6 @@ pub(crate) mod tests {
                 shulker: false,
                 container_limits: Vec::new(),
                 hidden: &[],
-                slot_snapshot: Default::default(),
                 loop_context: &crate::test_resources::loop_context(
                     sunrise_world::native_load_context::LoopSide::Server,
                 ),
@@ -2355,7 +2334,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &hidden,
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2380,7 +2358,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: crate::test_resources::server_loop_context(),
         };
         view.guest.carried = Some(ItemStack::new("minecraft:stone", 8));
@@ -2415,7 +2392,6 @@ pub(crate) mod tests {
                     shulker: false,
                     container_limits: Vec::new(),
                     hidden: &[],
-                    slot_snapshot: Default::default(),
                     loop_context: crate::test_resources::server_loop_context(),
                 };
                 menu.load_slot(0, view.get(0));
@@ -2467,7 +2443,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2588,7 +2563,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: crate::test_resources::server_loop_context(),
         };
         let (drops, _) = click(&mut view, &mut None, 0, 0, input::SWAP, &rules);
@@ -2629,7 +2603,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2685,7 +2658,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2735,7 +2707,6 @@ pub(crate) mod tests {
                 shulker,
                 container_limits: Vec::new(),
                 hidden: &[],
-                slot_snapshot: Default::default(),
                 loop_context: &crate::test_resources::loop_context(
                     sunrise_world::native_load_context::LoopSide::Server,
                 ),
@@ -2785,7 +2756,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2868,7 +2838,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2913,7 +2882,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2954,7 +2922,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -2998,7 +2965,6 @@ pub(crate) mod tests {
                     shulker: false,
                     container_limits: Vec::new(),
                     hidden: &[],
-                    slot_snapshot: Default::default(),
                     loop_context: &crate::test_resources::loop_context(
                         sunrise_world::native_load_context::LoopSide::Server,
                     ),
@@ -3035,7 +3001,6 @@ pub(crate) mod tests {
                     shulker: false,
                     container_limits: Vec::new(),
                     hidden: &[],
-                    slot_snapshot: Default::default(),
                     loop_context: &crate::test_resources::loop_context(
                         sunrise_world::native_load_context::LoopSide::Server,
                     ),
@@ -3070,7 +3035,6 @@ pub(crate) mod tests {
                 shulker: false,
                 container_limits: Vec::new(),
                 hidden: &[],
-                slot_snapshot: Default::default(),
                 loop_context: &context,
             };
             view.guest.carried = Some(stack.clone());
@@ -3086,7 +3050,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &context,
         };
         view.set(36, Some(stack.clone()));
@@ -3150,7 +3113,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3200,7 +3162,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: vec![Some(10); 3],
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &context,
         };
         view.guest.carried = Some(ItemStack::new("minecraft:stick", 20));
@@ -3240,7 +3201,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3291,7 +3251,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &crate::test_resources::loop_context(
                 sunrise_world::native_load_context::LoopSide::Server,
             ),
@@ -3338,7 +3297,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &context,
         };
         let mut drag = None;
@@ -3362,7 +3320,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &context,
         };
         let mut drag = None;
@@ -3405,7 +3362,6 @@ pub(crate) mod tests {
             shulker: false,
             container_limits: Vec::new(),
             hidden: &[],
-            slot_snapshot: Default::default(),
             loop_context: &context,
         };
         let mut drag = None;

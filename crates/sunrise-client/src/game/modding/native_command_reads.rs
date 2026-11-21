@@ -201,15 +201,16 @@ mod tests {
                 _: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
-                event.commands.extend([mod_api::Command::new("where")]);
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                (self.0.lock().unwrap()).push((event.source.clone(), event.command.clone()));
-                mod_api::Flow::Cancel
+                let heard = self.0.clone();
+                event.commands.push(mod_api::Command::new("where").executes(
+                    move |_, source, command| {
+                        heard
+                            .lock()
+                            .unwrap()
+                            .push((source.clone(), command.clone()));
+                        Some(1)
+                    },
+                ));
             }
         }
         let heard: Heard = Arc::default();

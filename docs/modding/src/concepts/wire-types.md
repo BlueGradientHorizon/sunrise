@@ -1,11 +1,17 @@
 # Wire types
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
-[typed payload tokens and bodies](../how-to/client/networking.md#typed-payloads),
-[native crafting recipe values](../crafting-recipe-kinds.md), and recipe placement and recipe-book sync.
-A typed body is one bounded Wire value with no extra envelope; raw channels carry caller-supplied bytes.
-Derive `mod_api::Wire` explicitly on a type that needs this encoding. The build never adds the derive.
-Every field of a derived type must also implement `Wire`.
+[typed payload tokens and bodies](../how-to/client/networking.md#typed-payloads)
+and Sunrise's recipe placement and recipe-book sync. A typed body is one bounded
+Wire value with no extra envelope; raw channels carry caller-supplied bytes.
+Derive `mod_api::Wire` explicitly on a type that needs this encoding. The build
+never adds the derive. Every field of a derived type must also implement `Wire`.
+
+[Native recipe serializers](../crafting-recipe-kinds.md) do not use Wire for their
+values. Both `CraftingRecipeKind` and `RecipeSerializer` decode and write JSON;
+the loader retains each typed value with its owner for the resource generation.
+Recipe content still syncs as bounded JSON, and raw recipe JSON keeps its size
+limit. Recipe placement, book sync and vanilla display packets are unaffected.
 
 Hook events are native callback records, not binary messages. If you need to send data from
 an event, copy the fields you intend to send into your own `Wire` payload type. The same applies to
@@ -13,6 +19,8 @@ an event, copy the fields you intend to send into your own `Wire` payload type. 
 then select the facts you need for your protocol. Keep issued packet-hold and chunk-ticket controller
 handles in the process that issued them; use a ticket controller's namespaced `id()` when you need to
 record its name.
+Likewise, keep [attachment queries and write tokens](attachments/querying.md) in process; an
+attachment's own codec handles saving and syncing its value.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]

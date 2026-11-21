@@ -2488,8 +2488,10 @@ mod empty_ingredient_placement_tests {
             &self,
             _: &dyn mod_api::DataLoadContext,
             event: &mut mod_api::IngredientEvent<'_>,
-        ) {
-            assert_eq!(event.kind, "empty_fixture:predicate");
+        ) -> Option<mod_api::IngredientDefinition> {
+            let kind = event.kind;
+            (kind == "empty_fixture:predicate")
+                .then(|| mod_api::IngredientDefinition::new(vec![], |_, _| true))
         }
     }
 
@@ -2598,8 +2600,8 @@ mod empty_ingredient_placement_tests {
                     game.build_registries();
                     {
                         // The generated Host entrypoint serves mod callers;
-                        // roundtrip its real answer, not a hand-constructed ingredient.
-                        use mod_api::wire::{Reader, Wire, Writer};
+                        // check its real answer directly (Ingredient holds in-process
+                        // predicates and has no Wire form).
                         let host: &dyn mod_api::Host = game;
                         let empty = host
                             .recipe_ingredient(r##""#empty_fixture:empty""##)
@@ -2613,15 +2615,10 @@ mod empty_ingredient_placement_tests {
                                 .is_none()
                         );
                         assert!(host.recipe_ingredient("[]").unwrap().is_none());
-                        let mut writer = Writer::default();
-                        empty.put(&mut writer);
-                        let decoded: mod_api::Ingredient =
-                            Reader::decode(&writer.into_bytes()).unwrap();
-                        assert_eq!(decoded, empty);
                         let stone = mod_api::ItemStack::of(
                             mod_api::__private::item_key("minecraft:stone").unwrap(),
                         );
-                        assert!(!decoded.test(host, &stone));
+                        assert!(!empty.test(host, &stone));
                     }
                     game.lan_host(
                         crate::game::lan::LanSettings {

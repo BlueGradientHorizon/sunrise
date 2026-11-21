@@ -307,6 +307,7 @@ fn generic_client_entries_use_only_builtin_synced_and_negotiated_tables() {
                 let sync = super::lan::sync::sync_data(
                     &game.options.resources,
                     &game.res.core.item_data,
+                    game.items(),
                     &game.pack_files(),
                 )
                 .unwrap();

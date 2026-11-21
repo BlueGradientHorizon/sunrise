@@ -59,17 +59,15 @@ Parts that read `context.setting(..)` or `side()` have no counterpart on the Hos
 
 ### Who and where: the slot's context
 
-A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` the game
-fills the same way on the server and on the client's prediction. `context.player` is the UUID of
-the player whose menu it is, `context.pos` the block entity the menu belongs to
-(`ContainerLevelAccess`), and `context.slots` a read-only copy of the menu's own containers'
-slots as they stand while the click plans, without the player's inventory. The containers are
-keyed by `MenuContainer`: `Main` for the menu's own slots, and for a mod menu type with a crafting
-grid `Grid` (the grid's slots, row by row) and `Result` (its crafted result, slot 0).
-`event.container` names the container the asked slot is in, and `event.slot` indexes inside it;
-`context.slot(container, index)` reads any of them. A machine whose upgrade slot takes one card
-per kind, a cable bus that asks its block entity what a part slot holds, a grid slot that looks at
-the result, or a slot only the block's owner fills answers from these:
+A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext<'_>` lent
+for this ask on either the server or the predicting client. `context.player` is the UUID of
+the player whose menu it is, and `context.pos` locates the block entity the menu belongs to
+(`ContainerLevelAccess`). `event.container` names the container the asked slot is in, and
+`event.slot` indexes inside it. Read a staged slot with `context.slot(container, index)`: use
+`MenuContainer::Main` for the menu's own slots, and on a mod menu type with a crafting grid use
+`Grid` (row by row) and `Result` (its crafted result, slot 0) for those slots. For example, a
+machine can use the view to accept only one upgrade card of each kind, or a grid slot can check
+whether a result is waiting to be taken:
 
 ```rust,ignore
 use mod_api::MenuContainer;
@@ -94,10 +92,13 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 ```
 
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
-opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot cross to the API
-shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built once per click plan, and only for a menu type a part answers: vanilla menus and
-types with no listening part never pay for it, and the asks of one click share one copy.
+opened with no block by `player_open_mod_menu`, a vehicle's). `slot` converts just the requested
+stack and returns it as an owned `ItemStack`. It returns `None` for an empty, unavailable, or
+unrepresentable stack, and never reads `MenuContainer::Player`. There is no matrix to enumerate
+or retain. During planning, the same question reuses its answer while the slots the rule read
+still match. For example, filling a grid slot the rule read as empty can cause a new ask.
+Validation and apply use the plan's recorded answers and do not call the rule again.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and

@@ -280,13 +280,12 @@ fn block_entity_additions_collect_in_order_and_quiet_dispatch_preserves_input() 
     );
 }
 
-/// Each mod changes the prior answer, vanilla's stays readable, and cancel
-/// stops later mods. The fork's existing typed event owns this moment.
+/// Each mod changes the prior edits, vanilla's answer stays readable, and
+/// cancel stops later mods.
 #[test]
 fn an_anvil_update_is_changed_in_turn_and_cancel_stops_later_mods() {
-    use mod_api::item::menu::AnvilUpdate;
-    use mod_api::item::stations::AnvilResult;
-    use mod_api::{AnvilUpdateEvent, Flow, Host, HostSide, ItemStack, ServerHost};
+    use mod_api::item::menu::{AnvilUpdateEdits, AnvilUpdateInputs};
+    use mod_api::{AnvilUpdateEvent, Flow, Host, HostSide, ItemStack, ServerHost, StackResult};
     fn key(id: &str) -> mod_api::ItemKey {
         mod_api::__private::item_key(id).unwrap()
     }
@@ -300,19 +299,19 @@ fn an_anvil_update_is_changed_in_turn_and_cancel_stops_later_mods() {
     #[mod_api::__subscriptions]
     impl Hooks for Recipe {
         fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
-            let update = &mut *event.update;
-            if update.name.as_deref() == Some("void") {
+            let inputs = event.inputs;
+            if inputs.name == Some("void") {
                 return Flow::Cancel;
             }
-            if update.left.item() == key("minecraft:iron_ingot")
-                && update
+            if inputs.left.item() == key("minecraft:iron_ingot")
+                && inputs
                     .right
-                    .as_ref()
                     .is_some_and(|r| r.item() == key("minecraft:emerald"))
             {
-                update.output = Some(ItemStack::of(key("minecraft:diamond")));
-                update.xp_cost = 5;
-                update.material_cost = 1;
+                event.edits.output =
+                    StackResult::Set(Some(ItemStack::of(key("minecraft:diamond"))));
+                event.edits.xp_cost = 5;
+                event.edits.material_cost = 1;
             }
             Flow::Continue
         }
@@ -322,11 +321,13 @@ fn an_anvil_update_is_changed_in_turn_and_cancel_stops_later_mods() {
     #[mod_api::__subscriptions]
     impl Hooks for Discount {
         fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+            assert_eq!(event.inputs.vanilla_xp_cost, 3);
+            assert_eq!(event.inputs.vanilla_material_cost, 0);
             assert_eq!(
-                event.update.vanilla.xp_cost, 3,
-                "vanilla's cost stays readable"
+                event.inputs.vanilla_output.unwrap().item(),
+                key("minecraft:iron_sword")
             );
-            event.update.xp_cost -= 1;
+            event.edits.xp_cost -= 1;
             Flow::Continue
         }
     }
@@ -349,51 +350,51 @@ fn an_anvil_update_is_changed_in_turn_and_cancel_stops_later_mods() {
             "minecraft:diamond",
         ])
         .unwrap();
+        let vanilla_output = ItemStack::of(key("minecraft:iron_sword"));
         let update = |left: &str, right: Option<&str>, name: Option<&str>| {
-            let vanilla = AnvilResult {
-                result: Some(ItemStack::of(key("minecraft:iron_sword"))),
-                cost: 3,
-                repair_item_count_cost: 0,
-                only_renaming: false,
+            let left = ItemStack::of(key(left));
+            let right = right.map(|r| ItemStack::new(key(r), 4).unwrap());
+            let inputs = AnvilUpdateInputs {
+                left: &left,
+                right: right.as_ref(),
+                name,
+                vanilla_output: Some(&vanilla_output),
+                vanilla_xp_cost: 3,
+                vanilla_material_cost: 0,
             };
-            let mut update = AnvilUpdate::new(
-                ItemStack::of(key(left)),
-                right.map(|r| ItemStack::new(key(r), 4).unwrap()),
-                name.map(str::to_owned),
-                &vanilla,
-            );
+            let mut edits = AnvilUpdateEdits {
+                output: StackResult::Keep,
+                xp_cost: inputs.vanilla_xp_cost,
+                material_cost: inputs.vanilla_material_cost,
+            };
             let mut cancel = false;
             mod_api::dispatch_anvil_update(
                 HostSide::Server(&mut TestHost),
                 7,
                 1,
                 [0, 64, 0],
-                &mut update,
+                &inputs,
+                &mut edits,
                 &mut cancel,
             );
-            (
-                update.output.map(|o| {
-                    mod_api::__private::item_key_id(o.item())
-                        .unwrap()
-                        .to_owned()
-                }),
-                update.xp_cost,
-                update.material_cost,
-                cancel,
-            )
+            (edits.output, edits.xp_cost, edits.material_cost, cancel)
         };
-        let sword = Some("minecraft:iron_sword".to_owned());
         assert_eq!(
             update("minecraft:iron_ingot", Some("minecraft:emerald"), None),
-            (Some("minecraft:diamond".to_owned()), 4, 1, false)
+            (
+                StackResult::Set(Some(ItemStack::of(key("minecraft:diamond")))),
+                4,
+                1,
+                false
+            )
         );
         assert_eq!(
             update("minecraft:iron_sword", None, Some("")),
-            (sword.clone(), 2, 0, false)
+            (StackResult::Keep, 2, 0, false)
         );
         assert_eq!(
             update("minecraft:iron_sword", None, Some("void")),
-            (sword, 3, 0, true)
+            (StackResult::Keep, 3, 0, true)
         );
     });
 }
