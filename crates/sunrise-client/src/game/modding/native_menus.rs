@@ -112,7 +112,7 @@ impl Game<'_> {
             .ok_or(OpenMenuError::PlayerUnavailable)?;
         // The first contents show the player's own inventory and cursor, in their turn too.
         let (window, generation) = self
-            .with_own_record(gi, |lan, _| {
+            .with_own_record(gi, |lan, _, _| {
                 let window = lan.hub.open_native_menu(conn, rows, title, items)?;
                 Some((window, lan.hub.guests[gi].menu_generation))
             })
@@ -216,7 +216,7 @@ impl Game<'_> {
             .ok_or(OpenMenuError::PlayerUnavailable)?;
         // The first contents show the player's own inventory and cursor, in their turn too.
         let (window, generation) = self
-            .with_own_record(gi, |lan, _| {
+            .with_own_record(gi, |lan, _, _| {
                 let window = lan.hub.open_menu_window(
                     conn,
                     &id,

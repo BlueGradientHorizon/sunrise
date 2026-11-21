@@ -294,7 +294,7 @@ impl Game<'_> {
         // Park the opener's window-0 cursor and build the first contents from
         // their inventory, even when an open through BlockEntityRef runs in their turn.
         if self
-            .with_own_record(gi, |host, _| {
+            .with_own_record(gi, |host, _, _| {
                 if host
                     .hub
                     .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)
@@ -423,7 +423,7 @@ impl Game<'_> {
             return false;
         };
         if self
-            .with_own_record(gi, |host, _| {
+            .with_own_record(gi, |host, _, _| {
                 host.hub
                     .open_menu_window(conn, menu, title, Some(pos), slots, items, None)
             })
@@ -527,7 +527,7 @@ impl Game<'_> {
             // listeners that remove another player, shifting the guest list.
             if let Some(gi) = self.guest_index(conn)
                 && let Some(carried) =
-                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
+                    self.with_own_record(gi, |host, _, _| host.hub.container_closed(conn, window))
             {
                 self.lan_place_back(gi, vec![carried]);
             }

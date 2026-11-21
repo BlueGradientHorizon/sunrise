@@ -1919,7 +1919,7 @@ impl Game<'_> {
     /// Retire a game-owned menu on the guest record, even when their active
     /// cursor is temporarily in `Game` during a guest turn.
     pub(super) fn close_guest_menu_cursor(&mut self, gi: usize, window: i32) -> Option<ItemStack> {
-        self.with_own_record(gi, |host, _| {
+        self.with_own_record(gi, |host, _, _| {
             host.hub.guests.update(gi, |g| g.close_menu_cursor(window))
         })
     }
@@ -1940,7 +1940,7 @@ impl Game<'_> {
         let crafting = &mut host.menus.entry(conn).or_default().crafting;
         let grid: Vec<ItemStack> = if window == Some(0) {
             *crafting.inventory = None;
-            self.with_own_record(gi, |host, _| {
+            self.with_own_record(gi, |host, _, _| {
                 Some(host.hub.guests.update(gi, |g| {
                     g.craft_result = None;
                     g.take_inventory_carried()
@@ -1980,7 +1980,7 @@ impl Game<'_> {
         if inputs.is_empty() {
             return;
         }
-        let overflow = self.with_own_record(gi, |lan, items| {
+        let overflow = self.with_own_record(gi, |lan, items, _| {
             Some(lan.hub.guests.update(gi, |guest| {
                 let mut menu = Menu::new(Kind::Inventory);
                 load_player(&mut menu, guest);
