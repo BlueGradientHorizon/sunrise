@@ -1595,18 +1595,23 @@ mod tests {
                     feedback.iter().map(|m| m.plain()).collect::<Vec<_>>()
                 );
             };
-            run(
-                game,
-                r#"summon minecraft:armor_stand 3 64 5 {Tags:["turn_me"],Rotation:[45f,0f]}"#,
-            );
-            let stand = game.armor_stands.iter_mut().next().unwrap();
-            let id = stand.id as i32;
+            let stand = game
+                .summon_with_nbt(
+                    "minecraft:armor_stand",
+                    [3.0, 64.0, 5.0],
+                    r#"{Tags:["turn_me"],Rotation:[45f,0f]}"#,
+                )
+                .unwrap();
+            let Some(crate::game::commands::Target::Stand(id)) = stand else {
+                panic!("the loaded entity was not an armor stand");
+            };
+            let id = id as i32;
             let (command, expected) = match case.as_str() {
                 "rotate" => ("rotate @e[tag=turn_me,limit=1] 90 0", [64, 64]),
                 "teleport" => ("teleport @e[tag=turn_me,limit=1] 4 64 5 135 0", [96, 96]),
                 "teleport_without_rotation" => {
                     // The head can be turned independently of view before /tp.
-                    stand.head_yaw = 90.0;
+                    game.armor_stands.iter_mut().next().unwrap().head_yaw = 90.0;
                     ("teleport @e[tag=turn_me,limit=1] 4 64 5", [32, 32])
                 }
                 _ => unreachable!(),
