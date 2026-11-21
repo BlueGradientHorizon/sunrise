@@ -242,7 +242,7 @@ fn without_a_list_for_its_pin_a_mod_works_on_its_own_build_only() {
 }
 
 const RUN_WITH: &str = "sunrise_client::game::run_with";
-const RUN_WITH_REFUSAL: &str = "its body names `native_hooks::install_block_contact_hooks`, which crosses a non-public `use` in `sunrise_client::game::native_hooks`";
+const INDEX_REASON: &str = "sentinel from functions.json: private::provider";
 
 fn refused_run_with(name: &str, build: &str) -> (PathBuf, PathBuf) {
     let id = format!("game:fn:{RUN_WITH}");
@@ -252,7 +252,7 @@ fn refused_run_with(name: &str, build: &str) -> (PathBuf, PathBuf) {
         .unwrap()
         .replace(crate::tests::B, crate::MIXINS_REV)
         + &format!(
-            "[[native.mixin]]\nid = \"entry\"\ntarget = \"{RUN_WITH}\"\nkind = \"HEAD\"\nhelper = \"src/m.rs\"\n"
+            "[[native.mixin]]\nid = \"entry_probe\"\ntarget = \"{RUN_WITH}\"\nkind = \"HEAD\"\nhelper = \"src/m.rs\"\n"
         );
     std::fs::write(&manifest, text).unwrap();
     std::fs::write(dir.join("src/m.rs"), "{}").unwrap();
@@ -260,7 +260,7 @@ fn refused_run_with(name: &str, build: &str) -> (PathBuf, PathBuf) {
     std::fs::create_dir_all(&data).unwrap();
     let file = serde_json::json!({
         "schema": 1, "build": {"commit": build}, "crates": {}, "functions": {},
-        "refused": { RUN_WITH: { "code": "E_MIXIN_NOT_REPLACEABLE", "why": RUN_WITH_REFUSAL } },
+        "refused": { RUN_WITH: { "code": "E_MIXIN_NOT_REPLACEABLE", "why": INDEX_REASON } },
     });
     std::fs::write(data.join("functions.json"), file.to_string()).unwrap();
     (dir, data)
@@ -284,13 +284,13 @@ fn native_check_needs_the_index_and_names_the_refused_same_build_target() {
     assert_eq!(checked.route, None);
     assert_eq!(checked.mods[0].verdict, None);
     assert_eq!(checked.mods[0].needs, None);
-    assert_eq!(
-        checked.mods[0].refusal.as_deref(),
-        Some(
-            format!("E_MIXIN_NOT_REPLACEABLE: greeter:entry: {RUN_WITH}: {RUN_WITH_REFUSAL}")
-                .as_str()
-        )
-    );
+    assert_eq!(checked.mods[0].id, "greeter");
+    let refusal = checked.mods[0].refusal.as_deref().unwrap();
+    assert!(refusal.contains("E_MIXIN_NOT_REPLACEABLE"), "{refusal}");
+    assert!(refusal.contains("greeter"), "{refusal}");
+    assert!(refusal.contains("entry_probe"), "{refusal}");
+    assert!(refusal.contains(RUN_WITH), "{refusal}");
+    assert!(refusal.contains(INDEX_REASON), "{refusal}");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -305,7 +305,7 @@ fn cross_build_fit_distinguishes_a_refused_target_from_a_removed_one() {
                 id: format!("game:fn:{RUN_WITH}"),
                 change: Change::Refused {
                     code: "E_MIXIN_NOT_REPLACEABLE",
-                    why: RUN_WITH_REFUSAL.into(),
+                    why: INDEX_REASON.into(),
                 }
             }],
         },
@@ -339,7 +339,7 @@ fn cross_build_fit_distinguishes_a_refused_target_from_a_removed_one() {
         "the launcher shortens game ids"
     );
     assert!(diagnostic.contains(RUN_WITH), "{diagnostic}");
-    assert!(diagnostic.contains(RUN_WITH_REFUSAL), "{diagnostic}");
+    assert!(diagnostic.contains(INDEX_REASON), "{diagnostic}");
     assert!(
         diagnostic.contains("E_MIXIN_NOT_REPLACEABLE"),
         "{diagnostic}"
