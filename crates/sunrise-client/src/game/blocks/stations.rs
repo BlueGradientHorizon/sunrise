@@ -318,9 +318,6 @@ pub(super) struct Station {
     anvil_last: Option<ItemStack>,
     /// Anvil on a server: the name last sent (the client menu's `itemName`).
     pub(super) anvil_sent: Option<String>,
-    /// Anvil on a server: the inputs and name the client's
-    /// `AnvilUpdateEvent` was last asked about, and the result it left.
-    anvil_answer: Option<(Vec<Option<ItemStack>>, String, AnvilResult)>,
     pub(super) last_sound: u64,
     /// Villager trading state.
     pub(super) merchant: Option<Box<super::trading::MerchantState>>,
@@ -354,7 +351,6 @@ impl Station {
             scrolling: false,
             anvil_last: None,
             anvil_sent: None,
-            anvil_answer: None,
             last_sound: 0,
             merchant: None,
             beacon: [None; 2],
@@ -654,32 +650,21 @@ impl Game<'_> {
             None => String::new(),
         }
     }
-    /// Apply the client anvil hook once for each input and name combination.
-    fn update_anvil_answer(&mut self, s: &mut Station, name: String) {
+    /// Apply the client anvil hook after vanilla `createResult`.
+    fn update_anvil_answer(&mut self, s: &mut Station, name: &str) {
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
             return;
         }
-        let Some(left) = s.inputs[0].clone() else {
+        let Some(left) = s.inputs.first().and_then(Option::as_ref) else {
             return;
         };
-        match &s.anvil_answer {
-            Some((inputs, asked, answer)) if *inputs == s.inputs && *asked == name => {
-                s.anvil = answer.clone();
-            }
-            _ => {
-                let mut update = crate::menu::AnvilUpdate::new(
-                    left,
-                    s.inputs[1].clone(),
-                    Some(name.clone()),
-                    &s.anvil,
-                );
-                let mut cancel = false;
-                let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
-                self.api_anvil_update(player, entity_id, s.pos, &mut update, &mut cancel);
-                update.answer(cancel, &mut s.anvil);
-                s.anvil_answer = Some((s.inputs.clone(), name, s.anvil.clone()));
-            }
-        }
+        let inputs = crate::menu::AnvilUpdateInputs {
+            left,
+            right: s.inputs.get(1).and_then(Option::as_ref),
+            name: Some(name),
+        };
+        let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
     /// `slotsChanged` / `createResult` for the open station.
     pub(super) fn station_changed(&mut self) {
@@ -733,14 +718,10 @@ impl Game<'_> {
                     &hover,
                     creative,
                 );
-                // AnvilUpdateEvent on a server's client menu, as on the
-                // server: asked when an input or the name changed (this
-                // recomputes on every click), its answer kept until then.
-                // An empty left slot has no result and forgets the answer.
-                if s.inputs[0].is_none() {
-                    s.anvil_answer = None;
-                } else if self.remote.is_some() {
-                    self.update_anvil_answer(&mut s, name);
+                // AnvilUpdateEvent on a server's client menu, as on the server,
+                // whenever createResult ran with a left input.
+                if s.inputs.first().is_some_and(Option::is_some) && self.remote.is_some() {
+                    self.update_anvil_answer(&mut s, &name);
                 }
                 s.result = s.anvil.result.clone();
             }
@@ -900,6 +881,33 @@ impl Game<'_> {
         }
         stack.count != start
     }
+    /// After a live client anvil session (`anvil_menu_session`): copy the final anvil state
+    /// from `menu` into `self.station` and sync the rename box without re-running `createResult`
+    /// or `anvil_update` a second time.
+    pub(super) fn anvil_session_end(&mut self, menu: &sunrise_client::menu::Menu) {
+        let Some(s) = self.station.as_mut() else {
+            return;
+        };
+        if s.kind != Kind::Anvil {
+            return;
+        }
+        s.anvil.cost = menu.data[0];
+        s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+        s.anvil.only_renaming = menu.anvil.only_renaming;
+        s.anvil.result = s.result.clone();
+        if s.inputs[0] != s.anvil_last {
+            s.anvil_last = s.inputs[0].clone();
+            let name = s.inputs[0]
+                .as_ref()
+                .map(|i| {
+                    sunrise_client::lang::returned_to_server(|| {
+                        stations::hover_name(&self.pack.names, i)
+                    })
+                })
+                .unwrap_or_default();
+            anvil::input_changed(s, name);
+        }
+    }
     /// After an anvil or smithing click on the menu engine: the anvil's cost
     /// and state back into the station and the rename box following the
     /// input (`AnvilScreen.slotChanged`), then the rest of a taken result's
@@ -908,6 +916,7 @@ impl Game<'_> {
     pub(super) fn combiner_session_end(
         &mut self,
         menu: &sunrise_client::menu::Menu,
+        anvil_created: bool,
         predicting: bool,
     ) {
         let Some(s) = self.station.as_mut() else {
@@ -915,12 +924,16 @@ impl Game<'_> {
         };
         let (pos, kind) = (s.pos, s.kind);
         if kind == Kind::Anvil {
-            s.anvil.cost = menu.data[0];
-            s.anvil.repair_item_count_cost = menu.anvil.repair_count;
-            s.anvil.only_renaming = menu.anvil.only_renaming;
-            s.anvil.result = s.result.clone();
+            if anvil_created {
+                s.anvil.cost = menu.data[0];
+                s.anvil.repair_item_count_cost = menu.anvil.repair_count;
+                s.anvil.only_renaming = menu.anvil.only_renaming;
+                s.anvil.result = s.result.clone();
+                self.station_after_input();
+            }
+        } else {
+            self.station_after_input();
         }
-        self.station_after_input();
         if !menu.combined || predicting {
             return;
         }
@@ -1346,6 +1359,11 @@ impl Game<'_> {
             self.recipe_text(text, backspace);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
@@ -1355,12 +1373,24 @@ impl Game<'_> {
             s.rename.insert_text(t);
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
     }
     /// `AnvilScreen.keyPressed`: the rename box handles the key.
     pub(super) fn station_key(&mut self, key: winit::keyboard::KeyCode) -> bool {
         let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return false;
         };
@@ -1368,7 +1398,14 @@ impl Game<'_> {
             return false;
         }
         s.name.clone_from(&s.rename.value);
-        self.station_changed();
+        let after = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
+        if before.is_none() || after != before {
+            self.station_changed();
+        }
         self.remote_anvil_rename();
         true
     }
@@ -1379,12 +1416,24 @@ impl Game<'_> {
             self.recipe_shortcut(shortcut);
             return;
         }
+        let before = self
+            .station
+            .as_ref()
+            .filter(|s| s.kind == Kind::Anvil)
+            .map(|s| self.anvil_item_name(s));
         let Some(s) = self.station.as_mut() else {
             return;
         };
         if s.rename.shortcut(shortcut, &mut self.clipboard) {
             s.name.clone_from(&s.rename.value);
-            self.station_changed();
+            let after = self
+                .station
+                .as_ref()
+                .filter(|s| s.kind == Kind::Anvil)
+                .map(|s| self.anvil_item_name(s));
+            if before.is_none() || after != before {
+                self.station_changed();
+            }
             self.remote_anvil_rename();
         }
     }
@@ -2571,7 +2620,7 @@ mod tests {
         impl Hooks for Listener {
             fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
                 self.0.fetch_add(1, Ordering::Relaxed);
-                event.update.xp_cost = -7;
+                event.edits.xp_cost = -7;
                 Flow::Continue
             }
         }
@@ -2580,11 +2629,12 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
+                station.anvil.cost = 5;
                 assert!(!mod_api::__private::listened(HookId::AnvilUpdate));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert!(station.anvil_answer.is_none());
-                game.update_anvil_answer(&mut station, "second".into());
-                assert!(station.anvil_answer.is_none());
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 5);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 5);
             });
         });
         let calls = Arc::new(AtomicUsize::new(0));
@@ -2593,18 +2643,241 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7);
+                station.anvil.cost = 5;
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0, "negative xp_cost clamps to zero");
                 station.anvil.cost = 1;
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7, "cached listener answer is signed");
-                game.update_anvil_answer(&mut station, "second".into());
-                assert_eq!(station.anvil.cost, -7);
-                assert_eq!(calls.load(Ordering::Relaxed), 2);
+                game.update_anvil_answer(&mut station, "first");
+                assert_eq!(station.anvil.cost, 0);
+                game.update_anvil_answer(&mut station, "second");
+                assert_eq!(station.anvil.cost, 0);
+                assert_eq!(calls.load(Ordering::Relaxed), 3);
                 assert!(mod_api::__private::listened(HookId::AnvilUpdate));
+
+                // Editing the rename box without changing the effective anvil_item_name
+                // does not fire anvil_update (matching vanilla AnvilMenu.setItemName).
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTest").unwrap();
+                let display = game.pack.names.display_item("minecraft:iron_sword");
+                super::anvil::input_changed(&mut station, display);
+                game.station = Some(station);
+                let before = calls.load(Ordering::Relaxed);
+                game.station_text(None, false);
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                assert!(game.station_key(winit::keyboard::KeyCode::ArrowLeft));
+                assert_eq!(calls.load(Ordering::Relaxed), before);
+                game.station_text(Some("x"), false);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 1);
+                game.station_text(None, true);
+                assert_eq!(calls.load(Ordering::Relaxed), before + 2);
             });
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_fires_at_each_create_result_in_multi_slot_drag() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct DragListener(Arc<Mutex<Vec<(u32, Option<u32>)>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for DragListener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0.lock().unwrap().push((
+                    event.inputs.left.count(),
+                    event.inputs.right.map(ApiStack::count),
+                ));
+                if event.inputs.right.is_some() {
+                    let dirt = mod_api::__private::item_key("minecraft:dirt").unwrap();
+                    event.edits.output = StackResult::Set(Some(ApiStack::of(dirt)));
+                    event.edits.xp_cost = 3;
+                }
+                Flow::Continue
+            }
+        }
+
+        let observed = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "drag-listener",
+            Box::new(DragListener(observed.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilDrag").unwrap();
+                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".to_owned()));
+                game.station = Some(Station::new(Kind::Anvil, [0; 3]));
+                game.carried = Some(ItemStack::new("minecraft:iron_ingot", 2));
+
+                assert!(game.remote_menu_ops(&[
+                    (None, 0, Input::QuickCraft),
+                    (Some(super::INPUT), 1, Input::QuickCraft),
+                    (Some(super::INPUT + 1), 1, Input::QuickCraft),
+                    (None, 2, Input::QuickCraft),
+                ]));
+
+                assert_eq!(
+                    *observed.lock().unwrap(),
+                    vec![(1, None), (1, None), (1, None), (1, Some(1)), (1, Some(1))]
+                );
+                let station = game.station.as_ref().unwrap();
+                assert_eq!(station.result, Some(ItemStack::new("minecraft:dirt", 1)));
+                assert_eq!(station.anvil.cost, 3);
+                assert_eq!(game.carried, None);
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_prediction_updates_between_material_consumption_and_left_input_clear() {
+        use super::{ItemStack, Kind, Station};
+        use mod_api::{AnvilUpdateEvent, Flow, Hooks, HostSide, ModEntry};
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::menu::Input;
+
+        struct Observe(Arc<Mutex<Vec<Option<u32>>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observe {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(event.inputs.right.map(mod_api::ItemStack::count));
+                Flow::Continue
+            }
+        }
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "take-observer",
+            Box::new(Observe(calls.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(client, "AnvilTake").unwrap();
+                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".into()));
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let repaired = ItemStack::new("minecraft:iron_sword", 1);
+                let mut worn = repaired.clone();
+                worn.damage = 80;
+                station.inputs[0] = Some(worn);
+                station.inputs[1] = Some(ItemStack::new("minecraft:iron_ingot", 2));
+                station.result = Some(repaired.clone());
+                station.anvil.cost = 2;
+                station.anvil.repair_item_count_cost = 2;
+                game.station = Some(station);
+                game.experience.level = 10;
+
+                assert!(game.remote_menu_ops(&[(Some(super::RESULT), 0, Input::Pickup)]));
+                assert_eq!(
+                    *calls.lock().unwrap(),
+                    [None],
+                    "only the intermediate update still has the left input"
+                );
+                let station = game.station.as_ref().unwrap();
+                assert!(station.inputs[..2].iter().all(Option::is_none));
+                assert_eq!(station.result, None);
+                assert_eq!(game.carried, Some(repaired));
+            });
+        });
+    }
+    #[test]
+    #[ignore = "daily"]
+    fn anvil_update_validates_only_a_changed_output() {
+        use super::{AnvilResult, ItemStack, Kind, Station};
+        use mod_api::{
+            AnvilUpdateEvent, Flow, Hooks, HostSide, ItemStack as ApiStack, ModEntry, StackResult,
+        };
+
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
+                assert_eq!(event.inputs.left.count(), 2, "captured an over-limit stack");
+                assert_eq!(event.edits.output, StackResult::Keep);
+                assert_eq!((event.edits.xp_cost, event.edits.material_cost), (1, 1));
+                event.edits.xp_cost = -7;
+                event.edits.material_cost = -2;
+                let item = event.inputs.left.item();
+                match event.inputs.name {
+                    Some("same") => {
+                        event.edits.output = StackResult::Set(event.inputs.vanilla_output.cloned());
+                    }
+                    Some("replace") => {
+                        event.edits.output = StackResult::Set(Some(ApiStack::of(item)));
+                    }
+                    Some("clear") => event.edits.output = StackResult::Set(None),
+                    Some("invalid") => {
+                        let invalid = ApiStack::new(item, 3).unwrap();
+                        event.edits.output = StackResult::Set(Some(invalid));
+                        event.edits.material_cost = 4;
+                    }
+                    Some("cancel") => return Flow::Cancel,
+                    _ => {}
+                }
+                Flow::Continue
+            }
+        }
+
+        let mods = vec![ModEntry::new("listener", Box::new(Listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                let mut station = Station::new(Kind::Anvil, [0; 3]);
+                let sword = |count| ItemStack::new("minecraft:iron_sword", count);
+                station.inputs[0] = Some(sword(2));
+                let vanilla = AnvilResult {
+                    result: Some(sword(2)),
+                    cost: 1,
+                    repair_item_count_cost: 1,
+                    only_renaming: true,
+                };
+                for (name, output, only_renaming) in [
+                    ("keep", Some(2), true),
+                    ("same", Some(2), true),
+                    ("replace", Some(1), false),
+                    ("clear", None, false),
+                ] {
+                    station.anvil = vanilla.clone();
+                    game.update_anvil_answer(&mut station, name);
+                    assert_eq!(
+                        station.anvil,
+                        AnvilResult {
+                            result: output.map(sword),
+                            cost: 0,
+                            repair_item_count_cost: 0,
+                            only_renaming,
+                        },
+                        "{name}",
+                    );
+                }
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "invalid");
+                assert_eq!(
+                    station.anvil,
+                    AnvilResult {
+                        result: Some(sword(2)),
+                        cost: 0,
+                        repair_item_count_cost: 4,
+                        only_renaming: true,
+                    },
+                    "invalid",
+                );
+                station.anvil = vanilla.clone();
+                game.update_anvil_answer(&mut station, "cancel");
+                assert_eq!(station.anvil, AnvilResult::default(), "cancel");
+            });
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn resource_tooltip_uses_inventory_lines_and_explicit_flags() {

@@ -407,9 +407,7 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             // Row 72 on the LAN route: stone 3 into the empty slot, one dispatch with the
             // frozen stacks, and the LAN host is back.
             assert_eq!(click(game, window), (3, 0, 0));
-            // The slot rules were asked while the click was planned and nowhere else: once for
-            // each distinct question the click consults (a plain click asks the same one twice,
-            // may place and capacity), and the click ran with the stored answer.
+            // The live click asks the slot rules once for the placement and capacity check.
             assert_eq!(ASKS.get(), 1);
             assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
             assert!(game.lan.is_some());

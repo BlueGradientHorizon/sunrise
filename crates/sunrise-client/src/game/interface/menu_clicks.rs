@@ -538,7 +538,12 @@ impl Game<'_> {
                 menu.set_player_item(slot, stack.clone());
             }
         }
-        // The off hand is part of the inventory even when the menu has no slot for it.
+        // Armor and off hand are part of the inventory even when the menu has no slots for them.
+        if !game_of.contains(&Some(500)) {
+            for (i, stack) in self.armor.iter().enumerate() {
+                menu.set_player_item(39 - i, stack.clone());
+            }
+        }
         let offhand_mapped = game_of.contains(&Some(504));
         if !offhand_mapped {
             menu.set_player_item(40, self.offhand.clone());
@@ -607,7 +612,10 @@ impl Game<'_> {
             // The AnvilScreen listens while the click is predicted (its slotChanged).
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
+            menu.anvil_hook = true;
         }
+        // Clear any createResult flag raised while populating the menu before the click.
+        let _ = menu.anvil_created();
         let outcome = run(self, &mut menu, &env, &to_menu);
         let made = maps.made.take();
         match outcome {
@@ -742,7 +750,8 @@ impl Game<'_> {
             }
         }
         if kind == Kind::Anvil || kind == Kind::Smithing {
-            self.combiner_session_end(&menu, predicting);
+            let anvil_created = menu.anvil_created();
+            self.combiner_session_end(&menu, anvil_created, predicting);
         }
         if kind == Kind::Enchanting && (menu.enchant_changed || before[0] != menu.slot(0).cloned())
         {
@@ -772,6 +781,173 @@ impl Game<'_> {
         if let Some(maps) = level_maps {
             self.register_made_maps(maps);
         }
+        true
+    }
+    /// Deliver `anvil_update` for a client anvil menu whenever `AnvilMenu.createResult` ran
+    /// with a left input (matching NeoForge `CommonHooks.onAnvilUpdate` on the client side).
+    pub(in crate::game) fn deliver_client_anvil_update(
+        &mut self,
+        menu: &mut sunrise_client::menu::Menu,
+    ) -> bool {
+        if !menu.anvil_created() || self.remote.is_none() {
+            return false;
+        }
+        if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
+            return false;
+        }
+        let Some(pos) = self.station.as_ref().map(|s| s.pos) else {
+            return false;
+        };
+        let Some((inputs, mut result)) = menu.anvil_update() else {
+            return false;
+        };
+        let (player, entity_id) = (self.native_acting_id(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, pos, inputs, &mut result);
+        menu.anvil_updated(result);
+        true
+    }
+    /// Run one client anvil click with live `anvil_update` dispatch at every `createResult`.
+    pub(in crate::game) fn run_client_anvil_click(
+        &mut self,
+        menu: &mut sunrise_client::menu::Menu,
+        slot: i32,
+        button: i32,
+        input: sunrise_client::menu::Input,
+    ) -> Result<(), &'static str> {
+        use sunrise_client::menu::Env;
+        menu.track_results(true);
+        let mut rest = {
+            let env = Env {
+                enchantments: self.item_enchantments(),
+                ..self.menu_env()
+            };
+            menu.start_click(&env, slot, button, input)
+        }?;
+        loop {
+            self.deliver_client_anvil_update(menu);
+            if menu.anvil_craft.take().is_some() {
+                menu.record_anvil_charge();
+                menu.anvil_take_material(&Env {
+                    enchantments: self.item_enchantments(),
+                    ..self.menu_env()
+                });
+                self.deliver_client_anvil_update(menu);
+                menu.anvil_take_input(&Env {
+                    enchantments: self.item_enchantments(),
+                    ..self.menu_env()
+                });
+                self.deliver_client_anvil_update(menu);
+            }
+            let Some(step) = rest else {
+                break;
+            };
+            let env = Env {
+                enchantments: self.item_enchantments(),
+                ..self.menu_env()
+            };
+            rest = menu.resume_click(&env, step);
+        }
+        menu.track_results(false);
+        Ok(())
+    }
+    /// Like `menu_session_with_game` for a server's open anvil menu, releasing `Env` between
+    /// steps so `run` can dispatch live `anvil_update` hooks at every `AnvilMenu.createResult`
+    /// without re-running `station_changed` once at the end.
+    pub(in crate::game) fn anvil_menu_session(
+        &mut self,
+        run: impl FnOnce(
+            &mut Self,
+            &mut sunrise_client::menu::Menu,
+            &dyn Fn(usize) -> Option<usize>,
+        ) -> Option<bool>,
+    ) -> bool {
+        use sunrise_client::menu::{Env, Kind, Menu};
+        if !self
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == stations::Kind::Anvil)
+            || self.remote.is_none()
+        {
+            return false;
+        }
+        let mut game_of: Vec<Option<usize>> = vec![
+            Some(stations::INPUT),
+            Some(stations::INPUT + 1),
+            Some(stations::RESULT),
+        ];
+        game_of.extend((9..36).chain(0..9).map(Some));
+        let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
+        let mut menu = Menu::new(Kind::Anvil);
+        menu.set_registry_id(self.remote_menu_type());
+        let before: Vec<Option<ItemStack>> = game_of
+            .iter()
+            .map(|g| g.and_then(|g| self.slot_mut(g).clone()))
+            .collect();
+        menu.creative = self.creative;
+        menu.on_client = true;
+        menu.selected = self.selected;
+        menu.levels = self.experience.level;
+        menu.anvil.name = self.station.as_ref().and_then(|s| s.anvil_sent.clone());
+        {
+            let env = Env {
+                enchantments: self.item_enchantments(),
+                ..self.menu_env()
+            };
+            for (i, stack) in before.iter().enumerate() {
+                menu.set_slot(&env, i, stack.clone());
+            }
+            for (i, stack) in self.armor.iter().enumerate() {
+                menu.set_player_item(39 - i, stack.clone());
+            }
+            menu.set_player_item(40, self.offhand.clone());
+            menu.settle(&env);
+        }
+        if let Some(s) = self.station.as_ref() {
+            menu.data[0] = s.anvil.cost;
+            menu.anvil.repair_count = s.anvil.repair_item_count_cost;
+            menu.anvil.only_renaming = s.anvil.only_renaming;
+        }
+        menu.carried = self.carried.clone();
+        menu.drops.clear();
+        // The AnvilScreen listens while the click is predicted (its slotChanged).
+        menu.anvil.seen_input = before[0].clone();
+        menu.anvil.screen = true;
+        // Clear any createResult flag raised while populating the scratch menu.
+        let _ = menu.anvil_created();
+        match run(self, &mut menu, &to_menu) {
+            None => return false,
+            Some(false) => return true,
+            Some(true) => {}
+        }
+        let _ = self.deliver_client_anvil_update(&mut menu);
+        let after: Vec<Option<ItemStack>> = (0..menu.slot_count())
+            .map(|i| menu.slot(i).cloned())
+            .collect();
+        let carried = menu.carried.take();
+        for sound in std::mem::take(&mut menu.player_sounds) {
+            self.player_menu_sound(sound);
+        }
+        for (_, stack, _) in std::mem::take(&mut menu.item_crafted) {
+            self.tutorial_get_item(Some(&stack));
+        }
+        for (i, stack) in after.into_iter().enumerate() {
+            if let Some(g) = game_of[i] {
+                *self.slot_mut(g) = stack;
+            }
+        }
+        self.carried = carried;
+        self.offhand = menu.player_item(40).cloned();
+        // The names AnvilScreen.onNameChanged sent while the click ran go out before it.
+        for name in std::mem::take(&mut menu.anvil.renamed) {
+            if let Some(s) = self.station.as_mut() {
+                s.anvil_sent = Some(name.clone());
+            }
+            self.send(sunrise_protocol::packets::play::Serverbound::RenameItem(
+                sunrise_protocol::packets::play::RenameItem { name },
+            ));
+        }
+        self.anvil_session_end(&menu);
+        self.apply_equipment();
         true
     }
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the

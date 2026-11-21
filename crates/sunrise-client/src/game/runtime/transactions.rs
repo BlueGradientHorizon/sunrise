@@ -75,9 +75,6 @@ pub(super) struct OpenTransactions {
     /// The same count for a player's own state only (inventory, cursor, menu storage): what a
     /// decision that must stay open to other writes (a mod's move into another block) reads.
     player_writes: u64,
-    /// Tentative block writes do not advance the world's published revision. This epoch does
-    /// advance on those writes and never rolls back, even when the final state is unchanged.
-    block_writes: u64,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
     committing: Vec<entities::Committing>,
@@ -161,9 +158,6 @@ impl OpenTransactions {
     /// The journaled-write epoch of players' own state.
     pub(in crate::game) fn player_writes(&self) -> u64 {
         self.player_writes
-    }
-    pub(super) fn block_writes(&self) -> u64 {
-        self.block_writes
     }
 }
 
@@ -427,6 +421,7 @@ enum KeptEquipment {
 struct KeptMenus {
     craft_grid: [Option<ItemStack>; 4],
     native_menu: Vec<Option<ItemStack>>,
+    mod_craft: Option<(i32, Option<sunrise_client::lan::menu::ModCraft>)>,
 }
 
 /// What a write tells the world, at the root commit.
@@ -720,6 +715,14 @@ impl Game<'_> {
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
+    /// Abort any storage transactions left open above `depth` (for example when a
+    /// listener panics before closing a seal it opened via `Host::transaction_open`).
+    pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
+        while self.transactions.len() > depth {
+            self.close_storage_transaction(false);
+        }
+    }
+
     fn close_storage_transaction(&mut self, commit: bool) {
         let Some(level) = self.transactions.pop() else {
             return;
@@ -1312,6 +1315,11 @@ impl Game<'_> {
         let kept = KeptMenus {
             craft_grid: g.craft_grid.clone(),
             native_menu: g.native_menu.clone(),
+            mod_craft: g
+                .menu
+                .as_ref()
+                .filter(|menu| menu.mod_type.is_some_and(|t| t.crafting.is_some()))
+                .map(|menu| (menu.window, menu.craft.clone())),
         };
         if let Some(level) = self.transactions.last_mut() {
             level.menus.insert(conn, kept);
@@ -1402,11 +1410,7 @@ impl Game<'_> {
                 replay_removal: false,
             });
         level.after.push(After::Block(key));
-        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
-            return false;
-        }
-        self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
-        true
+        self.world.set_stored(pos[0], pos[1], pos[2], state)
     }
     /// Hide a replaced block entity from staged reads, without dropping its
     /// contents until the real write. Fluid pickup/pour instead rolls its own
@@ -1968,6 +1972,11 @@ impl Game<'_> {
                 if let Some(kept) = level.menus.get(&g.conn).filter(|_| g.placed) {
                     g.craft_grid.clone_from(&kept.craft_grid);
                     g.native_menu.clone_from(&kept.native_menu);
+                    if let Some((window, craft)) = &kept.mod_craft
+                        && let Some(open) = g.menu.as_mut().filter(|open| open.window == *window)
+                    {
+                        open.craft.clone_from(craft);
+                    }
                 }
             });
         }

@@ -193,40 +193,29 @@ impl Game<'_> {
                     return Err(InvalidInput);
                 };
                 let (w, h) = (*width as usize, *height as usize);
-                if !(1..=3).contains(&w) || !(1..=3).contains(&h) || slots.len() != w * h {
+                if w.checked_mul(h) != Some(slots.len()) {
                     return Err(InvalidInput);
                 }
-                let size = w.max(h);
-                let at = |i: usize| (i / w) * size + i % w;
-                let mut grid: [Option<ItemStack>; 9] = Default::default();
-                for (i, stack) in slots.iter().enumerate() {
+                let mut grid = Vec::with_capacity(slots.len());
+                for stack in slots {
                     #[allow(clippy::needless_borrows_for_generic_args)] // TODO(#2273)
                     {
-                        grid[at(i)] = stack.as_ref().map(&read_stack).transpose()?;
+                        grid.push(stack.as_ref().map(&read_stack).transpose()?);
                     }
                 }
-                let grid = &grid[..size * size];
                 let scale = |id: i32| self.maps.data.get(&id).map(|m| m.scale);
                 let recipes = self.recipes();
                 let matched =
-                    recipes.find_with_dimensions(&self.loop_context, grid, size, w, h, &scale);
+                    recipes.find_with_dimensions(&self.loop_context, &grid, w, w, h, &scale);
                 let Some((id, output)) = matched.filter(|(_, output)| output.count > 0) else {
                     return Ok(None);
                 };
-                let mut placed = if matches!(
-                    recipes.recipe(id),
-                    Some(sunrise_client::crafting::Recipe::Mod(_))
-                ) {
-                    recipes.mod_remainders_rect(&self.loop_context, id, grid, size, w, h, &|s| {
+                let remainders = recipes
+                    .remainders_rect(&self.loop_context, id, &grid, w, w, h, &|s| {
                         self.crafting_remainder(s)
                     })
-                } else {
-                    recipes.remainders(&self.loop_context, id, grid, size, &|s| {
-                        self.crafting_remainder(s)
-                    })
-                };
-                let remainders = (0..w * h)
-                    .map(|i| placed[at(i)].take().try_into_api().map_err(|_| InvalidItem))
+                    .into_iter()
+                    .map(|stack| stack.try_into_api().map_err(|_| InvalidItem))
                     .collect::<Result<Vec<_>, _>>()?;
                 make(id, &output, remainders, 0.0, 0)
             }
@@ -967,9 +956,8 @@ mod tests {
 
             assert!(lookup(1, 1, &[stack("dirt")]).unwrap().is_none());
             assert!(lookup(1, 1, &[None]).unwrap().is_none());
-            assert!(
-                lookup(4, 1, &[None, None, None, None]) == Err(RecipeLookupError::InvalidInput)
-            );
+            assert!(lookup(4, 1, &[None, None, None, None]).unwrap().is_none());
+            assert!(lookup(0, 0, &[]).unwrap().is_none());
             assert!(lookup(1, 2, &planks[..1]) == Err(RecipeLookupError::InvalidInput));
         });
     }

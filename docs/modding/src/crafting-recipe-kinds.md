@@ -21,21 +21,21 @@ Register crafting code in `Hooks::register`, which receives `RegistrationContext
 r.register_crafting_recipe_serializer("my_mod:diagonal", Diagonal);
 ```
 
-Implement `CraftingRecipeKind`. Its mod-owned `Value` must supply
-`Some(CraftingRecipeCodec::wire())` from `codec` and implement `Wire`; a missing
-codec refuses startup. `decode` reads the recipe JSON
-object with `type` removed. `write` writes an equivalent JSON object for Sunrise
-client synchronization. Known serializers that refuse malformed data skip that
-recipe alone, with the file and serializer in the diagnostic.
+Implement `CraftingRecipeKind` with a mod-owned `Value`. `decode` reads the
+recipe JSON object with `type` removed. `write` produces an equivalent JSON
+object for Sunrise client synchronization; the game adds the serializer's `type`.
+The loader retains the decoded `Value` with its owning serializer for that
+resource generation. Callbacks borrow that value directly; it does not need a
+local codec or a `Wire` implementation. A known serializer that refuses malformed
+data skips that recipe alone, with the file and serializer in the diagnostic.
 
 `matches` and `assemble` take `&dyn LoopContext` before the decoded value and an
 owned `CraftingGrid`: width, height and row-major optional stacks, including empty
 cells. `remaining_items` instead takes `&dyn CraftingRemainders`, which extends
 `LoopContext` with `default_remainder(cell: u32) -> Option<ItemStack>`.
-Callbacks must be pure and deterministic. The engine retains the owning
-handler with its value. Counts must be 1 through 99; encoded values are limited
-to 1 MiB. Invalid result keys/counts refuse the result. Invalid remainder keys,
-counts or vector lengths use default item remainders.
+Callbacks must be pure and deterministic. Counts must be 1 through 99.
+Invalid result keys or counts refuse the result. Invalid remainder keys, counts
+or vector lengths use default item remainders.
 
 ## Frozen tag reads and default remainders
 
@@ -95,8 +95,11 @@ r.register_raw_recipe_serializer("my_mod:grinder_json", "my_mod:grinding");
 the crafting grid or a built-in station. The machine owns its matching and menu.
 For custom decode/write logic, implement `RecipeSerializer` and use
 `register_read_only_recipe_serializer(serializer_id, recipe_type_id, serializer)`.
-Its value follows the same explicit Wire codec rule. Type declarations may be
-forward references; startup validates them after all mods register.
+Like a crafting kind, it supplies `Value`, `decode` and `write` for JSON; the
+loader keeps its typed value with the owning serializer for the generation.
+The mod still reads the recipe's source JSON through `recipes_of_type`, not the
+serializer's native `Value`. Type declarations may be forward references;
+startup validates them after all mods register.
 
 Every engine serializer is registered too, including serializers in the
 `minecraft:` namespace. An **unregistered serializer refuses the entire recipe
@@ -108,9 +111,13 @@ skips a file quietly **before** serializer lookup. Unknown condition types retai
 the existing fatal load behavior. Malformed recipes of a known serializer retain
 the existing skip-one-file behavior; changing that is a separate task.
 
-Reload re-reads values and preserves startup registration. Joining Sunrise clients
-receive serializer-written content; vanilla clients receive no custom kind.
-`datapack_sync.recipe_types` selects actual recipe type IDs; the engine resolves
-each file's serializer to its reported type for filtering and replacement, including
-all serializers producing the same type. An empty registered crafting serializer still participates in sync
-so removing its last recipe clears stale client data.
+Reload decodes a fresh generation and preserves startup registration. Joining
+Sunrise clients receive serializer-written JSON under the existing recipe-content
+packet limits and decode it into their own generation. Vanilla clients receive
+no custom kind. `datapack_sync.recipe_types` selects actual recipe type IDs; the
+engine resolves each file's serializer to its recipe type for filtering and
+replacement, including all serializers producing the same type. An empty
+registered crafting serializer still participates in sync so removing its last
+recipe clears stale client data. Recipe placement and recipe-book sync keep
+their existing [transport](concepts/wire-types.md), including vanilla's display
+packets.
