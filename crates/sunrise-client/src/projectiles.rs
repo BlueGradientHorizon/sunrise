@@ -2608,28 +2608,173 @@ mod tests {
             assert!(kept);
         }
     }
-    /// `AbstractHurtingProjectile.tick` turns before `hitTargetOrDeflectSelf`, so a fireball that hits still turns.
+    /// Vanilla 26.3: `AbstractHurtingProjectile.tick` turns towards its movement before `hitTargetOrDeflectSelf`.
     #[test]
     fn a_fireball_turns_on_the_tick_it_hits() {
-        let mut p = Projectile::new(
-            ProjectileKind::SmallFireball,
-            Vec3::new(0.5, 100.0, 0.0),
-            None,
-        );
-        p.velocity = Vec3::new(0.0, 0.0, 0.5);
-        let target = Aabb::new(Vec3::new(0.0, 99.5, 0.25), Vec3::new(1.0, 100.5, 1.25));
-        let (keep, hit) = p.tick(&Empty(vec![(Who::Mob(7), target)]));
-        assert!(!keep);
-        let at = Vec3::new(0.5, 100.0, 0.25);
-        assert_eq!(
-            hit,
-            Hit::Entity {
-                who: Who::Mob(7),
-                at
+        use sunrise_core::{nbt::Tag, random::LegacyRandom};
+        const WITNESS: &str = include_str!("../../../tools/fixtures/26.3/fireball_hit_turn.tsv");
+        const UNIQUIFIER_STEP: i64 = 1_181_783_497_276_652_981;
+        let parse_f64 = |s: &str| s.parse::<f64>().expect("witness f64");
+        let parse_f32 = |s: &str| s.parse::<f32>().expect("witness f32");
+        let double_bits = |tag: &Tag, key: &str| -> [u64; 3] {
+            let Some(Tag::List(values)) = tag.get(key) else {
+                panic!("missing {key} list in saved fireball tag");
+            };
+            let &[Tag::Double(x), Tag::Double(y), Tag::Double(z)] = values.as_slice() else {
+                panic!("unexpected {key} elements in saved fireball tag");
+            };
+            [x, y, z]
+        };
+        let float_bits = |tag: &Tag, key: &str| -> [u32; 2] {
+            let Some(Tag::List(values)) = tag.get(key) else {
+                panic!("missing {key} list in saved fireball tag");
+            };
+            let &[Tag::Float(yaw), Tag::Float(pitch)] = values.as_slice() else {
+                panic!("unexpected {key} elements in saved fireball tag");
+            };
+            [yaw, pitch]
+        };
+        let mut rows = WITNESS
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'));
+        assert!(rows.next().is_some(), "missing 26.3 witness header");
+        let mut checked = 0;
+        for line in rows {
+            let cols: Vec<&str> = line.split('\t').collect();
+            assert_eq!(cols.len(), 27, "unexpected 26.3 witness row: {line}");
+            let (case, kind_id, mode, target_kind) = (cols[0], cols[1], cols[2], cols[3]);
+            let kind = match kind_id {
+                "dragon_fireball" => ProjectileKind::DragonFireball,
+                "small_fireball" => ProjectileKind::SmallFireball,
+                "fireball" => ProjectileKind::LargeFireball { power: 1 },
+                "wither_skull" => ProjectileKind::WitherSkull { dangerous: false },
+                other => panic!("unexpected projectile kind in 26.3 witness: {other}"),
+            };
+            let (width, height) = match target_kind {
+                "pig" => (0.9_f32, 0.9_f32),
+                "breeze" => (0.6_f32, 1.77_f32),
+                other => panic!("unexpected target kind in 26.3 witness: {other}"),
+            };
+            let half = f64::from(width) / 2.0;
+            let (tx, ty, tz) = (parse_f64(cols[4]), parse_f64(cols[5]), parse_f64(cols[6]));
+            let target_box = Aabb::new(
+                Vec3::new(tx - half, ty, tz - half),
+                Vec3::new(tx + half, ty + f64::from(height), tz + half),
+            );
+            let start = Vec3::new(parse_f64(cols[7]), parse_f64(cols[8]), parse_f64(cols[9]));
+            let owner = (mode == "owner").then_some(Who::Mob(7));
+            let mut p = Projectile::new(kind, start, owner);
+            p.velocity = Vec3::new(
+                parse_f64(cols[10]),
+                parse_f64(cols[11]),
+                parse_f64(cols[12]),
+            );
+            p.yaw = parse_f32(cols[13]);
+            p.pitch = parse_f32(cols[14]);
+            p.acceleration = parse_f64(cols[15]);
+            p.left_owner = mode == "owner";
+            let uuid = if cols[16] == "-" {
+                [0_i32; 4]
+            } else {
+                let uniquifier: i64 = cols[16].parse().expect("witness uniquifier");
+                let mut random = LegacyRandom::new(uniquifier.wrapping_mul(UNIQUIFIER_STEP));
+                let uuid = crate::save::insecure_uuid(&mut random);
+                let expected_uuid: Vec<i32> = cols[26]
+                    .split(',')
+                    .map(|part| part.parse::<i32>().expect("witness uuid int"))
+                    .collect();
+                assert_eq!(uuid.as_slice(), expected_uuid.as_slice(), "{case} uuid");
+                p = p.with_entity_random(random);
+                uuid
+            };
+            let (keep, hit) = p.tick(&Empty(vec![(Who::Mob(7), target_box)]));
+            let expected_pos = [
+                parse_f64(cols[17]).to_bits(),
+                parse_f64(cols[18]).to_bits(),
+                parse_f64(cols[19]).to_bits(),
+            ];
+            let expected_vel = [
+                parse_f64(cols[20]).to_bits(),
+                parse_f64(cols[21]).to_bits(),
+                parse_f64(cols[22]).to_bits(),
+            ];
+            let expected_rot = [parse_f32(cols[23]).to_bits(), parse_f32(cols[24]).to_bits()];
+            let expected_accel = parse_f64(cols[25]).to_bits();
+            match mode {
+                "owner" => {
+                    assert!(keep, "{case} should stay alive");
+                    assert_eq!(hit, Hit::None, "{case} hit");
+                }
+                "breeze" => {
+                    assert!(!keep, "{case} raw tick stops on entity hit");
+                    let Hit::Entity { who, at } = hit else {
+                        panic!("{case}: expected entity hit, got {hit:?}");
+                    };
+                    assert_eq!(who, Who::Mob(7), "{case} hit target");
+                    assert_eq!(
+                        [at.x.to_bits(), at.y.to_bits(), at.z.to_bits()],
+                        expected_pos,
+                        "{case} hit location"
+                    );
+                    assert!(
+                        p.deflect(
+                            Turn::Reverse,
+                            [1.0; 3],
+                            (p.owner, p.owner_uuid, p.guest),
+                            false
+                        ),
+                        "{case} breeze deflect"
+                    );
+                }
+                other => panic!("unexpected mode in 26.3 witness: {other}"),
             }
+            assert_eq!(
+                [
+                    p.position.x.to_bits(),
+                    p.position.y.to_bits(),
+                    p.position.z.to_bits(),
+                ],
+                expected_pos,
+                "{case} pos"
+            );
+            assert_eq!(
+                [p.yaw.to_bits(), p.pitch.to_bits()],
+                expected_rot,
+                "{case} rot"
+            );
+            assert_eq!(p.acceleration.to_bits(), expected_accel, "{case} accel");
+            let saved = crate::entity_nbt::fireball_to_nbt(
+                &p,
+                uuid,
+                None,
+                None,
+                &crate::items::Items::default(),
+            )
+            .expect("fireball_to_nbt");
+            assert_eq!(double_bits(&saved, "Pos"), expected_pos, "{case} saved Pos");
+            assert_eq!(
+                double_bits(&saved, "Motion"),
+                expected_vel,
+                "{case} saved Motion"
+            );
+            assert_eq!(
+                float_bits(&saved, "Rotation"),
+                expected_rot,
+                "{case} saved Rotation"
+            );
+            let Some(&Tag::Double(saved_accel)) = saved.get("acceleration_power") else {
+                panic!("{case}: missing acceleration_power in saved fireball tag");
+            };
+            assert_eq!(
+                saved_accel, expected_accel,
+                "{case} saved acceleration_power"
+            );
+            checked += 1;
+        }
+        assert_eq!(
+            checked, 5,
+            "all 26.3 fireball hit-tick witness rows checked"
         );
-        // Target yaw 180; yRotO 0 moves to 360, then 360 + 0.2 * (180 - 360).
-        assert_eq!((p.position, p.yaw), (at, 324.0));
     }
     #[test]
     fn a_tick_through_an_entity_does_not_hit_it() {
