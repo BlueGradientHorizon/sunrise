@@ -458,7 +458,12 @@ mod tests {
             }
             true
         }
-        fn set_block(&mut self, _: [i32; 3], _: BlockState) -> bool {
+        fn set_block(&mut self, pos: [i32; 3], state: BlockState) -> bool {
+            if state.ordinal() == u16::MAX {
+                self.log.push("set_block:refused".to_owned());
+                return false;
+            }
+            self.log.push(format!("set_block:ok:{}", pos[0]));
             true
         }
         fn destroy_block(&mut self, _: [i32; 3], _: bool) -> bool {
@@ -470,140 +475,195 @@ mod tests {
     }
 
     /// `StepBasedCollector` flushes each step once, in `InsideBlockEffectType` order,
-    /// with `run_before` callbacks before their effect and `run_after` callbacks after it,
-    /// and a type queued twice in one step still applies once.
+    /// with `run_before` callbacks before their effect and `run_after` callbacks after it;
+    /// duplicate `apply` calls within a step deduplicate, `run_before`/`run_after` still
+    /// run when `apply` was not called for that effect slot, and steps flush across
+    /// `advance_step` boundaries in walk order.
     #[test]
     fn steps_flush_in_vanilla_order() {
         let mut effects = InsideEffects::default();
         effects.advance_step(0);
+        // Queue out of EFFECT_ORDER to prove flush_step orders by EFFECT_ORDER.
+        effects.run_after(InsideEffect::FireIgnite, |view| {
+            view.hurt("minecraft:in_fire", 1.0);
+        });
+        effects.apply(InsideEffect::FireIgnite);
+        effects.run_before(InsideEffect::FireIgnite, |view| {
+            view.push([10.0, 0.0, 0.0]);
+        });
+        // ClearFreeze is never applied in step 0, yet both run_before and run_after still run.
+        effects.run_after(InsideEffect::ClearFreeze, |view| {
+            view.set_remaining_fire_ticks(20);
+        });
+        effects.run_before(InsideEffect::ClearFreeze, |view| {
+            view.reset_fall_distance();
+        });
+        // Duplicate Freeze in step 0 deduplicates to one built-in Freeze between before and after.
+        effects.apply(InsideEffect::Freeze);
         effects.apply(InsideEffect::Freeze);
         effects.run_after(InsideEffect::Freeze, |view| {
             view.make_stuck_in_block([0.25, 0.05, 0.25]);
         });
-        effects.apply(InsideEffect::FireIgnite);
-        effects.run_after(InsideEffect::FireIgnite, |view| {
-            view.hurt("minecraft:in_fire", 1.0);
+        effects.run_before(InsideEffect::Freeze, |view| {
+            view.push([1.0, 0.0, 0.0]);
         });
+
         effects.advance_step(2);
         effects.apply(InsideEffect::Extinguish);
         effects.apply(InsideEffect::Extinguish);
+        // LavaIgnite is not applied in step 2, yet its run_after still runs before Extinguish.
+        effects.run_after(InsideEffect::LavaIgnite, |view| {
+            view.push([20.0, 0.0, 0.0]);
+        });
+        // Same effect type in a later step runs again in that step.
+        effects.apply(InsideEffect::Freeze);
 
         let mut access = RecordingAccess::new();
         effects.apply_and_clear(&mut access);
         assert_eq!(
             access.log,
             vec![
+                "push:1",
                 "builtin:Freeze",
                 "stuck",
+                "reset_fall",
+                "fire:20",
+                "push:10",
                 "builtin:FireIgnite",
                 "hurt:minecraft:in_fire:1",
+                "builtin:Freeze",
+                "push:20",
                 "builtin:Extinguish",
             ]
         );
         assert!(effects.is_empty(), "applyAndClear empties the collector");
     }
 
-    /// A `run_before` callback runs even when its effect was not queued that step, as
-    /// vanilla's before-callbacks do.
+    /// Once a callback makes `access.is_alive()` become `false`, all subsequent callbacks
+    /// and effects in the same step and in later steps stop immediately.
     #[test]
-    fn a_before_callback_runs_without_its_effect() {
-        let mut effects = InsideEffects::default();
-        effects.advance_step(3);
-        effects.run_before(InsideEffect::LavaIgnite, |view| {
-            view.reset_fall_distance();
-        });
-        let mut access = RecordingAccess::new();
-        effects.apply_and_clear(&mut access);
-        assert_eq!(access.log, vec!["reset_fall"]);
-    }
-
-    /// Two steps queue the same type twice: once each, in step order.
-    #[test]
-    fn the_same_effect_can_queue_in_two_steps() {
-        let mut effects = InsideEffects::default();
-        effects.advance_step(0);
-        effects.apply(InsideEffect::ClearFreeze);
-        effects.advance_step(1);
-        effects.apply(InsideEffect::ClearFreeze);
-        let mut access = RecordingAccess::new();
-        effects.apply_and_clear(&mut access);
-        assert_eq!(
-            access.log,
-            vec!["builtin:ClearFreeze", "builtin:ClearFreeze"]
-        );
-    }
-
-    /// Once an action kills the swept entity, later queued effects and callbacks stop.
-    #[test]
-    fn apply_and_clear_stops_when_entity_dies() {
+    fn death_stops_remaining_callbacks_and_effects() {
         let mut effects = InsideEffects::default();
         effects.advance_step(0);
         effects.run_before(InsideEffect::Freeze, |view| {
+            view.push([1.0, 0.0, 0.0]);
+        });
+        effects.run_before(InsideEffect::Freeze, |view| {
             view.hurt("minecraft:generic", 100.0);
+        });
+        effects.run_before(InsideEffect::Freeze, |view| {
+            view.push([2.0, 0.0, 0.0]);
         });
         effects.apply(InsideEffect::Freeze);
         effects.run_after(InsideEffect::Freeze, |view| {
-            view.push([1.0, 0.0, 0.0]);
+            view.push([3.0, 0.0, 0.0]);
         });
+        effects.apply(InsideEffect::FireIgnite);
+
+        effects.advance_step(1);
+        effects.run_before(InsideEffect::Extinguish, |view| {
+            view.push([4.0, 0.0, 0.0]);
+        });
+        effects.apply(InsideEffect::Extinguish);
+        effects.run_after(InsideEffect::Extinguish, |view| {
+            view.push([5.0, 0.0, 0.0]);
+        });
+
         let mut access = RecordingAccess::new();
         effects.apply_and_clear(&mut access);
-        assert_eq!(access.log, vec!["hurt:minecraft:generic:100"]);
+        assert_eq!(access.log, vec!["push:1", "hurt:minecraft:generic:100"]);
+        assert!(effects.is_empty());
     }
 
-    /// A panicking callback poisons only its owner for `entity_inside`, preserves prior
-    /// writes, and lets other mods' queued callbacks and built-in effects continue.
+    /// A panicking callback disables only its owning mod for `entity_inside`, keeps earlier
+    /// writes, lets other mods' callbacks and built-in effects run, queues a panic notice
+    /// naming the panicking mod, and non-panic refusals (`set_block` returning `false`)
+    /// report `false` every time without latching or disabling subsequent calls.
     #[test]
-    fn a_panicking_callback_poisons_only_its_owner_and_preserves_prior_writes() {
+    fn panicking_callback_disables_only_owning_mod_and_keeps_prior_writes() {
         struct Quiet;
         #[mod_api::__subscriptions]
         impl crate::Hooks for Quiet {}
         crate::testing::with_dispatch(
             vec![
-                crate::ModEntry::new("bad-cb", Box::new(Quiet)),
-                crate::ModEntry::new("good-cb", Box::new(Quiet)),
+                crate::ModEntry::new("mod-a", Box::new(Quiet)),
+                crate::ModEntry::new("mod-b", Box::new(Quiet)),
             ]
             .into(),
             || {
-                let _ = crate::runtime::take_callback_panics();
+                let _ = mod_api::__private::take_callback_panics();
+                let valid = crate::__private::block_state_from_ordinal(crate::BlockKey(1), 0);
+                let invalid =
+                    crate::__private::block_state_from_ordinal(crate::BlockKey(1), u16::MAX);
+
                 let mut effects = InsideEffects::default();
                 effects.advance_step(0);
                 {
-                    let _g = crate::runtime::mark_mod("bad-cb", "entity_inside");
+                    let _g = crate::runtime::mark_mod("mod-a", "entity_inside");
                     effects.run_before(InsideEffect::Freeze, |view| {
                         view.push([1.0, 0.0, 0.0]);
-                        panic!("callback boom");
                     });
-                    effects.run_after(InsideEffect::Freeze, |view| {
+                    effects.run_after(InsideEffect::Freeze, |_view| {
+                        panic!("mod-a callback boom");
+                    });
+                    effects.run_after(InsideEffect::FireIgnite, |view| {
                         view.push([2.0, 0.0, 0.0]);
                     });
                 }
                 {
-                    let _g = crate::runtime::mark_mod("good-cb", "entity_inside");
-                    effects.run_after(InsideEffect::Freeze, |view| {
+                    let _g = crate::runtime::mark_mod("mod-b", "entity_inside");
+                    effects.run_after(InsideEffect::FireIgnite, move |view| {
+                        assert!(!view.set_block([0, 64, 0], invalid));
+                        assert!(
+                            !view.set_block([0, 64, 0], invalid),
+                            "non-panic refusal returns false every time without latching"
+                        );
+                        assert!(
+                            view.set_block([0, 64, 0], valid),
+                            "subsequent valid call succeeds after refusals"
+                        );
                         view.push([3.0, 0.0, 0.0]);
                     });
                 }
                 effects.apply(InsideEffect::Freeze);
+                effects.apply(InsideEffect::FireIgnite);
 
                 let mut access = RecordingAccess::new();
                 effects.apply_and_clear(&mut access);
                 assert_eq!(
                     access.log,
-                    vec!["push:1", "builtin:Freeze", "push:3"],
-                    "prior write stays, second bad-cb callback is skipped, built-in and good-cb continue"
+                    vec![
+                        "push:1",
+                        "builtin:Freeze",
+                        "builtin:FireIgnite",
+                        "set_block:refused",
+                        "set_block:refused",
+                        "set_block:ok:0",
+                        "push:3",
+                    ],
+                    "mod-a prior write stays, mod-a third callback is skipped, built-in and mod-b continue"
                 );
                 assert!(crate::runtime::poisoned(
                     crate::HookId::EntityInside,
-                    "bad-cb"
+                    "mod-a"
                 ));
                 assert!(!crate::runtime::poisoned(
                     crate::HookId::EntityInside,
-                    "good-cb"
+                    "mod-b"
                 ));
-                let notices = crate::runtime::take_callback_panics();
-                assert!(notices.iter().any(|n| {
-                    n.mod_id == "bad-cb" && n.hook == "entity_inside" && n.detail == "callback boom"
-                }));
+                let notices = mod_api::__private::take_callback_panics();
+                assert!(
+                    notices.iter().any(|n| {
+                        n.mod_id == "mod-a"
+                            && n.hook == "entity_inside"
+                            && n.detail == "mod-a callback boom"
+                    }),
+                    "panic notice naming mod-a was queued: {notices:?}"
+                );
+                assert!(
+                    !notices.iter().any(|n| n.mod_id == "mod-b"),
+                    "mod-b never panicked: {notices:?}"
+                );
             },
         );
     }

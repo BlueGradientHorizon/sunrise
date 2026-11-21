@@ -1046,4 +1046,424 @@ mod sweep_tests {
         shot.previous = sunrise_core::geometry::Vec3::new(from.0, from.1, from.2);
         shot
     }
+
+    /// Set up a single stone block at `(1, 100, 0)` and return an item sweeping strictly
+    /// inside that cell.
+    fn single_stone_item(game: &mut Game<'_>) -> sunrise_client::entities::ItemEntity {
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.chunks.insert(
+            (0, 0),
+            std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+        );
+        game.world.set(1, 100, 0, stone).unwrap();
+        let mut item = sunrise_client::entities::ItemEntity::new(
+            7,
+            sunrise_client::items::ItemStack::new("minecraft:stone", 1),
+            sunrise_core::geometry::Vec3::new(1.5, 100.0, 0.5),
+            sunrise_core::geometry::Vec3::ZERO,
+            0.0,
+        );
+        item.previous = sunrise_core::geometry::Vec3::new(1.2, 100.0, 0.5);
+        item
+    }
+
+    /// Callback level writes apply directly against the live level even after the touched
+    /// block's state has changed; an invalid `BlockState` returns `false` every time without
+    /// latching or rolling back sibling writes, and `destroy_block(..., true)` drops resources.
+    #[test]
+    #[ignore = "daily"]
+    fn callback_level_writes_apply_after_block_state_changes_and_do_not_rollback_siblings() {
+        use crate::game::api_values::TryIntoApi;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Copy)]
+        struct WriteStates {
+            dirt: mod_api::BlockState,
+            cobble: mod_api::BlockState,
+            planks: mod_api::BlockState,
+            invalid: mod_api::BlockState,
+        }
+        #[derive(Clone, Default)]
+        struct WriteResults {
+            dirt_set: Option<bool>,
+            read_after_dirt: Option<Option<mod_api::BlockState>>,
+            invalid_1: Option<bool>,
+            read_after_invalid_1: Option<Option<mod_api::BlockState>>,
+            cobble_set: Option<bool>,
+            neighbor_destroyed: Option<bool>,
+            invalid_2: Option<bool>,
+            planks_set: Option<bool>,
+        }
+        #[derive(Clone, Default)]
+        struct LevelWritePart {
+            states: Arc<Mutex<Option<WriteStates>>>,
+            results: Arc<Mutex<WriteResults>>,
+        }
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for LevelWritePart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let WriteStates {
+                    dirt,
+                    cobble,
+                    planks,
+                    invalid,
+                } = self.states.lock().unwrap().unwrap();
+                let pos = [event.pos.x, event.pos.y, event.pos.z];
+                let neighbor = [event.pos.x + 1, event.pos.y, event.pos.z];
+                let second = [event.pos.x + 2, event.pos.y, event.pos.z];
+
+                let before_results = self.results.clone();
+                event.run_before(mod_api::InsideEffect::Freeze, move |view| {
+                    let ok = view.set_block(pos, dirt);
+                    let seen = view.block_state(pos);
+                    let mut out = before_results.lock().unwrap();
+                    out.dirt_set = Some(ok);
+                    out.read_after_dirt = Some(seen);
+                });
+
+                let after_results = self.results.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    let invalid_1 = view.set_block(pos, invalid);
+                    let after_invalid_1 = view.block_state(pos);
+                    let cobble_set = view.set_block(pos, cobble);
+                    let neighbor_destroyed = view.destroy_block(neighbor, true);
+                    let invalid_2 = view.set_block(second, invalid);
+                    let planks_set = view.set_block(second, planks);
+                    let mut out = after_results.lock().unwrap();
+                    out.invalid_1 = Some(invalid_1);
+                    out.read_after_invalid_1 = Some(after_invalid_1);
+                    out.cobble_set = Some(cobble_set);
+                    out.neighbor_destroyed = Some(neighbor_destroyed);
+                    out.invalid_2 = Some(invalid_2);
+                    out.planks_set = Some(planks_set);
+                });
+            }
+        }
+        struct LevelWriteMod(LevelWritePart);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for LevelWriteMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let stone = r.block_key("minecraft:stone");
+                r.block_part(stone, self.0.clone());
+            }
+        }
+
+        let part = LevelWritePart::default();
+        let entry =
+            || mod_api::ModEntry::new("inside-level-writes", Box::new(LevelWriteMod(part.clone())));
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        let mods: mod_api::Mods = vec![entry()].into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                let (dirt, cobblestone, oak_planks, air) = (
+                    state("minecraft:dirt"),
+                    state("minecraft:cobblestone"),
+                    state("minecraft:oak_planks"),
+                    state("minecraft:air"),
+                );
+                let mut item = single_stone_item(game);
+                game.world.set(2, 100, 0, dirt).unwrap();
+
+                let dirt_api = dirt.try_into_api().unwrap();
+                let cobble_api = cobblestone.try_into_api().unwrap();
+                let planks_api = oak_planks.try_into_api().unwrap();
+                let invalid_api =
+                    mod_api::__private::block_state_from_ordinal(dirt_api.block(), u16::MAX);
+                *part.states.lock().unwrap() = Some(WriteStates {
+                    dirt: dirt_api,
+                    cobble: cobble_api,
+                    planks: planks_api,
+                    invalid: invalid_api,
+                });
+
+                let drops_before = game.dropped.len();
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.sweep_item_inside(&mut item);
+                    },
+                );
+
+                let out = part.results.lock().unwrap().clone();
+                assert_eq!(out.dirt_set, Some(true));
+                assert_eq!(out.read_after_dirt, Some(Some(dirt_api)));
+                assert_eq!(out.invalid_1, Some(false));
+                assert_eq!(
+                    out.read_after_invalid_1,
+                    Some(Some(dirt_api)),
+                    "invalid set_block must not roll back prior dirt write"
+                );
+                assert_eq!(
+                    out.cobble_set,
+                    Some(true),
+                    "set_block succeeds even after touched block changed from stone to dirt"
+                );
+                assert_eq!(out.neighbor_destroyed, Some(true));
+                assert_eq!(
+                    out.invalid_2,
+                    Some(false),
+                    "second invalid set_block still returns false without latching"
+                );
+                assert_eq!(
+                    out.planks_set,
+                    Some(true),
+                    "valid write right after second refusal still succeeds"
+                );
+                assert_eq!(game.world.block(1, 100, 0), cobblestone);
+                assert_eq!(game.world.block(2, 100, 0), air);
+                assert_eq!(game.world.block(3, 100, 0), oak_planks);
+                assert_eq!(
+                    game.dropped.len(),
+                    drops_before + 1,
+                    "destroy_block with drop = true drops neighbor resources"
+                );
+                let dropped = &game.dropped[drops_before];
+                assert_eq!(dropped.stack.item.as_ref(), "minecraft:dirt");
+                assert_eq!(dropped.position.x.floor() as i32, 2);
+            });
+        });
+    }
+
+    /// Calling `hurt_with_source` with a stale `EntityRef` applies damage without a `Taken`
+    /// refusal and leaves sibling `push` and `set_block` writes intact.
+    #[test]
+    #[ignore = "daily"]
+    fn callback_hurt_with_stale_source_does_not_refuse_or_rollback() {
+        use crate::game::api_values::TryIntoApi;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct StaleSourcePart {
+            dirt: Arc<Mutex<Option<mod_api::BlockState>>>,
+            outcomes: Arc<Mutex<Option<[bool; 3]>>>,
+        }
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for StaleSourcePart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                let dirt = self.dirt.lock().unwrap().unwrap();
+                let pos = [event.pos.x, event.pos.y, event.pos.z];
+                let stale_ref =
+                    mod_api::EntityRef::new(mod_api::WorldEpoch::new(u64::MAX), 999_999);
+                let outcomes = self.outcomes.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    let hurt_ok = view.hurt_with_source(
+                        "minecraft:in_fire",
+                        1.0,
+                        Some(stale_ref),
+                        Some(stale_ref),
+                    );
+                    let push_ok = view.push([0.5, 0.0, 0.0]);
+                    let block_ok = view.set_block(pos, dirt);
+                    *outcomes.lock().unwrap() = Some([hurt_ok, push_ok, block_ok]);
+                });
+            }
+        }
+        struct StaleSourceMod(StaleSourcePart);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for StaleSourceMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let stone = r.block_key("minecraft:stone");
+                r.block_part(stone, self.0.clone());
+            }
+        }
+
+        let part = StaleSourcePart::default();
+        let entry = || {
+            mod_api::ModEntry::new(
+                "inside-stale-source",
+                Box::new(StaleSourceMod(part.clone())),
+            )
+        };
+        crate::game::api_values::install_parts(&[entry()]).unwrap();
+        let mods: mod_api::Mods = vec![entry()].into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                game.options.dedicated = Some(Vec::new());
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let dirt = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:dirt")
+                    .unwrap();
+                let mut item = single_stone_item(game);
+                *part.dirt.lock().unwrap() = Some(dirt.try_into_api().unwrap());
+                let health_before = item.health;
+                let velocity_before = item.velocity.x;
+
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.sweep_item_inside(&mut item);
+                    },
+                );
+
+                assert_eq!(*part.outcomes.lock().unwrap(), Some([true, true, true]));
+                assert_eq!(item.health, health_before - 1);
+                assert!((item.velocity.x - velocity_before - 0.5).abs() < 1e-9);
+                assert_eq!(game.world.block(1, 100, 0), dirt);
+            });
+        });
+    }
+
+    /// A panicking `run_after` callback disables only its owning mod for `entity_inside`,
+    /// leaves other mods running on the first and subsequent sweeps, and queues an error
+    /// toast naming the panicking mod.
+    #[test]
+    #[ignore = "daily"]
+    fn panicking_mod_callback_disables_only_that_mod_and_queues_error_toast() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        #[derive(Clone, Default)]
+        struct PanickingPart {
+            part_calls: Arc<AtomicUsize>,
+            callback_runs: Arc<AtomicUsize>,
+        }
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for PanickingPart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                self.part_calls.fetch_add(1, Ordering::SeqCst);
+                let runs = self.callback_runs.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |_view| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    panic!("mod_panics run_after boom");
+                });
+            }
+        }
+        struct PanickingMod(PanickingPart);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PanickingMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let stone = r.block_key("minecraft:stone");
+                r.block_part(stone, self.0.clone());
+            }
+        }
+
+        #[derive(Clone, Default)]
+        struct HealthyPart {
+            part_calls: Arc<AtomicUsize>,
+            callback_runs: Arc<AtomicUsize>,
+        }
+        #[mod_api::sunrise_part]
+        impl mod_api::BlockPart for HealthyPart {
+            fn entity_inside(
+                &self,
+                _: &mut dyn mod_api::LevelRandomHost,
+                event: &mut mod_api::EntityInsideEvent<'_>,
+            ) {
+                self.part_calls.fetch_add(1, Ordering::SeqCst);
+                let runs = self.callback_runs.clone();
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    runs.fetch_add(1, Ordering::SeqCst);
+                    view.push([0.25, 0.0, 0.0]);
+                });
+            }
+        }
+        struct HealthyMod(HealthyPart);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for HealthyMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                let stone = r.block_key("minecraft:stone");
+                r.block_part(stone, self.0.clone());
+            }
+        }
+
+        let panics_part = PanickingPart::default();
+        let healthy_part = HealthyPart::default();
+        let make_entries = || {
+            vec![
+                mod_api::ModEntry::new("mod_panics", Box::new(PanickingMod(panics_part.clone()))),
+                mod_api::ModEntry::new("mod_healthy", Box::new(HealthyMod(healthy_part.clone()))),
+            ]
+        };
+        crate::game::api_values::install_parts(&make_entries()).unwrap();
+        let mods: mod_api::Mods = make_entries().into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = mod_api::__private::take_callback_panics();
+
+                let mut item1 = single_stone_item(game);
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.sweep_item_inside(&mut item1);
+                    },
+                );
+                assert_eq!(panics_part.part_calls.load(Ordering::SeqCst), 1);
+                assert_eq!(panics_part.callback_runs.load(Ordering::SeqCst), 1);
+                assert_eq!(healthy_part.part_calls.load(Ordering::SeqCst), 1);
+                assert_eq!(healthy_part.callback_runs.load(Ordering::SeqCst), 1);
+                assert!((item1.velocity.x - 0.25).abs() < 1e-9);
+
+                let mut item2 = single_stone_item(game);
+                sunrise_client::block_contact::in_level(
+                    sunrise_client::parallel::TickThread::mint(),
+                    Some("minecraft:overworld"),
+                    || {
+                        game.sweep_item_inside(&mut item2);
+                    },
+                );
+                assert_eq!(
+                    panics_part.part_calls.load(Ordering::SeqCst),
+                    1,
+                    "mod_panics must be skipped on the second sweep"
+                );
+                assert_eq!(panics_part.callback_runs.load(Ordering::SeqCst), 1);
+                assert_eq!(
+                    healthy_part.part_calls.load(Ordering::SeqCst),
+                    2,
+                    "mod_healthy still runs on the second sweep"
+                );
+                assert_eq!(healthy_part.callback_runs.load(Ordering::SeqCst), 2);
+                assert!((item2.velocity.x - 0.25).abs() < 1e-9);
+
+                // Client window presents system toasts for mod callback panics.
+                game.options.execution_role = ExecutionRole::Client;
+                game.add_mod_panic_toasts();
+                assert!(
+                    mod_api::__private::take_callback_panics().is_empty(),
+                    "add_mod_panic_toasts drained the callback panic queue"
+                );
+                assert!(
+                    game.server_packs
+                        .mod_panics
+                        .iter()
+                        .any(|toast| toast.title.plain().contains("mod_panics")),
+                    "expected a SystemToast naming mod_panics, got: {:?}",
+                    game.server_packs
+                        .mod_panics
+                        .iter()
+                        .map(|toast| toast.title.plain())
+                        .collect::<Vec<_>>()
+                );
+            });
+        });
+    }
 }
