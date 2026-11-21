@@ -643,7 +643,7 @@ impl Game<'_> {
     pub(super) fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         let owner = self.player_owner(Some(stack));
         let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), 0);
-        item_render::gui::draw(
+        item_render::gui::draw_with_frame(
             &state,
             &self.pack.item_renderer,
             &self.gui.atlas.sprites,
@@ -651,9 +651,7 @@ impl Game<'_> {
             batch,
             x,
             y,
-            self.glint_frame.millis / 1000.0,
-            self.glint_frame.speed,
-            self.glint_frame.alpha,
+            self.glint_frame,
         );
     }
     /// An item under `pose` (GUI pixels), cut by no slot and with a depth of its own: what
@@ -697,9 +695,9 @@ impl Game<'_> {
                 .contains_key("misc/enchanted_glint_item"),
         }
     }
-    /// The `ENTITY_GLINT_TEXTURING` inputs of this frame.
+    /// The `GLINT_TEXTURING` inputs of this frame (`WorldSink` picks `ENTITY_SCALE` per quad).
     pub(super) fn glint(&self) -> Option<item_render::Glint> {
-        self.glint_frame.glint(0.5)
+        self.glint_frame.glint(item_render::Glint::ITEM_SCALE)
     }
     /// Submit a resolved item under `pose` (camera-relative) at `light`
     /// (packed lightmap coordinates).
@@ -1572,34 +1570,44 @@ mod tests {
                     .as_array()
                     .unwrap();
 
+                let mut want_eid: Vec<[[u32; 2]; 4]> = eid_quads
+                    .iter()
+                    .map(|q| parse_quad(&q["glint_uv_t123456_bits"]))
+                    .collect();
                 let state_gui = game.resolve_item(&crystal, DisplayContext::Gui, None, 83245);
                 let mut world_out = Vec::new();
                 game.submit_item_world(&state_gui, eid_pose, 0xF0F0, &mut world_out);
                 assert_eq!(world_out.len(), eid_quads.len() * 4);
                 assert!(world_out.iter().all(|v| (v.layer & 0xFFFF) == 7));
-                for (q, want_quad) in eid_quads.iter().enumerate() {
-                    let want = parse_quad(&want_quad["glint_uv_t123456_bits"]);
-                    let got: [[u32; 2]; 4] =
-                        std::array::from_fn(|i| world_out[q * 4 + i].glint_uv.map(f32::to_bits));
-                    assert_eq!(
-                        got, want,
-                        "26.3 Game::submit_item_world end_crystal EID 83245 quad[{q}]: got={got:#x?} want={want:#x?}"
-                    );
-                }
+                let mut got_world: Vec<[[u32; 2]; 4]> = world_out
+                    .chunks_exact(4)
+                    .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
+                    .collect();
+                // Front/back faces match by index; extruded side faces differ in HashSet vs BTreeSet order.
+                assert_eq!(got_world[..2], want_eid[..2]);
+                got_world[2..].sort();
+                want_eid[2..].sort();
+                assert_eq!(
+                    got_world[2..],
+                    want_eid[2..],
+                    "26.3 Game::submit_item_world end_crystal EID 83245 side faces"
+                );
 
                 let state_ground = game.resolve_item(&crystal, DisplayContext::Ground, None, 83245);
                 let mut unlit_out = Vec::new();
                 game.submit_item_unlit(&state_ground, glam::Mat4::IDENTITY, 0xF0F0, &mut unlit_out);
                 assert_eq!(unlit_out.len(), eid_quads.len() * 4);
-                for (q, want_quad) in eid_quads.iter().enumerate() {
-                    let want = parse_quad(&want_quad["glint_uv_t123456_bits"]);
-                    let got: [[u32; 2]; 4] =
-                        std::array::from_fn(|i| unlit_out[q * 4 + i].glint_uv.map(f32::to_bits));
-                    assert_eq!(
-                        got, want,
-                        "26.3 Game::submit_item_unlit end_crystal ground quad[{q}]: got={got:#x?} want={want:#x?}"
-                    );
-                }
+                let mut got_unlit: Vec<[[u32; 2]; 4]> = unlit_out
+                    .chunks_exact(4)
+                    .map(|quad| std::array::from_fn(|i| quad[i].glint_uv.map(f32::to_bits)))
+                    .collect();
+                assert_eq!(got_unlit[..2], want_eid[..2]);
+                got_unlit[2..].sort();
+                assert_eq!(
+                    got_unlit[2..],
+                    want_eid[2..],
+                    "26.3 Game::submit_item_unlit end_crystal ground side faces"
+                );
 
                 // GUI draw_item_model must not lose millis precision via `/ 1000.0 * 1000.0`.
                 let mut batch = HudBatch::scratch([64, 64]);

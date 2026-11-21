@@ -189,6 +189,35 @@ pub fn draw(
     glint_speed: f32,
     glint_alpha: f32,
 ) {
+    draw_with_frame(
+        state,
+        renderer,
+        sprites,
+        host,
+        batch,
+        x,
+        y,
+        GlintFrame {
+            millis: time * 1000.0,
+            speed: glint_speed,
+            alpha: glint_alpha,
+            sprite: sprites.contains_key("misc/enchanted_glint_item"),
+        },
+    );
+}
+
+/// [`draw`] with the frame's exact [`GlintFrame`] so `millis` does not round-trip through seconds.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_with_frame(
+    state: &ItemRenderState,
+    renderer: &ItemRenderer,
+    sprites: &HashMap<String, Rect>,
+    host: &dyn SpecialHost,
+    batch: &mut HudBatch,
+    x: f32,
+    y: f32,
+    frame: GlintFrame,
+) {
     if state.is_empty() {
         return;
     }
@@ -206,19 +235,7 @@ pub fn draw(
         return;
     }
     let start = batch.vertices.len();
-    draw_now(
-        state,
-        renderer,
-        sprites,
-        host,
-        batch,
-        x,
-        y,
-        time,
-        glint_speed,
-        glint_alpha,
-        None,
-    );
+    draw_now(state, renderer, sprites, host, batch, x, y, frame, None);
     if let Some(key) = key
         && let Ok(mut drawn) = renderer.gui_drawn.lock()
     {
@@ -255,9 +272,7 @@ pub fn draw_scissored(
         batch,
         x,
         y,
-        0.0,
-        0.0,
-        0.0,
+        GlintFrame::default(),
         Some(scissor),
     );
 }
@@ -325,9 +340,7 @@ fn draw_now(
     batch: &mut HudBatch,
     x: f32,
     y: f32,
-    time: f32,
-    glint_speed: f32,
-    glint_alpha: f32,
+    frame: GlintFrame,
     scissor: Option<[f32; 4]>,
 ) {
     let pose = Mat4::from_translation(Vec3::new(x + 8.0, y + 8.0, 0.0))
@@ -358,21 +371,14 @@ fn draw_now(
         ],
         None => rect,
     };
-    let glint = sprites
-        .contains_key("misc/enchanted_glint_item")
-        .then_some(Glint {
-            speed: glint_speed,
-            alpha: glint_alpha,
-            millis: time * 1000.0,
-            scale: 8.0,
-        });
-    batch.glint_alpha = glint_alpha;
+    let glint = frame.glint(Glint::ITEM_SCALE);
+    batch.glint_alpha = frame.alpha;
     let cit = state.cit_glint.as_deref().zip(renderer.cit.as_ref());
     let cit = cit.map(|(glint, models)| CitDraw {
         glint,
         textures: &models.glint_textures,
         rules: &models.rules.rules,
-        millis: time * 1000.0,
+        millis: frame.millis,
     });
     draw_quads_with(&quads, lights, batch, rect, glint.as_ref(), cit);
 }
@@ -412,7 +418,7 @@ pub fn draw_posed(
         items_flat_lights()
     };
     batch.glint_alpha = frame.alpha;
-    let glint = frame.glint(8.0);
+    let glint = frame.glint(Glint::ITEM_SCALE);
     let start = batch.vertices.len();
     // The foil's faces follow the item's own, as `depth_glint_over` takes them.
     let mut foil = Vec::new();
@@ -444,13 +450,14 @@ pub fn draw_posed(
                 color,
             );
             if q.foil != Foil::None && glint.is_some() {
-                foil.push(corners);
+                foil.push((q.entity_glint, corners));
             }
         }
     }
     let glint_start = batch.vertices.len();
-    if let Some(glint) = &glint {
-        for corners in foil {
+    if let Some(glint) = glint {
+        for (entity_glint, corners) in foil {
+            let glint = glint.for_quad(entity_glint);
             batch.quad_3d_glint(
                 corners.map(|c| c.pos.to_array()),
                 corners.map(|c| c.uv),
@@ -509,7 +516,8 @@ fn draw_quads_with(
             }
             emit(batch, &fan, |_| color, None);
             if q.foil != Foil::None {
-                emit(batch, &fan, |_| color, glint);
+                let quad_glint = glint.map(|g| g.for_quad(q.entity_glint));
+                emit(batch, &fan, |_| color, quad_glint.as_ref());
             }
             if cit.is_some() {
                 fans.push(fan);
@@ -682,6 +690,7 @@ mod tests {
             normal: Vec3::Z,
             color,
             foil: Foil::None,
+            entity_glint: false,
             light_emission: 0,
             cull_back: false,
             translucent: false,

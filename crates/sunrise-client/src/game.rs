@@ -10028,6 +10028,7 @@ impl Game<'_> {
             (
                 self.settings.file.int("textureFiltering"),
                 self.settings.file.int("maxAnisotropyBit"),
+                self.settings.file.int("mipmapLevels"),
             ),
         )?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);

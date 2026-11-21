@@ -12,8 +12,28 @@ pub(super) fn load(
     padding: u32,
     maximum: u32,
 ) -> crate::Result<HashMap<String, Rect>> {
+    let (entries, names) = collect_entries(root, "minecraft:items");
+    finish_atlas("minecraft:items", &entries, &names, 0, padding, maximum)
+}
+
+/// `SpriteLoader.stitch` for any atlas (`items`, `blocks`, `shield_patterns`) with vanilla mipmap
+/// clamping and anisotropic padding (`(1 << mip_level) << aniso_shift`).
+pub(super) fn load_atlas(
+    root: &ResourceSource,
+    atlas_id: &str,
+    max_mip: u32,
+    aniso_shift: u32,
+    maximum: u32,
+) -> crate::Result<HashMap<String, Rect>> {
+    let (entries, names) = collect_entries(root, atlas_id);
+    let mip_level = mip_level_for(&entries, max_mip);
+    let padding = (1u32 << mip_level) << aniso_shift;
+    finish_atlas(atlas_id, &entries, &names, mip_level, padding, maximum)
+}
+
+fn collect_entries(root: &ResourceSource, atlas_id: &str) -> (Vec<Entry>, Vec<String>) {
     let listing = atlas_sources::listing(root);
-    let items = listing.sprites("minecraft:items");
+    let listed = listing.sprites(atlas_id);
     let decode = |name: &str| {
         crate::hud::decode_bytes(
             &root
@@ -24,7 +44,7 @@ pub(super) fn load(
     };
     let mut entries = vec![("minecraft:missingno".into(), 16, 16)];
     let mut names = Vec::new();
-    for (id, origin) in items {
+    for (id, origin) in listed {
         names.push(id.clone());
         let dimensions = match &origin {
             atlas_sources::SpriteOrigin::File(texture) => (|| {
@@ -65,20 +85,53 @@ pub(super) fn load(
             entries.push((id.clone(), w, h));
         }
     }
-    let mut sprites = stitch(&entries, padding, maximum).ok_or_else(|| {
+    (entries, names)
+}
+
+fn finish_atlas(
+    atlas_id: &str,
+    entries: &[Entry],
+    names: &[String],
+    mip_level: u32,
+    padding: u32,
+    maximum: u32,
+) -> crate::Result<HashMap<String, Rect>> {
+    let mut sprites = stitch(entries, mip_level, padding, maximum).ok_or_else(|| {
         std::io::Error::other(format!(
-            "item atlas does not fit texture limit {maximum} with padding {padding}"
+            "{atlas_id} atlas does not fit texture limit {maximum} with padding {padding}"
         ))
     })?;
     // TextureAtlas.getSprite returns missingno for rejected or unplaced source sprites.
     if let Some(missing) = sprites.get("missingno").copied() {
         for name in names {
             sprites
-                .entry(super::sprite_name(&name).to_owned())
+                .entry(super::sprite_name(name).to_owned())
                 .or_insert(missing);
         }
     }
     Ok(sprites)
+}
+
+/// `SpriteLoader.stitch`: clamp `max_mip` to the smallest sprite side and lowest power-of-two bit.
+fn mip_level_for(entries: &[Entry], max_mip: u32) -> u32 {
+    let max_mip = max_mip.min(30);
+    let mut min_texel = u32::MAX;
+    let mut lowest_bit = 1u32 << max_mip;
+    for (_, &w, &h) in entries {
+        min_texel = min_texel.min(w.min(h));
+        lowest_bit = lowest_bit.min((1u32 << w.trailing_zeros()).min(1u32 << h.trailing_zeros()));
+    }
+    let min_size = min_texel.min(lowest_bit);
+    if min_size == 0 {
+        0
+    } else {
+        min_size.ilog2().min(max_mip)
+    }
+}
+
+/// `Stitcher.smallestFittingMinTexel`: round `input` up to a multiple of `1 << mip_level`.
+fn smallest_fitting_min_texel(input: u32, mip_level: u32) -> u32 {
+    ((input >> mip_level) + u32::from((input & ((1u32 << mip_level) - 1)) != 0)) << mip_level
 }
 
 /// `TextureMetadataSection.CODEC`: invalid fields reject the sprite, even without mipmaps.
@@ -178,14 +231,25 @@ impl Region {
     }
 }
 
-/// `Stitcher.stitch/expand`: mip level zero, padding from the filtering option.
-fn stitch(entries: &[Entry], padding: u32, maximum: u32) -> Option<HashMap<String, Rect>> {
+/// `Stitcher.stitch/expand` at `mip_level` with `padding` texels on each side.
+fn stitch(
+    entries: &[Entry],
+    mip_level: u32,
+    padding: u32,
+    maximum: u32,
+) -> Option<HashMap<String, Rect>> {
     let mut order: Vec<_> = entries
         .iter()
         .enumerate()
         .map(|(i, (name, w, h))| {
             let (ns, path) = name.split_once(':').unwrap_or(("minecraft", name));
-            (i, w + padding * 2, h + padding * 2, path, ns)
+            (
+                i,
+                smallest_fitting_min_texel(w + padding * 2, mip_level),
+                smallest_fitting_min_texel(h + padding * 2, mip_level),
+                path,
+                ns,
+            )
         })
         .collect();
     order.sort_by(|a, b| {

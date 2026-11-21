@@ -116,6 +116,8 @@ fn draw(
     sprite: Rect,
     color: u32,
     foil: Foil,
+    entity_glint: bool,
+    glint_rect: Option<Rect>,
     sink: &mut dyn ItemSink,
 ) {
     let mut p = part.pose;
@@ -146,10 +148,12 @@ fn draw(
                 ]
             }),
             foil_uv: poly.map(|v| [v[3], v[4]]),
-            gui_glint_uv: None,
+            gui_glint_uv: glint_rect
+                .map(|r| poly.map(|v| [r.u0 + (r.u1 - r.u0) * v[3], r.v0 + (r.v1 - r.v0) * v[4]])),
             normal,
             color,
             foil,
+            entity_glint,
             light_emission: 0,
             cull_back: false,
             translucent: false,
@@ -157,7 +161,18 @@ fn draw(
         });
     }
     for (child_name, child) in &part.children {
-        draw(child, child_name, m, adjust, sprite, color, foil, sink);
+        draw(
+            child,
+            child_name,
+            m,
+            adjust,
+            sprite,
+            color,
+            foil,
+            entity_glint,
+            glint_rect,
+            sink,
+        );
     }
 }
 /// `ModelPart.getExtentsForGui` from an identity pose, posed and transformed as JOML does
@@ -459,7 +474,18 @@ pub(super) fn submit_banner_result(
     };
     let mut part = |texture: &str, color: u32| {
         if let Some(r) = sprites.get(texture).copied() {
-            draw(flag, "root", pose, &flag_pose, r, color, Foil::None, sink);
+            draw(
+                flag,
+                "root",
+                pose,
+                &flag_pose,
+                r,
+                color,
+                Foil::None,
+                false,
+                None,
+                sink,
+            );
         }
     };
     part("entity/banner/banner_base", argb(-1));
@@ -490,7 +516,18 @@ pub(super) fn submit_book(
     };
     // forAnimation at time 0: (sin(0) * 0.1 + 1.25) * open.
     let pose_for = book_pose(1.25 * open, page1, page2);
-    draw(book, "root", pose, &pose_for, r, argb(-1), Foil::None, sink);
+    draw(
+        book,
+        "root",
+        pose,
+        &pose_for,
+        r,
+        argb(-1),
+        Foil::None,
+        false,
+        None,
+        sink,
+    );
 }
 
 /// `SpecialModelRenderer.submit`.
@@ -508,7 +545,7 @@ pub(super) fn submit(
     let white = argb(-1);
     let mut part = |key: &str, adjust: Adjust, texture: &str, color: u32, foil: Foil| {
         if let (Some(p), Some(r)) = (renderer.part(key), sprites.get(texture).copied()) {
-            draw(p, "root", pose, adjust, r, color, foil, sink);
+            draw(p, "root", pose, adjust, r, color, foil, false, None, sink);
         }
     };
     match &model.kind {
@@ -593,13 +630,20 @@ pub(super) fn submit(
                     r,
                     white,
                     Foil::None,
+                    false,
+                    None,
                     &mut OitEntity(sink),
                 );
             }
         }
         SpecialKind::Trident => {
             let foil = if has_foil { Foil::Standard } else { Foil::None };
-            part("trident", &none, "entity/trident/trident", white, foil);
+            if let (Some(p), Some(r)) = (
+                renderer.part("trident"),
+                sprites.get("entity/trident/trident").copied(),
+            ) {
+                draw(p, "root", pose, &none, r, white, foil, true, None, sink);
+            }
         }
         SpecialKind::Banner { color, wall } => {
             let (main, flag) = if *wall {
@@ -646,18 +690,30 @@ pub(super) fn submit(
             // pixel ends with the glint once, over the layers below it.
             // Redrawing the base with the foil would cover the patterns.
             let foil = if has_foil { Foil::Standard } else { Foil::None };
-            part("shield", &none, base, white, foil);
+            // `ShieldSpecialRenderer`: every foil layer samples `base` in `shield_patterns`.
+            let glint_rect = has_foil
+                .then(|| {
+                    let atlas = renderer
+                        .shield_glint_atlas
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    atlas.get(base).or_else(|| atlas.get("missingno")).copied()
+                })
+                .flatten();
+            let mut shield_part = |texture: &str, color: u32| {
+                if let (Some(p), Some(r)) = (renderer.part("shield"), sprites.get(texture).copied())
+                {
+                    draw(
+                        p, "root", pose, &none, r, color, foil, true, glint_rect, sink,
+                    );
+                }
+            };
+            shield_part(base, white);
             if has_patterns {
-                part(
-                    "shield",
-                    &none,
-                    "entity/shield/base",
-                    dye(base_color.unwrap_or("white")),
-                    foil,
-                );
+                shield_part("entity/shield/base", dye(base_color.unwrap_or("white")));
                 for (pattern, color) in patterns.into_iter().take(16) {
                     if let Some(t) = pattern_texture(host, false, &pattern) {
-                        part("shield", &none, &t, dye(&color), foil);
+                        shield_part(&t, dye(&color));
                     }
                 }
             }
@@ -673,7 +729,18 @@ pub(super) fn submit(
             {
                 for name in ["neck", "top", "bottom"] {
                     if let Some(p) = child(base, name) {
-                        draw(p, name, pose, &none, r, white, Foil::None, sink);
+                        draw(
+                            p,
+                            name,
+                            pose,
+                            &none,
+                            r,
+                            white,
+                            Foil::None,
+                            false,
+                            None,
+                            sink,
+                        );
                     }
                 }
             }
@@ -681,7 +748,18 @@ pub(super) fn submit(
                 for (i, name) in ["back", "left", "right", "front"].into_iter().enumerate() {
                     let texture = pot_side(sides[i].as_deref());
                     if let (Some(p), Some(r)) = (child(side_parts, name), sprites.get(&texture)) {
-                        draw(p, name, pose, &none, *r, white, Foil::None, sink);
+                        draw(
+                            p,
+                            name,
+                            pose,
+                            &none,
+                            *r,
+                            white,
+                            Foil::None,
+                            false,
+                            None,
+                            sink,
+                        );
                     }
                 }
             }
@@ -758,6 +836,8 @@ mod tests {
                 sprite,
                 argb(-1),
                 Foil::None,
+                false,
+                None,
                 &mut quads,
             );
             assert_eq!(quads.len(), 1);

@@ -296,13 +296,20 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
             .map(|v| (v.pos, v.uv, v.color))
             .collect::<Vec<_>>()
     );
-    for (display, foil) in [
-        (DisplayContext::Ground, FoilType::Standard),
-        (DisplayContext::FirstPersonRightHand, FoilType::Standard),
-        (DisplayContext::Gui, FoilType::Special),
+    let book_rect = renderer.glint_atlas.lock().unwrap()["item/enchanted_book"];
+    let book_atlas_uv = [
+        [book_rect.u0, book_rect.v0],
+        [book_rect.u0, book_rect.v1],
+        [book_rect.u1, book_rect.v1],
+        [book_rect.u1, book_rect.v0],
+    ];
+    for display in [
+        DisplayContext::Ground,
+        DisplayContext::FirstPersonRightHand,
+        DisplayContext::Fixed,
     ] {
         let mut quads = Vec::new();
-        state("minecraft:item/enchanted_book", foil, display).submit(
+        state("minecraft:item/enchanted_book", FoilType::Standard, display).submit(
             &renderer,
             &sprites,
             &NoHost,
@@ -310,18 +317,40 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
             &mut quads,
         );
         assert_eq!(quads.len(), 1);
-        assert!(quads[0].gui_glint_uv.is_none());
+        assert_eq!(quads[0].gui_glint_uv, Some(book_atlas_uv), "{display:?}");
         assert_eq!(
             quads[0].foil_uv,
             [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]
         );
     }
-    // A layer keeps the display context it was resolved for when another state holds it (a
-    // nested stack under another item's display): a GUI glint follows the layer's own, in both
-    // directions.
-    for (outer, inner, outer_gui) in [
-        (DisplayContext::Fixed, DisplayContext::Gui, false),
-        (DisplayContext::Gui, DisplayContext::Fixed, true),
+    // `FoilType::Special` projects decal UV3 while keeping sprite-local `foil_uv`.
+    let mut special_quads = Vec::new();
+    state(
+        "minecraft:item/enchanted_book",
+        FoilType::Special,
+        DisplayContext::Gui,
+    )
+    .submit(
+        &renderer,
+        &sprites,
+        &NoHost,
+        Mat4::IDENTITY,
+        &mut special_quads,
+    );
+    assert_eq!(special_quads.len(), 1);
+    assert!(special_quads[0].gui_glint_uv.is_some());
+    assert_ne!(
+        special_quads[0].gui_glint_uv,
+        Some(special_quads[0].foil_uv)
+    );
+    assert_eq!(
+        special_quads[0].foil_uv,
+        [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]
+    );
+    // Nested stacks keep cuboid atlas glint across both outer and inner display contexts.
+    for (outer, inner) in [
+        (DisplayContext::Fixed, DisplayContext::Gui),
+        (DisplayContext::Gui, DisplayContext::Fixed),
     ] {
         let book = "minecraft:item/enchanted_book";
         let mut state = state(book, FoilType::Standard, outer);
@@ -331,8 +360,8 @@ fn gui_glint_matches_pinned_vanilla_atlas_input() {
         let mut quads = Vec::new();
         state.submit(&renderer, &sprites, &NoHost, Mat4::IDENTITY, &mut quads);
         assert_eq!(quads.len(), 2);
-        assert_eq!(quads[0].gui_glint_uv.is_some(), outer_gui, "{outer:?}");
-        assert_eq!(quads[1].gui_glint_uv.is_some(), !outer_gui, "{inner:?}");
+        assert_eq!(quads[0].gui_glint_uv, Some(book_atlas_uv), "{outer:?}");
+        assert_eq!(quads[1].gui_glint_uv, Some(book_atlas_uv), "{inner:?}");
     }
     fs::remove_dir_all(root).unwrap();
 }
@@ -858,6 +887,25 @@ fn vertex_quad_glint_bits(verts: &[Vertex]) -> Vec<[[u32; 2]; 4]> {
         .collect()
 }
 
+/// Compare extruded `item/generated` quads: front/back faces match by index, while side faces
+/// match as an exact bit multiset (vanilla `HashSet` vs Sunrise `BTreeSet` order).
+fn assert_extruded_glint_bits(
+    mut got: Vec<[[u32; 2]; 4]>,
+    expected_quads: &[Value],
+    key: &str,
+    label: &str,
+) {
+    assert_eq!(got.len(), expected_quads.len(), "{label} quad count");
+    let mut want: Vec<[[u32; 2]; 4]> = expected_quads
+        .iter()
+        .map(|q| parse_quad_uv_bits(&q[key]))
+        .collect();
+    assert_eq!(got[..2], want[..2], "{label} front/back faces");
+    got[2..].sort();
+    want[2..].sort();
+    assert_eq!(got[2..], want[2..], "{label} side faces");
+}
+
 /// 26.3 parity: `Glint::uv` matches `TextureTransform.setupGlintTexturing` bit-for-bit.
 #[test]
 fn glint_uv_matches_vanilla_26_3_texture_transform_bits() {
@@ -979,15 +1027,12 @@ fn end_crystal_world_sink_uses_atlas_uv_and_item_glint_scale_26_3() {
                 out.iter().all(|v| (v.layer & 0xFFFF) == 7),
                 "{label} {key} expected glint overlay 7"
             );
-            let got = vertex_quad_glint_bits(&out);
-            for (q, want_quad) in eid_quads.iter().enumerate() {
-                let want = parse_quad_uv_bits(&want_quad[key]);
-                assert_eq!(
-                    got[q], want,
-                    "26.3 end_crystal {label} {key} quad[{q}]: got={:#x?} want={:#x?}",
-                    got[q], want
-                );
-            }
+            assert_extruded_glint_bits(
+                vertex_quad_glint_bits(&out),
+                eid_quads,
+                key,
+                &format!("26.3 end_crystal {label} {key}"),
+            );
         }
     }
 }
@@ -1111,9 +1156,12 @@ fn compass_special_foil_uses_decal_uv_26_3() {
 
     let gui_slot_pose = Mat4::from_translation(Vec3::new(8.0, 8.0, 0.0))
         * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
-    let ground_posed = Mat4::from_translation(Vec3::new(1.5, 2.0, -3.5))
-        * Mat4::from_rotation_y(0.7)
-        * Mat4::from_scale(Vec3::splat(0.5));
+    // Match `VanillaItemGlintOracle.java`'s JOML `PoseStack` (`Quaternionf().rotationY(0.7F)`).
+    let mut gp = crate::camera::joml::Mat4::IDENTITY;
+    gp.translate(1.5, 2.0, -3.5);
+    gp.rotate(crate::camera::joml::Quat::rotation_y(0.7));
+    gp.scale(0.5, 0.5, 0.5);
+    let ground_posed = gp.to_glam();
 
     let cases: [(&str, DisplayContext, Mat4); 9] = [
         ("gui", DisplayContext::Gui, Mat4::IDENTITY),
@@ -1172,15 +1220,12 @@ fn compass_special_foil_uses_decal_uv_26_3() {
                 expected_quads.len() * 4,
                 "compass {case_key} {key} vertex count"
             );
-            let got = vertex_quad_glint_bits(&out);
-            for (q, want_quad) in expected_quads.iter().enumerate() {
-                let want = parse_quad_uv_bits(&want_quad[key]);
-                assert_eq!(
-                    got[q], want,
-                    "26.3 compass {case_key} {key} quad[{q}]: got={:#x?} want={:#x?}",
-                    got[q], want
-                );
-            }
+            assert_extruded_glint_bits(
+                vertex_quad_glint_bits(&out),
+                expected_quads,
+                key,
+                &format!("26.3 compass {case_key} {key}"),
+            );
         }
     }
 }
@@ -1241,11 +1286,12 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
             },
         );
         assert_eq!(out.len(), expected_quads.len() * 4, "trident 2d {ctx_name}");
-        let got = vertex_quad_glint_bits(&out);
-        for (q, want_quad) in expected_quads.iter().enumerate() {
-            let want = parse_quad_uv_bits(&want_quad["glint_uv_t123456_bits"]);
-            assert_eq!(got[q], want, "26.3 trident 2d {ctx_name} quad[{q}]");
-        }
+        assert_extruded_glint_bits(
+            vertex_quad_glint_bits(&out),
+            expected_quads,
+            "glint_uv_t123456_bits",
+            &format!("26.3 trident 2d {ctx_name}"),
+        );
     }
 
     // Special-model child order differs from vanilla HashMap order, so compare sorted quads.
@@ -1435,4 +1481,64 @@ fn special_model_trident_and_shield_glint_uses_entity_scale_26_3() {
     let mut got = vertex_quad_glint_bits(&out);
     got.sort();
     assert_eq!(got, want_both, "26.3 shield_red patterned_shield_glint");
+}
+
+/// 26.3 parity: `prepare_glint_atlas_with_mips` matches vanilla `SpriteLoader.stitch` bit-for-bit
+/// across `items` (none & aniso2), `blocks` (mip 4 & mip 0), and `shield_patterns`.
+#[test]
+fn glint_atlases_match_vanilla_26_3_mip_and_aniso() {
+    let witness = glint_witness_26_3();
+    let root = prepared_resources_26_3();
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .expect("26.3 prepared item data");
+    let renderer = ItemRenderer::load(&ResourceRoot::directory(root), &data).unwrap();
+
+    let check = |atlas: &HashMap<String, Rect>, key: &str| {
+        let expected = &witness["atlases"][key];
+        assert_eq!(
+            atlas.len(),
+            expected["sprite_count"].as_u64().unwrap() as usize,
+            "{key} sprite_count"
+        );
+        for (id, sprite) in expected["sprites"].as_object().unwrap() {
+            let r = atlas[sprite_name(id)];
+            let got = [r.u0, r.v0, r.u1, r.v1].map(f32::to_bits);
+            let want = [
+                sprite["u0_bits"].as_u64().unwrap() as u32,
+                sprite["v0_bits"].as_u64().unwrap() as u32,
+                sprite["u1_bits"].as_u64().unwrap() as u32,
+                sprite["v1_bits"].as_u64().unwrap() as u32,
+            ];
+            assert_eq!(got, want, "26.3 atlas {key} sprite {id}");
+        }
+    };
+
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (0, 2), 4)
+        .unwrap();
+    check(&renderer.glint_atlas.lock().unwrap(), "items_none");
+    check(
+        &renderer.block_glint_atlas.lock().unwrap(),
+        "blocks_mip4_none",
+    );
+    check(
+        &renderer.shield_glint_atlas.lock().unwrap(),
+        "shield_patterns_none",
+    );
+
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (0, 2), 0)
+        .unwrap();
+    check(
+        &renderer.block_glint_atlas.lock().unwrap(),
+        "blocks_mip0_none",
+    );
+
+    renderer
+        .prepare_glint_atlas_with_mips(16384, (2, 2), 4)
+        .unwrap();
+    check(&renderer.glint_atlas.lock().unwrap(), "items_aniso2");
 }

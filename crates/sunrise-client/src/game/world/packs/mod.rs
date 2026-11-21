@@ -569,6 +569,7 @@ impl Game<'_> {
                     (
                         self.settings.file.int("textureFiltering"),
                         self.settings.file.int("maxAnisotropyBit"),
+                        self.settings.file.int("mipmapLevels"),
                     ),
                 )
             })

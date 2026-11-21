@@ -61,11 +61,14 @@ pub struct ItemQuad {
     /// The model UVs `GLINT_TEXTURING` scrolls for the glint (vanilla's UV0,
     /// or UV3 for a special model).
     pub foil_uv: [[f32; 2]; 4],
-    /// Standard GUI glint uses the vanilla items atlas; CIT keeps sprite-local UVs.
+    /// Glint UV override (vanilla atlas UV for standard/shield foil, decal UV3 for special foil);
+    /// CIT and raw entity models keep sprite-local `foil_uv`.
     pub gui_glint_uv: Option<[[f32; 2]; 4]>,
     pub normal: Vec3,
     pub color: u32,
     pub foil: Foil,
+    /// True for entity-model special items (`Trident`, `Shield`) using `ENTITY_GLINT_TEXTURING`.
+    pub entity_glint: bool,
     /// `MaterialInfo.lightEmission` (block light floor).
     pub light_emission: u8,
     /// The render type culls back faces (`entitySolid`): world drawing discards them.
@@ -86,12 +89,27 @@ pub struct Glint {
     pub alpha: f32,
     /// `Util.getMillis()`.
     pub millis: f32,
-    /// The transform's scale: `GLINT_TEXTURING`'s 8.0 for GUI items,
-    /// `ENTITY_GLINT_TEXTURING`'s 0.5 for items in the world and
+    /// The transform's scale: `GLINT_TEXTURING`'s 8.0 for cuboid items (GUI and world),
+    /// `ENTITY_GLINT_TEXTURING`'s 0.5 for entity-model special items (`Trident`, `Shield`), and
     /// `ARMOR_ENTITY_GLINT_TEXTURING`'s 0.16 for armour (entity.wgsl).
     pub scale: f32,
 }
 impl Glint {
+    pub const ITEM_SCALE: f32 = 8.0;
+    pub const ENTITY_SCALE: f32 = 0.5;
+    pub const ARMOR_SCALE: f32 = 0.16;
+
+    /// Select vanilla's item (`8.0`) or entity (`0.5`) texturing scale for a quad.
+    pub fn for_quad(self, entity_glint: bool) -> Self {
+        Self {
+            scale: if entity_glint {
+                Self::ENTITY_SCALE
+            } else {
+                Self::ITEM_SCALE
+            },
+            ..self
+        }
+    }
     /// `Util.getMillis() * glintSpeed * 8.0` as vanilla's long.
     fn ticks(millis: f32, speed: f32) -> i64 {
         (f64::from(millis) * f64::from(speed) * 8.0) as i64
@@ -110,11 +128,16 @@ impl Glint {
         let ticks = Self::ticks(self.millis, self.speed);
         let offset0 = (ticks % 110_000) as f32 / 110_000.0;
         let offset1 = (ticks % 30_000) as f32 / 30_000.0;
-        let angle = std::f32::consts::PI / 18.0;
-        let (sin, cos) = angle.sin_cos();
+        // Compile-time `(float)(Math.PI / 18.0)` in `TextureTransform.setupGlintTexturing`.
+        const ANGLE: f32 = f32::from_bits(0x3e32_b8c2);
+        let sin = crate::camera::joml::sin(ANGLE);
+        let cos = crate::camera::joml::cos_from_sin(sin, ANGLE);
+        let (m00, m01) = (cos * self.scale, sin * self.scale);
+        let (m10, m11) = (-sin * self.scale, cos * self.scale);
+        // JOML `Vector4f.mulAffine`: right-associated unfused sums; `0.0 + -offset0` drops -0.0.
         [
-            model[0] * self.scale * cos - model[1] * self.scale * sin - offset0,
-            model[0] * self.scale * sin + model[1] * self.scale * cos + offset1,
+            m00 * model[0] + (m10 * model[1] + (0.0 + -offset0)),
+            m01 * model[0] + (m11 * model[1] + (0.0 + offset1)),
         ]
     }
 }
@@ -533,6 +556,203 @@ pub fn argb(color: i32) -> u32 {
     color as u32
 }
 
+fn joml_transform_pos(m: &[f32; 16], p: [f32; 3]) -> [f32; 3] {
+    [
+        m[0] * p[0] + (m[4] * p[1] + (m[8] * p[2] + m[12])),
+        m[1] * p[0] + (m[5] * p[1] + (m[9] * p[2] + m[13])),
+        m[2] * p[0] + (m[6] * p[1] + (m[10] * p[2] + m[14])),
+    ]
+}
+
+/// JOML 1.10.9 `Matrix4f.invertAffine` when `MatrixUtil.mulComponentWise` was not called.
+fn joml_invert_affine(m: &[f32; 16]) -> Option<[f32; 16]> {
+    let [
+        m00,
+        m01,
+        m02,
+        _,
+        m10,
+        m11,
+        m12,
+        _,
+        m20,
+        m21,
+        m22,
+        _,
+        m30,
+        m31,
+        m32,
+        _,
+    ] = *m;
+    let t2 = m00 * m11;
+    let t3 = m01 * m10;
+    let t4 = m02 * m10;
+    let t5 = m00 * m12;
+    let t6 = m01 * m12;
+    let t7 = m02 * m11;
+    let det = (t2 - t3) * m22 + (t4 - t5) * m21 + (t6 - t7) * m20;
+    if det == 0.0 || !det.is_finite() {
+        return None;
+    }
+    let inv = 1.0 / det;
+    let t10 = m10 * m22;
+    let t11 = m10 * m21;
+    let t12 = m11 * m22;
+    let t13 = m11 * m20;
+    let t14 = m12 * m21;
+    let t15 = m12 * m20;
+    let t16 = m20 * m02;
+    let t17 = m20 * m01;
+    let t18 = m21 * m02;
+    let t19 = m21 * m00;
+    let t20 = m22 * m01;
+    let t21 = m22 * m00;
+    let nm30 = (t10 * m31 - t11 * m32 + t13 * m32 - t12 * m30 + t14 * m30 - t15 * m31) * inv;
+    let nm31 = (t16 * m31 - t17 * m32 + t19 * m32 - t18 * m30 + t20 * m30 - t21 * m31) * inv;
+    let nm32 = (t7 * m30 - t6 * m30 + t5 * m31 - t4 * m31 + t3 * m32 - t2 * m32) * inv;
+    Some([
+        (t12 - t14) * inv,
+        (t18 - t20) * inv,
+        (t6 - t7) * inv,
+        0.0,
+        (t15 - t10) * inv,
+        (t21 - t16) * inv,
+        (t4 - t5) * inv,
+        0.0,
+        (t11 - t13) * inv,
+        (t17 - t19) * inv,
+        (t2 - t3) * inv,
+        0.0,
+        nm30,
+        nm31,
+        nm32,
+        1.0,
+    ])
+}
+
+/// JOML 1.10.9 `Matrix4f.invertGenericThis` after `MatrixUtil.mulComponentWise` clears properties.
+fn joml_invert_generic(m: &[f32; 16]) -> Option<[f32; 16]> {
+    let [
+        m00,
+        m01,
+        m02,
+        m03,
+        m10,
+        m11,
+        m12,
+        m13,
+        m20,
+        m21,
+        m22,
+        m23,
+        m30,
+        m31,
+        m32,
+        m33,
+    ] = *m;
+    let a = m00 * m11 - m01 * m10;
+    let b = m00 * m12 - m02 * m10;
+    let c = m00 * m13 - m03 * m10;
+    let d = m01 * m12 - m02 * m11;
+    let e = m01 * m13 - m03 * m11;
+    let f = m02 * m13 - m03 * m12;
+    let g = m20 * m31 - m21 * m30;
+    let h = m20 * m32 - m22 * m30;
+    let i = m20 * m33 - m23 * m30;
+    let j = m21 * m32 - m22 * m31;
+    let k = m21 * m33 - m23 * m31;
+    let l = m22 * m33 - m23 * m32;
+    let det = a * l - b * k + c * j + d * i - e * h + f * g;
+    if det == 0.0 || !det.is_finite() {
+        return None;
+    }
+    let inv = 1.0 / det;
+    Some([
+        (m11 * l + (-m12 * k + m13 * j)) * inv,
+        (-m01 * l + (m02 * k + -m03 * j)) * inv,
+        (m31 * f + (-m32 * e + m33 * d)) * inv,
+        (-m21 * f + (m22 * e + -m23 * d)) * inv,
+        (-m10 * l + (m12 * i + -m13 * h)) * inv,
+        (m00 * l + (-m02 * i + m03 * h)) * inv,
+        (-m30 * f + (m32 * c + -m33 * b)) * inv,
+        (m20 * f + (-m22 * c + m23 * b)) * inv,
+        (m10 * k + (-m11 * i + m13 * g)) * inv,
+        (-m00 * k + (m01 * i + -m03 * g)) * inv,
+        (m30 * e + (-m31 * c + m33 * a)) * inv,
+        (-m20 * e + (m21 * c + -m23 * a)) * inv,
+        (-m10 * j + (m11 * h + -m12 * g)) * inv,
+        (m00 * j + (-m01 * h + m02 * g)) * inv,
+        (-m30 * d + (m31 * b + -m32 * a)) * inv,
+        (m20 * d + (-m21 * b + m22 * a)) * inv,
+    ])
+}
+
+fn joml_rotate_x(v: [f32; 3], angle: f32) -> [f32; 3] {
+    let sin = crate::camera::joml::sin(angle);
+    let cos = crate::camera::joml::cos_from_sin(sin, angle);
+    [v[0], v[1] * cos - v[2] * sin, v[1] * sin + v[2] * cos]
+}
+
+fn joml_rotate_y(v: [f32; 3], angle: f32) -> [f32; 3] {
+    let sin = crate::camera::joml::sin(angle);
+    let cos = crate::camera::joml::cos_from_sin(sin, angle);
+    [v[0] * cos + v[2] * sin, v[1], -v[0] * sin + v[2] * cos]
+}
+
+/// `Direction.getRotation()`.
+fn direction_rotation(d: Direction) -> crate::camera::joml::Quat {
+    use crate::camera::joml::Quat;
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let xyz = |ax: f32, ay: f32, az: f32| {
+        let [x, y, z, w] = sunrise_assets::math::quaternion_xyz(ax, ay, az);
+        Quat { x, y, z, w }
+    };
+    match d {
+        Direction::Down => Quat::rotation_x(PI),
+        Direction::Up => Quat::IDENTITY,
+        Direction::North => xyz(FRAC_PI_2, 0.0, PI),
+        Direction::South => Quat::rotation_x(FRAC_PI_2),
+        Direction::West => xyz(FRAC_PI_2, 0.0, FRAC_PI_2),
+        Direction::East => xyz(FRAC_PI_2, 0.0, -FRAC_PI_2),
+    }
+}
+
+/// `ItemFeatureRenderer.computeFoilDecalPose` inverted for `SheetedDecalTextureGenerator`.
+fn special_foil_inverse(m: &[f32; 16], display: DisplayContext) -> Option<[f32; 16]> {
+    let scale = match display {
+        DisplayContext::Gui => Some(0.5_f32),
+        DisplayContext::FirstPersonLeftHand | DisplayContext::FirstPersonRightHand => {
+            Some(0.75_f32)
+        }
+        _ => None,
+    };
+    match scale {
+        Some(s) => joml_invert_generic(&m.map(|v| v * s)),
+        None => joml_invert_affine(m),
+    }
+}
+
+/// `SheetedDecalTextureGenerator.setSheetedDecalUv` for one `Foil::Special` quad (compass/clock).
+fn special_foil_uv(
+    m_cols: &[f32; 16],
+    inv: Option<[f32; 16]>,
+    positions: [[f32; 3]; 4],
+    facing: Direction,
+) -> [[f32; 2]; 4] {
+    let Some(inv) = inv else {
+        return [[0.0, 0.0]; 4];
+    };
+    let rot = direction_rotation(facing);
+    positions.map(|p| {
+        let pos = joml_transform_pos(m_cols, p);
+        let wp = joml_transform_pos(&inv, pos);
+        let wp = joml_rotate_y(wp, std::f32::consts::PI);
+        let wp = joml_rotate_x(wp, -std::f32::consts::FRAC_PI_2);
+        let wp = rot.transform(wp);
+        [-wp[0] * 0.0078125, -wp[1] * 0.0078125]
+    })
+}
+
 /// `ItemFeatureRenderer.prepareMainSubmit` for one cuboid layer.
 fn submit_quads(
     renderer: &ItemRenderer,
@@ -547,17 +767,33 @@ fn submit_quads(
         FoilType::Standard => Foil::Standard,
         FoilType::Special => Foil::Special,
     };
-    let atlas = renderer
-        .glint_atlas
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (item_atlas, block_atlas) = if foil == Foil::Standard {
+        (
+            Some(
+                renderer
+                    .glint_atlas
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ),
+            Some(
+                renderer
+                    .block_glint_atlas
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ),
+        )
+    } else {
+        (None, None)
+    };
+    let decal = (foil == Foil::Special).then(|| {
+        let cols = m.to_cols_array();
+        (cols, special_foil_inverse(&cols, layer.display))
+    });
     let mut normals = FaceNormals::new(m);
     // Quads of one layer mostly share a sprite: look its rect and its
     // translucency up once.
     let mut last: Option<(&str, bool)> = None;
     let mut last_rect: Option<(&str, Option<Rect>)> = None;
-    // A glint in the GUI follows the quad's sprite in the glint atlas: looked up once a sprite too.
-    let gui_glint = layer.display == DisplayContext::Gui && foil == Foil::Standard;
     let mut last_glint: Option<(&str, Option<Rect>)> = None;
     for q in &baked.quads {
         let rect = match last_rect {
@@ -597,26 +833,43 @@ fn submit_quads(
         // dripleaf, #4855; the inside of a held hay block, #4801) and stacks a
         // jelly shell's partial alpha until it looks opaque (#4508).
         let translucent = translucent || q.material.force_translucent;
+        let gui_glint_uv = match foil {
+            Foil::None => None,
+            Foil::Standard => {
+                let rect = match last_glint {
+                    Some((sprite, rect)) if sprite == q.material.sprite => rect,
+                    _ => {
+                        let name = sprite_name(&q.material.sprite);
+                        let items = item_atlas.as_deref();
+                        let blocks = block_atlas.as_deref();
+                        // `MaterialBaker.bake`: items atlas first, then blocks, then missingno.
+                        let rect = items
+                            .and_then(|a| a.get(name))
+                            .or_else(|| blocks.and_then(|a| a.get(name)))
+                            .or_else(|| blocks.and_then(|a| a.get("missingno")))
+                            .or_else(|| items.and_then(|a| a.get("missingno")))
+                            .copied();
+                        last_glint = Some((&q.material.sprite, rect));
+                        rect
+                    }
+                };
+                rect.map(|r| {
+                    q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v])
+                })
+            }
+            Foil::Special => {
+                decal.map(|(m_cols, inv)| special_foil_uv(&m_cols, inv, q.positions, q.facing))
+            }
+        };
         sink.quad(ItemQuad {
             pos,
             uv,
             foil_uv: q.uv,
-            gui_glint_uv: gui_glint
-                .then(|| match last_glint {
-                    Some((sprite, rect)) if sprite == q.material.sprite => rect,
-                    _ => {
-                        let rect = atlas.get(sprite_name(&q.material.sprite)).copied();
-                        last_glint = Some((&q.material.sprite, rect));
-                        rect
-                    }
-                })
-                .flatten()
-                .map(|r| {
-                    q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v])
-                }),
+            gui_glint_uv,
             normal: normals.face(q.facing),
             color,
             foil,
+            entity_glint: false,
             light_emission: q.light_emission,
             cull_back: true,
             translucent,
@@ -760,6 +1013,8 @@ pub struct ItemRenderer {
     /// without rules.
     pub cit: Option<cit::CitModels>,
     glint_atlas: Mutex<HashMap<String, Rect>>,
+    block_glint_atlas: Mutex<HashMap<String, Rect>>,
+    shield_glint_atlas: Mutex<HashMap<String, Rect>>,
 }
 
 /// Every winning `items/**/*.json` client item definition, by identifier. An error or panic
@@ -819,14 +1074,63 @@ fn glint_padding(filtering: i32, bit: i32) -> usize {
 }
 
 impl ItemRenderer {
-    /// Prepare GUI glint after the device exists; propagate packing failures to pack rollback.
+    /// Prepare item/block/shield glint atlases after the device exists, defaulting `mipmapLevels`
+    /// to vanilla's `4`.
     pub fn prepare_glint_atlas(&self, maximum: u32, filtering: (i32, i32)) -> crate::Result<()> {
-        let padding = glint_padding(filtering.0, filtering.1);
-        let sprites = glint_atlas::load(&self.sprites.root, 1 << padding, maximum)?;
+        self.prepare_glint_atlas_with_mips(maximum, filtering, 4)
+    }
+
+    /// Prepare item/block/shield glint atlases with the configured `mipmapLevels` option.
+    pub fn prepare_glint_atlas_with_mips(
+        &self,
+        maximum: u32,
+        filtering: (i32, i32),
+        mipmap_levels: i32,
+    ) -> crate::Result<()> {
+        let aniso_shift = glint_padding(filtering.0, filtering.1) as u32;
+        let max_mip = mipmap_levels.clamp(0, 4) as u32;
+        let listing = crate::atlas_sources::listing(&self.sprites.root);
+        let items = glint_atlas::load_atlas(
+            &self.sprites.root,
+            "minecraft:items",
+            0,
+            aniso_shift,
+            maximum,
+        )?;
+        let blocks = if listing.defines("minecraft:blocks") {
+            glint_atlas::load_atlas(
+                &self.sprites.root,
+                "minecraft:blocks",
+                max_mip,
+                aniso_shift,
+                maximum,
+            )?
+        } else {
+            HashMap::new()
+        };
+        let shield = if listing.defines("minecraft:shield_patterns") {
+            glint_atlas::load_atlas(
+                &self.sprites.root,
+                "minecraft:shield_patterns",
+                0,
+                aniso_shift,
+                maximum,
+            )?
+        } else {
+            HashMap::new()
+        };
         *self
             .glint_atlas
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = sprites;
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = items;
+        *self
+            .block_glint_atlas
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = blocks;
+        *self
+            .shield_glint_atlas
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = shield;
         Ok(())
     }
 
@@ -933,6 +1237,8 @@ impl ItemRenderer {
             .unwrap_or_default();
         let mut renderer = Self {
             glint_atlas: Mutex::default(),
+            block_glint_atlas: Mutex::default(),
+            shield_glint_atlas: Mutex::default(),
             item_ids,
             models: ItemModels {
                 definitions: BTreeMap::new(),
@@ -1364,11 +1670,10 @@ impl ItemSink for WorldSink<'_> {
         } else {
             self.light
         };
-        let glint = if q.foil == Foil::None {
-            None
-        } else {
-            self.glint
-        };
+        let glint = (q.foil != Foil::None)
+            .then_some(self.glint)
+            .flatten()
+            .map(|g| g.for_quad(q.entity_glint));
         let overlay = match (glint.is_some(), q.translucent) {
             (false, true) => crate::gfx::TRANSLUCENT_ITEM_OVERLAY,
             (false, false) => 0,
@@ -1381,8 +1686,9 @@ impl ItemSink for WorldSink<'_> {
         } else {
             0
         };
+        let src_uv = q.gui_glint_uv.unwrap_or(q.foil_uv);
         for (i, (p, uv)) in q.pos.iter().zip(q.uv).enumerate() {
-            let glint_uv = glint.map_or([0.0, 0.0], |glint| glint.uv(q.foil_uv[i]));
+            let glint_uv = glint.map_or([0.0, 0.0], |glint| glint.uv(src_uv[i]));
             self.out.push(Vertex {
                 normal: if q.cull_back { CULL_BACK } else { [0; 4] },
                 pos: p.to_array(),
