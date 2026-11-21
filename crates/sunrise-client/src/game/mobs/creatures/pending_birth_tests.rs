@@ -562,44 +562,44 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let record = seen.clone();
     with_baby(
-        move |host, event| {
-            let (edits, children) = (event.edits, event.edits.children().unwrap());
+        move |_, event| {
             record.lock().unwrap().push((
                 event.dimension.to_owned(),
-                edits.len(children).unwrap(),
-                edits
-                    .child(children, 0)
-                    .unwrap()
-                    .kind(&*host)
-                    .unwrap()
-                    .to_string(),
+                event.child.is_present(),
+                event.child.get().unwrap().kind().unwrap().to_string(),
             ));
-            let mut pig = PendingMobSpec::new(
+            let mut pig_spec = PendingMobSpec::new(
                 mod_api::Identifier::parse("minecraft:pig").unwrap(),
                 mod_api::Identifier::parse(event.dimension).unwrap(),
                 [0.5, 64.0, 0.0],
                 0.0,
                 true,
             );
-            pig.size = None;
-            let pig = edits.construct(children, pig).unwrap();
-            edits.replace(children, 0, pig).unwrap();
-            // The cow's replacement may not be joined by a second baby.
-            let second = edits
-                .construct(
-                    children,
-                    PendingMobSpec::new(
-                        mod_api::Identifier::parse("minecraft:pig").unwrap(),
-                        mod_api::Identifier::parse(event.dimension).unwrap(),
-                        [0.5, 64.0, 0.0],
-                        0.0,
-                        true,
-                    ),
-                )
+            pig_spec.size = None;
+            let mut pig = event.child.construct(pig_spec).unwrap();
+            assert_eq!(pig.set_baby(false), Err(UnspawnedMobError::Invalid));
+            pig.set_yaw(15.0).unwrap();
+            let replaced = event
+                .child
+                .replace(pig)
+                .unwrap()
+                .expect("the cow baby was in the slot");
+            assert_eq!(replaced.kind().unwrap().to_string(), "minecraft:cow");
+            drop(replaced);
+            // A detached child dropped without being placed in the slot never joins.
+            let _detached = event
+                .child
+                .construct(PendingMobSpec::new(
+                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                    mod_api::Identifier::parse(event.dimension).unwrap(),
+                    [0.5, 64.0, 0.0],
+                    0.0,
+                    true,
+                ))
                 .unwrap();
             assert_eq!(
-                edits.append(children, second),
-                Err(UnspawnedMobError::Capacity)
+                event.child.get_mut().unwrap().set_baby(false),
+                Err(UnspawnedMobError::Invalid)
             );
             Flow::Continue
         },
@@ -608,6 +608,7 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
             let child = find(game, child.expect("a baby joined"));
             assert_eq!(child.kind.id, "minecraft:pig");
             assert!(child.extra.age < 0, "a baby has a negative age");
+            assert_eq!(child.yaw, 15.0);
             assert_eq!(
                 game.mobs
                     .iter()
@@ -615,6 +616,14 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
                     .count(),
                 2,
                 "only the parents are cows: no cow baby"
+            );
+            assert_eq!(
+                game.mobs
+                    .iter()
+                    .filter(|m| m.kind.id == "minecraft:pig")
+                    .count(),
+                1,
+                "only the attached pig joined, not the dropped detached pig"
             );
             for id in [parent, partner] {
                 let p = find(game, id);
@@ -627,7 +636,7 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
         *seen.lock().unwrap(),
         [(
             "minecraft:overworld".to_owned(),
-            1,
+            true,
             "minecraft:cow".to_owned()
         )]
     );
@@ -665,10 +674,9 @@ fn breeding_veto_leaves_no_baby_orb_or_statistic_and_the_parents_resting() {
 fn removing_the_baby_is_the_same_outcome_as_a_veto() {
     with_baby(
         |_, event| {
-            event
-                .edits
-                .remove(event.edits.children().unwrap(), 0)
-                .unwrap();
+            let taken = event.child.take();
+            assert!(taken.is_some());
+            assert!(event.child.is_empty());
             Flow::Continue
         },
         |game| {
@@ -676,9 +684,10 @@ fn removing_the_baby_is_the_same_outcome_as_a_veto() {
             assert_eq!(child, None);
             assert!(game.mobs.iter().all(|m| m.extra.age >= 0));
             for id in [parent, partner] {
-                assert_eq!(find(game, id).extra.age, 6000);
+                let p = find(game, id);
+                assert_eq!(p.extra.age, 6000);
+                assert_eq!(p.extra.in_love, 0);
             }
-            assert_eq!(find(game, partner).extra.in_love, 0);
         },
     );
 }
@@ -878,10 +887,8 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
     );
     with_baby(
         |_, event| {
-            event
-                .edits
-                .remove(event.edits.children().unwrap(), 0)
-                .unwrap();
+            event.child.clear();
+            assert!(event.child.is_empty());
             Flow::Continue
         },
         |game| {
@@ -899,7 +906,19 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
 #[ignore = "daily"]
 fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
     with_baby(
-        |_, _| panic!("a listener fails"),
+        |_, event| {
+            let _detached = event
+                .child
+                .construct(PendingMobSpec::new(
+                    mod_api::Identifier::parse("minecraft:pig").unwrap(),
+                    mod_api::Identifier::parse(event.dimension).unwrap(),
+                    [0.5, 64.0, 0.0],
+                    0.0,
+                    true,
+                ))
+                .unwrap();
+            panic!("a listener fails")
+        },
         |game| {
             let (uuids, attachments) = (game.persist.uuids.len(), game.entity_attachments.len());
             let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -913,57 +932,49 @@ fn a_panicking_baby_listener_leaves_no_reserved_state_behind() {
     );
 }
 
-/// What a listener's host write does to a parent, stood in for by a closure the production
-/// dispatch runs where the listeners run (the host methods that move a mob are not reachable
-/// from a hook's `ServerHost` in the fixture world).
+/// Touching a parent via `host` during dispatch no longer aborts the birth, and cancelling
+/// resets both `parent` and `partner` to `age = 6000` and `in_love = 0` (matching NeoForge's
+/// `Animal.spawnChildFromBreeding`) even if a listener edited parent love/age.
 #[test]
 #[ignore = "daily"]
-fn a_parent_changed_during_dispatch_refuses_the_baby_and_nothing_is_rebuilt() {
-    with_game(|game| {
-        let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        let base = game.next_entity;
-        game.next_entity += 3;
-        for (i, x) in [0.0, 1.0].into_iter().enumerate() {
-            game.mobs.push(Mob::new(
-                base + 1 + i as u32,
-                kind.clone(),
-                Vec3::new(x, 64.0, 0.0),
-                0.0,
-            ));
-        }
-        game.native_joins_skip();
-        let run = |game: &mut Game<'_>, change: bool| {
-            let mut baby = Mob::new(base + 3, kind.clone(), Vec3::new(0.5, 64.0, 0.0), 0.0);
-            sunrise_client::mobs::finalize::set_baby(&mut baby, true);
-            game.dispatch_pending_children(
-                mod_api::HookId::BabyEntitySpawn,
-                true,
-                vec![baby],
-                &[base + 1, base + 2],
-                move |game, _, _| {
-                    if change {
-                        let parent = game.mobs.iter_mut().find(|m| m.id == base + 1).unwrap();
-                        parent.extra.in_love = 600;
-                    }
-                },
-            )
-        };
-        // Unchanged parents: the baby is accepted.
-        assert_eq!(run(game, false).len(), 1);
-        // The id is still live but the parent is not what the baby was built from: refused,
-        // and the dispatch never rebuilds or draws again.
-        let draws = game
-            .mobs
-            .iter()
-            .map(|m| m.random.state())
-            .collect::<Vec<_>>();
-        assert!(run(game, true).is_empty());
-        assert_eq!(
-            game.mobs
-                .iter()
-                .map(|m| m.random.state())
-                .collect::<Vec<_>>(),
-            draws
-        );
-    });
+fn breeding_spawns_after_parent_host_edit_and_cancel_resets_both_parents() {
+    with_baby(
+        |host, event| {
+            let parent = host.entity(event.parent).expect("parent handle");
+            assert!(parent.teleport_to(host, [2.0, 64.0, 0.0], None));
+            let mut nbt = mod_api::Compound::new();
+            nbt.insert("InLove".into(), mod_api::Tag::Int(600));
+            assert!(parent.merge_nbt(host, nbt));
+            Flow::Continue
+        },
+        |game| {
+            let (parent, _, child) = breed_pair(game, "minecraft:cow");
+            let baby = find(game, child.expect("parent host edit must not abort birth"));
+            assert_eq!(baby.kind.id, "minecraft:cow");
+            assert_eq!(baby.extra.age, -24000);
+            assert_eq!(find(game, parent).position.x, 2.0);
+        },
+    );
+    with_baby(
+        |host, event| {
+            for id in [event.parent, event.partner] {
+                let entity = host.entity(id).expect("parent handle");
+                let mut nbt = mod_api::Compound::new();
+                nbt.insert("Age".into(), mod_api::Tag::Int(0));
+                nbt.insert("InLove".into(), mod_api::Tag::Int(300));
+                assert!(entity.merge_nbt(host, nbt));
+            }
+            Flow::Cancel
+        },
+        |game| {
+            let (parent, partner, child) = breed_pair(game, "minecraft:cow");
+            assert_eq!(child, None);
+            assert!(game.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
+            for id in [parent, partner] {
+                let mob = find(game, id);
+                assert_eq!(mob.extra.age, 6000);
+                assert_eq!(mob.extra.in_love, 0);
+            }
+        },
+    );
 }

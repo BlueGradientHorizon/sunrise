@@ -518,24 +518,24 @@ fn empty_mod_never_defers_breeding_xp() {
     mod_platform::testing::with_mods(mods, || {
         super::super::native_entity_refs::tests::with_game(|game| {
             assert!(!game.mob_world_base(&[]).asks_baby_spawn);
-            let kept = game.dispatch_pending_children(
-                mod_api::HookId::BabyEntitySpawn,
-                true,
-                Vec::new(),
-                &[],
-                |game, edits, cancel| {
-                    game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
-                        dimension: "minecraft:overworld",
-                        parent: 1,
-                        partner: 2,
-                        player: None,
-                        player_entity_id: None,
-                        edits,
-                        cancel,
-                    });
-                },
-            );
-            assert!(kept.is_empty());
+            let mut slot = None;
+            let mut cancel = false;
+            let mut editor = super::super::native_pending_children::BabyChildSlot {
+                slot: &mut slot,
+                resources: game.res.clone(),
+                attributes: game.motion.attributes.clone(),
+                dimension: game.dim,
+            };
+            game.native_baby_entity_spawn(mod_api::__private::BabyEntitySpawnCall {
+                dimension: "minecraft:overworld",
+                parent: 1,
+                partner: 2,
+                player: None,
+                player_entity_id: None,
+                child: mod_api::BabyEntitySpawnChild::new(&mut editor),
+                cancel: &mut cancel,
+            });
+            assert!(slot.is_none());
             assert!(!game.mob_world_base(&[]).asks_baby_spawn);
         });
     });

@@ -87,12 +87,13 @@ fn matrix(mods: mod_api::Mods) {
                 assert_eq!(find(game, 9000 + mode).extra.age, 6000);
                 assert_eq!(find(game, 9001 + mode).extra.in_love, 0);
             }
-            // Replace with a pig baby; a second baby reports Capacity (3).
-            let (_, child) = breed(game, 2);
+            // Replace with a pig baby; a detached second baby dropped without attaching never joins.
+            let (mobs, child) = breed(game, 2);
             let pig = find(game, child.unwrap());
             assert_eq!(pig.kind.id, "minecraft:pig");
             assert!(pig.extra.age < 0);
-            assert_eq!(pig.yaw, 3.0);
+            assert_eq!(pig.yaw, 77.0);
+            assert_eq!(mobs.len(), 3);
             // A grown replacement is Invalid (4); the cow baby stays.
             let (_, child) = breed(game, 4);
             let baby = find(game, child.unwrap());

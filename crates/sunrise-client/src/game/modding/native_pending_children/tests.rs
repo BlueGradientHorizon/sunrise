@@ -14,6 +14,9 @@ fn initial(game: &Game<'_>, id: u32) -> PendingMob {
         uuid: Some([1, 2, 3, id as i32]),
         attachments: Attachments::default(),
         dimension: game.dim,
+        resources: game.res.clone(),
+        attributes: game.motion.attributes.clone(),
+        breeding: false,
     }
 }
 

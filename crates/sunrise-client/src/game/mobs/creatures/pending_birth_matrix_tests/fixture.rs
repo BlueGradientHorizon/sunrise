@@ -3,8 +3,8 @@
 //! 5 Budget, 9 anything else.
 
 use mod_api::{
-    BabyEntitySpawnEvent, Flow, Identifier, MobSplitEvent, PendingChildrenEdits,
-    PendingChildrenRef, PendingMobSpec, ServerHost, UnspawnedMobError,
+    BabyEntitySpawnEvent, Flow, Identifier, MobSplitEvent, PendingMobSpec, ServerHost,
+    UnspawnedMobError,
 };
 
 fn code<T>(result: Result<T, UnspawnedMobError>) -> f32 {
@@ -134,37 +134,27 @@ pub fn mob_split(host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Fl
     Flow::Continue
 }
 
-/// `baby_entity_spawn`: mode 0 changes nothing, 1 cancels, 2 replaces the baby with a pig baby whose
-/// yaw reports a second baby (`Capacity` is 3), 3 removes the baby, 4 offers a grown replacement
+/// `baby_entity_spawn`: mode 0 changes nothing, 1 cancels, 2 replaces the baby with a pig baby
+/// (yaw 77.0) and drops an unattached second baby, 3 clears the baby, 4 offers a grown replacement
 /// and reports its refusal (`Invalid` is 4) in the kept baby's yaw.
 pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEvent<'_>) -> Flow {
-    let (edits, children, dim): (&dyn PendingChildrenEdits, PendingChildrenRef, &str) = (
-        event.edits,
-        event.edits.children().unwrap(),
-        event.dimension,
-    );
+    let dim = event.dimension;
     let pig = |baby| spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, baby);
     match event.parent % 10 {
         1 => return Flow::Cancel,
         2 => {
-            let pig = edits.construct(children, pig(true)).unwrap();
-            edits.replace(children, 0, pig).unwrap();
-            let second = edits.construct(children, pig_again(dim)).unwrap();
-            edits
-                .set_yaw(pig.mob(), code(edits.append(children, second)))
-                .unwrap();
+            let mut replacement = event.child.construct(pig(true)).unwrap();
+            replacement.set_yaw(77.0).unwrap();
+            let prev = event.child.replace(replacement).unwrap();
+            assert_eq!(prev.unwrap().kind().unwrap().to_string(), "minecraft:cow");
+            let _dropped = event.child.construct(pig(true)).unwrap();
         }
-        3 => edits.remove(children, 0).unwrap(),
+        3 => event.child.clear(),
         4 => {
-            let baby = edits.child(children, 0).unwrap();
-            let grown = code(edits.construct(children, pig(false)));
-            edits.set_yaw(baby, grown).unwrap();
+            let grown = code(event.child.construct(pig(false)));
+            event.child.get_mut().unwrap().set_yaw(grown).unwrap();
         }
         _ => {}
     }
     Flow::Continue
-}
-
-fn pig_again(dim: &str) -> PendingMobSpec {
-    spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, true)
 }

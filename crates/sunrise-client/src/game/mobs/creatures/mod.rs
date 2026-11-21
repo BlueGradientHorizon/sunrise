@@ -4149,9 +4149,11 @@ impl Game<'_> {
                 Some(baby) => child = baby,
                 None => {
                     breeding_credit(&mut self.love_cause, parent, partner);
-                    if let Some(q) = self.mobs.iter_mut().find(|m| m.id == partner) {
-                        q.extra.age = 6000;
-                        q.extra.in_love = 0;
+                    for id in [parent, partner] {
+                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                            m.extra.age = 6000;
+                            m.extra.in_love = 0;
+                        }
                     }
                     return None;
                 }
