@@ -1090,6 +1090,10 @@ fn vehicle_slot_read_fills_without_opener_while_acting() {
     with_game(|game| {
         game.options.dedicated = Some(Vec::new());
         let id = cart(game);
+        let index = game.carts.iter().position(|cart| cart.id == id).unwrap();
+        let resident = ItemStack::new("minecraft:stick", 4);
+        game.carts
+            .update(index, |cart| cart.items[0] = Some(resident.clone()));
         let seen = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new(
@@ -1107,20 +1111,17 @@ fn vehicle_slot_read_fills_without_opener_while_acting() {
                         entity: id,
                         slot: 0,
                     };
-                    let _ = slot.with_stack(game, |stack| stack.count());
+                    assert_eq!(slot.with_stack(game, |stack| stack.count()), Some(4));
                     let _ = slot.with_stack(game, |stack| stack.count());
                 })
                 .unwrap();
             },
         );
-        assert!(
-            game.carts
-                .iter()
-                .find(|cart| cart.id == id)
-                .unwrap()
-                .loot
-                .is_none()
-        );
+        let cart = &game.carts[index];
+        assert!(cart.loot.is_none());
+        assert_eq!(cart.items[0], Some(resident));
+        let filled = cart.items[1..].iter().flatten().collect::<Vec<_>>();
+        assert_eq!(filled, vec![&ItemStack::new("minecraft:diamond", 1)]);
         assert_eq!(
             seen.lock().unwrap().as_slice(),
             &[(

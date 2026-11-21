@@ -66,8 +66,9 @@ pub enum ItemPlace {
     /// minecart's, a chest boat's, or a chested donkey's, mule's or llama's
     /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reading or writing a chest
     /// vehicle's slot unpacks its pending loot table without a player
-    /// (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`), and uses the live
-    /// vehicle menu's slots while it is open.
+    /// (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`). The fill uses empty
+    /// slots without replacing occupied ones, and reads and writes use the live vehicle
+    /// menu's slots while it is open.
     EntitySlot {
         /// The entity's network id.
         entity: u32,
@@ -517,8 +518,8 @@ impl ItemPlace {
     /// if the place is empty or unavailable. Use [`ItemStackView::project`] to inspect components
     /// or retain an owned stack. Native reads never load chunks or initialize a player; reading a
     /// chest vehicle's [`EntitySlot`](Self::EntitySlot) unpacks its pending loot table without a
-    /// player (`ContainerEntity.getChestVehicleItem`). An item entity read sees live state,
-    /// including earlier writes in the same transaction.
+    /// player and fills only empty slots (`ContainerEntity.getChestVehicleItem`, `LootTable.fill`).
+    /// An item entity read sees live state, including earlier writes in the same transaction.
     /// Handler-backed and decoded places lend a view of their provider's or decoder's value.
     /// An occupied place can still refuse projection. To check occupancy without projection,
     /// use [`Self::amount`] and compare it with zero.

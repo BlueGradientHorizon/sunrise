@@ -21,8 +21,9 @@ match place.with_stack(host, |stack| stack.project()) {
 
 Native reads do not load chunks or initialize a player; reading a chest vehicle's
 `ItemPlace::EntitySlot` unpacks its pending loot table without a player, matching vanilla
-`ContainerEntity.getChestVehicleItem`. An item entity's place sees live state, including
-earlier writes in the same transaction.
+`ContainerEntity.getChestVehicleItem`. The fill adds loot only to free slots and preserves
+any items already there. An item entity's place sees live state, including earlier writes
+in the same transaction.
 For a provider-backed or decoded place, the view lends the value produced for that read. A
 provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
 item narrowed to an `ItemEntityRef` has its own

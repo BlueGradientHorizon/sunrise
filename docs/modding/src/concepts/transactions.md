@@ -136,7 +136,8 @@ whose commit triggered them. Explicit mod notices issued during a transaction ru
 NeoForge's `Capabilities.Item.ENTITY`. Read and write it like any other item place.
 Reading or writing a chest minecart's or chest boat's slot unpacks its pending loot table
 without a player (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`), without
-loading chunks, and uses the vehicle's live menu slots if open.
+loading chunks. The fill preserves occupied slots. Reads and writes use the vehicle's live
+menu slots if open.
 
 The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
 `set_persistent_data_key` writes use the open transaction journal. Aborting restores
