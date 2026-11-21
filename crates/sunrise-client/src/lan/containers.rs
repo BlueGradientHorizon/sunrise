@@ -803,23 +803,23 @@ impl Hub {
                 let container_limits = source
                     .map(|source| source.stack_limits(world, items.as_ref().map_or(0, Vec::len)))
                     .unwrap_or_default();
-                let mut container_insert_rules = source
-                    .map(|source| {
-                        source.container_insert_rules(world, items.as_ref().map_or(0, Vec::len))
-                    })
-                    .unwrap_or_default();
-                if let Some(range) = guest
+                let container_insert_rules = guest
                     .menu
                     .as_ref()
                     .filter(|_| in_menu)
-                    .and_then(Menu::linked_slot_range)
-                {
-                    for slot in range {
-                        if let Some(rule) = container_insert_rules.get_mut(slot) {
-                            *rule = ModContainerInsertRule::Any;
-                        }
-                    }
-                }
+                    .map(|m| {
+                        m.live_container_insert_rules(world, items.as_ref().map_or(0, Vec::len))
+                    })
+                    .unwrap_or_else(|| {
+                        source
+                            .map(|source| {
+                                source.container_insert_rules(
+                                    world,
+                                    items.as_ref().map_or(0, Vec::len),
+                                )
+                            })
+                            .unwrap_or_default()
+                    });
                 Some((
                     drag,
                     hidden,

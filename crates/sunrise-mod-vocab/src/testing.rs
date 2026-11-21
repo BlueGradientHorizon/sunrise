@@ -330,11 +330,11 @@ impl Host for FakeHost {
 }
 impl crate::prelude::BlockEntitiesHost for FakeHost {
     fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
-        self.level.standing(level, pos)?;
+        let (generation, _) = self.level.standing_entry(level, pos)?;
         Some(BlockEntityRef {
             level,
             position: pos,
-            generation: 0,
+            generation,
         })
     }
 }
@@ -513,9 +513,13 @@ impl crate::prelude::BlockEntitiesBackend for FakeHost {
         entity: BlockEntityRef,
         read: &mut dyn for<'a> FnMut(&crate::BlockEntityView<'a>),
     ) {
-        let Some(standing) = self.level.standing(entity.level, entity.position) else {
+        let Some((generation, standing)) = self.level.standing_entry(entity.level, entity.position)
+        else {
             return;
         };
+        if generation != entity.generation {
+            return;
+        }
         let kind = standing.kind().copied();
         let id = kind
             .and_then(crate::content::registry_keys::block_entity_type_name)

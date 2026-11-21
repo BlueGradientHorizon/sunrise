@@ -210,7 +210,9 @@ palette keeps a state no block uses any more, and a section of more distinct sta
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
 blocks placed before it tracked them. `chunk.with_view` resolves the chunk once and also exposes `loaded()`,
 `status()` and `is_slime_chunk()`; it returns `None` without calling the closure for a stale handle, on a client,
-or outside world bounds, and `sections_with_block` returns `None` for an unloaded chunk without loading anything.
+or for an unloaded chunk outside world bounds. A resident boundary column still lends a view for `loaded()`,
+`status()` and `sections_with_block`, with `is_slime_chunk()` returning `None`; an unloaded in-world chunk lends a
+view with `sections_with_block` returning `None` without loading anything.
 
 ## World mutation: chunks, blocks shown and placed as a player
 

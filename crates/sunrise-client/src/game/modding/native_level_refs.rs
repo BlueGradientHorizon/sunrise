@@ -355,21 +355,25 @@ impl Game<'_> {
         )
     }
     /// Resolve `chunk` once in an open server level and lend a [`ChunkView`] to `read`.
-    /// A valid unloaded chunk still lends a view; a stale level, client host or position
-    /// outside the world returns without calling `read`.
+    /// Any resident column (including a boundary column outside the 30 million block bound)
+    /// and any valid unloaded chunk inside the world lend a view; a stale level, client host
+    /// or unloaded position outside the world returns without calling `read`.
     pub(super) fn with_chunk_view(&self, chunk: ChunkRef, read: &mut dyn FnMut(&dyn ChunkView)) {
-        let pos = chunk.pos();
-        if !chunk_in_world(pos) {
-            return;
-        }
         let Some(world) = self.native_level_world(chunk.level()) else {
             return;
         };
+        let pos = chunk.pos();
         let [x, z] = pos;
+        let column = world.chunks.get(&(x, z)).map(std::sync::Arc::as_ref);
+        let in_world = chunk_in_world(pos);
+        if column.is_none() && !in_world {
+            return;
+        }
         read(&super::native_chunk_queries::NativeChunkView {
-            column: world.chunks.get(&(x, z)).map(std::sync::Arc::as_ref),
+            column,
             pos,
             seed: self.level.seed,
+            in_world,
         });
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can

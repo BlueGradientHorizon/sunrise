@@ -1,0 +1,3 @@
+# PACKAGE TEST TARGET daily REASON; exact logical libtest identities, sorted.
+sunrise-client game::native_chunk_queries::tests::resident_boundary_column_lends_view_without_slime_query lib daily resources
+sunrise-client game::native_menu_refs::tests::menu_view_slot_rules_honor_container_insert_rules_and_non_chest_blockless_menus lib daily resources

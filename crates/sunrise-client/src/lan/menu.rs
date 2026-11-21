@@ -181,6 +181,24 @@ impl Menu {
         self.linked().map(|(range, _)| range)
     }
 
+    /// Live per-slot admission rules for this open menu's container slots, shared by
+    /// `Hub::prepare_click` and `MenuView` slot-rule queries: linked slots take any item.
+    pub fn live_container_insert_rules(
+        &self,
+        world: &World,
+        size: usize,
+    ) -> Vec<ModContainerInsertRule> {
+        let mut rules = self.slots.container_insert_rules(world, size);
+        if let Some(range) = self.linked_slot_range() {
+            for slot in range {
+                if let Some(rule) = rules.get_mut(slot) {
+                    *rule = ModContainerInsertRule::Any;
+                }
+            }
+        }
+        rules
+    }
+
     /// The linked slots (`links`) no container stands behind, which hold
     /// nothing and take nothing: they are left out of clicks as a hidden
     /// slot is.

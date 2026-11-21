@@ -30,7 +30,7 @@ use mod_api::{
     EntityRayHit, EntityRef, EntityTypeKey, EntityView, LevelReadError, LevelRef, NeighbourUpdate,
 };
 use sunrise_client::join_seq::residency::{
-    Kind,
+    Kind, Source,
     table::{EntityLookup, Location},
 };
 use sunrise_core::geometry::{Aabb, Vec3};
@@ -78,75 +78,57 @@ fn clip_entity_ray(
     ))
 }
 
-/// A validated read source. The residency table has already released its borrow before a
-/// view is lent. `Target` projections use only the selected owner, not another handle lookup.
-// no wire: borrows live entity storage for a read scope.
-pub(super) struct NativeEntityView<'g, 'a> {
-    game: &'g Game<'a>,
-    source: EntityReadSource<'g>,
-    write_position: Option<[f64; 3]>,
+/// A validated read projection computed once from the entity's exact resident owner.
+/// The residency table has already released its borrow before a view is lent, and getters
+/// never rescan entity lists by `Target` id.
+// no wire: borrows projected entity identity for a read scope.
+pub(super) struct NativeEntityView<'g> {
+    position: Option<[f64; 3]>,
+    rotation: Option<[f32; 2]>,
+    kind: Option<&'g str>,
+    class: EntityViewClass,
 }
 
-// no wire: engine lookup sources for an in-process read scope.
-enum EntityReadSource<'g> {
-    Body(Target, Option<Location>),
-    Mob(&'g super::Mob),
-    Tracked(&'g str, [f64; 3]),
-    Parked(&'g super::Mob),
+// no wire: membership classification retained by an in-process entity read view.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EntityViewClass {
+    Current,
+    CurrentLevelMob,
+    ParkedMob,
     WriterOnly,
 }
 
-impl NativeEntityView<'_, '_> {
+impl NativeEntityView<'_> {
     /// Current-world entity membership (`Host::entity`), excluding identity-only and writer-only views.
     pub(super) fn is_current(&self) -> bool {
         matches!(
-            self.source,
-            EntityReadSource::Body(..) | EntityReadSource::Mob(_) | EntityReadSource::Tracked(..)
+            self.class,
+            EntityViewClass::Current | EntityViewClass::CurrentLevelMob
         )
     }
 
     pub(super) fn is_parked_mob(&self) -> bool {
-        matches!(self.source, EntityReadSource::Parked(_))
+        self.class == EntityViewClass::ParkedMob
     }
 
     /// The same narrowing as `Game::mob`, over the source already selected for this view.
     pub(super) fn is_level_mob(&self) -> bool {
-        self.game.is_logical_server()
-            && matches!(
-                self.source,
-                EntityReadSource::Mob(_) | EntityReadSource::Body(Target::Dragon(_), _)
-            )
+        self.class == EntityViewClass::CurrentLevelMob
     }
 }
 
-impl EntityView for NativeEntityView<'_, '_> {
+impl EntityView for NativeEntityView<'_> {
     fn position(&self) -> Option<[f64; 3]> {
-        self.write_position.or_else(|| match self.source {
-            EntityReadSource::Body(target, location) => {
-                self.game.target_position_at(target, location)
-            }
-            EntityReadSource::Mob(mob) => Some([mob.position.x, mob.position.y, mob.position.z]),
-            EntityReadSource::Tracked(_, position) => Some(position),
-            EntityReadSource::Parked(_) | EntityReadSource::WriterOnly => None,
-        })
+        self.position
     }
 
     fn rotation(&self) -> Option<[f32; 2]> {
-        match self.source {
-            EntityReadSource::Body(target, _) => Some(self.game.target_rotation(target)),
-            EntityReadSource::Mob(mob) => Some([mob.yaw, mob.head_pitch]),
-            _ => None,
-        }
+        self.rotation
     }
 
     fn kind(&self) -> Option<EntityTypeKey> {
-        let kind = match self.source {
-            EntityReadSource::Body(target, _) => return self.game.native_entity_kind_key(target),
-            EntityReadSource::Tracked(kind, _) => kind,
-            EntityReadSource::Mob(mob) | EntityReadSource::Parked(mob) => &mob.kind.id,
-            EntityReadSource::WriterOnly => return None,
-        };
-        mod_api::__private::resolved_entity_type_key(kind)
+        self.kind
+            .and_then(mod_api::__private::resolved_entity_type_key)
     }
 }
 
@@ -1035,22 +1017,225 @@ impl Game<'_> {
         }
     }
 
-    fn entity_read_source(
-        &self,
-        target: Target,
-        location: Option<Location>,
-    ) -> Option<EntityReadSource<'_>> {
-        if matches!(target, Target::Mob(_)) {
-            let mob = self.mobs.get(self.mobs.locate(location?.join)?)?;
-            return Some(EntityReadSource::Mob(mob));
-        }
-        Some(EntityReadSource::Body(target, location))
+    /// Project position, rotation and type name once directly from the resident owner
+    /// addressed by `location`, without rescanning by `Target` id.
+    fn project_resident_entity(&self, location: Location) -> Option<([f64; 3], [f32; 2], &str)> {
+        use crate::game::player_residency::SpecializedSource;
+        let projected = match location.owner.kind {
+            Kind::Player => match self.specialized_resident_source(location)?.value.0 {
+                SpecializedSource::Player(player) => (
+                    [player.position.x, player.position.y, player.position.z],
+                    [self.yaw, self.pitch],
+                    "minecraft:player",
+                ),
+                SpecializedSource::Guest(guest) => {
+                    (guest.position, [guest.yaw, guest.pitch], "minecraft:player")
+                }
+                SpecializedSource::Hook(_) => return None,
+            },
+            Kind::Mob => {
+                let mob = &self.mobs[self.mobs.locate(location.join)?];
+                (
+                    [mob.position.x, mob.position.y, mob.position.z],
+                    [mob.yaw, mob.head_pitch],
+                    mob.kind.id.as_str(),
+                )
+            }
+            Kind::Item => {
+                let item = &self.dropped[self.dropped.locate(location.join)?];
+                (
+                    [item.position.x, item.position.y, item.position.z],
+                    [0.0; 2],
+                    "minecraft:item",
+                )
+            }
+            Kind::Orb => {
+                let orb = &self.orbs[self.orbs.locate(location.join)?];
+                (
+                    [orb.position.x, orb.position.y, orb.position.z],
+                    [0.0; 2],
+                    "minecraft:experience_orb",
+                )
+            }
+            Kind::Projectile => {
+                let proj = &self.creatures.projectiles
+                    [self.creatures.projectiles.locate(location.join)?];
+                (
+                    [proj.position.x, proj.position.y, proj.position.z],
+                    [0.0; 2],
+                    proj.entity_type(),
+                )
+            }
+            Kind::Stand => {
+                let stand = &self.armor_stands[self.armor_stands.locate(location.join)?];
+                (
+                    [stand.position.x, stand.position.y, stand.position.z],
+                    [stand.yaw, 0.0],
+                    "minecraft:armor_stand",
+                )
+            }
+            Kind::Frame => {
+                let frame = &self.item_frames[self.item_frames.locate(location.join)?];
+                let (lo, hi) = frame.bounds();
+                (
+                    [
+                        (lo[0] + hi[0]) / 2.0,
+                        (lo[1] + hi[1]) / 2.0,
+                        (lo[2] + hi[2]) / 2.0,
+                    ],
+                    [0.0; 2],
+                    if frame.glow {
+                        "minecraft:glow_item_frame"
+                    } else {
+                        "minecraft:item_frame"
+                    },
+                )
+            }
+            Kind::Painting => {
+                let painting = &self.paintings[self.paintings.locate(location.join)?];
+                let (lo, hi) = painting.bounds();
+                (
+                    [
+                        (lo[0] + hi[0]) / 2.0,
+                        (lo[1] + hi[1]) / 2.0,
+                        (lo[2] + hi[2]) / 2.0,
+                    ],
+                    [0.0; 2],
+                    "minecraft:painting",
+                )
+            }
+            Kind::Boat => {
+                let boat = &self.boats[self.boats.locate(location.join)?];
+                (
+                    [boat.position.x, boat.position.y, boat.position.z],
+                    [boat.yaw, boat.pitch],
+                    boat.entity_type_name(),
+                )
+            }
+            Kind::Cart => {
+                let cart = &self.carts[self.carts.locate(location.join)?];
+                (
+                    [cart.position.x, cart.position.y, cart.position.z],
+                    [cart.yaw, cart.pitch],
+                    cart.kind.id(),
+                )
+            }
+            Kind::Other => {
+                let other = &self.others[self.others.locate(location.join)?];
+                (
+                    [other.position.x, other.position.y, other.position.z],
+                    [other.yaw, other.pitch],
+                    other.kind.as_str(),
+                )
+            }
+            Kind::Fangs => {
+                let fangs = &self.fangs.list[self.fangs.list.locate(location.join)?];
+                (fangs.pos, [fangs.yaw, 0.0], "minecraft:evoker_fangs")
+            }
+            Kind::Crystal => {
+                let crystal = &self.crystals[self.crystals.locate(location.join)?];
+                (
+                    [crystal.position.x, crystal.position.y, crystal.position.z],
+                    [0.0; 2],
+                    "minecraft:end_crystal",
+                )
+            }
+            Kind::Dragon => {
+                self.dragon.locate(location.join)?;
+                let dragon = self.dragon.as_ref()?;
+                (
+                    [dragon.position.x, dragon.position.y, dragon.position.z],
+                    [0.0; 2],
+                    "minecraft:ender_dragon",
+                )
+            }
+            Kind::DragonPart => {
+                let Source::DragonPart(index) = location.source else {
+                    return None;
+                };
+                self.dragon.locate(location.join)?;
+                let part = self.dragon.as_ref()?.parts.get(usize::from(index))?.0;
+                ([part.x, part.y, part.z], [0.0; 2], "minecraft:ender_dragon")
+            }
+            Kind::Tnt => {
+                let tnt = &self.tnts[self.tnts.locate(location.join)?];
+                (
+                    [tnt.position.x, tnt.position.y, tnt.position.z],
+                    [0.0; 2],
+                    "minecraft:tnt",
+                )
+            }
+            Kind::Cushion => {
+                let cushion = &self.cushions[self.cushions.locate(location.join)?];
+                (
+                    [cushion.position.x, cushion.position.y, cushion.position.z],
+                    [0.0; 2],
+                    "minecraft:cushion",
+                )
+            }
+            Kind::Knot => {
+                let knots = &self.resident_entities.knots;
+                let fence = knots[knots.locate(location.join)?].fence;
+                let p = sunrise_client::mobs::leash::knot_state(fence).position;
+                ([p.x, p.y, p.z], [0.0; 2], "minecraft:leash_knot")
+            }
+            Kind::Falling => {
+                let falling = &self.falling[self.falling.locate(location.join)?];
+                (
+                    [falling.position.x, falling.position.y, falling.position.z],
+                    [0.0; 2],
+                    "minecraft:falling_block",
+                )
+            }
+            Kind::Rocket => {
+                let rocket = &self.rockets[self.rockets.locate(location.join)?];
+                (
+                    [rocket.position.x, rocket.position.y, rocket.position.z],
+                    [0.0; 2],
+                    "minecraft:firework_rocket",
+                )
+            }
+            Kind::Trident => {
+                let trident = &self.tridents[self.tridents.locate(location.join)?];
+                (
+                    [trident.position.x, trident.position.y, trident.position.z],
+                    [0.0; 2],
+                    "minecraft:trident",
+                )
+            }
+            Kind::Spawner => {
+                let spawner =
+                    &self.ominous_spawners[self.ominous_spawners.locate(location.join)?];
+                (spawner.position, [0.0; 2], "minecraft:ominous_item_spawner")
+            }
+            Kind::Cloud => {
+                let cloud = &self.breath_clouds[self.breath_clouds.locate(location.join)?];
+                (cloud.at, [0.0; 2], "minecraft:area_effect_cloud")
+            }
+            Kind::Hook => {
+                let (SpecializedSource::Hook(hook), _) =
+                    self.specialized_resident_source(location)?.value
+                else {
+                    return None;
+                };
+                let p = hook.position;
+                ([p.x, p.y, p.z], [0.0; 2], "minecraft:fishing_bobber")
+            }
+            Kind::General => {
+                let index = self.resident_entities.general.locate(location.join)?;
+                let row = &self.resident_entities.general[index];
+                let kind = crate::game::general::general_type_catalog().key(row.type_slot);
+                (
+                    [row.position.x, row.position.y, row.position.z],
+                    row.rotation,
+                    kind,
+                )
+            }
+        };
+        Some(projected)
     }
 
-    pub(super) fn resolve_entity_view(
-        &self,
-        entity: EntityRef,
-    ) -> Option<NativeEntityView<'_, '_>> {
+    pub(super) fn resolve_entity_view(&self, entity: EntityRef) -> Option<NativeEntityView<'_>> {
         let write_position = self
             .native_lifecycle
             .entity_sections
@@ -1059,39 +1244,113 @@ impl Game<'_> {
                 *id == entity.id() && self.native_lifecycle.epoch() == Some(entity.epoch())
             })
             .map(|(_, position)| position);
-        let source = if self.is_logical_server() {
+        let projected = if self.is_logical_server() {
             self.native_server_entity_location(entity)
                 .and_then(|(location, target)| {
                     if self.current_native_entity(location, target) {
-                        self.entity_read_source(target, Some(location))
+                        let (position, rotation, kind) = self.project_resident_entity(location)?;
+                        let class = if matches!(location.owner.kind, Kind::Mob | Kind::Dragon) {
+                            EntityViewClass::CurrentLevelMob
+                        } else {
+                            EntityViewClass::Current
+                        };
+                        Some((Some(position), Some(rotation), Some(kind), class))
                     } else if matches!(target, Target::Mob(_)) {
-                        self.parked_mob(location)
-                            .map(|(_, mob)| EntityReadSource::Parked(mob))
+                        self.parked_mob(location).map(|(_, mob)| {
+                            (
+                                None,
+                                None,
+                                Some(mob.kind.id.as_str()),
+                                EntityViewClass::ParkedMob,
+                            )
+                        })
                     } else {
                         None
                     }
                 })
                 .or_else(|| {
-                    self.native_client_tracked(entity)
-                        .map(|(kind, position)| EntityReadSource::Tracked(kind, position))
+                    self.native_client_tracked(entity).map(|(kind, position)| {
+                        (Some(position), None, Some(kind), EntityViewClass::Current)
+                    })
                 })
         } else {
             self.native_client_entity_context(entity)
                 .and_then(|(remote, id)| {
-                    self.native_client_entity_source(remote, id)
-                        .and_then(|(target, location)| self.entity_read_source(target, location))
-                        .or_else(|| {
-                            remote
-                                .tracked_entity(id)
-                                .map(|(kind, position)| EntityReadSource::Tracked(kind, position))
+                    if id == remote.entity_id {
+                        self.player.as_ref().map(|player| {
+                            (
+                                Some([player.position.x, player.position.y, player.position.z]),
+                                Some([self.yaw, self.pitch]),
+                                Some("minecraft:player"),
+                                EntityViewClass::Current,
+                            )
                         })
+                    } else {
+                        let resident = self.server_resident_entity(id as u32);
+                        if let EntityLookup::Found {
+                            location,
+                            value: Target::DragonPart(_),
+                        } = resident
+                            && location.owner.dimension == self.dim.key()
+                        {
+                            self.project_resident_entity(location).map(
+                                |(position, rotation, kind)| {
+                                    (
+                                        Some(position),
+                                        Some(rotation),
+                                        Some(kind),
+                                        EntityViewClass::Current,
+                                    )
+                                },
+                            )
+                        } else if remote.tracked(id).is_some() {
+                            if let EntityLookup::Found { location, .. } = resident
+                                && location.owner.dimension == self.dim.key()
+                                && !matches!(
+                                    location.owner.kind,
+                                    Kind::Player | Kind::Hook | Kind::DragonPart
+                                )
+                            {
+                                self.project_resident_entity(location).map(
+                                    |(position, rotation, kind)| {
+                                        (
+                                            Some(position),
+                                            Some(rotation),
+                                            Some(kind),
+                                            EntityViewClass::Current,
+                                        )
+                                    },
+                                )
+                            } else {
+                                self.shown_remote_general(id).map(|row| {
+                                    let kind = crate::game::general::general_type_catalog()
+                                        .key(row.type_slot);
+                                    (
+                                        Some(row.position),
+                                        Some(row.rotation),
+                                        Some(kind),
+                                        EntityViewClass::Current,
+                                    )
+                                })
+                            }
+                        } else {
+                            None
+                        }
+                    }
+                    .or_else(|| {
+                        remote.tracked_entity(id).map(|(kind, position)| {
+                            (Some(position), None, Some(kind), EntityViewClass::Current)
+                        })
+                    })
                 })
         };
-        let source = source.or(write_position.map(|_| EntityReadSource::WriterOnly))?;
+        let (position, rotation, kind, class) = projected
+            .or_else(|| write_position.map(|_| (None, None, None, EntityViewClass::WriterOnly)))?;
         Some(NativeEntityView {
-            game: self,
-            source,
-            write_position,
+            position: write_position.or(position),
+            rotation,
+            kind,
+            class,
         })
     }
 

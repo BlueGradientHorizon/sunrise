@@ -78,3 +78,37 @@ fn an_undeclared_fake_entity_kind_after_resolution_is_a_setup_error() {
     assert_eq!(host.level.entity(20, "test:unused").kind, "test:declared");
     host.level.entity(22, "test:late");
 }
+
+#[test]
+fn fake_block_entity_generation_invalidates_replaced_handles() {
+    use crate::host::block_entities::BlockEntitiesHost;
+    let mut host = FakeHost::new();
+    let level = host.level.level();
+    let pos = [4, 64, 5];
+
+    host.level.block_entity(pos);
+    let first = host.block_entity(level, pos).unwrap();
+    // Mutating the same standing placement keeps its generation and lends a view.
+    host.level.block_entity(pos).with_items(1);
+    assert_eq!(host.block_entity(level, pos), Some(first));
+    assert_eq!(
+        first.with_view(&host, |view| (view.level(), view.position(), view.handle())),
+        Some((level, pos, first))
+    );
+
+    // Removing the block entity invalidates the first handle.
+    assert!(host.level.remove_block_entity(pos).is_some());
+    assert_eq!(host.block_entity(level, pos), None);
+    assert_eq!(first.with_view(&host, |view| view.position()), None);
+
+    // Replacing at the same position mints a new generation; the old handle stays stale
+    // while the new handle resolves and lends a view.
+    host.level.block_entity(pos);
+    let second = host.block_entity(level, pos).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(first.with_view(&host, |view| view.position()), None);
+    assert_eq!(
+        second.with_view(&host, |view| (view.level(), view.position(), view.handle())),
+        Some((level, pos, second))
+    );
+}

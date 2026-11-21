@@ -12,7 +12,8 @@ use std::collections::{BTreeMap, HashMap};
 pub struct FakeLevel {
     level: LevelRef,
     blocks: HashMap<[i32; 3], String>,
-    block_entities: BTreeMap<[i32; 3], FakeBlockEntity>,
+    block_entities: BTreeMap<[i32; 3], (u64, FakeBlockEntity)>,
+    next_block_entity_generation: u64,
     pub(super) entities: BTreeMap<u32, FakeEntity>,
     /// Bucket sounds and game events queued for the outermost commit
     /// ([`LevelRef::play_fluid_effects`](crate::LevelRef::play_fluid_effects)): kept with the
@@ -46,6 +47,7 @@ impl FakeLevel {
             ),
             blocks: HashMap::new(),
             block_entities: BTreeMap::new(),
+            next_block_entity_generation: 1,
             entities: BTreeMap::new(),
             fluid_effects: Vec::new(),
         }
@@ -64,15 +66,24 @@ impl FakeLevel {
     }
     /// The block entity at `pos`, a vanilla one with no storage put there if none stands there.
     pub fn block_entity(&mut self, pos: [i32; 3]) -> &mut FakeBlockEntity {
-        self.block_entities.entry(pos).or_default()
+        let next = &mut self.next_block_entity_generation;
+        &mut self
+            .block_entities
+            .entry(pos)
+            .or_insert_with(|| {
+                let generation = *next;
+                *next += 1;
+                (generation, FakeBlockEntity::default())
+            })
+            .1
     }
     /// Takes the block entity at `pos` away, as breaking its block does.
     pub fn remove_block_entity(&mut self, pos: [i32; 3]) -> Option<FakeBlockEntity> {
-        self.block_entities.remove(&pos)
+        self.block_entities.remove(&pos).map(|(_, entity)| entity)
     }
     /// The block entity at `pos`, if one stands there.
     pub fn block_entity_at(&self, pos: [i32; 3]) -> Option<&FakeBlockEntity> {
-        self.block_entities.get(&pos)
+        self.block_entities.get(&pos).map(|(_, entity)| entity)
     }
     /// Entity `id` of type `kind` (`minecraft:pig`) in this level, put there if missing; its
     /// UUID is its id until set. After explicit entity-type resolution, an undeclared kind
@@ -128,10 +139,21 @@ impl FakeLevel {
         self.blocks.insert(pos, id.to_owned());
         true
     }
-    pub(super) fn standing(&self, level: LevelRef, pos: [i32; 3]) -> Option<&FakeBlockEntity> {
+    pub(super) fn standing_entry(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<(u64, &FakeBlockEntity)> {
         (level == self.level)
-            .then(|| self.block_entities.get(&pos))
+            .then(|| {
+                self.block_entities
+                    .get(&pos)
+                    .map(|(generation, entity)| (*generation, entity))
+            })
             .flatten()
+    }
+    pub(super) fn standing(&self, level: LevelRef, pos: [i32; 3]) -> Option<&FakeBlockEntity> {
+        self.standing_entry(level, pos).map(|(_, entity)| entity)
     }
     pub(super) fn standing_mut(
         &mut self,
@@ -139,7 +161,7 @@ impl FakeLevel {
         pos: [i32; 3],
     ) -> Option<&mut FakeBlockEntity> {
         (level == self.level)
-            .then(|| self.block_entities.get_mut(&pos))
+            .then(|| self.block_entities.get_mut(&pos).map(|(_, entity)| entity))
             .flatten()
     }
     pub(super) fn entity_at(&self, id: u32) -> Option<&FakeEntity> {

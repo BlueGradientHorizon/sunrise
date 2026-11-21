@@ -462,9 +462,11 @@ impl ChunkRef {
         self.level
     }
     /// Resolve this server chunk once and lend its facts to `read`, without loading it.
-    /// A valid but unloaded chunk still lends a view; a stale or unavailable level,
-    /// a client host, or a position outside the world returns `None` without calling `read`.
-    /// Inside the scope, `status` and palette reads return `None` when the chunk is unloaded.
+    /// Any resident column (including a boundary column outside the 30 million block bound)
+    /// and any valid unloaded chunk inside the world lend a view; a stale or unavailable
+    /// level, a client host, or an unloaded position outside the world returns `None` without
+    /// calling `read`. Inside the scope, `status` and palette reads return `None` when the
+    /// chunk is unloaded, and `is_slime_chunk` returns `None` outside the world bound.
     /// No residency guard or lock is held while `read` runs. Retain the handle or owned
     /// results, not the view, and resolve again after mutation or reentry.
     pub fn with_view<R>(
@@ -495,8 +497,9 @@ pub trait ChunkView {
 
     /// Whether vanilla's seeded slime-chunk test passes, independent of dimension, height,
     /// biome and other spawn conditions. Works without a resident column and does not
-    /// advance the world's random stream.
-    fn is_slime_chunk(&self) -> bool;
+    /// advance the world's random stream. `None` for a resident boundary column outside the
+    /// world's 30 million block bound.
+    fn is_slime_chunk(&self) -> Option<bool>;
 
     /// The section Y coordinates (block Y `>> 4`), from bottom up, whose block palette may
     /// hold any state of `block` (`PalettedContainer.maybeHas`). A palette may retain an
