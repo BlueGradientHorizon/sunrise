@@ -80,7 +80,9 @@ pub struct UnjudgedBuild {
     pub reason: String,
 }
 
-fn stable_tag(tag: &str) -> Option<(&str, u64)> {
+/// A canonical stable Sunrise tag: dotted Minecraft version and a full Sunrise SemVer
+/// with neither prerelease nor build metadata. Returns the game version and Sunrise major.
+pub fn stable_tag(tag: &str) -> Option<(&str, u64)> {
     let (game, release) = tag.split_once('-')?;
     let version = semver::Version::parse(release).ok()?;
     (game.contains('.')

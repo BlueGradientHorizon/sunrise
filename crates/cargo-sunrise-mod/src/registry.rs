@@ -1,6 +1,6 @@
-//! `cargo sunrise-mod registry build|review|check|list|release|page`: the registry repository's CI
-//! (`sunrise-org/sunrise-mods`, docs/modding/src/reference/registry-index.md). Network-free: the
-//! workflow downloads the files and publishes what this writes.
+//! `cargo sunrise-mod registry`: the registry repository's CI (`docs/modding/src/reference/registry-index.md`).
+//! `releases` discovers stable Sunrise releases. Other commands work on local files; the workflow fetches
+//! their inputs and publishes what they write.
 use crate::options::Options;
 use serde::de::DeserializeOwned;
 use std::path::Path;
@@ -8,6 +8,8 @@ use std::path::Path;
 mod fit;
 #[cfg(test)]
 mod tests;
+
+mod releases;
 use sunrise_mod_package::index::{
     registry::{self, Sources},
     resolve::uninstallable_versions,
@@ -22,7 +24,8 @@ const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files 
        cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--releases <file>] [--json]
        cargo sunrise-mod registry list <checkout>
        cargo sunrise-mod registry release <checkout> <id> <file> --tag <tag> --published <YYYY-MM-DD> [--notes <file>] [--signature <file>] [--name <asset>] [--game <version>]
-       cargo sunrise-mod registry page <checkout> <id> <sunrise-registry.toml>";
+       cargo sunrise-mod registry page <checkout> <id> <sunrise-registry.toml>
+       cargo sunrise-mod registry releases --out <releases.json>";
 
 fn lines(errors: Vec<String>) -> String {
     format!("{} problem(s):\n  {}", errors.len(), errors.join("\n  "))
@@ -53,6 +56,11 @@ pub fn main(args: &[String]) -> Result<(), String> {
     let mut options =
         Options::new(&command, args.get(1..).unwrap_or_default(), VALUED).usage(USAGE);
     match args.first().map(String::as_str) {
+        Some("releases") => {
+            let out = options.value("--out")?;
+            options.finish()?;
+            releases::fetch(Path::new(out.ok_or(USAGE)?))
+        }
         Some("build") => {
             let (files, out) = (options.value("--files")?, options.value("--out")?);
             let (generated, release) = (options.value("--generated")?, options.value("--release")?);

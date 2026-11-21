@@ -73,8 +73,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "registry",
         everyday: false,
-        usage: "registry build|review|check|list|release|page",
-        summary: "The registry repository's CI steps.",
+        usage: "registry build|review|check|list|release|page | registry releases --out <releases.json>",
+        summary: "The registry repository's offline CI commands, and `releases` to fetch the stable Sunrise release list.",
     },
     Command {
         name: "use-jar",
