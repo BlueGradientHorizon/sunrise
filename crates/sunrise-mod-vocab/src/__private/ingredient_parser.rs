@@ -81,9 +81,33 @@ impl<A> WalkedIngredient<A> {
         custom: CustomIds<'_, A>,
         convert: IngredientData<'_>,
     ) -> Option<Self> {
-        Self::walk_resolved(v, tags, block_tags, custom, convert, &|id| {
+        Self::walk_resolved_with_components(v, tags, block_tags, custom, convert, convert, &|id| {
             Some(id.to_owned())
         })
+    }
+
+    /// Walk `v` with separate converters for `neoforge:components` patches and
+    /// `neoforge:custom_display` slot displays so component validation happens
+    /// during the single decode pass.
+    // hidden: game-owned single-pass ingredient decoder boundary.
+    #[doc(hidden)]
+    pub fn walk_with_components(
+        v: &Value,
+        tags: &std::collections::HashMap<String, Vec<String>>,
+        block_tags: &dyn Fn(&str) -> Option<Vec<String>>,
+        custom: CustomIds<'_, A>,
+        convert_components: IngredientData<'_>,
+        convert_display: IngredientData<'_>,
+    ) -> Option<Self> {
+        Self::walk_resolved_with_components(
+            v,
+            tags,
+            block_tags,
+            custom,
+            convert_components,
+            convert_display,
+            &|id| Some(id.to_owned()),
+        )
     }
 
     // hidden: the game-owned adapter resolves ids using its own load-time registry.
@@ -94,6 +118,18 @@ impl<A> WalkedIngredient<A> {
         block_tags: &dyn Fn(&str) -> Option<Vec<String>>,
         custom: CustomIds<'_, A>,
         convert: IngredientData<'_>,
+        resolve: &dyn Fn(&str) -> Option<String>,
+    ) -> Option<Self> {
+        Self::walk_resolved_with_components(v, tags, block_tags, custom, convert, convert, resolve)
+    }
+
+    fn walk_resolved_with_components(
+        v: &Value,
+        tags: &std::collections::HashMap<String, Vec<String>>,
+        block_tags: &dyn Fn(&str) -> Option<Vec<String>>,
+        custom: CustomIds<'_, A>,
+        convert_components: IngredientData<'_>,
+        convert_display: IngredientData<'_>,
         resolve: &dyn Fn(&str) -> Option<String>,
     ) -> Option<Self> {
         let mut list: Vec<String> = Vec::new();
@@ -136,7 +172,16 @@ impl<A> WalkedIngredient<A> {
                 }
             }
             Value::Object(o) => {
-                return Self::walk_object(v, o, tags, block_tags, custom, convert, resolve);
+                return Self::walk_object(
+                    v,
+                    o,
+                    tags,
+                    block_tags,
+                    custom,
+                    convert_components,
+                    convert_display,
+                    resolve,
+                );
             }
             _ => return None,
         }
@@ -173,7 +218,8 @@ impl<A> WalkedIngredient<A> {
         tags: &std::collections::HashMap<String, Vec<String>>,
         block_tags: &dyn Fn(&str) -> Option<Vec<String>>,
         custom: CustomIds<'_, A>,
-        convert: IngredientData<'_>,
+        convert_components: IngredientData<'_>,
+        convert_display: IngredientData<'_>,
         resolve: &dyn Fn(&str) -> Option<String>,
     ) -> Option<Self> {
         // Current NeoForge marks a custom ingredient with
@@ -193,7 +239,17 @@ impl<A> WalkedIngredient<A> {
             "neoforge:compound" => {
                 let subs: Vec<Self> = children()?
                     .iter()
-                    .map(|s| Self::walk_resolved(s, tags, block_tags, custom, convert, resolve))
+                    .map(|s| {
+                        Self::walk_resolved_with_components(
+                            s,
+                            tags,
+                            block_tags,
+                            custom,
+                            convert_components,
+                            convert_display,
+                            resolve,
+                        )
+                    })
                     .collect::<Option<_>>()?;
                 let mut seen = Vec::new();
                 for sub in &subs {
@@ -211,7 +267,17 @@ impl<A> WalkedIngredient<A> {
             "neoforge:intersection" => {
                 let subs: Vec<Self> = children()?
                     .iter()
-                    .map(|s| Self::walk_resolved(s, tags, block_tags, custom, convert, resolve))
+                    .map(|s| {
+                        Self::walk_resolved_with_components(
+                            s,
+                            tags,
+                            block_tags,
+                            custom,
+                            convert_components,
+                            convert_display,
+                            resolve,
+                        )
+                    })
                     .collect::<Option<_>>()?;
                 let kept = subs
                     .first()?
@@ -225,20 +291,22 @@ impl<A> WalkedIngredient<A> {
             }
             // The base's ids without the subtracted's.
             "neoforge:difference" => {
-                let base = Self::walk_resolved(
+                let base = Self::walk_resolved_with_components(
                     o.get("base")?,
                     tags,
                     block_tags,
                     custom,
-                    convert,
+                    convert_components,
+                    convert_display,
                     resolve,
                 )?;
-                let gone = Self::walk_resolved(
+                let gone = Self::walk_resolved_with_components(
                     o.get("subtracted")?,
                     tags,
                     block_tags,
                     custom,
-                    convert,
+                    convert_components,
+                    convert_display,
                     resolve,
                 )?;
                 let kept = base
@@ -263,15 +331,16 @@ impl<A> WalkedIngredient<A> {
                 if !matches!(o.get("items")?, Value::String(_) | Value::Array(_)) {
                     return None;
                 }
-                let mut base = Self::walk_resolved(
+                let mut base = Self::walk_resolved_with_components(
                     o.get("items")?,
                     tags,
                     block_tags,
                     custom,
-                    convert,
+                    convert_components,
+                    convert_display,
                     resolve,
                 )?;
-                let mut patch = convert(o.get("components")?.as_object()?)?;
+                let mut patch = convert_components(o.get("components")?.as_object()?)?;
                 let mut removed = Vec::new();
                 patch.retain(|key, _| {
                     if let Some(id) = key.to_string_lossy().strip_prefix('!') {
@@ -293,12 +362,13 @@ impl<A> WalkedIngredient<A> {
                 return Some(base);
             }
             "neoforge:custom_display" => {
-                let base = Self::walk_resolved(
+                let base = Self::walk_resolved_with_components(
                     o.get("base")?,
                     tags,
                     block_tags,
                     custom,
-                    convert,
+                    convert_components,
+                    convert_display,
                     resolve,
                 )?;
                 return Some(Self {
@@ -307,7 +377,7 @@ impl<A> WalkedIngredient<A> {
                     children: Some((Shape::CustomDisplay, vec![base])),
                     custom: None,
                     rule: None,
-                    display: Some(convert(o.get("display")?.as_object()?)?),
+                    display: Some(convert_display(o.get("display")?.as_object()?)?),
                 });
             }
             // The wrapper defines both the candidate ids and the custom payload.

@@ -1780,25 +1780,22 @@ fn decode_vanilla_recipe(
     items: &Items,
     listener: Option<&LoadContext>,
 ) -> std::result::Result<DecodedRecipe, String> {
-    Ingredient::validate_recipe(v, items).map_err(|error| recipe_refused(name, &error))?;
     let text = |k: &str| v[k].as_str().unwrap_or("").to_owned();
     let custom_error = std::cell::RefCell::new(None::<String>);
     let failure = std::cell::RefCell::new(None::<String>);
-    let parse_raw = |value: &Value| {
-        Ingredient::parse_with(value, items, &|value, kind| {
+    let ingredient =
+        |value: &Value| match Ingredient::parse_with_error(value, items, &|value, kind| {
             resolve_custom_ingredient(name, value, kind, listener, &custom_error)
-        })
-    };
-    let ingredient = |value: &Value| {
-        let parsed = parse_raw(value);
-        if parsed.is_none() {
-            let mut slot = failure.borrow_mut();
-            if slot.is_none() {
-                *slot = Some(format!("invalid ingredient: {value}"));
+        }) {
+            Ok(parsed) => Some(parsed),
+            Err(error) => {
+                let mut slot = failure.borrow_mut();
+                if slot.is_none() {
+                    *slot = Some(error);
+                }
+                None
             }
-        }
-        parsed
-    };
+        };
     let ing = |key: &str| ingredient(&v[key]);
     let result = || {
         let parsed = Template::parse(&v["result"]).filter(|template| {
@@ -1830,7 +1827,7 @@ fn decode_vanilla_recipe(
     };
     match kind {
         "minecraft:stonecutting" | "minecraft:smithing_transform" | "minecraft:smithing_trim" => {
-            match crate::stations::ParsedStationRecipe::parse(qualified(name), v, &parse_raw) {
+            match crate::stations::ParsedStationRecipe::parse(qualified(name), v, &ingredient) {
                 Some(recipe) => Ok(DecodedRecipe::Station {
                     recipe,
                     category: text("category"),
@@ -1842,8 +1839,8 @@ fn decode_vanilla_recipe(
         "minecraft:brewing" => {
             crate::brewing::BrewingRecipe::validate(v)
                 .map_err(|error| recipe_refused(name, error))?;
-            let input = parse_raw(&v["input"]["item"]);
-            let reagent = parse_raw(&v["reagent"]["item"]);
+            let input = ingredient(&v["input"]["item"]);
+            let reagent = ingredient(&v["reagent"]["item"]);
             if let Some(error) = custom_error.borrow_mut().take() {
                 return Err(recipe_refused(name, &error));
             }

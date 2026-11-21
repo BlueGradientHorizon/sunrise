@@ -53,10 +53,6 @@ pub struct Ingredient {
         std::sync::Arc<std::collections::HashMap<String, sunrise_core::nbt::Compound>>,
 }
 impl Ingredient {
-    /// Reject malformed component patches before any part of a recipe is published.
-    pub fn validate_recipe(value: &Value, items: &Items) -> Result<(), String> {
-        components::validate_recipe(value, items)
-    }
     pub(crate) fn validate_persistence(value: &Value, recipe: &str) -> bool {
         if let Err(error) = components::persistent_recipe(value) {
             let recipe = sunrise_items::recipe_sources::qualified(recipe);
@@ -67,16 +63,21 @@ impl Ingredient {
     }
     /// Decode built-in rules and materialize display stacks at a load boundary.
     pub fn prepare_components(&mut self, items: &Items) -> Option<()> {
+        self.prepare_components_checked(items).ok()
+    }
+    fn prepare_components_checked(&mut self, items: &Items) -> Result<(), String> {
         if let Some(rule) = &self.rule {
-            let compiled = std::sync::Arc::new(
-                components::ComponentPredicate::compile(rule, &self.items, items).ok()?,
-            );
+            let compiled = std::sync::Arc::new(components::ComponentPredicate::compile(
+                rule,
+                &self.items,
+                items,
+            )?);
             if self.display.is_none() {
                 self.shown = Some(compiled.shown(&self.order));
             }
             self.compiled = Some(compiled);
         }
-        Some(())
+        Ok(())
     }
     fn default_matches(&self, stack: &ItemStack) -> bool {
         match &self.children {
@@ -142,7 +143,16 @@ impl Ingredient {
         items: &Items,
         custom: CustomIds<'_, IngredientPredicate>,
     ) -> Option<Self> {
-        let walked = WalkedIngredient::walk(
+        Self::parse_with_error(v, items, custom).ok()
+    }
+
+    pub(super) fn parse_with_error(
+        v: &Value,
+        items: &Items,
+        custom: CustomIds<'_, IngredientPredicate>,
+    ) -> Result<Self, String> {
+        let component_error = std::cell::RefCell::new(None::<String>);
+        let walked = WalkedIngredient::walk_with_components(
             v,
             &items.item_tag_order,
             &|tag| {
@@ -164,9 +174,22 @@ impl Ingredient {
                 )
             },
             custom,
+            &|data| match components::convert_component_patch(data, items) {
+                Ok(patch) => Some(patch),
+                Err(error) => {
+                    let mut slot = component_error.borrow_mut();
+                    if slot.is_none() {
+                        *slot = Some(error);
+                    }
+                    None
+                }
+            },
             &components::json_patch,
         );
-        let walked = walked?;
+        if let Some(error) = component_error.into_inner() {
+            return Err(error);
+        }
+        let walked = walked.ok_or_else(|| format!("invalid ingredient: {v}"))?;
         // A mod kind's empty answer is warned about at load, with its recipe file.
         if walked.order.is_empty() && walked.custom.is_none() {
             log::warn!(
@@ -176,18 +199,24 @@ impl Ingredient {
         Self::of_walked(walked, items)
     }
     /// Preserve the standard shapes and the predicate bound to each custom leaf.
-    fn of_walked(walked: WalkedIngredient<IngredientPredicate>, items: &Items) -> Option<Self> {
+    fn of_walked(
+        walked: WalkedIngredient<IngredientPredicate>,
+        items: &Items,
+    ) -> Result<Self, String> {
         let children = match walked.children {
             Some((shape, kids)) => Some((
                 shape,
                 kids.into_iter()
                     .map(|kid| Self::of_walked(kid, items))
-                    .collect::<Option<_>>()?,
+                    .collect::<Result<Vec<_>, _>>()?,
             )),
             None => None,
         };
         let shown = match &walked.display {
-            Some(display) => Some(display_stacks(display, items)?),
+            Some(display) => Some(
+                display_stacks(display, items)
+                    .ok_or_else(|| "invalid custom display slot".to_owned())?,
+            ),
             None => None,
         };
         let mut ingredient = Self {
@@ -201,7 +230,7 @@ impl Ingredient {
             component_defaults: items.component_defaults.clone(),
             children,
         };
-        ingredient.prepare_components(items)?;
+        ingredient.prepare_components_checked(items)?;
         let order: Vec<String> = match &ingredient.children {
             Some((Shape::Difference, kids)) => ingredient
                 .order
@@ -215,13 +244,13 @@ impl Ingredient {
                 .filter(|id| ingredient.default_matches(&ItemStack::new(id, 1)))
                 .cloned()
                 .collect(),
-            _ => return Some(ingredient),
+            _ => return Ok(ingredient),
         };
         if ingredient.is_simple() {
             ingredient.items = order.iter().cloned().collect();
         }
         ingredient.order = order;
-        Some(ingredient)
+        Ok(ingredient)
     }
 }
 impl Clone for Ingredient {
