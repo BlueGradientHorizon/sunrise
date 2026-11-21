@@ -23,5 +23,5 @@ pub trait Hooks {
         version = 2,
         neoforge = "none (NeoForge has no raw play-packet send event)"
     )]
-    fn client_packet_send(packet: &ClientPacket, canceled: &mut bool);
+    fn client_packet_send(packet: &ClientPacket<'_>, canceled: &mut bool);
 }

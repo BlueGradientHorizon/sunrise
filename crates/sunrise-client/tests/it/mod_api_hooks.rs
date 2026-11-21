@@ -70,22 +70,18 @@ fn client_packet_hands_a_mod_the_type_and_custom_payload() {
                 HEARD
                     .lock()
                     .unwrap()
-                    .push((p.channel.clone(), p.data.clone()));
+                    .push((p.channel.to_owned(), p.data.to_vec()));
             }
         }
     }
     mod_platform::testing::with_mods(vec![ModEntry::new("channels", hooks())].into(), || {
+        let ping = Identifier::parse("minecraft:ping").unwrap();
+        dispatch_client_packet(&mut FakeHost::new(), &ClientPacket::new(&ping, None));
+        let custom = Identifier::parse("minecraft:custom_payload").unwrap();
+        let payload = ClientPayload::new("voicechat:secret", &[1, 2, 3]);
         dispatch_client_packet(
             &mut FakeHost::new(),
-            &ClientPacket::new(Identifier::parse("minecraft:ping").unwrap(), None),
-        );
-        let payload = ClientPayload::new("voicechat:secret".into(), vec![1, 2, 3]);
-        dispatch_client_packet(
-            &mut FakeHost::new(),
-            &ClientPacket::new(
-                Identifier::parse("minecraft:custom_payload").unwrap(),
-                Some(payload),
-            ),
+            &ClientPacket::new(&custom, Some(payload)),
         );
     });
     assert_eq!(

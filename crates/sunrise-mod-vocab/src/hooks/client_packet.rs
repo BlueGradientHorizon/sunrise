@@ -53,5 +53,5 @@ send path checks one flag and builds nothing."#]
         version = 2,
         neoforge = "none (NeoForge has no raw play-packet receive event)"
     )]
-    fn client_packet(packet: &ClientPacket);
+    fn client_packet(packet: &ClientPacket<'_>);
 }
