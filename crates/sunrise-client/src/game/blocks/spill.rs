@@ -1679,6 +1679,163 @@ mod tests {
         });
     }
 
+    /// Removing drop 0 shifts drop 1 without stealing drop 0's `ItemRandom`, and a later
+    /// listener's invalid stack edit or out-of-bounds edit is rejected per call without rolling
+    /// back earlier listeners' valid drop mutations or experience.
+    #[test]
+    #[ignore = "daily"]
+    fn block_drops_per_edit_rejection_and_random_preservation() {
+        use mod_api::{BlockDropsEvent, Flow, Hooks, ItemDrop, ModEntry, Mods, StackWriteError};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        use sunrise_core::random::LegacyRandom;
+
+        struct MutatingListener;
+        #[mod_api::__subscriptions]
+        impl Hooks for MutatingListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut BlockDropsEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.drops.len(), 2);
+                assert!(event.drops.remove(0));
+                assert_eq!(event.drops.len(), 1);
+                event.drops.get_mut(0).unwrap().set_pickup_delay(25);
+                let diamond = mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:diamond").unwrap(),
+                    1,
+                )
+                .unwrap();
+                event
+                    .drops
+                    .push(ItemDrop::new(
+                        diamond,
+                        [1.5, 65.0, 2.5],
+                        [0.0, 0.2, 0.0],
+                        10,
+                    ))
+                    .unwrap();
+                event.experience = 9;
+                Flow::Continue
+            }
+        }
+
+        struct InvalidEditListener(Arc<AtomicBool>);
+        #[mod_api::__subscriptions]
+        impl Hooks for InvalidEditListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut BlockDropsEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.drops.len(), 2);
+                let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                let invalid = mod_api::ItemStack::new(stone, 65).unwrap();
+                let invalid_drop = ItemDrop::new(invalid.clone(), [1.5, 65.0, 2.5], [0.0; 3], 10);
+                assert_eq!(
+                    event.drops.push(invalid_drop),
+                    Err(StackWriteError::CountExceeded { maximum: 64 })
+                );
+                assert_eq!(
+                    event.drops.get_mut(0).unwrap().set_stack(invalid),
+                    Err(StackWriteError::CountExceeded { maximum: 64 })
+                );
+                let valid = ItemDrop::new(
+                    mod_api::ItemStack::new(stone, 1).unwrap(),
+                    [1.5, 65.0, 2.5],
+                    [0.0; 3],
+                    10,
+                );
+                assert_eq!(event.drops.insert(99, valid), Ok(false));
+                assert!(!event.drops.remove(99));
+                assert_eq!(event.drops.len(), 2);
+                let surviving = event.drops.get(0).unwrap();
+                assert_eq!(
+                    mod_api::__private::item_key_id(surviving.stack().unwrap().item()),
+                    Some("minecraft:cobblestone")
+                );
+                assert_eq!(surviving.pickup_delay(), 25);
+                self.0.store(true, Ordering::Relaxed);
+                Flow::Continue
+            }
+        }
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            let pos = BlockPos::new(1, 64, 2);
+            let break_of = |game: &mut Game<'_>| {
+                game.world.random =
+                    sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
+                let dropped = game.with_level(|_, level, _| {
+                    level.block_dropped(
+                        pos,
+                        stone,
+                        None,
+                        None,
+                        None,
+                        vec![
+                            ItemStack::new("minecraft:stone", 1),
+                            ItemStack::new("minecraft:cobblestone", 1),
+                        ],
+                        None,
+                    )
+                });
+                (dropped, game.world.random.next_int())
+            };
+
+            let ((baseline, baseline_after), entity_seeds) =
+                sunrise_client::random_source::record_seeds(|| break_of(game));
+            assert_eq!(baseline.items.len(), 2);
+            assert!(baseline.items[0].random.is_some());
+            assert!(baseline.items[1].random.is_some());
+            assert_ne!(baseline.items[0].random, baseline.items[1].random);
+
+            let ran_second = Arc::new(AtomicBool::new(false));
+            let mods: Mods = vec![
+                ModEntry::new("first", Box::new(MutatingListener)),
+                ModEntry::new("second", Box::new(InvalidEditListener(ran_second.clone()))),
+            ]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                let (heard, after) =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&entity_seeds), || {
+                        break_of(game)
+                    });
+                assert!(entity_seeds.complete());
+                assert!(ran_second.load(Ordering::Relaxed));
+                assert_eq!(after, baseline_after);
+                assert_eq!(heard.experience, 9);
+                assert!(!heard.canceled);
+                assert_eq!(heard.items.len(), 2);
+                assert_eq!(&*heard.items[0].stack.item, "minecraft:cobblestone");
+                assert_eq!(heard.items[0].stack.count, 1);
+                assert_eq!(heard.items[0].pickup_delay, 25);
+                assert_eq!(heard.items[0].position, baseline.items[1].position);
+                assert_eq!(heard.items[0].velocity, baseline.items[1].velocity);
+                assert_eq!(heard.items[0].random, baseline.items[1].random);
+                assert_ne!(heard.items[0].random, baseline.items[0].random);
+                assert_eq!(&*heard.items[1].stack.item, "minecraft:diamond");
+                assert_eq!(heard.items[1].stack.count, 1);
+                assert_eq!(heard.items[1].position, [1.5, 65.0, 2.5]);
+                assert_eq!(heard.items[1].velocity, [0.0, 0.2, 0.0]);
+                assert_eq!(heard.items[1].pickup_delay, 10);
+                assert_eq!(heard.items[1].random, None);
+            });
+        });
+    }
+
     /// A mod block entity's part answers its removal as vanilla's `preRemoveSideEffects`
     /// override does: found by the entity's type, not its block, reading its attachments in
     /// place, its stacks scattered after the block entity's own; skipped under flag 256, and

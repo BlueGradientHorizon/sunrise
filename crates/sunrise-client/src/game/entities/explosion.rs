@@ -2256,8 +2256,15 @@ fn blast_resistance(base: f32, cap: Option<f32>, kept: bool) -> f32 {
 mod tests {
     use super::*;
 
+    #[derive(Clone, Copy)]
+    enum DropProbeMode {
+        Observe,
+        InPlaceOne,
+        CancelAndReplace,
+    }
+
     struct DropProbe {
-        edit: bool,
+        mode: DropProbeMode,
         seen: std::sync::Arc<std::sync::Mutex<Vec<[i32; 3]>>>,
     }
 
@@ -2268,7 +2275,7 @@ mod tests {
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::LootDropsEvent<'_>,
         ) {
-            if self.edit {
+            if matches!(self.mode, DropProbeMode::CancelAndReplace) {
                 *event.drops = vec![
                     mod_api::ItemStack::new(
                         mod_api::__private::item_key("minecraft:diamond").unwrap(),
@@ -2293,32 +2300,43 @@ mod tests {
                 "a blast and an untagged break give no breaker entity or block entity"
             );
             assert_eq!(event.drops.len(), 1);
-            let first = event.drops.get(0).unwrap().stack().unwrap();
-            assert_eq!(first.count(), 1, "only this block's contribution");
-            if self.edit {
-                assert_eq!(
-                    mod_api::__private::item_key_id(first.item()).unwrap(),
-                    "minecraft:diamond",
-                    "loot modifiers ran first"
-                );
-                event.experience = 5;
-                if matches!(event.pos.x, 1 | 4) {
-                    return mod_api::Flow::Cancel;
+            let (first_item, first_count) = {
+                let first = event.drops.get(0).unwrap().stack().unwrap();
+                (first.item(), first.count())
+            };
+            assert_eq!(first_count, 1, "only this block's contribution");
+            match self.mode {
+                DropProbeMode::Observe => {}
+                DropProbeMode::InPlaceOne => {
+                    if event.pos.x == 2 {
+                        event.drops.get_mut(0).unwrap().set_pickup_delay(33);
+                    }
                 }
-                event.drops.clear();
-                event
-                    .drops
-                    .push(ItemDrop::new(
-                        mod_api::ItemStack::new(
-                            mod_api::__private::item_key("minecraft:emerald").unwrap(),
-                            3,
-                        )
-                        .unwrap(),
-                        [7.0, 80.0, 7.0],
-                        [0.1, 0.2, 0.3],
-                        42,
-                    ))
-                    .unwrap();
+                DropProbeMode::CancelAndReplace => {
+                    assert_eq!(
+                        mod_api::__private::item_key_id(first_item).unwrap(),
+                        "minecraft:diamond",
+                        "loot modifiers ran first"
+                    );
+                    event.experience = 5;
+                    if matches!(event.pos.x, 1 | 4) {
+                        return mod_api::Flow::Cancel;
+                    }
+                    event.drops.clear();
+                    event
+                        .drops
+                        .push(ItemDrop::new(
+                            mod_api::ItemStack::new(
+                                mod_api::__private::item_key("minecraft:emerald").unwrap(),
+                                3,
+                            )
+                            .unwrap(),
+                            [7.0, 80.0, 7.0],
+                            [0.1, 0.2, 0.3],
+                            42,
+                        ))
+                        .unwrap();
+                }
             }
             mod_api::Flow::Continue
         }
@@ -2326,7 +2344,9 @@ mod tests {
 
     /// A no-op listener preserves cross-block merging and level-random draws.
     /// Edits/cancel affect only the originating block, after loot modifiers, on
-    /// both real caller paths; cancel also suppresses a mob break's silverfish.
+    /// both real caller paths; an in-place `PreparedDropMut` edit splits out only
+    /// that block while untouched shares rejoin the merged entity; cancel also
+    /// suppresses a mob break's silverfish.
     #[test]
     #[ignore = "daily"]
     fn explosion_and_mob_breaks_apply_block_drops() {
@@ -2350,12 +2370,12 @@ mod tests {
                 .registry
                 .default_state("minecraft:infested_stone")
                 .unwrap();
-            let blast = |game: &mut Game<'_>| {
+            let blast_at = |game: &mut Game<'_>, positions: &[[i32; 3]]| {
                 game.dropped.clear();
                 game.orbs.clear();
                 game.world.random.set_seed(7);
                 let mut drops = ExplosionDrops::default();
-                for pos in [[1, 64, 1], [2, 64, 1]] {
+                for &pos in positions {
                     game.world.set(pos[0], pos[1], pos[2], dirt).unwrap();
                     game.explosion_hit_block(
                         pos,
@@ -2378,32 +2398,59 @@ mod tests {
                 game.spawn_explosion_drops(drops);
                 game.world.random.next_int()
             };
-            let baseline = blast(game);
+            let two = [[1, 64, 1], [2, 64, 1]];
+            let three = [[1, 64, 1], [2, 64, 1], [3, 64, 1]];
+            let baseline = blast_at(game, &two);
             assert_eq!(game.dropped.len(), 1);
             assert_eq!(game.dropped[0].stack.count, 2);
             let position = game.dropped[0].position;
+            let three_baseline = blast_at(game, &three);
+            assert_eq!(game.dropped.len(), 1);
+            assert_eq!(game.dropped[0].stack.count, 3);
+            let three_position = game.dropped[0].position;
             let seen = Arc::new(Mutex::new(Vec::new()));
-            let mods = |edit| {
+            let mods = |mode| {
                 vec![mod_api::ModEntry::new(
                     "drop-probe",
                     Box::new(DropProbe {
-                        edit,
+                        mode,
                         seen: seen.clone(),
                     }),
                 )]
                 .into()
             };
-            mod_platform::testing::with_mods(mods(false), || {
-                assert_eq!(blast(game), baseline);
+            mod_platform::testing::with_mods(mods(DropProbeMode::Observe), || {
+                assert_eq!(blast_at(game, &two), baseline);
                 assert_eq!(game.dropped.len(), 1);
                 assert_eq!(game.dropped[0].stack.count, 2);
                 assert_eq!(game.dropped[0].position, position);
                 assert!(game.orbs.is_empty(), "explosions default to no XP");
             });
-            assert_eq!(*seen.lock().unwrap(), [[1, 64, 1], [2, 64, 1]]);
+            assert_eq!(*seen.lock().unwrap(), two);
             seen.lock().unwrap().clear();
-            mod_platform::testing::with_mods(mods(true), || {
-                blast(game);
+            mod_platform::testing::with_mods(mods(DropProbeMode::InPlaceOne), || {
+                assert_eq!(blast_at(game, &three), three_baseline);
+                assert_eq!(game.dropped.len(), 2);
+                assert_eq!(&*game.dropped[0].stack.item, "minecraft:dirt");
+                assert_eq!(
+                    game.dropped[0].stack.count, 2,
+                    "untouched shares rejoin the original merged entity"
+                );
+                assert_eq!(game.dropped[0].pickup_delay, 10);
+                assert_eq!(game.dropped[0].position, three_position);
+                assert_eq!(&*game.dropped[1].stack.item, "minecraft:dirt");
+                assert_eq!(
+                    game.dropped[1].stack.count, 1,
+                    "the in-place edited block spawns separately"
+                );
+                assert_eq!(game.dropped[1].pickup_delay, 33);
+                assert_eq!(game.dropped[1].position, three_position);
+                assert!(game.orbs.is_empty());
+            });
+            assert_eq!(*seen.lock().unwrap(), three);
+            seen.lock().unwrap().clear();
+            mod_platform::testing::with_mods(mods(DropProbeMode::CancelAndReplace), || {
+                blast_at(game, &two);
                 let check = |game: &Game<'_>| {
                     assert_eq!(game.dropped.len(), 1);
                     let item = &game.dropped[0];

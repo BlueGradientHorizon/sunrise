@@ -1,1 +1,2 @@
+sunrise-client game::spill::tests::block_drops_per_edit_rejection_and_random_preservation lib daily resources
 sunrise-client game::stations::tests::item_tooltip_invalid_edit_keeps_other_listeners_lines lib daily resources
