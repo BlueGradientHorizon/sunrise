@@ -442,9 +442,12 @@ fn run_config_finish_case(
             match self.case {
                 ConfigFinishCase::Normal => {}
                 ConfigFinishCase::EpochInvalidated => {
-                    // Advance the same physical transport out of Configuration before
-                    // publication runs; the transport stays open, but the epoch ends.
-                    transport.finish_configuration().unwrap();
+                    // Replace the epoch on the same open transport. Finishing
+                    // Configuration here would wait for this delivery to return.
+                    transport.begin_configuration();
+                    transport
+                        .accept(transport.local.manifest.entries())
+                        .unwrap();
                 }
                 ConfigFinishCase::Disconnect => {
                     ctx.disconnect(mod_api::Text::literal("stop"));
