@@ -1213,6 +1213,7 @@ pub struct Cooking {
     pub result: ItemStack,
     pub experience: f32,
     pub time: u32,
+    pub show_notification: bool,
 }
 /// An item stack as a recipe's `result` names it (`ItemStackTemplate`); none
 /// with no `id` or a count outside 1 to 99.
@@ -1409,12 +1410,14 @@ pub(crate) enum DecodedRecipe {
         recipe: Recipe,
         category: String,
         group: String,
+        show_notification: bool,
     },
     Cooking(Cooking),
     Station {
         recipe: crate::stations::ParsedStationRecipe,
         category: String,
         group: String,
+        show_notification: bool,
     },
     Brewing {
         recipe: crate::brewing::BrewingRecipe,
@@ -1449,6 +1452,136 @@ impl ResolvedRecipe {
 
     pub(crate) fn decoded(&self) -> &DecodedRecipe {
         &self.decoded
+    }
+
+    pub(crate) fn group(&self) -> Option<&str> {
+        let group = match &self.decoded {
+            DecodedRecipe::Crafting { group, .. }
+            | DecodedRecipe::Station { group, .. }
+            | DecodedRecipe::Brewing { group, .. } => group.as_str(),
+            DecodedRecipe::Cooking(cook) => cook.group.as_str(),
+            DecodedRecipe::Mod(_) => self.file["group"].as_str().unwrap_or_default(),
+            DecodedRecipe::Ignored => "",
+        };
+        (!group.is_empty()).then_some(group)
+    }
+
+    /// Book display metadata shared by `RecipeIndex::from_recipes` and the
+    /// server's recipe-book sync projection. `None` excludes the recipe from
+    /// display numbering.
+    pub(crate) fn book_known(&self) -> Option<crate::recipe_book::KnownEntry> {
+        if !self.has_placement_candidates() {
+            return None;
+        }
+        use crate::recipe_book::{KnownEntry, crafting_station};
+        match &self.decoded {
+            DecodedRecipe::Crafting {
+                recipe,
+                show_notification,
+                ..
+            } => {
+                let (special, displays, result) = match recipe {
+                    Recipe::Shaped { result, .. } | Recipe::Shapeless { result, .. } => {
+                        (false, 1, result.item.as_deref().map(str::to_owned))
+                    }
+                    Recipe::Special(Special::Transmute {
+                        min, max, result, ..
+                    }) => (
+                        false,
+                        (max + 1).saturating_sub(*min),
+                        result.item.as_deref().map(str::to_owned),
+                    ),
+                    Recipe::Special(
+                        Special::Dye { result, .. } | Special::Imbue { result, .. },
+                    ) => (false, 1, result.item.as_deref().map(str::to_owned)),
+                    Recipe::Special(special) => {
+                        let result = match special {
+                            Special::BannerDuplicate { result, .. }
+                            | Special::ShieldDecoration { result, .. }
+                            | Special::BookCloning { result, .. }
+                            | Special::FireworkRocket { result, .. }
+                            | Special::FireworkStar { result, .. }
+                            | Special::FireworkStarFade { result, .. }
+                            | Special::MapExtending { result, .. }
+                            | Special::DecoratedPot { result, .. } => {
+                                result.item.as_deref().map(str::to_owned)
+                            }
+                            Special::RepairItem
+                            | Special::Transmute { .. }
+                            | Special::Dye { .. }
+                            | Special::Imbue { .. } => None,
+                        };
+                        (true, 0, result)
+                    }
+                    Recipe::Mod(_) => (true, 0, None),
+                };
+                Some(KnownEntry {
+                    special,
+                    displays,
+                    station: "minecraft:crafting_table",
+                    notify: *show_notification,
+                    result,
+                })
+            }
+            DecodedRecipe::Cooking(cook) => Some(KnownEntry {
+                special: false,
+                displays: 1,
+                station: crafting_station(&cook.kind),
+                notify: cook.show_notification,
+                result: Some(cook.result.item.to_string()),
+            }),
+            DecodedRecipe::Station {
+                recipe,
+                show_notification,
+                ..
+            } => match recipe {
+                crate::stations::ParsedStationRecipe::Stonecutting(cut) => Some(KnownEntry {
+                    special: false,
+                    displays: 1,
+                    station: "minecraft:stonecutter",
+                    notify: *show_notification,
+                    result: Some(cut.result.item.to_string()),
+                }),
+                crate::stations::ParsedStationRecipe::Smithing(
+                    crate::stations::Smithing::Transform { result, .. },
+                ) => Some(KnownEntry {
+                    special: false,
+                    displays: 1,
+                    station: "minecraft:smithing_table",
+                    notify: *show_notification,
+                    result: result.item.as_deref().map(str::to_owned),
+                }),
+                crate::stations::ParsedStationRecipe::Smithing(
+                    crate::stations::Smithing::Trim { .. },
+                ) => Some(KnownEntry {
+                    special: false,
+                    displays: 1,
+                    station: "minecraft:smithing_table",
+                    notify: *show_notification,
+                    result: None,
+                }),
+            },
+            DecodedRecipe::Brewing { .. } => Some(KnownEntry {
+                special: true,
+                displays: 0,
+                station: "minecraft:brewing_stand",
+                notify: self.file["show_notification"].as_bool().unwrap_or(true),
+                result: None,
+            }),
+            DecodedRecipe::Mod(_) => {
+                let kind = self.file["type"].as_str().unwrap_or_default();
+                let special = self.recipe_type.as_deref() == Some("minecraft:crafting");
+                Some(KnownEntry {
+                    special,
+                    displays: usize::from(!special),
+                    station: crafting_station(kind),
+                    notify: self.file["show_notification"].as_bool().unwrap_or(true),
+                    result: sunrise_world::loot::recipe_result_id(&self.file["result"])
+                        .map(str::to_owned),
+                })
+            }
+            DecodedRecipe::Ignored => None,
+        }
     }
 
     /// Required inputs must have enumerable candidates before consumer publication.
@@ -1825,6 +1958,7 @@ fn decode_vanilla_recipe(
             .unwrap_or(fallback);
         Err(recipe_refused(name, &reason))
     };
+    let show_notification = v["show_notification"].as_bool().unwrap_or(true);
     match kind {
         "minecraft:stonecutting" | "minecraft:smithing_transform" | "minecraft:smithing_trim" => {
             match crate::stations::ParsedStationRecipe::parse(qualified(name), v, &ingredient) {
@@ -1832,6 +1966,7 @@ fn decode_vanilla_recipe(
                     recipe,
                     category: text("category"),
                     group: text("group"),
+                    show_notification,
                 }),
                 None => fail(format!("invalid ingredients or required fields for {kind}")),
             }
@@ -1883,6 +2018,7 @@ fn decode_vanilla_recipe(
                 result: result.create(),
                 experience: v["experience"].as_f64().unwrap_or(0.0) as f32,
                 time: v["cookingtime"].as_u64().unwrap_or(200) as u32,
+                show_notification,
             })),
             _ => fail(format!("invalid ingredients or required fields for {kind}")),
         },
@@ -2067,6 +2203,7 @@ fn decode_vanilla_recipe(
                     recipe,
                     category: text("category"),
                     group: text("group"),
+                    show_notification,
                 }),
                 None => fail(format!("invalid ingredients or required fields for {kind}")),
             }
@@ -2149,11 +2286,13 @@ impl Recipes {
             let name = &recipe.name;
             let json = &recipe.file;
             let entry = recipe.recipe_type.as_ref().map(|recipe_type| {
-                crate::crafting::RecipeSnapshot::new(
+                let mut snapshot = crate::crafting::RecipeSnapshot::new(
                     qualified(name),
                     recipe_type.clone(),
                     json.clone(),
-                )
+                );
+                snapshot.book = recipe.book_known();
+                snapshot
             });
             match &recipe.decoded {
                 DecodedRecipe::Mod(slot) => {
@@ -2173,6 +2312,7 @@ impl Recipes {
                     recipe: crafted,
                     category,
                     group,
+                    ..
                 } => {
                     meta.insert(name.clone(), (category.clone(), group.clone()));
                     if let Some(mut entry) = entry {
@@ -2214,6 +2354,7 @@ impl Recipes {
                     recipe: station,
                     category,
                     group,
+                    ..
                 } => {
                     meta.insert(name.clone(), (category.clone(), group.clone()));
                     if let Some(mut entry) = entry {
@@ -3208,6 +3349,7 @@ mod tests {
                 result: ItemStack::new("minecraft:stone", 1),
                 experience: 0.1,
                 time: 200,
+                show_notification: true,
             })
             .collect();
         Recipes {

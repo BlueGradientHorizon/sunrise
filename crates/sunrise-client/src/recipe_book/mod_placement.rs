@@ -139,6 +139,7 @@ fn convert(value: &mod_api::Ingredient) -> Ingredient {
     let convert_leaf = |node: &mod_api::Ingredient| Ingredient {
         items: node.items.clone(),
         order: node.order.clone(),
+        tag: None,
         custom: node.custom.clone(),
         rule: None,
         compiled: None,

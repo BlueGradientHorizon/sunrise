@@ -34,6 +34,9 @@ pub struct Ingredient {
     pub items: HashSet<String>,
     /// Default-stack display/simple-match order; may be empty for non-simple kinds.
     pub order: Vec<String>,
+    /// Original `#tag` name (without `#`) when the ingredient JSON was a tag reference,
+    /// preserved for vanilla `HolderSet::Tag` / `TagSlotDisplay` wire encoding.
+    pub tag: Option<String>,
     /// The predicate bound to this occurrence by the mod that defined it.
     pub custom: Option<IngredientPredicate>,
     /// NeoForge's shapes, with their children parsed: matching a concrete
@@ -124,6 +127,7 @@ impl Ingredient {
         Self {
             items: items.iter().cloned().collect(),
             order: items,
+            tag: None,
             custom: None,
             children: None,
             rule: None,
@@ -196,18 +200,23 @@ impl Ingredient {
                 "recipes: ingredient has no placement candidates; recipe cannot be placed: {v}"
             );
         }
-        Self::of_walked(walked, items)
+        let tag = v
+            .as_str()
+            .and_then(|s| s.strip_prefix('#'))
+            .map(str::to_owned);
+        Self::of_walked(walked, items, tag)
     }
     /// Preserve the standard shapes and the predicate bound to each custom leaf.
     fn of_walked(
         walked: WalkedIngredient<IngredientPredicate>,
         items: &Items,
+        tag: Option<String>,
     ) -> Result<Self, String> {
         let children = match walked.children {
             Some((shape, kids)) => Some((
                 shape,
                 kids.into_iter()
-                    .map(|kid| Self::of_walked(kid, items))
+                    .map(|kid| Self::of_walked(kid, items, None))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
             None => None,
@@ -222,6 +231,7 @@ impl Ingredient {
         let mut ingredient = Self {
             items: walked.set,
             order: walked.order,
+            tag,
             custom: walked.custom,
             rule: walked.rule,
             compiled: None,
@@ -258,6 +268,7 @@ impl Clone for Ingredient {
         let clone_leaf = |node: &Self| Self {
             items: node.items.clone(),
             order: node.order.clone(),
+            tag: node.tag.clone(),
             custom: node.custom.clone(),
             children: None,
             rule: node.rule.clone(),

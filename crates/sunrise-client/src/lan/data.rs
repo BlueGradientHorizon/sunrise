@@ -430,8 +430,7 @@ impl SyncData {
             advancements: super::advancements::ServerAdvancements::load(
                 Path::new(""),
                 &sunrise_world::loot::PackOverlay::NONE,
-                BTreeMap::new(),
-                HashMap::new(),
+                super::recipes::BookProjections::default(),
             ),
             content_identity: None,
         }
@@ -772,15 +771,15 @@ impl SyncData {
             advancements: match kept.filter(|_| same_files) {
                 Some(kept) => kept.advancements.clone(),
                 None => {
-                    let (recipes, groups) = startup::time("sync.network_recipes", || {
-                        super::recipes::network_recipes(sources)
+                    let projections = startup::time("sync.book_projections", || {
+                        super::recipes::book_projections(sources)
                     })
                     .map_err(|error| error.to_string())?;
                     startup::time("sync.advancements", || {
                         let tree = advancements
                             .cloned()
                             .unwrap_or_else(|| Tree::shared(&resources.join("data"), overlay));
-                        super::advancements::ServerAdvancements::from_tree(tree, recipes, groups)
+                        super::advancements::ServerAdvancements::from_tree(tree, projections)
                     })
                 }
             },

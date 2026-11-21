@@ -31,6 +31,7 @@ impl TryIntoEngine for mod_api::Ingredient {
                 .and_then(|display| crate::crafting::Ingredient::resolve_display(display, items)),
             items: self.items.clone(),
             order: self.order.clone(),
+            tag: None,
             custom: self.custom.clone(),
             rule: self.rule.as_deref().cloned(),
             display: self.display.as_deref().cloned(),
