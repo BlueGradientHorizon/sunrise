@@ -35,17 +35,18 @@ pub trait Hooks {
 Each frame asks `Hooks::submit_custom_geometry` and registered debug renderers first (with
 `WorldDrawContext`, for `name_tag`, `draw_model_instances`, `draw_instance_group`, and custom
 world primitives drawn at the end of the world pass), then `AfterSky` (when the sky pass runs),
-then `Hooks::prepare_render_buffers` (before entity, prepared-instance, and glyph uploads so
-group updates apply to this frame), then each active pass-bearing stage in
+then `Hooks::prepare_render_buffers` (before primitive, entity, prepared-instance, and glyph
+uploads so group updates apply to this frame), then each active pass-bearing stage in
 `RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
 the world pass finishes and before the hand. Never fires on title or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return
-`StagePass::World(&mut dyn WorldPassDrawContext)` (`lines`, `quads`, `pipeline_quads`); and
-`OitTranslucent(oit)` stages return `StagePass::Oit(oit, &mut dyn WorldOitPassDrawContext)`
-(`oit_stage`, `lines`, `quads`, without `pipeline_quads` because mod render pipelines target the
-main world colour format rather than OIT float targets).
+`StagePass::World(&mut dyn WorldPassDrawContext)`, and `OitTranslucent(oit)` returns
+`StagePass::Oit(oit, &mut dyn WorldOitPassDrawContext)`. Call `pass.draw(batch)` with a
+`PreparedWorldDraw` returned by `event.context` in `prepare_render_buffers` for this view and
+stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
+are standard-only because mod pipelines write to the world colour format, not OIT float targets.
 
 Stages that do not run on the active route (for example, `AfterSky` when sky is skipped or
 shader-pack routes that take over terrain, water, or weather passes) do not fire rather than

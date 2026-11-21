@@ -275,6 +275,8 @@ draw.terrain_model(self.belt, options)?;
   and before any pass-bearing render stage, lending `&WorldRenderView<'_>` (camera, world
   partial tick, game time, improved-transparency state, and visible `RenderableSection`s) and
   `&dyn ClientHost` so mods can update retained `InstanceGroups` before the render passes execute.
+  Its preparation context is also where to submit lines and quads that must draw at a
+  [specific stage](render-pipelines.md#what-a-pipeline-draws-and-when).
 
 Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
 and copies past GPU instance buffer room fall back to CPU baking. Culled copies are

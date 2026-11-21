@@ -2,8 +2,8 @@
 
 Draw world quads with your own fragment shader. Register a `RenderPipeline`, resolve
 its handle, and submit quads through a `WorldDrawContext` (in `submit_custom_geometry` or
-a debug renderer) or a `WorldPassDrawContext` (`StagePass::World` in standard pass stages
-of `render_level_stage`). This is the restricted counterpart of NeoForge's
+a debug renderer). To draw at a specific stage, prepare the batch in `prepare_render_buffers`
+and issue its draw in `render_level_stage`. This is the restricted counterpart of NeoForge's
 `RegisterRenderPipelinesEvent`: you supply the fragment stage; the game fixes the vertex
 stage, primitive type and bindings.
 
@@ -154,6 +154,7 @@ reload answers `Stale`.
 | `RenderPipelineError::Unknown` | No mod registered that id. |
 | `RenderPipelineError::Invalid` | The pipeline is optional and its shader file is missing, was refused or was rejected by the GPU. The log has a line `render pipeline <id> from mod <owner> refused: <file>: <reason>`, with the file's line number for a syntax or type error, or `render pipeline <id> from mod <owner> refused by the GPU: <reason>`. |
 | `RenderPipelineError::Stale` | The handle is from before a resource reload. |
+| `PipelineDrawError::NoWorldPass` | The requested stage has no standard world pass. |
 | `PipelineDrawError::NonFinite` | A corner or texture coordinate is not finite, or a camera-relative coordinate overflows `f32`. |
 
 A refused batch draws nothing. An `Invalid` pipeline never stops the game from starting; a required
@@ -161,15 +162,23 @@ pipeline that cannot be built does.
 
 ## What a pipeline draws, and when
 
-`pipeline_quads` is available on `WorldDrawContext` (`submit_custom_geometry` and registered debug
-renderers, drawn at the end of the world pass) and on `WorldPassDrawContext` (`StagePass::World` /
-`event.context.world_pass()` during standard pass stages `AfterOpaqueBlocks..=AfterWeather` of
-`render_level_stage`). No-pass stages (`AfterSky`, `AfterLevel`) return `StagePass::None`, and OIT
-sub-passes (`OitTranslucent`) return `StagePass::Oit`, which exposes only `lines` and `quads`
-because mod render pipelines target the main world colour format rather than OIT float targets.
-Backing storage grows dynamically without a fixed per-view quad cap. Within a stage, pipeline quads
-draw after that stage's plain quads and lines, in the order submitted. Under a shader pack they
-follow the plain quads. A stage skipped by a shader pack does not run or replay later.
+`WorldDrawContext::pipeline_quads` in `submit_custom_geometry` or a debug renderer submits quads
+for the deferred world pass. Those pipeline quads draw after the pass's plain quads and lines,
+in submission order.
+
+For an exact stage, prepare the geometry before the pass:
+
+1. In `prepare_render_buffers`, call `event.context.pipeline_quads(stage, pipeline, &quads)`.
+   Keep the returned `PreparedWorldDraw` for this view.
+2. At that stage in `render_level_stage`, get `event.context.world_pass()` and call
+   `pass.draw(batch)`. The handle cannot be used in another view or stage, and no upload takes
+   place in the active pass. If you draw several batches, they draw in call order.
+
+`AfterSky` and `AfterLevel` lend no pass. OIT sub-passes can draw batches from
+`event.context.lines(stage, &lines)` and `event.context.quads(stage, &quads)`, but not pipeline
+quads because OIT writes different attachments. The renderer pages uploads at its device's
+buffer limits rather than capping the number of mod quads. A stage skipped by the render route
+is not replayed later.
 
 ## Sampling a texture
 

@@ -639,53 +639,47 @@ pub trait WorldDrawContext {
         unimplemented!("WorldDrawContext::draw_model_instances")
     }
 }
-/// Standard world-pass geometry drawing for pass-bearing non-OIT [`RenderLevelStage`] callbacks
-/// (`AfterOpaqueBlocks`, `AfterOpaqueFeatures`, `AfterTranslucentFeatures`,
-/// `AfterTranslucentBlocks`, `AfterTranslucentParticles`, `AfterWeather`).
-/// Submission-only operations (`name_tag`, `draw_model_instances`, `draw_instance_group`) belong
-/// in [`Hooks::submit_custom_geometry`](crate::Hooks::submit_custom_geometry) on
-/// [`WorldDrawContext`].
-pub trait WorldPassDrawContext {
-    /// Submit unlit ARGB world lines atomically for the active stage. Invalid coordinates or
-    /// widths leave the submitted geometry unchanged.
-    fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
-        unimplemented!("WorldPassDrawContext::lines")
-    }
-    /// Submit unlit, alpha-blended world quads atomically for the active stage, using the white
-    /// atlas texel.
-    fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
-        unimplemented!("WorldPassDrawContext::quads")
-    }
-    /// Submit world quads drawn by the mod pipeline `pipeline` atomically for the active stage:
-    /// its shader gets each quad's texture coordinate and colour, and its blend and depth modes
-    /// apply. Within a stage they draw after its plain quads and lines, in the order submitted.
-    /// On `Err`, nothing from this call is drawn.
+/// CPU-side submission of batches for the current world view. The renderer uploads them after
+/// this hook, before it opens any pass that may draw them.
+pub trait PrepareRenderBuffersContext {
+    /// Prepare an atomic batch of unlit ARGB world lines for `stage`.
+    fn lines(
+        &mut self,
+        stage: RenderLevelStage,
+        lines: &[WorldLine],
+    ) -> Result<PreparedWorldDraw, DrawError>;
+
+    /// Prepare an atomic batch of unlit, alpha-blended world quads for `stage`.
+    fn quads(
+        &mut self,
+        stage: RenderLevelStage,
+        quads: &[WorldQuad],
+    ) -> Result<PreparedWorldDraw, DrawError>;
+
+    /// Prepare world quads for a mod pipeline. Only standard world passes support these;
+    /// OIT has different targets. On error, nothing from this call is prepared.
     fn pipeline_quads(
         &mut self,
+        stage: RenderLevelStage,
         pipeline: RenderPipelineRef,
         quads: &[PipelineQuad],
-    ) -> Result<(), PipelineDrawError> {
-        unimplemented!("WorldPassDrawContext::pipeline_quads")
-    }
+    ) -> Result<PreparedWorldDraw, PipelineDrawError>;
 }
-/// Order-independent transparency (OIT) sub-pass geometry drawing for
-/// [`RenderLevelStage::OitTranslucent`] callbacks. Mod render pipelines target the main world
-/// colour format rather than OIT float targets, so `pipeline_quads` is not available here.
+
+/// Draw batches prepared for the active standard render stage, in call order.
+pub trait WorldPassDrawContext {
+    /// Draw a batch returned by `PrepareRenderBuffersContext`. A batch for another view or
+    /// stage is refused, leaving the current pass unchanged.
+    fn draw(&mut self, batch: PreparedWorldDraw) -> Result<(), PreparedWorldDrawError>;
+}
+
+/// Draw batches prepared for the active order-independent transparency (OIT) sub-pass.
 pub trait WorldOitPassDrawContext {
     /// Which OIT sub-pass is currently active (`DepthBounds`, `Transmittance`, or `Accumulate`).
-    fn oit_stage(&self) -> OitStage {
-        unimplemented!("WorldOitPassDrawContext::oit_stage")
-    }
-    /// Submit unlit ARGB world lines atomically for this OIT sub-pass. Invalid coordinates or
-    /// widths leave the submitted geometry unchanged.
-    fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
-        unimplemented!("WorldOitPassDrawContext::lines")
-    }
-    /// Submit unlit, alpha-blended world quads atomically for this OIT sub-pass, using the
-    /// white atlas texel.
-    fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
-        unimplemented!("WorldOitPassDrawContext::quads")
-    }
+    fn oit_stage(&self) -> OitStage;
+
+    /// Draw a lines or quads batch prepared for this view and sub-pass, in call order.
+    fn draw(&mut self, batch: PreparedWorldDraw) -> Result<(), PreparedWorldDrawError>;
 }
 /// Stage capability passed to [`Hooks::render_level_stage`](crate::Hooks::render_level_stage).
 /// Distinguishes no-pass stages (`AfterSky`, `AfterLevel`), standard world render passes, and

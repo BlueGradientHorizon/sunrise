@@ -1267,37 +1267,7 @@ impl Renderer {
             frame.weather,
             frame.weather_time,
         );
-        // Native mods' world primitives, drawn as the world is: its jittered projection, the
-        // line widths in the frame's pixels as the gizmo lines'.
         let live_hooks = !frame.title && hooks.is_some();
-        let world_primitives = !frame.title
-            && if let Some(hooks) = hooks.as_deref() {
-                self.world_primitives
-                    .as_mut()
-                    .expect("world primitives")
-                    .begin_live_frame(
-                        &self.device,
-                        &self.queue,
-                        jittered,
-                        [self.config.width, self.config.height],
-                        hooks.time(),
-                        &self.entity_atlas,
-                    );
-                true
-            } else {
-                let (uploads, encoder) = (&mut self.uploads, &mut encoder);
-                self.world_primitives
-                    .as_mut()
-                    .expect("world primitives")
-                    .prepare(
-                        &self.device,
-                        &mut |buffer, bytes| uploads.buffer(encoder, buffer, 0, bytes),
-                        &frame.world_primitives,
-                        jittered,
-                        [self.config.width, self.config.height],
-                        &self.entity_atlas,
-                    )
-            };
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
         // Vanilla's four blocks as the pack's world text and GPU particles read them (the block
         // outline's layout), made once a frame and only when one of them asks.
@@ -1460,16 +1430,36 @@ impl Renderer {
                 bytemuck::cast_slice(&frame.celestial[..celestial_vertices]),
             );
         }
+        // One of Sunrise's own packs: this frame's inputs; in a timed frame its sky draws in a
+        // pass of its own, so that it has a time of its own.
+        let mut native_sky_pass = false;
+        if !frame.title
+            && let Some(native) = &mut self.native
+        {
+            let size = self
+                .world_post
+                .size()
+                .filter(|_| scaled.is_some())
+                .unwrap_or([self.config.width, self.config.height]);
+            native
+                .frame
+                .write(&self.queue, frame, size, output.display());
+            native.frame.block_light.update(
+                &self.queue,
+                frame.camera,
+                &self.light_blocks,
+                self.light_revision,
+            );
+            if let Some(t) = &mut native.timing {
+                t.begin(&self.device, &self.queue, &self.device_lost)?;
+                native_sky_pass =
+                    native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
+            }
+        }
         // On the engine sky route, complete its pass before giving mods the buffer-prepare
         // boundary. The main world pass loads that colour and starts its own depth as usual.
-        let separate_sky = live_hooks
-            && sky_visible
-            && (frame.skybox || frame.end_sky)
-            && !pack_draws_sky
-            && self
-                .native
-                .as_ref()
-                .is_none_or(|native| native.sky.is_none());
+        let separate_sky =
+            live_hooks && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
         if separate_sky {
             if let Some(timer) = &mut self.gpu_timer {
                 timer.begin(&mut encoder);
@@ -1478,6 +1468,16 @@ impl Renderer {
                 Some((color, depth)) => (color, depth),
                 None => (&view_target, &self.depth),
             };
+            if native_sky_pass {
+                Self::draw_timed_native_sky(
+                    &mut self.native,
+                    &self.device,
+                    &self.group,
+                    &mut encoder,
+                    (color, depth, self.output.frame.format),
+                    clear,
+                );
+            }
             let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Sunrise sky"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1485,7 +1485,11 @@ impl Renderer {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
+                        load: if native_sky_pass {
+                            wgpu::LoadOp::Load
+                        } else {
+                            wgpu::LoadOp::Clear(clear)
+                        },
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -1506,7 +1510,7 @@ impl Renderer {
                 frame,
                 sky_visible,
                 false,
-                false,
+                native_sky_pass,
                 celestial_vertices,
                 pack_draws_celestial,
                 hdr_gain,
@@ -1521,6 +1525,25 @@ impl Renderer {
             self.prepared_draws
                 .extend_from_slice(&hook_geometry.prepared_draws);
         }
+        // Upload both mods' stage batches and deferred geometry through the same path, before
+        // the first consuming pass. Stage listeners may only reference these prepared ranges.
+        let world_primitives = !frame.title && {
+            let batch = hooks
+                .as_deref()
+                .map_or(frame.world_primitives, |hooks| hooks.prepared_primitives());
+            self.world_primitives
+                .as_mut()
+                .expect("world primitives")
+                .prepare(
+                    &self.device,
+                    &mut |buffer, bytes| self.uploads.buffer(&mut encoder, buffer, 0, bytes),
+                    &batch,
+                    jittered,
+                    [self.config.width, self.config.height],
+                    &self.entity_atlas,
+                )
+                || live_hooks
+        };
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
         self.core_particles
@@ -2318,32 +2341,6 @@ impl Renderer {
             );
         }
         laps.lap("r_world_pass");
-        // One of Sunrise's own packs: this frame's inputs; in a timed frame its sky draws in a
-        // pass of its own, so that it has a time of its own.
-        let mut native_sky_pass = false;
-        if !frame.title
-            && let Some(native) = &mut self.native
-        {
-            let size = self
-                .world_post
-                .size()
-                .filter(|_| scaled.is_some())
-                .unwrap_or([self.config.width, self.config.height]);
-            native
-                .frame
-                .write(&self.queue, frame, size, output.display());
-            native.frame.block_light.update(
-                &self.queue,
-                frame.camera,
-                &self.light_blocks,
-                self.light_revision,
-            );
-            if let Some(t) = &mut native.timing {
-                t.begin(&self.device, &self.queue, &self.device_lost)?;
-                native_sky_pass =
-                    native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
-            }
-        }
         self.draw_shadow_passes(
             &mut encoder,
             frame,
@@ -2389,38 +2386,15 @@ impl Renderer {
             && fg_frames.is_none()
             && !live_hooks
             && !native_render::world_drawn_hooked();
-        if native_sky_pass
-            && let Some(native) = &mut self.native
-            && let Some(sky) = &native.sky
-        {
-            if let Some(t) = &mut native.timing {
-                let format = self.output.frame.format;
-                t.mark(&self.device, &mut encoder, (world_view, format));
-            }
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some(&sky.label),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: world_view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(clear),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: world_depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(0.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: native.timing.as_mut().and_then(|t| t.writes(&sky.label)),
-                ..Default::default()
-            });
-            pass.set_bind_group(0, &self.group, &[]);
-            sky.draw(&mut pass, &native.frame);
+        if native_sky_pass && !separate_sky {
+            Self::draw_timed_native_sky(
+                &mut self.native,
+                &self.device,
+                &self.group,
+                &mut encoder,
+                (world_view, world_depth, self.output.frame.format),
+                clear,
+            );
         }
         if let Some(native) = &mut self.native {
             let reflection =
@@ -2564,17 +2538,8 @@ impl Renderer {
                     hdr_gain,
                 );
             }
-            if live_hooks
-                && !separate_sky
-                && !pack_draws_sky
-                && sky_visible
-                && (frame.skybox || frame.end_sky)
-                && let Some(hooks) = hooks.as_deref_mut()
-            {
-                hooks.on_after_sky(&self.visible_renderable_sections, oit_on);
-            }
-            // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this
-            // route does not draw its part of the world at goes with the next one it reaches.
+            // Keep the cursor for engine-supplied test batches. Mod stage callbacks draw only
+            // explicitly selected prepared ranges at their real boundaries.
             let mut primitive_stage = 0;
             let terrain_pass =
                 |encoder: &mut wgpu::CommandEncoder, surface: &wgpu::TextureView, clear: bool| {
@@ -3315,7 +3280,7 @@ impl Renderer {
                         };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
-                    let mut wp = self.world_primitives.take().expect("world primitives");
+                    let wp = self.world_primitives.take().expect("world primitives");
                     let mut features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
@@ -3411,13 +3376,7 @@ impl Renderer {
                                     &self.visible_renderable_sections,
                                     oit_on,
                                 );
-                                wp.upload_and_draw_oit_stage(
-                                    &self.device,
-                                    &self.queue,
-                                    pass,
-                                    stage,
-                                    &data,
-                                );
+                                wp.draw_prepared(pass, Some(stage), data);
                             } else {
                                 wp.draw_oit(pass, stage);
                             }
@@ -3783,26 +3742,18 @@ impl Renderer {
             // drawn at the end of the world pass before the hand. Live stage hooks never relocate
             // skipped stages here.
             if world_primitives {
-                if let Some(hooks) = hooks.as_deref() {
-                    let data = hooks.custom_geometry();
-                    if !data.is_empty() {
-                        pass.stage(self.own_timing.as_mut(), "mod primitives");
-                        self.world_primitives
-                            .as_mut()
-                            .expect("world primitives")
-                            .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data);
-                    }
-                } else {
-                    pass.stage(self.own_timing.as_mut(), "mod primitives");
-                    self.world_primitives
-                        .as_ref()
-                        .expect("world primitives")
-                        .draw_through(
-                            &mut pass,
-                            &mut primitive_stage,
-                            world_primitives::STAGE_CUSTOM_GEOMETRY,
-                        );
+                if live_hooks {
+                    primitive_stage = world_primitives::STAGE_CUSTOM_GEOMETRY;
                 }
+                pass.stage(self.own_timing.as_mut(), "mod primitives");
+                self.world_primitives
+                    .as_ref()
+                    .expect("world primitives")
+                    .draw_through(
+                        &mut pass,
+                        &mut primitive_stage,
+                        world_primitives::STAGE_CUSTOM_GEOMETRY,
+                    );
             }
             if hand_in_world {
                 pass.stage(self.own_timing.as_mut(), "hand");

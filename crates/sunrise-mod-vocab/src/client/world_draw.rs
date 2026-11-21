@@ -73,7 +73,36 @@ pub enum DrawError {
     NonFinite,
     /// A finite line width is zero or negative.
     InvalidWidth,
+    /// The selected stage has no render pass.
+    NoRenderPass,
 }
+
+// no wire: a draw handle only names a batch in the current in-process render view.
+/// Geometry submitted in `prepare_render_buffers`. Use it in the matching stage of this view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreparedWorldDraw {
+    view: u64,
+    slot: usize,
+}
+
+impl PreparedWorldDraw {
+    // hidden: the renderer owns the view and its batch table.
+    #[doc(hidden)]
+    pub fn __new(view: u64, slot: usize) -> Self {
+        Self { view, slot }
+    }
+
+    // hidden: the renderer checks the view before resolving the slot.
+    #[doc(hidden)]
+    pub fn __slot(self, view: u64) -> Option<usize> {
+        (self.view == view).then_some(self.slot)
+    }
+}
+
+// no wire: only returned when resolving an in-process draw handle.
+/// A draw handle was not prepared for this view and stage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreparedWorldDrawError;
 
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -355,6 +384,30 @@ mod tests {
     mod_api::impl_client_host_areas!(Empty);
     impl WorldDrawContext for Empty {}
     impl RenderLevelStageContext for Empty {}
+    impl PrepareRenderBuffersContext for Empty {
+        fn lines(
+            &mut self,
+            _: RenderLevelStage,
+            _: &[WorldLine],
+        ) -> Result<PreparedWorldDraw, DrawError> {
+            Err(DrawError::NoRenderPass)
+        }
+        fn quads(
+            &mut self,
+            _: RenderLevelStage,
+            _: &[WorldQuad],
+        ) -> Result<PreparedWorldDraw, DrawError> {
+            Err(DrawError::NoRenderPass)
+        }
+        fn pipeline_quads(
+            &mut self,
+            _: RenderLevelStage,
+            _: RenderPipelineRef,
+            _: &[PipelineQuad],
+        ) -> Result<PreparedWorldDraw, PipelineDrawError> {
+            Err(PipelineDrawError::NoWorldPass)
+        }
+    }
     #[test]
     fn render_level_stage_orders_and_capabilities_match_neoforge() {
         assert_eq!(
@@ -416,12 +469,12 @@ mod tests {
             false,
         )];
         let view = WorldRenderView::new(&camera, 0.5, 42, true, &sections);
-        dispatch_prepare_render_buffers(&Empty, &view);
+        dispatch_prepare_render_buffers(&Empty, &view, &mut Empty);
         dispatch_submit_custom_geometry(&Empty, &view, &mut Empty);
         assert_eq!(PREPARE_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(CALLS.load(Ordering::Relaxed), 1);
         assert!(set_mod_enabled("geometry", false));
-        dispatch_prepare_render_buffers(&Empty, &view);
+        dispatch_prepare_render_buffers(&Empty, &view, &mut Empty);
         dispatch_submit_custom_geometry(&Empty, &view, &mut Empty);
         assert_eq!(PREPARE_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(CALLS.load(Ordering::Relaxed), 1);

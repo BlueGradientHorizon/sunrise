@@ -1,16 +1,16 @@
 //! Per-view custom geometry; buffers pre-reserve initial space and grow dynamically.
 use crate::gfx::mod_pipelines::{self, PipelineRun, PipelineVertex};
 use crate::gfx::world_primitives::{
-    Batch, DEFAULT_CAPACITY as CAPACITY, OIT_STAGES, OitBatch, STAGE_AFTER_OPAQUE_BLOCKS,
-    STAGE_AFTER_OPAQUE_FEATURES, STAGE_AFTER_TRANSLUCENT_BLOCKS, STAGE_AFTER_TRANSLUCENT_FEATURES,
-    STAGE_AFTER_TRANSLUCENT_PARTICLES, STAGE_AFTER_WEATHER, STAGE_CUSTOM_GEOMETRY, STAGES,
-    StageData,
+    Batch, DEFAULT_CAPACITY as CAPACITY, DrawRanges, OIT_STAGES, OitBatch,
+    STAGE_AFTER_OPAQUE_BLOCKS, STAGE_AFTER_OPAQUE_FEATURES, STAGE_AFTER_TRANSLUCENT_BLOCKS,
+    STAGE_AFTER_TRANSLUCENT_FEATURES, STAGE_AFTER_TRANSLUCENT_PARTICLES, STAGE_AFTER_WEATHER,
+    STAGE_CUSTOM_GEOMETRY, STAGES,
 };
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, OitStage, PipelineDrawError, PipelineQuad,
-    RenderLevelStage, WorldDepth, WorldLine, WorldQuad,
+    PreparedWorldDraw, PreparedWorldDrawError, RenderLevelStage, WorldDepth, WorldLine, WorldQuad,
 };
 
 /// Initial pre-reservation hint for model copies per view; storage grows dynamically.
@@ -89,14 +89,25 @@ impl<'a> StageSurface<'a> {
     pub fn stage(&self) -> RenderLevelStage {
         self.stage
     }
-    /// Mutable access to the underlying per-view geometry storage.
-    pub fn geometry_mut(&mut self) -> &mut WorldGeometry {
-        self.geometry
+    /// Record a draw command only after resolving it in the current borrowed view and stage.
+    pub fn draw(&mut self, batch: PreparedWorldDraw) -> Result<(), PreparedWorldDrawError> {
+        let (_, ranges) = self
+            .geometry
+            .view_id
+            .and_then(|view| batch.__slot(view))
+            .and_then(|slot| self.geometry.prepared.get(slot))
+            .filter(|(stage, _)| *stage == self.stage)
+            .ok_or(PreparedWorldDrawError)?;
+        self.geometry.stage_draws.push(ranges.clone());
+        Ok(())
     }
 }
 
 /// Reused between views, including frames with no subscribers or output.
 pub struct WorldGeometry {
+    view_id: Option<u64>,
+    prepared: Vec<(RenderLevelStage, DrawRanges)>,
+    stage_draws: Vec<DrawRanges>,
     camera: [f64; 3],
     view: Mat4,
     white: [f32; 2],
@@ -144,6 +155,9 @@ pub struct WorldGeometry {
 impl Default for WorldGeometry {
     fn default() -> Self {
         Self {
+            view_id: None,
+            prepared: Vec::new(),
+            stage_draws: Vec::new(),
             camera: [0.0; 3],
             view: Mat4::IDENTITY,
             white: [0.0; 2],
@@ -176,6 +190,9 @@ impl Default for WorldGeometry {
 impl WorldGeometry {
     /// Start a view even if nothing will be submitted; previous output disappears.
     pub fn reset(&mut self, camera: [f64; 3], view: Mat4, white: [f32; 2]) {
+        self.view_id = None;
+        self.prepared.clear();
+        self.stage_draws.clear();
         self.camera = camera;
         self.view = view;
         self.white = white;
@@ -203,6 +220,7 @@ impl WorldGeometry {
     }
     /// Borrow a stage-scoped surface for `native_render_level_stage`.
     pub fn stage_surface(&mut self, stage: RenderLevelStage) -> StageSurface<'_> {
+        self.stage_draws.clear();
         StageSurface {
             geometry: self,
             stage,
@@ -259,73 +277,52 @@ impl WorldGeometry {
             _ => {}
         }
     }
-    /// Prepare fresh per-stage scratch buffers for a single live pass-bearing stage dispatched
-    /// directly from `Renderer::draw_frame`.
-    pub fn begin_live_stage(&mut self, stage: RenderLevelStage) {
-        match stage.oit_stage() {
-            Some(_) => {
-                self.active = ActiveTarget::Oit;
-                self.oit_quads.clear();
-                self.oit_quads_through.clear();
-                self.oit_lines.clear();
-                self.oit_lines_through.clear();
-            }
-            None => {
-                self.active = ActiveTarget::Primary;
-                self.lines.iter_mut().for_each(Vec::clear);
-                self.quads.iter_mut().for_each(Vec::clear);
-                self.pipeline_quads.clear();
-                self.pipeline_runs.clear();
-            }
-        }
-    }
-    /// Geometry emitted by the current live stage, ready to upload and draw immediately.
-    pub fn live_stage_data<'a>(
-        &'a self,
+    /// Append geometry to a shared CPU stream and return a handle to just the appended ranges.
+    /// Only the renderer's prepare hook can call this; stage callbacks can only queue handles.
+    pub fn prepare_draw<E>(
+        &mut self,
         stage: RenderLevelStage,
-        pipelines: &'a crate::mod_pipelines::Pipelines,
-    ) -> StageData<'a> {
-        match stage.oit_stage() {
-            Some(_) => StageData {
-                quads: &self.oit_quads,
-                quads_through: &self.oit_quads_through,
-                lines: &self.oit_lines,
-                lines_through: &self.oit_lines_through,
-                pipelines: mod_pipelines::Batch::default(),
+        append: impl FnOnce(&mut Self) -> Result<(), E>,
+    ) -> Result<PreparedWorldDraw, E> {
+        let oit = stage.oit_stage().is_some();
+        self.active = if oit {
+            ActiveTarget::Oit
+        } else {
+            ActiveTarget::Primary
+        };
+        let start = if oit {
+            self.oit_counts()
+        } else {
+            self.counts()
+        };
+        let first_pipeline_quad = (self.pipeline_quads.len() / 4) as u32;
+        append(self)?;
+        let end = if oit {
+            self.oit_counts()
+        } else {
+            self.counts()
+        };
+        let slot = self.prepared.len();
+        self.prepared.push((
+            stage,
+            DrawRanges {
+                primitives: std::array::from_fn(|i| start[i]..end[i]),
+                pipeline: first_pipeline_quad..(self.pipeline_quads.len() / 4) as u32,
             },
-            None => StageData {
-                quads: &self.quads[0],
-                quads_through: &self.quads[1],
-                lines: &self.lines[0],
-                lines_through: &self.lines[1],
-                pipelines: mod_pipelines::Batch {
-                    set: Some(pipelines),
-                    vertices: &self.pipeline_quads,
-                    runs: &self.pipeline_runs,
-                    time: self.time,
-                },
-            },
-        }
+        ));
+        // Issue one identity per view that actually prepares a batch. This also prevents
+        // a handle from a closed world resolving in a different renderer's first view.
+        static NEXT_VIEW: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let view = *self
+            .view_id
+            .get_or_insert_with(|| NEXT_VIEW.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        Ok(PreparedWorldDraw::__new(view, slot))
     }
-    /// Deferred custom geometry emitted during `submit_custom_geometry` and debug renderers,
-    /// drawn at the end of the world pass before the first-person hand.
-    pub fn custom_stage_data<'a>(
-        &'a self,
-        pipelines: &'a crate::mod_pipelines::Pipelines,
-    ) -> StageData<'a> {
-        StageData {
-            quads: &self.custom.quads,
-            quads_through: &self.custom.quads_through,
-            lines: &self.custom.lines,
-            lines_through: &self.custom.lines_through,
-            pipelines: mod_pipelines::Batch {
-                set: Some(pipelines),
-                vertices: &self.custom.pipeline_vertices,
-                runs: &self.custom.pipeline_runs,
-                time: self.time,
-            },
-        }
+
+    pub fn stage_draws(&self) -> &[DrawRanges] {
+        &self.stage_draws
     }
+
     /// Close standard pass stages through `STAGE_AFTER_WEATHER` and append deferred custom
     /// geometry onto the tail as `STAGE_CUSTOM_GEOMETRY`, keeping `stage_ends` monotonic across
     /// all 6 boundaries.
@@ -668,8 +665,8 @@ impl WorldGeometry {
     /// Quads, quads through walls, lines and lines through walls queued so far.
     fn counts(&self) -> [u32; 4] {
         [
-            self.quads[0].len() as u32 / 4,
-            self.quads[1].len() as u32 / 4,
+            (self.quads[0].len() / 4) as u32,
+            (self.quads[1].len() / 4) as u32,
             self.lines[0].len() as u32,
             self.lines[1].len() as u32,
         ]
@@ -677,8 +674,8 @@ impl WorldGeometry {
     /// OIT quads, OIT quads through walls, OIT lines and OIT lines through walls queued so far.
     fn oit_counts(&self) -> [u32; 4] {
         [
-            self.oit_quads.len() as u32 / 4,
-            self.oit_quads_through.len() as u32 / 4,
+            (self.oit_quads.len() / 4) as u32,
+            (self.oit_quads_through.len() / 4) as u32,
             self.oit_lines.len() as u32,
             self.oit_lines_through.len() as u32,
         ]
@@ -804,6 +801,42 @@ pub fn validate_instances(instances: &[ModelInstance]) -> Result<(), InstanceErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prepared_draw_uses_only_the_requested_batch_in_its_view_and_stage() {
+        use RenderLevelStage::*;
+        let line = WorldLine::new(
+            [0.0, 0.0, -2.0],
+            [1.0, 0.0, -2.0],
+            u32::MAX,
+            2.0,
+            WorldDepth::Tested,
+        );
+        let mut draw = WorldGeometry::default();
+        let first = draw
+            .prepare_draw(AfterWeather, |g| g.lines(&[line]))
+            .unwrap();
+        let second = draw
+            .prepare_draw(AfterOpaqueBlocks, |g| g.lines(&[line, line]))
+            .unwrap();
+        draw.finalize();
+
+        let mut surface = draw.stage_surface(AfterOpaqueBlocks);
+        assert_eq!(surface.draw(first), Err(PreparedWorldDrawError));
+        surface.draw(second).unwrap();
+        assert_eq!(draw.stage_draws().len(), 1);
+        assert_eq!(draw.stage_draws()[0].primitives, [0..0, 0..0, 1..3, 0..0]);
+
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+        let new = draw
+            .prepare_draw(AfterOpaqueBlocks, |g| g.lines(&[line]))
+            .unwrap();
+        let mut surface = draw.stage_surface(AfterOpaqueBlocks);
+        assert_eq!(surface.draw(second), Err(PreparedWorldDrawError));
+        surface.draw(new).unwrap();
+        assert_eq!(draw.stage_draws().len(), 1);
+        assert_eq!(draw.stage_draws()[0].primitives[2], 0..1);
+    }
+
     #[test]
     fn stages_end_where_the_next_begins_and_never_go_back() {
         use RenderLevelStage::*;

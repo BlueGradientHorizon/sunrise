@@ -6,7 +6,7 @@ use client::{
         Frame, Renderer, ScreenshotRequest,
         entity_skin::{SkinFrame, SkinJob, SkinPart, SkinVertex},
         pack_draw::EntitySpan,
-        world_primitives::{FrameHooks, PreparedHookGeometry, StageData},
+        world_primitives::{Batch, DrawRanges, FrameHooks, PreparedHookGeometry},
     },
     graphics::GraphicsApi,
     hud::HudBatch,
@@ -151,18 +151,15 @@ impl FrameHooks for WorldStageProbe {
         stage: mod_api::RenderLevelStage,
         _: &[mod_api::RenderableSection],
         _: bool,
-    ) -> StageData<'_> {
+    ) -> &[DrawRanges] {
         self.stages.push(stage);
-        StageData::default()
+        &[]
     }
-    fn custom_geometry(&self) -> StageData<'_> {
-        StageData::default()
+    fn prepared_primitives(&self) -> Batch<'_> {
+        Batch::default()
     }
     fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {
         self.stages.push(mod_api::RenderLevelStage::AfterLevel);
-    }
-    fn time(&self) -> f32 {
-        0.0
     }
 }
 
@@ -404,6 +401,21 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         "ordinary path returns when the pack is dropped"
     );
     assert_eq!(renderer.skins_tagged(), unmodified_tagged);
+
+    // A native sky uses the same no-pass notification boundary, even with its own timing pass.
+    use sunrise_shader_api::{MANIFEST, Pack, check};
+    let files = [
+        (MANIFEST, "schema = 1\nid = \"test\"\nname = \"Test\"\nversion = \"1\"\napi = \"0.1\"\n[sky]\nfile = \"sky.wgsl\"\n"),
+        ("sky.wgsl", "fn sky(input: SkyInput) -> vec4<f32> { return input.color; }"),
+    ].map(|(name, text)| (name.to_owned(), text.as_bytes().to_vec())).into();
+    let report = check(&Pack::from_files(files).expect("native sky pack")).expect("valid sky");
+    renderer.set_native_shader_pack(Some((report, vec![], vec![], vec![], Default::default())))?;
+    renderer.set_pass_timing(true);
+    let mut native_sky_hooks = WorldStageProbe::default();
+    renderer.render(&frame, Some(&mut native_sky_hooks))?;
+    assert_eq!(native_sky_hooks.stages.first(), Some(&Stage::AfterSky));
+    assert_eq!(native_sky_hooks.prepared_after_sky, Some(true));
+
     std::fs::write(
         out.join("result.json"),
         serde_json::to_vec_pretty(&serde_json::json!({

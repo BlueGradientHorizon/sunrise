@@ -1,7 +1,15 @@
 //! The `prepare_render_buffers` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 
+pub trait DrawContexts {
+    #[draw_context(
+        surface = "crate::world_geometry::WorldGeometry",
+        name = "PrepareRenderBuffersContext"
+    )]
+    fn prepare_render_buffers_context();
+}
+
 pub trait Hooks {
-    /// Prepare or update retained render buffers before pass-bearing world render stages execute
+    /// Prepare geometry and update retained instance data before pass-bearing world stages execute
     /// (NeoForge 26.3's `PrepareRenderBuffersEvent`, vanilla `LevelRenderer.prepareTranslucents`).
     /// Client-only, noncancellable. `view` lends the frame's camera, world partial tick, game
     /// time, improved-transparency state and visible sections.
@@ -11,9 +19,13 @@ pub trait Hooks {
 `PrepareRenderBuffersEvent`. It fires once per world view, after `RenderLevelStage::AfterSky`
 and before any pass-bearing world render stages execute, and never on title or connect screens.
 
-Use it to update retained `InstanceGroup` data before the render passes read it.
-Changes made here to `InstanceGroup` records, active length,
-or group transform apply immediately to groups submitted for this frame. Its `WorldRenderView`
+Use `event.context.lines(stage, lines)`, `.quads(stage, quads)`, or
+`.pipeline_quads(stage, pipeline, quads)` to prepare a batch for a pass-bearing stage. Keep the
+returned `PreparedWorldDraw` until `render_level_stage`, then give it to the active pass's `draw`.
+A handle is valid only for its own view and stage. Nothing is uploaded from a stage callback.
+
+Changes made here to `InstanceGroup` records, active length, or group transform apply to groups
+already submitted for this frame. Its `WorldRenderView`
 lends the frame's `Camera`, world partial tick, game time, whether vanilla's improved transparency
 (OIT) is active this frame, and the primary camera's canonical visible `RenderableSection` slice."#]
     #[hook(
@@ -24,5 +36,8 @@ lends the frame's `Camera`, world partial tick, game time, whether vanilla's imp
         neoforge = "PrepareRenderBuffersEvent",
         cancellable = false
     )]
-    fn prepare_render_buffers(view: &mod_api::WorldRenderView<'_>);
+    fn prepare_render_buffers(
+        view: &mod_api::WorldRenderView<'_>,
+        context: &mut dyn PrepareRenderBuffersContext,
+    );
 }

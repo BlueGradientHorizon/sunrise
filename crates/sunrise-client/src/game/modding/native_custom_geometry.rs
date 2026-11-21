@@ -104,7 +104,8 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
             sections,
             oit_on,
         );
-        self.game.native_prepare_render_buffers(&view);
+        self.game.native_prepare_render_buffers(&view, self.draw);
+        self.draw.finalize();
         self.game.resolve_submitted_groups(self.draw);
         let mut out = sunrise_client::gfx::world_primitives::PreparedHookGeometry::default();
         let camera = DVec3::from(self.draw.camera());
@@ -131,7 +132,7 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         stage: RenderLevelStage,
         sections: &[mod_api::RenderableSection],
         oit_on: bool,
-    ) -> sunrise_client::gfx::world_primitives::StageData<'_> {
+    ) -> &[sunrise_client::gfx::world_primitives::DrawRanges] {
         let view = Self::view(
             self.frame_camera,
             self.alpha,
@@ -139,19 +140,14 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
             sections,
             oit_on,
         );
-        self.draw.begin_live_stage(stage);
-        {
-            let mut surface = self.draw.stage_surface(stage);
-            self.game
-                .native_render_level_stage(stage, &view, &mut surface);
-        }
-        self.draw
-            .live_stage_data(stage, &self.game.pack.render.mod_pipelines)
+        let mut surface = self.draw.stage_surface(stage);
+        self.game
+            .native_render_level_stage(stage, &view, &mut surface);
+        self.draw.stage_draws()
     }
 
-    fn custom_geometry(&self) -> sunrise_client::gfx::world_primitives::StageData<'_> {
-        self.draw
-            .custom_stage_data(&self.game.pack.render.mod_pipelines)
+    fn prepared_primitives(&self) -> sunrise_client::gfx::world_primitives::Batch<'_> {
+        self.draw.batch_with(&self.game.pack.render.mod_pipelines)
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
@@ -165,10 +161,6 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
         let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
         self.game
             .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
-    }
-
-    fn time(&self) -> f32 {
-        ((self.game.world.game_time.rem_euclid(72_000) as f64 + self.alpha) / 20.0) as f32
     }
 }
 
@@ -282,14 +274,13 @@ impl Game<'_> {
         }
         // 3. Prepare render buffers before pass-bearing stages run, then resolve queued groups
         // using their prepared transforms, lengths, and records.
-        self.native_prepare_render_buffers(&view);
+        self.native_prepare_render_buffers(&view, draw);
         self.resolve_submitted_groups(draw);
         // 4. Pass-bearing stages in exact frame order (classic or OIT).
         for &stage in RenderLevelStage::frame_order(oit_on) {
             if !stage.has_render_pass() {
                 continue;
             }
-            draw.begin_pass_stage(stage);
             let mut surface = draw.stage_surface(stage);
             self.native_render_level_stage(stage, &view, &mut surface);
         }
@@ -1644,7 +1635,7 @@ mod tests {
 
     /// Draws in `submit_custom_geometry`, `DebugRenderer`, standard pass stages, and OIT
     /// sub-passes while checking that `AfterSky` and `AfterLevel` provide `StagePass::None`.
-    struct Staged;
+    struct Staged(std::sync::Mutex<Vec<(RenderLevelStage, mod_api::PreparedWorldDraw)>>);
     #[mod_api::__subscriptions]
     impl Hooks for Staged {
         fn register_debug_renderers(
@@ -1671,6 +1662,27 @@ mod tests {
                 assert_eq!(event.view.sections.len(), 1);
                 assert_eq!(event.view.sections[0].origin, [0, 64, 0]);
                 STAGE_ORDER.lock().unwrap().push("prepare");
+                let mut batches = self.0.lock().unwrap();
+                batches.clear();
+                use mod_api::{OitStage, RenderLevelStage::*};
+                for (stage, x) in [(AfterOpaqueBlocks, 10.0), (AfterOpaqueFeatures, 15.0)]
+                    .into_iter()
+                    .chain(
+                        if event.view.improved_transparency {
+                            [
+                                (OitTranslucent(OitStage::DepthBounds), 100.0),
+                                (OitTranslucent(OitStage::Accumulate), 200.0),
+                            ]
+                            .as_slice()
+                        } else {
+                            [(AfterWeather, 20.0)].as_slice()
+                        }
+                        .iter()
+                        .copied(),
+                    )
+                {
+                    batches.push((stage, event.context.lines(stage, &[marker(x)]).unwrap()));
+                }
             }
         }
         fn submit_custom_geometry(
@@ -1724,7 +1736,15 @@ mod tests {
                         .context
                         .world_pass()
                         .unwrap()
-                        .lines(&[marker(10.0)])
+                        .draw(
+                            self.0
+                                .lock()
+                                .unwrap()
+                                .iter()
+                                .find(|(stage, _)| *stage == event.stage)
+                                .unwrap()
+                                .1,
+                        )
                         .unwrap();
                 }
                 RenderLevelStage::AfterOpaqueFeatures => {
@@ -1733,7 +1753,15 @@ mod tests {
                         .context
                         .world_pass()
                         .unwrap()
-                        .lines(&[marker(15.0)])
+                        .draw(
+                            self.0
+                                .lock()
+                                .unwrap()
+                                .iter()
+                                .find(|(stage, _)| *stage == event.stage)
+                                .unwrap()
+                                .1,
+                        )
                         .unwrap();
                 }
                 RenderLevelStage::AfterWeather => {
@@ -1742,7 +1770,15 @@ mod tests {
                         .context
                         .world_pass()
                         .unwrap()
-                        .lines(&[marker(20.0)])
+                        .draw(
+                            self.0
+                                .lock()
+                                .unwrap()
+                                .iter()
+                                .find(|(stage, _)| *stage == event.stage)
+                                .unwrap()
+                                .1,
+                        )
                         .unwrap();
                 }
                 RenderLevelStage::OitTranslucent(expected_oit) => {
@@ -1751,14 +1787,14 @@ mod tests {
                     let (oit, pass) = event.context.oit_pass().unwrap();
                     assert_eq!(oit, expected_oit);
                     assert_eq!(pass.oit_stage(), expected_oit);
-                    match oit {
-                        mod_api::OitStage::DepthBounds => {
-                            pass.lines(&[marker(100.0)]).unwrap();
-                        }
-                        mod_api::OitStage::Transmittance => {}
-                        mod_api::OitStage::Accumulate => {
-                            pass.lines(&[marker(200.0)]).unwrap();
-                        }
+                    if let Some((_, batch)) = self
+                        .0
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .find(|(stage, _)| *stage == event.stage)
+                    {
+                        pass.draw(*batch).unwrap();
                     }
                 }
                 _ => {
@@ -1774,7 +1810,11 @@ mod tests {
     fn each_stage_is_asked_in_frame_order_and_its_lines_draw_there() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             mod_platform::__private::install(
-                vec![ModEntry::new("staged", Box::new(Staged))].into(),
+                vec![ModEntry::new(
+                    "staged",
+                    Box::new(Staged(Default::default())),
+                )]
+                .into(),
             );
             let mut renderers = Vec::new();
             Game::native_register_debug_renderers(
@@ -1832,17 +1872,7 @@ mod tests {
                 [10.0, 15.0, 20.0, 30.0, 35.0],
                 "pass stages in frame order, custom geometry and debug renderers appended at STAGE_CUSTOM_GEOMETRY"
             );
-            assert_eq!(
-                batch.stage_ends,
-                [
-                    [0, 0, 1, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 3, 0],
-                ]
-            );
+            assert_eq!(batch.stage_ends, [[0, 0, 3, 0]; 6]);
             assert!(batch.oit.is_empty());
 
             // OIT (improved transparency) mode: OIT sub-passes replace classic translucent/weather.
@@ -1879,20 +1909,10 @@ mod tests {
             let batch = draw.batch();
             let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
             assert_eq!(starts, [10.0, 15.0, 30.0, 35.0]);
-            assert_eq!(
-                batch.stage_ends,
-                [
-                    [0, 0, 1, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                    [0, 0, 2, 0],
-                ]
-            );
+            assert_eq!(batch.stage_ends, [[0, 0, 2, 0]; 6]);
             let oit_starts: Vec<f32> = batch.oit.lines.iter().map(|line| line[0]).collect();
             assert_eq!(oit_starts, [100.0, 200.0]);
-            assert_eq!(batch.oit.stage_ends, [[0, 0, 1, 0], [0, 0, 1, 0]]);
+            assert_eq!(batch.oit.stage_ends, [[0, 0, 2, 0]; 2]);
 
             // A title view draws no world: nothing, and every stage empty.
             game.fill_world_geometry(

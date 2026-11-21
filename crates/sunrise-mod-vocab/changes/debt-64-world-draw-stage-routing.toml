@@ -5,12 +5,14 @@ ids = [
   "method:WorldDrawContext::usage",
   "type:DrawError",
   "type:DrawError.CapacityExceeded",
+  "type:DrawError.NoRenderPass",
   "type:DrawError.TextTooDeep",
   "type:DrawError.TextRefused",
   "method:WorldDrawContext::name_tag",
   "fn:sunrise_client_render::gfx::Renderer::render",
   "type:PipelineDrawError",
   "type:PipelineDrawError.CapacityExceeded",
+  "type:PipelineDrawError.NoWorldPass",
   "type:InstanceError",
   "type:InstanceError.CapacityExceeded",
   "type:GroupError",
@@ -31,7 +33,15 @@ ids = [
   "handle:DebugRenderer::draw",
   "hook:prepare_render_buffers",
   "method:Hooks::prepare_render_buffers",
+  "hook:prepare_render_buffers.context",
   "type:PrepareRenderBuffersEvent",
+  "type:PrepareRenderBuffersEvent.context",
+  "trait:PrepareRenderBuffersContext",
+  "method:PrepareRenderBuffersContext::lines",
+  "method:PrepareRenderBuffersContext::quads",
+  "method:PrepareRenderBuffersContext::pipeline_quads",
+  "type:PreparedWorldDraw",
+  "type:PreparedWorldDrawError",
   "hook:submit_custom_geometry",
   "hook:submit_custom_geometry.view",
   "method:Hooks::submit_custom_geometry",
@@ -58,13 +68,10 @@ ids = [
   "handle:RenderLevelStage::oit_stage",
   "type:StagePass",
   "trait:WorldPassDrawContext",
-  "method:WorldPassDrawContext::lines",
-  "method:WorldPassDrawContext::quads",
-  "method:WorldPassDrawContext::pipeline_quads",
+  "method:WorldPassDrawContext::draw",
   "trait:WorldOitPassDrawContext",
   "method:WorldOitPassDrawContext::oit_stage",
-  "method:WorldOitPassDrawContext::lines",
-  "method:WorldOitPassDrawContext::quads",
+  "method:WorldOitPassDrawContext::draw",
   "trait:RenderLevelStageContext",
   "method:RenderLevelStageContext::pass",
   "method:RenderLevelStageContext::has_render_pass",
@@ -73,7 +80,9 @@ ids = [
 ]
 why = """
 Align world geometry submission, buffer preparation, and stage rendering with vanilla 26.3
-(`LevelRenderer`, `LevelRenderState`, `SubmitNodeStorage`, `OitStage`, `NbtAccounter.MAX_STACK_DEPTH`)
+(`LevelRenderer.addSkyPass`, `LevelRenderer.prepareTranslucents`, `LevelRenderer.executeSolid`,
+`GameRenderer.renderLevel`, `SectionOcclusionGraph.addSectionsInFrustum`, `SubmitNodeStorage`,
+`OitStage`, `NbtAccounter.MAX_STACK_DEPTH`)
 and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRenderableSection`,
 `PrepareRenderBuffersEvent`), and resolve audits [89] and [90]:
 
@@ -82,7 +91,9 @@ and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRende
   3-field summary.
 - Add `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`) firing after `AfterSky` and
   before entity/instance uploads and pass-bearing stages so mods can update retained GPU buffers
-  (`InstanceGroups`) and see those changes on the same frame.
+  (`InstanceGroups`) and see those changes on the same frame. Stage geometry is submitted here,
+  paged at the device limits alongside deferred custom geometry, and drawn from the finished
+  upload. The stage callback cannot create, resize, or upload buffers.
 - Expand `RenderLevelStage` to all 9 NeoForge 26.3 stages (`AfterSky`, `AfterOpaqueBlocks`,
   `AfterOpaqueFeatures`, `AfterTranslucentFeatures`, `AfterTranslucentBlocks`,
   `AfterTranslucentParticles`, `AfterWeather`, `OitTranslucent(OitStage)`, `AfterLevel`) with
@@ -129,10 +140,14 @@ migrate = """
   before pass-bearing stages run.
 - Replace `RenderLevelStage::ALL` with `RenderLevelStage::frame_order(view.improved_transparency)`
   (`CLASSIC_ORDER` or `OIT_ORDER`).
-- In `Hooks::render_level_stage`, replace `event.draw` with `event.context`: draw standard-pass
-  lines, quads, and pipeline quads via `event.context.world_pass()` (or `StagePass::World(pass)`),
-  draw OIT sub-pass lines and quads via `event.context.oit_pass()` (or `StagePass::Oit(stage, pass)`),
-  and move submission-only calls (`name_tag`, `draw_model_instances`, `draw_instance_group`) and any
-  drawing previously done in `AfterSky` or `AfterLevel` (now `StagePass::None`) into
-  `Hooks::submit_custom_geometry` or a pass-bearing `RenderLevelStage`.
+- Move `event.draw.lines(&lines)`, `.quads(&quads)` and `.pipeline_quads(pipeline, &quads)`
+  for named stages to `prepare_render_buffers` as `event.context.lines(stage, &lines)`,
+  `.quads(stage, &quads)`, or `.pipeline_quads(stage, pipeline, &quads)`. Keep the returned
+  `PreparedWorldDraw` for this view only. In `render_level_stage`, call
+  `event.context.world_pass().unwrap().draw(batch)` for the matching standard stage, or
+  `event.context.oit_pass().unwrap().1.draw(batch)` for the matching OIT sub-pass.
+  A batch from a different stage or view returns `PreparedWorldDrawError` and draws nothing.
+- Move submission-only calls (`name_tag`, `draw_model_instances`, `draw_instance_group`) into
+  `Hooks::submit_custom_geometry`. Move drawing previously done in `AfterSky` or `AfterLevel`
+  (now `StagePass::None`) to `submit_custom_geometry` or prepare it for a pass-bearing stage.
 """
