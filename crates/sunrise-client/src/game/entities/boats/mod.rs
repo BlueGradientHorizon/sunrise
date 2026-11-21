@@ -573,12 +573,11 @@ pub(super) struct BoatModels {
 impl BoatModels {
     /// Whether this remote boat has a layer to draw.
     pub fn has(&self, wood: &str, chest: bool) -> bool {
-        let models = if chest {
-            &self.chest_models
+        if chest {
+            self.chest_models.contains_key(wood)
         } else {
-            &self.models
-        };
-        models.contains_key(wood)
+            self.models.contains_key(wood)
+        }
     }
     pub fn load(document: Option<&sunrise_client::mobs::EntityModelDocument>) -> Self {
         let mut models = HashMap::new();
