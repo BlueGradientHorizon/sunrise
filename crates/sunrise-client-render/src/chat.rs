@@ -1433,8 +1433,7 @@ pub struct ChatScreen {
     /// `CommandSuggestions.setRestrictions`: what the Chat option allows.
     pub abilities: ChatAbilities,
     pub layout: SuggestLayout,
-    /// `MouseHandler.lastClick`: a click within 250 ms of the last one on
-    /// this screen is a double click.
+    /// The last non-suggestion left press seen by this screen's live click path.
     last_click: Option<std::time::Instant>,
 }
 /// Local completions waiting for the server's reply to request `id`.
@@ -2108,7 +2107,7 @@ impl ChatScreen {
         {
             return false;
         }
-        // MouseHandler.onButton: the same screen's click within 250 ms counts as double.
+        // Keep the existing per-screen timing for live presses.
         let now = std::time::Instant::now();
         let double_click = self
             .last_click
