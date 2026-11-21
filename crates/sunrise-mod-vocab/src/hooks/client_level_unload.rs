@@ -6,8 +6,8 @@ pub trait Hooks {
     /// from `Minecraft.setLevel`, `clearClientLevel`, and `disconnect`). On
     /// replacement, the new level's load is heard first, but
     /// `host.level(event.dimension)` still resolves the retiring level, and
-    /// previously acquired handles can still read its chunks in this callback.
-    /// Reconfiguration,
+    /// previously acquired handles can still read its chunks and available
+    /// synchronized datapack registries in this callback. Reconfiguration,
     /// leaving a server, and quitting all unload the current level once.
     /// When quitting single player, this fires before halting its server.
     /// Client-side.

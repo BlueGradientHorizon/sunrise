@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::{native_client_session::tests::logged_client, remote::RemoteDimensionEntry};
 use mod_api::{
     DatapackEntry, DatapackField, DatapackFieldKind, DatapackReadError as E, DatapackRegistrySync,
     DimensionKey, LevelRef, Registrar, RegistrationContext, WorldEpoch,
@@ -133,9 +134,27 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 else {
                     panic!("snapshot required");
                 };
+                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+                let _server = logged_client(game);
+                game.enter_remote_dimension(
+                    &sunrise_protocol::packets::play::SpawnInfo {
+                        dimension_type: 0,
+                        dimension: "minecraft:overworld".into(),
+                        seed: 0,
+                        game_type: 1,
+                        previous_game_type: None,
+                        debug: false,
+                        flat: true,
+                        last_death: None,
+                        portal_cooldown: 0,
+                        sea_level: 63,
+                    },
+                    RemoteDimensionEntry::Login,
+                    sunrise_client::level_loading::Reason::Other,
+                );
                 sunrise_client::datapack_net::clear_received();
                 sunrise_client::datapack_net::accept(&bytes).unwrap();
-                game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+                let level = game.level("minecraft:overworld").unwrap();
                 assert_eq!(
                     level.datapack_entries(game, "registry_test:spell"),
                     Some(vec!["registry_test:fire".into()])

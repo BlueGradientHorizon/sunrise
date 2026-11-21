@@ -185,19 +185,21 @@ impl WorldRequest {
         // file, its `UUID` and level.dat's `singleplayer_uuid`. Its entities follow as
         // their chunks load (`owner_migration`, `entity_nbt::migrate_player_uuid`).
         let owner_migration = owner.and_then(|(player, account)| {
+            if created {
+                // The profile exists before `IntegratedServer.initServer` saves; the player does not.
+                level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(account));
+            }
             let old = sunrise_protocol::crypto::offline_uuid(&player);
             (old != account).then(|| {
-                if created {
-                    // `IntegratedServer.initServer` saves with the profile before the first
-                    // tick: a world made under the account names it from its first level.dat.
-                    level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(account));
-                } else if sunrise_client::lan::playerdata::migrate_owner(
-                    &save_root,
-                    &mut level,
-                    old,
-                    account,
-                    res.items(),
-                ) {
+                if !created
+                    && sunrise_client::lan::playerdata::migrate_owner(
+                        &save_root,
+                        &mut level,
+                        old,
+                        account,
+                        res.items(),
+                    )
+                {
                     log::info!(
                         "Sunrise: \"{folder}\" was made under the offline profile; \
                          its owner moved to the account's UUID"
@@ -356,8 +358,11 @@ impl WorldRequest {
             };
         }
 
-        // Persist new metadata on the worker too, before publishing the world.
-        if !save_root.join("level.dat").exists() {
+        // IntegratedServer.initServer writes the first level.dat after preparing the levels.
+        // The worker must not write an initialized world or the unplaced owner's player file.
+        if options.execution_role != execution_role::ExecutionRole::IntegratedServer
+            && !save_root.join("level.dat").exists()
+        {
             level.write(&save_root, res.items())?;
         }
         Ok(PreparedWorld {
@@ -679,8 +684,10 @@ fn level_shapes(
 ) -> (sunrise_client::chunk::LevelShapes, Vec<Dim>) {
     if let Some(generator) = &level.generator {
         generator.merge_dimensions(overrides);
+    } else {
+        overrides.include_implicit_level_stems();
     }
-    let (shapes, stems) = shapes_of(overrides, level.generator.is_none());
+    let (shapes, stems) = shapes_of(overrides, overrides.level_stems());
     Dim::set_extra(shapes.extra.iter().map(|level| level.id));
     set_level_sea_levels(
         overrides,
@@ -759,28 +766,17 @@ fn set_level_sea_levels(
     sunrise_world::level::set_sea_levels(levels);
 }
 
-/// The levels' shapes the mods' and packs' worldgen entries give.
-fn shapes_of(
+/// Resolve shapes in the effective registry's traversal, retaining it for level creation.
+fn shapes_of<'a>(
     overrides: &sunrise_world::worldgen::overrides::WorldgenOverrides,
-    implicit_defaults: bool,
+    stems: impl Iterator<Item = (&'a str, Option<&'a str>)>,
 ) -> (sunrise_client::chunk::LevelShapes, Vec<&'static str>) {
     use sunrise_client::chunk::{ExtraLevel, LevelShape, LevelShapes};
-    use sunrise_world::worldgen::overrides::DIMENSIONS;
     let builtins = [Dim::Overworld.id(), Dim::Nether.id(), Dim::End.id()];
-    // WorldDimensions.bake resolves the effective stems. Traverse the existing
-    // winning registry entries, not the bucket order of a second map. Worlds
-    // without a saved preset also have the built-in stems not overridden there.
-    let stems = overrides
-        .entries(DIMENSIONS)
-        .map(|(id, json)| (id, Some(json)));
-    let defaults = builtins
-        .into_iter()
-        .filter(|id| implicit_defaults && !overrides.entries(DIMENSIONS).any(|(key, _)| key == *id))
-        .map(|id| (id, None));
     let mut shapes = LevelShapes::VANILLA;
     let mut extra = Vec::new();
     let mut configured = Vec::new();
-    for (level, stem) in stems.chain(defaults) {
+    for (level, stem) in stems {
         let shape = overrides.level_height(level).and_then(|h| {
             LevelShape::new(
                 h.min_y,
@@ -1843,8 +1839,9 @@ mod tests {
     fn a_mods_level_opens_with_no_data_packs() {
         use sunrise_client::chunk::{LevelShape, LevelShapes};
         use sunrise_client::datapack::worldgen_overrides_over;
-        let (none, _) = worldgen_overrides_over(&[], &[], |_| true);
-        assert_eq!(shapes_of(&none, true).0, LevelShapes::VANILLA);
+        let (mut none, _) = worldgen_overrides_over(&[], &[], |_| true);
+        none.include_implicit_level_stems();
+        assert_eq!(shapes_of(&none, none.level_stems()).0, LevelShapes::VANILLA);
 
         let pocket = sunrise_world::worldgen::overrides::ModDimension {
             id: "test:pocket".into(),
@@ -1854,8 +1851,21 @@ mod tests {
                     .into(),
             sea_level: None,
         };
-        let (overrides, _) = worldgen_overrides_over(&[pocket], &[], |_| true);
-        let (shapes, _) = shapes_of(&overrides, true);
+        let (mut overrides, _) = worldgen_overrides_over(&[pocket], &[], |_| true);
+        overrides.include_implicit_level_stems();
+        let registry: std::collections::HashMap<_, _> = overrides.level_stems().collect();
+        let traversal = [
+            "minecraft:the_nether",
+            "test:pocket",
+            "minecraft:overworld",
+            "minecraft:the_end",
+        ];
+        assert_eq!(registry.len(), traversal.len());
+        let (shapes, configured) = shapes_of(
+            &overrides,
+            traversal.into_iter().map(|id| (id, registry[id])),
+        );
+        assert_eq!(configured, traversal);
         assert!(shapes.has("test:pocket"));
         assert_eq!(
             shapes.get("test:pocket"),
@@ -1908,8 +1918,9 @@ mod tests {
         let world =
             std::env::temp_dir().join(format!("sunrise-mod-terrain-{}", std::process::id()));
         std::fs::create_dir_all(&world).unwrap();
-        let (overrides, _) = worldgen_overrides_of(&world, &root, &biomes, &[], &[]);
-        let (shapes, _) = shapes_of(&overrides, true);
+        let (mut overrides, _) = worldgen_overrides_of(&world, &root, &biomes, &[], &[]);
+        overrides.include_implicit_level_stems();
+        let (shapes, _) = shapes_of(&overrides, overrides.level_stems());
         use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
         let inputs = LoadInputs::new(Default::default(), root.join("settings"));
         let item_data = Arc::new(

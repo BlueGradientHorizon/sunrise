@@ -19,11 +19,13 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
         remote::{Received, RemoteDimensionEntry},
     };
     use mod_api::{
-        BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, Hooks, LevelRef,
-        ModEntry,
+        BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, DatapackCandidate,
+        DatapackField, DatapackFieldKind, DatapackRegistrySet, DatapackRegistrySync, DatapackValue,
+        Hooks, LevelRef, ModEntry, Registrar, RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_client::{
+        datapack_net,
         level_loading::Reason,
         net::{Event, ingress},
     };
@@ -34,6 +36,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
         dimension: String,
         level: LevelRef,
         block: Option<BlockState>,
+        power: Option<i64>,
     }
     struct Log(Arc<Mutex<Vec<Notice>>>);
     impl Log {
@@ -42,16 +45,43 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 .level(dimension)
                 .expect("the event's level must resolve");
             let block = level.block_state(host, [3, 70, 5]);
+            let power = level
+                .datapack_handle(host, "levels:spell", "addon:fire")
+                .ok()
+                .and_then(|handle| {
+                    let mut power = None;
+                    level
+                        .datapack_read(host, &handle, &mut |entry| {
+                            if let Some(DatapackValue::Int(value)) = entry.get("power") {
+                                power = Some(*value);
+                            }
+                        })
+                        .ok()?;
+                    power
+                });
             self.0.lock().unwrap().push(Notice {
                 kind,
                 dimension: dimension.to_owned(),
                 level,
                 block,
+                power,
             });
         }
     }
     #[mod_api::__subscriptions]
     impl Hooks for Log {
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            registrar
+                .declare_datapack_registry(
+                    "spell",
+                    DatapackRegistrySync::Required,
+                    vec![DatapackField::required(
+                        "power",
+                        DatapackFieldKind::Int { min: 0, max: 100 },
+                    )],
+                )
+                .unwrap();
+        }
         fn client_level_load(
             &self,
             host: &mut dyn ClientHost,
@@ -85,6 +115,21 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     sea_level: 63,
                 };
                 let _server = logged_client(game);
+                let declarations = mod_api::__private::datapack_registry_declarations();
+                let candidate = DatapackCandidate::build(
+                    declarations,
+                    &[(
+                        "data/addon/levels/spell/fire.json".into(),
+                        vec![("fixture".into(), br#"{"power":17}"#.to_vec())],
+                    )],
+                )
+                .unwrap();
+                let snapshot = DatapackRegistrySet::first(candidate, 900)
+                    .snapshot(declarations, |_| true)
+                    .encode()
+                    .unwrap();
+                datapack_net::clear_received();
+                datapack_net::accept(&snapshot).unwrap();
                 game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
                 let overworld = game.level(&login.dimension).unwrap();
                 game.world
@@ -106,6 +151,11 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     None,
                     "old handle retires after Unload"
                 );
+                assert_eq!(
+                    overworld.datapack_entries(game, "levels:spell"),
+                    None,
+                    "a synchronized registry does not revive a stale level handle"
+                );
                 let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
                 tx.send(Event::Reconfiguring).unwrap();
                 let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
@@ -125,6 +175,7 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 game.begin_closing_save(true).unwrap();
                 assert!(game.poll_closing_save().unwrap());
                 game.save_for_exit().unwrap();
+                datapack_net::clear_received();
             });
         },
     );
@@ -148,6 +199,11 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
     assert_eq!(log[1].level, log[3].level);
     assert_ne!(log[0].level.epoch(), log[1].level.epoch());
     assert!(log[0].block.is_none() && log[1].block.is_none());
+    assert_eq!(
+        [log[0].power, log[1].power, log[2].power],
+        [Some(17); 3],
+        "the negotiated registry is readable during both Loads and the replacement's Unload"
+    );
     assert!(
         log[2].block.is_some(),
         "the retiring Overworld still holds the old chunk"

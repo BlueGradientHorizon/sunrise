@@ -60,12 +60,14 @@ tickets and waits for the ticketed chunks before `server_started`, even if no pl
 
 On a full server save, `player_save_to_file` notifications for successfully saved placed players
 come before `level_save`, then `world_saved` follows the world metadata write. Startup's integrated
-save before `server_starting` writes levels and world metadata but does not rewrite the offline owner.
+save before `server_starting` writes levels and world metadata, naming a known profile for a new
+world without creating or overwriting the owner's player file.
 
 On the client, resolve the level in `client_level_load` with `host.level(event.dimension)` before it
-is installed. On replacement, `client_level_unload` follows for the retiring level: its handle and
-loaded chunks still resolve until that callback finishes. The handle given through the new level's
-lookup remains valid when that level is installed.
+is installed. Its chunks arrive later, but it can already read the datapack registries synchronized
+by its server. On replacement, `client_level_unload` follows for the retiring level: its handle,
+loaded chunks and available synchronized registries still resolve until that callback finishes.
+The new level's handle remains valid when that level is installed.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
 requesting mod and level id. A failed open rolls back publication and frees the id for retry;

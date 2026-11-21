@@ -11,7 +11,8 @@ pub trait LevelDatapacksBackend {
     /// session last loaded them. On a client these are the entries the server sent at join and
     /// after each reload; a declared registry omitted from the snapshot is empty. An empty
     /// list means the registry has no entries. `None` means the level or registry is
-    /// unavailable. Reads nothing from disk.
+    /// unavailable. The entering level in `client_level_load` and the retiring level in
+    /// `client_level_unload` can read the synchronized set when available. Reads nothing from disk.
     #[access(WorldOnly)]
     fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>>;
     /// Side: both.

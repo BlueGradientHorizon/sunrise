@@ -140,7 +140,7 @@ impl Game<'_> {
         self.sync_world_level_data();
         if self.options.execution_role.writes_singleplayer_player() && !owner_saved {
             // No placed owner (including IntegratedServer.initServer), or the stop path
-            // already saved them. Preserve both the profile reference and any Data.Player.
+            // already saved them. Name a known profile on creation without writing its file.
             self.level.write_keeping_player(&self.world_root)?;
         } else {
             self.level.write_without_player(&self.world_root)?;

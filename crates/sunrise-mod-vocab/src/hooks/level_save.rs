@@ -12,6 +12,7 @@ pub trait Hooks {
     /// On a full server save the placed players are saved before any level,
     /// and world metadata is saved after the levels. The integrated server's
     /// initial save has no placed owner and does not write the owner's player file.
+    /// A new world's metadata still names the profile when known.
     #[hook(
         dispatch = "flat",
         side = "server",

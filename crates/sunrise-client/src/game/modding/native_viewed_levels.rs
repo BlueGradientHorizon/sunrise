@@ -51,7 +51,7 @@ impl Game<'_> {
     /// On a client, the handle the player's own level answers to now (its key and the client
     /// level's epoch): what a world view naming a level is compared with, resolved with the
     /// same rules as `client_view_world`. None before login.
-    fn client_own_level(&self) -> Option<LevelRef> {
+    pub(super) fn client_own_level(&self) -> Option<LevelRef> {
         let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
         Some(LevelRef::new(
             self.native_lifecycle.epoch()?,

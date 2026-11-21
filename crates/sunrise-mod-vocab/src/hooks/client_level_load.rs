@@ -6,7 +6,8 @@ pub trait Hooks {
     /// `LevelEvent.Load` from the `ClientLevel` constructor): on joining a
     /// server, single player's own included, and on changing dimension.
     /// `host.level(event.dimension)` resolves the new level before it is installed.
-    /// Its chunks arrive later. On replacement, `client_level_unload` follows
+    /// The new level can read datapack registries already synchronized by the
+    /// server; its chunks arrive later. On replacement, `client_level_unload` follows
     /// while the retiring level and its own handles still resolve. Client-side,
     /// on the window; the server's levels have `level_load`.
     #[hook(

@@ -633,19 +633,13 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                 )
                 .unwrap();
                 request.save_root = root.path().to_path_buf();
-                let prepared = game.prepare_world_and_rules(request).unwrap();
+                let mut prepared = game.prepare_world_and_rules(request).unwrap();
                 assert!(prepared.level.world_spawn.is_none());
-                let order: Vec<_> = std::iter::once(Dim::Overworld)
-                    .chain(
-                        prepared
-                            .configured_levels
-                            .iter()
-                            .copied()
-                            .filter(|d| *d != Dim::Overworld),
-                    )
-                    .map(Dim::id)
+                let mut ids: Vec<_> = prepared
+                    .configured_levels
+                    .iter()
+                    .map(|dim| dim.id())
                     .collect();
-                let mut ids = order.clone();
                 ids.sort_unstable();
                 assert_eq!(
                     ids,
@@ -657,10 +651,25 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         "test:last"
                     ]
                 );
-                assert!(
-                    order.iter().position(|id| *id == "test:first")
-                        < order.iter().position(|id| *id == "test:last")
-                );
+                // Supply a traversal whose custom stems are not in filename order and whose
+                // built-ins are not a tail. The game promotes only the Overworld.
+                prepared.configured_levels = [
+                    "test:last",
+                    "minecraft:the_nether",
+                    "minecraft:overworld",
+                    "test:first",
+                    "minecraft:the_end",
+                ]
+                .into_iter()
+                .map(Dim::from_id)
+                .collect();
+                let order = [
+                    "minecraft:overworld",
+                    "test:last",
+                    "minecraft:the_nether",
+                    "test:first",
+                    "minecraft:the_end",
+                ];
                 game.native_lifecycle_open_started();
                 game.finish_open_world(prepared).unwrap();
                 game.prepare_levels().unwrap();
