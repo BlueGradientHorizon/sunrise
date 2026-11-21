@@ -133,8 +133,8 @@ cargo sunrise-mod publish --summary "..." --owner you --categories utility \
 `--key <path>` is given. Existing Minisign key files and signatures work too. On Unix, `keygen --no-password` explicitly
 opts in to generating an unencrypted key. On Windows, `keygen` requires encryption because key files inherit the
 folder's permissions. Use `sign --no-password` to sign with an existing unencrypted key file. Neither command
-overwrites an existing output. If you change the package, build it and sign the new bytes rather than reusing an old
-signature.
+overwrites an existing output. After rebuilding a file at the same path, remove its old `.minisig` before signing
+the new bytes. Keep the existing signature when retrying publication of unchanged, verified bytes.
 
 For CI, store the full private key file text as a protected secret named `SUNRISE_MOD_SIGNING_KEY` and, for an
 encrypted key, store its passphrase separately as `SUNRISE_MOD_SIGNING_PASSPHRASE`. Set those only in the

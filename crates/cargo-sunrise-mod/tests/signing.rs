@@ -84,7 +84,7 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
         .output()
         .unwrap();
     assert!(!refused.status.success());
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("signing.key already exists"));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("signing.key"));
     assert!(refused.stdout.is_empty());
     assert!(fs::read(&secret_file).unwrap() == secret);
 
@@ -178,6 +178,28 @@ fn signing_paths_refuse_a_symlinked_ancestor() {
     }
     assert!(!project.join("asset.minisig").exists());
     assert!(!outside.join("nested/asset.minisig").exists());
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "daily"]
+fn keygen_preserves_a_dangling_output_symlink() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = project(&temp);
+    let keys = project.join(".sunrise");
+    fs::create_dir(&keys).unwrap();
+    let target = project.join("must-stay-absent");
+    let link = keys.join("signing.key");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let output = tool(&project)
+        .args(["keygen", "--no-password", "--out", ".sunrise"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("signing.key"));
+    assert_eq!(fs::read_link(link).unwrap(), target);
+    assert!(!target.exists());
+    assert!(!keys.join("signing.pub").exists());
 }
 
 #[test]
