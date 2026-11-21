@@ -249,18 +249,22 @@ pub struct Release {
 /// GitHub's API, or a release asset: the body of `url`.
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
     let mut body = Vec::new();
-    ureq::get(url)
-        .set("Accept", "application/vnd.github+json")
-        .set("User-Agent", "sunrise-server")
-        .call()
-        .map_err(|e| match e {
-            ureq::Error::Status(404, _) => "404".to_string(),
-            e => format!("GitHub didn't answer: {e}"),
-        })?
-        .into_reader()
-        .take(64 << 20)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("GitHub's answer: {e}"))?;
+    sunrise_proxy::get(
+        url,
+        &[
+            ("Accept", "application/vnd.github+json"),
+            ("User-Agent", "sunrise-server"),
+        ],
+        None,
+    )
+    .map_err(|e| match e {
+        e if e.status() == Some(404) => "404".to_string(),
+        e => format!("GitHub didn't answer: {e}"),
+    })?
+    .into_reader()
+    .take(64 << 20)
+    .read_to_end(&mut body)
+    .map_err(|e| format!("GitHub's answer: {e}"))?;
     Ok(body)
 }
 
@@ -471,11 +475,10 @@ pub fn download(install: &Install, release: &Release) -> Result<PathBuf, String>
     let path = folder.join(&release.asset);
     let part = folder.join(format!("{}.part", release.asset));
     let result = (|| {
-        let mut reader = ureq::get(&release.url)
-            .set("User-Agent", "sunrise-server")
-            .call()
-            .map_err(|e| format!("downloading {}: {e}", release.asset))?
-            .into_reader();
+        let mut reader =
+            sunrise_proxy::get(&release.url, &[("User-Agent", "sunrise-server")], None)
+                .map_err(|e| format!("downloading {}: {e}", release.asset))?
+                .into_reader();
         let mut file =
             std::fs::File::create(&part).map_err(|e| format!("{}: {e}", part.display()))?;
         let mut hasher = sha2::Sha256::new();

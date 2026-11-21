@@ -46,7 +46,7 @@ HumanoidArmorLayer.getArmorModel	port	crates/sunrise-client/src/mobs/render.rs::
 IronGolemCrackinessLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	crack levels via golem::crackiness
 IronGolemFlowerLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::golem_flower_geometry	the poppy in the right arm while the offer tick runs
 ItemInHandLayer.submit	port	crates/sunrise-client/src/game/mobs/mob_blocks.rs::Game::held_item_geometry	both hands through the item pipeline
-ItemInHandLayer.useBabyOffset	port	crates/sunrise-client/src/mobs/render.rs::hand_base	baby hand offset
+ItemInHandLayer.useBabyOffset	port	crates/sunrise-client/src/mobs/render.rs::item_from_hand	baby hand offset
 LivingEntityEmissiveLayer.submit	port	crates/sunrise-client/src/mobs/render.rs::layers	emissive layers drawn full bright; warden alpha is in warden::emissive_layers
 LlamaDecorLayer.submit	port	crates/sunrise-client/src/mobs/llama.rs::decor	carpet, or the trader llama's blanket
 LlamaDecorLayer.renderEquipment	port	crates/sunrise-client/src/mobs/llama.rs::decor	same decor model and texture

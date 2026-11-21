@@ -253,6 +253,8 @@ impl Game<'_> {
             self.debug_charts.log_bandwidth(bytes);
             self.debug_charts.log_packets([sent, received]);
         }
+        r.session
+            .drain_debug_pings(|delay| self.debug_charts.ping.log(delay));
     }
     /// `ClientPacketListener.tick` after the carried slot and the chat session: the ping while the
     /// network charts show, then, with a level, `ClientDebugSubscriber.tick`'s request.
@@ -263,7 +265,7 @@ impl Game<'_> {
         let has_level = r.has_level();
         if self.debug && self.debug_charts.network {
             use sunrise_protocol::packets::status::Ping;
-            let time = self.debug_millis();
+            let time = sunrise_client::net::ping_millis();
             self.send(Serverbound::PingRequest(Ping { time }));
         }
         if has_level && let Some(wanted) = self.debug_charts.subscription_request(self.debug) {
