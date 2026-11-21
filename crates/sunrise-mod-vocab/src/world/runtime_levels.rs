@@ -11,7 +11,7 @@ pub enum RuntimeGenerator {
     Flat,
     /// Nothing but air.
     Void,
-    /// A chunk generator a native mod registered (`register_chunk_generators`), by its name
+    /// A chunk generator a native mod registered (`register_chunk_generator`), by its name
     /// (`mymod:arena`). The level's seed is the generator's `ChunkAccess::seed`.
     Mod(String),
 }
@@ -28,29 +28,32 @@ pub enum RuntimeGenerator {
 pub enum RuntimeBiomeSource {
     /// One biome everywhere (`minecraft:fixed`).
     Fixed(String),
-    /// Biomes in repeating squares (`minecraft:checkerboard`), each `2^(scale + 2)` blocks wide;
-    /// `scale` is `0..=62` (vanilla `CheckerboardColumnBiomeSource`). Entries may be biome ids
-    /// or `#namespace:tag` biome tags.
+    /// Biomes in repeating squares (`minecraft:checkerboard`). `scale` is `0..=62`; vanilla
+    /// `CheckerboardColumnBiomeSource` shifts quart coordinates right by `scale + 2`, with
+    /// Java's masked shift distance.
     Checkerboard {
-        /// Biome ids or `#namespace:tag` biome tags; must be non-empty.
+        /// Biome ids or `#namespace:tag` references. A list with tags and other entries is
+        /// a NeoForge `or` holder set, in input order and without duplicates. The resolved
+        /// holder set must contain a biome.
         biomes: Vec<String>,
         /// Square size exponent (`0..=62`).
         scale: u32,
     },
-    /// Vanilla's multi-noise biome preset (`minecraft:multi_noise`): `minecraft:overworld` or
-    /// `minecraft:nether`.
+    /// A multi-noise biome preset holder (`minecraft:multi_noise`), such as
+    /// `minecraft:overworld` or `minecraft:nether`.
     MultiNoise(String),
     /// The End's island and void biome source (`minecraft:the_end`).
     End,
     /// Custom multi-noise biome points (`minecraft:multi_noise` parameter list).
     Points(Vec<BiomePoint>),
-    /// A biome source a native mod registered (`register_biome_sources`), by its name
+    /// A biome source a native mod registered (`register_biome_source`), by its name
     /// (`mymod:rings`).
     Registered(String),
 }
 
 impl RuntimeBiomeSource {
-    /// What the biome source's codec refuses, if anything.
+    /// An invalid local field, if any. A world resolves the source's registry references
+    /// and checks whether its holder set can be sampled when admitting the request.
     pub fn invalid_field(&self) -> Option<String> {
         let reason = match self {
             Self::Fixed(biome) if biome.is_empty() => "a fixed biome source needs a biome id",
@@ -64,10 +67,8 @@ impl RuntimeBiomeSource {
             Self::Points(points) if !points.iter().all(BiomePoint::is_valid) => {
                 "a biome point needs a biome, six climate intervals from -2 to 2 with min not above max, and an offset from 0 to 1"
             }
-            Self::MultiNoise(preset)
-                if !matches!(preset.as_str(), "minecraft:overworld" | "minecraft:nether") =>
-            {
-                "biome_preset must be minecraft:overworld or minecraft:nether"
+            Self::MultiNoise(preset) if preset.is_empty() => {
+                "a multi-noise biome source needs a preset id"
             }
             Self::Registered(id) if id.is_empty() => {
                 "a registered biome source needs a biome source id"
@@ -122,7 +123,8 @@ impl RuntimeLevel {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum RuntimeLevelError {
-    /// There is no server world, or the server's runtime level table is unavailable.
+    /// There is no open logical server world, or the world's generation registries could
+    /// not be loaded for a registered chunk generator.
     Unavailable,
     /// The id is not `namespace:path` with a folder-safe namespace and path.
     InvalidId,
@@ -136,11 +138,10 @@ pub enum RuntimeLevelError {
     UnknownDimensionType,
     /// No mod registered a chunk generator of that name.
     UnknownGenerator,
-    /// No mod registered a biome source of that name, or a named biome is not in the world's
-    /// biome registry.
+    /// The world has no matching biome, biome tag, biome preset or registered source.
     UnknownBiomeSource,
-    /// The biome source failed validation (empty biome list, out-of-range checkerboard scale,
-    /// unknown multi-noise preset or invalid climate point).
+    /// The biome source failed validation (an empty holder set, out-of-range checkerboard
+    /// scale or invalid climate point, for example).
     InvalidBiomeSource,
     /// The biome source cannot pair with the chosen generator (for example a non-fixed biome
     /// source on [`RuntimeGenerator::Flat`] or [`RuntimeGenerator::Void`]).

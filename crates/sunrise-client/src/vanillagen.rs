@@ -302,16 +302,17 @@ impl VanillaTerrain {
     /// the save gives it). `structures` is the world's `generate_structures`.
     pub fn for_mod(
         resources: TerrainResources<'_>,
-        overrides: &WorldgenOverrides,
+        data: Arc<GeneratorData>,
         seed: i64,
         dimension: &str,
         stem: &serde_json::Value,
         generator: Arc<dyn sunrise_world::worldgen::mod_generators::ModChunkGenerator>,
+        source: Arc<sunrise_world::worldgen::biome_source::ResolvedBiomeSource>,
         structures: bool,
     ) -> crate::Result<Self> {
-        let data: Arc<GeneratorData> = shared_resource_data(resources, overrides)?;
-        let generator =
-            OverworldGenerator::for_mod(data, seed, dimension, stem, generator, structures)?;
+        let generator = OverworldGenerator::for_mod(
+            data, seed, dimension, stem, generator, source, structures,
+        )?;
         let mut terrain =
             Self::assemble(resources, generator, seed, "minecraft:normal", dimension)?;
         terrain.mod_terrain = true;
@@ -878,7 +879,7 @@ pub fn forget_shared_data() {
         .unwrap_or_else(|e| e.into_inner())
         .clear();
 }
-fn shared_resource_data(
+pub fn shared_resource_data(
     resources: TerrainResources<'_>,
     overrides: &WorldgenOverrides,
 ) -> crate::Result<Arc<GeneratorData>> {

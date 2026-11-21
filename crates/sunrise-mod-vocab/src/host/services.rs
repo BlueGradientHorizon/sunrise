@@ -232,7 +232,8 @@ pub trait Players {
     }
 }
 /// The runtime_levels service, reached through its host.
-/// Success from `open` or `unload` admits a queued request, not its completion.
+/// Success from `open`, `unload` or `delete` admits a queued request, not its completion.
+/// These requests are not restricted to the calling mod's namespace.
 /// Apply failures are logged with the requesting mod and level id. A failed open
 /// leaves the id unpublished and free to retry; a failed unload keeps it open for retry.
 pub trait RuntimeLevels {
@@ -256,7 +257,8 @@ pub trait RuntimeLevels {
     /// tick's levels have ticked: `level_unload` fires then. Refused with
     /// [`RuntimeLevelError::PlayersInside`] while a player or an arrival not yet landed is in the
     /// level, now and again when it is applied: the mod moves its players out first
-    /// (`entity_teleport_to_level`).
+    /// (`entity_teleport_to_level`). [`RuntimeLevelError::NotOpen`] means no runtime level
+    /// of that id is open to unload.
     fn unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         crate::world::phase::unprovided(
             "RuntimeLevels::unload",
@@ -275,7 +277,8 @@ pub trait RuntimeLevels {
     /// it is applied, with [`RuntimeLevelError::PlayersInside`] while a player or an arrival not
     /// yet landed is in the level, with [`RuntimeLevelError::LevelsBelow`] while a level below
     /// the id exists (`mymod:instance/ab` below `mymod:instance`: the folders nest), and with
-    /// [`RuntimeLevelError::AlreadyOpen`] for a level still waiting to open. An `open` of a level
+    /// [`RuntimeLevelError::AlreadyOpen`] for a level still waiting to open. A vanilla, startup
+    /// or data-pack id is refused with [`RuntimeLevelError::ReservedId`]. An `open` of a level
     /// that is open and being deleted is `AlreadyOpen` until the delete is applied; one of a
     /// level that was not open, made after the `delete`, is applied after it and starts empty.
     /// If the level closed but its files could not all be removed, it stays closed and

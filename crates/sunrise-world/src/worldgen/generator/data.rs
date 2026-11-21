@@ -454,6 +454,15 @@ impl GeneratorData {
             .map_err(|e| resource(format!("biome source: {e}")))?;
         self.decoration_for(&source_json, &source).map(drop)
     }
+    /// Bind a custom stem's source to this world's biome, tag and preset registries.
+    pub fn resolve_mod_biome_source(
+        &self,
+        json: &str,
+        seed: i64,
+    ) -> Result<ResolvedBiomeSource, crate::worldgen::biome_source::BiomeSourceError> {
+        self.source_catalog
+            .bind_custom_source(json, &self.presets, seed)
+    }
     pub fn registry(&self) -> &'static BlockRegistry {
         self.registry
     }

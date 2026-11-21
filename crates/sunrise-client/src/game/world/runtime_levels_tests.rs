@@ -1,7 +1,7 @@
 //! Levels a mod opens at run time: the table's rules, and a mod's calls against a game.
 
 use super::native_entity_refs::tests::with_game;
-use super::runtime_levels::{Generate, RuntimeTable};
+use super::runtime_levels::{Generate, OpenLevel, RuntimeTable};
 use mod_api::{
     BiomePoint, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent,
     ModEntry, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError,
@@ -11,6 +11,19 @@ use std::sync::{Arc, Mutex};
 
 fn flat() -> RuntimeLevel {
     RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1)
+}
+
+fn admitted_flat(seed: i64) -> OpenLevel {
+    OpenLevel {
+        dimension_type: "minecraft:overworld".into(),
+        shape: sunrise_client::chunk::LevelShape::OVERWORLD,
+        facts: sunrise_world::dimension_type::DimensionFacts::overworld().clone(),
+        seed,
+        generate: Generate::Layers {
+            flat: true,
+            biome: 0,
+        },
+    }
 }
 
 #[test]
@@ -26,7 +39,7 @@ fn runtime_table_has_no_artificial_level_cap() {
 }
 
 #[test]
-fn runtime_biome_source_validates_fields_and_composes_with_generators() {
+fn runtime_biome_source_validates_local_fields() {
     assert_eq!(
         RuntimeBiomeSource::Fixed("minecraft:plains".into()).invalid_field(),
         None
@@ -61,7 +74,7 @@ fn runtime_biome_source_validates_fields_and_composes_with_generators() {
         None
     );
     assert!(
-        RuntimeBiomeSource::MultiNoise("minecraft:end".into())
+        RuntimeBiomeSource::MultiNoise(String::new())
             .invalid_field()
             .is_some()
     );
@@ -94,54 +107,77 @@ fn runtime_biome_source_validates_fields_and_composes_with_generators() {
         RuntimeBiomeSource::Registered("mymod:rings".into()).invalid_field(),
         None
     );
+}
 
-    // Flat/Void accept None or Fixed only; non-fixed sources do not produce a Flat/Void Generate.
-    let flat_fixed = flat().with_biome_source(RuntimeBiomeSource::Fixed("minecraft:desert".into()));
-    assert!(matches!(
-        Generate::of(&flat_fixed),
-        Some(Generate::Flat { biome: Some(ref b) }) if b == "minecraft:desert"
-    ));
-    let flat_end = flat().with_biome_source(RuntimeBiomeSource::End);
-    assert!(Generate::of(&flat_end).is_none());
-    let void_end = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Void, 1)
-        .with_biome_source(RuntimeBiomeSource::End);
-    assert!(Generate::of(&void_end).is_none());
-
-    // Mod generator composes with any RuntimeBiomeSource into the level stem JSON.
-    let mod_cb = RuntimeLevel::new(
-        "minecraft:overworld",
-        RuntimeGenerator::Mod("mymod:arena".into()),
-        7,
-    )
-    .with_biome_source(RuntimeBiomeSource::Checkerboard {
-        biomes: vec!["minecraft:plains".into(), "minecraft:desert".into()],
-        scale: 3,
-    });
-    match Generate::of(&mod_cb) {
-        Some(Generate::Stem(stem)) => {
-            assert_eq!(stem["generator"]["type"], "mymod:arena");
-            assert_eq!(
-                stem["generator"]["biome_source"]["type"],
-                "minecraft:checkerboard"
+#[test]
+#[ignore = "daily"]
+fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes() {
+    use sunrise_world::worldgen::mod_generators::{
+        ChunkAccess, ModChunkGenerator, ModChunkGenerators,
+    };
+    struct Terrain;
+    impl ModChunkGenerator for Terrain {
+        fn build_terrain(&self, _: &mut dyn ChunkAccess) {}
+    }
+    let generators = ModChunkGenerators::from([(
+        "checker:test".into(),
+        Arc::new(Terrain) as Arc<dyn ModChunkGenerator>,
+    )]);
+    with_opener("checker", "checker:level", flat(), |game, _| {
+        let level = |biomes| {
+            RuntimeLevel::new(
+                "minecraft:overworld",
+                RuntimeGenerator::Mod("checker:test".into()),
+                0,
+            )
+            .with_biome_source(RuntimeBiomeSource::Checkerboard { biomes, scale: 0 })
+        };
+        assert_eq!(
+            game.runtime_level_queue_open(
+                "checker:level",
+                level(vec!["#checker:absent".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::UnknownBiomeSource)
+        );
+        assert_eq!(
+            game.runtime_level_queue_open(
+                "checker:level",
+                level(vec!["plains".into(), "#checker:absent".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::UnknownBiomeSource)
+        );
+        assert_eq!(
+            game.runtime_level_open(
+                "checker:level",
+                flat().with_biome_source(RuntimeBiomeSource::End),
+            ),
+            Err(RuntimeLevelError::IncompatibleBiomeSource)
+        );
+        game.runtime_level_queue_open(
+            "checker:level",
+            level(vec!["#minecraft:is_forest".into()]),
+            &generators,
+        )
+        .unwrap();
+        assert!(!game.runtime_level_is_open("checker:level"));
+        game.apply_runtime_levels();
+        assert!(game.runtime_level_is_open("checker:level"));
+        game.enter_level(super::Dim::extra("checker:level").unwrap())
+            .unwrap();
+        for (cx, name) in [(0, "minecraft:forest"), (1, "minecraft:flower_forest")] {
+            assert!(
+                game.streaming
+                    .set_forced_loaded(&mut game.world, cx, 0, true)
             );
-            assert_eq!(stem["generator"]["biome_source"]["scale"], 3);
+            let chunk = &game.world.chunks[&(cx, 0)];
+            assert_eq!(world_biomes!(game).name(chunk.biome(0, 0, 0)), name);
         }
-        _ => panic!("expected mod stem"),
-    }
-
-    let mod_reg = RuntimeLevel::new(
-        "minecraft:overworld",
-        RuntimeGenerator::Mod("mymod:arena".into()),
-        7,
-    )
-    .with_biome_source(RuntimeBiomeSource::Registered("mymod:rings".into()));
-    match Generate::of(&mod_reg) {
-        Some(Generate::Stem(stem)) => {
-            assert_eq!(stem["generator"]["type"], "mymod:arena");
-            assert_eq!(stem["generator"]["biome_source"]["type"], "mymod:rings");
-        }
-        _ => panic!("expected mod stem"),
-    }
+        game.enter_level(super::Dim::Overworld).unwrap();
+        game.runtime_level_unload("checker:level").unwrap();
+        game.apply_runtime_levels();
+    });
 }
 
 #[test]
@@ -163,25 +199,27 @@ fn an_id_is_open_once_and_each_open_has_its_own_generation() {
 #[test]
 fn a_level_is_open_after_its_request_is_applied_and_until_its_close_is() {
     let mut table = RuntimeTable::default();
-    table.queue_open("test", "state:a", admitted_flat(1)).unwrap();
+    table
+        .queue_open("test", "state:a", admitted_flat(1))
+        .unwrap();
     assert!(!table.is_open("state:a"));
     assert_eq!(
-        table.queue_unload("state:a"),
+        table.queue_unload("test", "state:a"),
         Err(RuntimeLevelError::NotOpen)
     );
     table.mark_open("state:a");
     assert!(table.is_open("state:a"));
-    assert_eq!(table.queue_unload("state:a"), Ok(()));
+    assert_eq!(table.queue_unload("test", "state:a"), Ok(()));
     assert!(
         table.is_open("state:a"),
         "still open until the close is applied"
     );
     assert_eq!(
-        table.queue_unload("state:a"),
+        table.queue_unload("test", "state:a"),
         Err(RuntimeLevelError::NotOpen)
     );
     assert_eq!(
-        table.queue_unload("state:none"),
+        table.queue_unload("test", "state:none"),
         Err(RuntimeLevelError::NotOpen)
     );
 }
@@ -396,7 +434,7 @@ fn tick_post(game: &mut super::Game<'_>) {
 
 #[test]
 #[ignore = "daily"]
-fn a_mod_opens_only_ids_in_its_own_namespace() {
+fn a_mod_can_open_other_namespaces_but_not_reserved_or_invalid_ids() {
     for (id, expected) in [
         ("other:x", Ok(())),
         ("mymod:../x", Err(RuntimeLevelError::InvalidId)),
@@ -653,8 +691,8 @@ fn failed_construction_rolls_back_every_published_table() {
     });
 }
 
-/// Deleting an open, empty level closes it, then removes its folder and the structure references
-/// kept beside the world, and the folders they leave empty.
+/// Deleting an open level from another namespace closes it, then removes its folder and the
+/// structure references kept beside the world, and the folders they leave empty.
 #[test]
 #[ignore = "daily"]
 fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
@@ -669,7 +707,7 @@ fn a_delete_closes_the_level_and_removes_its_folder_and_references_file() {
         write_file(&references);
         // The save of the unload writes the folder; a stray file is in it too.
         write_file(&folder.join("data/minecraft/raids.dat"));
-        assert_eq!(delete_as(game, "erase", "erase:instance/ab"), Ok(()));
+        assert_eq!(delete_as(game, "another_mod", "erase:instance/ab"), Ok(()));
         assert!(
             game.runtime_level_is_open("erase:instance/ab"),
             "open until the delete is applied"
@@ -728,7 +766,7 @@ fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
 /// The folder of a vanilla level and of a path that leaves the world is never touched.
 #[test]
 #[ignore = "daily"]
-fn a_delete_outside_the_mods_namespace_is_refused_and_removes_nothing() {
+fn a_delete_of_reserved_or_invalid_ids_is_refused_and_removes_nothing() {
     with_opener("mine", "mine:a", flat(), |game, _| {
         let vanilla = game
             .world_root
@@ -897,7 +935,10 @@ fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() 
     table.mark_open("del:a");
     assert_eq!(table.queue_delete("test", "del:a"), Ok(()));
     assert!(table.is_open("del:a"));
-    assert_eq!(table.queue_unload("del:a"), Err(RuntimeLevelError::NotOpen));
+    assert_eq!(
+        table.queue_unload("test", "del:a"),
+        Err(RuntimeLevelError::NotOpen)
+    );
     assert_eq!(
         table.queue_open("test", "del:a", admitted_flat(1)),
         Err(RuntimeLevelError::AlreadyOpen),
@@ -1412,10 +1453,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         let mut first = None;
         for seed in [1, 2, 3, i64::MIN, i64::MAX] {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
-            game.levels
-                .runtime
-                .queue_open("cycle", "cycle:a", admitted_flat(seed))
-                .unwrap();
+            game.runtime_level_open("cycle:a", level).unwrap();
             game.apply_runtime_levels();
             assert!(game.runtime_level_is_open("cycle:a"));
             assert_eq!(

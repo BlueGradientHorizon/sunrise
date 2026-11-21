@@ -21,8 +21,8 @@ event.commands.push(Command::op("openarena", 2).executes(|host, _, _| {
 - **The id** is `namespace:path` with a folder-safe namespace and path. The folder is
   `dimensions/<namespace>/<path>/` of the world, derived from the id and nothing else, so an id
   that is not a folder name (`mymod:../x`, an empty segment, a Windows device name) is refused
-  with `InvalidId`. A vanilla level, a level a mod registered at startup and a level a data pack
-  gave are `ReservedId`.
+  with `InvalidId`. Requests are not restricted to the calling mod's namespace. `open` and
+  `delete` refuse a vanilla, startup or data-pack level with `ReservedId`.
 - **`dimension_type`** is a type known since startup: a vanilla type (`minecraft:overworld`) or the
   type of a level a mod registered with [`register_dimension`](dimension-shape.md#registering-a-dimension)
   (`mymod:pocket`). Nothing new crosses the network, so every client already has it. Any other
@@ -34,12 +34,15 @@ event.commands.push(Command::op("openarena", 2).executes(|host, _, _| {
 - **`biome_source`** (`RuntimeLevel::with_biome_source`) pairs a [`RuntimeBiomeSource`] with
   `generator`, matching how vanilla's `LevelStem` pairs a `ChunkGenerator` and `BiomeSource`:
   `Fixed`, `Checkerboard`, `MultiNoise`, `End`, `Points`, or `Registered(id)` (a biome source
-  registered with `register_biome_sources`). `Flat` and `Void` follow vanilla's `FlatLevelSource`
+  registered with `register_biome_source`). `Flat` and `Void` follow vanilla's `FlatLevelSource`
   and accept only `Fixed` (or `None` for `minecraft:plains` / `minecraft:the_void`), refusing
-  non-fixed sources with `IncompatibleBiomeSource`. `Mod(name)` accepts any valid biome source
-  (or `None` to inherit `dimension_type`'s registered stem biome source). An unknown biome or
-  unregistered biome source returns `UnknownBiomeSource`; an invalid field (such as an empty
-  checkerboard or `scale > 62`) returns `InvalidBiomeSource`.
+  non-fixed sources with `IncompatibleBiomeSource`. `Mod(name)` accepts any valid biome source.
+  `None` takes the dimension type's registered stem source, or plains if there is no registered
+  stem. A custom generator without vanilla stages uses the non-noise sampling context, not
+  the Overworld's climate router. A checkerboard takes biome ids and `#namespace:tag` references;
+  a mixed list is a NeoForge `or` holder set. A missing biome, tag, preset or registered source
+  returns `UnknownBiomeSource`; an empty checkerboard holder set or invalid scale returns
+  `InvalidBiomeSource`.
 - **`seed`** is the level's own. It reaches the mod generator (`ChunkAccess::seed`), the level's
   block-tick and level randoms and the hashed seed clients are sent. `ChunkAccess::level` tells a
   generator which level it fills, so one generator serves every instance and looks its plan up by
@@ -65,7 +68,9 @@ saved tickets and waits for the ticketed chunks before `server_started`, even if
 visits those levels.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
-requesting mod and level id. A failed open rolls back publication and frees the id for retry;
+requesting mod and level id. `Unavailable` means there is no open logical server world or its
+worldgen registries could not be loaded for a registered generator; it does not require a mod
+callback to be active. A failed open rolls back publication and frees the id for retry;
 a failed unload leaves the level open for another unload request. Observe `is_open` after
 the queue runs rather than treating the returned result as completion.
 
