@@ -1,0 +1,37 @@
+ids = [
+    "method:SettingsRegistrar::register_setting",
+    "method:prelude::ConfigHost::setting",
+    "method:prelude::ConfigHost::set_setting",
+    "method:prelude::ConfigClientHost::setting_bool",
+    "method:prelude::ConfigClientHost::setting_choice",
+    "method:prelude::ConfigClientHost::setting_f64",
+    "method:prelude::ConfigClientHost::setting_color",
+    "method:ChunkDiskHost::setting",
+]
+why = """
+Replace thread-local caller guessing (`own_setting`), process-global static caching (`READ`), and
+raw mod-id read/write bypasses (`ConfigHost::{setting, set_setting}`, which skipped
+`setting_changed`) with one authoritative client settings store owned by `Game` and owner-bound
+`SettingKey` handles minted at registration.
+
+Matches vanilla 26.3 `net.minecraft.client.OptionInstance.set` (compares boxed `Double` values with
+`Objects.equals`, treating `-0.0` and `+0.0` as distinct, and delivers the change callback
+synchronously right after updating) and NeoForge `ModConfigSpec.save` / `LoadedConfig.save`
+(persists and fires `ModConfigEvent.Reloading` synchronously before returning).
+
+Client resource reloads derive live values from the reload's single captured `LoopContext` snapshot
+without a second disk scan; opening a mod's page in Options > Mods (from either Options > Mods or
+the recipe browser) refreshes that owner with the same no-follow regular-file admission policy.
+`setting_changed` callbacks run synchronously under per-owner `CallbackOwner` panic containment.
+`ChunkDiskHost` now borrows captured settings directly (`setting(mod_id, key) -> Option<&str>`)
+from its retained resource generation.
+"""
+migrate = """
+Store the `SettingKey` returned by `SettingsRegistrar::register_setting(spec)` and pass it to
+`ConfigClientHost::setting(key)`, `ConfigClientHost::set_setting(key, value)`, or the typed getters
+`setting_bool`, `setting_choice`, `setting_f64`, and `setting_color` (all returning
+`Result<_, SettingAccessError>`). Replace any `ConfigHost::{setting, set_setting}` calls with
+`ConfigClientHost::{setting, set_setting}` using your registered `SettingKey` on the client, or
+read captured snapshots through `DataLoadContext::setting`, `LoopContext::setting`,
+`WorldgenHost::setting`, or `ChunkDiskHost::setting` (`Option<&str>`).
+"""

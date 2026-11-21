@@ -26,17 +26,6 @@ pub trait ConfigHost {
     #[access(Metadata)]
     fn on(&self, mod_id: &str) -> bool;
     /// Side: both.
-    /// A mod's setting `key` (one file per key in `native_data_dir`). A mod reads only its own:
-    /// another mod's id or a key not registered by that owner gives None.
-    #[access(WorldOnly)]
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
-    /// Side: both.
-    /// Keeps a mod's registered setting `key`. Another mod's id or an unregistered key keeps
-    /// nothing. A successful write invalidates the typed read cache for this data folder and key;
-    /// a failed write leaves it unchanged. This raw write does not fire `setting_changed`.
-    #[access(WorldOnly)]
-    fn set_setting(&self, mod_id: &str, key: &str, value: &str);
-    /// Side: both.
     /// The calling mod's own files in the game's `config/` folder, beside
     /// `options.txt` (beside `server.properties` on a dedicated server):
     /// its folder `config/<mod id>/` and the files beside it named
@@ -178,23 +167,39 @@ pub trait ConfigClientHost {
     #[access(ClientSetup)]
     fn translate(&self, key: &str) -> Option<String>;
     /// Side: client.
-    /// The calling mod's toggle `key` (`Registrar::register_setting`): the player's choice, else
-    /// its default. None when the mod registered no toggle by that key.
-    #[access(WorldOnly)]
-    fn setting_bool(&self, key: &str) -> Option<bool>;
+    /// Read a client setting registered with
+    /// [`SettingsRegistrar::register_setting`](crate::SettingsRegistrar::register_setting)
+    /// from the client's authoritative settings store (vanilla `OptionInstance.get`).
+    #[access(ClientSetup)]
+    fn setting(&self, key: SettingKey) -> Result<SettingValue, SettingAccessError>;
     /// Side: client.
-    /// The index of the option the player picked for the calling mod's choice `key`, else its
-    /// default. None when the mod registered no choice by that key.
+    /// Update a client setting registered with
+    /// [`SettingsRegistrar::register_setting`](crate::SettingsRegistrar::register_setting):
+    /// validates against the registered spec, persists to the mod's setting file, updates the
+    /// live value and Options > Mods view, and notifies the owning mod's `setting_changed` hook
+    /// synchronously (vanilla `OptionInstance.set` / NeoForge `ModConfigSpec.save`).
+    /// Returns `Ok(true)` when the value changed (comparing `Range` floats by bits so `-0.0` and
+    /// `+0.0` are distinct) and `Ok(false)` when it already matched.
     #[access(WorldOnly)]
-    fn setting_choice(&self, key: &str) -> Option<u32>;
+    fn set_setting(
+        &mut self,
+        key: SettingKey,
+        value: SettingValue,
+    ) -> Result<bool, SettingAccessError>;
     /// Side: client.
-    /// The calling mod's range `key`: the player's value, else its default; a kept value outside
-    /// the range reads as the default. None when the mod registered no range by that key.
-    #[access(WorldOnly)]
-    fn setting_f64(&self, key: &str) -> Option<f64>;
+    /// Read a toggle setting through its owner-bound [`SettingKey`].
+    #[access(ClientSetup)]
+    fn setting_bool(&self, key: SettingKey) -> Result<bool, SettingAccessError>;
     /// Side: client.
-    /// The calling mod's colour `key`, `0xRRGGBB`: the player's choice, else its default. None
-    /// when the mod registered no colour by that key.
-    #[access(WorldOnly)]
-    fn setting_color(&self, key: &str) -> Option<u32>;
+    /// Read a choice setting's selected index through its owner-bound [`SettingKey`].
+    #[access(ClientSetup)]
+    fn setting_choice(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
+    /// Side: client.
+    /// Read a range setting's number through its owner-bound [`SettingKey`].
+    #[access(ClientSetup)]
+    fn setting_f64(&self, key: SettingKey) -> Result<f64, SettingAccessError>;
+    /// Side: client.
+    /// Read a colour setting (`0xRRGGBB`) through its owner-bound [`SettingKey`].
+    #[access(ClientSetup)]
+    fn setting_color(&self, key: SettingKey) -> Result<u32, SettingAccessError>;
 }

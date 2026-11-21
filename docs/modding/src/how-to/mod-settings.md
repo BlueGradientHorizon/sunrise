@@ -6,8 +6,8 @@ A mod keeps its options in one of two ways:
 | --- | --- | --- |
 | Lives in | The game's `config/` folder (on a server, `serverconfig/` per world) | `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key |
 | Edited by | The player, in a text editor | The player, on the mod's page in **Options > Mods** |
-| You declare it with | `Hooks::register_configs` | `Registrar::register_setting` |
-| You read it in | `config_loading` and `config_reloading` | `Host::setting` and the typed `setting_*` reads |
+| You declare it with | `Hooks::register_configs` | `Registrar::register_setting` (returns `SettingKey`) |
+| You read it in | `config_loading` and `config_reloading` | `ClientHost::setting(key)` and the typed `setting_*` reads |
 | NeoForge counterpart | `ModContainer.registerConfig`, `ModConfigEvent` | `ModConfigSpec` entries on the config screen |
 
 ## Config files
@@ -61,19 +61,26 @@ Use `ConfigPath::root()` to list your own root, and stop when a page is empty.
 
 ## Settings
 
-Register each setting from `Hooks::register` with `Registrar::register_setting(SettingSpec { … })`: a key
-(`a-z`, `0-9`, `_`, `-` and `.`, not starting with `.`), translation keys for its label and tooltip, and its kind
-with the default. A setting the spec check refuses, or a key you registered already, comes back as the error.
-Settings are client settings and appear on your mod's page in **Options > Mods**, opened from its **Config**
-button.
+Register each setting from `Hooks::register` with `Registrar::register_setting(SettingSpec::…)` to receive an
+owner-bound `SettingKey`: a key (`a-z`, `0-9`, `_`, `-` and `.`, not starting with `.`), translation keys for its
+label and tooltip, and its kind with the default. A setting the spec check refuses, or a key you registered
+already, comes back as the error. Settings are client settings and appear on your mod's page in
+**Options > Mods**, opened from its **Config** button.
 
-- Read a setting with `host.setting(mod_id, key)` or a typed read. Typed reads are cached per data folder and key.
-- `host.set_setting(mod_id, key, value)` keeps a value. A successful write updates the cache; a failed one leaves
-  it. This write does not fire `setting_changed`.
-- When the player edits a setting, the value is kept first, then `setting_changed` tells your mod alone.
+- Read a setting with `client_host.setting(key)` or the typed getters (`setting_bool`, `setting_choice`,
+  `setting_f64`, `setting_color`), all of which take the `SettingKey` minted at registration and return
+  `Result<_, SettingAccessError>`.
+- Update a setting with `client_host.set_setting(key, value) -> Result<bool, SettingAccessError>`. It validates
+  against the registered spec, persists the file atomically (refusing symlinks and directories), updates the
+  single client settings store and Options > Mods view, and delivers `setting_changed` synchronously when the
+  value changed (comparing `Range` floats by bits so `-0.0` and `+0.0` are distinct, matching vanilla's
+  `OptionInstance.set`).
+- When the player edits a setting in **Options > Mods**, or a client resource reload or page refresh picks up an
+  external disk change, the same store commits the update and notifies your mod's `setting_changed` hook
+  synchronously.
 
-A mod reads and writes only its own settings: another mod's id, or a key its owner never registered, reads
-`None` and writes nothing.
+A mod only holds the `SettingKey` handles minted for its own registrations, so there is no raw mod-id read/write
+bypass and no thread-local caller guessing.
 
 The settings folder is settings only, not bulk storage: ordinary files there are read as setting keys and
 subfolders or unsafe entries still warn during snapshots. Use the bulk services above instead; their files are

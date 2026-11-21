@@ -1658,7 +1658,7 @@ impl Game<'_> {
         let ids: Vec<_> = if self.is_logical_server() {
             inventory.server_ids().collect()
         } else {
-            inventory.client_ids().collect()
+            super::native_hooks::mod_settings::client_setting_owners(inventory.client_ids())
         };
         let item_data = self.res.core.item_data.context();
         Ok(self.loop_context_readers(item_data.loop_context(side, ids.iter().copied())))
@@ -1686,13 +1686,15 @@ impl Game<'_> {
         self.protect_condition_root();
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
         if let Some(audio) = context.audio {
             self.audio.set_loop_context(audio);
         }
         if let Some(worldgen) = context.worldgen {
             sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
         }
+        // Populate or reload the single client settings store directly from
+        // this generation's captured LoopContext snapshot (never a second disk scan).
+        self.sync_native_settings_from_loop_context();
     }
 
     /// Stage a fresh root when admission changes or registered conditions need reevaluation.

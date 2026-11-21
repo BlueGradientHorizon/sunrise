@@ -299,7 +299,10 @@ fn phase_allows(phase: ModPhase, operation: &str, access: LoadAccess) -> bool {
         return true;
     }
     let metadata = access == LoadAccess::Metadata;
-    let settings = operation == "setting";
+    let settings = matches!(
+        operation,
+        "setting" | "setting_bool" | "setting_choice" | "setting_f64" | "setting_color"
+    );
     match phase {
         ModPhase::World => true,
         ModPhase::Setup => {

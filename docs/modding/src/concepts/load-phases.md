@@ -137,8 +137,10 @@ current side's live registry and merged tags, not pending reload data. Unknown o
 unavailable registries and entries return `None`; an absent tag or a tag that does
 not contain the entry returns `Some(false)`. Enumeration yields each identity once.
 
-`ConfigHost::setting` still returns `Option<String>` on an ordinary `Host`; it is not the
-captured `Option<&str>` read on a load, loop or worldgen context.
+Client mod settings are read and written through `ConfigClientHost` using the owner-bound
+`SettingKey` returned by `SettingsRegistrar::register_setting`, backed by the client's single
+authoritative settings store (`Result<_, SettingAccessError>`). Raw `ConfigHost::{setting, set_setting}`
+are removed; captured load/loop/worldgen/chunk-disk snapshots continue to expose `setting(mod_id, key) -> Option<&str>`.
 
 Server world-generation reads use the published decoded owners, including the
 live feature data in worlds without a terrain locator. Invalid source files do
