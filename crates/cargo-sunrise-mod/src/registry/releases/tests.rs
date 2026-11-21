@@ -237,6 +237,41 @@ fn a_full_pages_probe_must_be_empty_and_terminal_or_the_previous_file_stays() {
 }
 
 #[test]
+fn an_empty_probe_cannot_erase_an_already_read_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("releases.json");
+    let previous = b"unchanged release listing\r\n";
+    std::fs::write(&out, previous).unwrap();
+    let mut responses = [
+        page(
+            full_page(),
+            &[r#"<https://api.github.com/repositories/42/releases?page=2>; rel="next""#],
+        ),
+        page(
+            (2000..2000 + PAGE_SIZE as u64)
+                .map(|id| release(id, "nightly"))
+                .collect(),
+            &[],
+        ),
+        page(
+            vec![],
+            &[r#"<https://api.github.com/repositories/42/releases?page=1>; rel="last""#],
+        ),
+    ]
+    .into_iter()
+    .enumerate();
+    let error = write_list(&out, |url| {
+        let (offset, response) = responses.next().expect("planned request");
+        assert_eq!(url, format!("{SDK_RELEASE_LIST}&page={}", offset + 1));
+        Ok(response)
+    })
+    .unwrap_err();
+    assert!(responses.next().is_none());
+    assert!(error.contains("page 3"), "{error}");
+    assert_eq!(std::fs::read(&out).unwrap(), previous);
+}
+
+#[test]
 fn malformed_publication_metadata_keeps_the_previous_release_file() {
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("releases.json");

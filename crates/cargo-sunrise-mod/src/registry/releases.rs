@@ -213,7 +213,11 @@ fn discover(
             ));
         }
         if probing_end {
-            if !rows.is_empty() || links.next.is_some() || links.last.is_some_and(|end| end > page)
+            if !rows.is_empty()
+                || links.next.is_some()
+                || links
+                    .last
+                    .is_some_and(|end| !(page - 1..=page).contains(&end))
             {
                 return Err(at(
                     "expected an empty page with no continuation after the full page".into(),
