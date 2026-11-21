@@ -276,7 +276,12 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
             Ok(mut verdict) => {
                 if let Verdict::DoesNotFit { misfits, .. } = &mut verdict {
                     for misfit in misfits {
-                        if matches!(misfit.change, Change::Refused { .. }) {
+                        if matches!(
+                            misfit.change,
+                            Change::Refused { .. }
+                                | Change::BodyChanged { .. }
+                                | Change::DeclarationChanged { .. }
+                        ) {
                             // Contract 2 callers isolate unfit mods and their dependents, but
                             // only decode known changes. Carry the full diagnostic as entry
                             // text, not a `game:fn:` id the launcher shortens to its leaf.

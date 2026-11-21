@@ -3,7 +3,7 @@
 use crate::sdk_fetch::PinnedSdk;
 use mod_source::mod_uses::{self, ModInput, ReadError};
 use mod_surface::child::ChildEntry;
-use mod_surface::uses::{Built, Entry, ManifestFacts, Origin, Uses, UsesTable, uses_contained};
+use mod_surface::uses::{Built, ManifestFacts, Origin, Uses, UsesTable, uses_contained};
 use mod_surface::{Surface, leaf};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -101,12 +101,7 @@ pub(crate) fn table(uses: &Uses, root: &Path, sdk: &PinnedSdk) -> Result<UsesTab
         table.entries.extend(
             game_uses::entries(&manifest, &data, &sdk.build)?
                 .into_iter()
-                .filter_map(|(id, now)| match now {
-                    game_uses::Now::Is(hash) => Some(Entry::plain(id, hash)),
-                    game_uses::Now::Gone
-                    | game_uses::Now::Refused { .. }
-                    | game_uses::Now::Unjudged => None,
-                }),
+                .filter_map(|(id, now)| now.into_entry(id)),
         );
     }
     Ok(table)
@@ -279,6 +274,7 @@ mod tests {
             entry: mod_surface::uses::Entry {
                 id: id.into(),
                 hash: "h".into(),
+                game_code: None,
                 impls: vec![],
                 built: None,
                 fields_hash: None,
