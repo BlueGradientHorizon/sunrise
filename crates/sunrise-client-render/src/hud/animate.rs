@@ -39,21 +39,40 @@ impl super::HudRenderer {
                     })
                     .collect()
             };
+            let x = (rect.u0 * texture.width() as f32).round() as u32;
+            let y = (rect.v0 * texture.height() as f32).round() as u32;
+            let has_border =
+                x >= 1 && y >= 1 && x + w < texture.width() && y + h < texture.height();
+            let (origin_x, origin_y, up_w, up_h, padded);
+            let upload_bytes = if has_border {
+                origin_x = x - 1;
+                origin_y = y - 1;
+                up_w = w + 2;
+                up_h = h + 2;
+                padded = super::clamp_border_pixels(&pixels, w, h);
+                padded.as_slice()
+            } else {
+                origin_x = x;
+                origin_y = y;
+                up_w = w;
+                up_h = h;
+                pixels.as_slice()
+            };
             uploads.texture(
                 encoder,
                 wgpu::TexelCopyTextureInfo {
                     texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d {
-                        x: (rect.u0 * texture.width() as f32).round() as u32,
-                        y: (rect.v0 * texture.height() as f32).round() as u32,
+                        x: origin_x,
+                        y: origin_y,
                         z: 0,
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
-                w,
-                h,
-                &pixels,
+                up_w,
+                up_h,
+                upload_bytes,
             );
             *previous = state;
         }

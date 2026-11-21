@@ -163,6 +163,7 @@ impl HudBatch {
         }
         self.patches.extend(font.take_patches());
         let white = font.white();
+        let missing_rect = font.missing_rect();
         let has_shadow = outline.is_none()
             && (shadow
                 || glyphs
@@ -233,35 +234,61 @@ impl HudBatch {
                 }
                 let shear = |v: f32| if *italic { 1.0 - 0.25 * v } else { 0.0 };
                 let thick = if *bold { 0.1 } else { 0.0 };
+                let draw_glyph = |batch: &mut Self, ox: f32, r: Rect| {
+                    let (x0, x1, y0, y1) = (
+                        px + ox + g.left,
+                        px + ox + g.right,
+                        py + g.top,
+                        py + g.bottom,
+                    );
+                    batch.quad(
+                        [
+                            [x0 + shear(g.top) - thick, y0 - thick],
+                            [x1 + shear(g.top) + thick, y0 - thick],
+                            [x1 + shear(g.bottom) + thick, y1 + thick],
+                            [x0 + shear(g.bottom) - thick, y1 + thick],
+                        ],
+                        [[r.u0, r.v0], [r.u1, r.v0], [r.u1, r.v1], [r.u0, r.v1]],
+                        col,
+                    );
+                };
                 let draw = |batch: &mut Self, ox: f32| match g.rect {
-                    Some(r) => {
-                        let (x0, x1, y0, y1) = (
-                            px + ox + g.left,
-                            px + ox + g.right,
-                            py + g.top,
-                            py + g.bottom,
-                        );
-                        batch.quad(
-                            [
-                                [x0 + shear(g.top) - thick, y0 - thick],
-                                [x1 + shear(g.top) + thick, y0 - thick],
-                                [x1 + shear(g.bottom) + thick, y1 + thick],
-                                [x0 + shear(g.bottom) - thick, y1 + thick],
-                            ],
-                            [[r.u0, r.v0], [r.u1, r.v0], [r.u1, r.v1], [r.u0, r.v1]],
-                            col,
-                        );
-                    }
+                    Some(r) => draw_glyph(batch, ox, r),
                     None if g.right > 0.0 => {
-                        // SpecialGlyphs.MISSING: a 5x8 outline.
-                        let (bx, by) = (px + ox, py);
-                        for (fx, fy, fw, fh) in [
-                            (0.0, 0.0, 5.0, 1.0),
-                            (0.0, 7.0, 5.0, 1.0),
-                            (0.0, 1.0, 1.0, 6.0),
-                            (4.0, 1.0, 1.0, 6.0),
-                        ] {
-                            batch.rect_uv(bx + fx, by + fy, fw, fh, white, col);
+                        // SpecialGlyphs.MISSING: 5x8 outline rendered via BakedSheetGlyph.
+                        if let Some(r) = missing_rect {
+                            draw_glyph(batch, ox, r);
+                        } else {
+                            let (x0, x1, y0, y1) = (
+                                px + ox + g.left,
+                                px + ox + g.right,
+                                py + g.top,
+                                py + g.bottom,
+                            );
+                            let (qx0, qx1, qy0, qy1) =
+                                (x0 - thick, x1 + thick, y0 - thick, y1 + thick);
+                            let (st, sb) = (shear(g.top), shear(g.bottom));
+                            let pt = |u: f32, v: f32| {
+                                let s = st + (sb - st) * v;
+                                [qx0 + (qx1 - qx0) * u + s, qy0 + (qy1 - qy0) * v]
+                            };
+                            for (u0, v0, u1, v1) in [
+                                (0.0, 0.0, 1.0, 1.0 / 8.0),
+                                (0.0, 7.0 / 8.0, 1.0, 1.0),
+                                (0.0, 1.0 / 8.0, 1.0 / 5.0, 7.0 / 8.0),
+                                (4.0 / 5.0, 1.0 / 8.0, 1.0, 7.0 / 8.0),
+                            ] {
+                                batch.quad(
+                                    [pt(u0, v0), pt(u1, v0), pt(u1, v1), pt(u0, v1)],
+                                    [
+                                        [white.u0, white.v0],
+                                        [white.u1, white.v0],
+                                        [white.u1, white.v1],
+                                        [white.u0, white.v1],
+                                    ],
+                                    col,
+                                );
+                            }
                         }
                     }
                     None => {}
