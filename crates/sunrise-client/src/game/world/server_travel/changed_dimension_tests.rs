@@ -544,7 +544,9 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
                     .unwrap()
             })
             .unwrap();
-        assert!((step_height - 1.4).abs() < 1.0e-9);
+        // PlayerMotion's default step height is 0.6; restore_all reapplies the
+        // permanent +0.4 modifier, yielding the 1.0 covered by playerdata tests.
+        assert!((step_height - 1.0).abs() < 1.0e-9);
     });
 }
 
