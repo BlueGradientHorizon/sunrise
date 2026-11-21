@@ -4876,6 +4876,7 @@ dependencies = [
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
+ "syn 2.0.119",
  "tar",
  "tempfile",
  "toml",
