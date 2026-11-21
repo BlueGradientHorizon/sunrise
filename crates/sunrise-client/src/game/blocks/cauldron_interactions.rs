@@ -5,7 +5,7 @@ use mod_api::{
     HookId,
 };
 use std::{cell::RefCell, sync::Arc};
-use sunrise_client::cauldron::interactions::{Dispatcher, Entry};
+use sunrise_client::cauldron::interactions::Dispatcher;
 
 #[derive(Clone)]
 pub(super) struct Callback {
@@ -41,7 +41,6 @@ enum Target {
 }
 pub(in crate::game) struct Registrar<'a> {
     table: Table,
-    published: Option<&'a Table>,
     items: &'a Items,
     registry: &'a sunrise_world::registry::BlockRegistry,
     all: Vec<(Target, Callback)>,
@@ -58,7 +57,6 @@ impl<'a> Registrar<'a> {
     fn new(items: &'a Items, registry: &'a sunrise_world::registry::BlockRegistry) -> Self {
         Self {
             table: Table::default(),
-            published: None,
             items,
             registry,
             all: Vec::new(),
@@ -72,7 +70,6 @@ impl<'a> Registrar<'a> {
     ) {
         let mut pending = Registrar {
             table: Table::empty(),
-            published: Some(&self.table),
             items: self.items,
             registry: self.registry,
             all: Vec::new(),
@@ -105,61 +102,19 @@ impl<'a> Registrar<'a> {
         }
     }
 
-    fn insert_tag(
-        &mut self,
-        block: String,
-        tag: String,
-        callback: Callback,
-    ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
-        let new_owner = callback.owner;
-        let previous = if let Some(previous) = self
-            .published
-            .and_then(|table| table.tag_entry(&block, &tag))
-        {
-            Some(previous)
-        } else {
-            self.table.register_tag(block, tag, callback).err()
-        };
-        previous.map_or(Ok(()), |old| {
-            Err(mod_api::CauldronRegistrationError::Duplicate {
-                owners: [old.owner.to_owned(), new_owner.to_owned()],
-            })
-        })
+    fn insert_tag(&mut self, block: String, tag: String, callback: Callback) {
+        self.table.register_tag(block, tag, callback);
     }
-    /// Keep a refusal, which fails the whole preparation when it finishes.
-    fn admit(
+    /// Record an admission error, which fails the whole preparation when it finishes.
+    fn refuse(
         &mut self,
-        result: std::result::Result<(), mod_api::CauldronRegistrationError>,
+        error: mod_api::CauldronRegistrationError,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
-        if let Err(error) = &result {
-            self.error = Some(error.clone());
-        }
-        result
+        self.error = Some(error);
+        Err(error)
     }
-    fn insert(
-        &mut self,
-        block: String,
-        item: String,
-        callback: Callback,
-    ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
-        let new_owner = callback.owner;
-        let previous = if let Some(previous) = self
-            .published
-            .and_then(|table| table.exact_entry(&block, &item))
-        {
-            Some(previous)
-        } else {
-            self.table.register(block, item, callback).err()
-        };
-        previous.map_or(Ok(()), |old| {
-            let owner = match old {
-                Entry::Mod(callback) => callback.owner,
-                _ => "minecraft",
-            };
-            Err(mod_api::CauldronRegistrationError::Duplicate {
-                owners: [owner.to_owned(), new_owner.to_owned()],
-            })
-        })
+    fn insert(&mut self, block: String, item: String, callback: Callback) {
+        self.table.register(block, item, callback);
     }
     fn finish(mut self) -> Result<Arc<Table>> {
         if let Some(error) = self.error {
@@ -171,7 +126,6 @@ impl<'a> Registrar<'a> {
                     Target::Item(item) => self.insert(block, item.clone(), callback.clone()),
                     Target::Tag(tag) => self.insert_tag(block, tag.clone(), callback.clone()),
                 }
-                .map_err(|e| format!("cauldron registration: {e:?}"))?;
             }
         }
         Ok(Arc::new(self.table))
@@ -185,25 +139,25 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         use mod_api::CauldronRegistrationError as Error;
-        let result = (|| {
-            let block = mod_api::__private::block_key_id(block)
-                .filter(|id| self.registry.default_state(id).is_some())
-                .ok_or(Error::UnknownBlock)?
-                .to_string();
-            let item = mod_api::__private::item_key_id(item)
-                .filter(|id| self.items.items.contains_key(*id))
-                .ok_or(Error::UnknownItem)?
-                .to_string();
-            self.insert(
-                block,
-                item,
-                Callback {
-                    handler,
-                    owner: mod_api::__private::cauldron_owner(),
-                },
-            )
-        })();
-        self.admit(result)
+        let Some(block) = mod_api::__private::block_key_id(block)
+            .filter(|id| self.registry.default_state(id).is_some())
+        else {
+            return self.refuse(Error::UnknownBlock);
+        };
+        let Some(item) =
+            mod_api::__private::item_key_id(item).filter(|id| self.items.items.contains_key(*id))
+        else {
+            return self.refuse(Error::UnknownItem);
+        };
+        self.insert(
+            block.to_string(),
+            item.to_string(),
+            Callback {
+                handler,
+                owner: mod_api::__private::cauldron_owner(),
+            },
+        );
+        Ok(())
     }
     fn register_to_all(
         &mut self,
@@ -213,8 +167,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         let Some(item) =
             mod_api::__private::item_key_id(item).filter(|id| self.items.items.contains_key(*id))
         else {
-            self.error = Some(mod_api::CauldronRegistrationError::UnknownItem);
-            return Err(mod_api::CauldronRegistrationError::UnknownItem);
+            return self.refuse(mod_api::CauldronRegistrationError::UnknownItem);
         };
         self.all.push((
             Target::Item(item.to_string()),
@@ -232,16 +185,23 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         use mod_api::CauldronRegistrationError as Error;
-        let result = (|| {
-            let block = mod_api::__private::block_key_id(block)
-                .filter(|id| self.registry.default_state(id).is_some())
-                .ok_or(Error::UnknownBlock)?
-                .to_string();
-            let tag = tag_id(tag).ok_or(Error::InvalidTag)?;
-            let owner = mod_api::__private::cauldron_owner();
-            self.insert_tag(block, tag, Callback { handler, owner })
-        })();
-        self.admit(result)
+        let Some(block) = mod_api::__private::block_key_id(block)
+            .filter(|id| self.registry.default_state(id).is_some())
+        else {
+            return self.refuse(Error::UnknownBlock);
+        };
+        let Some(tag) = tag_id(tag) else {
+            return self.refuse(Error::InvalidTag);
+        };
+        self.insert_tag(
+            block.to_string(),
+            tag,
+            Callback {
+                handler,
+                owner: mod_api::__private::cauldron_owner(),
+            },
+        );
+        Ok(())
     }
     fn register_tag_to_all(
         &mut self,
@@ -249,11 +209,15 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         let Some(tag) = tag_id(tag) else {
-            return self.admit(Err(mod_api::CauldronRegistrationError::InvalidTag));
+            return self.refuse(mod_api::CauldronRegistrationError::InvalidTag);
         };
-        let owner = mod_api::__private::cauldron_owner();
-        self.all
-            .push((Target::Tag(tag), Callback { handler, owner }));
+        self.all.push((
+            Target::Tag(tag),
+            Callback {
+                handler,
+                owner: mod_api::__private::cauldron_owner(),
+            },
+        ));
         Ok(())
     }
 }

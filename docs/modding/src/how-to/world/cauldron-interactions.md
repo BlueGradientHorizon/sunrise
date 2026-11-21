@@ -29,18 +29,18 @@ A custom block opts into dispatch by registration; its name need not end in
 with a custom cauldron. Its declared state schema must admit the proposed state,
 for example `level=1` in a 1..3 level property. `register_to_all(item, handler)`
 queues registration over the complete prepared dispatcher set, including custom blocks
-registered later in the hook sequence. Conflicts surface when preparation finishes;
-they fail the whole preparation and name both owners. `register_to_all` does not
-return `Duplicate` directly. Immediate admission errors from a completed
-callback also refuse preparation even if that callback ignored the returned error.
+registered later in the hook sequence, overwriting any existing entry for that
+item on each block in place. Immediate admission errors from a completed
+callback still refuse preparation even if that callback ignored the returned error.
 
-Vanilla entries are prebound in the same table. With `register`, replacing one,
-or registering a second entry for the same dispatcher and item, returns
-`CauldronRegistrationError::Duplicate { owners }`, naming the existing owner and
-the attempted owner, and refuses publication. There is no override flag. Unknown
-block or item keys refuse registration. On water cauldrons, vanilla's dye tag
-always precedes exact-item entries: even washing that returns Pass does not fall
-through to the mod's entry.
+Vanilla entries are prebound in the same table. Registering an item that already
+has a vanilla or mod handler overwrites it in place (matching
+`CauldronInteraction.Dispatcher.put`). Unknown block or item keys refuse
+registration with `CauldronRegistrationError::UnknownBlock` or
+`CauldronRegistrationError::UnknownItem`. On water cauldrons, vanilla's dye tag
+(`minecraft:cauldron_can_remove_dye`) precedes exact-item entries: washing that
+returns `Pass` does not fall through to an exact-item handler unless a mod
+replaces the dye tag entry itself via `register_tag`.
 
 ## Register an item tag
 
@@ -50,16 +50,18 @@ and `registerToAll(TagKey, …)`):
 ```rust,ignore
 // One block's dispatcher:
 event.interactions.register_tag(self.water_cauldron, "c:buckets/milk", handler.clone()).unwrap();
-// Or every dispatcher, in place of that (the same tag twice on a block is refused):
+// Or every dispatcher:
 event.interactions.register_tag_to_all("#c:buckets/milk", handler).unwrap();
 ```
 
 The tag is read when the item is used, against the tags loaded then, so a data
-pack that adds an item to it covers that item after `/reload`. An exact item entry
-always wins over a tag entry; tag entries on one block are asked in registration
-order (those `register_tag_to_all` queued come after the block's own). The same
-tag twice on one block is `Duplicate`; a string that is not a resource location
-is `InvalidTag`.
+pack that adds an item to it covers that item after `/reload`. Tag entries are
+checked before exact item entries (matching `CauldronInteraction.Dispatcher.get`),
+in registration order (with vanilla's dye tag first on water cauldrons, and
+`register_tag_to_all` expanded after direct block registrations). Registering
+the same tag again on one block overwrites its handler in place at its original
+position; a string that is not a resource location returns
+`CauldronRegistrationError::InvalidTag`.
 
 ## Decide and apply an interaction
 

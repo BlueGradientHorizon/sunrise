@@ -56,22 +56,14 @@ pub enum CauldronDecision {
 }
 
 /// A registration refused before the immutable dispatcher is published.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+// no wire: returned directly from in-process cauldron registration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CauldronRegistrationError {
-    /// Both the existing and attempted owner, in that order.
-    Duplicate {
-        /// Existing owner followed by the attempted owner.
-        owners: [String; 2],
-    },
     /// The item is absent from the prepared registry.
     UnknownItem,
     /// The block is absent from the prepared registry.
     UnknownBlock,
-    /// The requested dispatcher has not been declared.
-    UnknownDispatcher,
-    /// The callback cannot cross the active runtime boundary.
-    UnsupportedCapability,
     /// The item tag is not a resource location (`c:buckets/milk`, with or without `#`).
     InvalidTag,
 }
@@ -93,20 +85,22 @@ pub trait Interaction: Send + Sync + 'static {
     ) -> CauldronFire;
 }
 
-/// Prepared dispatcher registration, corresponding to NeoForge's documented `Dispatcher` phase.
+/// Prepared dispatcher registration, corresponding to NeoForge's `RegisterCauldronInteractionEvent`.
 pub trait CauldronInteractions {
-    /// Register an exact item entry for a block's dispatcher; vanilla entries also own their slots.
-    /// Admission errors are returned immediately and stored: ignoring an error still fails
-    /// the whole preparation when it finishes, leaving the published snapshot unchanged.
+    /// Register an exact item entry for a block's dispatcher, overwriting any existing vanilla
+    /// or mod entry in place (matching `CauldronInteraction.Dispatcher.put`).
+    /// Admission errors (`UnknownBlock`, `UnknownItem`) are returned immediately and stored:
+    /// ignoring an error still fails the whole preparation when it finishes, leaving the
+    /// published snapshot unchanged.
     fn register(
         &mut self,
         block: BlockKey,
         item: ItemKey,
         handler: Arc<dyn Interaction>,
     ) -> Result<(), CauldronRegistrationError>;
-    /// Queue registration over the complete prepared dispatcher set, including later declarations.
-    /// Item admission errors are returned and stored. Conflicts are discovered when preparation
-    /// finishes and fail the whole preparation with both owners; this method does not return Duplicate.
+    /// Queue registration over the complete prepared dispatcher set, including later
+    /// declarations, overwriting any existing entry for `item` on each block in place.
+    /// Item admission errors (`UnknownItem`) are returned and stored.
     fn register_to_all(
         &mut self,
         item: ItemKey,
@@ -114,8 +108,11 @@ pub trait CauldronInteractions {
     ) -> Result<(), CauldronRegistrationError>;
     /// Register an item-tag entry for a block's dispatcher (NeoForge's `register(id, TagKey, …)`):
     /// it answers for every item the tag holds when the item is used, so data-pack changes
-    /// apply after a reload. An exact item entry always wins over a tag entry; tag entries are
-    /// asked in registration order. The same tag twice on one block is `Duplicate`.
+    /// apply after a reload. Tag entries are checked before exact item entries (matching
+    /// `CauldronInteraction.Dispatcher.get`), in registration order, with vanilla's dye tag
+    /// (`minecraft:cauldron_can_remove_dye`) checked first on `minecraft:water_cauldron`.
+    /// Registering the same tag again on one block overwrites its handler in place at its
+    /// original position, including replacing vanilla's dye tag handler.
     fn register_tag(
         &mut self,
         block: BlockKey,
@@ -123,7 +120,8 @@ pub trait CauldronInteractions {
         handler: Arc<dyn Interaction>,
     ) -> Result<(), CauldronRegistrationError>;
     /// [`Self::register_tag`] over the complete prepared dispatcher set, queued as
-    /// [`Self::register_to_all`] is (NeoForge's `registerToAll(TagKey, …)`).
+    /// [`Self::register_to_all`] is (NeoForge's `registerToAll(TagKey, …)`), overwriting any
+    /// matching tag entry on each block in place.
     fn register_tag_to_all(
         &mut self,
         tag: &str,

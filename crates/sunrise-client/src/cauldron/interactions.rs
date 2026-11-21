@@ -52,7 +52,7 @@ pub enum Entry<H> {
 pub struct Dispatcher<H> {
     maps: [HashMap<String, Entry<H>>; 4],
     custom: HashMap<String, HashMap<String, Entry<H>>>,
-    /// Item-tag entries by block, in registration order; asked after the exact entries.
+    /// Item-tag entries by block, in registration order; asked before exact item entries.
     tagged: HashMap<String, Vec<(String, H)>>,
 }
 impl<H> Default for Dispatcher<H> {
@@ -97,15 +97,7 @@ impl<H> Dispatcher<H> {
         }
     }
 
-    /// Read the registration for this exact tag, without testing tag membership.
-    pub fn tag_entry(&self, block: &str, tag: &str) -> Option<&H> {
-        self.tagged
-            .get(block)?
-            .iter()
-            .find_map(|(key, handler)| (key == tag).then_some(handler))
-    }
-
-    /// Publish a batch whose keys were already checked against this table when registered.
+    /// Publish a batch of pending registrations, overwriting matching entries in place.
     pub fn append_registrations(&mut self, pending: Self) {
         for (map, entries) in self.maps.iter_mut().zip(pending.maps) {
             map.extend(entries);
@@ -114,7 +106,9 @@ impl<H> Dispatcher<H> {
             self.custom.entry(block).or_default().extend(entries);
         }
         for (block, entries) in pending.tagged {
-            self.tagged.entry(block).or_default().extend(entries);
+            for (tag, handler) in entries {
+                self.register_tag(block.clone(), tag, handler);
+            }
         }
     }
 
@@ -136,9 +130,11 @@ impl<H> Dispatcher<H> {
             )
     }
 
-    /// The dye tag wins terminally, including when its handler passes; then the exact
-    /// item entry, then the first item-tag entry whose tag `in_tag` says holds the item,
-    /// read against the tags loaded now.
+    /// Matches vanilla `CauldronInteraction.Dispatcher.get`: item-tag entries precede exact
+    /// item entries. Vanilla's dye tag on `minecraft:water_cauldron` is checked first (or a
+    /// mod's replacement for `minecraft:cauldron_can_remove_dye`), then other registered tag
+    /// entries in registration order against the tags loaded now, and finally exact item
+    /// entries.
     pub fn select(
         &self,
         block: &str,
@@ -147,53 +143,54 @@ impl<H> Dispatcher<H> {
         in_tag: impl Fn(&str) -> bool,
     ) -> Option<Entry<&H>> {
         if block == "minecraft:water_cauldron" && removes_dye {
+            if !self.tagged.is_empty()
+                && let Some((_, handler)) = self.tagged.get(block).and_then(|entries| {
+                    entries
+                        .iter()
+                        .find(|(tag, _)| tag == "minecraft:cauldron_can_remove_dye")
+                })
+            {
+                return Some(Entry::Mod(handler));
+            }
             return Some(Entry::Dye);
         }
-        if let Some(entry) = self.exact_entry(block, item) {
-            return Some(match entry {
-                Entry::Vanilla(action) => Entry::Vanilla(*action),
-                Entry::Mod(handler) => Entry::Mod(handler),
-                Entry::Dye => Entry::Dye,
-            });
+        if !self.tagged.is_empty()
+            && let Some((_, handler)) = self
+                .tagged
+                .get(block)
+                .and_then(|entries| entries.iter().find(|(tag, _)| in_tag(tag)))
+        {
+            return Some(Entry::Mod(handler));
         }
-        let (_, handler) = self
-            .tagged
-            .get(block)?
-            .iter()
-            .find(|(tag, _)| in_tag(tag))?;
-        Some(Entry::Mod(handler))
+        self.exact_entry(block, item).map(|entry| match entry {
+            Entry::Vanilla(action) => Entry::Vanilla(*action),
+            Entry::Mod(handler) => Entry::Mod(handler),
+            Entry::Dye => Entry::Dye,
+        })
     }
     /// Explicit membership rather than a block-name convention.
     pub fn contains_block(&self, block: &str) -> bool {
         index(block).is_some() || self.custom.contains_key(block)
     }
-    /// Preparation-only insertion. Returns the occupied entry without replacing it.
-    pub fn register(&mut self, block: String, item: String, handler: H) -> Result<(), &Entry<H>> {
+    /// Preparation-only insertion. Overwrites any existing entry in place.
+    pub fn register(&mut self, block: String, item: String, handler: H) {
         let map = match index(&block) {
             Some(i) => &mut self.maps[i],
             None => self.custom.entry(block).or_default(),
         };
-        match map.entry(item) {
-            std::collections::hash_map::Entry::Occupied(entry) => Err(entry.into_mut()),
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(Entry::Mod(handler));
-                Ok(())
-            }
-        }
+        map.insert(item, Entry::Mod(handler));
     }
     /// Preparation-only insertion of an item-tag entry, which declares a custom block as
-    /// `register` does. Returns the handler already holding the tag on that block.
-    pub fn register_tag(&mut self, block: String, tag: String, handler: H) -> Result<(), &H> {
+    /// `register` does. Overwrites an existing entry for the same tag in place, keeping its
+    /// registration position.
+    pub fn register_tag(&mut self, block: String, tag: String, handler: H) {
         if index(&block).is_none() {
             self.custom.entry(block.clone()).or_default();
         }
         let entries = self.tagged.entry(block).or_default();
         match entries.iter().position(|(held, _)| *held == tag) {
-            Some(at) => Err(&entries[at].1),
-            None => {
-                entries.push((tag, handler));
-                Ok(())
-            }
+            Some(at) => entries[at].1 = handler,
+            None => entries.push((tag, handler)),
         }
     }
     /// Complete prepared dispatcher set, including declared custom blocks.

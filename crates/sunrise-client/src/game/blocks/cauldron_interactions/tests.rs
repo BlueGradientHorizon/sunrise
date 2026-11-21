@@ -2,6 +2,7 @@ use super::*;
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::{CauldronDecision, CauldronFire, CauldronPlan, CauldronUse, Hooks, Host, ServerHost};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use sunrise_client::cauldron::interactions::Entry;
 
 const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
@@ -118,13 +119,9 @@ impl Hooks for TestMod {
             .register(block, item, handler.clone())
             .unwrap();
         if self.seen.fail_preparation.load(Ordering::SeqCst) {
-            event
+            let _ = event
                 .interactions
-                .register_to_all(
-                    mod_api::__private::item_key("minecraft:water_bucket").unwrap(),
-                    handler.clone(),
-                )
-                .unwrap();
+                .register_tag_to_all("invalid tag", handler.clone());
         }
         event
             .interactions
@@ -141,7 +138,7 @@ impl Hooks for TestMod {
 }
 #[test]
 fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
-    use mod_api::{CauldronRegistrationError, ModEntry, RegistrationContext};
+    use mod_api::{ModEntry, RegistrationContext};
     use sunrise_mod_runtime::block_definitions::BlockDefinition;
     use sunrise_world::{loot::PackOverlay, registry::BlockRegistry};
 
@@ -179,18 +176,14 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
             interactions
                 .register_tag_to_all("test:all_tag", handler.clone())
                 .unwrap();
-            // Confirm admission still sees a built-in key and an earlier key in the same batch.
+            // Overwriting a built-in key or an earlier tag in the same batch succeeds in place.
             assert_eq!(
                 interactions.register(block, item("minecraft:water_bucket"), handler.clone()),
-                Err(CauldronRegistrationError::Duplicate {
-                    owners: ["minecraft".into(), "failed".into()]
-                }),
+                Ok(()),
             );
             assert_eq!(
                 interactions.register_tag(block, "#test:tag", handler),
-                Err(CauldronRegistrationError::Duplicate {
-                    owners: ["failed".into(), "failed".into()]
-                }),
+                Ok(())
             );
             added.store(true, Ordering::Relaxed);
             panic!("after registering exact, tag and all-dispatcher entries");
@@ -466,49 +459,6 @@ fn cauldron_outer_abort_discards_effects_and_drops() {
 }
 #[test]
 #[ignore = "daily"]
-fn cauldron_duplicates_name_both_owners() {
-    if run_fresh_cases(
-        "game::cauldron_interactions::tests::cauldron_duplicates_name_both_owners",
-        "SUNRISE_CAULDRON_CASE",
-        &["run"],
-    ) {
-        return;
-    }
-    fixture(false, false, false, |game, seen| {
-        let mut registrar = Registrar::new(game.items(), game.pack.assets.registry);
-        let handler: Arc<dyn mod_api::Interaction> = Arc::new(Syrup {
-            seen: seen.clone(),
-            refused: false,
-            panic: false,
-        });
-        use mod_api::CauldronInteractions as _;
-        let block = mod_api::__private::block_key("minecraft:cauldron").unwrap();
-        let item = mod_api::__private::item_key("test:syrup_bottle").unwrap();
-        {
-            let _owner = mod_api::__private::enter("first", "register_cauldron_interaction");
-            assert!(registrar.register(block, item, handler.clone()).is_ok());
-        }
-        let _owner = mod_api::__private::enter("second", "register_cauldron_interaction");
-        assert_eq!(
-            registrar.register(block, item, handler.clone()),
-            Err(mod_api::CauldronRegistrationError::Duplicate {
-                owners: ["first".into(), "second".into()]
-            })
-        );
-        assert_eq!(
-            registrar.register(
-                block,
-                mod_api::__private::item_key("minecraft:water_bucket").unwrap(),
-                handler
-            ),
-            Err(mod_api::CauldronRegistrationError::Duplicate {
-                owners: ["minecraft".into(), "second".into()]
-            })
-        );
-    });
-}
-#[test]
-#[ignore = "daily"]
 fn cauldron_dye_tag_shadows_exact_handler_even_on_pass() {
     if run_fresh_cases(
         "game::cauldron_interactions::tests::cauldron_dye_tag_shadows_exact_handler_even_on_pass",
@@ -665,11 +615,21 @@ fn cauldron_register_to_all_and_admission_errors() {
             ),
             Ok(())
         );
-        let error = registrar.finish().err().unwrap().to_string();
-        assert!(
-            error.contains("Duplicate") && error.contains("minecraft") && error.contains("all_mod"),
-            "{error}"
-        );
+        let table = registrar.finish().unwrap();
+        for block in [
+            "minecraft:cauldron",
+            "minecraft:water_cauldron",
+            "minecraft:lava_cauldron",
+            "minecraft:powder_snow_cauldron",
+        ] {
+            assert!(
+                matches!(
+                    table.select(block, "minecraft:water_bucket", false, |_| false),
+                    Some(Entry::Mod(callback)) if callback.owner == "all_mod"
+                ),
+                "{block}"
+            );
+        }
         let mut items = game.items().clone();
         items.items.remove("test:syrup_bottle");
         let mut registrar = Registrar::new(&items, game.pack.assets.registry);
@@ -739,7 +699,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
             game.resolve_parts()
                 .unwrap_err()
                 .to_string()
-                .contains("Duplicate")
+                .contains("InvalidTag")
         );
         assert!(
             Arc::ptr_eq(&old, &snapshot()),
@@ -752,7 +712,7 @@ fn cauldron_world_close_discards_callbacks_before_failed_preparation() {
             game.resolve_parts()
                 .unwrap_err()
                 .to_string()
-                .contains("Duplicate")
+                .contains("InvalidTag")
         );
         assert_eq!(snapshot().blocks().len(), 4);
         for block in [
@@ -883,25 +843,37 @@ fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set
                 .to_string()
                 .contains("InvalidTag")
         );
-        // The same tag twice on one block is a duplicate, spelled with or without `#`.
+        // Registering the same tag again (with or without `#`) overwrites in place.
         let mut registrar = make();
         registrar
             .register_tag(custom, "c:foods", handler.clone())
             .unwrap();
+        {
+            let _second = mod_api::__private::enter("second_mod", "register_cauldron_interaction");
+            registrar
+                .register_tag(custom, "#c:foods", handler.clone())
+                .unwrap();
+        }
+        let table = registrar.finish().unwrap();
         assert!(matches!(
-            registrar.register_tag(custom, "#c:foods", handler.clone()),
-            Err(Error::Duplicate { .. })
+            table.select("test:syrup_cauldron", "test:anything", false, |tag| tag
+                == "c:foods"),
+            Some(Entry::Mod(callback)) if callback.owner == "second_mod"
         ));
-        // And so is one the expansion meets later.
+        // Expansion via register_tag_to_all also overwrites an existing tag entry in place.
         let mut registrar = make();
         registrar
             .register_tag(custom, "c:foods", handler.clone())
             .unwrap();
-        registrar.register_tag_to_all("c:foods", handler).unwrap();
-        let error = registrar.finish().err().unwrap().to_string();
-        assert!(
-            error.contains("Duplicate") && error.contains("tag_mod"),
-            "{error}"
-        );
+        {
+            let _second = mod_api::__private::enter("second_mod", "register_cauldron_interaction");
+            registrar.register_tag_to_all("c:foods", handler).unwrap();
+        }
+        let table = registrar.finish().unwrap();
+        assert!(matches!(
+            table.select("test:syrup_cauldron", "test:anything", false, |tag| tag
+                == "c:foods"),
+            Some(Entry::Mod(callback)) if callback.owner == "second_mod"
+        ));
     });
 }
