@@ -87,6 +87,7 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         main,
         after: Vec::new(),
         disconnect: None,
+        finish_task: None,
     };
     match incoming.receiver.handle(bytes, &mut context) {
         Err(mod_api::PayloadHandleError::Failed(error)) => {
@@ -96,6 +97,7 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         }
         Ok(()) => {
             let reason = context.disconnect.take();
+            let finish_task = context.finish_task.take();
             let mut after = std::mem::take(&mut context.after);
             drop(context);
             let result = incoming.epoch.with_active(|| {
@@ -126,6 +128,10 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                 Some(Ok(())) => {
                     if let Some(reason) = reason {
                         endpoint.disconnect(reason);
+                    } else if incoming.epoch.active()
+                        && let Some((session, task_type)) = finish_task
+                    {
+                        let _ = session.finish_type(&task_type);
                     }
                 }
                 // Phase/connection cancellation cancels the staged disconnect too.
@@ -163,6 +169,10 @@ struct NetworkContext<'a> {
     main: &'a MainQueue,
     after: Vec<Option<After>>,
     disconnect: Option<Text>,
+    finish_task: Option<(
+        Arc<crate::lan::configuration_tasks::Session>,
+        mod_api::Identifier,
+    )>,
 }
 impl IPayloadContext for NetworkContext<'_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -245,9 +255,37 @@ impl IPayloadContext for NetworkContext<'_> {
     }
     fn finish_configuration_task(
         &mut self,
-        _: mod_api::ConfigurationTaskRef,
+        task_type: &mod_api::Identifier,
     ) -> Result<(), mod_api::ConfigurationTaskError> {
-        Err(mod_api::ConfigurationTaskError::WrongContext)
+        if self.endpoint.side() != Side::Server
+            || self.incoming.epoch.phase
+                != sunrise_protocol::payload_negotiation::Phase::Configuration
+        {
+            return Err(mod_api::ConfigurationTaskError::WrongContext);
+        }
+        if self.disconnect.is_some() || !self.incoming.epoch.active() {
+            return Err(mod_api::ConfigurationTaskError::Disconnected);
+        }
+        let session = match self.endpoint.configuration_session() {
+            Some(weak) => weak
+                .upgrade()
+                .ok_or(mod_api::ConfigurationTaskError::Disconnected)?,
+            None => return Err(mod_api::ConfigurationTaskError::NotRunning),
+        };
+        if self
+            .endpoint
+            .transport()
+            .epoch()
+            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, &self.incoming.epoch))
+        {
+            return Err(mod_api::ConfigurationTaskError::Disconnected);
+        }
+        if self.finish_task.is_some() {
+            return Err(mod_api::ConfigurationTaskError::NotRunning);
+        }
+        session.check_running_type(task_type)?;
+        self.finish_task = Some((session, task_type.clone()));
+        Ok(())
     }
     fn disconnect(&mut self, reason: Text) {
         self.disconnect = Some(reason);

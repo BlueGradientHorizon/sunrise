@@ -1,8 +1,8 @@
-//! Configuration admission through the serving Game and its main-thread payload executor.
+//! Configuration admission through the serving Game and its payload executors.
 use mod_api::{
-    ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, ConfigurationTaskRef,
-    Hooks, IPayloadContext, IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId,
-    Registrar, ServerHost,
+    ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, Hooks, IPayloadContext,
+    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadContextError, PayloadId, Registrar,
+    ServerHost,
 };
 use std::{
     sync::{
@@ -19,6 +19,7 @@ fn kind(name: &str) -> Identifier {
 #[derive(Clone, Copy)]
 enum Case {
     Reply,
+    NetworkReply,
     Stale,
     Failure,
     Vanilla,
@@ -30,7 +31,6 @@ enum Case {
 }
 struct Fixture {
     case: Case,
-    instances: Mutex<[Option<ConfigurationTaskRef>; 2]>,
     starts: Mutex<Vec<Identifier>>,
     joins: Mutex<Vec<String>>,
     type_reads: AtomicUsize,
@@ -44,18 +44,24 @@ impl IPayloadHandler for Reply {
         bytes: PayloadBytes,
         context: &mut dyn IPayloadContext,
     ) -> Result<(), mod_api::PayloadHandleError> {
-        assert_eq!(std::thread::current().name(), Some("Server thread"));
-        let [first, second] = *self.0.instances.lock().unwrap();
-        let first = first.unwrap();
+        if matches!(self.0.case, Case::NetworkReply) {
+            assert_ne!(std::thread::current().name(), Some("Server thread"));
+            assert!(matches!(
+                context.server_host(),
+                Err(PayloadContextError::WrongThread)
+            ));
+        } else {
+            assert_eq!(std::thread::current().name(), Some("Server thread"));
+        }
         let reply = match bytes.0.as_slice() {
             [7] => {
                 assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
                 // Completion is not rolled back when an inner child transaction aborts.
                 let child = context.server_host().unwrap().transaction_open();
-                context.finish_configuration_task(first).unwrap();
+                context.finish_configuration_task(&kind("first")).unwrap();
                 assert_eq!(
-                    context.finish_configuration_task(first),
-                    Err(ConfigurationTaskError::StaleTask)
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
                 );
                 context
                     .server_host()
@@ -63,34 +69,82 @@ impl IPayloadHandler for Reply {
                     .transaction_close(&child, false);
                 8
             }
-            [10] => {
+            [9] => {
+                assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("first")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                10
+            }
+            [11] => {
                 assert_eq!(
                     *self.0.starts.lock().unwrap(),
                     [kind("first"), kind("second")]
                 );
                 assert_eq!(
-                    context.finish_configuration_task(first),
-                    Err(ConfigurationTaskError::StaleTask)
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
                 );
-                11
-            }
-            [11] => {
-                context.finish_configuration_task(second.unwrap()).unwrap();
                 12
             }
-            [13] => {
-                // B replies to its challenge with the instance saved for A instead.
-                assert_ne!(first, second.unwrap());
+            [12] => {
+                context.finish_configuration_task(&kind("second")).unwrap();
                 assert_eq!(
-                    context.finish_configuration_task(first),
-                    Err(ConfigurationTaskError::WrongConnection)
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::NotRunning)
                 );
-                14
+                13
             }
-            [step @ (15 | 16)] => {
-                let instance = if *step == 15 { first } else { second.unwrap() };
-                context.finish_configuration_task(instance).unwrap();
+            [14] => {
+                // B is running `second` and attempts to finish A's running `first` task.
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                22
+            }
+            [15] => {
+                context.finish_configuration_task(&kind("first")).unwrap();
                 17
+            }
+            [16] => {
+                context.finish_configuration_task(&kind("second")).unwrap();
+                17
+            }
+            [18] => {
+                assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("first")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                19
+            }
+            [20] => {
+                assert_eq!(
+                    *self.0.starts.lock().unwrap(),
+                    [kind("first"), kind("second")]
+                );
+                assert_eq!(
+                    context.finish_configuration_task(&kind("first")),
+                    Err(ConfigurationTaskError::WrongType)
+                );
+                context.finish_configuration_task(&kind("second")).unwrap();
+                assert_eq!(
+                    context.finish_configuration_task(&kind("second")),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
+                21
             }
             other => panic!("unexpected configuration request: {other:?}"),
         };
@@ -103,11 +157,16 @@ impl IPayloadHandler for Reply {
 #[sunrise_mod_api_macros::__subscriptions]
 impl Hooks for Mod {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+        let thread = if matches!(self.0.case, Case::NetworkReply) {
+            mod_api::HandlerThread::Network
+        } else {
+            mod_api::HandlerThread::Main
+        };
         registrar
             .payload_handlers()
             .registrar("1")
             .optional()
-            .executes_on(mod_api::HandlerThread::Main)
+            .executes_on(thread)
             .configuration_bidirectional(
                 PayloadId(CHANNEL.into()),
                 Arc::new(Reply(self.0.clone())),
@@ -127,7 +186,12 @@ impl Hooks for Mod {
         };
         if matches!(self.0.case, Case::ConcurrentPeers) {
             if let Some(slot) = PEER_NAMES.iter().position(|&name| name == event.name) {
-                event.register(task(kind("first"), slot));
+                let id = if slot == 0 {
+                    kind("first")
+                } else {
+                    kind("second")
+                };
+                event.register(task(id, slot));
             }
             return;
         }
@@ -173,16 +237,20 @@ impl ConfigurationTask for Task {
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
         self.fixture.starts.lock().unwrap().push(self.id.clone());
-        self.fixture.instances.lock().unwrap()[self.slot] = Some(context.instance());
         match (self.fixture.case, self.slot) {
-            (Case::Reply, 0) | (Case::Stale, 1) | (Case::ConcurrentPeers, _) => {
+            (Case::Reply, 0)
+            | (Case::NetworkReply, _)
+            | (Case::Stale, _)
+            | (Case::ConcurrentPeers, _) => {
                 let channel = PayloadId(CHANNEL.into());
                 assert!(context.has_channel(host, &channel));
-                let challenge = match self.fixture.case {
-                    Case::Reply => 7,
-                    Case::Stale => 10,
-                    // Give the two connections distinct reply selectors even though the task type is the same.
-                    _ => 15 + self.slot as u8,
+                let challenge = match (self.fixture.case, self.slot) {
+                    (Case::Reply, _) => 7,
+                    (Case::Stale, 0) => 9,
+                    (Case::Stale, _) => 11,
+                    (Case::NetworkReply, 0) => 18,
+                    (Case::NetworkReply, _) => 20,
+                    (_, slot) => 15 + slot as u8,
                 };
                 context
                     .send_payload(host, &channel, PayloadBytes(vec![challenge]))
@@ -323,7 +391,6 @@ impl Fixture {
     fn new(case: Case) -> Self {
         Self {
             case,
-            instances: Mutex::new([None; 2]),
             starts: Mutex::new(Vec::new()),
             joins: Mutex::new(Vec::new()),
             type_reads: AtomicUsize::new(0),
@@ -343,6 +410,7 @@ fn serving_game_drives_configuration_tasks() {
         "SUNRISE_TASK_CHILD",
         &[
             "reply",
+            "network_reply",
             "stale",
             "failure",
             "vanilla",
@@ -356,6 +424,7 @@ fn serving_game_drives_configuration_tasks() {
     }
     let case = match std::env::var("SUNRISE_TASK_CHILD").unwrap().as_str() {
         "reply" => Case::Reply,
+        "network_reply" => Case::NetworkReply,
         "stale" => Case::Stale,
         "failure" => Case::Failure,
         "vanilla" => Case::Vanilla,
@@ -386,7 +455,8 @@ fn serving_game_drives_configuration_tasks() {
                     .unwrap();
                 let mut replies = match case {
                     Case::Reply => &[7_u8, 8][..],
-                    Case::Stale => &[10, 11, 12],
+                    Case::NetworkReply => &[18, 19, 20, 21],
+                    Case::Stale => &[9, 10, 11, 12, 13],
                     _ => &[],
                 }
                 .iter()
@@ -397,7 +467,7 @@ fn serving_game_drives_configuration_tasks() {
                         cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
                             let expected = replies.next().expect("too many configuration replies");
                             assert_eq!(p.data, [expected]);
-                            if matches!(expected, 7 | 10 | 11) {
+                            if matches!(expected, 7 | 9 | 11 | 12 | 18 | 20) {
                                 c.send(&cfg::Serverbound::CustomPayload(p).encode())
                                     .unwrap();
                             }
@@ -527,22 +597,20 @@ fn peer_completion_rejects_other_connections() {
                 .unwrap();
             };
 
-            // Both challenges are outstanding, each from the first task of the same type.
+            // Both challenges are outstanding: A runs `first`, B runs `second`.
             assert_eq!(next(&mut a), Some(vec![15]));
             assert_eq!(next(&mut b), Some(vec![16]));
-            assert_eq!(
-                *fixture.starts.lock().unwrap(),
-                [kind("first"), kind("first")]
-            );
-            reply(&mut b, 13);
-            assert_eq!(
-                next(&mut b),
-                Some(vec![14]),
-                "B did not report WrongConnection"
-            );
+            {
+                let starts = fixture.starts.lock().unwrap();
+                assert_eq!(starts.len(), 2);
+                assert!(starts.contains(&kind("first")));
+                assert!(starts.contains(&kind("second")));
+            }
+            reply(&mut b, 14);
+            assert_eq!(next(&mut b), Some(vec![22]), "B did not report WrongType");
 
             // A premature advance of either connection would put FinishConfiguration
-            // before its own reply, or make the handler's own-instance completion fail.
+            // before its own reply, or make the handler's own completion fail.
             for (peer, step) in [(&mut a, 15), (&mut b, 16)] {
                 reply(peer, step);
                 assert_eq!(next(peer), Some(vec![17]), "own task must still be running");

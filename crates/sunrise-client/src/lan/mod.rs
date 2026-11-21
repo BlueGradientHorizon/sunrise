@@ -438,6 +438,7 @@ pub struct Shared {
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
     configuration_requests: Option<Sender<configuration_tasks::ConfigurationRequest>>,
+    next_configuration_connection: AtomicU64,
     pub config: NetConfig,
     motd: Mutex<String>,
     max_players: AtomicUsize,
@@ -473,6 +474,14 @@ impl Shared {
     /// `/reload`: the data new connections are sent from now on.
     pub fn set_sync(&self, sync: Arc<data::SyncData>) {
         *self.sync.lock().unwrap_or_else(|e| e.into_inner()) = sync;
+    }
+    /// Allocate a per-server configuration connection identifier.
+    /// Exhaustion is permanent for this server; never wrap and reuse a token.
+    pub(super) fn next_configuration_connection(&self) -> Option<mod_api::ConfigurationConnection> {
+        self.next_configuration_connection
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .ok()
+            .map(mod_api::__private::configuration_connection)
     }
     /// Allocate from the shared network and connectionless actor namespace.
     /// Exhaustion is permanent for this server; never wrap and reuse a token.
@@ -736,6 +745,7 @@ impl Lan {
             sync: Mutex::new(sync),
             events: tx,
             configuration_requests: request_tx,
+            next_configuration_connection: AtomicU64::new(1),
             motd: Mutex::new(config.motd.clone()),
             max_players: AtomicUsize::new(config.max_players),
             hide_online_players: AtomicBool::new(hide_online_players),

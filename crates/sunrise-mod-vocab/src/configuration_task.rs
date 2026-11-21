@@ -79,33 +79,17 @@ impl ConfigurationConnection {
     }
 }
 
-/// The exact running task of one configuring connection. For delayed completion,
-/// keep the instance from the original challenge in server-local state. Never
-/// substitute the task that happens to be running when the reply arrives.
-// no wire: a process-local capability, never supplied by a peer.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct ConfigurationTaskRef {
-    connection: ConfigurationConnection,
-    ordinal: usize,
-}
-
 /// The active task during one server-thread start or tick callback.
 // no wire: borrows the callback's outcome.
 #[non_exhaustive]
 pub struct ConfigurationTaskContext<'a> {
-    instance: ConfigurationTaskRef,
+    connection: ConfigurationConnection,
     outcome: &'a mut ConfigurationTaskOutcome,
 }
 impl ConfigurationTaskContext<'_> {
-    /// The exact task instance, which can outlive this callback. When sending a
-    /// challenge, save this value for the matching reply handler.
-    pub fn instance(&self) -> ConfigurationTaskRef {
-        self.instance
-    }
     /// Whether this task's peer negotiated the registered configuration channel.
     pub fn has_channel(&self, host: &dyn ServerHost, channel: &PayloadId) -> bool {
-        self.instance.connection.has_channel(host, channel)
+        self.connection.has_channel(host, channel)
     }
     /// Queue a payload in the current transaction on this task's registered channel.
     pub fn send_payload(
@@ -114,7 +98,7 @@ impl ConfigurationTaskContext<'_> {
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        host.configuration_send_payload(self.instance, channel, bytes)
+        host.configuration_send_payload(self.connection, channel, bytes)
     }
     /// Request completion when this callback finishes and publishes its deferred sends.
     /// Repeated requests coalesce; failure, panic or disconnect prevents it.
@@ -139,11 +123,11 @@ impl ConfigurationTaskContext<'_> {
 pub enum ConfigurationTaskError {
     /// The connection or its configuration epoch has ended.
     Disconnected,
-    /// The instance is not the currently running task.
-    StaleTask,
-    /// The instance belongs to a different physical connection than the receiving peer.
-    WrongConnection,
-    /// Completion needs a server main-thread configuration handler with an open transaction.
+    /// The running task on this connection has a different type.
+    WrongType,
+    /// No configuration task is currently running on this connection.
+    NotRunning,
+    /// Completion requires a server configuration payload handler.
     WrongContext,
     /// The registered payload transport refused the send.
     Payload(crate::PayloadSendError),
@@ -174,31 +158,16 @@ pub fn configuration_connection(id: u64) -> ConfigurationConnection {
 pub fn configuration_connection_id(connection: ConfigurationConnection) -> u64 {
     connection.id
 }
-// hidden: only the engine issues an instance for a queue entry.
-#[doc(hidden)]
-pub fn configuration_task_ref(
-    connection: ConfigurationConnection,
-    ordinal: usize,
-) -> ConfigurationTaskRef {
-    ConfigurationTaskRef {
-        connection,
-        ordinal,
-    }
-}
-// hidden: the engine resolves the instance against its own queue.
-#[doc(hidden)]
-pub fn configuration_task_parts(
-    instance: ConfigurationTaskRef,
-) -> (ConfigurationConnection, usize) {
-    (instance.connection, instance.ordinal)
-}
 // hidden: the engine lends the callback its outcome slot.
 #[doc(hidden)]
 pub fn configuration_task_context(
-    instance: ConfigurationTaskRef,
+    connection: ConfigurationConnection,
     outcome: &mut ConfigurationTaskOutcome,
 ) -> ConfigurationTaskContext<'_> {
-    ConfigurationTaskContext { instance, outcome }
+    ConfigurationTaskContext {
+        connection,
+        outcome,
+    }
 }
 
 #[cfg(test)]

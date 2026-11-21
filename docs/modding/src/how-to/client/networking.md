@@ -31,7 +31,7 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 
 ## Configuration tasks before play
 
-The server's `register_configuration_tasks` hook (version 2) runs once per
+The server's `register_configuration_tasks` hook (version 3) runs once per
 connecting client, including vanilla clients, after the built-in registry, tag
 and resource-pack steps. During registration, keep using
 `event.connection.has_channel(host, &channel)` to check what the peer negotiated.
@@ -40,7 +40,8 @@ Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
 `ConfigurationTask` for a `Send + 'static` struct and call `event.register(MyTask { id, ... })`.
 Replace the old `ConfigurationTask.id` field with your own field and return it
 from `task_type(&self) -> &Identifier`. Registration is infallible and appends tasks
-to the connection's FIFO queue (matching NeoForge's `RegisterConfigurationTasksEvent.register`).
+to the connection's FIFO queue with no uniqueness or non-empty rejection
+(matching NeoForge's `RegisterConfigurationTasksEvent.register`).
 
 Move `configuration_task_start` and `configuration_task_tick` into your task's
 `start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
@@ -53,29 +54,33 @@ pending. Tasks run in registration order, without holding the connection task lo
 | --- | --- |
 | `event.connection.has_channel(host, &channel)` | `context.has_channel(host, &channel)` |
 | `event.connection.send_payload(host, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` |
-| `host.configuration_send_payload(event.connection, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` (or pass `context.instance()` as the first argument to the Host method) |
+| `host.configuration_send_payload(connection, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` (or call `host.configuration_send_payload(connection, &channel, bytes)` with `ConfigurationConnection`) |
 | `event.connection.finish(host, task_type)`, `host.configuration_finish(connection, task_type)`, or `event.finished = true` | `context.finish()` |
 | `event.connection.fail(host, reason)` or `host.configuration_fail(connection, reason)` | `context.fail(reason)` |
 
-For delayed completion, capture `context.instance()` in server-local state when
-you send the **original challenge**. Match the reply to that challenge and pass
-its saved instance to `cx.finish_configuration_task(instance)` in a server
-main-thread configuration payload handler. Never look up whichever task happens
-to be running when the reply arrives, and never send the instance over the wire.
-Use `cx.reply(&channel, bytes)` for a final reply on the same connection. For a
-network-thread handler, use `enqueue_work` and complete from the main-thread work.
+For delayed completion, call `cx.finish_configuration_task(&task_type)` in a
+server configuration payload handler — on either the main thread or the network
+thread — passing the `Identifier` returned by `ConfigurationTask::task_type`
+(matching NeoForge's `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)`
+and vanilla's `ServerConfigurationPacketListenerImpl.finishCurrentTask`).
+Completion always targets the receiving connection of that payload handler.
+Use `cx.reply(&channel, bytes)` for a final reply on the same connection; any
+staged replies publish before task completion advances the queue or sends
+`FinishConfiguration`.
 
-A different live connection's instance returns `WrongConnection`; an instance
-that is no longer the running one on this configuration returns `StaleTask`.
-The wrong side, phase, executor or a missing transaction returns `WrongContext`;
-an ended connection or configuration epoch returns `Disconnected`. A refusal
-advances neither task. Tasks, contexts, instance and connection capabilities,
-and task errors have no `Wire` encoding.
+If the currently running task on this connection has a different type,
+`finish_configuration_task` returns `WrongType`; if no task is currently running
+(or this handler already requested completion), it returns `NotRunning`.
+Calling on the client or outside the configuration phase returns `WrongContext`;
+an ended connection or configuration epoch (or a pending disconnect) returns
+`Disconnected`. A refusal never advances a task. Tasks, contexts, connection
+capabilities, and task errors have no `Wire` encoding.
 
-Completion takes effect once the callback or payload handler succeeds and
-publishes its deferred sends (including replies), independently of nested child
-transactions. Repeated callback requests coalesce, and `fail` wins over `finish`.
-Handler failure or an explicit payload-handler disconnect discards the request
+Completion takes effect directly once the callback or payload handler succeeds
+and publishes its deferred sends (including replies), with no transaction-layer
+staging and independently of nested child transactions. Repeated callback
+`context.finish()` calls coalesce, and `fail` wins over `finish`. Handler
+failure or an explicit payload-handler disconnect discards the completion request
 even if the rest of the handler succeeds.
 
 A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`

@@ -1,7 +1,7 @@
 //! Sole-owner main execution and root-commit raw publication.
 use super::Game;
 use mod_api::{
-    ConfigurationTaskError, ConfigurationTaskRef, HandlerThread, IPayloadContext, PayloadAccepted,
+    ConfigurationTaskError, HandlerThread, IPayloadContext, Identifier, PayloadAccepted,
     PayloadBytes, PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol,
     PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
 };
@@ -121,9 +121,9 @@ impl Game<'_> {
         if failure.is_none()
             && reason.is_none()
             && incoming.epoch.active()
-            && let Some((session, ordinal)) = finish_task
+            && let Some((session, task_type)) = finish_task
         {
-            session.finish_current(ordinal);
+            let _ = session.finish_type(&task_type);
         }
         if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
@@ -158,7 +158,7 @@ struct MainContext<'a, 'resources> {
     failure: Option<String>,
     finish_task: Option<(
         Arc<sunrise_client::lan::configuration_tasks::Session>,
-        usize,
+        Identifier,
     )>,
 }
 impl IPayloadContext for MainContext<'_, '_> {
@@ -238,7 +238,7 @@ impl IPayloadContext for MainContext<'_, '_> {
     }
     fn finish_configuration_task(
         &mut self,
-        instance: ConfigurationTaskRef,
+        task_type: &Identifier,
     ) -> Result<(), ConfigurationTaskError> {
         if self.endpoint.side() != Side::Server || self.epoch.phase != Phase::Configuration {
             return Err(ConfigurationTaskError::WrongContext);
@@ -246,27 +246,23 @@ impl IPayloadContext for MainContext<'_, '_> {
         if self.disconnect.is_some() || !self.epoch.active() {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        let (connection, ordinal) = mod_api::__private::configuration_task_parts(instance);
-        let session = self
-            .game
-            .configuration_session(connection)
-            .cloned()
-            .ok_or(ConfigurationTaskError::Disconnected)?;
-        let transport = self.endpoint.transport();
-        if !Arc::ptr_eq(session.transport(), transport) {
-            return Err(ConfigurationTaskError::WrongConnection);
-        }
-        if transport
+        let session = match self.endpoint.configuration_session() {
+            Some(weak) => weak.upgrade().ok_or(ConfigurationTaskError::Disconnected)?,
+            None => return Err(ConfigurationTaskError::NotRunning),
+        };
+        if self
+            .endpoint
+            .transport()
             .epoch()
             .is_none_or(|epoch| !Arc::ptr_eq(&epoch, self.epoch))
         {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        session.require_running(ordinal)?;
         if self.finish_task.is_some() {
-            return Err(ConfigurationTaskError::StaleTask);
+            return Err(ConfigurationTaskError::NotRunning);
         }
-        self.finish_task = Some((session, ordinal));
+        session.check_running_type(task_type)?;
+        self.finish_task = Some((session, task_type.clone()));
         Ok(())
     }
     fn disconnect(&mut self, reason: Text) {

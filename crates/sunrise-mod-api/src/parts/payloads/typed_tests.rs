@@ -177,7 +177,7 @@ impl IPayloadContext for Unreached {
     }
     fn finish_configuration_task(
         &mut self,
-        _: crate::ConfigurationTaskRef,
+        _: &crate::Identifier,
     ) -> Result<(), crate::ConfigurationTaskError> {
         Err(crate::ConfigurationTaskError::WrongContext)
     }

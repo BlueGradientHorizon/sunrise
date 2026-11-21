@@ -12,13 +12,13 @@ pub trait ConfigurationTasksServerHost {
         connection: ConfigurationConnection,
         channel: &PayloadId,
     ) -> bool;
-    /// Side: server. Queue a send on the registered configuration channel of the exact
-    /// running task instance, not whichever task is current on the connection. Prefer
+    /// Side: server. Queue a send on the registered configuration channel for this
+    /// configuring connection while a configuration task is running. Prefer
     /// [`ConfigurationTaskContext::send_payload`] in start and tick callbacks.
     #[access(WorldOnly)]
     fn configuration_send_payload(
         &mut self,
-        instance: ConfigurationTaskRef,
+        connection: ConfigurationConnection,
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError>;

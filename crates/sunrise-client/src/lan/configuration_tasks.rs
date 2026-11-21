@@ -7,10 +7,7 @@ use mod_api::{
 };
 use std::{
     collections::BTreeMap,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex},
 };
 use sunrise_protocol::payload_negotiation::Phase;
 
@@ -19,13 +16,6 @@ pub struct ConfigurationRequest {
     pub player: u128,
     pub name: String,
     pub session: Arc<Session>,
-}
-/// Process-unique identities keep a capability stale even after a server restarts.
-pub(super) fn next_connection() -> Option<ConfigurationConnection> {
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    NEXT.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .ok()
-        .map(mod_api::__private::configuration_connection)
 }
 struct Entry {
     session: Arc<Session>,
@@ -58,8 +48,9 @@ impl Tasks {
         else {
             return;
         };
+        let task_types = tasks.iter().map(|task| task.task_type.clone()).collect();
         entry.queue = tasks.into_iter().map(Some).collect();
-        entry.session.register(entry.queue.len());
+        entry.session.register(task_types);
     }
     pub fn get(&self, connection: ConfigurationConnection) -> Option<&Arc<Session>> {
         self.sessions
@@ -133,7 +124,7 @@ impl Tasks {
 }
 #[derive(Default)]
 struct State {
-    task_count: Option<usize>,
+    task_types: Option<Vec<mod_api::Identifier>>,
     at: usize,
     started: bool,
     finished: bool,
@@ -142,7 +133,10 @@ struct State {
 }
 impl State {
     fn running(&self, ordinal: usize) -> bool {
-        self.at == ordinal
+        self.task_types
+            .as_ref()
+            .is_some_and(|types| ordinal < types.len())
+            && self.at == ordinal
             && self.started
             && !self.finished
             && !self.closed
@@ -165,17 +159,17 @@ impl Session {
             sender,
         })
     }
-    fn register(&self, task_count: usize) {
+    fn register(&self, task_types: Vec<mod_api::Identifier>) {
         self.state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .task_count = Some(task_count);
+            .task_types = Some(task_types);
     }
     /// Advance past a published completion, returning its ordinal for retirement
     /// even when it was the final task. Then take the next eligible turn, if any.
     pub fn turn(&self) -> (Option<usize>, Option<Turn>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let Some(task_count) = state.task_count else {
+        let Some(task_count) = state.task_types.as_ref().map(Vec::len) else {
             return (None, None);
         };
         if state.closed || state.failure.is_some() || self.transport().closed() {
@@ -203,15 +197,60 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .finished
     }
-    /// Resolve an issued ordinal without mutating or failing any other turn.
-    pub fn require_running(&self, ordinal: usize) -> Result<(), ConfigurationTaskError> {
+    /// Verify that a configuration task is currently running on this session.
+    pub fn require_any_running(&self) -> Result<(), ConfigurationTaskError> {
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.closed || state.failure.is_some() || self.transport().closed() {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        if !state.running(ordinal) {
-            return Err(ConfigurationTaskError::StaleTask);
+        if !state
+            .task_types
+            .as_ref()
+            .is_some_and(|types| state.started && !state.finished && state.at < types.len())
+        {
+            return Err(ConfigurationTaskError::NotRunning);
         }
+        Ok(())
+    }
+    /// Verify that the currently running task on this session matches `task_type`.
+    pub fn check_running_type(
+        &self,
+        task_type: &mod_api::Identifier,
+    ) -> Result<(), ConfigurationTaskError> {
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.closed || state.failure.is_some() || self.transport().closed() {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        let Some(types) = &state.task_types else {
+            return Err(ConfigurationTaskError::NotRunning);
+        };
+        if !(state.started && !state.finished && state.at < types.len()) {
+            return Err(ConfigurationTaskError::NotRunning);
+        }
+        if &types[state.at] != task_type {
+            return Err(ConfigurationTaskError::WrongType);
+        }
+        Ok(())
+    }
+    /// Mark the currently running task finished if its type matches `task_type`.
+    pub fn finish_type(
+        &self,
+        task_type: &mod_api::Identifier,
+    ) -> Result<(), ConfigurationTaskError> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.closed || state.failure.is_some() || self.transport().closed() {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        let Some(types) = &state.task_types else {
+            return Err(ConfigurationTaskError::NotRunning);
+        };
+        if !(state.started && !state.finished && state.at < types.len()) {
+            return Err(ConfigurationTaskError::NotRunning);
+        }
+        if &types[state.at] != task_type {
+            return Err(ConfigurationTaskError::WrongType);
+        }
+        state.finished = true;
         Ok(())
     }
     /// Mark the currently running task finished if this ordinal is still active.
@@ -233,7 +272,7 @@ impl Session {
                 .is_some_and(|epoch| epoch.peer.can_send(Phase::Configuration, channel).is_ok())
     }
     pub fn endpoint(&self) -> Endpoint {
-        Endpoint::configuration(self.sender.clone())
+        Endpoint::configuration(self.sender.clone(), None)
     }
     pub fn transport(&self) -> &Arc<Transport> {
         self.sender.payload_transport()
@@ -243,7 +282,7 @@ impl Session {
         if let Some(error) = &state.failure {
             return Some(Err(error.clone()));
         }
-        (state.task_count == Some(state.at)).then_some(Ok(()))
+        (state.task_types.as_ref().map(Vec::len) == Some(state.at)).then_some(Ok(()))
     }
     pub fn close(&self) {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
@@ -258,7 +297,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finish_current_only_completes_its_own_turn() {
+    fn finish_type_and_finish_current_match_only_the_active_task() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};
 
@@ -268,13 +307,37 @@ mod tests {
         let (events, _receiver) = crate::lan::event_channel_with_capacity(1 << 20);
         let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
         let session = Session::new(io.task_sender(transport).unwrap());
-        session.register(2);
+        let first = mod_api::Identifier::parse("demo:first").unwrap();
+        let second = mod_api::Identifier::parse("demo:second").unwrap();
+        assert_eq!(
+            session.require_any_running(),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+        assert_eq!(
+            session.check_running_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+
+        session.register(vec![first.clone(), second.clone()]);
+        assert_eq!(
+            session.require_any_running(),
+            Err(ConfigurationTaskError::NotRunning)
+        );
         let (completed, turn) = session.turn();
         assert_eq!(completed, None);
         let turn = turn.unwrap();
         assert!(turn.start);
         assert_eq!(turn.ordinal, 0);
-        assert!(session.require_running(turn.ordinal).is_ok());
+        assert!(session.require_any_running().is_ok());
+        assert!(session.check_running_type(&first).is_ok());
+        assert_eq!(
+            session.check_running_type(&second),
+            Err(ConfigurationTaskError::WrongType)
+        );
+        assert_eq!(
+            session.finish_type(&second),
+            Err(ConfigurationTaskError::WrongType)
+        );
         assert!(!session.finished());
         let (completed, tick) = session.turn();
         assert_eq!(completed, None);
@@ -282,12 +345,21 @@ mod tests {
         assert!(!tick.start);
         assert_eq!(tick.ordinal, 0);
 
-        session.finish_current(turn.ordinal);
+        assert!(session.finish_type(&first).is_ok());
         assert!(session.finished());
         assert_eq!(
-            session.require_running(turn.ordinal),
-            Err(ConfigurationTaskError::StaleTask)
+            session.require_any_running(),
+            Err(ConfigurationTaskError::NotRunning)
         );
+        assert_eq!(
+            session.check_running_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+        assert_eq!(
+            session.finish_type(&first),
+            Err(ConfigurationTaskError::NotRunning)
+        );
+
         let (completed, next) = session.turn();
         assert_eq!(completed, Some(0));
         let next = next.unwrap();
@@ -296,11 +368,11 @@ mod tests {
         session.finish_current(turn.ordinal);
         assert!(!session.finished());
         assert_eq!(
-            session.require_running(turn.ordinal),
-            Err(ConfigurationTaskError::StaleTask)
+            session.check_running_type(&first),
+            Err(ConfigurationTaskError::WrongType)
         );
-
-        assert!(session.require_running(next.ordinal).is_ok());
+        assert!(session.check_running_type(&second).is_ok());
+        assert!(session.require_any_running().is_ok());
         session.finish_current(next.ordinal);
         let (completed, turn) = session.turn();
         assert_eq!(completed, Some(1));

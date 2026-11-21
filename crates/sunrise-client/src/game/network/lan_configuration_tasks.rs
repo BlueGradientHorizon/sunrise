@@ -3,9 +3,8 @@ use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
-        configuration_task_parts, configuration_task_ref,
     },
-    ConfigurationConnection, ConfigurationTaskError, ConfigurationTaskRef, PayloadBytes, PayloadId,
+    ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
 use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
@@ -134,10 +133,7 @@ impl Game<'_> {
                             .owner
                             .map(|owner| mod_api::__private::enter(owner, call));
                         let mut outcome = ConfigurationTaskOutcome::Pending;
-                        let mut context = configuration_task_context(
-                            configuration_task_ref(connection, turn.ordinal),
-                            &mut outcome,
-                        );
+                        let mut context = configuration_task_context(connection, &mut outcome);
                         if turn.start {
                             task.task.start(game, &mut context);
                         } else {
@@ -189,16 +185,15 @@ impl Game<'_> {
     }
     pub(in crate::game) fn configuration_send_payload(
         &mut self,
-        instance: ConfigurationTaskRef,
+        connection: ConfigurationConnection,
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        let (connection, ordinal) = configuration_task_parts(instance);
         let session = self
             .configuration_session(connection)
             .cloned()
             .ok_or(ConfigurationTaskError::Disconnected)?;
-        session.require_running(ordinal)?;
+        session.require_any_running()?;
         self.queue_current_payload(session.endpoint(), channel, bytes)
             .map(|_| ())
             .map_err(ConfigurationTaskError::Payload)
