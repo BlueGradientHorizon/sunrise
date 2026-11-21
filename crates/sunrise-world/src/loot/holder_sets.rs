@@ -250,7 +250,7 @@ impl Binding {
             data.tables = Arc::new(LootTables(tables));
         }
         for (kind, entries) in [
-            ("item_modifier", &mut data.modifiers),
+            ("item_modifier", Arc::make_mut(&mut data.modifiers)),
             ("predicate", Arc::make_mut(&mut data.predicates)),
         ] {
             for (id, value) in entries {

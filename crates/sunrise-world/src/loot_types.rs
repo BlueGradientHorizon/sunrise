@@ -76,7 +76,7 @@ impl super::LootData {
     pub fn types(&self) -> &Types {
         &self.types
     }
-    pub fn modifiers(&self) -> &HashMap<String, Value> {
+    pub fn modifiers(&self) -> &Arc<HashMap<String, Value>> {
         &self.modifiers
     }
 }

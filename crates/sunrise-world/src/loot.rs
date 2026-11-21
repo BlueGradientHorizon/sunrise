@@ -287,7 +287,7 @@ pub struct LootData {
     copies_entity_nbt: bool,
     tables: Arc<LootTables>,
     global_modifiers: Arc<global_modifiers::GlobalLootModifiers>,
-    modifiers: HashMap<String, Value>,
+    modifiers: Arc<HashMap<String, Value>>,
     predicates: Arc<HashMap<String, Value>>,
     items: HashMap<String, ItemFacts>,
     /// Enchantments in registry (identifier) order.
@@ -934,7 +934,7 @@ impl LootData {
             types,
             tables,
             global_modifiers: Arc::default(),
-            modifiers,
+            modifiers: Arc::new(modifiers),
             predicates: Arc::new(predicates),
             items,
             enchantments,

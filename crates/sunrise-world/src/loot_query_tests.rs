@@ -9,7 +9,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         types: types::Types::capture(),
         tables: Arc::new(tables.into_iter().map(|(k, v)| (k.into(), v)).collect()),
         global_modifiers: Arc::default(),
-        modifiers: HashMap::new(),
+        modifiers: Arc::default(),
         predicates: Arc::default(),
         items: HashMap::new(),
         enchantments: vec![],

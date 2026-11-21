@@ -686,7 +686,7 @@ pub struct Items {
     pub fluid_tag_order: HashMap<String, Vec<String>>,
     loot: Arc<sunrise_world::loot::LootTables>,
     loot_types: sunrise_world::loot::types::Types,
-    loot_modifiers: HashMap<String, Value>,
+    loot_modifiers: Arc<HashMap<String, Value>>,
     global_modifiers: Arc<sunrise_world::loot::global_modifiers::GlobalLootModifiers>,
     /// `Registries.PREDICATE`: what a table's string condition names, which a
     /// pack replaces or adds to (`LootItemCondition.CODEC`).
@@ -1401,11 +1401,11 @@ impl Items {
         Ok(())
     }
 
-    /// Bind tables, predicates and prepared instances from the same candidate.
+    /// Bind tables, predicates, modifiers and prepared instances from the same candidate.
     pub fn set_loot_data(&mut self, data: &sunrise_world::loot::LootData) {
         self.loot = data.tables().clone();
         self.loot_types = data.types().clone();
-        self.loot_modifiers = data.modifiers().clone();
+        self.loot_modifiers = Arc::clone(data.modifiers());
         self.predicates = data.predicates().clone();
         self.global_modifiers = data.global_modifiers().clone();
     }
@@ -2465,11 +2465,11 @@ impl<R: RandomSource> LootContext<'_, R> {
     /// Expand entries; returns whether an entry succeeded (for alternatives).
     /// The last candidate field distinguishes emitted items from empty/deferred
     /// placeholders, without changing existing selection/modifier draws.
-    fn expand(
+    fn expand<'v>(
         &self,
-        e: &Value,
+        e: &'v Value,
         random: &mut R,
-        out: &mut Vec<(i32, ItemStack, Value, bool)>,
+        out: &mut Vec<(i32, ItemStack, &'v Value, bool)>,
     ) -> bool {
         if !self.conditions(e, random) {
             return false;
@@ -2484,7 +2484,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                         damage: 0,
                         extra: None,
                     },
-                    e["modifier"].clone(),
+                    &e["modifier"],
                     true,
                 ));
                 true
@@ -2522,7 +2522,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                         damage: 0,
                         extra: None,
                     },
-                    Value::Null,
+                    &Value::Null,
                     false,
                 ));
                 true
@@ -2538,7 +2538,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                         damage: 0,
                         extra: None,
                     },
-                    e.clone(),
+                    e,
                     true,
                 ));
                 true
@@ -2552,7 +2552,7 @@ impl<R: RandomSource> LootContext<'_, R> {
                         damage: 0,
                         extra: None,
                     },
-                    Value::Null,
+                    &Value::Null,
                     false,
                 ));
                 true
@@ -2583,12 +2583,12 @@ impl<R: RandomSource> LootContext<'_, R> {
             }
             chosen
         };
-        let (_, mut stack, modifiers, emitted) = candidates.swap_remove(pick);
+        let (_, mut stack, entry_or_modifier, emitted) = candidates.swap_remove(pick);
         if &*stack.item == NESTED {
-            self.nested(&modifiers, random, produced);
+            self.nested(entry_or_modifier, random, produced);
             return;
         }
-        self.modifiers(&modifiers, &mut stack, random);
+        self.modifiers(entry_or_modifier, &mut stack, random);
         produced.push((stack, emitted));
     }
     /// `NestedLootTable.createItemStack`: the entry's table rolls in full
@@ -2642,9 +2642,9 @@ impl<R: RandomSource> LootContext<'_, R> {
     }
 
     fn modifiers(&self, m: &Value, stack: &mut ItemStack, random: &mut R) {
-        let list: Vec<&Value> = match m {
-            Value::Array(a) => a.iter().collect(),
-            Value::Object(_) => vec![m],
+        let list = match m {
+            Value::Array(a) => a.as_slice(),
+            Value::Object(_) => std::slice::from_ref(m),
             Value::String(id) => {
                 if let Some(modifier) = self.items.loot_modifiers.get(id) {
                     self.modifiers(modifier, stack, random);

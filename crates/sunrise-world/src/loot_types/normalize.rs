@@ -46,7 +46,7 @@ impl super::super::LootData {
         for value in Arc::make_mut(&mut self.predicates).values_mut() {
             typed(value, false, tags, types);
         }
-        for value in self.modifiers.values_mut() {
+        for value in Arc::make_mut(&mut self.modifiers).values_mut() {
             typed(value, true, tags, types);
         }
         self.validate_types()?;
