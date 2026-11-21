@@ -130,8 +130,9 @@ cargo sunrise-mod publish --summary "..." --owner you --categories utility \
 ```
 
 `sign` writes a detached `.minisig` beside the input. It uses the current mod's per-user `signing.key` unless
-`--key <path>` is given. Existing Minisign key files and signatures work too. `keygen --no-password` is an explicit opt-in
-to an unencrypted private key; with a local file, use `sign --no-password` for such a key. Neither command
+`--key <path>` is given. Existing Minisign key files and signatures work too. On Unix, `keygen --no-password` explicitly
+opts in to generating an unencrypted key. On Windows, `keygen` requires encryption because key files inherit the
+folder's permissions. Use `sign --no-password` to sign with an existing unencrypted key file. Neither command
 overwrites an existing output. If you change the package, build it and sign the new bytes rather than reusing an old
 signature.
 

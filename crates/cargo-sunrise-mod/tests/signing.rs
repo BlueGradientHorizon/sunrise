@@ -22,6 +22,7 @@ fn project(temp: &tempfile::TempDir) -> std::path::PathBuf {
     project
 }
 
+#[cfg(unix)]
 fn default_keys(temp: &tempfile::TempDir) -> std::path::PathBuf {
     let base = if cfg!(target_os = "macos") {
         "home/Library/Application Support"
@@ -40,6 +41,7 @@ fn success(output: Output) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+#[cfg(unix)]
 #[test]
 #[ignore = "daily"]
 fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
@@ -98,6 +100,22 @@ fn keygen_writes_registry_key_and_refuses_to_replace_either_file() {
         b"keep me"
     );
     assert!(!project.join(".sunrise/signing.key").exists());
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "daily"]
+fn windows_keygen_refuses_an_unencrypted_private_key_before_writing() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = project(&temp);
+    let output = tool(&project)
+        .args(["keygen", "--out", ".sunrise", "--no-password"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--no-password"));
+    assert!(output.stdout.is_empty());
+    assert!(!project.join(".sunrise").exists());
 }
 
 #[test]
@@ -188,6 +206,7 @@ fn packing_refuses_copied_minisign_private_keys_but_allows_the_public_key() {
 const KEY_ENV: &str = "SUNRISE_MOD_SIGNING_KEY";
 const PASSPHRASE_ENV: &str = "SUNRISE_MOD_SIGNING_PASSPHRASE";
 
+#[cfg(unix)]
 #[test]
 #[ignore = "daily"]
 fn the_registry_verifies_the_detached_signature_of_the_exact_file() {

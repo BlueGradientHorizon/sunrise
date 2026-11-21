@@ -56,7 +56,7 @@ const COMMANDS: &[Command] = &[
         name: "keygen",
         everyday: false,
         usage: "keygen [--out <dir>] [--no-password]",
-        summary: "Makes a Minisign key pair in the mod’s per-user key folder (or --out) and prints the public key. The private key is encrypted unless --no-password is given. Never overwrites either key.",
+        summary: "Makes a Minisign key pair in the mod’s per-user key folder (or --out) and prints the public key. The private key is encrypted unless --no-password is given (Unix only). Never overwrites either key.",
     },
     Command {
         name: "sign",

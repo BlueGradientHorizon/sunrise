@@ -21,6 +21,10 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
     let out = options.value("--out")?;
     let no_password = options.switch("--no-password");
     options.finish()?;
+    #[cfg(windows)]
+    if no_password {
+        return Err("keygen --no-password is not supported on Windows; generate a passphrase-encrypted key instead".into());
+    }
     let out_is_default = out.is_none();
     let path = match out {
         Some(path) => PathBuf::from(path),
