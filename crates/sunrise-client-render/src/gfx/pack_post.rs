@@ -40,6 +40,9 @@ mod world_target_tests;
 mod celestial_blend_tests;
 
 #[cfg(test)]
+mod sky_switch_tests;
+
+#[cfg(test)]
 mod higher_shadowcolor_tests;
 
 #[cfg(test)]
@@ -693,6 +696,9 @@ pub struct PackPost {
     /// program: vanilla's stays hidden even when the program writes nothing.
     hides_sky: bool,
     hides_celestial: bool,
+    /// `sky`, `stars`, `sun` and `moon`: the parts of the vanilla sky left out, by the pack's sky
+    /// programs and by the game's sky alike.
+    sky_switches: sunrise_shaders::SkySwitches,
     /// `colortex0ClearColor`, when the pack sets it.
     sky_clear: Option<[f32; 4]>,
     /// What draws rain and snow (the same program, each with its kind's sprite as `texture`),
@@ -2835,6 +2841,7 @@ impl PackPost {
         });
         let water_unpatched = unpatched_name.filter(|_| shadow_water.is_some());
         let (hides_sky, hides_celestial) = (post.sky.is_some(), post.sky_textured.is_some());
+        let sky_switches = post.sky_switches;
         let sky = (post.sky.is_some() || post.sky_textured.is_some()).then(|| {
             let geometry = PackSky::new(device);
             let basic = Geometry {
@@ -3426,6 +3433,7 @@ impl PackPost {
             hides_clouds,
             hides_sky,
             hides_celestial,
+            sky_switches,
             sky_clear,
             weather,
             weather_draw: None,
@@ -4137,9 +4145,12 @@ impl PackPost {
         let Some(mut sky) = self.sky.take() else {
             return;
         };
-        let parts = sky
-            .geometry
-            .prepare(queue, frame, self.uniforms.shadow.sun_path_rotation);
+        let parts = sky.geometry.prepare(
+            queue,
+            frame,
+            self.uniforms.shadow.sun_path_rotation,
+            self.sky_switches,
+        );
         let mut groups = [None, None];
         for (i, pass) in [&mut sky.basic, &mut sky.textured].into_iter().enumerate() {
             if let Some(pass) = pass {
@@ -4898,6 +4909,12 @@ impl PackPost {
     /// Whether the pack has the sun and moon's program, drawing or not.
     pub fn has_celestial(&self) -> bool {
         self.hides_celestial
+    }
+
+    /// `sky`, `stars`, `sun` and `moon`: the parts of the vanilla sky the pack leaves out, which
+    /// the game's sky leaves out too when the pack has no program for them.
+    pub fn sky_switches(&self) -> sunrise_shaders::SkySwitches {
+        self.sky_switches
     }
 
     /// Whether the pack draws translucent terrain itself.
