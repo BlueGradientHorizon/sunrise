@@ -43,6 +43,7 @@ FIXTURES = [
     ('interact_animation', '{interact_animation:{type:"stab",duration:9}}'),
     ('dyed_color', '{dyed_color:16711935}'),
     ('map_id', '{map_id:42}'),
+    ('writable_book_content', '{writable_book_content:{pages:["one",{raw:"two",filtered:"t*o"}]}}'),
     ('written_book_content', '{written_book_content:{title:{raw:"T",filtered:"F"},author:"me",generation:1,pages:[{raw:"p1",filtered:"q1"},"p2"],resolved:1b}}'),
     ('trim registry', '{trim:{material:"minecraft:gold",pattern:"minecraft:coast"}}'),
     ('trim direct', '{trim:{material:{palette_id:"minecraft:x",description:"X"},pattern:{asset_id:"minecraft:y",description:"Y",decal:1b}}}'),
@@ -105,7 +106,8 @@ FIXTURES = [
 # Fixtures on another item than a stick (the components need it, or read better there).
 ITEMS = {'profile name': 'player_head', 'profile full': 'player_head', 'trim registry': 'diamond_chestplate',
          'trim direct': 'diamond_chestplate', 'banner_patterns': 'white_banner', 'pot_decorations': 'decorated_pot',
-         'everything at once': 'diamond_chestplate', 'instrument registry': 'goat_horn'}
+         'everything at once': 'diamond_chestplate', 'instrument registry': 'goat_horn',
+         'writable_book_content': 'writable_book'}
 
 
 def compare(vanilla, rust):

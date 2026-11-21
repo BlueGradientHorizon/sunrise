@@ -55,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 | Component::TrimDirect { .. }
                                 | Component::Instrument(_)
                                 | Component::StewEffects(_)
+                                | Component::WritableBook { .. }
                         )
                     })
                     .map(|(k, _)| *k)
