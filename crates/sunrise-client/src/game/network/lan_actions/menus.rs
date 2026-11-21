@@ -416,11 +416,14 @@ impl Game<'_> {
             return;
         }
         let state = self.world.block(pos.0, pos.1, pos.2);
-        let shulker = super::super::storage::is_shulker_box(&self.res.facts().get(state).name);
+        let name = &self.res.facts().get(state).name;
+        let shulker = super::super::storage::is_shulker_box(name);
+        // Resolve the sound before the game event; its listener can replace the block.
+        let sound = self.resolve_container_sound(pos, name, open);
         // ContainerOpenersCounter calls onOpen/onClose before the game event;
         // ShulkerBoxBlockEntity emits its game event before playing its sound.
-        if !shulker {
-            self.container_edge_sound(pos, open);
+        if !shulker && let Some((sound, at)) = sound {
+            self.play_container_sound(sound, at);
         }
         let event = if open {
             "minecraft:container_open"
@@ -440,8 +443,8 @@ impl Game<'_> {
         } else {
             self.as_guest(conn, post);
         }
-        if shulker {
-            self.container_edge_sound(pos, open);
+        if shulker && let Some((sound, at)) = sound {
+            self.play_container_sound(sound, at);
         }
     }
 
