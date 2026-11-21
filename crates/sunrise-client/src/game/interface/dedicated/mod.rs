@@ -1275,6 +1275,10 @@ impl Game<'_> {
         let watchdog = Watchdog::start(props.max_tick_time);
         let _stop_watchdog = StopWatchdog(watchdog.clone());
         let mut overload_warned: Option<Instant> = None;
+        // `isTickTimeLoggingEnabled`: read at the end of a tick, so the first sample goes out the
+        // tick after a subscriber appears. `lastTickNanos` is when the last wait ended.
+        let mut tick_sampling = false;
+        let mut last_tick_end = Instant::now();
         // `/stop`, or a stop signal (the shutdown hook's `halt`): either way the players and levels are
         // saved below, after the wait `[transfer]` may make (transfer.rs).
         while !self.stop_now(&state) {
@@ -1381,6 +1385,7 @@ impl Game<'_> {
                 self.kick_idle(idle_timeout);
             }
             // MinecraftServer.tickServer records each tick's time, for /tick query (and the status).
+            let method = tick_start.elapsed().as_nanos() as i64;
             self.clock.record(tick_start.elapsed());
             state.perf.tick(
                 state.perf_epoch.elapsed().as_secs_f64(),
@@ -1402,6 +1407,29 @@ impl Game<'_> {
                     &overload_warning(behind, self.clock.tick_duration()),
                 );
             }
+            // `MinecraftServer.logFullTickTime`: the full sample is the tick, the tick method and
+            // the wait; no scheduled-task share is measured, so the wait counts as idle.
+            let tick_end = Instant::now();
+            if tick_sampling && let Some(host) = self.lan.as_ref() {
+                let full = ((tick_end - last_tick_end).as_nanos() as i64).max(method);
+                let sample = vec![full, method, 0, full - method];
+                for conn in host.hub.tick_time_subscribers() {
+                    host.hub.send_to(
+                        conn,
+                        &sunrise_protocol::packets::play::Clientbound::DebugSample(
+                            sunrise_protocol::packets::play::DebugSample {
+                                sample: sample.clone(),
+                                kind: 0,
+                            },
+                        ),
+                    );
+                }
+            }
+            last_tick_end = tick_end;
+            tick_sampling = self
+                .lan
+                .as_ref()
+                .is_some_and(|h| !h.hub.tick_time_subscribers().is_empty());
         }
         if let Some(watchdog) = &watchdog {
             watchdog.running.store(false, Ordering::Relaxed);
