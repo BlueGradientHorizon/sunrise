@@ -645,7 +645,10 @@ impl GoalSpec {
 }
 
 /// One goal of a mob's selector, as `goals` and `target_goals` read it.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local observation and does not implement `Wire`.
+// no wire: local mob goal inspection entry carrying a static goal id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct MobGoalEntry {
     /// The goal's priority: a lower number preempts a higher one.

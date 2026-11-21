@@ -64,14 +64,6 @@ fn checked_records_have_declared_field_bytes() {
         (vec!["example:a".to_owned(), "example:b".to_owned()],),
     );
     fields(
-        MobGoalEntry {
-            priority: -3,
-            id: "example:goal",
-            running: true,
-        },
-        (-3i32, "example:goal".to_owned(), true),
-    );
-    fields(
         Corners {
             width: 13.0,
             height: 17.0,
