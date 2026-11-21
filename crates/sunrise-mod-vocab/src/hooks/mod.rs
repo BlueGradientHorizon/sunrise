@@ -43,8 +43,6 @@
 //! Native mods compile for the selected revision. The generator discovers declarations in
 //! file-name order, without a shared list.
 //! Each new hook goes in a file of its own.
-//! The JSON catalog (`native-hooks.json`,
-//! `tools/native-hook-fragments/`) is retired and a file there fails the build.
 //!
 //! A new game hook takes its generated `fire::<Name>Call` carrier, built from these declarations
 //! and the generator's engine value and draw mappings. A hook with no event parameters needs no
