@@ -300,7 +300,7 @@ mod tests {
             for expected in [[false, true].as_slice(), [true].as_slice()] {
                 let mut outcomes = Vec::new();
                 let mut published = Vec::new();
-                crate::dispatch_blocks(&context, |listen| {
+                crate::dispatch_blocks(&context, &mut |listen| {
                     let mut pending = Vec::new();
                     let completed = listen(&mut |declaration| {
                         pending.push(declaration.answer.id);
@@ -550,18 +550,21 @@ mod tests {
             ]
             .into();
             crate::testing::with_mods(mods, || {
-                let _registration =
-                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+                let _registration = crate::__private::RegistrationGuard::open();
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut |block| {
-                    blocks.push(block);
-                    Ok(())
+                crate::dispatch_blocks(&context, &mut |listen| {
+                    assert!(listen(&mut |block| {
+                        blocks.push(block);
+                        Ok(())
+                    }));
                 });
-                crate::dispatch_items(&context, &mut |item| {
-                    items.push(item);
-                    Ok(())
+                crate::dispatch_items(&context, &mut |listen| {
+                    assert!(listen(&mut |item| {
+                        items.push(item);
+                        Ok(())
+                    }));
                 });
                 assert_eq!(
                     blocks

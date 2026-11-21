@@ -208,7 +208,7 @@ pub(crate) fn stack_effects(
     key: &str,
     received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
     mut refused: Option<&mut bool>,
-) -> Result<Vec<ConsumeEffect>, String> {
+) -> std::result::Result<Vec<ConsumeEffect>, String> {
     use sunrise_core::nbt::Tag;
     use sunrise_world::component_value::consume_effects::admit;
 
