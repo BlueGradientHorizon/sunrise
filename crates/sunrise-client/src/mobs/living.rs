@@ -4302,6 +4302,8 @@ mod tests {
                     m.update_fluids(w, &mut events);
                     m.first_tick = false;
                     m.on_ground = true;
+                    m.supporting = m.supporting_block(w, Vec3::ZERO);
+                    let effect = m.restitution_contact(w);
                     m.fall_distance = 6.0;
                     let start = m.health;
                     let mut test_level = crate::health::TestLevel::new(0);
@@ -4309,6 +4311,7 @@ mod tests {
                         w,
                         &mut test_level.level(),
                         Vec3::ZERO,
+                        effect,
                         &mut events,
                         false,
                     );
