@@ -24,7 +24,8 @@ run-name: ${{ inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.b
 # - `sign` and `musl-attach` pass RELEASE_SIGNING_KEY only to main's tools/ci/sign_release.sh, which runs the
 #   runner's sha256sum and OpenSSL over the archives: it hashes them, never runs them. The signed message
 #   names the channel ("horizon release nightly"), so a nightly's signature can't pass for a release's.
-# - `publish` verifies the signature with main's sunrise-release-sign, checks the smoke test, and only then moves
+# - `publish` verifies the signature with the runner's OpenSSL and main's release keys (nightly.py verify-sums, no
+#   code of the checkout), checks the smoke test, and only then moves
 #   the tag. Like sign, it never executes what build produced.
 # - The source ships with the build: `pick` writes sunrise-source.tar.gz with `git archive` (git objects again, nothing
 #   run), `sign` signs it with the builds, and `publish` attaches it and tags the commit nightly-source/<date>-<short>
@@ -115,7 +116,7 @@ jobs:
     # `resolve`, so it never queues behind GitHub's runners (the Nightly of 2026-11-16 waited there from 15:34).
     # Signing and publishing below stay on GitHub's runners.
     runs-on: ${{ vars.DYNA_CI_SELF_HOSTED == 'true' && 'dyna-small' || 'ubuntu-latest' }}
-    # Room for building sunrise-release-sign, which checks the SDK's signature below, and for a real run's wait on its
+    # Room for building a stable release's parent sunrise-stage (stable-mod-api below), and for a real run's wait on its
     # commit's gate, run again when the next push cancelled it (GATE_RERUN, tools/release_train.py gate_again).
     timeout-minutes: 170
     permissions:
@@ -219,10 +220,12 @@ jobs:
           retention-days: 3
       # The fork's Nightly is exactly an SDK's build, and carries that SDK's index in its signed sums, so a game's build
       # id and SDK come from the game release itself (checked against sdk-<sha>'s SHA256SUMS here).
-      # The check runs sunrise-release-sign with cargo, which Dyna's small runner doesn't carry: rustup as dyna-ci's
-      # lint installs it, then the pinned Rust (tools/ci/rustup_install.sh).
-      - name: The pinned Rust, for sunrise-release-sign
-        if: steps.pick.outputs.build == 'true' && github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
+      # A stable release's mod API check builds its parent's own sunrise-stage with cargo, which Dyna's small runner
+      # doesn't carry: rustup as dyna-ci's lint installs it, then the pinned Rust (tools/ci/rustup_install.sh).
+      - name: The pinned Rust, for the parent's sunrise-stage
+        if: >-
+          inputs.kind == 'stable' && steps.pick.outputs.build == 'true' &&
+          github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
         run: |
           set -euo pipefail
           if ! command -v rustup > /dev/null; then
@@ -471,10 +474,10 @@ jobs:
           SIGN_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || inputs.kind }}
         run: |
           key=(); [[ -n "$EPHEMERAL" ]] && key=(--key "$(cat dist/ephemeral.pub)")
-          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$SIGN_FOR" --publishing "${key[@]}" dist
+          python3 tools/ci/nightly.py verify-sums --tag "$SIGN_FOR" --publishing "${key[@]}" dist
           version="${KIND}-${DATE}-${SHORT}"; [[ "$KIND" == stable ]] && version=$SIGN_FOR
           # The version's own signature, which current launchers require: the title below names the same version.
-          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$version" \
+          python3 tools/ci/nightly.py verify-sums --tag "$version" \
             --signature SHA256SUMS.v2.sig --publishing "${key[@]}" dist
       - name: Ready to publish (the smoke test drew a world, no release-blocker is open)
         # Right before publishing, as for a release: an issue labelled while the builds ran still holds it. A dry run
@@ -687,11 +690,10 @@ jobs:
         id: verify
         run: |
           key=(); [[ "$DRY_RUN" == true ]] && key=(--key "$(cat musl/ephemeral.pub)")
-          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" \
-            --tag "$SIGN_FOR" --only "$ARCHIVE" "${key[@]}" musl
+          python3 tools/ci/nightly.py verify-sums --tag "$SIGN_FOR" --only "$ARCHIVE" "${key[@]}" musl
           if [[ -n "$ALSO_FOR" ]]; then
-            cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" \
-              --tag "$ALSO_FOR" --signature SHA256SUMS.v2.sig --only "$ARCHIVE" "${key[@]}" musl
+            python3 tools/ci/nightly.py verify-sums --tag "$ALSO_FOR" --signature SHA256SUMS.v2.sig --only "$ARCHIVE" \
+              "${key[@]}" musl
           fi
           for suffix in '' .sig .v2.sig; do
             if [[ -f "musl/SHA256SUMS$suffix" ]]; then mv "musl/SHA256SUMS$suffix" "musl/SHA256SUMS-musl$suffix"; fi

@@ -402,7 +402,8 @@ class JudgeBuildTests(unittest.TestCase):
     def test_the_parents_stage_is_built_from_its_tree_alone(self):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            with mock.patch.dict(nightly.os.environ, {"CARGO_TARGET_DIR": "/elsewhere", "RUSTC_WRAPPER": "sccache"}), \
+            with mock.patch.dict(nightly.os.environ, {"CARGO_TARGET_DIR": "/elsewhere", "RUSTC_WRAPPER": "sccache",
+                                                      "GH_TOKEN": "secret", "GITHUB_ENV": "/env", "GITHUB_PATH": "/path"}), \
                     mock.patch.object(nightly, "unpack") as unpack, \
                     mock.patch.object(nightly.subprocess, "run") as run:
                 tool = nightly.parent_stage(OLD, work)
@@ -410,13 +411,14 @@ class JudgeBuildTests(unittest.TestCase):
             args, kwargs = run.call_args
             self.assertEqual(kwargs["cwd"], work / "judge", "no .cargo/config.toml of the candidate's checkout")
             self.assertEqual(args[0][args[0].index("--target-dir") + 1], str(work / "judge-target"))
-            self.assertFalse({"CARGO_TARGET_DIR", "RUSTC_WRAPPER"} & kwargs["env"].keys())
+            self.assertFalse({"CARGO_TARGET_DIR", "RUSTC_WRAPPER", "GH_TOKEN", "GITHUB_ENV", "GITHUB_PATH"}
+                             & kwargs["env"].keys(), "nothing a later step reads can be written")
             self.assertEqual(tool, str(work / "judge-target" / "debug" / "sunrise-stage"))
             # The tree is a plain extraction: the checkout gains no worktree.
             repo = work / "repo"
             repo.mkdir()
             git = nightly.git
-            with chdir(repo):
+            with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
                 git("init", "-q")
                 Path("a.txt").write_text("a\n")
                 git("add", "a.txt")
@@ -425,30 +427,21 @@ class JudgeBuildTests(unittest.TestCase):
                 self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
                 self.assertEqual(len(git("worktree", "list").splitlines()), 1)
 
-    def test_download_only_returns_assets_verified_under_their_sdk_tag(self):
+    def test_download_only_returns_assets_verified_under_their_tag(self):
         files = {nightly.SDK_INDEX: b"index", nightly.SDK_SURFACE: b"surface"}
 
         def download(*args):
             folder = Path(args[args.index("--dir") + 1])
             for name, data in files.items():
                 (folder / name).write_bytes(data)
-            (folder / "SHA256SUMS").write_text("".join(
-                f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items()))
 
-        with mock.patch.object(nightly, "gh", side_effect=download), \
-                mock.patch.dict(nightly.os.environ, {"GH_TOKEN": "secret"}), \
-                mock.patch.object(nightly.subprocess, "run") as verify:
-            verify.return_value = mock.Mock(returncode=0)
+        with mock.patch.object(nightly, "gh", side_effect=download) as fetched, \
+                mock.patch.object(nightly, "verify_sums") as verify:
             self.assertEqual(nightly.released_assets(HEAD, *files), files)
-            args = verify.call_args.args[0]
-            self.assertEqual(args[args.index("--tag") + 1:-1],
-                             [f"sdk-{HEAD}", "--only", nightly.SDK_INDEX, "--only", nightly.SDK_SURFACE])
-            self.assertNotIn("GH_TOKEN", verify.call_args.kwargs["env"], "cargo never sees the job's token")
-            self.assertEqual(verify.call_args.kwargs["cwd"], nightly.REPOSITORY)
-            # A stable release's own files, under its own tag.
+            self.assertEqual(fetched.call_args.args[2], f"sdk-{HEAD}")
+            self.assertEqual((verify.call_args.args[1:]), (f"sdk-{HEAD}", tuple(files)))
             nightly.release_assets("26.3-0.1.0", nightly.SDK_INDEX)
-            args = verify.call_args.args[0]
-            self.assertEqual(args[args.index("--tag") + 1], "26.3-0.1.0")
-            verify.return_value = mock.Mock(returncode=1, stderr="bad signature")
-            with self.assertRaisesRegex(SystemExit, "signature does not check"):
+            self.assertEqual(verify.call_args.args[1], "26.3-0.1.0", "a stable release's files, under its own tag")
+            verify.side_effect = SystemExit("not signed")
+            with self.assertRaisesRegex(SystemExit, "not signed"):
                 nightly.released_assets(HEAD, *files)

@@ -23,6 +23,8 @@
     nightly.py sdk-previous <sha> <out>  prints the SDK published before <sha> on its history, and writes its
                                    surface.json to <out>, checked; prints nothing when there is none
     nightly.py stable-mod-api <sha> <tag> <notes>  checks the stable mod API step and appends changed mixin targets
+    nightly.py verify-sums --tag T [--signature F] [--only N]... [--key K]... [--publishing] DIR
+                                         checks a release folder's signed sums with OpenSSL and main's release keys
     nightly.py break-glass-legs <sha>    the daily legs a break-glass daily run of <sha> runs (daily.yml resolve)
     nightly.py break-glass-notes <notes>  adds a break-glass release's section, with its verified approvals
 
@@ -45,6 +47,7 @@ the release, and the tag nightly-source/<date>-<short>, which no prune deletes. 
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import io
@@ -312,10 +315,12 @@ def listed(name: str, data: bytes, sums: str) -> bool:
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
-# What a cargo build or a built tool never inherits from the job: its tokens (a build script or proc macro runs
-# whatever its crate says), another target folder, or a wrapper that would run in place of the compiler.
+# What a cargo build or a built tool never inherits from the job: its tokens and the files that change later steps
+# (a build script or proc macro runs whatever its crate says), another target folder, or a wrapper that would run in
+# place of the compiler.
 INHERITED_BUILD = ("GH_TOKEN", "GITHUB_TOKEN", "ACTIONS_RUNTIME_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-                   "ACTIONS_ID_TOKEN_REQUEST_URL", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "RUSTC_WRAPPER",
+                   "ACTIONS_ID_TOKEN_REQUEST_URL", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STATE",
+                   "GITHUB_STEP_SUMMARY", "CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "RUSTC_WRAPPER",
                    "RUSTC_WORKSPACE_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER")
 
 
@@ -323,13 +328,73 @@ def isolated_env() -> dict[str, str]:
     return {name: value for name, value in os.environ.items() if name not in INHERITED_BUILD}
 
 
-def signature_check(sha: str, folder: Path, names: list[str], tag: str = "") -> list[str]:
-    """The command that checks the SHA256SUMS signature in `folder` of the release `tag` (sdk-<sha> by default) as the
-    launcher does (sunrise-release-sign, with the fork's keys and the tag the signature must name), and the bytes of
-    `names` against it."""
-    return ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-release-sign", "--", "verify",
-            "--repository", "sunrise-org/sunrise", "--tag", tag or f"sdk-{sha}",
-            *(argument for name in names for argument in ("--only", name)), str(folder)]
+# The release keys launchers trust, read from main, never from the checkout a release builds: a candidate's own copy
+# could list a key of its own.
+KEYS_FILE = "crates/sunrise-release-sign/release-keys.txt"
+# An Ed25519 public key's DER: this SubjectPublicKeyInfo header, then its 32 bytes.
+ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
+
+
+def release_keys() -> list[str]:
+    """main's release-keys.txt (one base64 key per line, `#` comments): sunrise-org/sunrise's keys, none elsewhere."""
+    if os.environ.get("GITHUB_REPOSITORY", "sunrise-org/sunrise") != "sunrise-org/sunrise":
+        return []
+    subprocess.run(["git", "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
+                   cwd=REPOSITORY, check=True)
+    text = subprocess.run(["git", "show", f"refs/remotes/origin/main:{KEYS_FILE}"], cwd=REPOSITORY, check=True,
+                          capture_output=True, text=True).stdout
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+
+
+def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.sig", keys=None,
+                publishing: bool = False) -> None:
+    """Checks a release folder as launchers do (sunrise-release-sign's `verify`), with only the runner's OpenSSL and
+    no code of the checkout: a key of `keys` (main's release-keys.txt by default) signed SHA256SUMS for `tag` (the
+    message `horizon release <tag>` and a newline, then SHA256SUMS), and each file of `only` (every file SHA256SUMS
+    lists when empty) is listed and matches. `publishing`: while no key is listed, an unsigned release goes out with
+    a warning, as before any key existed. Exits naming what failed."""
+    keys = release_keys() if keys is None else list(keys)
+    sums = (folder / "SHA256SUMS").read_bytes()
+    entries = {}
+    for line in sums.decode().splitlines():
+        digest, _, name = line.partition(" ")
+        entries[name.strip().lstrip("*")] = digest
+    if "/" in signature or not (folder / signature).is_file():
+        if publishing and not keys:
+            print(f"::warning::{tag}: published with SHA256SUMS but unsigned: release-keys.txt lists no key yet")
+        else:
+            raise SystemExit(f"::error::{tag} has no {signature}: launchers would refuse it")
+    elif not keys:
+        if not publishing:
+            raise SystemExit(f"::error::{tag}: no key to check the signature with")
+        print(f"::warning::{tag}: signed, but release-keys.txt lists no key yet, so launchers can't check it")
+    else:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            message = work / "message"
+            message.write_bytes(f"horizon release {tag}\n".encode() + sums)
+            signed = False
+            for line in (folder / signature).read_text().split():
+                try:
+                    (work / "signature").write_bytes(base64.b64decode(line, validate=True))
+                except ValueError:
+                    continue
+                for key in keys:
+                    (work / "key.der").write_bytes(ED25519_SPKI + base64.b64decode(key))
+                    checked = subprocess.run(
+                        ["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(work / "key.der"), "-keyform",
+                         "DER", "-rawin", "-in", str(message), "-sigfile", str(work / "signature")],
+                        cwd=work, env=isolated_env(), capture_output=True)
+                    signed = signed or checked.returncode == 0
+            if not signed:
+                raise SystemExit(f"::error::{tag}: SHA256SUMS isn't signed for `horizon release {tag}` by a release key")
+    for name in only:
+        if name not in entries:
+            raise SystemExit(f"::error::{name} is not in {tag}'s SHA256SUMS")
+    for name in only or entries:
+        if hashlib.sha256((folder / name).read_bytes()).hexdigest() != entries[name]:
+            raise SystemExit(f"::error::{tag}'s {name} does not match its SHA256SUMS")
+    print(f"{tag}: {len(only or entries)} files match SHA256SUMS")
 
 
 def release_assets(tag: str, *names: str) -> dict[str, bytes]:
@@ -338,16 +403,8 @@ def release_assets(tag: str, *names: str) -> dict[str, bytes]:
         folder = Path(directory)
         gh("release", "download", tag, "--repo", "sunrise-org/sunrise", "--dir", directory,
            *(argument for name in (*names, "SHA256SUMS", "SHA256SUMS.sig") for argument in ("--pattern", name)))
-        sums = (folder / "SHA256SUMS").read_text()
-        data = {name: (folder / name).read_bytes() for name in names}
-        for name, contents in data.items():
-            if not listed(name, contents, sums):
-                raise SystemExit(f"{tag}'s {name} does not match its SHA256SUMS")
-        checked = subprocess.run(signature_check("", folder, list(names), tag), cwd=REPOSITORY, env=isolated_env(),
-                                 capture_output=True, text=True)
-        if checked.returncode != 0:
-            raise SystemExit(f"{tag}'s signature does not check: {checked.stderr.strip()}")
-        return data
+        verify_sums(folder, tag, names)
+        return {name: (folder / name).read_bytes() for name in names}
 
 
 def released_assets(sha: str, *names: str) -> dict[str, bytes]:
@@ -524,12 +581,12 @@ def pick_stable() -> None:
     # real release here, before anything is built or signed.
     if dry_run:
         try:
-            parent = stable_parent(tag)
+            parent = stable_parent(tag, verify=True)
         except SystemExit as refused:
             print(f"::warning::a real release would stop here: {refused}")
             parent = None
     else:
-        parent = stable_parent(tag)
+        parent = stable_parent(tag, verify=True)
     if wrong := stable_step(tag, parent):
         if not dry_run:
             stop(repo, "", f"the release stopped: {wrong}.")
@@ -583,13 +640,13 @@ RELEASE_FILE = "sunrise-release.json"
 BREAK_GLASS_SECTION = "### Break-glass release"
 
 
-def stable_parent(tag: str = "", verify: bool = False) -> train.Release | None:
+def stable_parent(tag: str = "", verify: bool = True) -> train.Release | None:
     """The newest published (not draft, not pre-release) stable release on the target before `tag`, or the newest
     without one: the one parent every stable check compares with (stable-mod-api, the break-glass rules, the legs a
     break-glass daily runs). Refuses while a stable tag above it, other than `tag`, has no published release (a
     failed publish's reservation, or one pushed by hand): the next version would be judged against the wrong
-    release. Its commit is fetched, so a shallow checkout can diff against it. With `verify` (every check that decides
-    a release; it needs cargo), the commit its tag names must be the one its own signed sunrise-release.json names: a
+    release. Its commit is fetched, so a shallow checkout can diff against it. With `verify` (every caller but tests),
+    the commit its tag names must be the one its own signed sunrise-release.json names: a
     tag moved since the release was published refuses."""
     bound = train.stable_version(tag)[1] if tag else None
     published = {release["tag_name"]: release for release in published_releases() if not release["prerelease"]
@@ -622,6 +679,8 @@ def stable_step(tag: str, parent: train.Release | None) -> str:
     """Why `tag` can't follow `parent` (the newest published stable release before it), or "": the first release is
     0.1.0, a patch keeps the major and minor, a minor resets the patch, a major resets both."""
     version = train.stable_version(tag)[1]
+    if parent and version <= train.stable_version(parent.tag)[1]:
+        return f"{tag} is not newer than {parent.tag}"
     if not parent:
         return "" if version == train.FIRST_STABLE else (
             f"the first stable release on {train.TARGET} is {train.TARGET}-0.1.0, not {tag}")
@@ -636,7 +695,7 @@ def break_glass_legs(sha: str) -> None:
     """The legs a break-glass daily run of `sha` runs (daily.yml's resolve: `legs`, a JSON list), against the newest
     published stable release. Refuses a commit that is not a new
     descendant of it, or whose changes need the full daily."""
-    parent = stable_parent()
+    parent = stable_parent(verify=True)
     if not parent:
         raise SystemExit(f"::error::no published stable release on {train.TARGET}: run the full daily")
     if sha == parent.sha or not is_ancestor(parent.sha, sha):
@@ -766,8 +825,9 @@ def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> No
 def unpack(sha: str, into: Path) -> None:
     """The tree of `sha`, extracted into the new folder `into`: no checkout, worktree or repository of its own."""
     into.mkdir()
-    archive = subprocess.Popen(["git", "archive", sha], stdout=subprocess.PIPE)
+    archive = subprocess.Popen(["git", "archive", sha], cwd=REPOSITORY, stdout=subprocess.PIPE)
     subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
+    archive.stdout.close()
     if archive.wait():
         raise SystemExit(f"::error::git archive {sha} failed")
 
@@ -1120,6 +1180,13 @@ def main() -> None:
     previous = sub.add_parser("sdk-previous")
     previous.add_argument("sha")
     previous.add_argument("out", type=Path)
+    sums = sub.add_parser("verify-sums")
+    sums.add_argument("--tag", required=True)
+    sums.add_argument("--signature", default="SHA256SUMS.sig")
+    sums.add_argument("--only", action="append", default=[])
+    sums.add_argument("--key", action="append")
+    sums.add_argument("--publishing", action="store_true")
+    sums.add_argument("folder", type=Path)
     sub.add_parser("break-glass-legs").add_argument("sha")
     sub.add_parser("break-glass-notes").add_argument("notes", type=Path)
     stable_api = sub.add_parser("stable-mod-api")
@@ -1166,6 +1233,8 @@ def main() -> None:
         if build := previous_sdk(args.sha):
             args.out.write_bytes(released(build, SDK_SURFACE))
             print(build)
+    elif args.cmd == "verify-sums":
+        verify_sums(args.folder, args.tag, args.only, args.signature, args.key, args.publishing)
     elif args.cmd == "break-glass-legs":
         break_glass_legs(args.sha)
     elif args.cmd == "break-glass-notes":
