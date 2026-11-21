@@ -84,8 +84,11 @@ pub trait ModStateServerHost {
     /// cancel or shutdown) under that mod's identity. A panic rolls back its journaled writes,
     /// disables that mod's delayed callbacks for the session, and names the mod in the log and
     /// in a system toast offered to `toast_add` in the integrated server owner's window.
-    /// The tick and other mods' tasks carry on. A phase refusal rolls back the task and is
-    /// logged each time without disabling it.
+    /// The tick and other mods' tasks carry on. If a capture's destructor panics on cancellation
+    /// or world close, the same scheduling owner loses its delayed callbacks for the session and
+    /// is named in the log and in a system toast that bypasses `toast_add`. Cancellation and
+    /// world cleanup continue. A phase refusal rolls back the task and is logged each time
+    /// without disabling it.
     ///
     /// Tasks whose mod is disabled, or whose delayed callbacks have been disabled, are discarded
     /// when due. Reaching [`MAX_PENDING_TASKS`] logs a warning naming the mod and returns
@@ -99,7 +102,9 @@ pub trait ModStateServerHost {
     ) -> Result<TaskId, ScheduleError>;
     /// Side: server.
     /// Withdraws the waiting task identified by the opaque capability `id`: returns `true` if it
-    /// was still waiting.
+    /// was still waiting. A panic while dropping an attributed task's captures is reported against
+    /// the scheduling mod, disables that mod's delayed callbacks and does not unwind through the
+    /// caller.
     #[access(WorldOnly)]
     fn cancel_task(&mut self, id: TaskId) -> bool;
 }

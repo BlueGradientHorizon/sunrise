@@ -219,6 +219,12 @@ impl CallbackOwner {
         }
     }
 
+    fn scheduled(id: &str) -> Option<&'static Self> {
+        let installed = crate::runtime::installed()?;
+        let &index = installed.by_id.get(id)?;
+        Some(&installed.scheduled_tasks[index])
+    }
+
     /// Run a delayed task using its installed owner's shared state. A refusal is logged and
     /// aborts just the transaction; only a panic returns a diagnostic for the server to relay.
     pub fn call_scheduled_task<H: crate::ServerHost>(
@@ -226,14 +232,7 @@ impl CallbackOwner {
         host: &mut H,
         invoke: impl FnOnce(&mut H),
     ) -> Result<(), String> {
-        let state = crate::runtime::installed()
-            .and_then(|installed| {
-                installed
-                    .by_id
-                    .get(id)
-                    .map(|&i| &installed.scheduled_tasks[i])
-            })
-            .map(|owner| (owner.index, owner.poisoned.as_ref()));
+        let state = Self::scheduled(id).map(|owner| (owner.index, owner.poisoned.as_ref()));
         // A real panic unwinds the transaction before `run_scheduled` catches it. A refusal stays
         // inside the transaction as an Err, including one the callback caught internally.
         match run_scheduled(id, state, "schedule_task", || {
@@ -242,6 +241,24 @@ impl CallbackOwner {
             Err(ScheduledFailure::Panicked(diagnostic)) => Err(diagnostic),
             _ => Ok(()),
         }
+    }
+
+    /// Drop a withdrawn task, using the same session poison state as due tasks. An attributed
+    /// task without an installed owner still needs containment, but has no state to disable.
+    pub fn dispose_scheduled_task<T>(id: &'static str, task: T) {
+        let uninstalled = AtomicBool::new(false);
+        let (index, poisoned) = Self::scheduled(id).map_or((None, &uninstalled), |owner| {
+            (owner.index, owner.poisoned.as_ref())
+        });
+        let _ = call_opt(
+            id,
+            index,
+            poisoned,
+            "scheduled task",
+            "schedule_task_drop",
+            Invocation::Dispose,
+            || drop(task),
+        );
     }
 
     /// Bind a callback owner by mod id, resolving its installed slot when present.
