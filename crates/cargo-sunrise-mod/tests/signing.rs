@@ -258,7 +258,7 @@ fn the_registry_verifies_the_detached_signature_of_the_exact_file() {
     let output = tool(project)
         .args(["sign", "build.tar.xz", "--key-env"])
         .env(KEY_ENV, &secret)
-        .env_remove(PASSPHRASE_ENV)
+        .env(PASSPHRASE_ENV, "")
         .output()
         .unwrap();
     let secrets = secret.lines().nth(1).unwrap().as_bytes();

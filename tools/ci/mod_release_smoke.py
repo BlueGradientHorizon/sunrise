@@ -79,10 +79,12 @@ def exercise(work, project, commit):
     private = work / "author-key"
     key = release_api.tool("keygen", "--out", private, "--no-password", cwd=project, capture=True).strip()
     os.environ[release_api.KEY] = (private / "signing.key").read_text(encoding="utf-8")
+    os.environ[release_api.PASSPHRASE] = ""  # Actions supplies an empty value for an unset secret.
     try:
         release_api.sign(batch, project)
     finally:
         os.environ.pop(release_api.KEY)
+        os.environ.pop(release_api.PASSPHRASE)
         shutil.rmtree(private)
     os.environ.update(SUNRISE_MOD_PUBLIC_KEY=key, SUNRISE_MOD_REGISTRY_OWNER="example",
                       SUNRISE_MOD_SUMMARY="Native release smoke.", SUNRISE_MOD_CATEGORIES="library")
