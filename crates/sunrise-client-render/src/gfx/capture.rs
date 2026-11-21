@@ -264,7 +264,6 @@ pub struct FrameInputs {
     pub block_flicker: f32,
     pub boss_darken: f32,
     /// What each quad of `celestial.bin` is (`Frame::celestial_bodies`).
-    #[serde(default)]
     pub celestial_bodies: Vec<super::CelestialBody>,
 }
 
