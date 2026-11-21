@@ -1187,7 +1187,7 @@ pub(in crate::game) fn content_root(
             m.content
                 .blocks
                 .iter()
-                .map(|block| (block.id.as_str(), m.id.as_str()))
+                .map(move |block| (block.id.as_str(), m.id.as_str()))
         }),
         overlay.mods.iter().flat_map(|m| {
             m.content.items.iter().map(|item| item.id.as_str()).chain(
@@ -1202,7 +1202,7 @@ pub(in crate::game) fn content_root(
             m.content
                 .block_entity_types
                 .iter()
-                .map(|kind| (kind.id.as_str(), m.id.as_str()))
+                .map(move |kind| (kind.id.as_str(), m.id.as_str()))
         }),
         sunrise_client::containers::mod_menu_types()
             .iter()
