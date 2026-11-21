@@ -13,7 +13,7 @@ use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -120,6 +120,8 @@ pub(super) struct ModsState {
     /// Served content packages withheld at startup because their `served_by` host was disabled:
     /// `(content_id, host_id)`.
     pub(super) disabled_served: Arc<[(String, String)]>,
+    /// Native hosts with active or withheld served packages at startup.
+    pub(super) restart_bound_hosts: BTreeSet<String>,
     /// The entries of the mods' datapack registries this world session has published, at the
     /// generation of the load or reload that built them; `None` when no mod declared one.
     pub(super) datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
@@ -139,44 +141,23 @@ impl ModsState {
             .is_some_and(|switches| switches.disabled.contains(id))
     }
 
-    /// Native hosts bound to a restart for this session: any host serving an active content
-    /// package or whose served content was withheld because the host started disabled.
-    pub(super) fn restart_bound_hosts(&self) -> std::collections::BTreeSet<String> {
-        self.selected
-            .iter()
-            .filter_map(|p| p.package.manifest.served_by.clone())
-            .chain(self.disabled_served.iter().map(|(_, host)| host.clone()))
-            .collect()
-    }
-
-    pub(super) fn is_restart_bound_host(&self, id: &str) -> bool {
-        self.selected
-            .iter()
-            .any(|p| p.package.manifest.served_by.as_deref() == Some(id))
-            || self.disabled_served.iter().any(|(_, host)| host == id)
-    }
-
     /// Compute the effective disabled native set for the live session and any restart-bound
     /// serving hosts whose saved toggle differs from their applied startup state.
     pub(super) fn reconcile_code_switches(
         &self,
         wanted_disabled: &std::collections::BTreeSet<String>,
     ) -> (std::collections::BTreeSet<String>, Vec<String>) {
-        let restart_bound = self.restart_bound_hosts();
-        if restart_bound.is_empty() {
-            return (wanted_disabled.clone(), Vec::new());
-        }
         let mut effective = wanted_disabled.clone();
         let mut waiting = Vec::new();
-        for host in restart_bound {
-            let applied_off = self.startup_code_disabled(&host);
-            let wanted_off = wanted_disabled.contains(&host);
+        for host in &self.restart_bound_hosts {
+            let applied_off = self.startup_code_disabled(host);
+            let wanted_off = wanted_disabled.contains(host);
             if applied_off != wanted_off {
                 waiting.push(host.clone());
                 if applied_off {
-                    effective.insert(host);
+                    effective.insert(host.clone());
                 } else {
-                    effective.remove(&host);
+                    effective.remove(host);
                 }
             }
         }
@@ -190,7 +171,7 @@ impl ModsState {
         wanted_disabled: &std::collections::BTreeSet<String>,
         id: &str,
     ) -> bool {
-        if self.is_restart_bound_host(id) {
+        if self.restart_bound_hosts.contains(id) {
             self.startup_code_disabled(id)
         } else {
             wanted_disabled.contains(id)
@@ -278,6 +259,12 @@ impl ModsState {
                 })
                 .collect();
         self.disabled_served = disabled_served.into();
+        self.restart_bound_hosts = self
+            .selected
+            .iter()
+            .filter_map(|p| p.package.manifest.served_by.clone())
+            .chain(self.disabled_served.iter().map(|(_, host)| host.clone()))
+            .collect();
         self.refused = Default::default();
     }
 
@@ -1194,20 +1181,11 @@ pub(super) fn content_overlay(
                         .chain(batch.fluids.iter().map(|f| ("fluid", f.id.as_str())))
                 });
         let registrar_declarations = mod_api::__private::client_required_declarations(&m.id);
-        let component_declarations = m
-            .native
-            .is_some()
-            .then(sunrise_protocol::item::custom::entries)
-            .into_iter()
-            .flatten()
-            .map(|(_, name)| ("data component", name));
-        let all_declarations = batch_declarations
-            .chain(
-                registrar_declarations
-                    .iter()
-                    .map(|(kind, id)| (*kind, id.as_str())),
-            )
-            .chain(component_declarations);
+        let all_declarations = batch_declarations.chain(
+            registrar_declarations
+                .iter()
+                .map(|(kind, id)| (*kind, id.as_str())),
+        );
         if let Some(refusal) = m.server_only_declaration_for(&suppliers, all_declarations) {
             return Err(Box::new(refusal));
         }
@@ -3914,32 +3892,48 @@ mod tests {
             [("plain:glow", "plain"), ("runes:ward", "horizon_java")]
         );
 
-        // Serving host attaches a MobEffectPart to its served effect with no dependency on runes.
-        struct WardTick;
+        type Trace = Arc<Mutex<Vec<(&'static str, &'static str)>>>;
+        #[derive(Clone)]
+        struct WardTick<const PERIOD: i32> {
+            package: &'static str,
+            trace: Trace,
+        }
+        impl<const PERIOD: i32> WardTick<PERIOD> {
+            fn entry(package: &'static str, trace: &Trace) -> mod_api::ModEntry {
+                mod_api::ModEntry::new(
+                    package,
+                    Box::new(Self {
+                        package,
+                        trace: trace.clone(),
+                    }),
+                )
+            }
+        }
         #[mod_api::sunrise_part]
-        impl mod_api::MobEffectPart for WardTick {
+        impl<const PERIOD: i32> mod_api::MobEffectPart for WardTick<PERIOD> {
             fn should_apply_effect_tick_this_tick(
                 &self,
                 _: &dyn mod_api::Host,
                 event: &mut mod_api::ShouldApplyEffectTickThisTickEvent,
             ) {
-                event.apply = true;
+                self.trace.lock().unwrap().push((self.package, "cadence"));
+                event.apply = event.tick_count % PERIOD == 0;
+            }
+
+            fn apply_effect_tick(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut mod_api::ApplyEffectTickEvent<'_>,
+            ) {
+                self.trace.lock().unwrap().push((self.package, "action"));
+                event.heal(PERIOD as f32);
             }
         }
-        struct HostEffectMod;
         #[mod_api::__subscriptions]
-        impl mod_api::Hooks for HostEffectMod {
+        impl<const PERIOD: i32> mod_api::Hooks for WardTick<PERIOD> {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
                 let key = r.effect_key("runes:ward");
-                r.mob_effect_part(&key, WardTick).unwrap();
-            }
-        }
-        struct ForeignEffectMod;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for ForeignEffectMod {
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &RegistrationContext) {
-                let key = r.effect_key("runes:ward");
-                r.mob_effect_part(&key, WardTick).unwrap();
+                r.mob_effect_part(&key, self.clone()).unwrap();
             }
         }
         let owner_of = |id: &str| {
@@ -3947,26 +3941,110 @@ mod tests {
                 .iter()
                 .find_map(|(effect_id, owner)| (*effect_id == id).then_some(*owner))
         };
-        mod_platform::__private::part_tests::install_parts_fixture(&[mod_api::ModEntry::new(
-            "horizon_java",
-            Box::new(HostEffectMod),
-        )])
-        .unwrap();
-        mod_api::__private::validate_effect_part_owners(owner_of)
-            .expect("serving host owns its served package's mob effect without a dependency");
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        // Put the dependent first in normal dispatch order; the effect owner must run first.
+        let mods: mod_api::Mods = vec![
+            WardTick::<3>::entry("dependent", &trace),
+            WardTick::<2>::entry("horizon_java", &trace),
+        ]
+        .into();
+        let package = |id: &str, kind, dependencies| {
+            mod_api::PackageInfo::new(
+                id.into(),
+                "1.0.0".into(),
+                kind,
+                mod_api::Side::Both,
+                vec![id.into()],
+                dependencies,
+            )
+        };
+        mod_platform::__private::with_test_package_inventory(
+            vec![
+                package("horizon_java", mod_api::PackageKind::Code, vec![]),
+                package("runes", mod_api::PackageKind::Content, vec![])
+                    .with_served_by(Some("horizon_java".into())),
+                package(
+                    "dependent",
+                    mod_api::PackageKind::Code,
+                    vec![mod_api::PackageDependency::new(
+                        "horizon_java".into(),
+                        "*".into(),
+                        mod_api::DependencyKind::Required,
+                        mod_api::DependencyOrder::Before,
+                        mod_api::Side::Both,
+                        None,
+                        None,
+                    )],
+                ),
+            ],
+            || {
+                mod_platform::testing::with_mods(mods.clone(), || {
+                    mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+                    mod_api::__private::resolve_effects(["runes:ward"], |id| {
+                        (id == "runes:ward").then_some(0)
+                    })
+                    .unwrap();
+                    let effect = mod_api::__private::effect_key("runes:ward").unwrap();
+                    mod_api::__private::validate_effect_part_owners(owner_of).expect(
+                        "the serving host and its dependent may attach to the served effect",
+                    );
 
-        mod_platform::__private::part_tests::install_parts_fixture(&[mod_api::ModEntry::new(
-            "third",
-            Box::new(ForeignEffectMod),
-        )])
-        .unwrap();
-        let refused = mod_api::__private::validate_effect_part_owners(owner_of)
-            .expect_err("unrelated mod without dependency on serving host must be refused");
-        assert_eq!(refused.len(), 1, "{refused:?}");
-        assert!(
-            refused[0].contains("third") && refused[0].contains("horizon_java"),
-            "{refused:?}"
+                    let mut changes = Vec::new();
+                    let mut keep = true;
+                    let active_effects = [effect];
+                    mod_api::__private::dispatch_mob_effect_tick(
+                        &mod_platform::testing::FakeHost::new(),
+                        6,
+                        effect,
+                        0,
+                        |effect, amplifier| mod_api::__private::ApplyEffectTickCall {
+                            effect,
+                            dimension: "minecraft:overworld",
+                            entity: Some(7),
+                            amplifier,
+                            holder: mod_api::LivingRef::new(mod_api::EntityRef::new(
+                                mod_api::WorldEpoch::new(1),
+                                7,
+                            )),
+                            health: 10.0,
+                            max_health: 20.0,
+                            food: None,
+                            active_effects: &active_effects,
+                            changes: &mut changes,
+                            keep: &mut keep,
+                        },
+                    );
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        [
+                            ("horizon_java", "cadence"),
+                            ("horizon_java", "action"),
+                            ("dependent", "cadence"),
+                            ("dependent", "action"),
+                        ]
+                    );
+                    assert_eq!(
+                        changes,
+                        [
+                            mod_api::EffectTickChange::Heal(2.0),
+                            mod_api::EffectTickChange::Heal(3.0)
+                        ]
+                    );
+                });
+            },
         );
+
+        let unrelated: mod_api::Mods = vec![WardTick::<2>::entry("third", &trace)].into();
+        mod_platform::testing::with_mods(unrelated.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&unrelated).unwrap();
+            let refused = mod_api::__private::validate_effect_part_owners(owner_of)
+                .expect_err("unrelated mod without dependency on serving host must be refused");
+            assert_eq!(refused.len(), 1, "{refused:?}");
+            assert!(
+                refused[0].contains("third") && refused[0].contains("horizon_java"),
+                "{refused:?}"
+            );
+        });
     }
 
     #[test]
