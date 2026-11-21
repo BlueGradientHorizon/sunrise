@@ -124,23 +124,9 @@ pub trait HurtWorld {
     fn damage_post(
         &mut self,
         _s: &mut HurtState<Self::Source>,
-        _container: &DamageContainer,
+        _container: DamageContainer,
     ) -> Result<(), Self::Error> {
         Ok(())
-    }
-}
-/// What `LivingDamageEvent.Pre` changed, back in the cooldown: `lastHurt` takes the damage
-/// Pre left (vanilla's `lastHurt` plus what Pre added) and the cooldown takes what Pre set,
-/// which was `cooldown`. A hit Pre left alone writes nothing more, so a
-/// write `actuallyHurt` made itself stands as in vanilla.
-fn after_pre<S>(s: &mut HurtState<S>, container: &DamageContainer, cooldown: i32) {
-    let change = container.pre_change();
-    if change != 0.0 {
-        s.last_hurt += change;
-    }
-    let ticks = container.post_attack_invulnerability_ticks();
-    if ticks != cooldown {
-        s.cooldown = ticks;
     }
 }
 /// A hit stopped where `hurtServer` calls `hurtHelmet`: what its guards, the incoming damage
@@ -281,7 +267,7 @@ pub fn select_equipment_hurt<W: HurtWorld>(
         }
         let cooldown = s.cooldown;
         hit.container
-            .set_post_attack_invulnerability_ticks(cooldown);
+            .record_post_attack_invulnerability_ticks(cooldown);
         let dealt = hit.container.reduce(
             Reduction::Invulnerability,
             hit.damage,
@@ -320,7 +306,10 @@ pub fn finish_equipment_hurt<W: HurtWorld>(
     if !fresh {
         s.last_hurt = damage;
     }
-    after_pre(s, &container, cooldown);
+    let ticks = container.post_attack_invulnerability_ticks();
+    if ticks != cooldown {
+        s.cooldown = ticks;
+    }
     if fresh {
         s.hurt_duration = 10;
         s.hurt_time = s.hurt_duration;
@@ -368,6 +357,6 @@ pub fn finish_equipment_hurt<W: HurtWorld>(
         }
     }
     w.attacker_criterion(s, original, damage, blocked)?;
-    w.damage_post(s, &container)?;
+    w.damage_post(s, container)?;
     Ok(accepted)
 }

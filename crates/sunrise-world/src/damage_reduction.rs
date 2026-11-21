@@ -46,6 +46,9 @@ pub fn after_magic<W: DamageReductionWorld>(
     if world.bypasses(Bypass::Effects)? {
         return Ok(damage);
     }
+    // NeoForge patches setReduction, not the method's local vanilla damage. Protection
+    // still runs against that local; its reduction is measured against the live container.
+    let mut live = damage;
     if world.has_resistance()? && !world.bypasses(Bypass::Resistance)? {
         let reduction = world
             .resistance_amplifier()?
@@ -53,26 +56,29 @@ pub fn after_magic<W: DamageReductionWorld>(
             .wrapping_mul(5);
         let remainder = 25i32.wrapping_sub(reduction);
         let original = damage;
-        let after = java_max_f32((damage * remainder as f32) / 25.0, 0.0);
-        let resisted = original - after;
+        damage = java_max_f32((damage * remainder as f32) / 25.0, 0.0);
+        let resisted = original - damage;
         if resisted > 0.0 && resisted < STAT_LIMIT {
-            damage = container.reduce(Reduction::MobEffects, original, resisted, after);
+            live = container.reduce(Reduction::MobEffects, original, resisted, damage);
             if world.victim_is_server_player() {
                 world.award_resisted(stat_amount(resisted))?;
             } else if world.attacker_is_server_player()? {
                 world.award_dealt_resisted(stat_amount(resisted))?;
             }
         } else {
-            damage = after;
-            container.record_new_damage(damage);
+            live = damage;
+            container.record_new_damage(live);
         }
     }
     if damage <= 0.0 {
-        container.record_new_damage(0.0);
-        return Ok(0.0);
+        if live.to_bits() == damage.to_bits() {
+            live = 0.0;
+            container.record_new_damage(live);
+        }
+        return Ok(live);
     }
     if world.bypasses(Bypass::Enchantments)? {
-        return Ok(damage);
+        return Ok(live);
     }
     let protection = if let Some(level) = world.server_level()? {
         world.damage_protection(level)?
@@ -80,9 +86,14 @@ pub fn after_magic<W: DamageReductionWorld>(
         0.0
     };
     if protection > 0.0 {
-        let before = damage;
-        let after = combat_rules::after_magic(before, protection);
-        damage = container.reduce(Reduction::Enchantments, before, before - after, after);
+        let after = combat_rules::after_magic(damage, protection);
+        let nominal = live - after;
+        let unmodified = if live.to_bits() == damage.to_bits() {
+            after
+        } else {
+            java_max_f32(live - nominal, 0.0)
+        };
+        live = container.reduce(Reduction::Enchantments, live, nominal, unmodified);
     }
-    Ok(damage)
+    Ok(live)
 }

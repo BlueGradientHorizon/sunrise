@@ -7,11 +7,11 @@ pub trait Hooks {
     /// hearts are next: `container` is a live mutable borrow of the hit's damage container;
     /// it holds the damage it started with, what it is now (`new_damage`, which may be 0) and
     /// each reduction so far (armor, enchantments, mob effects). Change its
-    /// `new_damage` and the health takes that; set its post-attack invulnerability ticks and the
-    /// entity keeps them instead of vanilla's; or install a reduction modifier with
-    /// `add_reduction_modifier` for subsequent stages (such as `Reduction::Absorption`). A value
-    /// that is not a number is put back as it
-    /// was. It fires for players, mobs and the ender dragon; a wolf whose armor takes the hit and
+    /// `new_damage` to change what is inflicted before absorption, not what `lastHurt` remembers
+    /// for the cooldown. Set its post-attack invulnerability ticks to change the cooldown itself,
+    /// or use `add_reduction_modifier` for subsequent stages (such as `Reduction::Absorption`).
+    /// The setters refuse negative damage, NaN damage and negative ticks without changing the hit.
+    /// Pre fires for players, mobs and the ender dragon; a wolf whose armor takes the hit and
     /// armor stands do not fire it. The host is the hit's (`HitHost`): its blocks, random and own
     /// attachments, level sounds, and the own random of the entities the hit lends; the hurt entity
     /// is in the middle of its hit.

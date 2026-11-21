@@ -76,9 +76,12 @@ impl Game<'_> {
     /// the player's body, for entity event 35, which the caller broadcasts,
     /// with the protector copy the activation animation shows.
     pub(super) fn apply_totem(&mut self) -> Option<Body> {
-        if !self.player.as_ref()?.health.totem_used {
+        let p = self.player.as_mut()?;
+        if !p.health.totem_used {
             return None;
         }
+        let entity = p.entity_id;
+        let post = p.health.pending_damage_post.take();
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
             self.native_player_totem(uuid, &name);
@@ -121,6 +124,9 @@ impl Game<'_> {
         let user = self.consuming_player_entity();
         for effect in self.death_effects(&protector) {
             self.apply_consume_effect(&protector, &effect, None, user);
+        }
+        if let Some(post) = post {
+            self.finish_damage_post(entity, "minecraft:player", &post);
         }
         Some(Body {
             protector: Some(protector),

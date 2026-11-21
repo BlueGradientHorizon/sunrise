@@ -872,7 +872,7 @@ impl Dragon {
             if damage <= self.last_hurt {
                 return Hurt::Landed { full: false };
             }
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
+            container.record_post_attack_invulnerability_ticks(self.invulnerable);
             container.reduce(
                 Reduction::Invulnerability,
                 damage,
@@ -886,7 +886,7 @@ impl Dragon {
         // Armor still runs at its enclosing site with a 0.0 starting reduction before Pre.
         dealt = container.reduce(Reduction::Armor, dealt, dealt - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
-        container.enter_pre(dealt);
+        container.record_new_damage(dealt);
         level.damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
         // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
@@ -911,7 +911,7 @@ impl Dragon {
             self.health -= remaining;
             container.record_health_damage(remaining);
         }
-        self.last_hurt = damage + container.pre_change();
+        self.last_hurt = damage;
         self.invulnerable = container.post_attack_invulnerability_ticks();
         if !window {
             self.hurt_time = 10;
@@ -6054,8 +6054,7 @@ mod tests {
             .collect()
     }
     /// Sets the native damage hook of these tests: it records the dragon
-    /// hits of entities 9001 to 9005, cancels 9001's, doubles 9002's, makes
-    /// 9003's -5 and 9004's NaN. The other tests' dragons are entity 0.
+    /// hits of entities 9001 to 9005, cancels 9001's and doubles 9002's.
     fn hooks() -> sunrise_client::health::DamageHooks {
         use sunrise_client::health::{DamageContainer, DamageHooks, DamageLevel, Hurting, Victim};
         fn hook(
@@ -6070,11 +6069,8 @@ mod tests {
             let amount = container.new_damage();
             let hit = (s.damage_type.to_owned(), s.causing, s.direct, amount);
             SEEN.lock().unwrap().push((entity, hit));
-            match entity {
-                9002 => container.set_new_damage(amount * 2.0),
-                9003 => container.set_new_damage(-5.0),
-                9004 => container.set_new_damage(f32::NAN),
-                _ => {}
+            if entity == 9002 {
+                container.record_new_damage(amount * 2.0);
             }
             entity == 9001
         }
@@ -6256,21 +6252,6 @@ mod tests {
         );
         assert_eq!(d.hurt(level, 3, 0.001, HIT, false), Hurt::Refused);
         assert!(seen(9005).is_empty());
-        // LivingEntity.hurtServer: a negative amount hurts by 0, a NaN by
-        // Float.MAX_VALUE (the killing blow: the dying flight).
-        let mut d = dragon_as(9003);
-        assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
-            Hurt::Landed { full: true }
-        );
-        assert_eq!(d.health, MAX_HEALTH);
-        let mut d = dragon_as(9004);
-        assert_eq!(
-            d.hurt(level, 0, 9.0, HIT, false),
-            Hurt::Landed { full: true }
-        );
-        assert_eq!(d.health, 1.0);
-        assert!(matches!(d.phase, Phase::Dying { .. }));
     }
 
     #[test]

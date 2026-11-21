@@ -327,7 +327,7 @@ fn two_mods_reduction_order_live_views_pre_absorption_and_post() {
         let mut damage = container.new_damage() - 2.0;
         container.record_new_damage(damage);
         container.record_should_cause_side_effects(false);
-        container.set_post_attack_invulnerability_ticks(15);
+        container.record_post_attack_invulnerability_ticks(15);
         damage = container.reduce(EngineReduction::Invulnerability, damage, 2.0, damage - 2.0);
         assert_eq!(damage, 20.0);
 
@@ -523,53 +523,44 @@ fn callback_fault_drains_into_red_error_toast_naming_the_mod() {
         }
     }
 
-    let first_mods: Mods = vec![ModEntry::new("faulty_mod", Box::new(PanickingMod))].into();
-    mod_platform::testing::with_mods(first_mods, || {
+    let mods: Mods = vec![
+        ModEntry::new("faulty_mod", Box::new(PanickingMod)),
+        ModEntry::new("second_faulty_mod", Box::new(PanickingMod)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
         let _ = run_simple_hit(20.0, 0.0);
     });
 
-    let mut slot: Option<SystemToast> = None;
-    drain_mod_fault_toasts(&mut slot, Some);
-    let toast = slot.as_ref().expect("fault must create a SystemToast");
+    let mut slots: Vec<Option<SystemToast>> = Vec::new();
+    drain_mod_fault_toasts(&mut slots);
+    assert_eq!(slots.len(), 2);
+    for (slot, name) in slots.iter().zip(["faulty_mod", "second_faulty_mod"]) {
+        let toast = slot.as_ref().expect("each fault must create a SystemToast");
+        assert_eq!(
+            toast.title_color(),
+            sunrise_client::hud::rgba(255, 85, 85, 255)
+        );
+        assert_eq!(
+            toast.title.component(),
+            serde_json::json!({
+                "translate": "sunrise.mods.callback_panicked.title",
+                "with": [{"text": name}],
+            })
+        );
+        assert_eq!(
+            toast.message.as_ref().unwrap().component(),
+            serde_json::json!({
+                "translate": "sunrise.mods.callback_panicked.description",
+                "with": [{"text": "living_damage_reduction"}],
+            })
+        );
+    }
+    drain_mod_fault_toasts(&mut slots);
     assert_eq!(
-        toast.title_color(),
-        sunrise_client::hud::rgba(255, 85, 85, 255)
-    );
-    assert_eq!(
-        toast.title.component(),
-        serde_json::json!({
-            "translate": "sunrise.mods.callback_panicked.title",
-            "with": [{"text": "faulty_mod"}],
-        })
-    );
-    assert_eq!(
-        toast.message.as_ref().unwrap().component(),
-        serde_json::json!({
-            "translate": "sunrise.mods.callback_panicked.description",
-            "with": [{"text": "living_damage_reduction"}],
-        })
-    );
-    assert!(mod_api::__private::take_callback_faults().is_empty());
-
-    // A later fault resets the shown toast in place while preserving the red title color.
-    let second_mods: Mods = vec![ModEntry::new("second_faulty_mod", Box::new(PanickingMod))].into();
-    mod_platform::testing::with_mods(second_mods, || {
-        let _ = run_simple_hit(20.0, 0.0);
-    });
-    drain_mod_fault_toasts(&mut slot, |_| {
-        panic!("existing fault toast must be reset, not re-admitted")
-    });
-    let updated = slot.as_ref().unwrap();
-    assert_eq!(
-        updated.title_color(),
-        sunrise_client::hud::rgba(255, 85, 85, 255)
-    );
-    assert_eq!(
-        updated.title.component(),
-        serde_json::json!({
-            "translate": "sunrise.mods.callback_panicked.title",
-            "with": [{"text": "second_faulty_mod"}],
-        })
+        slots.len(),
+        2,
+        "the next frame neither discards nor duplicates a pending notice"
     );
 }
 
@@ -749,7 +740,40 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
                 }
             }
 
+            struct PanicOnDrop;
+            impl Drop for PanicOnDrop {
+                fn drop(&mut self) {
+                    panic!("reduction capture destructor");
+                }
+            }
+            struct ServerDropMod;
+            #[mod_api::__subscriptions]
+            impl Hooks for ServerDropMod {
+                fn living_incoming_damage(
+                    &self,
+                    _: &mut dyn HitHost,
+                    event: &mut LivingIncomingDamageEvent<'_>,
+                ) -> Flow {
+                    if event.entity == 4202 {
+                        let capture = PanicOnDrop;
+                        event
+                            .container
+                            .add_reduction_modifier(Reduction::Armor, move |_, _| {
+                                let _capture = &capture;
+                                panic!("a cancelled hit must not run armor modifiers");
+                            });
+                        Flow::Cancel
+                    } else {
+                        event
+                            .container
+                            .add_reduction_modifier(Reduction::Armor, |_, amount| amount + 8.0);
+                        Flow::Continue
+                    }
+                }
+            }
+
             let mods: Mods = vec![
+                ModEntry::new("server_drop_mod", Box::new(ServerDropMod)),
                 ModEntry::new(
                     "server_panic_mod",
                     Box::new(ServerPanicMod(panic_runs_thread)),
@@ -763,6 +787,27 @@ fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread()
             .into();
 
             mod_platform::testing::with_mods(mods, || {
+                let mut level = TestLevel::new(0);
+                let mut cancelled = DamageContainer::new(20.0);
+                assert!(incoming_damage(
+                    level.level(),
+                    Target::hurting(4202),
+                    victim(),
+                    &mut cancelled
+                ));
+                drop(cancelled);
+                let faults = mod_api::__private::take_callback_faults();
+                assert_eq!(faults.len(), 1);
+                assert_eq!(faults[0].mod_id, "server_drop_mod");
+                assert!(faults[0].message.contains("reduction capture destructor"));
+                assert!(
+                    faults[0]
+                        .message
+                        .contains("in native mod server_drop_mod, hook living_damage_reduction")
+                );
+                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!reports_dir.exists());
+
                 // Hit 1: panic and phase refusal are both contained without tripping
                 // `server_crashed()` or writing crash reports.
                 let first = run_simple_hit(20.0, 0.0);

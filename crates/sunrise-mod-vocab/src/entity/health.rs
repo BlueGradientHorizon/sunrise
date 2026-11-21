@@ -40,7 +40,7 @@ pub trait DamageContainerRead {
     /// Whether `hurtServer` decided this hit causes fresh-hit side effects
     /// (`shouldCauseSideEffects`).
     fn should_cause_side_effects(&self) -> bool;
-    /// The damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), absorption included.
+    /// The damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), before absorption.
     fn inflicted(&self) -> f32;
     /// The health the hit took (`getHealthDamage`).
     fn health_damage(&self) -> f32;
@@ -83,49 +83,81 @@ pub enum ContainedReduction {
 #[doc(hidden)]
 pub fn wrap_reduction_modifier(
     owner: Option<&'static str>,
-    mut modifier: Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>,
+    modifier: Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>,
     contain: for<'call> fn(&'call mut (dyn FnMut() -> f32 + 'call)) -> ContainedReduction,
 ) -> Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32> {
-    let owner_index = owner.and_then(crate::__private::mod_index);
-    let mut panicked = false;
-    Box::new(move |view: DamageContainerView<'_>, amount: f32| {
-        if panicked
-            || owner.is_some_and(|id| {
-                owner_index.is_some_and(|i| !crate::mod_index_on(i))
+    let mut callback = OwnedReduction {
+        owner,
+        owner_index: owner.and_then(crate::__private::mod_index),
+        modifier: Some(modifier),
+        contain,
+        panicked: false,
+    };
+    Box::new(move |view, amount| callback.run(view, amount))
+}
+
+const REDUCTION_CALLBACK: &str = "living_damage_reduction";
+
+struct OwnedReduction {
+    owner: Option<&'static str>,
+    owner_index: Option<usize>,
+    modifier: Option<Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>>,
+    contain: for<'call> fn(&'call mut (dyn FnMut() -> f32 + 'call)) -> ContainedReduction,
+    panicked: bool,
+}
+
+impl OwnedReduction {
+    fn run(&mut self, view: DamageContainerView<'_>, amount: f32) -> f32 {
+        if self.panicked
+            || self.owner.is_some_and(|id| {
+                self.owner_index.is_some_and(|i| !crate::mod_index_on(i))
                     || crate::runtime::reduction_poisoned(id)
             })
         {
             return amount;
         }
-        let _guard = owner.map(|id| crate::mark_mod(id, "living_damage_reduction"));
-        let mut call = || modifier(view, amount);
-        match contain(&mut call) {
+        let Some(modifier) = self.modifier.as_mut() else {
+            return amount;
+        };
+        let _guard = self.owner.map(|id| crate::mark_mod(id, REDUCTION_CALLBACK));
+        let outcome = (self.contain)(&mut || modifier(view, amount));
+        self.recover(outcome, amount)
+    }
+
+    fn recover(&mut self, outcome: ContainedReduction, amount: f32) -> f32 {
+        let name = self.owner.unwrap_or("unknown");
+        match outcome {
             ContainedReduction::Ok(next) => next,
             ContainedReduction::Refusal(refusal) => {
-                log::warn!(
-                    "native refusal: {} hook living_damage_reduction: {refusal}",
-                    owner.unwrap_or("unknown")
-                );
+                log::warn!("native refusal: {name} hook {REDUCTION_CALLBACK}: {refusal}");
                 amount
             }
             ContainedReduction::Panic(message) => {
-                if let Some(id) = owner {
+                if let Some(id) = self.owner {
                     crate::runtime::poison_reduction(id);
                 }
-                panicked = true;
+                self.panicked = true;
                 log::error!(
-                    "mod {}: living damage reduction callback panicked and is disabled for this session: {message}",
-                    owner.unwrap_or("unknown")
+                    "mod {name}: living damage reduction callback panicked and is disabled for this session: {message}"
                 );
-                crate::runtime::report_callback_fault(
-                    owner.unwrap_or("unknown"),
-                    "living_damage_reduction",
-                    message,
-                );
+                crate::runtime::report_callback_fault(name, REDUCTION_CALLBACK, message);
                 amount
             }
         }
-    })
+    }
+}
+
+impl Drop for OwnedReduction {
+    fn drop(&mut self) {
+        // Captures can run mod code when dropped, even if the hit was cancelled,
+        // the stage never ran, or the mod's callback is already disabled.
+        let _guard = self.owner.map(|id| crate::mark_mod(id, REDUCTION_CALLBACK));
+        let outcome = (self.contain)(&mut || {
+            drop(self.modifier.take());
+            0.0
+        });
+        self.recover(outcome, 0.0);
+    }
 }
 
 /// Read-only live view of one hit's damage sequence (NeoForge's `DamageContainer` as seen by
@@ -170,7 +202,7 @@ impl<'a> DamageContainerView<'a> {
     pub fn should_cause_side_effects(&self) -> bool {
         self.backend.should_cause_side_effects()
     }
-    /// Read the damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), absorption included.
+    /// Read the damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), before absorption.
     pub fn inflicted(&self) -> f32 {
         self.backend.inflicted()
     }
@@ -216,9 +248,30 @@ impl std::fmt::Debug for DamageContainerView<'_> {
     }
 }
 
+/// Why a live damage-container write was refused. A refused write leaves the value unchanged.
+// no wire: refusal from a live hit-scoped operation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DamageWriteRefusal {
+    /// The requested damage was negative or NaN.
+    InvalidDamage,
+    /// The requested cooldown was negative.
+    NegativeCooldown,
+}
+
+impl std::fmt::Display for DamageWriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::InvalidDamage => "damage must be nonnegative and not NaN",
+            Self::NegativeCooldown => "damage cooldown ticks must be nonnegative",
+        })
+    }
+}
+
+impl std::error::Error for DamageWriteRefusal {}
+
 /// Live mutable borrow of one hit's damage sequence (NeoForge's `DamageContainer` as seen by
-/// `LivingIncomingDamageEvent` and `LivingDamageEvent.Pre`). Sequencing and normalization remain
-/// owned by the engine.
+/// `LivingIncomingDamageEvent` and `LivingDamageEvent.Pre`). Sequencing remains owned by the engine.
 // exhaustive: only the engine constructs a live view.
 // no wire: live hit-scoped mutable borrow of engine damage state, not a serialized payload.
 pub struct DamageContainer<'a> {
@@ -265,7 +318,7 @@ impl<'a> DamageContainer<'a> {
     pub fn should_cause_side_effects(&self) -> bool {
         self.backend.should_cause_side_effects()
     }
-    /// Read the damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), absorption included.
+    /// Read the damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), before absorption.
     pub fn inflicted(&self) -> f32 {
         self.backend.inflicted()
     }
@@ -278,15 +331,36 @@ impl<'a> DamageContainer<'a> {
         self.backend.reduction(reduction)
     }
 
-    /// Change `new_damage` on the live container; the engine applies normalization at its original
-    /// application point.
-    pub fn set_new_damage(&mut self, value: f32) {
+    /// Change the live damage. A negative or NaN value returns
+    /// [`DamageWriteRefusal::InvalidDamage`] and leaves the previous value unchanged.
+    pub fn set_new_damage(&mut self, value: f32) -> Result<(), DamageWriteRefusal> {
+        if value.is_nan() || value < 0.0 {
+            let refusal = DamageWriteRefusal::InvalidDamage;
+            log::warn!(
+                "native refusal: {:?}: {refusal}",
+                crate::content::crash::current_native_call()
+            );
+            return Err(refusal);
+        }
         self.backend.set_new_damage(value);
+        Ok(())
     }
-    /// Change `post_attack_invulnerability_ticks` on the live container; the engine applies
-    /// normalization at its original application point.
-    pub fn set_post_attack_invulnerability_ticks(&mut self, value: i32) {
+    /// Change the live post-attack cooldown. Negative ticks return
+    /// [`DamageWriteRefusal::NegativeCooldown`] and leave the previous value unchanged.
+    pub fn set_post_attack_invulnerability_ticks(
+        &mut self,
+        value: i32,
+    ) -> Result<(), DamageWriteRefusal> {
+        if value < 0 {
+            let refusal = DamageWriteRefusal::NegativeCooldown;
+            log::warn!(
+                "native refusal: {:?}: {refusal}",
+                crate::content::crash::current_native_call()
+            );
+            return Err(refusal);
+        }
         self.backend.set_post_attack_invulnerability_ticks(value);
+        Ok(())
     }
 
     /// Append a per-hit reduction modifier callback, applied by the engine in registration order
@@ -555,8 +629,20 @@ mod tests {
             assert!(format!("{copied:?}").contains("DamageContainerView"));
             assert!(format!("{container:?}").contains("DamageContainer"));
 
-            container.set_new_damage(10.0);
-            container.set_post_attack_invulnerability_ticks(15);
+            assert_eq!(container.set_new_damage(10.0), Ok(()));
+            assert_eq!(container.set_post_attack_invulnerability_ticks(15), Ok(()));
+            for invalid in [-1.0, f32::NAN] {
+                assert_eq!(
+                    container.set_new_damage(invalid),
+                    Err(DamageWriteRefusal::InvalidDamage)
+                );
+                assert_eq!(container.new_damage(), 10.0);
+            }
+            assert_eq!(
+                container.set_post_attack_invulnerability_ticks(-1),
+                Err(DamageWriteRefusal::NegativeCooldown)
+            );
+            assert_eq!(container.post_attack_invulnerability_ticks(), 15);
             assert_eq!(container.new_damage(), 10.0);
             assert_eq!(container.as_view().new_damage(), 10.0);
             assert_eq!(container.post_attack_invulnerability_ticks(), 15);

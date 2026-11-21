@@ -144,7 +144,7 @@ fn living_incoming_damage(
 ) -> Flow {
     if event.kind == "minecraft:pig" {
         let halved = event.container.new_damage() * 0.5;
-        event.container.set_new_damage(halved);
+        let _ = event.container.set_new_damage(halved); // refused writes leave the hit unchanged
     }
     Flow::Continue
 }

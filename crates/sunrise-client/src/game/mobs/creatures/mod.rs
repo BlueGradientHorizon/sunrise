@@ -1726,6 +1726,13 @@ impl Game<'_> {
     }
     /// LivingEntity.die / dropAllDeathLoot.
     pub(super) fn mob_died(&mut self, m: &Mob) {
+        self.mob_die(m);
+        if let Some(post) = &m.pending_damage_post {
+            self.finish_damage_post(m.id as i32, &m.kind.id, post);
+        }
+    }
+
+    fn mob_die(&mut self, m: &Mob) {
         // The killing blow for the drop hooks, before the player's hit is forgotten.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self

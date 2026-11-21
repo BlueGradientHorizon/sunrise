@@ -35,6 +35,14 @@ pub type ReductionModifier = Box<dyn FnMut(&DamageContainer, f32) -> f32>;
 /// Numeric values are 0 until the step that sets them has run; side effects are false until
 /// `hurtServer` decides whether the hit is fresh.
 pub struct DamageContainer {
+    state: DamageState,
+    /// The modifiers registered for this hit, in the order they were added.
+    reduction_modifiers: Vec<(Reduction, ReductionModifier)>,
+}
+
+/// The live hit values, moved through death when the owning level cannot run Post yet.
+#[derive(Debug)]
+pub struct DamageState {
     original: f32,
     new_damage: f32,
     blocked: f32,
@@ -42,9 +50,6 @@ pub struct DamageContainer {
     post_attack_invulnerability_ticks: i32,
     should_cause_side_effects: bool,
     reductions: [f32; REDUCTIONS],
-    /// The modifiers registered for this hit, in the order they were added.
-    reduction_modifiers: Vec<(Reduction, ReductionModifier)>,
-    entered_pre: f32,
     inflicted: f32,
     health_damage: f32,
 }
@@ -52,20 +57,8 @@ pub struct DamageContainer {
 impl std::fmt::Debug for DamageContainer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DamageContainer")
-            .field("original", &self.original)
-            .field("new_damage", &self.new_damage)
-            .field("blocked", &self.blocked)
-            .field("shield_damage", &self.shield_damage)
-            .field(
-                "post_attack_invulnerability_ticks",
-                &self.post_attack_invulnerability_ticks,
-            )
-            .field("should_cause_side_effects", &self.should_cause_side_effects)
-            .field("reductions", &self.reductions)
+            .field("state", &self.state)
             .field("reduction_modifiers_len", &self.reduction_modifiers.len())
-            .field("entered_pre", &self.entered_pre)
-            .field("inflicted", &self.inflicted)
-            .field("health_damage", &self.health_damage)
             .finish()
     }
 }
@@ -75,90 +68,48 @@ impl DamageContainer {
     /// damage cooldown after it.
     pub fn new(original: f32) -> Self {
         Self {
-            original,
-            new_damage: original,
-            blocked: 0.0,
-            shield_damage: 0.0,
-            post_attack_invulnerability_ticks: 20,
-            should_cause_side_effects: false,
-            reductions: [0.0; REDUCTIONS],
+            state: DamageState {
+                original,
+                new_damage: original,
+                blocked: 0.0,
+                shield_damage: 0.0,
+                post_attack_invulnerability_ticks: 20,
+                should_cause_side_effects: false,
+                reductions: [0.0; REDUCTIONS],
+                inflicted: 0.0,
+                health_damage: 0.0,
+            },
             reduction_modifiers: Vec::new(),
-            entered_pre: 0.0,
-            inflicted: 0.0,
-            health_damage: 0.0,
         }
     }
-    /// The damage the hit came in with (`getOriginalDamage`), before anything changed it.
-    pub fn original(&self) -> f32 {
-        self.original
-    }
-    /// The damage the sequence goes on with (`getNewDamage`).
-    pub fn new_damage(&self) -> f32 {
-        self.new_damage
-    }
-    /// Change the damage the sequence goes on with (`setNewDamage`). Negative values are
-    /// clamped to `0.0` immediately; `NaN` is preserved so `hurtServer` maps it to
-    /// `f32::MAX` and `LivingDamageEvent.Pre` reverts it to the pre-event value.
-    pub fn set_new_damage(&mut self, damage: f32) {
-        self.new_damage = java_max_f32(damage, 0.0);
+    /// Move the live hit values into the death continuation, releasing all reduction callbacks.
+    pub fn into_state(self) -> DamageState {
+        self.state
     }
     /// The damage sequence: vanilla's intermediate damage update without clamping.
     #[doc(hidden)]
     pub fn record_new_damage(&mut self, damage: f32) {
-        self.new_damage = damage;
+        self.state.new_damage = damage;
     }
-    /// The damage a blocking item stopped (`getBlockedDamage`).
-    pub fn blocked(&self) -> f32 {
-        self.blocked
-    }
-    /// The durability the raised blocking item lost (`getShieldDamage`).
-    pub fn shield_damage(&self) -> f32 {
-        self.shield_damage
-    }
-    /// The damage cooldown the entity has once the hit is applied
-    /// (`getPostAttackInvulnerabilityTicks`): 20 for a fresh hit, what is left of it for a hit
-    /// within it.
-    pub fn post_attack_invulnerability_ticks(&self) -> i32 {
-        self.post_attack_invulnerability_ticks
-    }
-    /// Change the damage cooldown the entity has once the hit is applied
-    /// (`setPostAttackInvulnerabilityTicks`).
-    pub fn set_post_attack_invulnerability_ticks(&mut self, ticks: i32) {
-        self.post_attack_invulnerability_ticks = ticks;
-    }
-    /// Whether `hurtServer` decided this hit was fresh (`shouldCauseSideEffects`), so it
-    /// causes hurt sounds, knockback and other fresh-hit effects. False for a stronger hit
-    /// inside the damage cooldown unless its source bypasses the cooldown. This is recorded
-    /// before `actuallyHurt`, independently of the final damage or modded cooldown ticks.
-    pub fn should_cause_side_effects(&self) -> bool {
-        self.should_cause_side_effects
+    /// The damage sequence: record the selected cooldown or a checked listener write.
+    #[doc(hidden)]
+    pub fn record_post_attack_invulnerability_ticks(&mut self, ticks: i32) {
+        self.state.post_attack_invulnerability_ticks = ticks;
     }
     /// The damage sequence: `hurtServer`'s fresh-hit decision before the damage hooks run.
     #[doc(hidden)]
     pub fn record_should_cause_side_effects(&mut self, fresh: bool) {
-        self.should_cause_side_effects = fresh;
-    }
-    /// What `reduction` took off the hit (`getReduction`).
-    pub fn reduction(&self, reduction: Reduction) -> f32 {
-        self.reductions[reduction as usize]
-    }
-    /// The damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), absorption included.
-    pub fn inflicted(&self) -> f32 {
-        self.inflicted
-    }
-    /// The health the hit took (`getHealthDamage`).
-    pub fn health_damage(&self) -> f32 {
-        self.health_damage
+        self.state.should_cause_side_effects = fresh;
     }
     /// The damage sequence: what blocking stopped.
     #[doc(hidden)]
     pub fn record_block(&mut self, blocked: f32) {
-        self.blocked = blocked;
+        self.state.blocked = blocked;
     }
     /// The damage sequence: the durability the blocking item lost.
     #[doc(hidden)]
     pub fn record_shield_damage(&mut self, durability: f32) {
-        self.shield_damage = durability;
+        self.state.shield_damage = durability;
     }
     /// Change what `reduction` takes off this hit, as NeoForge's
     /// `DamageContainer.addModifier` does. Add it from `living_incoming_damage` (or
@@ -184,7 +135,7 @@ impl DamageContainer {
     /// The damage sequence: what `reduction` took.
     #[doc(hidden)]
     pub fn record_reduction(&mut self, reduction: Reduction, amount: f32) {
-        self.reductions[reduction as usize] = amount;
+        self.state.reductions[reduction as usize] = amount;
     }
     /// The registered modifiers applied in insertion order to `taken`; none when no
     /// modifier is registered for `reduction`.
@@ -221,59 +172,83 @@ impl DamageContainer {
     /// without modifiers the vanilla values stand as they came.
     #[doc(hidden)]
     pub fn reduce(&mut self, reduction: Reduction, before: f32, taken: f32, after: f32) -> f32 {
-        self.new_damage = before;
+        self.state.new_damage = before;
         if let Some(modified) = self.modified_reduction(reduction, taken) {
             self.record_reduction(reduction, modified);
             let next = java_max_f32(before - modified, 0.0);
-            self.new_damage = next;
+            self.state.new_damage = next;
             next
         } else {
             self.record_reduction(reduction, taken);
-            self.new_damage = after;
+            self.state.new_damage = after;
             after
         }
     }
-    /// The damage sequence, before `LivingDamageEvent.Pre`: the damage it is told.
-    #[doc(hidden)]
-    pub fn enter_pre(&mut self, damage: f32) {
-        self.entered_pre = damage;
-        self.new_damage = damage;
-    }
-    /// The damage sequence, after `LivingDamageEvent.Pre`: the damage it left, which the
-    /// sequence goes on with (`captureInflictedDamage`). An unchanged value preserves
-    /// vanilla's intermediate damage. A listener's edit below 0 is none; not a number is
-    /// what Pre was told.
+    /// The damage sequence: capture the damage Pre left, before absorption.
     #[doc(hidden)]
     pub fn capture_inflicted(&mut self) -> f32 {
-        // An untouched Pre must preserve vanilla's arithmetic, even for negative or
-        // non-finite intermediate damage. Only listener changes are normalized.
-        if self.new_damage.to_bits() != self.entered_pre.to_bits() {
-            if self.new_damage.is_nan() {
-                self.new_damage = self.entered_pre;
-            } else if self.new_damage < 0.0 {
-                self.new_damage = 0.0;
-            }
-        }
-        self.inflicted = self.new_damage;
-        self.inflicted
-    }
-    /// What `LivingDamageEvent.Pre` added to the damage (negative: took off). The damage
-    /// cooldown remembers the hit with it (`lastHurt`). An unchanged value adds nothing,
-    /// including when subtracting the intermediate value from itself would produce NaN.
-    #[doc(hidden)]
-    pub fn pre_change(&self) -> f32 {
-        if self.inflicted.to_bits() == self.entered_pre.to_bits() {
-            0.0
-        } else {
-            self.inflicted - self.entered_pre
-        }
+        self.state.inflicted = self.state.new_damage;
+        self.state.inflicted
     }
     /// The damage sequence: the health the hit took.
     #[doc(hidden)]
     pub fn record_health_damage(&mut self, damage: f32) {
-        self.health_damage = damage;
+        self.state.health_damage = damage;
     }
 }
+
+impl std::ops::Deref for DamageContainer {
+    type Target = DamageState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl DamageState {
+    /// The damage the hit came in with (`getOriginalDamage`), before anything changed it.
+    pub fn original(&self) -> f32 {
+        self.original
+    }
+    /// The damage the sequence goes on with (`getNewDamage`).
+    pub fn new_damage(&self) -> f32 {
+        self.new_damage
+    }
+    /// The damage a blocking item stopped (`getBlockedDamage`).
+    pub fn blocked(&self) -> f32 {
+        self.blocked
+    }
+    /// The durability the raised blocking item lost (`getShieldDamage`).
+    pub fn shield_damage(&self) -> f32 {
+        self.shield_damage
+    }
+    /// The damage cooldown the entity has once the hit is applied
+    /// (`getPostAttackInvulnerabilityTicks`): 20 for a fresh hit, what is left of it for a hit
+    /// within it.
+    pub fn post_attack_invulnerability_ticks(&self) -> i32 {
+        self.post_attack_invulnerability_ticks
+    }
+    /// Whether `hurtServer` decided this hit was fresh (`shouldCauseSideEffects`), so it
+    /// causes hurt sounds, knockback and other fresh-hit effects. False for a stronger hit
+    /// inside the damage cooldown unless its source bypasses the cooldown. This is recorded
+    /// before `actuallyHurt`, independently of the final damage or modded cooldown ticks.
+    pub fn should_cause_side_effects(&self) -> bool {
+        self.should_cause_side_effects
+    }
+    /// What `reduction` took off the hit (`getReduction`).
+    pub fn reduction(&self, reduction: Reduction) -> f32 {
+        self.reductions[reduction as usize]
+    }
+    /// The damage `LivingDamageEvent.Pre` left (`getInflictedDamage`), before absorption.
+    pub fn inflicted(&self) -> f32 {
+        self.inflicted
+    }
+    /// The health the hit took (`getHealthDamage`).
+    pub fn health_damage(&self) -> f32 {
+        self.health_damage
+    }
+}
+
 pub trait DamageWorld {
     type Error;
     type Attacker: Copy;
@@ -384,7 +359,7 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
     player: bool,
 ) -> Result<(), W::Error> {
     let magic_damage = world.after_magic(container, after_armor)?;
-    container.enter_pre(magic_damage);
+    container.record_new_damage(magic_damage);
     world.damage_pre(container)?;
     let damage = container.capture_inflicted();
     let has_absorption_modifier = container.has_reduction_modifier(Reduction::Absorption);
@@ -870,7 +845,7 @@ mod tests {
             }
         }
 
-        let run_case = |mut world: MagicWorld, damage: f32, force_zero: bool| {
+        let run_case = |mut world: MagicWorld, damage: f32, override_reduction: Option<f32>| {
             let called = Rc::new(RefCell::new(Vec::<(Reduction, f32)>::new()));
             let mut c = DamageContainer::new(damage);
             for stage in [Reduction::MobEffects, Reduction::Enchantments] {
@@ -879,7 +854,7 @@ mod tests {
                     stage,
                     Box::new(move |_: &DamageContainer, taken: f32| {
                         log.borrow_mut().push((stage, taken));
-                        if force_zero { 0.0 } else { taken + 1.0 }
+                        override_reduction.unwrap_or(taken + 1.0)
                     }),
                 );
             }
@@ -897,7 +872,7 @@ mod tests {
                 protection: 8.0,
             },
             10.0,
-            false,
+            None,
         );
         assert_eq!(out, 10.0);
         assert!(called.is_empty());
@@ -912,7 +887,7 @@ mod tests {
                 protection: 0.0,
             },
             10.0,
-            false,
+            None,
         );
         assert!(called.is_empty());
 
@@ -928,7 +903,7 @@ mod tests {
                     protection: 0.0,
                 },
                 dmg,
-                false,
+                None,
             );
             assert!(called.is_empty(), "amp={amp} dmg={dmg}");
         }
@@ -943,15 +918,53 @@ mod tests {
                 protection: 12.5,
             },
             10.0,
-            true,
+            Some(0.0),
         );
         assert_eq!(out, 10.0);
         assert_eq!(
             called,
-            vec![(Reduction::MobEffects, 2.0), (Reduction::Enchantments, 5.0)]
+            vec![(Reduction::MobEffects, 2.0), (Reduction::Enchantments, 6.0)]
         );
         assert_eq!(c.reduction(Reduction::MobEffects), 0.0);
         assert_eq!(c.reduction(Reduction::Enchantments), 0.0);
+
+        // Resistance V's vanilla remainder is zero, even when the modifier restores
+        // all 10 damage. The guarded protection site must not run.
+        let (out, called, _) = run_case(
+            MagicWorld {
+                bypass_effects: false,
+                bypass_resistance: false,
+                bypass_enchantments: false,
+                resistance_amp: Some(4),
+                protection: 12.5,
+            },
+            10.0,
+            Some(0.0),
+        );
+        assert_eq!(out, 10.0);
+        assert_eq!(called, [(Reduction::MobEffects, 10.0)]);
+
+        // Resistance I leaves 8 locally, and protection halves that to 4. If the
+        // modifier drains the live value to zero, the enchantment reduction starts at -4.
+        let (out, called, _) = run_case(
+            MagicWorld {
+                bypass_effects: false,
+                bypass_resistance: false,
+                bypass_enchantments: false,
+                resistance_amp: Some(0),
+                protection: 12.5,
+            },
+            10.0,
+            Some(10.0),
+        );
+        assert_eq!(out, 0.0);
+        assert_eq!(
+            called,
+            [
+                (Reduction::MobEffects, 2.0),
+                (Reduction::Enchantments, -4.0)
+            ]
+        );
     }
     #[test]
     fn non_player_absorption_modifier_does_not_double_debit_absorption() {
@@ -994,20 +1007,7 @@ mod tests {
             f32::MAX,
         ] {
             let mut container = DamageContainer::new(damage);
-            container.enter_pre(damage);
             assert_eq!(container.capture_inflicted().to_bits(), damage.to_bits());
-            assert_eq!(container.pre_change(), 0.0);
         }
-        // Listener edits still obey the Pre contract.
-        let mut container = DamageContainer::new(5.0);
-        container.enter_pre(5.0);
-        container.set_new_damage(-1.0);
-        assert_eq!(container.new_damage(), 0.0);
-        assert_eq!(container.capture_inflicted(), 0.0);
-        assert_eq!(container.pre_change(), -5.0);
-        container.set_new_damage(f32::NAN);
-        assert!(container.new_damage().is_nan());
-        assert_eq!(container.capture_inflicted(), 5.0);
-        assert_eq!(container.pre_change(), 0.0);
     }
 }

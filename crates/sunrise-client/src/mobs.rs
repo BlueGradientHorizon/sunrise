@@ -1687,6 +1687,8 @@ pub struct Mob {
     pub dealt_absorbed: i32,
     pub last_damage: Option<(Damage, i64)>,
     pub accepted_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
+    /// The killing hit's Post, pending the owning game's death continuation.
+    pub pending_damage_post: Option<std::sync::Arc<crate::health::PendingDamagePost>>,
     pub death_canceled: bool,
     /// `DamageSource.getDirectEntity` of `last_damage` when [`Damage`] cannot name it (a
     /// thrown potion, an area effect cloud): its entity type.
@@ -3731,6 +3733,7 @@ impl Mob {
             dealt_absorbed: 0,
             last_damage: None,
             accepted_hit: None,
+            pending_damage_post: None,
             death_canceled: false,
             last_direct: None,
             combat: combat::Tracker::default(),
@@ -4104,7 +4107,7 @@ impl Mob {
             if incoming <= self.last_hurt {
                 return false;
             }
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
+            container.record_post_attack_invulnerability_ticks(self.invulnerable);
             amount = container.reduce(
                 Reduction::Invulnerability,
                 incoming,
@@ -4153,6 +4156,8 @@ impl Mob {
             // LivingEntity.getDamageAfterMagicAbsorb: `#bypasses_effects` returns before both
             // Resistance and protection enchantments.
             if !source.kind.bypasses_effects() {
+                // NeoForge's guarded protection site still reads the local vanilla damage.
+                let mut vanilla = amount;
                 if !source.kind.bypasses_resistance()
                     && let Some(&StoredEffect { amplifier: amp, .. }) = self
                         .extra
@@ -4161,34 +4166,34 @@ impl Mob {
                         .find(|e| e.id == "minecraft:resistance")
                 {
                     let remainder = 25i32.wrapping_sub(amp.wrapping_add(1).wrapping_mul(5));
-                    let original = amount;
-                    let after = sunrise_world::living_damage::java_max_f32(
+                    vanilla = sunrise_world::living_damage::java_max_f32(
                         (amount * remainder as f32) / 25.0,
                         0.0,
                     );
-                    let resisted = original - after;
+                    let resisted = amount - vanilla;
                     if resisted > 0.0 && resisted < sunrise_world::living_damage::STAT_LIMIT {
-                        amount = container.reduce(Reduction::MobEffects, original, resisted, after);
+                        amount = container.reduce(Reduction::MobEffects, amount, resisted, vanilla);
                     } else {
-                        amount = after;
+                        amount = vanilla;
                         container.record_new_damage(amount);
                     }
-                    // actuallyHurt is void: zero health damage still lets hurtServer set hurt state.
                 }
-                if amount <= 0.0 {
-                    amount = 0.0;
-                    container.record_new_damage(0.0);
+                if vanilla <= 0.0 {
+                    if amount.to_bits() == vanilla.to_bits() {
+                        amount = 0.0;
+                    }
                 } else if !source.kind.bypasses_enchantments() {
                     let epf = gear::protection(self, source.kind);
                     if epf > 0.0 {
-                        let before = amount;
-                        let after = before * (1.0 - epf / 25.0);
-                        amount = container.reduce(
-                            Reduction::Enchantments,
-                            before,
-                            before - after,
-                            after,
-                        );
+                        let after = vanilla * (1.0 - epf / 25.0);
+                        let nominal = amount - after;
+                        let unmodified = if amount.to_bits() == vanilla.to_bits() {
+                            after
+                        } else {
+                            sunrise_world::living_damage::java_max_f32(amount - nominal, 0.0)
+                        };
+                        amount =
+                            container.reduce(Reduction::Enchantments, amount, nominal, unmodified);
                     }
                 }
             }
@@ -4207,7 +4212,7 @@ impl Mob {
                 }
             }
             dealt = amount;
-            container.enter_pre(dealt);
+            container.record_new_damage(dealt);
             level.damage_pre(crate::health::Hurting::Mob(self, &source), &mut container);
             dealt = container.capture_inflicted();
             through = self.soak_hit(dealt, &source, &mut container);
@@ -4215,9 +4220,8 @@ impl Mob {
         }
         let mut knock = true;
         let window = cooldown;
-        // `lastHurt` takes what Pre left: vanilla's value plus what Pre
-        // added, so a hit no listener changes keeps vanilla's.
-        self.last_hurt = incoming + container.pre_change();
+        // The outer damage, not what `actuallyHurt` left, sets `lastHurt`.
+        self.last_hurt = incoming;
         self.invulnerable = container.post_attack_invulnerability_ticks();
         if window {
             knock = false;
@@ -4253,7 +4257,7 @@ impl Mob {
         }
         // A hit blocked whole is not a success: vanilla records the source and runs the
         // effects' `onMobHurt` only for a success.
-        let success = blocked <= 0.0 || amount > 0.0;
+        let success = blocked <= 0.0 || incoming > 0.0;
         if success {
             self.last_damage = Some((source, i64::from(self.age)));
         }
@@ -4263,7 +4267,7 @@ impl Mob {
         // dealDefaultKnockback, unless the damage type is tagged no_knockback or
         // the hit was blocked whole; a source without a position knocks in a
         // random direction.
-        if knock && !source.no_knockback() && !(blocked > 0.0 && amount <= 0.0) {
+        if knock && !source.no_knockback() && !(blocked > 0.0 && incoming <= 0.0) {
             // dealDefaultKnockback: a projectile knocks the way it travelled
             // (`calculateHorizontalHurtKnockbackDirection`), else from the source's position.
             let (dx, dz) = match self.projectile_motion {
@@ -4272,7 +4276,7 @@ impl Mob {
                     (f[0] - self.position.x, f[2] - self.position.z)
                 }),
             };
-            self.knockback(level, f64::from(0.4f32), dx, dz, &source, amount);
+            self.knockback(level, f64::from(0.4f32), dx, dz, &source, incoming);
         }
         ai::after_hurt(self, &source);
         if self.health <= 0.0 {
@@ -4336,8 +4340,13 @@ impl Mob {
                 self.outbox.push(MobEvent::Infested { at, velocities });
             }
         }
-        // The last of `LivingEntity.hurtServer`: `LivingDamageEvent.Post`, health taken or not.
-        level.damage_post(crate::health::Hurting::Mob(self, &source), &container);
+        // The last of `LivingEntity.hurtServer`: Post also runs for a hit taking no health.
+        // A killing hit's owner runs it after die, including when death is vetoed.
+        self.pending_damage_post = level.finish_damage(
+            crate::health::Hurting::Mob(self, &source),
+            container,
+            self.health <= 0.0,
+        );
         // Shulker.hurtServer: the low-health teleport roll after `super.hurtServer`.
         if success && self.species() == Species::Shulker {
             shulker::after_hurt(self);
@@ -7665,7 +7674,7 @@ mod live_damage_reduction_tests {
         ) -> bool {
             for (stage, prev, delta) in [
                 (Reduction::Invulnerability, Reduction::Invulnerability, 5.0),
-                (Reduction::Armor, Reduction::Invulnerability, -6.0),
+                (Reduction::Armor, Reduction::Invulnerability, -1.0),
                 (Reduction::MobEffects, Reduction::Armor, -1.0),
                 (Reduction::Enchantments, Reduction::MobEffects, -3.0),
                 (Reduction::InnateResistance, Reduction::Enchantments, -5.0),
@@ -7719,6 +7728,7 @@ mod live_damage_reduction_tests {
         mob.add_effect("resistance", 600, 0);
         gear::upgrade(&mut mob, gear::HEAD, "minecraft:protection", 4);
         gear::upgrade(&mut mob, gear::CHEST, "minecraft:protection", 4);
+        gear::upgrade(&mut mob, gear::FEET, "minecraft:protection", 2);
         // Cooldown hit with a non-default remaining timer: Invulnerability must observe 15 ticks,
         // `should_cause_side_effects() == false`, and `new_damage() == incoming`.
         mob.invulnerable = 15;
@@ -7762,37 +7772,37 @@ mod live_damage_reduction_tests {
                 StageSample {
                     stage: Reduction::MobEffects,
                     original: 49.0,
-                    new_damage: 30.0,
+                    new_damage: 25.0,
                     post_ticks: 15,
                     side_effects: false,
-                    prev_reduction: 10.0,
-                    taken: 6.0,
+                    prev_reduction: 15.0,
+                    taken: 5.0,
                 },
                 StageSample {
                     stage: Reduction::Enchantments,
                     original: 49.0,
-                    new_damage: 25.0,
+                    new_damage: 21.0,
                     post_ticks: 15,
                     side_effects: false,
-                    prev_reduction: 5.0,
-                    taken: 8.0,
+                    prev_reduction: 4.0,
+                    taken: 9.0,
                 },
                 StageSample {
                     stage: Reduction::InnateResistance,
                     original: 49.0,
-                    new_damage: 20.0,
+                    new_damage: 15.0,
                     post_ticks: 15,
                     side_effects: false,
-                    prev_reduction: 5.0,
-                    taken: 17.0,
+                    prev_reduction: 6.0,
+                    taken: 12.75,
                 },
                 StageSample {
                     stage: Reduction::Absorption,
                     original: 49.0,
-                    new_damage: 8.0,
+                    new_damage: 7.25,
                     post_ticks: 15,
                     side_effects: false,
-                    prev_reduction: 12.0,
+                    prev_reduction: 7.75,
                     taken: 4.0,
                 },
             ]
@@ -7800,14 +7810,14 @@ mod live_damage_reduction_tests {
         assert_eq!(
             POST.with_borrow(Clone::clone),
             Some(PostSample {
-                inflicted: 8.0,
-                health_damage: 5.5,
+                inflicted: 7.25,
+                health_damage: 4.75,
                 absorption: 2.5,
                 side_effects: false,
                 post_ticks: 15,
             })
         );
-        assert_eq!(mob.health, 94.5);
+        assert_eq!(mob.health, 95.25);
         assert_eq!(mob.absorption, 1.5);
         assert_eq!(mob.invulnerable, 15);
         assert_eq!(mob.last_hurt, 49.0);
@@ -7972,6 +7982,50 @@ mod live_damage_reduction_tests {
     }
 
     #[test]
+    fn a_partial_block_is_an_accepted_hit_even_if_armor_takes_the_rest() {
+        fn shield(
+            _: DamageLevel<'_>,
+            _: Hurting<'_>,
+            _: f32,
+            _: bool,
+            block: &mut crate::health::ShieldBlock,
+        ) {
+            block.blocked = true;
+            block.blocked_damage = 2.0;
+        }
+        fn incoming(
+            _: DamageLevel<'_>,
+            _: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            container.add_reduction_modifier(Reduction::Armor, Box::new(|_, _| 4.0));
+            false
+        }
+        let mut level = TestLevel::with_hooks(
+            0,
+            DamageHooks {
+                shield: Some(shield),
+                incoming: Some(incoming),
+                ..DamageHooks::NONE
+            },
+        );
+        let mut mob = Mob::new(4109, sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
+        let health = mob.health;
+        let source = Damage::player([3.0, 0.0, 0.0]);
+        assert!(mob.damage(&mut level.level(), 6.0, source));
+        assert_eq!(mob.health, health);
+        assert_eq!(
+            mob.last_damage.map(|(source, _)| source.kind),
+            Some(DamageKind::PlayerAttack)
+        );
+        assert!(
+            mob.velocity.x < 0.0,
+            "the partially blocked hit still knocks back"
+        );
+    }
+
+    #[test]
     fn wolf_armor_intercepts_before_ordinary_reductions_and_pre() {
         thread_local! {
             static CALLED: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
@@ -8038,7 +8092,7 @@ mod live_damage_reduction_tests {
         assert!(wolf.damage(
             &mut test_level.level(),
             6.0,
-            Damage::of(DamageKind::Generic)
+            Damage::player([3.0, 0.0, 0.0])
         ));
         assert_eq!(CALLED.with_borrow(Clone::clone), vec!["post"]);
         assert_eq!(wolf.extra.body_damage(), 6);

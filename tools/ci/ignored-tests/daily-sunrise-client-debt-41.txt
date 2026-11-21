@@ -1,0 +1,1 @@
+sunrise-client game::native_damage_tests::guest_damage_post_waits_for_the_authoritative_death lib daily resources

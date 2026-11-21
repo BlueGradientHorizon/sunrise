@@ -315,6 +315,24 @@ impl Game<'_> {
     /// `ServerPlayer.die` for a guest whose health has run out: the death
     /// message, the loot and experience, the death screen.
     pub(in crate::game) fn guest_die(&mut self, gi: usize, conn: u32) {
+        let pending = self.lan.as_mut().and_then(|host| {
+            let guest = &host.hub.guests[gi];
+            let entity = guest.entity_id;
+            guest.motion.as_ref()?.health.pending_damage_post.as_ref()?;
+            host.hub.guests.update(gi, |guest| {
+                Some((
+                    entity,
+                    guest.motion.as_mut()?.health.pending_damage_post.take()?,
+                ))
+            })
+        });
+        self.guest_die_body(gi, conn);
+        if let Some((entity, post)) = pending {
+            self.finish_damage_post(entity, "minecraft:player", &post);
+        }
+    }
+
+    fn guest_die_body(&mut self, gi: usize, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };

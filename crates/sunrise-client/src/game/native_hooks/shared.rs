@@ -1691,7 +1691,7 @@ fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_dama
     }
 }
 
-struct LiveDamageRead<'a>(&'a DamageContainer);
+struct LiveDamageRead<'a>(&'a sunrise_world::living_damage::DamageState);
 
 impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
     fn original(&self) -> f32 {
@@ -1757,10 +1757,10 @@ impl mod_api::__private::DamageContainerRead for LiveDamageContainer<'_> {
 
 impl mod_api::__private::DamageContainerBackend for LiveDamageContainer<'_> {
     fn set_new_damage(&mut self, value: f32) {
-        self.0.set_new_damage(value);
+        self.0.record_new_damage(value);
     }
     fn set_post_attack_invulnerability_ticks(&mut self, value: i32) {
-        self.0.set_post_attack_invulnerability_ticks(value);
+        self.0.record_post_attack_invulnerability_ticks(value);
     }
     fn add_reduction_modifier(
         &mut self,
@@ -1893,6 +1893,36 @@ pub(super) fn shield_block(
 }
 
 impl Game<'_> {
+    /// Finish a lethal or totem-protected hit only once the owning level has settled it.
+    pub(in crate::game) fn finish_damage_post(
+        &mut self,
+        entity: i32,
+        kind: &str,
+        post: &sunrise_client::health::PendingDamagePost,
+    ) {
+        let Some((source, state, original_lend)) = post.take() else {
+            return;
+        };
+        let (player, mobs) = (&mut self.player, &mut self.mobs);
+        let lend = original_lend.and_then(|id| {
+            sunrise_client::health::HitLend::attacking_player(player.as_mut(), id)
+                .or_else(|| sunrise_client::health::HitLend::attacking_mob(mobs.iter_mut(), id))
+        });
+        let level = crate::game::entity::damage_level_of!(
+            self,
+            &sunrise_client::health::NO_ATTACK,
+            no_push,
+            lend
+        );
+        let live = LiveDamageRead(&state);
+        HitLevel(level.reborrow()).native_living_damage_post(
+            entity,
+            kind,
+            &source,
+            mod_api::DamageContainerView::new(&live),
+        );
+    }
+
     /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in
     /// ([`DamageLevel::attacked_by`]). While a native mod listens it also records what the
     /// attacker holds (the player's selected and off-hand stacks, a mob's main hand) for
@@ -2011,6 +2041,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     incoming: Some(incoming_damage),
     pre: Some(damage_pre),
     post: Some(damage_post),
+    defer_post: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
     shield: Some(shield_block),

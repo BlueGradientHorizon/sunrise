@@ -74,7 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
-            .chain(self.mod_fault.as_ref())
+            .chain(self.mod_faults.iter().flatten())
             .filter_map(|t| t.slot)
     }
 }
@@ -99,8 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
-    /// Red error toast shown when a mod callback panics and is disabled for the session.
-    pub(super) mod_fault: Option<SystemToast>,
+    /// Named error toasts, including those waiting for a ToastManager slot.
+    mod_faults: Vec<Option<SystemToast>>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -208,27 +208,24 @@ pub(super) fn saves() -> PathBuf {
 /// `WorldOpenFlows.WORLD_PACK_ID`: the id of a world's own resource pack.
 const WORLD_PACK_ID: u128 = 0x640a6a92_b6cb_48a0_b391_831586500359;
 
-/// Drains panicked mod callbacks reported since the last frame into a red error toast,
-/// resetting any shown fault toast like `add_chunk_io_toasts`.
-pub(in crate::game) fn drain_mod_fault_toasts(
-    slot: &mut Option<SystemToast>,
-    mut admit: impl FnMut(SystemToast) -> Option<SystemToast>,
-) {
-    for fault in mod_api::__private::take_callback_faults() {
-        let new = SystemToast::new(
-            Text::tr("sunrise.mods.callback_panicked.title", &[&fault.mod_id]),
-            Some(Text::tr(
-                "sunrise.mods.callback_panicked.description",
-                &[&fault.callback],
-            )),
-        )
-        .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-        if let Some(shown) = slot {
-            shown.reset_from(new);
-        } else {
-            *slot = admit(new);
-        }
-    }
+/// Native callback faults each get their own red toast. Pending toasts wait for a free slot.
+pub(in crate::game) fn drain_mod_fault_toasts(slots: &mut Vec<Option<SystemToast>>) {
+    slots.extend(
+        mod_api::__private::take_callback_faults()
+            .into_iter()
+            .map(|fault| {
+                Some(
+                    SystemToast::new(
+                        Text::tr("sunrise.mods.callback_panicked.title", &[&fault.mod_id]),
+                        Some(Text::tr(
+                            "sunrise.mods.callback_panicked.description",
+                            &[&fault.callback],
+                        )),
+                    )
+                    .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255)),
+                )
+            }),
+    );
 }
 
 impl Game<'_> {
@@ -553,20 +550,12 @@ impl Game<'_> {
         }
     }
 
-    /// Drains panicked mod callbacks reported since the last frame into a red error toast,
-    /// resetting any shown fault toast like `add_chunk_io_toasts`.
-    fn add_mod_fault_toasts(&mut self) {
-        let mut shown = self.server_packs.mod_fault.take();
-        drain_mod_fault_toasts(&mut shown, |toast| self.add_system_toast(toast));
-        self.server_packs.mod_fault = shown;
-    }
-
     /// The download notifiers' toasts, each in a free 32-pixel slot of the
     /// `ToastManager` (`hidden`, F1, keeps them timing out undrawn).
     pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
-        self.add_mod_fault_toasts();
+        drain_mod_fault_toasts(&mut self.server_packs.mod_faults);
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
         for slot_toast in packs
@@ -575,7 +564,7 @@ impl Game<'_> {
             .map(|n| &mut n.toast)
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
-            .chain(std::iter::once(&mut packs.mod_fault))
+            .chain(packs.mod_faults.iter_mut())
         {
             let Some(toast) = slot_toast else {
                 continue;
@@ -601,6 +590,7 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        packs.mod_faults.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.

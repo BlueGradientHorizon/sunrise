@@ -1,8 +1,26 @@
 ids = [
     "type:DamageValues",
+    "type:DamageValues.original",
+    "type:DamageValues.new_damage",
+    "type:DamageValues.blocked",
+    "type:DamageValues.shield_damage",
+    "type:DamageValues.post_attack_invulnerability_ticks",
+    "type:DamageValues.should_cause_side_effects",
+    "type:DamageValues.reduction_modifiers",
+    "type:DamageValues.entered_pre",
+    "type:DamageValues.inflicted",
+    "type:DamageValues.health_damage",
     "handle:DamageValues::reduction",
     "handle:DamageValues::set_reduction",
     "type:ReductionChange",
+    "type:ReductionChange.Add",
+    "type:ReductionChange.Scale",
+    "type:ReductionChange.AtLeast",
+    "type:ReductionChange.AtMost",
+    "type:Reduction",
+    "type:DamageWriteRefusal",
+    "type:DamageWriteRefusal.InvalidDamage",
+    "type:DamageWriteRefusal.NegativeCooldown",
     "type:DamageContainer",
     "handle:DamageContainer::new",
     "handle:DamageContainer::reduction_modifiers",
@@ -50,11 +68,14 @@ the `ReductionChange` command enum. Reduction modifiers are now owned native clo
 (`impl FnMut(DamageContainerView<'_>, f32) -> f32 + 'static`) runnable from both \
 `living_incoming_damage` and `living_damage_pre`, executed in registration order at each stage \
 with accurate live container state (`new_damage` and prior reductions updated before each stage). \
+Following `DamageContainer.setNewDamage` and `setPostAttackInvulnerabilityTicks`, live writes are checked before they change the hit. \
+`LivingEntity.getDamageAfterMagicAbsorb` keeps the vanilla local for its enchantment guard and protection computation, \
+while `LivingEntity.hurtServer` uses outer damage for cooldown comparison and hit success. Post follows the death or totem continuation. \
 Matching NeoForge's `DamageContainer` and `actuallyHurt` semantics, modified reductions are \
 recorded verbatim without clamping to `[0, limit]` or replacing `NaN` (only resulting damage \
 floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, records the modified \
 value verbatim, sets remaining damage to `max(damage - modified, 0)`, and deducts \
-`damage.min(modified)` from absorption hearts floored at `0.0`. A panicking reduction callback \
+`damage.min(modified)` from absorption hearts floored at `0.0`. A panic while invoking or dropping a reduction callback \
 disables that mod's reduction callbacks for the session and reports loudly (error log plus error \
 toast naming the mod) while leaving the reduction unchanged; non-panic phase refusals log a \
 warning on every occurrence without latching.\
@@ -64,9 +85,12 @@ migrate = """\
 are now `DamageContainer<'a>` instead of `&'a mut DamageContainer`, and \
 `LivingDamagePostEvent.container` is now `DamageContainerView<'a>` instead of \
 `&'a DamageContainer`. Method calls like `event.container.new_damage()` and \
-`event.container.set_new_damage(v)` continue to work directly; replace any `&mut *event.container` \
-with `&mut event.container`, any `&*event.container` on Post with `event.container` (a `Copy` \
-read-only view), and any `DamageContainer::as_view` borrow where a read-only view is needed. \
+`event.container.set_new_damage(v)` still use the same receiver, but `set_new_damage` and \
+`set_post_attack_invulnerability_ticks` now return `Result<(), DamageWriteRefusal>`. Handle \
+`InvalidDamage` for negative or NaN damage and `NegativeCooldown` for negative ticks. \
+A refused write leaves the previous value intact. Replace `&mut *event.container` with \
+`&mut event.container`, `&*event.container` on Post with `event.container` (a `Copy` read-only \
+view), and use `event.container.as_view()` in Incoming or Pre where a read-only view is needed. \
 Update manifest hook version pins if present (`living_incoming_damage` -> 4, \
 `living_damage_pre` -> 3, `living_damage_post` -> 3).
 - Reduction modifiers: remove `ReductionChange` imports and replace enum commands with closures \
@@ -81,8 +105,18 @@ receiving `(view: DamageContainerView<'_>, amount: f32) -> f32`:
 - Removed snapshot helpers: `DamageValues`, `DamageValues::reduction`, \
 `DamageValues::set_reduction`, `DamageContainer::new`, `DamageContainer::reduction_modifiers`, \
 `From<DamageValues>`, `From<&DamageContainer>`, `Clone`, `PartialEq`, and `Wire` on \
-`DamageContainer` are removed. Read values directly from `DamageContainer` or \
-`DamageContainerView` inside the hook and store only the plain scalars you need across ticks; in \
-tests, construct a live hit through the engine or dispatch with a live backend rather than \
-building a standalone `DamageContainer::new(...)`.\
+`DamageContainer` are removed. Replace `values.original`, `values.blocked`, `values.shield_damage`, \
+`values.post_attack_invulnerability_ticks`, `values.should_cause_side_effects`, `values.inflicted` \
+and `values.health_damage` with the same-named accessors on `event.container`. In Incoming or Pre, \
+`values.new_damage` becomes `event.container.new_damage()`. For the former pre-absorption \
+`new_damage` on player and mob Post, use `event.container.inflicted()`; use \
+`event.container.health_damage()` for damage sent to health after absorption. For \
+`values.entered_pre`, record `event.container.new_damage()` when your Pre listener is called \
+before making your edits. Installed closures cannot be enumerated; keep your own registration \
+data if needed. For retained or transmitted values, replace the old snapshot, reduction tags and \
+command types in Wire payloads with a mod-owned `#[derive(Wire)]` record of the scalar values \
+and, if needed, a mod-owned enum for reduction tags or adjustments. Build that record inside \
+the hook and use its data to construct native closures locally; callbacks are not serialized. In \
+tests, construct a live hit through the engine or use a live backend rather than building a \
+standalone `DamageContainer::new(...)`.\
 """

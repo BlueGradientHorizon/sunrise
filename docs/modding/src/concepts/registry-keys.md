@@ -412,17 +412,22 @@ The three damage hooks (`living_incoming_damage`, `living_damage_pre`, and
 `living_damage_post`) lend the live engine `DamageContainer` directly—mutable
 `DamageContainer<'_>` in `living_incoming_damage` and `living_damage_pre`, and read-only
 `DamageContainerView<'_>` in `living_damage_post`—with zero snapshot conversion.
-`DamageContainer` setters write straight to the live hit state while sequencing and
-normalization stay game-owned; `as_view()` borrows a read-only `DamageContainerView<'_>`.
+`DamageContainer` setters return `Result<(), DamageWriteRefusal>`: negative or NaN damage
+and negative cooldown ticks are refused without changing the hit. Use `event.container.as_view()`
+to borrow a read-only view. Pre's damage edits don't change the amount remembered for the
+cooldown. Post fires after death processing or totem protection, even when a death is vetoed
+or the hit took no health. `inflicted()` reads what Pre left before absorption, while
+`health_damage()` reads what the hit applied to health.
 Use `add_reduction_modifier(Reduction::..., |view, amount| ...)` in `living_incoming_damage`
 or `living_damage_pre` to install an owned native reduction closure on the live hit.
 Closures execute in registration order when their stage runs, receiving the live container
 view at that stage and the preceding reduction value; modified reductions are recorded
 verbatim while resulting damage floors at `0.0` (and absorption deducts
-`damage.min(modified)` floored at `0.0`). A panicking reduction callback disables that
-mod's reduction callbacks for the session with an error log and toast while leaving the
-reduction unchanged; non-panic phase refusals log a warning on each occurrence without
-latching.
+`damage.min(modified)` floored at `0.0`). A panic during invocation or disposal disables that
+mod's reduction callbacks for the session, with an error log and a named toast. A failed
+invocation leaves the preceding reduction unchanged; non-panic phase refusals log each time.
+Neither the view nor its callbacks can be serialized. Copy needed scalars into your own
+`#[derive(Wire)]` record when retaining or transmitting hit values.
 
 `ItemResource::damageable`, `foil` and `repairable` delegate to the game's
 property readers through metadata access. Defaults, explicit overrides, component
