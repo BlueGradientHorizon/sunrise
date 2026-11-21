@@ -48,14 +48,15 @@ pub use players::{FakePlayer, FakePlayers};
 pub use registries::FakeRegistries;
 pub use services::{FakeCommands, FakeMessages};
 
+use crate::item::item_stack::component_edits::edit_item_components;
 use crate::item::transaction::{Transaction, TransactionSeal};
 use crate::runtime::Installed;
 use crate::world::ticket_controller::{ControllerInfo, TEST_CONTROLLERS};
 use crate::{
     Backend, BackendMut, BackendMutRef, BackendRef, BlockEntityRef, BlockEntityTypeKey, BlockSide,
-    ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemPlace, ItemStack,
-    ItemStackView, LevelRef, Messages, Mods, PlayerRef, Players, ServerHost, TEST_MODS, Tag, Text,
-    TicketController, WorldEpoch,
+    ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemComponentEditor,
+    ItemPlace, ItemPlaceEditError, ItemStack, ItemStackView, LevelRef, Messages, Mods, PlayerRef,
+    Players, ServerHost, TEST_MODS, Tag, Text, TicketController, WorldEpoch,
 };
 
 /// The world epoch of every fake's handles.
@@ -811,19 +812,23 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
     fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
-        stack: ItemStack,
-        _changed: &[String],
-        _: &Transaction,
-    ) -> Result<(), crate::ItemPlaceEditError> {
+        tx: &Transaction,
+        edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
+    ) -> Result<(), ItemPlaceEditError> {
+        if crate::prelude::ModStateServerHost::transaction_depth(self, tx).is_none() {
+            return Err(ItemPlaceEditError::Unavailable);
+        }
         let (player, slot) = self
             .players
             .place(place)
-            .ok_or(crate::ItemPlaceEditError::NotHeld)?;
+            .ok_or(ItemPlaceEditError::NotHeld)?;
         let held = player
             .slots
             .get_mut(&slot)
-            .ok_or(crate::ItemPlaceEditError::NotHeld)?;
-        *held = stack;
+            .ok_or(ItemPlaceEditError::NotHeld)?;
+        let read_override = |id: &str| held.component_value(id).cloned();
+        let edits = edit_item_components(ItemStackView::from_stack(held), &read_override, edit);
+        edits.apply_to(held);
         Ok(())
     }
     fn game_on_crafted_by(

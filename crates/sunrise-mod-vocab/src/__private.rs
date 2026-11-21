@@ -282,6 +282,9 @@ pub mod built {
 /// What the game reads of handles and calls on the API's own types.
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
+    pub use crate::item::item_stack::component_edits::{
+        ComponentEdit, ItemComponentEdits, edit_item_components,
+    };
     use crate::*;
     use std::fmt::Debug;
 

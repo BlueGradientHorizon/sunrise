@@ -483,6 +483,8 @@ where
 mod content_declarations;
 pub(in crate::game) use content_declarations::push_reaction;
 
+#[path = "api_values/component_edit.rs"]
+pub(in crate::game) mod component_edit;
 #[path = "api_values/stack_count.rs"]
 mod stack_count;
 pub(crate) use stack_count::TryIntoEnginePreservingCount;
@@ -862,10 +864,19 @@ pub(in crate::game) fn stack_read_metadata(
 /// Encode and normalize the patch using the scalars already read from this same stack.
 pub(in crate::game) fn project_stack(
     stack: &EngineStack,
+    metadata: StackReadMetadata,
+) -> Result<ApiStack, StackReadError> {
+    let patch = sunrise_items::item_data::encode_extra_components(stack);
+    projected_stack(metadata, patch)
+}
+
+/// Build either a full or filtered projection with the same checked damage normalization.
+fn projected_stack(
     (key, count, damage): StackReadMetadata,
+    patch: Option<Tag>,
 ) -> Result<ApiStack, StackReadError> {
     let mut result = ApiStack::from_scalars(key, count, damage);
-    if let Some(Tag::Compound(patch)) = sunrise_items::item_data::encode_extra_components(stack) {
+    if let Some(Tag::Compound(patch)) = patch {
         result
             .set_components(patch)
             .map_err(StackReadError::InvalidComponents)?;
@@ -929,10 +940,19 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
     encode_stack(value, id.into())
 }
 
-fn encode_stack(
-    value: &ApiStack,
-    item: std::sync::Arc<str>,
-) -> Result<EngineStack, StackWriteError> {
+fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
+    let (stack, patch) = decode_stack_record(value, item);
+    content_declarations::validate_decoded_components(|name| {
+        patch
+            .as_ref()
+            .and_then(|patch| patch.get(name))
+            .map(|_| &stack)
+    })?;
+    Ok(stack)
+}
+
+/// Decode the record and retain its incoming patch for admission checks by the caller.
+fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option<Tag>) {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
     if value.damage_component() == Some(0) {
@@ -948,8 +968,7 @@ fn encode_stack(
         damage: value.damage(),
         extra,
     };
-    content_declarations::validate_decoded_components(patch.as_ref(), &stack)?;
-    Ok(stack)
+    (stack, patch)
 }
 
 impl TryIntoApi for crate::crafting::RecipeRule {

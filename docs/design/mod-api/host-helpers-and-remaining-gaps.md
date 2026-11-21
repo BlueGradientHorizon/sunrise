@@ -60,13 +60,15 @@ The following documented `Game` helpers are not in the trait yet:
   `container_slots` uses gameplay-private types.
 - `with_mod_block_entity` is generic, so its signature cannot be called through `dyn Host`.
 
-Component writes live on `ItemPlace::edit(host, tx, |stack| { ... })`, not on
-`Host::set_component` or `remove_component`. The editor can use `ItemStack::set`,
-`remove`, `apply_components` and `copy_component_from`; `get` followed by `set`
-covers `update`. A successful edit exchanges the whole stack, preserving the slot's
-count rather than splitting off one item. Changing the item or count refuses the
-edit without changing the place. The write is server-side and journaled in the
-caller's transaction, so a parent abort restores it like other item-place writes.
+Component writes live on `ItemPlace::edit(host, tx, |editor| { ... })`, not on
+`Host::set_component` or `remove_component`. `ItemComponentEditor` stages overrides
+without access to the borrowed host; `get` sees pending changes, so `get` followed
+by `set` covers `update`. `original().project()` explicitly copies the pre-edit
+stack. For player slots, hands and equipment the backend resolves the slot before
+calling the editor, validates the batch, then changes only those components in
+place. Item and count are read-only. The usual inventory, menu and equipment sync
+publishes the write without replaying equip effects. Aborting the caller's
+transaction or a parent restores the slot.
 
 Experience-orb values use vanilla's signed `i32` representation in
 `ExperienceOrb`, `ServerHost::set_experience_orb`, and the pickup and merge hooks.

@@ -15,8 +15,8 @@
 //! one real write, with its remesh, relight and logs, is at the root commit. A jukebox is
 //! told at the root commit from its record before and after, so a disc swapped in one
 //! transaction changes the song. A player's inventory (slots, armour, off hand, cursor) is kept
-//! whole on its first write, from wherever the player's state lives then: the local player's or
-//! a guest's, swapped in by `native_as_player`. An item a write drops from a player waits for
+//! whole on its first write, from wherever the player's state lives then: the acting fields
+//! or a parked guest's record. An item a write drops from a player waits for
 //! the root commit too. An item entity's stack is kept on its first write; one emptied stays,
 //! empty, until the root commit removes it. A guest's menu storage (ender chest, crafting grid,
 //! a mod's chest menu) is kept whole on its first write through a menu slot; a crafting grid
@@ -27,7 +27,10 @@
 //! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
-use super::{BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData};
+use super::{
+    BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData,
+    native_server::PlayerRead,
+};
 use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
@@ -35,10 +38,11 @@ use sunrise_client::{
     items::ItemStack,
     lan::configuration_tasks::ConfigurationCompletion,
     living_attributes::ModifierChanges,
-    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo},
+    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::BlockEntityExtras,
 };
 use sunrise_core::{position::BlockPos, random::LegacyRandom};
+use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_world::level::flags;
 
@@ -85,6 +89,12 @@ pub(super) struct OpenTransactions {
 }
 
 impl OpenTransactions {
+    fn player_write(&mut self) -> Option<&mut Level> {
+        self.player_writes = self.player_writes.wrapping_add(1);
+        self.writes = self.writes.wrapping_add(1);
+        self.last_mut()
+    }
+
     pub(super) fn journal_modifier_changes(&mut self, id: u32, changes: ModifierChanges) {
         if let Some(level) = self.last_mut() {
             level.modifier_changes.entry(id).or_default().merge(changes);
@@ -399,15 +409,18 @@ struct KeptPlayer {
     inventory: Vec<Option<ItemStack>>,
     armor: [Option<ItemStack>; 4],
     offhand: Option<ItemStack>,
-    equipment: sunrise_items::equipment::Equipment,
+    equipment: Equipment,
     carried: Option<ItemStack>,
 }
 
-/// A mob's or an armor stand's equipment as a transaction first wrote it
-/// (#932): the same eight slots, restored their own way.
+/// The raw slots before the first write, with a mob's separate gear overlay.
+/// Projecting the slots here would bake the overlay into the resident stacks.
 enum KeptEquipment {
-    Mob(Vec<Option<ItemStack>>),
-    Stand(Vec<Option<ItemStack>>),
+    Mob {
+        slots: Box<Equipment>,
+        gear: Option<Box<Gear>>,
+    },
+    Stand(Box<Equipment>),
 }
 
 #[derive(Clone)]
@@ -551,10 +564,42 @@ impl Level {
         }
     }
 
+    fn keep_player(
+        &mut self,
+        uuid: u128,
+        ender_items: &[Option<ItemStack>],
+        capture: impl FnOnce() -> KeptPlayer,
+    ) {
+        self.ender_items
+            .entry(uuid)
+            .or_insert_with(|| ender_items.to_vec());
+        self.players.entry(uuid).or_insert_with(capture);
+    }
+
     /// Keeps chested mob `id`'s item list's length, `len`, before `entity_slots` grows it, if
     /// this transaction hasn't yet.
     pub(super) fn keep_mob_length(&mut self, id: u32, len: usize) {
         self.mob_lengths.entry(id).or_insert(len);
+    }
+
+    /// Keep a resolved equipment row at its first write in this transaction.
+    /// `mob_gear` is absent for a stand; a mob's overlay may itself be absent.
+    pub(super) fn keep_equipment(
+        &mut self,
+        id: u32,
+        equipment: &Equipment,
+        mob_gear: Option<&Option<Box<Gear>>>,
+    ) {
+        self.equipment.entry(id).or_insert_with(|| {
+            let slots = Box::new(equipment.clone());
+            match mob_gear {
+                Some(gear) => KeptEquipment::Mob {
+                    slots,
+                    gear: gear.clone(),
+                },
+                None => KeptEquipment::Stand(slots),
+            }
+        });
     }
 }
 
@@ -1118,25 +1163,34 @@ impl Game<'_> {
             level.attachments.insert(holder, kept);
         }
     }
-    /// Keeps the inventory of the player whose state is in `Game` now, `uuid`, as it is, if a
-    /// transaction is open and hasn't yet. Called inside `native_as_player`.
+    /// Keeps the inventory of `uuid`, whose state is acting in `Game` now, on its first
+    /// write in the open frame.
     pub(super) fn journal_player(&mut self, uuid: u128) {
-        self.transactions.player_writes = self.transactions.player_writes.wrapping_add(1);
-        self.transactions.writes = self.transactions.writes.wrapping_add(1);
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = self.transactions.player_write() else {
             return;
         };
-        level
-            .ender_items
-            .entry(uuid)
-            .or_insert_with(|| self.ender_items.clone());
-        level.players.entry(uuid).or_insert_with(|| KeptPlayer {
+        level.keep_player(uuid, &self.ender_items, || KeptPlayer {
             player_extra: self.level.player_extra.clone(),
             inventory: self.inventory.clone(),
             armor: self.armor.clone(),
             offhand: self.offhand.clone(),
             equipment: self.equipment.clone(),
             carried: self.carried.clone(),
+        });
+    }
+    /// The same journal for a player resolved to their own parked record at `index`.
+    pub(super) fn journal_parked_player(&mut self, uuid: u128, index: usize) {
+        let Some(level) = self.transactions.player_write() else {
+            return;
+        };
+        let guest = &self.lan.as_ref().expect("resolved guest").hub.guests[index];
+        level.keep_player(uuid, &guest.ender_items, || KeptPlayer {
+            player_extra: guest.saved.clone(),
+            inventory: guest.inventory.clone(),
+            armor: guest.armor.clone(),
+            offhand: guest.offhand.clone(),
+            equipment: guest.equipment.clone(),
+            carried: guest.carried.clone(),
         });
     }
     /// Called with the target player's body swapped in, before set_health changes it.
@@ -1299,15 +1353,11 @@ impl Game<'_> {
         if level.equipment.contains_key(&id) {
             return;
         }
-        let mob = || self.mobs.iter().find(|m| m.id == id && !m.removed);
-        let kept = if let Some(mob) = mob() {
-            KeptEquipment::Mob(mob.equipment_stacks().iter().cloned().collect())
+        if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
+            level.keep_equipment(id, &mob.extra.equipment, Some(&mob.extra.gear));
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == id) {
-            KeptEquipment::Stand(stand.equipment.iter().cloned().collect())
-        } else {
-            return;
-        };
-        level.equipment.insert(id, kept);
+            level.keep_equipment(id, &stand.equipment, None);
+        }
     }
     /// `drop_plain` by the player whose state is in `Game` now, `uuid`: at once, or at the root
     /// commit inside a transaction.
@@ -1735,22 +1785,15 @@ impl Game<'_> {
         let equipment = std::mem::take(&mut level.equipment);
         for (id, kept) in equipment {
             match kept {
-                KeptEquipment::Mob(stacks) => {
-                    let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        mob.set_equipment_stack(slot, stack);
+                KeptEquipment::Mob { slots, gear } => {
+                    if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                        mob.extra.equipment = *slots;
+                        mob.extra.gear = gear;
                     }
                 }
-                // An armor stand keeps no live attribute map of its gear; the
-                // plain write puts its slots back as they were.
-                KeptEquipment::Stand(stacks) => {
-                    let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        stand.equipment.set(slot, stack);
+                KeptEquipment::Stand(slots) => {
+                    if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) {
+                        stand.equipment = *slots;
                     }
                 }
             }
@@ -2014,14 +2057,32 @@ impl Game<'_> {
             }
         }
         for (uuid, kept) in level.players {
-            self.native_as_player(uuid, |g| {
-                g.level.player_extra = kept.player_extra;
-                g.inventory = kept.inventory;
-                g.armor = kept.armor;
-                g.offhand = kept.offhand;
-                g.equipment = kept.equipment;
-                g.carried = kept.carried;
-            });
+            // A player's storage can move between the game and its row between writes.
+            // Resolve its current home without entering a turn just to restore it.
+            match self.native_item_place_player(uuid) {
+                Some(PlayerRead::Acting { .. }) => {
+                    self.level.player_extra = kept.player_extra;
+                    self.inventory = kept.inventory;
+                    self.armor = kept.armor;
+                    self.offhand = kept.offhand;
+                    self.equipment = kept.equipment;
+                    self.carried = kept.carried;
+                }
+                Some(PlayerRead::Guest(guest)) => {
+                    if let Some(index) = self.guest_index(guest.conn) {
+                        let host = self.lan.as_mut().expect("resolved guest");
+                        host.hub.guests.update(index, |g| {
+                            g.saved = kept.player_extra;
+                            g.inventory = kept.inventory;
+                            g.armor = kept.armor;
+                            g.offhand = kept.offhand;
+                            g.equipment = kept.equipment;
+                            g.carried = kept.carried;
+                        });
+                    }
+                }
+                None => {}
+            }
         }
     }
 }

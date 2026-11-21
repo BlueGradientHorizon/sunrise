@@ -520,16 +520,18 @@ pub trait ItemsBackendMut {
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()>;
-    /// Side: server. Writes the changed components on a stack in a player slot, hand or mob or
-    /// armor stand equipment, without running any equipment effects. The stack must already be
-    /// there. Journaled in `tx`.
+    /// Side: server. Resolve an occupied player slot, hand, or mob or armour stand equipment
+    /// slot before lending its component editor once, without lending the host. Refuse an
+    /// unavailable or unreadable slot or a closed `tx` before calling `edit`. Validate all
+    /// changed overrides before applying any of them to that slot. Journal the write in `tx`
+    /// and let normal menu, inventory and equipment sync publish it without replaying equip
+    /// effects. A refusal or a transaction abort leaves the original slot intact.
     #[access(WorldOnly)]
     fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
-        stack: ItemStack,
-        changed: &[String],
         tx: &Transaction,
+        edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
     ) -> Result<(), ItemPlaceEditError>;
     /// Side: server. Runs `ItemStack.onCraftedBy` for a stack held by a menu slot or its cursor,
     /// including the item's post-processing and the player's crafted statistic, in transaction
