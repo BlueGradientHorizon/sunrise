@@ -567,9 +567,10 @@ impl<'a> Index<'a> {
                     .iter()
                     .map(|segment| segment.ident.to_string())
                     .collect::<Vec<_>>();
-                self.absolute(module, &path).is_some_and(|(krate, path)| {
-                    krate == importer.krate && importer.path.starts_with(&path)
-                })
+                self.local_absolute(module, &path)
+                    .is_some_and(|(krate, path)| {
+                        krate == importer.krate && importer.path.starts_with(&path)
+                    })
             }
         }
     }
@@ -659,41 +660,15 @@ impl<'a> Index<'a> {
         rooted: bool,
         seen: &mut Vec<(usize, String)>,
     ) -> Result<Option<usize>, String> {
-        let absolute = if rooted {
-            let (first, rest) = path.split_first().ok_or("an empty module path")?;
-            self.extern_crate_name(module, first)
-                .map(|krate| (krate, rest.to_vec()))
-        } else {
-            self.absolute(module, path)
-        };
-        if let Some((krate, path)) = absolute {
-            let mut target = self.module(krate.clone(), &[])?;
-            let mut prefix = Vec::new();
-            for (position, segment) in path.iter().enumerate() {
-                let is_module = self.modules[target]
-                    .items
-                    .iter()
-                    .any(|item| {
-                        matches!(item, Item::Mod(item) if item.ident == segment.as_str() && default_build(&item.attrs))
-                    });
-                if !is_module {
-                    if krate == self.modules[module].krate {
-                        return self.module_path(target, &path[position..], false, seen);
-                    }
-                    return Ok(None);
-                }
-                prefix.push(segment.clone());
-                target = self.module(krate.clone(), &prefix)?;
-            }
-            return Ok(Some(target));
-        }
-
-        if rooted {
-            return Ok(None);
-        }
         let (first, rest) = path.split_first().ok_or("an empty module path")?;
-        if !seen.contains(&(module, first.clone())) {
-            seen.push((module, first.clone()));
+        let mut absolute = if rooted {
+            None
+        } else {
+            self.local_absolute(module, path)
+        };
+        // A named module alias is a local type-namespace binding, ahead of Cargo's
+        // extern prelude. Resolve the alias itself before following the remaining segments.
+        if !rooted && absolute.is_none() && !seen.contains(&(module, first.clone())) {
             let mut imported = None;
             for item in &self.modules[module].items {
                 match item {
@@ -716,19 +691,43 @@ impl<'a> Index<'a> {
                     _ => {}
                 }
             }
-            if let Some((mut imported, rooted)) = imported {
-                imported.extend(rest.iter().cloned());
-                let resolved = self.module_path(module, &imported, rooted, seen)?;
+            if let Some((imported, rooted)) = imported {
+                seen.push((module, first.clone()));
+                let target = self.module_path(module, &imported, rooted, seen);
                 seen.pop();
-                return Ok(resolved);
+                if let Some(target) = target? {
+                    let Module { krate, path, .. } = &self.modules[target];
+                    absolute = Some((krate.clone(), path.iter().chain(rest).cloned().collect()));
+                }
             }
-            seen.pop();
         }
-        Ok(None)
+        let Some((krate, path)) = absolute.or_else(|| {
+            self.extern_crate_name(module, first)
+                .map(|krate| (krate, rest.to_vec()))
+        }) else {
+            return Ok(None);
+        };
+
+        let mut target = self.module(&krate, &[])?;
+        let mut prefix = Vec::new();
+        for (position, segment) in path.iter().enumerate() {
+            let is_module = self.modules[target].items.iter().any(|item| {
+                matches!(item, Item::Mod(item) if item.ident == segment.as_str() && default_build(&item.attrs))
+            });
+            if !is_module {
+                if krate == self.modules[module].krate {
+                    return self.module_path(target, &path[position..], false, seen);
+                }
+                return Ok(None);
+            }
+            prefix.push(segment.clone());
+            target = self.module(&krate, &prefix)?;
+        }
+        Ok(Some(target))
     }
 
-    /// `path`, written in `module`, as a module of an indexed crate, if it is one.
-    pub fn absolute(&self, module: usize, path: &[String]) -> Option<(String, Vec<String>)> {
+    /// A path to a declared local module, or one starting at `crate`, `self` or `super`.
+    fn local_absolute(&self, module: usize, path: &[String]) -> Option<(String, Vec<String>)> {
         let m = &self.modules[module];
         let (first, rest) = path.split_first()?;
         let mut base = match first.as_str() {
@@ -746,7 +745,7 @@ impl<'a> Index<'a> {
                 path.push(name.to_string());
                 (m.krate.clone(), path)
             }
-            name => (self.extern_crate_name(module, name)?, Vec::new()),
+            _ => return None,
         };
         for segment in rest {
             if segment == "super" {

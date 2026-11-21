@@ -440,6 +440,27 @@ fn a_rooted_import_chain_ignores_a_local_module_with_the_dependency_name() {
 }
 
 #[test]
+fn a_local_module_alias_shadows_a_dependency_only_for_unrooted_paths() {
+    let edited = "pub mod local { pub struct Secret; }\nuse self::local as engine;\npub fn safe() -> engine::Secret { unimplemented!() }\n/// A colour.";
+    let export = export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS);
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let safe = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:safe")
+        .expect("safe is exported");
+    assert_eq!(safe["refs"], serde_json::json!(["type:local::Secret"]));
+
+    let rooted = edited.replace("fn safe() -> engine::", "fn leak() -> ::engine::");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &rooted)], HOOKS)
+        .err()
+        .expect("the rooted path still names the workspace dependency");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
 fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
     let edited = "mod imported { use engine::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
