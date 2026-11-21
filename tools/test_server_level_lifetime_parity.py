@@ -9,14 +9,14 @@ The pinned server JAR first generates a world (its chunk (0, 0) in the Nether an
 dedicated server and Sunrise's (`sunrise-client --dedicated --nogui`) then serve copies of it, with nobody joining,
 and the console:
 
-- idles past Sunrise's 300-tick idle close, then asks each built-in level for itself (`execute in`), and the
-  Nether and the End whether their chunk (0, 0) is loaded (`execute if loaded`);
-- force-loads chunk (0, 0) in the Nether and in the End, waits until both are loaded, and asks again;
-- releases the Nether's, idles past the idle close again, and asks again: the released chunk is unloaded, the
-  ticketed one is still loaded, and both levels still answer;
-- stops the server, which saves every level still open (`Saving chunks for level ...`).
+- idles past Sunrise's 300-tick idle close, then checks whether each built-in level answers (`execute in`) and
+  whether chunk (0, 0) in the Nether and in the End is ready for entity ticking (`execute if loaded`);
+- force-loads both chunks, waits until both are ready, and asks again;
+- releases the Nether's ticket, idles again, and asks again: only the End chunk is still ready;
+- stops the server, keeping the raw log for diagnosis.
 
-Compared exactly: the console's `say` lines from the questions, the forceload replies, and the stop's lines.
+The comparison uses only those command outcomes: dimension addressability and chunk readiness. An answer
+shows a dimension can be addressed, not that the same level instance stayed open.
 """
 import json
 import os
@@ -29,13 +29,11 @@ import time
 
 try:
     from . import lab, test_rust_parity as base
-    from .test_dedicated_server_parity import (CONSOLE_LINE, Server, console_lines, free_port, wait_ticks,
-                                               write_server_dir)
+    from .test_dedicated_server_parity import CONSOLE_LINE, Server, free_port, wait_ticks, write_server_dir
 except ImportError:
     import lab
     import test_rust_parity as base
-    from test_dedicated_server_parity import (CONSOLE_LINE, Server, console_lines, free_port, wait_ticks,
-                                              write_server_dir)
+    from test_dedicated_server_parity import CONSOLE_LINE, Server, free_port, wait_ticks, write_server_dir
 
 NAME = 'server-level-lifetime-parity'
 LEVELS = (('overworld', 'minecraft:overworld'), ('nether', 'minecraft:the_nether'), ('end', 'minecraft:the_end'))
@@ -43,35 +41,61 @@ LEVELS = (('overworld', 'minecraft:overworld'), ('nether', 'minecraft:the_nether
 FORCED = ('minecraft:the_nether', 'minecraft:the_end')
 # Past Sunrise's idle close of a custom level (`IDLE_TICKS`, 300).
 IDLE_TICKS = 400
-FORCELOAD = re.compile(r'force load')
+
+
+def say_payloads(server, start, barrier, timeout):
+    """Read the console's `say` payloads only up to the command queue barrier."""
+    server.console(f'say {barrier}')
+    server.wait_for(rf': \[Server\] {re.escape(barrier)}$', timeout=timeout, after=start)
+    payloads = []
+    for line in server.lines[start:]:
+        if (match := CONSOLE_LINE.match(line)) and match[2].startswith('[Server] '):
+            payload = match[2].removeprefix('[Server] ')
+            if payload == barrier:
+                return payloads
+            payloads.append(payload)
+    raise AssertionError(f'{server.log_path.name}: missing {barrier} barrier')
 
 
 def ask(server, step):
-    """Each built-in level answers for itself, the Nether and the End for their chunk (0, 0); returns once the
-    console has run them."""
+    """Require one addressability answer per built-in and one readiness answer per queried chunk."""
+    start = len(server.lines)
     for short, level in LEVELS:
         server.console(f'execute in {level} run say {step} {short} answers')
         if level in FORCED:
             server.console(f'execute in {level} if loaded 0 64 0 run say {step} {short} 0 0 loaded')
-            server.console(f'execute in {level} unless loaded 0 64 0 run say {step} {short} 0 0 not loaded')
-    server.console(f'say {step} asked')
-    server.wait_for(rf'\[Server\] {step} asked$', timeout=60)
+            server.console(f'execute in {level} unless loaded 0 64 0 run say {step} {short} 0 0 unloaded')
+    payloads = say_payloads(server, start, f'{step} asked', timeout=60)
+    addressable, chunks = [], {}
+    for short, level in LEVELS:
+        if payloads.count(f'{step} {short} answers') != 1:
+            raise AssertionError(f'{server.log_path.name}: {step}: expected one addressability marker for {short}')
+        addressable.append(short)
+        if level in FORCED:
+            loaded, unloaded = (payloads.count(f'{step} {short} 0 0 {state}') for state in ('loaded', 'unloaded'))
+            if loaded + unloaded != 1:
+                raise AssertionError(f'{server.log_path.name}: {step}: expected one chunk readiness marker for {short}')
+            chunks[short] = 'loaded' if loaded else 'unloaded'
+    return dict(addressable=addressable, chunks=chunks)
 
 
 def wait_loaded(server, levels, timeout=300):
-    """Until chunk (0, 0) of each of `levels` is loaded; the polls are left out of the comparison."""
+    """Wait for a positive readiness marker for every queried chunk in one poll."""
     deadline = time.time() + timeout
     for poll in range(1_000_000):
         start = len(server.lines)
+        markers = []
         for level in levels:
-            server.console(f'execute in {level} unless loaded 0 64 0 run say poll unloaded')
-        server.console(f'say poll {poll}')
-        server.wait_for(rf'\[Server\] poll {poll}$', timeout=max(1, deadline - time.time()), after=start)
-        if not any(line.endswith('[Server] poll unloaded') for line in server.lines[start:]):
+            marker = f'poll {poll} {level} ready'
+            server.console(f'execute in {level} if loaded 0 64 0 run say {marker}')
+            markers.append(marker)
+        payloads = say_payloads(server, start, f'poll {poll} done', timeout=max(1, deadline - time.time()))
+        if all(marker in payloads for marker in markers):
             return
         if time.time() > deadline:
-            raise AssertionError(f'{server.log_path.name}: chunk (0, 0) of {levels} not loaded in {timeout} s')
+            break
         time.sleep(1)
+    raise AssertionError(f'{server.log_path.name}: chunk (0, 0) of {levels} not loaded in {timeout} s')
 
 
 def generate_world(server_command, build):
@@ -99,26 +123,17 @@ def run_side(label, command, build, world):
     server = Server(command, directory, label)
     try:
         server.wait_for(r'Done \(')
-        done = len(server.lines)
         wait_ticks(server, IDLE_TICKS)
-        ask(server, 'idle')
+        idle = ask(server, 'idle')
         for level in FORCED:
             server.console(f'execute in {level} run forceload add 0 0')
         wait_loaded(server, FORCED)
-        ask(server, 'forced')
+        forced = ask(server, 'forced')
         server.console('execute in minecraft:the_nether run forceload remove 0 0')
         wait_ticks(server, IDLE_TICKS)
-        ask(server, 'released')
-        for level in FORCED:
-            server.console(f'execute in {level} run forceload query')
-        server.console('say queried')
-        server.wait_for(r'\[Server\] queried$', timeout=60)
+        return dict(idle=idle, forced=forced, released=ask(server, 'released'))
     finally:
         server.stop()
-    lines = server.lines[done:]
-    forceload = [m.group(2) for line in lines if (m := CONSOLE_LINE.match(line)) and FORCELOAD.search(m.group(2))]
-    said = [line for line in console_lines(lines) if ' poll ' not in line]
-    return ['forceload ' + line for line in forceload] + said
 
 
 def main():
@@ -139,22 +154,24 @@ def main():
     world = generate_world(vanilla_server, build)
     results = {label: run_side(label, command, build, world)
                for label, command in (('vanilla', vanilla_server), ('sunrise', sunrise_server))}
-    for label, lines in results.items():
-        (build / f'{label}.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    for label, phases in results.items():
+        lab.write_json(build / f'{label}.json', phases)
     vanilla, sunrise = results['vanilla'], results['sunrise']
-    if not any(line.endswith('[Server] released end 0 0 loaded') for line in vanilla):
-        raise AssertionError(f'vanilla did not keep the ticketed End chunk: the script did not run (see {build})')
+    expected = dict(idle=dict(nether='unloaded', end='unloaded'),
+                    forced=dict(nether='loaded', end='loaded'),
+                    released=dict(nether='unloaded', end='loaded'))
+    for step, chunks in expected.items():
+        if vanilla[step] != dict(addressable=['overworld', 'nether', 'end'], chunks=chunks):
+            raise AssertionError(f'vanilla: unexpected {step} outcomes (see {build}/vanilla.json and vanilla.log)')
     if vanilla != sunrise:
-        import difflib
-        diff = '\n'.join(difflib.unified_diff(vanilla, sunrise, 'vanilla', 'sunrise', n=1, lineterm=''))
-        raise AssertionError(f'transcripts differ (see {build}/vanilla.txt and sunrise.txt):\n{diff[:6000]}')
+        raise AssertionError(f'lifecycle outcomes differ (see vanilla.json, sunrise.json and raw logs in {build})')
     lab.write_json(report, dict(
         schema=1, minecraft=lock['minecraft']['version'], platform=platform.platform(),
         java=subprocess.check_output(['java', '--version'], text=True).splitlines()[0],
-        lines=len(vanilla), output_sha256=lab.digest(build / 'sunrise.txt', 'sha256'),
-        scope='Built-in levels of an empty dedicated server idling past 300 ticks: each still answers, a released '
-              'forced chunk unloads, a forced one stays loaded, and every level is saved at stop.'))
-    print(f'server level lifetime: {len(vanilla)} lines identical')
+        phases=len(vanilla), output_sha256=lab.digest(build / 'sunrise.json', 'sha256'),
+        scope='Built-in dimension addressability and entity-ticking readiness of the Nether and End chunks '
+              'after idling, forcing both chunks, and releasing the Nether ticket.'))
+    print('server level lifetime: pass')
 
 
 if __name__ == '__main__':
