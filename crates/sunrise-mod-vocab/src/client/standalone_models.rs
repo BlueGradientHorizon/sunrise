@@ -38,6 +38,7 @@ impl StandaloneModelsEvent<'_> {
 
 // no wire: the context borrows the assembly for this resource generation.
 /// Append declared model dependencies into one standalone model during its bake.
+// exhaustive: the borrowed append operation is private and supplied only by the engine.
 pub struct StandaloneModelBakeContext<'a> {
     append: &'a mut AppendDependency<'a>,
 }
@@ -99,6 +100,7 @@ impl std::error::Error for StandaloneModelBakeError {}
 
 // no wire: entries may carry executable native code.
 /// The engine-only staging entries for the standalone model hook.
+// exhaustive: engine-only staging; the loader handles both file and baker registrations.
 pub enum StandaloneModelRegistration {
     /// Register a file directly.
     File(String),

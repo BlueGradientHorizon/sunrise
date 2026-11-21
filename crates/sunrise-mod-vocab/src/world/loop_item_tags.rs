@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 // no wire: engine-owned lookup borrowed by an in-process loop context.
 /// Item tags resolved against the owning generation and the completed API item table.
+// hidden: the engine binds these members when publishing a resource generation.
+// exhaustive: the backing map is private and can only be built by binding published item keys.
 #[doc(hidden)]
 // Keep tag names generation-owned: arbitrary server tags are not process-lifetime TagKeys.
 pub struct BoundItemTags(HashMap<String, Members>);

@@ -6,6 +6,8 @@ use crate::{
 
 /// One spawn predicate registration, in mod registration order. The game
 /// resolves the declarations at resource load before running spawn checks.
+// hidden: engine staging; mods use the spawn placement registrar.
+// exhaustive: engine-only staging describes the full predicate the loader must resolve.
 #[doc(hidden)]
 // no wire: contains a native callback.
 pub struct SpawnPlacementDeclaration {
@@ -26,6 +28,7 @@ pub struct SpawnPlacementDeclaration {
 }
 
 /// The spawn predicates mods registered, in registration order.
+// hidden: the engine freezes the staged predicates; mods register through SpawnPlacementsRegistrar.
 #[doc(hidden)]
 pub fn spawn_placement_declarations() -> &'static [SpawnPlacementDeclaration] {
     installed().map_or(&[], |installed| &installed.spawn_placements)

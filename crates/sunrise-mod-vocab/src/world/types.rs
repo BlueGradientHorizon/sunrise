@@ -1037,6 +1037,7 @@ pub trait SpawnPlacementContext {
 /// whatever operation is specified.
 // no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: the vanilla registration contract has And, Or, and Replace, matched by the resolver.
 pub enum SpawnPlacementOperation {
     /// Require this predicate as well as a passing original or `Or` predicate.
     And,

@@ -47,6 +47,7 @@ impl BlockState {
     }
 }
 /// Construct a state without looking up the key or ordinal in block metadata.
+// hidden: the game has the validated ordinal; mods construct states through BlockMetadata.
 #[doc(hidden)]
 pub const fn block_state_from_ordinal(block: BlockKey, ordinal: u16) -> BlockState {
     BlockState {

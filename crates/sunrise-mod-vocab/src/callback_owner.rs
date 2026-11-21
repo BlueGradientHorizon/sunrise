@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Owner identity and poison state for one retained mod callback.
 // no wire: the callback's enablement and poison state belong to this process.
+// exhaustive: engine-only callback bookkeeping; private fields prevent downstream construction.
 pub struct CallbackOwner {
     id: &'static str,
     index: usize,

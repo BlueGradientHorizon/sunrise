@@ -75,6 +75,8 @@ impl RegisterConfigurationTasksEvent<'_> {
 
 /// Engine staging for one registration transaction.
 // no wire: owns pending server-thread tasks.
+// hidden: the server stages registrations here; listeners use the scoped event.
+// exhaustive: the server starts empty staging with Default; the queue and refusal fields are private.
 #[doc(hidden)]
 #[derive(Default)]
 pub struct ConfigurationTaskRegistration {
@@ -96,6 +98,7 @@ impl ConfigurationTaskRegistration {
 
 /// Engine queue entry with the callback's mod scope resolved at registration.
 // no wire: an owned task and its process-local mod identity.
+// hidden: the server owns these queue entries; listeners register through the scoped event.
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct RegisteredConfigurationTask {
