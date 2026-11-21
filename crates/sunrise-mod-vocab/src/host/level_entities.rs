@@ -44,15 +44,16 @@ pub trait LevelEntitiesBackend {
     /// None there before login and for a level it does not show. The walk
     /// is in entity-list order, then item frames and paintings, followed by players. Every entity list is walked
     /// once per call: O(entities) regardless of the box. Each overlapping mob
-    /// resolves through a mob-list scan: O(K*N) for K overlapping mobs and N mobs. Tridents do not
-    /// resolve. On the server block displays, item displays, text displays, markers and
+    /// resolves through a mob-list scan: O(K*N) for K overlapping mobs and N mobs. This walk excludes tridents;
+    /// `Host::entity` can still resolve a trident by its id. On the server block displays, item displays, text displays, markers and
     /// interactions are included using physical boxes (zero-sized for displays and markers),
     /// not display culling bounds. Eyes of ender and leash knots are not yet returned.
     /// Other special entities
     /// are not on the entity-list walk. The dragon follows ordinary entities;
     /// its eight intersecting parts follow players in vanilla hash-table order (`Level.getEntities`).
     /// During `hears_projectile_impacts`, the projectile list is taken out of
-    /// the game and is not visible; it is restored for `projectile_impact`.
+    /// the game and is not visible; it is restored for `projectile_impact`,
+    /// including the owners of hits that would consume their projectiles.
     #[access(WorldOnly)]
     fn level_entities_in(
         &self,

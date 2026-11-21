@@ -5,14 +5,17 @@
 //! through whatever it hit.
 use super::{
     Game,
-    creatures::{ProjWorld, pickable_projectile_hit},
+    commands::Target,
+    creatures::ProjWorld,
     dragon::{CRYSTAL_IDS, SPECIAL},
     lan_pvp::meets_players,
     native_hooks::mob_kind,
 };
+use mod_api::TransactionSeal;
 use std::ops::Range;
 use sunrise_client::{
-    arrows::ArrowEvent,
+    arrows::{ArrowEvent, ArrowSound},
+    fast_hash::{FxHashMap, FxHashSet},
     join_seq::JoinList,
     mobs::Who,
     projectiles::{Hit, Projectile},
@@ -33,10 +36,13 @@ pub(super) enum ImpactTarget {
 /// A projectile's impact in one tick of `tick_projectiles`.
 pub(super) struct Impact {
     /// Where the projectile was in the tick's list.
-    pub index: usize,
+    pub index: Option<usize>,
+    /// The original flight's keep decision, once section movement has been accounted for.
+    pub keep: bool,
     /// The projectile before the tick.
     pub before: Projectile,
     pub hit: Hit,
+    pub target: Option<ImpactTarget>,
     /// Where its hit is in the tick's `hits`.
     pub hit_slot: usize,
     /// Where its arrow events are in the tick's `arrow_events`.
@@ -46,6 +52,49 @@ pub(super) struct Impact {
 /// The type the mods know a projectile by: a spectral arrow is its own.
 fn projectile_type(p: &Projectile) -> &'static str {
     p.entity_type()
+}
+
+/// Closes an impact's existing world journal even if a listener unwinds.
+pub(super) struct ImpactTransaction<'game, 'resources> {
+    pub game: &'game mut Game<'resources>,
+    pub seal: Option<TransactionSeal>,
+}
+
+impl<'game, 'resources> ImpactTransaction<'game, 'resources> {
+    pub(super) fn new(game: &'game mut Game<'resources>, enabled: bool) -> Self {
+        let seal = enabled.then(|| game.transaction_open());
+        Self { game, seal }
+    }
+
+    pub(super) fn close(mut self, commit: bool) {
+        if let Some(seal) = self.seal.take() {
+            self.game.transaction_close(&seal, commit);
+        }
+    }
+}
+
+impl Drop for ImpactTransaction<'_, '_> {
+    fn drop(&mut self) {
+        if let Some(seal) = self.seal.take() {
+            self.game.transaction_close(&seal, false);
+        }
+    }
+}
+
+/// Events produced by applying the contact, not the arrow's earlier flight.
+pub(super) fn projectile_impact_event(event: &ArrowEvent) -> bool {
+    matches!(
+        event,
+        ArrowEvent::Block { .. }
+            | ArrowEvent::Sound {
+                sound: ArrowSound::HitGround
+                    | ArrowSound::CrossbowHit
+                    | ArrowSound::TridentHitGround
+                    | ArrowSound::TridentHit,
+                ..
+            }
+            | ArrowEvent::Drop
+    )
 }
 
 /// An owned flight pass restored only if its dispatch unwinds.
@@ -171,29 +220,24 @@ impl Game<'_> {
         }
     }
 
-    /// `native_projectile_impact` for a player's thrown trident, which
-    /// `tick_tridents` flies rather than `tick_projectiles`: it hit the mob
-    /// `mob`, or with `mob` None the block at `block` on its `face`, at `at`.
-    /// Whether a mod canceled it.
+    /// `ProjectileImpactEvent` for a player's trident, once its tick has exposed the owner.
     pub(super) fn native_trident_impact(
         &mut self,
         trident: u32,
         guest: Option<u32>,
-        mob: Option<u32>,
-        block: [i32; 3],
-        face: [i32; 3],
-        at: Vec3,
+        hit: Hit,
     ) -> bool {
-        if !self.native_hears_impacts() {
-            return false;
-        }
         let owner = self.native_thrower(guest);
-        let (entity, entity_kind) = match mob {
-            Some(id) => {
+        let (entity, entity_kind, block, face, at) = match hit {
+            Hit::Entity {
+                who: Who::Mob(id),
+                at,
+            } => {
                 let (entity, kind) = self.native_impact_entity(id);
-                (Some(entity), kind)
+                (Some(entity), kind, [0; 3], [0; 3], at)
             }
-            None => (None, String::new()),
+            Hit::Block { pos, face, at } => (None, String::new(), pos, face, at),
+            _ => return false,
         };
         let dimension = self.dim.id();
         let mut canceled = false;
@@ -304,123 +348,118 @@ impl Game<'_> {
         }
     }
 
-    /// `native_projectile_impact` for each of `impacts`: whether the mods
-    /// canceled it. A hit on a wind charge is not told.
-    fn native_projectile_impacts(&mut self, impacts: &[Impact]) -> Vec<bool> {
-        let dimension = self.dim.id();
-        let mut canceled = Vec::with_capacity(impacts.len());
-        for impact in impacts {
-            let p = &impact.before;
-            let (entity, entity_kind, block, face, at) = match impact.hit {
-                Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),
-                Hit::Entity {
-                    who: Who::Mob(id),
-                    at,
-                } => {
-                    if pickable_projectile_hit(id).is_some() {
-                        canceled.push(false);
-                        continue;
-                    }
-                    let (entity, kind) = self.native_impact_entity(id);
-                    (Some(entity), kind, [0; 3], [0; 3], at)
-                }
-                // A server's players are hit as their entities, never as `Player`.
-                Hit::Entity {
-                    who: Who::Player, ..
-                } => {
-                    canceled.push(false);
-                    continue;
-                }
-                Hit::None => {
-                    canceled.push(false);
-                    continue;
-                }
-            };
-            let owner = self.native_impact_owner(p);
-            let mut stop = false;
-            self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
-                dimension,
-                projectile: p.id,
-                kind: projectile_type(p),
-                owner,
-                entity,
-                entity_kind: &entity_kind,
-                block,
-                face,
-                at: [at.x, at.y, at.z],
-                canceled: &mut stop,
-            });
-            canceled.push(stop);
-        }
+    /// An explicitly removed owner is already gone to simulation, even while its row
+    /// waits for the root transaction and the level's ordinary removal sweep.
+    pub(super) fn projectile_removal_pending(&self, id: u32) -> bool {
+        let target = Target::Projectile(id);
+        self.removal_pending(&target) || self.persist.removals.contains(&target)
+    }
+
+    fn native_projectile_impact_canceled(&mut self, impact: &Impact) -> bool {
+        let p = &impact.before;
+        let (entity, entity_kind, block, face, at) = match impact.hit {
+            Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),
+            Hit::Entity {
+                who: Who::Mob(id),
+                at,
+            } => {
+                let (entity, kind) = self.native_impact_entity(id);
+                (Some(entity), kind, [0; 3], [0; 3], at)
+            }
+            _ => return false,
+        };
+        let mut canceled = false;
+        self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
+            dimension: self.dim.id(),
+            projectile: p.id,
+            kind: projectile_type(p),
+            owner: self.native_impact_owner(p),
+            entity,
+            entity_kind: &entity_kind,
+            block,
+            face,
+            at: [at.x, at.y, at.z],
+            canceled: &mut canceled,
+        });
         canceled
     }
 
-    /// The end of a tick of `tick_projectiles` that met `impacts`, with
-    /// `projectiles` in place (those it keeps, as `listed` says of the tick's
-    /// list): the mods hear each, and a projectile one canceled flies the tick
-    /// again from before it, through what it hit. Its hit and its arrow events are
-    /// taken out of `hits` and `arrow_events`, and it goes back among the
-    /// projectiles. One a mod removed in its hook stays removed.
+    /// Hand back the owning rows (including terminal impacts) while mods run. Retire an
+    /// ordinary terminal owner at the usual pre-effects boundary. Journaled removals instead
+    /// keep their row for root commit, but neither apply nor replay the captured hit.
     pub(super) fn native_settle_impacts(
         &mut self,
         projectiles: &mut JoinList<Projectile, false>,
-        removed: &mut JoinList<Projectile, false>,
-        listed: &[bool],
         impacts: Vec<Impact>,
         hits: &mut Vec<(Projectile, Hit)>,
-        arrow_events: &mut Vec<(Vec3, ArrowEvent)>,
+        arrow_events: &mut Vec<(u32, Vec3, ArrowEvent)>,
     ) {
-        // The mods see the projectiles where they will be, as `projectile_hit` does.
-        // Move the already-lifted pass: lifting it again would leave its outer
-        // pass unpaired when the empty original batch is replaced below.
+        // Close the already-lifted pass, not a new one over the spawn buffer.
         self.creatures.projectiles.restore(
             projectiles.take_owned_pass(),
             sunrise_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
-        let canceled = self.native_projectile_impacts(&impacts);
-        *projectiles = self.creatures.projectiles.lift();
-        if !canceled.contains(&true) {
-            return;
+        let mut canceled = Vec::with_capacity(impacts.len());
+        for impact in &impacts {
+            canceled.push(
+                impact.index.is_some()
+                    && self.entity(impact.before.id).is_some()
+                    && self.native_projectile_impact_canceled(impact),
+            );
         }
+        *projectiles = self.creatures.projectiles.lift();
+        let places: FxHashMap<_, _> = projectiles
+            .iter()
+            .enumerate()
+            .map(|(index, p)| (p.join, index))
+            .collect();
         let mut drop_hits = vec![false; hits.len()];
         let mut drop_events = vec![false; arrow_events.len()];
         let mut flown = Vec::new();
-        for (impact, _) in impacts.into_iter().zip(canceled).filter(|(_, c)| *c) {
-            drop_hits[impact.hit_slot] = true;
-            drop_events[impact.events.clone()].fill(true);
-            let present = projectiles.iter().position(|q| q.id == impact.before.id);
-            if self
-                .persist
-                .removals
-                .contains(&super::commands::Target::Projectile(impact.before.id))
-                || present.is_none() && listed[impact.index]
-            {
+        let mut retired = FxHashSet::default();
+        let mut append = FxHashSet::default();
+        for (impact, cancel) in impacts.into_iter().zip(canceled) {
+            let before = impact.before;
+            let snapshot = &hits[impact.hit_slot].0;
+            let slot = places.get(&before.join).copied();
+            let live = !self.projectile_removal_pending(before.id) && slot.is_some();
+            let unchanged = live
+                && slot.is_some_and(|index| &projectiles[index] == snapshot)
+                && impact.target.is_some()
+                && impact.target == self.native_impact_target(impact.hit);
+            if unchanged && !cancel {
+                if !impact.keep {
+                    retired.insert(before.join);
+                }
                 continue;
             }
-            let mut before = impact.before;
-            // Replaying a canceled impact must not repeat the first-tick event
-            // already queued by the original tick.
-            before.has_been_shot = hits[impact.hit_slot].0.has_been_shot;
-            let (p, keep, events) = self.native_projectile_through(before);
-            flown.extend(events);
-            match (present, keep) {
-                (Some(i), true) => {
-                    projectiles.store_back(i, p);
-                }
-                (Some(i), false) => {
-                    projectiles.remove(i);
-                }
-                (None, true) => {
-                    let i = removed
-                        .iter()
-                        .position(|q| q.id == p.id)
-                        .expect("unlisted impact owner");
-                    let mut owner = removed.remove(i);
-                    sunrise_client::join_seq::store_back(&mut owner, p);
-                    projectiles.push(owner);
-                }
-                (None, false) => {}
+            drop_hits[impact.hit_slot] = true;
+            for i in impact.events {
+                drop_events[i] = unchanged || projectile_impact_event(&arrow_events[i].2);
             }
+            if unchanged && let Some(index) = slot {
+                let mut before = before;
+                // Preserve the first shot already queued by the original flight.
+                before.has_been_shot = snapshot.has_been_shot;
+                let (p, keep, events) = self.native_projectile_through(before);
+                flown.extend(events.into_iter().map(|(at, event)| (p.id, at, event)));
+                let join = p.join;
+                if keep {
+                    projectiles.store_back(index, p);
+                    if !impact.keep {
+                        append.insert(join);
+                    }
+                } else {
+                    retired.insert(join);
+                }
+            }
+        }
+        projectiles.retain(|p| !retired.contains(&p.join));
+        if !append.is_empty() {
+            // A terminal projectile which continues keeps its join, but goes at the tail,
+            // as in the existing canceled-hit replay. Never retire/recreate its attachment.
+            let replayed = projectiles.extract_if(|p| append.contains(&p.join));
+            projectiles.extend(replayed);
         }
         let mut n = 0;
         hits.retain(|_| {
@@ -518,14 +557,7 @@ mod nested_spawn_tests {
             child.join = sunrise_client::join_seq::JoinSeq::UNJOINED;
             game.creatures.projectiles.push(child);
             let child_join = game.creatures.projectiles[0].join;
-            game.native_settle_impacts(
-                &mut pass,
-                &mut JoinList::default(),
-                &[],
-                Vec::new(),
-                &mut Vec::new(),
-                &mut Vec::new(),
-            );
+            game.native_settle_impacts(&mut pass, Vec::new(), &mut Vec::new(), &mut Vec::new());
             assert_eq!(pass.iter().map(|p| p.id).collect::<Vec<_>>(), [71, 72]);
             game.creatures
                 .projectiles
@@ -600,14 +632,7 @@ mod nested_spawn_tests {
             game.creatures.projectiles.push(shot(72));
             let join = game.creatures.projectiles[0].join;
             expected.push((72, join));
-            game.native_settle_impacts(
-                &mut taken,
-                &mut JoinList::default(),
-                &[],
-                Vec::new(),
-                &mut Vec::new(),
-                &mut Vec::new(),
-            );
+            game.native_settle_impacts(&mut taken, Vec::new(), &mut Vec::new(), &mut Vec::new());
             assert_eq!(
                 taken.iter().map(|p| (p.id, p.join)).collect::<Vec<_>>(),
                 expected

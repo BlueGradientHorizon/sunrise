@@ -245,12 +245,13 @@ impl Game<'_> {
     /// `client_entities_in`. The walk
     /// is in entity-list order, then item frames and paintings, followed by
     /// players; each overlap requires a handle lookup, so cost grows with the
-    /// box's contents. Tridents cannot yet resolve; displays, markers and
+    /// box's contents. This walk excludes tridents; displays, markers and
     /// interactions follow the listed entities. Other special entities
     /// are not on the entity-list walk. The dragon follows ordinary entities;
     /// its eight intersecting parts follow players (`Level.getEntities`).
     /// During `hears_projectile_impacts`, the projectile list is taken out of
-    /// the game and is not visible; it is restored for `projectile_impact`.
+    /// the game and is not visible; `projectile_impact` sees the restored live
+    /// projectiles, including those whose intended hits would consume them.
     pub(super) fn level_entities_in(
         &self,
         level: LevelRef,

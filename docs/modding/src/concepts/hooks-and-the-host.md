@@ -132,6 +132,16 @@ fixed once, when the mods are installed. Every cancellable hook's event has a `c
 cancelled reaches only mods that receive cancelled events. `receive_cancelled` on a hook without a cancel does not
 compile, and `#[listener]` is for a mod's hooks only: a part is called for its own thing, in no order.
 
+### Canceling or consuming a projectile
+
+In `projectile_impact`, use `host.entity(event.projectile)` to resolve the live projectile,
+even if the captured hit would normally consume it. Canceling alone suppresses the hit and
+lets the projectile continue according to its type. Call `EntityRef::discard(host)` to consume
+it without applying the hit. A discard makes the handle stale immediately; another listener
+clearing cancellation cannot bring that projectile back. If a listener changes the projectile
+or its target so the captured hit no longer applies, the game skips that hit instead of tracing
+it again.
+
 ## Events and shared state
 
 Each hook method takes its host, where it has one, and one event:

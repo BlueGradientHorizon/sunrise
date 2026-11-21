@@ -57,11 +57,23 @@ impl Hooks for PanicAfterAdmission {
 #[test]
 #[ignore = "daily"]
 fn shoot_listener_panic_after_admission_preserves_owned_rows() {
+    const CASE: &str = "SUNRISE_PROJECTILE_IMPACT_PANIC_CASE";
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_projectiles::impact_panic_tests::shoot_listener_panic_after_admission_preserves_owned_rows",
+        CASE,
+        &["overworld", "nether"],
+    ) {
+        return;
+    }
     eprintln!(
         "PANIC_GUARD_ASSERTIONS_DISABLED:{}",
         !cfg!(debug_assertions)
     );
-    for dimension in [crate::game::Dim::Overworld, crate::game::Dim::Nether] {
+    {
+        let dimension = match std::env::var(CASE).as_deref() {
+            Ok("nether") => crate::game::Dim::Nether,
+            _ => crate::game::Dim::Overworld,
+        };
         let admitted = Arc::new(AtomicBool::new(false));
         let panicked = Arc::new(AtomicBool::new(false));
         let mods = vec![mod_api::ModEntry::new(
@@ -155,16 +167,9 @@ fn shoot_listener_panic_after_admission_preserves_owned_rows() {
                     .iter()
                     .map(|p| (p.id, p.join))
                     .collect();
-                assert_eq!(restored.len(), before.len() + 1);
-                assert_eq!(
-                    game.creatures.projectiles[0].position,
-                    Vec3::new(9.5, 70.0, 0.5)
-                );
-                assert_eq!(
-                    restored[1..],
-                    before,
-                    "panic changed survivor identity or spawn admission order"
-                );
+                assert!(game.transaction_current().is_none());
+                // Flight survivors are restored before the journal aborts the callback's spawn.
+                assert_eq!(restored, before, "panic changed survivor identity or order");
                 let mut table = game.resident_entities.table.borrow_mut();
                 for expected in restored {
                     let found = table.entity_lookup(&owner.dimension, expected.0, |at| {

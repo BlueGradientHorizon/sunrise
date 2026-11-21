@@ -12,7 +12,11 @@ pub trait Hooks {
     /// `[0, 1, 0]` for the top), at the point `at`. Set `canceled` and the impact
     /// does not happen: no damage, no knockback, no sound, no block reaction, the
     /// arrow does not stick, a pearl does not teleport, a potion or a fireball
-    /// does not burst. Cancellation leaves the projectile alive. A flying bobber
+    /// does not burst. Cancellation alone leaves the projectile alive. Resolve
+    /// the live owner with `host.entity(event.projectile)` and call `EntityRef::discard`
+    /// to consume it instead. Removal suppresses the hit even if the event is not
+    /// canceled. A decision invalidated by listener writes is not recomputed.
+    /// A flying bobber
     /// skips hooking and redirection to the hit point, but its ordinary move
     /// still stops against solid blocks. Water is not an impact. Bobbers notify
     /// before vanilla's entity deflection and world-border bounce; rockets notify

@@ -3,7 +3,7 @@ use crate::game::{
     Game,
     native_entity_refs::tests::{bind_local_player, with_game},
 };
-use mod_api::{Flow, Hooks, ServerHost};
+use mod_api::{Flow, Hooks, HostTransaction, ServerHost};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -17,6 +17,8 @@ pub(in crate::game) enum Action {
     Allow,
     Cancel,
     Discard,
+    DiscardAndCancel,
+    AbortDiscard,
     Remove,
 }
 
@@ -39,6 +41,8 @@ pub(in crate::game) struct Seen {
 pub(in crate::game) struct Observed {
     pub hits: Mutex<Vec<Seen>>,
     pub catches: AtomicUsize,
+    pub lands: AtomicUsize,
+    pub leaves: Mutex<Vec<u32>>,
 }
 
 struct Probe {
@@ -79,16 +83,51 @@ impl Hooks for Probe {
         match self.action {
             Action::Allow => Flow::Continue,
             Action::Cancel => Flow::Cancel,
-            Action::Discard | Action::Remove => {
-                let removed = match self.action {
-                    Action::Discard => projectile.discard(host),
-                    _ => projectile.remove(host, mod_api::RemovalReason::Killed),
+            Action::Discard | Action::DiscardAndCancel | Action::AbortDiscard | Action::Remove => {
+                let remove = |host: &mut dyn ServerHost| {
+                    let removed = match self.action {
+                        Action::Remove => projectile.remove(host, mod_api::RemovalReason::Killed),
+                        _ => projectile.discard(host),
+                    };
+                    assert!(removed);
+                    assert!(host.entity(event.projectile).is_none());
+                    assert!(!projectile.discard(host));
                 };
-                assert!(removed);
-                assert!(host.entity(event.projectile).is_none());
-                Flow::Continue
+                if matches!(self.action, Action::AbortDiscard) {
+                    let aborted: Result<(), ()> = host.transaction(|host, _| {
+                        remove(host);
+                        Err(())
+                    });
+                    assert!(aborted.is_err());
+                    assert_eq!(host.entity(event.projectile), Some(projectile));
+                } else {
+                    remove(host);
+                }
+                match self.action {
+                    Action::DiscardAndCancel | Action::AbortDiscard => Flow::Cancel,
+                    _ => Flow::Continue,
+                }
             }
         }
+    }
+
+    fn vanilla_game_event(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::VanillaGameEventEvent<'_>,
+    ) -> Flow {
+        if event.event == "minecraft:projectile_land" {
+            self.observed.lands.fetch_add(1, Ordering::Relaxed);
+        }
+        Flow::Continue
+    }
+
+    fn entity_leave_level(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::EntityLeaveLevelEvent<'_>,
+    ) {
+        self.observed.leaves.lock().unwrap().push(event.entity);
     }
 
     fn item_fished(&self, _: &mut dyn ServerHost, _: &mut mod_api::ItemFishedEvent<'_>) -> Flow {

@@ -39,8 +39,11 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
 use super::{
-    Dim, Game, InteractTarget, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender,
-    native_projectiles::Impact, view_vector,
+    Dim, Game, InteractTarget,
+    entity_culling::EntityCullDecision,
+    native_mob_draw::PlayerRender,
+    native_projectiles::{Impact, ImpactTransaction, projectile_impact_event},
+    view_vector,
 };
 use mod_api::{EquipmentSlot, LootDrops, SoundSource};
 use std::sync::Arc;
@@ -340,21 +343,11 @@ impl ProjectileHandBack {
     /// projectile, or the tick's spawns went first on the hand-back): the loop's state of each
     /// row follows it by id. A new row is kept, and an impact whose projectile a hook took out
     /// is dropped with it.
-    fn follow(
-        &mut self,
-        projectiles: &[Projectile],
-        keep: &mut Vec<bool>,
-        impacts: &mut Vec<Impact>,
-    ) {
+    fn follow(&mut self, projectiles: &[Projectile], keep: &mut Vec<bool>, impacts: &mut [Impact]) {
         let places = super::native_ticks::places_of(projectiles.iter().map(|p| p.id));
-        let rows = &self.rows;
-        impacts.retain_mut(|impact| match places.get(&rows[impact.index]) {
-            Some(&i) => {
-                impact.index = i;
-                true
-            }
-            None => false,
-        });
+        for impact in impacts {
+            impact.index = places.get(&impact.before.id).copied();
+        }
         let kept: sunrise_client::fast_hash::FxHashMap<u32, bool> = self
             .rows
             .iter()
@@ -4708,7 +4701,9 @@ impl Game<'_> {
                     None => continue,
                 },
             };
-            if projectiles[i].id > through {
+            if projectiles[i].id > through
+                || hear && self.projectile_removal_pending(projectiles[i].id)
+            {
                 continue;
             }
             // ServerLevel.tick: losing an entity-ticking ticket must not
@@ -4846,7 +4841,7 @@ impl Game<'_> {
                             false,
                             |at| w.block_name(at.x, at.y, at.z) == "minecraft:powder_snow",
                         ) {
-                            snow_contacts.push((block, p.position, p.velocity));
+                            snow_contacts.push((p.id, block, p.position, p.velocity));
                         }
                     }
                     if shooter.is_some() {
@@ -4884,7 +4879,7 @@ impl Game<'_> {
                             if e == sunrise_client::arrows::ArrowEvent::ShootEvent {
                                 shoot_events.push((p.owner, p.guest, p.position.components()));
                             }
-                            (p.position, e)
+                            (p.id, p.position, e)
                         }));
                     }
                     let wind = matches!(
@@ -4911,7 +4906,7 @@ impl Game<'_> {
                                 if e == sunrise_client::arrows::ArrowEvent::ShootEvent {
                                     shoot_events.push((p.owner, p.guest, p.position.components()));
                                 }
-                                (p.position, e)
+                                (p.id, p.position, e)
                             }));
                         }
                         deflections.push((id, [at.x, at.y, at.z]));
@@ -4932,11 +4927,22 @@ impl Game<'_> {
                     }
                     vehicle_winds.met(wind_before, hit);
                     if hit != Hit::None {
-                        if let Some(before) = before {
+                        if let Some(before) = before
+                            && match hit {
+                                Hit::Block { .. } => true,
+                                Hit::Entity {
+                                    who: Who::Mob(id), ..
+                                } => pickable_projectile_hit(id).is_none(),
+                                // A server's players are hit as entities, not Who::Player.
+                                _ => false,
+                            }
+                        {
                             impacts.push(Impact {
-                                index: i,
+                                index: Some(i),
+                                keep,
                                 before,
                                 hit,
+                                target: self.native_impact_target(hit),
                                 hit_slot: hits.len(),
                                 events: events_from..arrow_events.len(),
                             });
@@ -4988,9 +4994,6 @@ impl Game<'_> {
             }
         }
         self.creatures.pickable_projectile_targets = winds;
-        for (block, position, movement) in snow_contacts {
-            self.powder_snow_particle(block, position, movement);
-        }
         // An arrow an entity hit leaves the batch for its hit's handling;
         // the level never takes it out (AbstractArrow.onHitEntity), so one
         // that flies on goes back where this tick had it.
@@ -5007,79 +5010,95 @@ impl Game<'_> {
                 self.creatures.bounced_followers.push((p.id, followers));
             }
         }
-        let listed = keep_flags.clone();
-        let mut idx = 0;
-        if impacts.is_empty() {
-            projectiles.retain(|_| {
-                let keep = keep_flags[idx];
-                idx += 1;
-                keep
-            });
-        } else {
-            // Keep the owners of impacts that may replay alive until the verdict.
-            let mut removed = projectiles
-                .extract_if(|_| {
-                    let take = !keep_flags[idx];
-                    idx += 1;
-                    take
-                })
-                .collect();
-            self.native_settle_impacts(
-                &mut projectiles,
-                &mut removed,
-                &listed,
-                impacts,
-                &mut hits,
-                &mut arrow_events,
-            );
+        // Do not retire an impact owner just because vanilla would consume it. Its live
+        // row is what the event resolves and what transaction commit will remove.
+        for impact in &mut impacts {
+            if let Some(i) = impact.index {
+                impact.keep = keep_flags[i];
+                keep_flags[i] = true;
+            }
+        }
+        let mut flags = keep_flags.into_iter();
+        projectiles.retain(|_| flags.next().unwrap());
+        let hears_impact = !impacts.is_empty();
+        let scope = ImpactTransaction::new(self, hears_impact);
+        let game = &mut *scope.game;
+        if hears_impact {
+            game.native_settle_impacts(&mut projectiles, impacts, &mut hits, &mut arrow_events);
+        }
+        for (id, block, position, movement) in snow_contacts {
+            if !hears_impact || !game.projectile_removal_pending(id) {
+                game.powder_snow_particle(block, position, movement);
+            }
         }
         for (owner, guest, at) in shoot_events {
-            self.with_projectile_dispatch(&mut projectiles, |game| {
+            game.with_projectile_dispatch(&mut projectiles, |game| {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
         // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
         for at in lava_hurt_bullets {
-            self.shulker_bullet_hurt(at);
-            self.lava_hurt_sound(at);
+            game.shulker_bullet_hurt(at);
+            game.lava_hurt_sound(at);
         }
-        self.smoke_trails(trails);
-        self.dragon_breath_trails();
+        game.smoke_trails(trails);
+        game.dragon_breath_trails();
         for pos in bubble_tops {
-            self.bubble_column_particles(pos);
+            game.bubble_column_particles(pos);
         }
         // Breeze.onProjectileDeflect: level.playSound(null, breeze,
         // BREEZE_DEFLECT, HOSTILE, 1, 1).
         for (breeze, at) in deflections {
             let sound = LevelSound::new("minecraft:entity.breeze.deflect", at, 1.0, 1.0)
                 .in_source(SoundSource::Hostile);
-            self.play_bound_sound(sound, breeze, None);
+            game.play_bound_sound(sound, breeze, None);
         }
-        for (at, event) in arrow_events {
-            self.arrow_event(at, event);
+        for (id, at, event) in arrow_events {
+            if !hears_impact
+                || !projectile_impact_event(&event)
+                || !game.projectile_removal_pending(id)
+            {
+                game.arrow_event(at, event);
+            }
         }
         // `Entity.applyEffectsFromBlocks` sweeps the original cohort by join identity:
         // settlement can remove rows or append hook spawns. Contacts need the lent
         // level here, after the read-only borrow, each still in this batch's tick.
         for i in 0..projectiles.len() {
-            if last_ticked_join.is_none_or(|last| projectiles[i].join > last) {
+            if last_ticked_join.is_none_or(|last| projectiles[i].join > last)
+                || hears_impact && game.projectile_removal_pending(projectiles[i].id)
+            {
                 continue;
             }
-            let mut swept = None;
-            projectiles.update(i, |p| {
-                swept = Some((p.previous, p.position));
-            });
-            let _ = swept;
-            projectiles.update(i, |p| self.sweep_projectile_inside(p));
-            projectiles.update(i, |p| self.lava_mark_hurt(p));
+            projectiles.update(i, |p| game.sweep_projectile_inside(p));
+            projectiles.update(i, |p| game.lava_mark_hurt(p));
         }
-        self.creatures.projectiles.restore(
+        game.creatures.projectiles.restore(
             projectiles,
             sunrise_client::join_seq::RestoreOrder::SpawnsFirst,
         );
-        section_steps::finish(self, section_steps);
+        section_steps::finish(game, section_steps);
+        let result = game.apply_projectile_hits(hits, &mut vehicle_winds, hears_impact);
+        scope.close(result.is_ok());
+        self.creatures.bounced_followers.clear();
+        result?;
+        self.flush_lan_explosions();
+        let flushed = self.flush_wind_bursts();
+        self.native_tick_post_batch(round);
+        flushed
+    }
+
+    fn apply_projectile_hits(
+        &mut self,
+        hits: Vec<(Projectile, Hit)>,
+        vehicle_winds: &mut super::wind::VehicleWinds,
+        hears_impact: bool,
+    ) -> Result<()> {
         for (p, hit) in hits {
-            let Some((p, hit)) = self.broken_vehicle_retick(p, hit, &mut vehicle_winds) else {
+            if hears_impact && self.projectile_removal_pending(p.id) {
+                continue;
+            }
+            let Some((p, hit)) = self.broken_vehicle_retick(p, hit, vehicle_winds) else {
                 continue;
             };
             // A player's arrow on another player lands as the victim's hurt.
@@ -5105,11 +5124,7 @@ impl Game<'_> {
                 _ => self.projectile_hit(&p, hit)?,
             }
         }
-        self.creatures.bounced_followers.clear();
-        self.flush_lan_explosions();
-        let flushed = self.flush_wind_bursts();
-        self.native_tick_post_batch(round);
-        flushed
+        Ok(())
     }
     /// `LivingEntity.hurtServer`'s `setLastHurtByPlayer` for a projectile a
     /// player owns (a fireball they turned back): the kill is theirs, so a

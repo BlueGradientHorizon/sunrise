@@ -1,0 +1,3 @@
+sunrise-client game::creatures::projectile_batch_tests::aborting_an_impact_discard_keeps_the_same_egg_in_flight lib daily resources
+sunrise-client game::creatures::projectile_batch_tests::discarding_an_egg_during_impact_skips_the_hit_and_replay lib daily resources
+sunrise-client game::trident::impact_tests::a_discarded_trident_does_not_apply_its_captured_impact lib daily resources

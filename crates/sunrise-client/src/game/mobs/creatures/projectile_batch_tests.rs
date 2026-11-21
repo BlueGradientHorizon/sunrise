@@ -1,4 +1,8 @@
 use super::*;
+use crate::game::{
+    native_entity_refs::tests::run_fresh_cases,
+    native_projectiles::impact_probe::{Action, with_probe},
+};
 use mod_api::{Flow, HearsProjectileImpactsEvent, Hooks, ProjectileImpactEvent, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, join_seq::JoinSeq};
@@ -158,7 +162,16 @@ fn with_batch(remove: bool, test: impl FnOnce(&mut Game<'_>, [u32; 3], [JoinSeq;
             let before = index.lock().unwrap().snapshot(&key);
             assert_eq!(before.len(), 2);
             observed.lock().unwrap().remove = remove.then_some(ids[1]);
+            game.audio.capture = Some(Vec::new());
             game.tick_projectiles().unwrap();
+            assert!(
+                game.audio
+                    .capture
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .all(|sound| { sound.event != "minecraft:entity.arrow.hit" })
+            );
             assert_eq!(index.lock().unwrap().snapshot(&key).len(), 2);
             for (id, original) in ids[..2].iter().zip(&bound.registrations) {
                 let i = game
@@ -257,6 +270,13 @@ fn no_impact_expiration_retires_only_the_expired_owner() {
 #[test]
 #[ignore = "daily"]
 fn canceled_impacts_keep_projectile_batch_joins_and_survivor_order() {
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::canceled_impacts_keep_projectile_batch_joins_and_survivor_order",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["cancel"],
+    ) {
+        return;
+    }
     with_batch(false, |game, ids, joins, spawned, buffered| {
         let list = &mut game.creatures.projectiles;
         // The replayed snowball is appended; the arrow keeps its original slot.
@@ -285,18 +305,15 @@ fn canceled_impacts_keep_projectile_batch_joins_and_survivor_order() {
 #[test]
 #[ignore = "daily"]
 fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
+    if run_fresh_cases(
+        "game::creatures::projectile_batch_tests::a_projectile_removed_in_its_impact_hook_stays_removed_after_replay",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["discard"],
+    ) {
+        return;
+    }
     with_batch(true, |game, ids, joins, spawned, buffered| {
-        // Pending removal refuses the handle already, even before the physical sweep.
         assert!(game.entity(ids[1]).is_none());
-        // Refusal must happen before replay, not only at the later removal sweep.
-        let arrow = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == ids[1])
-            .unwrap();
-        assert!(arrow.stuck);
-        assert!(arrow.position.x < 2.0);
         game.native_removals_flush();
         let list = &game.creatures.projectiles;
         assert_eq!(
@@ -308,4 +325,83 @@ fn a_projectile_removed_in_its_impact_hook_stays_removed_after_replay() {
         game.tick_projectiles().unwrap();
         assert!(!game.creatures.projectiles.iter().any(|p| p.id == ids[1]));
     });
+}
+
+fn terminal_egg(action: Action, abort: bool) {
+    use std::sync::atomic::Ordering;
+    use sunrise_core::random::LegacyRandom;
+
+    with_probe(action, true, |game, observed| {
+        let stone = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:stone")
+            .unwrap();
+        game.world.set(2, 64, 0, stone).unwrap();
+        let mut egg = Projectile::new(ProjectileKind::Egg, Vec3::new(0.5, 64.5, 0.5), None);
+        egg.id = 71;
+        egg.velocity = Vec3::new(3.0, 0.0, 0.0);
+        game.creatures.projectiles.push(egg);
+        let join = game.creatures.projectiles[0].join;
+        let handle = game.entity(71).unwrap();
+        game.native_joins_skip();
+        game.audio.capture = Some(Vec::new());
+        *game.world.random = LegacyRandom::new(4135);
+        let random = game.world.random.state();
+        let particles = game.particles.len();
+        game.tick_projectiles().unwrap();
+        game.native_leaves_flush();
+        {
+            let hits = observed.hits.lock().unwrap();
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].projectile, 71);
+            assert_eq!(hits[0].kind, "minecraft:egg");
+            assert_eq!(hits[0].block, [2, 64, 0]);
+        }
+        assert_eq!(observed.lands.load(Ordering::Relaxed), 0);
+        assert!(game.lan_entity_events.is_empty());
+        assert_eq!(game.particles.len(), particles);
+        assert_eq!(game.world.random.state(), random);
+        assert!(game.mobs.is_empty());
+        if abort {
+            assert!(observed.leaves.lock().unwrap().is_empty());
+            assert_eq!(game.entity(71), Some(handle));
+            let egg = &game.creatures.projectiles[0];
+            assert_eq!(egg.join, join);
+            assert_eq!(egg.age, 1);
+            assert!(egg.position.x > 2.0, "cancel alone flies through the block");
+        } else {
+            assert!(game.entity_position(handle).is_none());
+            assert!(game.creatures.projectiles.is_empty());
+            game.tick_projectiles().unwrap();
+            game.native_leaves_flush();
+            assert!(game.creatures.projectiles.is_empty());
+            assert_eq!(*observed.leaves.lock().unwrap(), [71]);
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn discarding_an_egg_during_impact_skips_the_hit_and_replay() {
+    if !run_fresh_cases(
+        "game::creatures::projectile_batch_tests::discarding_an_egg_during_impact_skips_the_hit_and_replay",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["egg-discard"],
+    ) {
+        terminal_egg(Action::DiscardAndCancel, false);
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn aborting_an_impact_discard_keeps_the_same_egg_in_flight() {
+    if !run_fresh_cases(
+        "game::creatures::projectile_batch_tests::aborting_an_impact_discard_keeps_the_same_egg_in_flight",
+        "SUNRISE_PROJECTILE_BATCH_CASE",
+        &["egg-abort"],
+    ) {
+        terminal_egg(Action::AbortDiscard, true);
+    }
 }
