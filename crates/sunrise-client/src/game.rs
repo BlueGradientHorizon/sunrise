@@ -11245,6 +11245,7 @@ impl Game<'_> {
                 self.water_plane(camera)
             },
             title,
+            sky_pass: false,
             sky_blocked: sunrise_client::fog::sky_pass_skipped(
                 self.camera_fog_type([camera.x, camera.y, camera.z]),
                 self.potions.effects.get("blindness").is_some()

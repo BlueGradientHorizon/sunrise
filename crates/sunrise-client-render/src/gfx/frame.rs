@@ -139,6 +139,7 @@ pub struct Frame<'a> {
     pub title: bool,
     /// Lava, powder snow, blindness, darkness or a boss bar's world fog leaves out the sky pass
     /// (`fog::sky_pass_skipped`).
+    pub sky_pass: bool,
     pub sky_blocked: bool,
     /// Dimensions without a skybox (the Nether) clear to the fog colour.
     pub skybox: bool,
