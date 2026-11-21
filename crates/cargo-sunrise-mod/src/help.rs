@@ -19,8 +19,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "build",
         everyday: true,
-        usage: "build [--update-lock]",
-        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled first (--update-lock, native only, resolves its Cargo.lock again).",
+        usage: "build [--update-lock] [--binaries <dir> --sunrise-release <tag> --releases <file> [--server]] | build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>",
+        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled first (--update-lock resolves its Cargo.lock again). --binaries also writes the current SDK host's archive (--server selects the dedicated server); --describe-binaries assembles a descriptor from signed host archives without compiling.",
     },
     Command {
         name: "run",
@@ -49,8 +49,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "publish",
         everyday: false,
-        usage: "publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>]",
-        summary: "Builds the mod, then writes its registry entry, the staged file and the pull request text into a folder; it uploads nothing.",
+        usage: "publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag>] [--releases <file>] [--binaries <dir> --asset-base <release URL> --sdk-data <dir>]",
+        summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases. --binaries verifies and stages signed release assets; to append to an existing version, give --registry and its original signed --package.",
     },
     Command {
         name: "internals",

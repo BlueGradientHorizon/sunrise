@@ -743,7 +743,7 @@ fn project_with_cache(
     }
     let mut versions = Vec::new();
     for v in &entry.versions {
-        match version(entry, v, src, revoked) {
+        match checked_version(entry, v, src, revoked) {
             Ok(v) => versions.push(v),
             Err(e) => errors.push(format!("{id} {}: {e}", v.version)),
         }
@@ -847,7 +847,8 @@ impl EntryVersion {
     }
 }
 
-fn version(
+/// Verify a written version without requiring a complete project page.
+pub fn checked_version(
     entry: &Entry,
     v: &EntryVersion,
     src: &Sources,

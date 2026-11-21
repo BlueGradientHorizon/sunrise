@@ -132,19 +132,35 @@ pub fn release_source(source: &sunrise_mod_package::index::native::Bundle) -> Re
     let cargo = std::str::from_utf8(cargo).map_err(|e| format!("Cargo.toml: {e}"))?;
     let project = api::Project::parse_with(&bundle, cargo, |name| source.files.contains_key(name))
         .map_err(|e| e.to_string())?;
-    if let Some(refusal) = refusal_with_script(&project, source.files.contains_key("build.rs")) {
+    require_release_api(&project, source.files.contains_key("build.rs"))?;
+    let lock = source
+        .files
+        .get("Cargo.lock")
+        .ok_or("the source package must carry Cargo.lock")?;
+    check_release_lock(lock)
+}
+
+/// Preflight a release build with the same inputs the source package's verifier uses.
+pub fn release_project(project: &api::Project<'_>) -> Result<(), String> {
+    require_release_api(project, project.bundle.dir.join("build.rs").is_file())
+}
+
+fn require_release_api(project: &api::Project<'_>, build_script: bool) -> Result<(), String> {
+    if let Some(refusal) = refusal_with_script(project, build_script) {
         return Err(refusal.to_string());
     }
-    if !matches!(Route::of(&[project]), Route::Api) || !bundle.manifest.dependencies.is_empty() {
+    if !matches!(Route::of(std::slice::from_ref(project)), Route::Api)
+        || !project.bundle.manifest.dependencies.is_empty()
+    {
         return Err(
             "a release library requires a standalone prebuilt-api mod without mod dependencies"
                 .into(),
         );
     }
-    let lock = source
-        .files
-        .get("Cargo.lock")
-        .ok_or("the source package must carry Cargo.lock")?;
+    Ok(())
+}
+
+pub fn check_release_lock(lock: &[u8]) -> Result<(), String> {
     super::registry_lock::RegistryLock::parse(
         std::str::from_utf8(lock).map_err(|e| format!("Cargo.lock: {e}"))?,
     )?;

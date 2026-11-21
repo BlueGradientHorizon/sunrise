@@ -98,8 +98,8 @@ not written into the entry. The dependencies are read from the package itself, s
 `--registry`, the registry's CI checks both when the pull request opens; it also checks sides and what the dependencies
 themselves require.
 
-Published versions never change and are never removed: a version already in the entry is refused by name, and a file
-that must go is taken down by the registry's maintainers in `revoked.toml`.
+Published source versions never change. A file that must go is taken down by the registry's maintainers in
+`revoked.toml`. The only update `publish` makes to an existing version is an [append of signed native builds](#publishing-native-binaries).
 
 ## Signing
 
@@ -122,6 +122,53 @@ and stages the exact bytes you signed, without rebuilding. If you change the pac
 
 Generate a key pair once with `minisign -G -p my_mod.pub -s my_mod.key`. Keep the secret key (`my_mod.key`) out of
 both your repository and releases; losing it means a new key and a review.
+
+## Publishing native binaries
+
+Builds are optional. They are available only to a standalone API native mod: no game patches, crates.io dependencies
+or declared mod dependencies. Keep the signed `.smod` as the source release even when players can download binaries.
+Set the manifest's `homepage` to your project's GitHub repository. Use the stable release list (`releases.json`, an array of `{ "tag", "commit" }` records) and the verified `sdk.json`
+for the target commit under `sdk-data/<commit>/`.
+
+1. Pin your checkout to the stable SDK commit. On each SDK host, build the archive with:
+
+   ```sh
+   cargo sunrise-mod build --binaries release-assets --sunrise-release 26.3-0.1.0 --releases releases.json
+   ```
+
+   Run it with `--server` as well for each dedicated-server host the SDK lists. Every run writes a `.smod` and the
+   selected host's `<id>-<version>+<release>-<host>.tar.xz`. Keep one `.smod` to sign as the source for a new version.
+2. Sign every archive with `minisign -S -s my_mod.key -m <archive>`. Gather the archives and their `.minisig` files
+   in `release-assets`, then assemble and sign the descriptor with the same key:
+
+   ```sh
+   cargo sunrise-mod build --describe-binaries release-assets --sunrise-release 26.3-0.1.0 \
+     --releases releases.json --sdk-data sdk-data
+   minisign -S -s my_mod.key -m release-assets/my_mod-0.1.0+26.3-0.1.0.binaries.json
+   ```
+
+   The descriptor embeds the archive signatures; it does not sign the archives for you.
+3. Stage the submission. `--asset-base` is the tag's download URL in your project's own GitHub repository, without an
+   asset filename. For a new listing:
+
+   ```sh
+   minisign -S -s my_mod.key -m target/sunrise-mod/my_mod.smod
+   cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
+     --sunrise 26.3-0.1.0 --releases releases.json --sdk-data sdk-data \
+     --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+     --package target/sunrise-mod/my_mod.smod \
+     --binaries release-assets --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
+   ```
+
+   For an existing listing with a new mod version, replace the page flags with `--registry <checkout>`. For a later
+   Sunrise build of an **already published** mod version, build archives from a temporary checkout of that source
+   repinned to the new commit. Use `--registry <checkout>` and pass the **original published `.smod`** to `--package`,
+   not the temporary build's package. Omit `--sunrise`, `--key`, and `--signature`: `publish` uses the source row's
+   existing stable pin, key and signature and adds one build row without touching them.
+4. Upload the staged archive files and descriptor to the author release at `--asset-base`. Attach the staged source
+   package for a new mod version only. Use the generated `PULL_REQUEST.md` and copy the entry to your fork as above;
+   do not commit the staged files. The tool verifies locally and does not upload them. See the
+   [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
 ## A collection
 

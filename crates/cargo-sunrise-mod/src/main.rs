@@ -40,6 +40,7 @@ mod native_build;
 mod options;
 mod publish;
 mod registry;
+mod release;
 mod sdk_cmds;
 mod sdk_fetch;
 mod uses_table;
@@ -132,36 +133,126 @@ fn main() -> ExitCode {
     }
 }
 
-fn build_args(args: &[String]) -> Result<bool, String> {
-    let mut options = Options::new("build", args, &[]);
-    let update_lock = options.switch("--update-lock");
-    options.finish()?;
-    Ok(update_lock)
+#[derive(Debug, PartialEq, Eq)]
+enum BuildMode<'a> {
+    Package,
+    Archive {
+        dir: &'a Path,
+        tag: &'a str,
+        releases: &'a Path,
+        target: sunrise_native_build::contract::TargetName,
+    },
+    Describe {
+        dir: &'a Path,
+        tag: &'a str,
+        releases: &'a Path,
+        sdk: &'a Path,
+    },
 }
 
-/// `build [--update-lock]`: compile a native mod, then write the package in `target/sunrise-mod/`.
-/// Also the first step of `publish`.
+fn build_args(args: &[String]) -> Result<(bool, BuildMode<'_>), String> {
+    let mut options = Options::new(
+        "build",
+        args,
+        &[
+            "--binaries",
+            "--describe-binaries",
+            "--sunrise-release",
+            "--releases",
+            "--sdk-data",
+        ],
+    );
+    let update_lock = options.switch("--update-lock");
+    let server = options.switch("--server");
+    let archive = options.value("--binaries")?;
+    let describe = options.value("--describe-binaries")?;
+    let tag = options.value("--sunrise-release")?;
+    let releases = options.value("--releases")?;
+    let sdk = options.value("--sdk-data")?;
+    options.finish()?;
+    let mode = match (archive, describe, tag, releases, sdk) {
+        (None, None, None, None, None) if !server => BuildMode::Package,
+        (Some(dir), None, Some(tag), Some(releases), None) => BuildMode::Archive {
+            dir: Path::new(dir), tag, releases: Path::new(releases),
+            target: if server { sunrise_native_build::contract::TargetName::Server } else { sunrise_native_build::contract::TargetName::Client },
+        },
+        (None, Some(dir), Some(tag), Some(releases), Some(sdk)) if !server && !update_lock => BuildMode::Describe {
+            dir: Path::new(dir), tag, releases: Path::new(releases), sdk: Path::new(sdk),
+        },
+        _ => return Err("use --binaries <dir> with --sunrise-release <tag> and --releases <file>, or --describe-binaries <dir> with those inputs and --sdk-data <dir>".into()),
+    };
+    Ok((update_lock, mode))
+}
+
+/// Compile once through native-build, then write the source package and, when requested, the
+/// exact SDK host's archive. Describe mode only reads the resulting signed assets.
 fn build_command(
     entry: mod_surface::child::ChildEntry,
     args: &[String],
 ) -> Result<PathBuf, String> {
-    let update_lock = build_args(args)?;
+    let (update_lock, mode) = build_args(args)?;
     let root = Path::new(".");
-    // Known from the manifest, before any SDK or package work.
-    if update_lock && read_manifest(root)?.native.is_none() {
+    if let BuildMode::Describe {
+        dir,
+        tag,
+        releases,
+        sdk,
+    } = mode
+    {
+        let releases = release::releases(releases)?;
+        let release = release::stable(&releases, tag)?;
+        let dir = release::output_dir(dir)?;
+        let path = release::describe(&read_manifest(root)?, &dir, release, sdk)?;
+        println!(
+            "Wrote {}: sign this descriptor with the project key",
+            path.display()
+        );
+        return Ok(path);
+    }
+    let package = Package::read(root)?;
+    if update_lock && !package.is_native() {
         return Err(format!(
             "build --update-lock rewrites a native mod's Cargo.lock; {MANIFEST} has no [native] table"
         ));
     }
+    let archive = if let BuildMode::Archive {
+        dir,
+        tag,
+        releases,
+        target,
+    } = mode
+    {
+        let native = package
+            .manifest
+            .native
+            .as_ref()
+            .ok_or("build --binaries needs a native mod")?;
+        let version = release::version(&package.manifest)?;
+        let releases = release::releases(releases)?;
+        let release = release::stable(&releases, tag)?;
+        if native.sunrise != release.commit {
+            return Err(format!(
+                "{MANIFEST} pins {}, but Sunrise {tag} is {}; build this release in a checkout pinned to that commit",
+                native.sunrise, release.commit
+            ));
+        }
+        Some((release::output_dir(dir)?, tag, target, version))
+    } else {
+        None
+    };
     let output = PackageOutput::in_project(root)?;
-    let package = Package::read(root)?;
     if package.is_native() {
         fetched(root)?;
     }
-    // The package carries the mixins revision and Cargo.lock from the completed build.
     let built = package
         .is_native()
-        .then(|| dev::build(root, update_lock))
+        .then(|| {
+            dev::build(
+                root,
+                update_lock,
+                archive.as_ref().map(|(_, _, target, _)| *target),
+            )
+        })
         .transpose()?;
     let path = build(
         entry,
@@ -170,6 +261,16 @@ fn build_command(
         built.as_ref().map(|built| built.mixins.as_str()),
     )?;
     println!("Built {}", path.display());
+    if let Some((dir, tag, _, version)) = archive {
+        let library = built
+            .and_then(|built| built.release)
+            .ok_or("the build returned no releasable library")?;
+        let archive = library.write(&dir, &package.manifest.id, &version, tag)?;
+        println!(
+            "Wrote {}: sign this archive with the project key",
+            archive.display()
+        );
+    }
     Ok(path)
 }
 
@@ -1210,8 +1311,11 @@ mod tests {
 
     #[test]
     fn build_run_update_and_check_read_their_options_and_refuse_others() {
-        assert_eq!(build_args(&[]), Ok(false));
-        assert_eq!(build_args(&argv("--update-lock")), Ok(true));
+        assert_eq!(build_args(&[]), Ok((false, BuildMode::Package)));
+        assert_eq!(
+            build_args(&argv("--update-lock")),
+            Ok((true, BuildMode::Package))
+        );
         let line = argv("--game g --resources r --jars j -- --relase");
         assert_eq!(
             run_args(&line),

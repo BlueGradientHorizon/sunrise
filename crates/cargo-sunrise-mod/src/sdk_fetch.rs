@@ -344,21 +344,27 @@ pub(crate) fn fetch(
 }
 
 /// The compiled slices (`runtime`, `api`, `engine`) of the build `index` describes, for `target`,
-/// verified and unpacked once into `dir/<target>/`, the folders `native-build`'s plan names. `say`
-/// gets one line per download.
+/// verified and unpacked into the folders `native-build`'s plan names. Independent release
+/// builds need only the runtime and API for one SDK host; the full client cache is unchanged.
 pub(crate) fn fetch_slices(
     base: &Base,
     index: &Index,
     target: &str,
+    side: sdk::Side,
+    release: bool,
     dir: &Path,
     stamp: &CacheStamp,
-    say: &dyn Fn(&str),
 ) -> Result<sunrise_native_build::prebuilt::Package, String> {
     let build = &index.build.commit;
+    let host = sdk::Asset::host_name(target, side);
     let names = index
-        .route_assets("engine", target, sdk::Side::Client)
+        .route_assets(if release { "api" } else { "engine" }, target, side)
         .map_err(|e| format!("sdk-{build} has no slices for this computer ({target}): {e}"))?;
-    let into = dir.join(target);
+    let into = if release {
+        dir.join("release-slices").join(host)
+    } else {
+        dir.join(host)
+    };
     let package = sunrise_native_build::prebuilt::Package::at(&into);
     if stamp.matches(&into) {
         return Ok(package);
@@ -376,10 +382,10 @@ pub(crate) fn fetch_slices(
         let Some((kind, ..)) = sdk::Asset::parts_of(&name) else {
             return Err(format!("sdk-{build}: {name} is no slice"));
         };
-        say(&format!(
+        println!(
             "Downloading {name} ({} MB), once for every project",
             asset.size.div_ceil(1_000_000)
-        ));
+        );
         unpack(base, index, &name, &into, kind.name(), SLICE_LIMIT)?;
     }
     stamp.write(&into)?;

@@ -6,6 +6,9 @@ use std::{
 };
 use sunrise_mod_package::index::{self, registry::Entry};
 
+#[path = "publish/native_release.rs"]
+mod native_release;
+
 const BIN: &str = env!("CARGO_BIN_EXE_cargo-sunrise-mod");
 const ENTRY: &str = "mods/coords_hud.toml";
 const PAGE: &[&str] = &[
