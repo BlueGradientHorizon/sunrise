@@ -1,16 +1,14 @@
 //! Author-held Minisign keys and detached signatures; unrelated to Sunrise's SDK release key.
-use crate::{
-    bounded::{self, Symlinks},
-    options::Options,
-    release,
-};
+use crate::options::Options;
 use minisign::{KeyPair, PublicKey, SecretKey};
 use std::{
-    env, fs, io,
-    io::Write,
-    path::{Component, Path, PathBuf},
+    env,
+    path::{Path, PathBuf},
 };
-use sunrise_mod_package::manifest::{MANIFEST, Manifest, NOT_PACKAGED};
+use sunrise_mod_package::manifest::{MANIFEST, MAX_MANIFEST, Manifest};
+
+mod files;
+use files::Directory;
 
 const KEY_NAME: &str = "signing.key";
 const PUBLIC_NAME: &str = "signing.pub";
@@ -23,15 +21,15 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
     let out = options.value("--out")?;
     let no_password = options.switch("--no-password");
     options.finish()?;
+    let out_is_default = out.is_none();
     let path = match out {
         Some(path) => PathBuf::from(path),
         None => default_key_directory()?,
     };
-    let out = key_directory(&path)?;
-    let secret = out.join(KEY_NAME);
-    let public = out.join(PUBLIC_NAME);
-    require_absent(&secret)?;
-    require_absent(&public)?;
+    let out = Directory::open(&path, true)?;
+    out.require_private(out_is_default)?;
+    out.require_absent(KEY_NAME.as_ref())?;
+    out.require_absent(PUBLIC_NAME.as_ref())?;
     let pair = if no_password {
         KeyPair::generate_unencrypted_keypair()
     } else {
@@ -56,67 +54,29 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
         .pk
         .to_box()
         .map_err(|_| "could not encode the new public key")?;
-    let mut directories = fs::DirBuilder::new();
-    directories.recursive(true);
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut directories, 0o700);
-    directories
-        .create(&out)
-        .map_err(|e| format!("{}: {e}", out.display()))?;
-    write_new(&secret, &secret_box.to_bytes())?;
-    write_new(&public, &public_box.to_bytes())
-        .map_err(|e| format!("{e}; the private key was saved at {}", secret.display()))?;
+    out.write_new(KEY_NAME.as_ref(), &secret_box.to_bytes())?;
+    out.write_new(PUBLIC_NAME.as_ref(), &public_box.to_bytes())
+        .map_err(|e| {
+            format!(
+                "{e}; the private key was saved at {}",
+                out.path().join(KEY_NAME).display()
+            )
+        })?;
     eprintln!(
         "Wrote {} and {}. Keep the private key out of Git and release assets.",
-        secret.display(),
-        public.display()
+        out.path().join(KEY_NAME).display(),
+        out.path().join(PUBLIC_NAME).display(),
     );
     println!("{}", pair.pk.to_base64());
     Ok(())
 }
 
 fn default_key_directory() -> Result<PathBuf, String> {
-    let text = fs::read_to_string(MANIFEST)
-        .map_err(|e| format!("{MANIFEST}: {e}; run in the mod project or give an explicit path"))?;
+    let project = Directory::open(Path::new("."), false)?;
+    let text = String::from_utf8(project.read(MANIFEST.as_ref(), MAX_MANIFEST)?)
+        .map_err(|_| format!("{MANIFEST}: expected UTF-8 text"))?;
     let id = Manifest::parse(&text)?.id;
     Ok(crate::dev::data_dir()?.join("keys").join(id))
-}
-
-/// A signing key must be outside any mod's input tree or in a top-level excluded directory.
-fn key_directory(path: &Path) -> Result<PathBuf, String> {
-    let absolute = std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut out = PathBuf::new();
-    for part in absolute.components() {
-        match part {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            _ => out.push(part.as_os_str()),
-        }
-    }
-    let out = release::output_dir(&out)?;
-    for project in out.ancestors() {
-        let manifest = project.join(MANIFEST);
-        match fs::symlink_metadata(&manifest) {
-            Ok(_) => {}
-            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(format!("{}: {e}", manifest.display())),
-        }
-        let relative = out.strip_prefix(project).expect("ancestor of output");
-        let excluded = relative.components().next().is_some_and(|part| {
-            part.as_os_str()
-                .to_str()
-                .is_some_and(|name| NOT_PACKAGED.contains(&name))
-        });
-        if !excluded {
-            return Err(format!(
-                "{} is inside the mod's package inputs: use .sunrise/ or a folder outside the project",
-                out.display()
-            ));
-        }
-    }
-    Ok(out)
 }
 
 pub(crate) fn sign(args: &[String]) -> Result<(), String> {
@@ -135,12 +95,11 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    let into = release::output_dir(parent)?;
+    let into = Directory::open(parent, false)?;
     let mut sidecar = name.to_os_string();
     sidecar.push(".minisig");
-    let sidecar = into.join(sidecar);
-    require_absent(&sidecar)?;
-    let bytes = bounded::read_bytes(file, sunrise_mod_package::index::MAX_FILE, Symlinks::Refuse)?;
+    into.require_absent(&sidecar)?;
+    let bytes = into.read(name, sunrise_mod_package::index::MAX_FILE)?;
     let secret = if from_env {
         let text =
             env::var(KEY_ENV).map_err(|_| format!("--key-env needs a text key in {KEY_ENV}"))?;
@@ -164,7 +123,15 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
             Some(path) => PathBuf::from(path),
             None => default_key_directory()?.join(KEY_NAME),
         };
-        let text = String::from_utf8(bounded::read_bytes(&key_path, KEY_LIMIT, Symlinks::Refuse)?)
+        let key_name = key_path.file_name().ok_or("name a private key file")?;
+        let key_dir = Directory::open(
+            key_path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new(".")),
+            false,
+        )?;
+        let text = String::from_utf8(key_dir.read(key_name, KEY_LIMIT)?)
             .map_err(|_| format!("{}: expected Minisign key text", key_path.display()))?;
         let boxed = text.into();
         if no_password {
@@ -179,32 +146,7 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
     let public = PublicKey::from_secret_key(&secret).map_err(|_| "invalid Minisign signing key")?;
     let signature = minisign::sign(Some(&public), &secret, bytes.as_slice(), None, None)
         .map_err(|_| "could not make the Minisign signature")?;
-    write_new(&sidecar, &signature.to_bytes())?;
-    println!("Wrote {}", sidecar.display());
-    Ok(())
-}
-
-/// Refuse an existing name before prompting, including a dangling symlink. `write_new` enforces
-/// the same no-replace policy at the write in case another process creates the name meanwhile.
-fn require_absent(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-        Ok(_) => Err(format!(
-            "{} already exists; not overwritten",
-            path.display()
-        )),
-        Err(e) => Err(format!("{}: {e}", path.display())),
-    }
-}
-
-/// A private temporary file (0600 on Unix) becomes visible at the requested name only once complete.
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    let parent = path.parent().expect("output inside a folder");
-    let mut temp =
-        tempfile::NamedTempFile::new_in(parent).map_err(|e| format!("{}: {e}", path.display()))?;
-    temp.write_all(bytes)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
-    temp.persist_noclobber(path)
-        .map_err(|e| format!("{}: {}", path.display(), e.error))?;
+    into.write_new(&sidecar, &signature.to_bytes())?;
+    println!("Wrote {}", into.path().join(sidecar).display());
     Ok(())
 }

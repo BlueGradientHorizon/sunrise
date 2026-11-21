@@ -16,7 +16,7 @@ fn tool(project: &Path) -> Command {
 const MANIFEST: &str = "id = 'signing_test'\nname = 'Signing test'\nversion = '1.0.0'\n";
 
 fn project(temp: &tempfile::TempDir) -> std::path::PathBuf {
-    let project = temp.path().join("project");
+    let project = temp.path().canonicalize().unwrap().join("project");
     fs::create_dir(&project).unwrap();
     fs::write(project.join("sunrise-mod.toml"), MANIFEST).unwrap();
     project
@@ -117,6 +117,49 @@ fn keygen_rejects_destinations_inside_package_inputs() {
         );
         assert!(!project.join(path).join("signing.key").exists());
     }
+}
+
+#[cfg(unix)]
+#[test]
+#[ignore = "daily"]
+fn signing_paths_refuse_a_symlinked_ancestor() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = project(&temp);
+    let outside = temp.path().join("outside");
+    fs::create_dir_all(outside.join("nested")).unwrap();
+    std::os::unix::fs::symlink(&outside, project.join("linked")).unwrap();
+    // The ancestor under an excluded output tree must still not be followed.
+    fs::create_dir(project.join(".sunrise")).unwrap();
+    std::os::unix::fs::symlink(&outside, project.join(".sunrise/linked")).unwrap();
+    let output = tool(&project)
+        .args(["keygen", "--out", ".sunrise/linked/nested"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("linked"));
+    assert!(!outside.join("nested/signing.key").exists());
+
+    let pair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+    fs::write(
+        outside.join("nested/key"),
+        pair.sk.to_box(None).unwrap().into_string(),
+    )
+    .unwrap();
+    fs::write(outside.join("nested/asset"), b"release").unwrap();
+    fs::write(project.join("asset"), b"release").unwrap();
+    for (asset, key) in [
+        ("asset", "linked/nested/key"),
+        ("linked/nested/asset", "asset"),
+    ] {
+        let output = tool(&project)
+            .args(["sign", asset, "--key", key, "--no-password"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("linked"));
+    }
+    assert!(!project.join("asset.minisig").exists());
+    assert!(!outside.join("nested/asset.minisig").exists());
 }
 
 #[test]
