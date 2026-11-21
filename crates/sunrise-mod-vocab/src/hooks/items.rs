@@ -22,7 +22,7 @@ pub trait Hooks {
         out = "items",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 3
+        version = 4
     )]
     fn items(
         items: &mut dyn FnMut(

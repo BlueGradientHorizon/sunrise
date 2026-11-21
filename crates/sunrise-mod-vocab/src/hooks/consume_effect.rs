@@ -15,10 +15,10 @@ pub trait Hooks {
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "none (runtime ConsumeEffect.apply; RegisterEvent registers effect types, not invocations)"
     )]
-    #[notes = "`consume_effect` receives the custom kind, retained definition data, pre-shrink stack snapshot and consuming entity (player or mob). Entries come from the effective consumable, including stack patches, and run in list order between the built-in entries."]
+    #[notes = "`consume_effect` receives the custom kind, the canonical save-codec data for a registered kind (otherwise the retained definition data), the pre-shrink stack snapshot and the consuming entity (player or mob). Entries come from the effective consumable, including stack patches, and run in list order between the built-in entries."]
     fn consume_effect(
         kind: &str,
         data: &sunrise_core::nbt::Tag,

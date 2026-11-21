@@ -30,7 +30,7 @@ requires a farmer at work and `mob_griefing` enabled."#]
         out = "blocks",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 3
+        version = 4
     )]
     fn blocks(
         blocks: &mut dyn FnMut(
