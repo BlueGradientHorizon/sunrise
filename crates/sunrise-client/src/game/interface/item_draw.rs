@@ -60,11 +60,10 @@ impl Game<'_> {
 impl item_render::ItemDrawEnv for Env<'_, '_> {
     fn special_model_input(
         &self,
-        model: &item_render::BakedSpecialModel,
         stack: &StackView,
         context: &sunrise_assets::item_model::Context<'_>,
     ) -> Option<item_render::SpecialModelInput<'_>> {
-        super::native_special_renderers::draw_input(self.game, model, stack, context)
+        super::native_special_renderers::draw_input(self.game, stack, context)
     }
 
     fn special_model_stack(

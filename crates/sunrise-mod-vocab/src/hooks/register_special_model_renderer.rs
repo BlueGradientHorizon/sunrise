@@ -20,9 +20,10 @@ overlay and outline through the normal item draw path.
 
 An unknown type, a disabled winning factory, or a decode or bake error or panic refuses that
 item definition. The game does not retry a built-in decoder or a lower pack. Decode, bake,
-argument extraction and submit run as the mod that registered the type. A failed draw rolls back the whole special layer;
-only a panic disables that type's failing callback for the session, including resource reloads.
-Other refusals are reported on every failed invocation and do not disable the callback.
+argument extraction and submit run as the mod that registered the type. A failed draw rolls
+back the whole special layer. Ordinary refusals are reported on every failed invocation without
+disabling the callback. A panic logs and shows an error toast naming the mod, and disables only
+that registration's affected callback for the session, including after resource reloads.
 Only the outermost refused layer draws the missing model."#]
     #[hook(
         receiver = "associated",

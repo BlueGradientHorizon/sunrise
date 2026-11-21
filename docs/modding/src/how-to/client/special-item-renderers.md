@@ -152,9 +152,12 @@ enclosing item definition. That item draws the missing model. Other definitions 
 game does not try the built-in decoder for an overridden type or a lower pack's definition.
 
 The factory, argument extraction and submission run as the mod that registered the type.
-A failed draw rolls back the entire special layer, including earlier submissions. A panic
-logs and shows an error toast naming the mod, and disables the failing callback for that type
-for the session, even after a reload. Other errors are reported on every failure and do not
-disable the callback. A nested refusal rolls back the enclosing layer but does not disable
-its renderer. Ignoring a collector error does not make the layer commit; propagate it with `?`.
-The outermost refused layer draws the missing model; unrelated item layers still draw normally.
+A failed draw rolls back the entire special layer, including earlier and nested submissions.
+The game logs each ordinary refusal without disabling the callback: a subsequent valid draw
+can still succeed. Ignoring a collector error does not make the layer commit; propagate it with `?`.
+
+If argument extraction or submission panics, the game logs an error and shows an error toast
+naming the mod. It disables the draw callback for that registered type, including all of its baked
+nodes and any rebuilt on reload, for the rest of the session. The factory and other registrations
+are not disabled by that draw panic, even if the panic came from a nested submission. The outermost
+refused layer draws the missing model; unrelated item layers still draw normally.
