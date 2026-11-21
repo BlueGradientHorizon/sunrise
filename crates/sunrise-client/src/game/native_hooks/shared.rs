@@ -2827,29 +2827,6 @@ impl Game<'_> {
         }
         true
     }
-    /// Puts back a mod block entity taken out for a call, unless the call
-    /// removed or replaced it, with what its `setChanged` does.
-    pub(super) fn put_back_mod_block_entity(
-        &mut self,
-        pos: Pos,
-        taken: EngineBlockEntity,
-        items: &[Option<ItemStack>],
-    ) {
-        if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos)
-            && m.id().is_empty()
-        {
-            let moved = taken.items != items;
-            **m = taken;
-            // BlockEntity.setChanged: the next save writes its chunk, and
-            // comparators read a container whose items changed.
-            self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            if moved {
-                self.container_changed(pos);
-            }
-        } else {
-            self.drop_unreturned_mod_contents(pos, taken);
-        }
-    }
     /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
     /// player's cursor stack (`carried`, read and written). A block-backed
     /// menu lends its live resident block entity through `BlockEntityScope`;

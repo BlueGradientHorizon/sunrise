@@ -1874,8 +1874,6 @@ impl TryIntoApi for crate::containers::ModBlockEntity {
     }
 }
 
-include!("api_values/block_entity_writeback.rs");
-
 impl super::Game<'_> {
     pub(in crate::game) fn api_block_entity_update_tag(
         pos: [i32; 3],
@@ -1982,98 +1980,6 @@ impl super::GameLevel<'_> {
             return Default::default();
         }
         outputs
-    }
-}
-
-#[cfg(test)]
-mod block_entity_snapshot_tests {
-    use super::*;
-    #[test]
-    fn rejected_writebacks_invalidate_menu_quick_move() {
-        assert_rejected_writeback("menu_quick_move");
-    }
-    fn assert_rejected_writeback(hook: &'static str) {
-        let items = Items::for_tests(Default::default());
-        let mut entity =
-            crate::containers::ModBlockEntity::new("test:rejected".into(), Default::default());
-        let mut snapshot = entity.try_into_api().unwrap();
-        let before = snapshot.revision();
-        snapshot.data.push(42);
-        let claimed = snapshot.revision().changes();
-        let output: Result<(), _> = Err(BlockEntitySnapshotError::InvalidStack);
-        assert!(
-            finish_block_entity_writeback(&mut entity, &snapshot, before, &items, hook, output)
-                .is_err()
-        );
-        assert!(entity.data.is_empty());
-        assert_eq!(entity.revision().changes(), claimed + 1);
-    }
-
-    #[test]
-    fn unchanged_snapshots_keep_revision_and_callback_writes_advance_it() {
-        let mut entity =
-            crate::containers::ModBlockEntity::new("test:machine".into(), Default::default());
-        let first = entity.try_into_api().unwrap();
-        let mut second = entity.try_into_api().unwrap();
-        assert_eq!(first.revision(), second.revision());
-        let before = second.revision();
-        second.data.push(7);
-        second.data.push(8);
-        assert_ne!(before, second.revision());
-        apply_block_entity_snapshot(
-            &mut entity,
-            &second,
-            before,
-            &Items::for_tests(Default::default()),
-        )
-        .unwrap();
-        let third = entity.try_into_api().unwrap();
-        assert_ne!(first.revision(), third.revision());
-        assert_eq!(second.revision(), third.revision());
-        assert_eq!(third.revision(), entity.try_into_api().unwrap().revision());
-        assert_eq!(entity.id(), "test:machine");
-        assert_eq!(entity.data, [7, 8]);
-        let other = mod_api::ModBlockEntity::new("test:machine".into(), Default::default());
-        assert_ne!(other.revision(), third.revision());
-        entity.data.push(9);
-        let fourth = entity.try_into_api().unwrap();
-        assert_ne!(fourth.revision(), second.revision());
-        let items = Items::for_tests(Default::default());
-        assert_eq!(
-            apply_block_entity_snapshot(&mut entity, &second, before, &items),
-            Err(BlockEntitySnapshotError::InvalidRevision)
-        );
-        assert_eq!(
-            apply_block_entity_snapshot(&mut entity, &other, before, &items),
-            Err(BlockEntitySnapshotError::InvalidRevision)
-        );
-        assert_eq!(entity.data, [7, 8, 9]);
-    }
-
-    #[test]
-    fn a_callbacks_client_update_fields_reach_the_queue_only_from_a_valid_snapshot() {
-        let items = Items::for_tests(Default::default());
-        let mut entity =
-            crate::containers::ModBlockEntity::new("test:machine".into(), Default::default());
-        let batch =
-            sunrise_core::nbt::Compound::from([("effect".into(), sunrise_core::nbt::Tag::Int(23))]);
-        let made = entity.revision();
-        let mut snapshot = entity.try_into_api().unwrap();
-        let before = snapshot.revision();
-        mod_api::ModBlockEntityView::new(&mut snapshot).set_client_update_fields(batch.clone());
-        // Nothing but the queue moved, and an unchanged snapshot still delivers.
-        apply_block_entity_snapshot(&mut entity, &snapshot, before, &items).unwrap();
-        assert_eq!(entity.revision(), made);
-        assert_eq!(entity.take_client_update_fields(), Some(batch.clone()));
-        // A snapshot naming another entity is refused whole.
-        let mut other = mod_api::ModBlockEntity::new("test:machine".into(), Default::default());
-        let before = other.revision();
-        mod_api::ModBlockEntityView::new(&mut other).set_client_update_fields(batch);
-        assert_eq!(
-            apply_block_entity_snapshot(&mut entity, &other, before, &items),
-            Err(BlockEntitySnapshotError::InvalidRevision)
-        );
-        assert!(!entity.has_client_update_fields());
     }
 }
 

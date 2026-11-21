@@ -998,7 +998,7 @@ impl Game<'_> {
     /// sent and whenever its block changes, on the server thread; a client's copy of the block
     /// entity (made by `native_block_entity` there) merges it into its `nbt`.
     /// Leave it unset to send no tag of yours. A block change puts the one-shot fields of
-    /// `ModBlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
+    /// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
     pub(in crate::game) fn native_block_entity_update_tag(
         pos: [i32; 3],
         entity: &ModBlockEntity,
@@ -4254,7 +4254,7 @@ impl Game<'_> {
     /// entities). Call it when what clients show changed (a machine started),
     /// not for every tick's progress: a menu's data slots carry that. Nothing
     /// happens for an unloaded block. It also sends the one-shot fields of
-    /// `ModBlockEntityView::set_client_update_fields`.
+    /// `BlockEntityView::set_client_update_fields`.
     pub(in crate::game) fn block_entity_sync(&mut self, pos: [i32; 3]) {
         if !self.world.loaded(pos[0], pos[2]) {
             return;

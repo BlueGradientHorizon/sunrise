@@ -1444,8 +1444,11 @@ impl Game<'_> {
             return None;
         };
         let t = m.mod_type.filter(|t| t.crafting.is_some())?;
-        matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Mod(e)) if !e.id().is_empty())
-            .then_some((pos, t))
+        matches!(
+            self.world.block_entities.get(&pos),
+            Some(BlockEntity::Mod(_))
+        )
+        .then_some((pos, t))
     }
 
     /// `apply` (a recipe book placement or a viewer's transfer) on guest
@@ -1557,13 +1560,12 @@ impl Game<'_> {
     /// The slots of the block container at `at` that a mod may lend a menu
     /// (`native_recipe_sources`, `native_menu_links`): a chest-like block
     /// entity's (chests, barrels, shulker boxes, hoppers, dispensers,
-    /// droppers) or a mod container's, while it is in the world (not
-    /// ticking). None for anything else.
+    /// droppers) or a mod container's. None for anything else.
     fn linkable_container(&self, at: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
         let state = self.world.block(at.0, at.1, at.2).0;
         match self.world.block_entities.get(&at)? {
             BlockEntity::Chest(items) => Some(items.clone()),
-            BlockEntity::Mod(m) if !m.id().is_empty() => {
+            BlockEntity::Mod(m) => {
                 let c = self.world.block_entities.mod_container(state)?;
                 Some(m.items.iter().take(c.slots).cloned().collect())
             }

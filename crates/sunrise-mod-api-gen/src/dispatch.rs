@@ -325,7 +325,7 @@ pub(super) fn emit<'a>(
                         )
                     }
                     // An entity's type id need not be its block's: its own table.
-                    "& ModBlockEntity" | "& mut ModBlockEntity" => {
+                    "& ModBlockEntity" => {
                         format!("block_entity_kind(|| Some({key}.id()))")
                     }
                     other => return Err(format!("key {key} of {name} has type {other}")),
@@ -484,9 +484,6 @@ pub(super) fn emit<'a>(
                 ));
                 continue;
             }
-            let ty_tokens = ty.to_token_stream().to_string();
-            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
-            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -496,21 +493,15 @@ pub(super) fn emit<'a>(
                         _ => None,
                     })
                     .flatten();
-            let field_ty = if mutable_entity {
-                syn::parse_quote!(ModBlockEntityView<'_>)
-            } else if optional_mutable_entity {
-                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
-            } else if let Some(entry) = batch_entry {
+            let field_ty = if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
             if hook.output_validator.is_some()
-                && (mutable_entity
-                    || optional_mutable_entity
-                    || matches!(&field_ty, Type::Reference(reference)
-                        if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty)))
+                && matches!(&field_ty, Type::Reference(reference)
+                    if reference.mutability.is_some() && !rollback_pointee_is_copy(&field_ty))
             {
                 return Err(format!(
                     "{}: output_validator requires Copy outputs; mutable argument {name} \
@@ -561,10 +552,6 @@ pub(super) fn emit<'a>(
             if scalar {
                 inits.push(format!("{name}: *{name}"));
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
-            } else if mutable_entity {
-                inits.push(format!("{name}: ModBlockEntityView::new({name})"));
-            } else if optional_mutable_entity {
-                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
             } else if block_entity_scope {
                 inits.push(format!("{name}: {name}.reborrow()"));
             } else if batch_entry.is_some() {

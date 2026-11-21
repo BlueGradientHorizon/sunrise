@@ -22,11 +22,10 @@ impl Game<'_> {
             .get(&pos)
             .and_then(|entity| match entity {
                 BlockEntity::Mod(m)
-                    if !m.id().is_empty()
-                        && mod_api::__private::block_entity_type_listens(
-                            mod_api::HookId::MenuSlotTake,
-                            m.id(),
-                        ) =>
+                    if mod_api::__private::block_entity_type_listens(
+                        mod_api::HookId::MenuSlotTake,
+                        m.id(),
+                    ) =>
                 {
                     mod_api::__private::block_entity_type_key(m.id())
                 }

@@ -123,8 +123,8 @@ pub trait Notes {
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
-  `entity.id()` reads its type identity, fixed at construction; mutable events give a `ModBlockEntityView` whose
-  payload contains `nbt`, `items` and `data`. A mod cannot replace the view or access its private entity handle.
+  `entity.id()` reads its type identity, fixed at construction; mutable events lend a `BlockEntityScope`
+  whose `with_view` gives live `BlockEntityView` access to `nbt`, `items` and `data`.
 
 - Item slots for those block entities (`r.block_container(&block, container)`): hoppers, comparators and breaking the
   block use them as they use vanilla's containers, and `block_entity_tick` also gets the slots.
@@ -345,7 +345,7 @@ pub trait Notes {
   copy's `nbt`. A saved chunk sent past the view distance asks it on its own thread, so read only `entity`. Keep it to what clients show (a machine running, its facing, a tank's level), not a menu's progress:
   menus have their own data slots. `block_entity_data_received` notices merged client data with a `Chunk` or `UpdatePacket` source; empty chunk tags and absent packet tags are silent, while empty packet compounds notify. Related `IBlockEntityExtension.onDataPacket` and `handleUpdateTag` perform loading, not this post-merge notice; they are not counterparts.
 
-- One-shot fields ride that tag. `entity.set_client_update_fields(fields)` on a `ModBlockEntityView` queues them in
+- One-shot fields ride that tag. `view.set_client_update_fields(fields)` on a `BlockEntityView` queues them in
   the runtime under the entity's identity; they are not part of the plain-data entity,
   so saves, clones and comparisons never see them and its revision stays. Once a block change (`block_entity_sync`)
   reaches viewers, the game builds one tag, puts the fields over `block_entity_update_tag`'s and sends it to

@@ -831,13 +831,11 @@ impl GameLevel<'_> {
         }
         // A mod's block entity answers its parts in place (its slot, so its
         // attachments, stay until `put`), as vanilla's override runs on `this`.
-        // One out for its own tick or menu button, which an empty id stands in
-        // for, isn't here to answer: its part isn't asked.
         let mut outputs = RemovalOutputs::default();
         if side_effects
             && matches!(
                 self.world.block_entities.get(&key),
-                Some(BlockEntity::Mod(m)) if !m.id().is_empty()
+                Some(BlockEntity::Mod(_))
             )
             && let Some((lease, BlockEntity::Mod(entity))) = self.world.block_entities.take(&key)
         {

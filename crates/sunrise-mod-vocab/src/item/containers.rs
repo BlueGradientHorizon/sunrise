@@ -13,9 +13,6 @@ pub struct ModBlockEntity {
     pub(crate) id: String,
     pub(crate) fields: ModBlockEntityFields,
     pub(crate) revision: ModRevision,
-    /// What a callback asked for with `ModBlockEntityView::set_client_update_fields`, on its
-    /// way to the runtime's queue. The queue itself never reaches a snapshot.
-    pub(crate) client_update_fields: Option<Compound>,
 }
 /// What a `ModBlockEntity` can change: its saved compound without `id`,
 /// `x`, `y`, `z` and `Items`, its item slots
@@ -68,14 +65,7 @@ impl ModBlockEntity {
             id,
             fields,
             revision,
-            client_update_fields: None,
         }
-    }
-
-    // hidden: the game moves what a callback asked for to the runtime's queue
-    #[doc(hidden)]
-    pub fn client_update_fields(&self) -> Option<&Compound> {
-        self.client_update_fields.as_ref()
     }
 
     pub fn new(id: String, fields: ModBlockEntityFields) -> Self {
@@ -86,7 +76,6 @@ impl ModBlockEntity {
                 born: sunrise_mod_runtime::block_entities::new_identity(),
                 changes: 0,
             },
-            client_update_fields: None,
         }
     }
     /// The block entity's immutable type id (`mymod:machine`).
@@ -281,17 +270,6 @@ mod tests {
         assert_ne!(other_kind, machine);
         let fresh = ModBlockEntity::default();
         assert_ne!(fresh.revision(), ModBlockEntity::default().revision());
-    }
-
-    #[test]
-    fn queues_client_update_fields_without_changing_revision_or_copying_them() {
-        let mut entity = ModBlockEntity::new("test:machine".into(), Default::default());
-        let revision = entity.revision();
-        let batch = Compound::from([("effect".into(), Tag::Int(23))]);
-        crate::ModBlockEntityView::new(&mut entity).set_client_update_fields(batch.clone());
-        assert_eq!(entity.client_update_fields(), Some(&batch));
-        assert_eq!(entity.revision(), revision);
-        assert_eq!(entity.clone().client_update_fields(), None);
     }
 
     #[test]
