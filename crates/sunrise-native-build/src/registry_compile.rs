@@ -63,11 +63,7 @@ pub fn compile(
     let sdk = prebuilt::identity(game)?;
     let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     check_log_template(&template, sdk.native_log)?;
-    let lock = sdk.registry_lock.as_ref().ok_or_else(|| tr("The prebuilt SDK does not declare a locked registry graph; install an SDK that supports registry-bearing native mods").to_string())?;
-    let mut patches = sdk.registry_patches.clone().ok_or_else(|| {
-        tr("The prebuilt SDK does not declare game registry patches; install a newer SDK")
-            .to_string()
-    })?;
+    let mut patches = sdk.registry_patches.clone();
     let sdk_root = game.canonicalize().map_err(|e| e.to_string())?;
     for (_, registry) in patches.iter_mut() {
         for (_, spec) in registry
@@ -94,7 +90,6 @@ pub fn compile(
             spec.insert("path".into(), path.to_string_lossy().into_owned().into());
         }
     }
-    let links = sdk.native_links.as_ref().ok_or_else(|| tr("The prebuilt SDK does not declare native library providers; registry-bearing mods cannot be linked safely").to_string())?;
     let catalog = internals::Catalog::read(game)?;
     let generated = catalog
         .prepare(projects.iter().map(|project| &project.bundle.manifest))
@@ -421,7 +416,7 @@ pub fn compile(
         })
         .collect();
     let wanted = super::crates::wanted(out, &declared_paths)?;
-    let mut plan = registry_plan::Plan::read(lock, projects, &wanted)?;
+    let mut plan = registry_plan::Plan::read(&sdk.registry_lock, projects, &wanted)?;
     plan.authorize_game_patches(&patches);
     registry_plan::apply_patches(out, &patches)?;
     fs::write(
@@ -512,7 +507,10 @@ pub fn compile(
         }
     }
     super::crates::check_game_graph_names(out, &super::read_lock(out)?, &game_names)?;
-    let inventory = metadata.inventory(&super::registry_lock::RegistryLock::default(), links)?;
+    let inventory = metadata.inventory(
+        &super::registry_lock::RegistryLock::default(),
+        &sdk.native_links,
+    )?;
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
     }

@@ -182,30 +182,26 @@ pub fn side(target: Target) -> sunrise_mod_package::sdk::Side {
     }
 }
 
+/// The identity fields used by the native builder, present in every published format-6 package
+/// except where noted.
 #[derive(serde::Deserialize)]
 pub struct Identity {
     commit: String,
     rustc: String,
     target: String,
     side: String,
-    #[serde(default)]
-    pub registry_lock: Option<String>,
-    #[serde(default)]
-    pub registry_patches: Option<toml::Table>,
-    #[serde(default)]
-    pub native_links: Option<Vec<super::registry_inventory::NativeLink>>,
+    pub registry_lock: String,
+    pub registry_patches: toml::Table,
+    pub native_links: Vec<super::registry_inventory::NativeLink>,
     /// The prebuilt API exports the native log sink and the entry template must install it.
+    /// Added within format 6; earlier packages do not export this sink.
     #[serde(default)]
     pub native_log: bool,
-    #[serde(default)]
     facade_crates: std::collections::BTreeSet<String>,
     /// The game crate's features the SDK was built with: a patched function copied out of its
     /// source is compiled under the same `cfg`s.
-    #[serde(default)]
     game_features: Vec<String>,
-    /// Which package files the `runtime` and `api` slices hold; every other file is the `engine`'s.
-    #[serde(default)]
-    pub slices: Option<Slices>,
+    slices: Slices,
 }
 
 #[derive(serde::Deserialize)]
@@ -271,11 +267,10 @@ fn link_tree(slice: &Path, dir: &Path, into: &Path) -> Result<(), String> {
 }
 
 /// Lay the whole prebuilt game in `whole` out as its three slices under `build` ([`Package`]),
-/// as its identity's `slices` lists them (the `runtime` and `api` files; every other file is the
-/// `engine`'s), moving or linking each file; a listed file that isn't there is refused by name.
-pub fn lay_out(whole: &Path, build: &Path, link: bool) -> Result<Package, String> {
-    let sdk = identity(whole)?;
-    let slices = sdk.slices()?;
+/// using the already checked identity `sdk` of `whole`. Move or link each file; refuse a listed
+/// file that isn't there by name.
+pub fn lay_out(whole: &Path, build: &Path, link: bool, sdk: &Identity) -> Result<Package, String> {
+    let slices = sdk.slices();
     let package = Package::at(build);
     let mut placed = std::collections::HashMap::new();
     for (folder, names) in [
@@ -363,26 +358,23 @@ impl Identity {
     }
 
     /// Which package files the `runtime` and `api` slices hold.
-    pub fn slices(&self) -> Result<&Slices, String> {
-        self.slices.as_ref().ok_or_else(|| {
-            tr("This prebuilt game has no slices. Update Sunrise and rebuild the mods against this game.")
-                .to_string()
-        })
+    pub fn slices(&self) -> &Slices {
+        &self.slices
     }
 }
 
+/// Read a published package's identity. Check its format before interpreting its fields.
 pub fn identity(dir: &Path) -> Result<Identity, String> {
     let path = dir.join(IDENTITY);
     let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    // Formats up to 5 named the number `format_version` (before 5: nothing, so 0).
     #[derive(serde::Deserialize)]
     struct Format {
-        package_format: Option<u32>,
-        format_version: Option<u32>,
+        package_format: u32,
     }
-    let format: Format =
-        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let found = format.package_format.or(format.format_version).unwrap_or(0);
+    let Format {
+        package_format: found,
+    } = serde_json::from_str(&text)
+        .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display()))?;
     let supported = sunrise_mod_package::sdk::PACKAGE_FORMAT;
     let (version, supported_text) = (found.to_string(), supported.to_string());
     let args = [
@@ -390,9 +382,8 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
         ("format", supported_text.as_str()),
     ];
     match found {
-        found if found == supported => {
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
-        }
+        found if found == supported => serde_json::from_str(&text)
+            .map_err(|e| format!("{}: {e}; fetch the SDK again", path.display())),
         found if found < supported => Err(trf(
             "SDK format {version} is too old; install a newer SDK (format {format})",
             &args,
@@ -404,14 +395,14 @@ pub fn identity(dir: &Path) -> Result<Identity, String> {
     }
 }
 
-/// Whether the unpacked game in `dir` is the one asked for: built from `revision` for `host` and
-/// `target`'s side by the launcher's Rust, whose compiler is the only one that reads its metadata.
+/// Read the identity of the unpacked game in `dir`, refusing one not built from `revision`,
+/// for `host` and `target`'s side, or with the Rust release that reads its metadata.
 pub fn check_identity(
     dir: &Path,
     revision: &str,
     host: &str,
     target: Target,
-) -> Result<(), String> {
+) -> Result<Identity, String> {
     let found = identity(dir)?;
     let release = format!("release: {}", crate::rust::VERSION);
     let matches = found.commit == revision
@@ -419,7 +410,7 @@ pub fn check_identity(
         && found.side == target.name()
         && found.rustc.lines().any(|line| line == release);
     if matches {
-        Ok(())
+        Ok(found)
     } else {
         Err(trf(
             "The prebuilt game for {revision} was made for another build ({commit}, {target}, {side}, {rustc}).",
@@ -1188,7 +1179,7 @@ pub fn runtime_libraries(
     game: &Path,
 ) -> Result<Vec<PathBuf>, String> {
     let mut runtime: Vec<PathBuf> = sdk
-        .slices()?
+        .slices()
         .runtime
         .iter()
         .filter(|name| {
@@ -1475,6 +1466,17 @@ mod tests {
         assert_eq!(Route::Engine.name(), "prebuilt");
     }
 
+    // The original format-6 publisher already wrote these fields, before native log forwarding.
+    fn published_identity() -> serde_json::Value {
+        serde_json::json!({
+            "package_format": 6,
+            "commit": "abc123", "rustc": "test", "target": "test", "side": "client",
+            "registry_lock": "version = 4\n", "registry_patches": {}, "native_links": [],
+            "facade_crates": ["sunrise_core"], "game_features": [],
+            "slices": {"runtime": [], "api": []},
+        })
+    }
+
     #[test]
     fn facades_refuse_build_only_crates_and_ambiguous_runtime_metadata() {
         let deps = super::super::tests::dir("prebuilt-facade-eligibility");
@@ -1486,11 +1488,7 @@ mod tests {
         ] {
             fs::write(deps.join(name), b"").unwrap();
         }
-        let mut sdk: Identity = serde_json::from_value(serde_json::json!({
-            "commit": "test", "rustc": "test", "target": "test", "side": "client",
-            "facade_crates": ["sunrise_core"],
-        }))
-        .unwrap();
+        let mut sdk: Identity = serde_json::from_value(published_identity()).unwrap();
         assert_eq!(
             facade_library(&deps, "sunrise_core", &sdk).unwrap(),
             deps.join("libsunrise_core-one.rmeta")
@@ -1541,15 +1539,15 @@ mod tests {
         // As a package records its runtime slice: shared libraries under deps/ (the engine slots
         // library among them, which no fixed list carried), the identity, the executable and
         // windows-gnu import libraries, which never ship.
-        let sdk: Identity = serde_json::from_value(serde_json::json!({
-            "commit": "test", "rustc": "test", "target": "test", "side": "client",
-            "slices": {"runtime": [
-                "bin/sunrise-client.exe", "deps/sunrise_mod_host.dll",
-                "deps/libsunrise_mod_host.dll.a", "deps/libmod_api.so",
-                "sunrise-prebuilt.json",
-            ], "api": []},
-        }))
-        .unwrap();
+        let mut document = published_identity();
+        document["slices"]["runtime"] = serde_json::json!([
+            "bin/sunrise-client.exe",
+            "deps/sunrise_mod_host.dll",
+            "deps/libsunrise_mod_host.dll.a",
+            "deps/libmod_api.so",
+            "sunrise-prebuilt.json",
+        ]);
+        let sdk: Identity = serde_json::from_value(document).unwrap();
         let recorded =
             ["sunrise_mod_host.dll", "libmod_api.so"].map(|name| game.join("deps").join(name));
         for target in crate::rust::tests::HOSTS {
@@ -1575,12 +1573,9 @@ mod tests {
             }
             assert_eq!(runtime_libraries(&rust, &sdk, game).unwrap(), expected);
         }
-        let unsliced: Identity = serde_json::from_value(serde_json::json!({
-            "commit": "test", "rustc": "test", "target": "test", "side": "client",
-        }))
-        .unwrap();
+        let no_runtime: Identity = serde_json::from_value(published_identity()).unwrap();
         let rust = crate::rust::tests::unpacked(scratch.path(), crate::rust::tests::HOSTS[0]);
-        assert!(runtime_libraries(&rust, &unsliced, game).is_err());
+        assert!(runtime_libraries(&rust, &no_runtime, game).is_err());
     }
 
     /// What [`refusal`] says of one mod whose Cargo.toml is `cargo`.
@@ -1601,16 +1596,17 @@ mod tests {
     fn only_the_exact_build_of_the_prebuilt_game_is_accepted() {
         let dir = super::super::tests::dir("prebuilt-exact-build");
         let check = |commit: &str, rustc: &str, target: &str, side: &str| {
-            let identity = serde_json::json!({
-                "package_format": sunrise_mod_package::sdk::PACKAGE_FORMAT,
-                "commit": commit, "rustc": rustc, "target": target, "side": side,
-            });
+            let mut identity = published_identity();
+            identity["commit"] = commit.into();
+            identity["rustc"] = rustc.into();
+            identity["target"] = target.into();
+            identity["side"] = side.into();
             fs::write(dir.join(IDENTITY), identity.to_string()).unwrap();
             check_identity(&dir, "abc123", "x86_64-pc-windows-gnu", Target::Client)
         };
         let rustc = format!("rustc x\nrelease: {}\nhost: y", crate::rust::VERSION);
         let host = "x86_64-pc-windows-gnu";
-        assert_eq!(check("abc123", &rustc, host, "client"), Ok(()));
+        assert!(check("abc123", &rustc, host, "client").is_ok());
         assert!(check("abc124", &rustc, host, "client").is_err());
         assert!(check("abc123", &rustc, "x86_64-unknown-linux-gnu", "client").is_err());
         assert!(check("abc123", &rustc, host, "server").is_err());
@@ -1627,11 +1623,8 @@ mod tests {
         let dir = super::super::tests::dir("prebuilt-lay-out");
         let whole = dir.join("whole");
         let write = |slices: serde_json::Value| {
-            let identity = serde_json::json!({
-                "package_format": sunrise_mod_package::sdk::PACKAGE_FORMAT,
-                "commit": "abc123", "rustc": "", "target": "", "side": "client",
-                "slices": slices,
-            });
+            let mut identity = published_identity();
+            identity["slices"] = slices;
             fs::write(whole.join(IDENTITY), identity.to_string()).unwrap();
         };
         for (name, text) in [
@@ -1643,11 +1636,12 @@ mod tests {
             fs::create_dir_all(whole.join(name).parent().unwrap()).unwrap();
             fs::write(whole.join(name), text).unwrap();
         }
+        let layout = |name: &str, link| lay_out(&whole, &dir.join(name), link, &identity(&whole)?);
         let runtime = serde_json::json!([IDENTITY, "bin/sunrise-client"]);
         write(
             serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "internals.json"]}),
         );
-        let package = lay_out(&whole, &dir.join("linked"), true).unwrap();
+        let package = layout("linked", true).unwrap();
         assert_eq!(package, Package::at(&dir.join("linked")));
         let read = |path: PathBuf| fs::read_to_string(path).unwrap();
         assert_eq!(read(package.runtime.join("bin/sunrise-client")), "exe");
@@ -1670,20 +1664,20 @@ mod tests {
         }
         // A listed file that is absent, or a name out of the package, is refused.
         write(serde_json::json!({"runtime": runtime, "api": ["deps/gone.rmeta"]}));
-        let error = lay_out(&whole, &dir.join("absent"), true).unwrap_err();
+        let error = layout("absent", true).unwrap_err();
         assert!(error.contains("deps/gone.rmeta"), "{error}");
         write(serde_json::json!({"runtime": runtime, "api": ["../internals.json"]}));
         // Even when that file exists, outside the package.
         fs::write(dir.join("internals.json"), "{}").unwrap();
-        let error = lay_out(&whole, &dir.join("escape"), true).unwrap_err();
+        let error = layout("escape", true).unwrap_err();
         assert!(error.contains("not a plain path"), "{error}");
         write(serde_json::json!(null));
-        assert!(lay_out(&whole, &dir.join("none"), true).is_err());
+        assert!(layout("none", true).is_err());
         // Moving (an unpacked download) leaves nothing behind.
         write(
             serde_json::json!({"runtime": runtime, "api": ["deps/libmod_api-1.rmeta", "internals.json"]}),
         );
-        lay_out(&whole, &dir.join("moved"), false).unwrap();
+        layout("moved", false).unwrap();
         assert!(!whole.join("bin/sunrise-client").exists());
         fs::remove_dir_all(dir).unwrap();
     }
@@ -1750,18 +1744,51 @@ mod tests {
     }
 
     #[test]
-    fn an_older_package_names_its_own_format() {
-        let dir = super::super::tests::dir("prebuilt-older-format");
-        let refusal = |text: &str| {
-            fs::write(dir.join(IDENTITY), text).unwrap();
-            identity(&dir).err().unwrap()
+    fn an_unsupported_package_is_refused_before_its_body_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let refusal = |version| {
+            fs::write(
+                dir.path().join(IDENTITY),
+                format!(r#"{{"package_format": {version}}}"#),
+            )
+            .unwrap();
+            identity(dir.path()).err().unwrap()
         };
-        let error = refusal(r#"{"format_version": 5}"#);
+        let error = refusal(5);
         assert!(error.contains("SDK format 5 is too old"), "{error}");
-        let error = refusal("{}");
-        assert!(error.contains("SDK format 0 is too old"), "{error}");
-        let newer = sunrise_mod_package::sdk::PACKAGE_FORMAT + 1;
-        let error = refusal(&format!(r#"{{"package_format": {newer}}}"#));
+        let error = refusal(7);
         assert!(error.contains("update the launcher"), "{error}");
+    }
+
+    #[test]
+    fn format_six_requires_published_fields_but_accepts_pre_log_sdks() {
+        let dir = tempfile::tempdir().unwrap();
+        let read = |document: &serde_json::Value| {
+            fs::write(dir.path().join(IDENTITY), document.to_string()).unwrap();
+            identity(dir.path())
+        };
+        let mut current = published_identity();
+        assert!(!read(&current).unwrap().native_log);
+        current["native_log"] = true.into();
+        assert!(read(&current).unwrap().native_log);
+        for field in [
+            "package_format",
+            "registry_lock",
+            "registry_patches",
+            "native_links",
+            "facade_crates",
+            "game_features",
+            "slices",
+        ] {
+            let mut incomplete = current.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            // Even when the retired spelling advertises 6, the published name is required.
+            incomplete["format_version"] = 6.into();
+            let error = read(&incomplete).err().unwrap();
+            assert!(
+                error.contains(&format!("missing field `{field}`")),
+                "{error}"
+            );
+        }
     }
 }
