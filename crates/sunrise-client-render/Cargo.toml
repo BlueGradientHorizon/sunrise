@@ -77,6 +77,12 @@ rustix = { version = "1", default-features = false, features = ["std", "time"] }
 alsa = { version = "0.9", optional = true }
 libc = { version = "0.2", optional = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# AVFoundation exposes microphone authorization separately from CPAL's stream errors.
+block2 = { version = "0.6.2", optional = true }
+objc2 = { version = "0.6.5", optional = true }
+objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat", "block2"], optional = true }
+
 [target.'cfg(windows)'.dependencies]
 wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }
 
@@ -85,7 +91,7 @@ wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 
 [features]
 # Sound output and input: sunrise-client's `audio` feature.
-audio = ["dep:cpal", "dep:alsa", "dep:libc"]
+audio = ["dep:cpal", "dep:alsa", "dep:libc", "dep:block2", "dep:objc2", "dep:objc2-av-foundation"]
 # Helpers sunrise-client's tests build their fixtures with.
 test-support = []
 

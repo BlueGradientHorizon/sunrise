@@ -8,6 +8,9 @@ ids = [
     "type:MicSpec.device",
     "type:MicSpec.channels",
     "type:MicSpec.rate",
+    "type:MicTarget",
+    "type:MicTarget.DeviceId",
+    "type:MicTarget.Label",
     "type:MicSpecFault",
     "type:MicSpecFault.Channels",
     "type:MicSpecFault.Rate",
@@ -30,6 +33,7 @@ ids = [
     "method:MicSource::close",
     "handle:MicSpec::new",
     "handle:MicSpec::with_device",
+    "handle:MicSpec::with_label",
     "handle:MicRef::read",
     "handle:MicRef::channels",
     "handle:MicRef::rate",
@@ -37,5 +41,5 @@ ids = [
     "handle:MicRef::is_open",
     "handle:MicRef::close",
 ]
-why = "Vanilla 26.3's SoundEngine.play and NeoForge's PlaySoundSourceEvent are playback-only; neither offers microphone capture. Native mods are trusted code, so the client host exposes a local PCM reader with distinct endpoint selectors and OS permission errors, without adding consent, codecs, or networking to the engine."
-migrate = "Additive: from client setup onward, call `host.microphone_devices()` to enumerate `MicDevice { id, label }` descriptors and `host.open_microphone(&spec)` with `MicSpec::new(channels, rate)` (1 or 2 channels; `MIC_RATE_MIN` = 8000 to `MIC_RATE_MAX` = 48000 Hz) or `.with_device(&device.id)` for a specific input endpoint. When listing or opening, handle `MicRefusal::OsDenied` as an OS permission refusal, separately from `MicRefusal::NoDevice` (no matching input). Read whole interleaved `i16` frames from any thread via `MicRef::read` off the bounded `MIC_RING_MAX_MS` (500 ms) drop-oldest ring, inspect stream format/health via `MicRef::{channels, rate, dropped_frames, is_open}`, and call `MicRef::close` or drop `MicRef` to stop capture and release the OS input device synchronously."
+why = "Vanilla 26.3's SoundEngine.play and NeoForge's PlaySoundSourceEvent are playback-only; neither offers microphone capture. Native mods get a local PCM reader without engine consent, codecs, or networking. Explicitly distinguish endpoint IDs from labels so a missing endpoint can never open another device. Use OS authorization on macOS and keep independent ALSA endpoints discoverable when a device or card refuses permission."
+migrate = "New in 1.0: from client setup onward, call `host.microphone_devices()` for `MicDevice { id, label }` descriptors and `host.open_microphone(&spec)` with `MicSpec::new(channels, rate)` (1 or 2 channels; `MIC_RATE_MIN` = 8000 to `MIC_RATE_MAX` = 48000 Hz), optionally adding `.with_device(&device.id)` to select one endpoint. Replace draft `.with_device(label)` calls with `.with_label(label)`; if assigning `spec.device` directly, use `Some(MicTarget::DeviceId(id))` for an ID or `Some(MicTarget::Label(label))` for a label. Handle `MicRefusal::OsDenied` separately from `MicRefusal::NoDevice`; listing still returns usable inputs when other endpoints are denied, and opening a missing ID never selects by label. Read whole interleaved `i16` frames from any thread via `MicRef::read` off the bounded `MIC_RING_MAX_MS` (500 ms) drop-oldest ring, inspect stream format/health via `MicRef::{channels, rate, dropped_frames, is_open}`, and call `MicRef::close` or drop `MicRef` to stop capture and release the OS input device synchronously."

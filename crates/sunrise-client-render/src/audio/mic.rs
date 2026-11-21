@@ -481,12 +481,30 @@ trait BackendDevice: Clone + Send + 'static {
 }
 
 #[cfg(any(feature = "audio", test))]
+struct DeviceInventory<D> {
+    devices: Vec<D>,
+    // Partial discovery can still return independently usable endpoints.
+    discovery_error: Option<mod_api::MicRefusal>,
+}
+
+#[cfg(any(feature = "audio", test))]
+fn record_probe_error(error: &mut Option<mod_api::MicRefusal>, refusal: mod_api::MicRefusal) {
+    match refusal {
+        mod_api::MicRefusal::NoDevice => {}
+        mod_api::MicRefusal::OsDenied => *error = Some(refusal),
+        _ => {
+            error.get_or_insert(refusal);
+        }
+    }
+}
+
+#[cfg(any(feature = "audio", test))]
 trait CaptureBackend: Send + Sync + 'static {
     type Device: BackendDevice;
     type Stream;
 
     /// Enumerates all backend devices without an error-erasing `supports_input()` filter.
-    fn devices(&self) -> Result<Vec<Self::Device>, mod_api::MicRefusal>;
+    fn devices(&self) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal>;
 
     fn default_input_device(&self) -> Result<Option<Self::Device>, mod_api::MicRefusal>;
     fn open_stream(
@@ -549,9 +567,11 @@ fn list_devices_with<B: CaptureBackend>(
     backend: &B,
     registry: &Mutex<DeviceRegistry<B::Device>>,
 ) -> Result<Vec<mod_api::MicDevice>, mod_api::MicRefusal> {
-    let devices = backend.devices()?;
+    let DeviceInventory {
+        devices,
+        mut discovery_error,
+    } = backend.devices()?;
     let mut found = Vec::new();
-    let mut first_actionable_err = None;
     let mut reg = registry.lock().unwrap_or_else(|e| e.into_inner());
 
     for dev in devices {
@@ -564,15 +584,12 @@ fn list_devices_with<B: CaptureBackend>(
                     found.push(mod_api::MicDevice::new(id, label));
                 }
             }
-            Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
-            Err(mod_api::MicRefusal::OsDenied) => return Err(mod_api::MicRefusal::OsDenied),
-            Err(err) => {
-                first_actionable_err.get_or_insert(err);
-            }
+            Ok(None) => {}
+            Err(err) => record_probe_error(&mut discovery_error, err),
         }
     }
     if found.is_empty()
-        && let Some(err) = first_actionable_err
+        && let Some(err) = discovery_error
     {
         return Err(err);
     }
@@ -587,75 +604,55 @@ fn resolve_and_open_stream<B: CaptureBackend>(
     ring: Arc<CaptureRing>,
     events: Arc<StreamEvents>,
 ) -> Result<B::Stream, mod_api::MicRefusal> {
-    let (device, probed) = match spec.device.as_deref() {
-        None => {
-            let dev = backend
+    use mod_api::{MicRefusal, MicTarget};
+
+    let (device, probed) = match &spec.device {
+        None => (
+            backend
                 .default_input_device()?
-                .ok_or(mod_api::MicRefusal::NoDevice)?;
-            (dev, None)
-        }
-        Some(target) => {
-            let devices = backend.devices()?;
-            let mut by_selector: Vec<B::Device> = devices
-                .iter()
-                .filter(|dev| dev.stable_selector().as_deref() == Some(target))
-                .cloned()
-                .collect();
-            if !by_selector.is_empty() {
-                drop(devices);
-                if by_selector.len() > 1 {
-                    return Err(mod_api::MicRefusal::AmbiguousDevice);
-                }
-                let dev = by_selector.remove(0);
-                (dev, None)
-            } else if let Some(remembered) = registry
+                .ok_or(MicRefusal::NoDevice)?,
+            None,
+        ),
+        Some(MicTarget::DeviceId(id)) => {
+            let remembered = registry
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .lookup(target)
-            {
-                let mut by_endpoint: Vec<B::Device> = devices
-                    .into_iter()
-                    .filter(|dev| dev.same_endpoint(&remembered))
-                    .collect();
-                if by_endpoint.is_empty() {
-                    return Err(mod_api::MicRefusal::NoDevice);
-                }
-                if by_endpoint.len() > 1 {
-                    return Err(mod_api::MicRefusal::AmbiguousDevice);
-                }
-                let dev = by_endpoint.remove(0);
-                (dev, None)
-            } else {
-                let by_label: Vec<B::Device> = devices
-                    .into_iter()
-                    .filter(|dev| dev.label().as_deref() == Some(target))
-                    .collect();
-                if by_label.is_empty() {
-                    return Err(mod_api::MicRefusal::NoDevice);
-                }
-                let mut candidates = Vec::new();
-                let mut first_actionable_err = None;
-                for dev in by_label {
-                    match dev.input_configs() {
-                        Ok(Some(configs)) => candidates.push((dev, configs)),
-                        Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
-                        Err(mod_api::MicRefusal::OsDenied) => {
-                            return Err(mod_api::MicRefusal::OsDenied);
-                        }
-                        Err(err) => {
-                            first_actionable_err.get_or_insert(err);
-                        }
-                    }
-                }
-                if candidates.len() > 1 {
-                    return Err(mod_api::MicRefusal::AmbiguousDevice);
-                }
-                if let Some((dev, configs)) = candidates.pop() {
-                    (dev, Some(configs))
+                .lookup(id);
+            let mut matching = backend.devices()?.devices.into_iter().filter(|dev| {
+                if let Some(remembered) = &remembered {
+                    dev.same_endpoint(remembered)
                 } else {
-                    return Err(first_actionable_err.unwrap_or(mod_api::MicRefusal::NoDevice));
+                    dev.stable_selector().as_deref() == Some(id.as_str())
+                }
+            });
+            let device = matching.next().ok_or(MicRefusal::NoDevice)?;
+            if matching.next().is_some() {
+                return Err(MicRefusal::AmbiguousDevice);
+            }
+            (device, None)
+        }
+        Some(MicTarget::Label(label)) => {
+            let mut candidate = None;
+            let mut probe_error = None;
+            for dev in backend.devices()?.devices {
+                if dev.label().as_deref() != Some(label.as_str()) {
+                    continue;
+                }
+                match dev.input_configs() {
+                    Ok(Some(configs)) => {
+                        if candidate.is_some() {
+                            return Err(MicRefusal::AmbiguousDevice);
+                        }
+                        candidate = Some((dev, Some(configs)));
+                    }
+                    Ok(None) => {}
+                    Err(err) => record_probe_error(&mut probe_error, err),
                 }
             }
+            if probe_error == Some(MicRefusal::OsDenied) {
+                return Err(MicRefusal::OsDenied);
+            }
+            candidate.ok_or_else(|| probe_error.unwrap_or(MicRefusal::NoDevice))?
         }
     };
 
@@ -1075,7 +1072,7 @@ mod tests {
         type Device = FakeDevice;
         type Stream = FakeStream;
 
-        fn devices(&self) -> Result<Vec<Self::Device>, MicRefusal> {
+        fn devices(&self) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
             let barrier = self.state.lock().unwrap().devices_barrier.clone();
             if let Some(barrier) = barrier {
                 barrier.wait();
@@ -1085,7 +1082,10 @@ mod tests {
             if let Some(err) = st.devices_error {
                 return Err(err);
             }
-            Ok(st.devices.clone())
+            Ok(DeviceInventory {
+                devices: st.devices.clone(),
+                discovery_error: None,
+            })
         }
 
         fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
@@ -1478,7 +1478,7 @@ mod tests {
             Some(MicRefusal::OsDenied)
         );
         assert_eq!(
-            pool.open(&MicSpec::new(1, 16_000).with_device("USB Mic"))
+            pool.open(&MicSpec::new(1, 16_000).with_label("USB Mic"))
                 .err(),
             Some(MicRefusal::OsDenied)
         );
@@ -1513,7 +1513,7 @@ mod tests {
 
         // Passing the ambiguous display label refuses instead of opening whichever is first.
         assert_eq!(
-            pool.open(&MicSpec::new(1, 48_000).with_device("USB Microphone"))
+            pool.open(&MicSpec::new(1, 48_000).with_label("USB Microphone"))
                 .err(),
             Some(MicRefusal::AmbiguousDevice)
         );
@@ -1543,6 +1543,32 @@ mod tests {
                 .err(),
             Some(MicRefusal::NoDevice)
         );
+    }
+
+    #[test]
+    fn vanished_backend_selector_does_not_match_an_input_label() {
+        let removed = FakeDevice::input("coreaudio:42", "Built-in Mic", 48_000, PcmFormat::F32);
+        let remaining = FakeDevice::input("coreaudio:75", "coreaudio:42", 48_000, PcmFormat::F32);
+        let backend = Arc::new(FakeBackend::new(vec![removed, remaining], None));
+        let pool = MicPoolInner::new(true, Arc::clone(&backend));
+        let listed = pool.devices().unwrap();
+        let id = &listed[0].id;
+        assert_eq!(id, "coreaudio:42");
+
+        backend.state.lock().unwrap().devices.remove(0);
+        let spec = MicSpec::new(1, 48_000);
+        assert_eq!(
+            pool.open(&spec.clone().with_device(id)).err(),
+            Some(MicRefusal::NoDevice)
+        );
+        assert!(backend.state.lock().unwrap().opened.is_empty());
+
+        let mic = pool.open(&spec.with_label(id)).unwrap();
+        assert_eq!(
+            backend.state.lock().unwrap().opened[0].endpoint_id,
+            "coreaudio:75"
+        );
+        mic.close();
     }
 
     #[test]

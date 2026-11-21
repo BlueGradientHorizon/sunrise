@@ -1,7 +1,10 @@
 //! ALSA input via capture-only probes. CPAL 0.16 opens both directions while enumerating,
 //! discards endpoints whose opens both fail, and does not expose their PCM addresses.
 
-use super::{BackendDevice, CaptureBackend, CaptureRing, InputConverter, StreamEvents, stop};
+use super::{
+    BackendDevice, CaptureBackend, CaptureRing, DeviceInventory, InputConverter, StreamEvents,
+    record_probe_error, stop,
+};
 use alsa::{
     Direction::Capture,
     ValueOr::Nearest,
@@ -24,6 +27,15 @@ pub(super) struct AlsaDevice {
 }
 
 impl AlsaDevice {
+    fn probe<T>(pcm: String, label: String, open: impl FnOnce(&str) -> alsa::Result<T>) -> Self {
+        let capture = open(&pcm).map(drop).map_err(map_error);
+        Self {
+            pcm,
+            label,
+            capture,
+        }
+    }
+
     fn open<T>(&self, open: impl FnOnce(&str) -> alsa::Result<T>) -> Result<T, MicRefusal> {
         self.capture?;
         open(&self.pcm).map_err(map_error)
@@ -69,21 +81,60 @@ fn map_error(err: alsa::Error) -> MicRefusal {
     }
 }
 
-fn probe_endpoints<T>(
-    endpoints: Vec<(String, String)>,
+fn discover_devices<T>(
+    cards: impl Iterator<Item = alsa::Result<alsa::Card>>,
+    mut discover_card: impl FnMut(alsa::Card, &mut Vec<AlsaDevice>) -> alsa::Result<()>,
     mut open: impl FnMut(&str) -> alsa::Result<T>,
-) -> Vec<AlsaDevice> {
-    endpoints
+) -> DeviceInventory<AlsaDevice> {
+    // Probe named ALSA routes independently of hardware cards (e.g. PipeWire).
+    let mut devices = [DEFAULT_PCM, "pipewire", "pulse", "jack", "oss"]
         .into_iter()
-        .map(|(pcm, label)| {
-            let capture = open(&pcm).map(drop).map_err(map_error);
-            AlsaDevice {
-                pcm,
-                label,
-                capture,
+        .map(|name| AlsaDevice::probe(name.to_owned(), name.to_owned(), &mut open))
+        .collect();
+    let mut discovery_error = None;
+    for card in cards {
+        let card = match card {
+            Ok(card) => card,
+            Err(err) => {
+                // snd_card_next itself failed: there is no next card to advance from.
+                record_probe_error(&mut discovery_error, map_error(err));
+                break;
             }
-        })
-        .collect()
+        };
+        if let Err(err) = discover_card(card, &mut devices) {
+            record_probe_error(&mut discovery_error, map_error(err));
+        }
+    }
+    DeviceInventory {
+        devices,
+        discovery_error,
+    }
+}
+
+fn discover_card(card: alsa::Card, devices: &mut Vec<AlsaDevice>) -> alsa::Result<()> {
+    let ctl = alsa::Ctl::from_card(&card, true)?;
+    let info = ctl.card_info()?;
+    let card_id = info.get_id()?;
+    let label = info.get_name()?;
+    for device in alsa::ctl::DeviceIter::new(&ctl) {
+        let pcm = format!("plughw:CARD={card_id},DEV={device}");
+        // Output-only devices have no capture PCM. A known endpoint with a failed
+        // control query, like one with a failed PCM open, keeps its selector and error.
+        match ctl.pcm_info(device as u32, 0, Capture) {
+            Ok(_) => devices.push(AlsaDevice::probe(pcm, label.to_owned(), open_pcm)),
+            Err(err) => {
+                let refusal = map_error(err);
+                if refusal != MicRefusal::NoDevice {
+                    devices.push(AlsaDevice {
+                        pcm,
+                        label: label.to_owned(),
+                        capture: Err(refusal),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub(super) struct AlsaStream {
@@ -100,34 +151,12 @@ impl CaptureBackend for AlsaBackend {
     type Device = AlsaDevice;
     type Stream = AlsaStream;
 
-    fn devices(&self) -> Result<Vec<Self::Device>, MicRefusal> {
-        // The named ALSA routes can exist independently of any hardware card (e.g. PipeWire).
-        let mut endpoints: Vec<_> = [DEFAULT_PCM, "pipewire", "pulse", "jack", "oss"]
-            .into_iter()
-            .map(|name| (name.to_owned(), name.to_owned()))
-            .collect();
-        for card in alsa::card::Iter::new() {
-            let card = card.map_err(map_error)?;
-            let ctl = match alsa::Ctl::from_card(&card, true) {
-                Ok(ctl) => ctl,
-                Err(err) if map_error(err) == MicRefusal::NoDevice => continue,
-                Err(err) => return Err(map_error(err)),
-            };
-            let info = ctl.card_info().map_err(map_error)?;
-            let card_id = info.get_id().map_err(map_error)?;
-            let label = info.get_name().map_err(map_error)?;
-            for device in alsa::ctl::DeviceIter::new(&ctl) {
-                let pcm = format!("plughw:CARD={card_id},DEV={device}");
-                // Query capture capability via the control device, before opening the PCM.
-                // Output-only devices have no capture PCM; a denied capture PCM still has an ID.
-                match ctl.pcm_info(device as u32, 0, Capture) {
-                    Ok(_) => endpoints.push((pcm, label.to_owned())),
-                    Err(err) if map_error(err) == MicRefusal::NoDevice => {}
-                    Err(err) => return Err(map_error(err)),
-                }
-            }
-        }
-        Ok(probe_endpoints(endpoints, open_pcm))
+    fn devices(&self) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
+        Ok(discover_devices(
+            alsa::card::Iter::new(),
+            discover_card,
+            open_pcm,
+        ))
     }
 
     fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
@@ -248,15 +277,29 @@ mod tests {
 
     struct Discovered {
         devices: Mutex<Vec<AlsaDevice>>,
+        discovery_error: Option<MicRefusal>,
         opened: Mutex<Vec<String>>,
+    }
+
+    fn probe_endpoints<T>(
+        endpoints: Vec<(String, String)>,
+        mut open: impl FnMut(&str) -> alsa::Result<T>,
+    ) -> Vec<AlsaDevice> {
+        endpoints
+            .into_iter()
+            .map(|(pcm, label)| AlsaDevice::probe(pcm, label, &mut open))
+            .collect()
     }
 
     impl CaptureBackend for Discovered {
         type Device = AlsaDevice;
         type Stream = ();
 
-        fn devices(&self) -> Result<Vec<Self::Device>, MicRefusal> {
-            Ok(self.devices.lock().unwrap().clone())
+        fn devices(&self) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
+            Ok(DeviceInventory {
+                devices: self.devices.lock().unwrap().clone(),
+                discovery_error: self.discovery_error,
+            })
         }
 
         fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
@@ -279,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn enumeration_retains_a_capture_open_denial_for_listing_and_selection() {
+    fn a_denied_pcm_does_not_hide_a_working_input_but_still_refuses_open() {
         let denied = "plughw:CARD=Denied,DEV=0";
         let available = "plughw:CARD=Available,DEV=0";
         let devices = probe_endpoints(
@@ -297,22 +340,74 @@ mod tests {
         );
         let backend = Arc::new(Discovered {
             devices: Mutex::new(devices),
+            discovery_error: None,
             opened: Mutex::new(Vec::new()),
         });
         let pool = MicPoolInner::new(true, Arc::clone(&backend));
-        assert_eq!(pool.devices(), Err(MicRefusal::OsDenied));
-        for device in ["Denied Mic", "alsa:plughw:CARD=Denied,DEV=0"] {
-            assert_eq!(
-                pool.open(&MicSpec::new(1, 48_000).with_device(device))
-                    .err(),
-                Some(MicRefusal::OsDenied)
-            );
+        assert_eq!(
+            pool.devices().unwrap(),
+            [mod_api::MicDevice::new(
+                "alsa:plughw:CARD=Available,DEV=0".into(),
+                "Desk Mic".into()
+            )]
+        );
+        let spec = MicSpec::new(1, 48_000);
+        for target in [
+            spec.clone().with_label("Denied Mic"),
+            spec.clone().with_device("alsa:plughw:CARD=Denied,DEV=0"),
+        ] {
+            assert_eq!(pool.open(&target).err(), Some(MicRefusal::OsDenied));
         }
-        let mic = pool
-            .open(&MicSpec::new(1, 48_000).with_device("Desk Mic"))
-            .unwrap();
+        let mic = pool.open(&spec.with_label("Desk Mic")).unwrap();
         assert_eq!(*backend.opened.lock().unwrap(), [available]);
         mic.close();
+
+        backend
+            .devices
+            .lock()
+            .unwrap()
+            .retain(|dev| dev.pcm == denied);
+        assert_eq!(pool.devices(), Err(MicRefusal::OsDenied));
+    }
+
+    #[test]
+    fn denied_card_control_does_not_block_independent_routes_or_later_cards() {
+        let inventory = discover_devices(
+            [Ok(alsa::Card::new(0)), Ok(alsa::Card::new(1))].into_iter(),
+            |card, devices| {
+                if card.get_index() == 0 {
+                    return Err(alsa::Error::new("snd_ctl_open", libc::EACCES));
+                }
+                devices.push(AlsaDevice::probe(
+                    "plughw:CARD=Desk,DEV=0".into(),
+                    "Desk Mic".into(),
+                    |_| Ok(()),
+                ));
+                Ok(())
+            },
+            |name| {
+                if name == "pipewire" {
+                    Ok(())
+                } else {
+                    Err(alsa::Error::new("snd_pcm_open", libc::ENOENT))
+                }
+            },
+        );
+        let backend = Arc::new(Discovered {
+            devices: Mutex::new(inventory.devices),
+            discovery_error: inventory.discovery_error,
+            opened: Mutex::new(Vec::new()),
+        });
+        let pool = MicPoolInner::new(true, Arc::clone(&backend));
+        assert_eq!(
+            pool.devices().unwrap(),
+            [
+                mod_api::MicDevice::new("alsa:pipewire".into(), "pipewire".into()),
+                mod_api::MicDevice::new("alsa:plughw:CARD=Desk,DEV=0".into(), "Desk Mic".into())
+            ]
+        );
+        backend.devices.lock().unwrap().clear();
+        assert_eq!(pool.devices(), Err(MicRefusal::OsDenied));
     }
 
     #[test]
@@ -325,6 +420,7 @@ mod tests {
         ];
         let backend = Arc::new(Discovered {
             devices: Mutex::new(probe_endpoints(endpoints.clone(), |_| Ok(()))),
+            discovery_error: None,
             opened: Mutex::new(Vec::new()),
         });
         let pool = MicPoolInner::new(true, Arc::clone(&backend));

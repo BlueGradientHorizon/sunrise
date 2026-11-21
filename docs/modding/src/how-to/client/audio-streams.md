@@ -142,13 +142,13 @@ fn read_mono<'a>(mic: &MicRef, pcm: &'a mut [i16]) -> &'a [i16] {
 }
 ```
 
-Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target a specific endpoint even when multiple devices share the same display label. If that endpoint vanishes, refresh the device list rather than treating another device with the same label as the same input. Passing a display label directly works only when it matches a single available input device; if multiple available inputs share that label, `open_microphone` refuses with `MicRefusal::AmbiguousDevice`.
+Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target that endpoint. If it vanishes, opening its ID returns `MicRefusal::NoDevice`; refresh the list rather than substituting a device with the same label. To intentionally select by display label, use `MicSpec::with_label`. A label shared by multiple available inputs returns `MicRefusal::AmbiguousDevice`; use an ID to choose between them. An inaccessible endpoint does not hide other available inputs when listing.
 
 `MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` is nonblocking: it writes whole interleaved signed 16-bit PCM frames into the returned prefix `pcm[..frames * channels]`, leaves any remaining suffix untouched, and returns `0` without modifying `pcm` if no whole frames are ready or another reader is concurrently draining the same handle. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
 
 Call `mic.close()` or drop `MicRef` to stop capture and release the OS input stream synchronously before returning. `mic.is_open()` returns `false` after close or if the input device disconnects or errors (in which case the backend stream is released promptly without waiting for a later call). Handle `MicRefusal` directly:
 
-- `OsDenied`: the operating system denied microphone permission.
+- `OsDenied`: an open was denied by the operating system, or permissions prevented listing any available inputs. On macOS the system can ask for microphone access on the first open; listing does not request access.
 - `Busy`: the input device is busy or held in exclusive use.
 - `NoDevice`: no default input device exists, the requested device selector or label was not found, or client audio is disabled.
 - `AmbiguousDevice`: a device label matched more than one input device (pass `MicDevice::id` instead).
@@ -156,7 +156,7 @@ Call `mic.close()` or drop `MicRef` to stop capture and release the OS input str
 - `OnServer` / `Unavailable`: called on a server or outside client setup or later.
 - `DeviceFailed`: the input device or capture worker failed to open or start.
 
-`MicDevice`, `MicRef`, `MicSpec`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
+`MicDevice`, `MicRef`, `MicSpec`, `MicTarget`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
 
 ## Known limits
 

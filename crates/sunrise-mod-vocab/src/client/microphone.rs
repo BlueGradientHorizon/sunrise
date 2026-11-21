@@ -38,6 +38,16 @@ impl MicDevice {
     }
 }
 
+/// How to select a non-default microphone input. Endpoint IDs and display labels are distinct.
+// no wire: selects a local microphone endpoint
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MicTarget {
+    /// An opaque [`MicDevice::id`] returned by `microphone_devices()`. Never matched as a label.
+    DeviceId(String),
+    /// A human-readable [`MicDevice::label`]. Never matched as an endpoint ID.
+    Label(String),
+}
+
 /// The input device and PCM format requested when opening microphone capture on this client.
 ///
 /// ```compile_fail,E0277
@@ -48,9 +58,8 @@ impl MicDevice {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct MicSpec {
-    /// Input device selector (`MicDevice::id`) from `microphone_devices()`, a unique display
-    /// label, or `None` to select the system default input device.
-    pub device: Option<String>,
+    /// An explicit endpoint ID or display label, or `None` for the system default input device.
+    pub device: Option<MicTarget>,
     /// Channel count: `1` for mono or `2` for stereo.
     pub channels: u8,
     /// Sample rate in Hz, from [`MIC_RATE_MIN`] to [`MIC_RATE_MAX`].
@@ -68,11 +77,19 @@ impl MicSpec {
         }
     }
 
-    /// The same specification targeting the input `device` selector (`MicDevice::id`) from
-    /// `microphone_devices()` or a unique display label.
+    /// The same specification targeting an input [`MicDevice::id`] from `microphone_devices()`.
+    /// A disappeared endpoint is not replaced by a device with a matching display label.
     pub fn with_device(self, device: impl Into<String>) -> Self {
         Self {
-            device: Some(device.into()),
+            device: Some(MicTarget::DeviceId(device.into())),
+            ..self
+        }
+    }
+
+    /// The same specification targeting a unique input by its display label.
+    pub fn with_label(self, label: impl Into<String>) -> Self {
+        Self {
+            device: Some(MicTarget::Label(label.into())),
             ..self
         }
     }
@@ -342,7 +359,7 @@ mod tests {
         assert_eq!(default_spec.rate, 48_000);
 
         let named_spec = default_spec.with_device(&dev.id);
-        assert_eq!(named_spec.device.as_deref(), Some("usb:1"));
+        assert_eq!(named_spec.device, Some(MicTarget::DeviceId("usb:1".into())));
         assert_eq!(named_spec.channels, 1);
         assert_eq!(named_spec.rate, 48_000);
     }

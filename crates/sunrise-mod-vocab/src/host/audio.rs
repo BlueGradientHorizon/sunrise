@@ -76,10 +76,11 @@ pub trait AudioClientHost {
     /// Side: client.
     /// Lists the client's available audio input devices, each with a distinct opaque selector
     /// ([`MicDevice::id`]) and a human-readable display label ([`MicDevice::label`]). Returns an
-    /// empty list when no input devices exist or client audio capture is explicitly disabled.
+    /// empty list when no input devices exist or client audio capture is disabled. An individual
+    /// inaccessible endpoint does not hide other available inputs.
     ///
-    /// Refuses with [`MicRefusal::OnServer`] on a server, [`MicRefusal::OsDenied`] if the
-    /// operating system denies microphone permission, [`MicRefusal::Unavailable`] outside client
+    /// Refuses with [`MicRefusal::OnServer`] on a server, [`MicRefusal::OsDenied`] if OS permissions
+    /// block enumeration or leave no listable inputs, [`MicRefusal::Unavailable`] outside client
     /// setup or later, [`MicRefusal::Busy`] if probing reports a busy device with no available
     /// inputs, or [`MicRefusal::DeviceFailed`] if device enumeration fails.
     ///
@@ -102,7 +103,8 @@ pub trait AudioClientHost {
     /// contention. Calling [`MicRef::close`] or dropping the handle stops capture and waits for
     /// the stream's teardown thread to release the OS input device before returning; a backend
     /// device error also releases the OS stream promptly without waiting for `close`, drop, or a
-    /// tick. The engine never records or transmits captured audio.
+    /// tick. The engine never records or transmits captured audio. On macOS, the first open can
+    /// wait for the operating system's microphone permission decision.
     ///
     /// Refuses with [`MicRefusal`] when called on a server, outside client setup or later, with
     /// an invalid [`MicSpec`], when the OS denies permission, when a selected device vanished or
