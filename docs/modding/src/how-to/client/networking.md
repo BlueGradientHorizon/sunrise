@@ -33,32 +33,29 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 
 The server's `register_configuration_tasks` hook (version 2) runs once per
 connecting client, including vanilla clients, after the built-in registry, tag
-and resource-pack steps. During registration, keep using
-`event.connection.has_channel(host, &channel)` to check what the peer negotiated.
+and resource-pack steps. Use `event.connection.has_channel(host, &channel)`
+to check what the peer negotiated before registering a task.
 
-Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
-`ConfigurationTask` for a `Send + 'static` struct and call `event.register(MyTask { id, ... })`.
-Replace the old `ConfigurationTask.id` field with your own field and return it
-from `task_type(&self) -> &Identifier`. The type is read once on registration and
-must be nonempty and unique for that connection across all listeners. `register`
-returns `ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)`
-for an invalid submission. The first refusal aborts registration and admission
-and supplies the disconnect diagnostic, even if its result is ignored.
+Implement `ConfigurationTask` on a `Send + 'static` struct and pass an instance
+to `event.register(task)`. Its `task_type(&self) -> &Identifier` supplies a
+namespaced ID, read once at registration. The ID must be nonempty and unique
+among all tasks registered for that connection. `register` returns
+`ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)` for an
+invalid submission. The first refusal aborts registration and admission and
+supplies the disconnect diagnostic, even if its result is ignored.
 
-Move `configuration_task_start` and `configuration_task_tick` into your task's
-`start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
-context: &mut ConfigurationTaskContext<'_>`. Use your own type field instead of
-`event.task_type` and keep shared state in the task struct. Only the registered
-instance runs: once for `start`, then at most once per later server tick while
-pending. Tasks run in registration order, without holding the connection task lock.
+The server calls `start` once on that instance, then calls the optional `tick`
+at most once each later server tick while it waits. Both methods take
+`&mut self`, `host: &mut dyn ServerHost` and `context: &mut ConfigurationTaskContext<'_>`.
+Keep state shared by `start` and `tick` in the task struct. Tasks run in
+registration order without holding the connection's task lock.
 
-| Old call in a start or tick hook | Replacement in the task callback |
+| Task callback operation | Call |
 | --- | --- |
-| `event.connection.has_channel(host, &channel)` | `context.has_channel(host, &channel)` |
-| `event.connection.send_payload(host, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` |
-| `host.configuration_send_payload(event.connection, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` (or pass `context.instance()` as the first argument to the Host method) |
-| `event.connection.finish(host, task_type)`, `host.configuration_finish(connection, task_type)`, or `event.finished = true` | `context.finish()` |
-| `event.connection.fail(host, reason)` or `host.configuration_fail(connection, reason)` | `context.fail(reason)` |
+| Check whether the peer negotiated a channel | `context.has_channel(host, &channel)` |
+| Send a configuration payload | `context.send_payload(host, &channel, bytes)` |
+| Complete the task | `context.finish()` |
+| Abort admission with a reason | `context.fail(reason)` |
 
 For delayed completion, capture `context.instance()` in server-local state when
 you send the **original challenge**. Match the reply to that challenge and pass

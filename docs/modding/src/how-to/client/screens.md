@@ -184,11 +184,12 @@ a bound recipe book takes its factory from the mod that bound the book; several 
 one vanilla menu type, each with its own mod's screen.
 `slot` is the index into
 `MenuScreenLayout::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
-corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
-`screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
-costs no layout work. The change lasts for that opening. A replacement starts from its declared layout,
-even when the server reuses the same window id without a close packet. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
-hidden.
+corner, as in `MenuScreenLayout::slots`; `None` hides the slot. The call takes `&self`, so the menu's
+`MenuScreen::with_draw` callback can move slots for the next frame. Repeating a slot's current place
+changes nothing and costs no layout work. The change lasts for that opening. A replacement starts from
+its declared layout, even when the server reuses the same window ID without a close packet.
+`ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it
+is hidden.
 
 From the next frame a moved slot is a vanilla slot at that position, which is what the screen reads live:
 
@@ -270,7 +271,7 @@ A label is text laid out in a box: measured, wrapped and placed, and nothing els
 scale the label is drawn at, and draw the lines it answers with where it says:
 
 ```rust
-// From screen_render_post, gui_render_post or another drawing hook.
+// From a menu screen draw callback, gui_render_post or another drawing hook.
 let scale = 2.0;
 let lines = draw.text_lines(&label, 120.0, TextAlign::Centre, scale)?;
 let mut draws = Vec::with_capacity(lines.lines.len() + 2);

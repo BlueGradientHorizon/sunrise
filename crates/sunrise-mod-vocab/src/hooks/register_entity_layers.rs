@@ -4,7 +4,8 @@ pub trait Hooks {
     /// The layers a mod adds to living entity renderers (NeoForge's
     /// `EntityRenderersEvent.AddLayers`): `add(target, layer)`, and every living entity of the
     /// type, or every player of the player model, in view draws `EntityRenderLayer::submit` after
-    /// its model and the layers added before, with an optional borrow of the final body pose.
+    /// its model and the layers added before. The final body model is borrowed for `submit`;
+    /// it is `None` when no body was posed, as after a successful replacement renderer.
     /// `entity_types`, `is_living`, `player_models` and
     /// `has_mod_renderer` tell what renderers this load built. A target that is no living entity
     /// type is refused by name. Asked on the client on every resource load, the first one and each
@@ -82,7 +83,7 @@ layers, in a follow-up of #860, which lifts their refusal."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"

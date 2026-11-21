@@ -13,8 +13,9 @@ pub trait Hooks {
     /// experience orbs (in place of the billboarded orb quad) and of paintings (in place of the
     /// painting's quads) and of item frames and glow item frames (in place of the frame model and
     /// the item or map on its face);
-    /// general entity types draw only through their renderer, if registered. Other entity
-    /// families keep their own drawing, including the dragon and end crystals. General, living,
+    /// general entity types draw only through their renderer, if registered. That renderer reads
+    /// the published generation of synced attachments through `EntityRenderState::attachments`.
+    /// Other entity families keep their own drawing, including the dragon and end crystals. General, living,
     /// primed TNT and experience orb renderers submit at each entity's slot in level join order.
     #[notes = r#"## Entity renderers
 
@@ -90,7 +91,7 @@ dropped, and until then its type draws as it would without one."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 3,
+        version = 4,
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
