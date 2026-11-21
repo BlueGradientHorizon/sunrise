@@ -19,6 +19,19 @@ pub trait LevelLightBackend {
     #[access(WorldOnly)]
     fn level_brightness(&self, level: LevelRef, layer: LightLayer, pos: [i32; 3]) -> Option<i32>;
     /// Side: both.
+    /// `IBlockStateExtension.getLightEmission`: the source light of `state` at `pos`, not
+    /// the propagated light there. The state need not occupy `pos`. A dynamic state's Part
+    /// answer is returned unchanged; a static state or a Part that declines uses the state's
+    /// declared emission. No chunks are loaded or relit. Returns None for an unavailable level,
+    /// host, phase or state, or a repeated active provider query. `Some(0)` is zero emission.
+    #[access(WorldOnly)]
+    fn level_get_light_emission(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+    ) -> Option<u8>;
+    /// Side: both.
     /// `BlockAndLightGetter.canSeeSky`: whether the level's published sky light at `pos` is 15.
     /// Works in an open server level or the current client level; stale or unavailable levels
     /// return None. Never loads chunks. See `LevelHost::can_see_sky` for the light storage rules

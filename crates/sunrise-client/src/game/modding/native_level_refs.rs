@@ -768,6 +768,25 @@ impl Game<'_> {
         self.native_level_read_world(level)
             .is_some_and(|w| w.is_loaded_at(pos[0], pos[1], pos[2]))
     }
+    pub(super) fn level_get_light_emission(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockStateId,
+    ) -> Option<u8> {
+        self.native_level_read_world(level)?;
+        let light = &self.pack.context.light;
+        if light.is_dynamic(state.0)
+            && let Some(answer) =
+                self.query_dynamic_light_emission(Some(level), block_pos(pos), state, || {
+                    Self::light_emission_dimension(level)
+                })?
+        {
+            return Some(answer);
+        }
+        Some(light.emission(state.0))
+    }
+
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15,
     /// of the server's level or the one a client shows. None as for `block_state`: a position
     /// that isn't loaded has no light to read.

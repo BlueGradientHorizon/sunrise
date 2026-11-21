@@ -55,6 +55,19 @@ A part's answer is used as given, as vanilla uses what `getFriction` returns: an
 above 1 or below 0 included. A non-finite answer is refused and the state's own coefficient is
 used.
 
+## Contextual light emission
+
+`level.get_light_emission(host, pos, state)` asks how much light the supplied state emits in
+an open server level or the current client level. The position supplies context: the state need
+not be placed there, and the query doesn't load its chunk. A block declaring `dynamic_light`
+can answer through its [Part](../../concepts/parts/block-parts.md#light-emission); a static state
+or a Part that declines uses the declared emission. The query returns the raw value, including
+`Some(0)` for zero emission. `None` means an unavailable level, state, view or phase, or an
+exact repeated active query. The read neither publishes light nor requests a relight.
+
+`host.block_states().light_emission(state)` reads only the declared value. To read the light
+already propagated to a position, use `level.brightness(host, layer, pos)` instead.
+
 ## Contextual enchanting power
 
 `level.get_enchant_power_bonus(host, pos, state, table_pos)` reads the effective power of
