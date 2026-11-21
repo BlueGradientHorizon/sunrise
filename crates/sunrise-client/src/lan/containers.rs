@@ -97,6 +97,16 @@ impl Hub {
             .collect()
     }
 
+    /// One packet to each of `conns`, encoded once.
+    pub fn send_to_each(&self, conns: &[u32], packet: &C) {
+        let body = packet.encode();
+        for g in conns.iter().filter_map(|c| self.guest(*c)) {
+            if g.participates_online() {
+                g.sender.send(body.clone());
+            }
+        }
+    }
+
     pub fn send_to(&self, conn: u32, packet: &C) {
         if let Some(g) = self.guest(conn) {
             if let C::RemoveEntities(p) = packet {
