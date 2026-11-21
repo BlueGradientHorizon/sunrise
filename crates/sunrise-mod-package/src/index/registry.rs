@@ -935,6 +935,11 @@ fn version_at(
         (Some(key), Some(sig)) => super::verify_signature(key, sig, path)?,
         (Some(_), None) => return Err("the project has a key: sign the file with it".into()),
         (None, Some(_)) => return Err("signed, but the project has no key".into()),
+        (None, None) if v.sunrise.is_some() => {
+            return Err(
+                "a stable source version needs a signed package and the project's key".into(),
+            );
+        }
         (None, None) => {}
     }
     let source = if v.builds.is_empty() {

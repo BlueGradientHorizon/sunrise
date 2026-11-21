@@ -72,9 +72,24 @@ impl Registry {
     fn pin_source(&self, id: &str, tag: &str) {
         self.edit(id, |t| {
             let repo = format!("https://github.com/author/{id}");
+            let entry: sunrise_mod_package::index::registry::Entry = toml::from_str(&t).unwrap();
+            let bytes =
+                std::fs::read(self.0.path().join("files").join(&entry.versions[0].sha256)).unwrap();
+            let pair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+            let key = pair.pk.to_base64();
+            let signature = minisign::sign(
+                Some(&pair.pk),
+                &pair.sk,
+                bytes.as_slice(),
+                Some("registry test"),
+                None,
+            )
+            .unwrap()
+            .into_string();
             format!(
-                "{}sunrise='{tag}'\n",
+                "{}sunrise='{tag}'\nsignature='''{signature}'''\n",
                 t.replace(&format!("https://example.test/{id}"), &repo)
+                    .replace("[[versions]]", &format!("key='{key}'\n\n[[versions]]"))
                     .replace(
                         &format!("file='{id}-1.0.0.smod'"),
                         &format!("file='{repo}/releases/download/v1.0.0/{id}-1.0.0.smod'")

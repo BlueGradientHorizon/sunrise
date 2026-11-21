@@ -143,6 +143,36 @@ impl Release {
 }
 
 #[test]
+fn a_signed_stable_source_can_publish_without_prebuilt_binaries() {
+    let release = Release::new("source.smod");
+    let index = release.build();
+    let version = &index.project(ID).unwrap().versions[0];
+    assert_eq!(version.sunrise.as_deref(), Some(RELEASE_TAG));
+    assert!(version.file.signature.is_some());
+    assert!(version.native_binaries.is_empty());
+}
+
+#[test]
+fn an_unsigned_stable_source_is_refused_without_prebuilt_binaries() {
+    let release = Release::new("source.smod");
+    release.0.edit(ID, |text| {
+        let mut entry: registry::Entry = toml::from_str(&text).unwrap();
+        entry.key = None;
+        entry.versions[0].signature = None;
+        assert!(entry.versions[0].builds.is_empty());
+        entry.to_toml().unwrap()
+    });
+    let error = release
+        .0
+        .build(&release.flags().each_ref().map(String::as_str))
+        .unwrap_err();
+    assert!(
+        error.contains(ID) && error.contains("signed package"),
+        "{error}"
+    );
+}
+
+#[test]
 fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
     let release = Release::new("source.smod");
     let without = release.build();
