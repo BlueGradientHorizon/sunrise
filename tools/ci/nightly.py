@@ -973,7 +973,13 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             # the candidate's tree. A patch's exactly; a minor's may hold more records (its own tool may export kinds
             # the parent's doesn't know), but every exported one unchanged.
             signed, export = json.loads(after.read_bytes()), exported["candidate"]
-            if minor:
+            read = subprocess.run([stage, "surface-diff", str(work / "candidate.json"), str(after), "--json",
+                                   str(work / "signed-diff.json")], cwd=work, env=isolated_env(), capture_output=True,
+                                  text=True)
+            if read.returncode:
+                problems.append(f"{old_tag}'s sunrise-stage cannot read its signed surface.json: "
+                                f"{read.stderr.strip()}")
+            elif minor:
                 if signed.get("schema") != export.get("schema"):
                     problems.append(f"its signed surface.json has schema {signed.get('schema')!r}, the export of "
                                     f"{old_tag}'s sunrise-stage {export.get('schema')!r}")

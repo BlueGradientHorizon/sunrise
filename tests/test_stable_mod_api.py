@@ -80,6 +80,8 @@ class StableModApiTests(unittest.TestCase):
             if args[1] == "surface":
                 surface = parent_tree if Path(args[2]).name == "parent-tree" else candidate_tree
                 Path(args[3]).write_text(json.dumps(surface))
+            elif "unreadable" in json.loads(Path(args[3]).read_text()):
+                return subprocess.CompletedProcess(args, 1, "", "surface.json lists behaviour:example twice")
             else:
                 Path(args[-1]).write_text(json.dumps({"verdict": verdict}))
             return subprocess.CompletedProcess(args, 0, "", "")
@@ -137,8 +139,10 @@ class StableModApiTests(unittest.TestCase):
                                          "- Changed: `signature_change`\n")
                     lineage.assert_called_once_with(HEAD, tag, OLD, PREVIOUS)
                     # The parent's tool exported both trees, then diffed its own exports.
-                    self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff"])
-                    self.assertEqual([Path(name).name for name in calls[-1][2:4]], ["parent.json", "candidate.json"])
+                    self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff", "surface-diff"])
+                    self.assertEqual([[Path(name).name for name in args[2:4]] for args in calls[2:]],
+                                     [["parent.json", "candidate.json"], ["candidate.json", "after.json"]],
+                                     "its own exports diffed, then the signed surface read against the candidate's")
                 self.stage.assert_called_with(OLD, mock.ANY)
 
     def test_a_break_glass_release_keeps_its_parents_surface_judged_by_the_parents_own_stage(self):
@@ -169,7 +173,7 @@ class StableModApiTests(unittest.TestCase):
                     continue
                 nightly.stable_mod_api(HEAD, tag, self.notes)
             self.assertEqual(self.unpacked, [(OLD, "parent-tree"), (HEAD, "candidate-tree")])
-            self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff"])
+            self.assertEqual([args[1] for args in calls], ["surface", "surface", "surface-diff", "surface-diff"])
 
     def test_an_ordinary_release_is_judged_by_the_parents_tool_too(self):
         # Not only break-glass: a candidate whose own exporter would hide a break is diffed from the parent tool's
@@ -203,7 +207,8 @@ class StableModApiTests(unittest.TestCase):
 
     def test_the_signed_surface_is_what_the_parents_tool_exports_from_the_candidate(self):
         # A patch's signed surface.json is that export exactly. A minor's may add records its own exporter knows,
-        # but an exporter that drops or rewrites one of the parent tool's records is refused.
+        # but an exporter that drops or rewrites one of the parent tool's records is refused. The parent's tool reads
+        # it too.
         newer = {**ADDITIVE, "hash": "newer", "extension_tags": [{"registry": "item", "id": "tag:new"}]}
         dropped = {**ADDITIVE, "behaviours": [DECLARATION]}
         rewritten = {**ADDITIVE, "behaviours": [DECLARATION, {**DECLARATION, "id": "behaviour:new", "doc": "x"}]}
@@ -213,7 +218,11 @@ class StableModApiTests(unittest.TestCase):
                 ("26.3-0.2.0", newer, None),
                 ("26.3-0.2.0", dropped, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
                 ("26.3-0.2.0", rewritten, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
-                ("26.3-0.2.0", {**newer, "schema": 4}, "minor release.*schema 4")):
+                ("26.3-0.2.0", {**newer, "schema": 4}, "minor release.*schema 4"),
+                # Whatever it holds, a file the parent's reader refuses (the real reader's cases are in the daily
+                # stable_mod_api_integration test) is refused.
+                ("26.3-0.1.11", {**SURFACE, "unreadable": True}, "cannot read its signed surface.json: .*twice"),
+                ("26.3-0.2.0", {**newer, "unreadable": True}, "cannot read its signed surface.json")):
             export = SURFACE if tag == "26.3-0.1.11" else ADDITIVE
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             with self.subTest(tag=tag, signed=signed), \
