@@ -3,7 +3,8 @@
 Use the registry to distribute content and native mods (`.smod`), modpacks (`.spack`),
 resource packs, data packs, shaders-folder packs and Sunrise shader packs (`.sshader`).
 Use the [registry submission form](https://playsunrise.net/mods/submit) or stage a mod locally with `cargo sunrise-mod publish`.
-Versions are pinned by SHA-256. The launcher and website read schema 1 of `index.json`.
+Reviewed package versions are pinned by SHA-256. The registry can also list unreviewed source for
+Nightly builds. The launcher and website read schema 1 of `index.json`.
 The format is defined by `sunrise_mod_package::index` and `sunrise_mod_package::modpack`.
 
 ## Repository page fields
@@ -26,7 +27,7 @@ entry leaves out.
     "categories": ["utility"], "tags": ["hud"], "screenshots": ["https://...png"],
     "versions": [{
       "version": "0.1.0", "published": "2026-10-24", "changelog": "",
-      "api": "0.2", "side": "client", "capabilities": ["registries"], "game": "26.3",
+      "api": "0.2", "side": "client", "capabilities": ["registries"], "game": "26.3", "sunrise": "26.3-0.1.0",
       "dependencies": [{ "id": "jei", "version": "^0.5", "optional": true }],
       "file": { "name": "coords_hud-0.1.0.smod", "url": "https://github.com/sunrise-org/sunrise-mods/releases/download/...",
                 "size": 438, "sha256": "e113...", "signature": "untrusted comment: ...\n...\ntrusted comment: ...\n...\n" }
@@ -40,33 +41,37 @@ entry leaves out.
 | --- | --- |
 | `schema` | 1. A reader refuses a higher number with "update Sunrise" rather than misread it. |
 | `projects[].id` | `[a-z0-9_]{1,64}`, unique among projects and collections; a mod's is its manifest's `id`. Not a page of the mod site (`RESERVED_IDS` in `crates/sunrise-mod-package/src/manifest.rs`, `submit` and `mine` among them): a project's page is `/mods/<id>`. |
+| `releases` | Optional top-level list of stable Sunrise releases: `{ tag, commit, line }`. `line` is `<game>-<major>`, e.g. `26.3-0`. |
 | `collections` | Optional top-level list of [collections](#collections). Each is a page and a list of already listed mod ids, with no file or version of its own. |
 | `kind` | `mod` (content), `native-mod`, `modpack`, `resourcepack`, `shader` (Sunrise `.sshader`), `shaderpack` (a `shaders/`-folder zip), `datapack` (a data-pack zip). Other kinds (worlds, themes) may come without a new schema: a reader keeps a kind it doesn't know and doesn't offer it. |
-| `summary`, `description` | Required summary of at most 160 characters for lists; Markdown for the project's page, required for a listed project and 50–10,000 characters after trimming. |
+| `summary`, `description` | Required summary of at most 160 characters for lists. Markdown for the project's page: required for a project with versions (50–10,000 characters after trimming), optional for a Nightly-only project. |
 | `owners` | GitHub logins allowed to publish updates. |
-| `license`, `source` | An SPDX expression and an `https://` address of the source code: both required. |
-| `icon` | Required for a listed project. An HTTPS URL in the generated index, from the registry's `icons/<id>.png` (not a remote image input). |
-| `categories` | 1–3 from the kind’s category list for a listed project. |
+| `license`, `source` | An SPDX expression and an `https://` address of the source code: required for a project with versions. A Nightly-only project can omit both; in that case the publisher uses the Nightly repository's URL as `source`. |
+| `icon` | Required for a project with versions. An HTTPS URL in the generated index, from the registry's `icons/<id>.png` (not a remote image input). |
+| `categories` | 1–3 from the kind’s category list for a project with versions. Optional for a Nightly-only project. |
 | `tags` | Up to 10 lowercase tags. |
-| `screenshots` | Up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. A new project, or an existing one whose pull request adds a version, needs at least one unless it is a collection or a `mod` or `native-mod` whose `categories` include `library`. The file must be a PNG or JPEG kept in the checkout and listed here, not a remote address. |
+| `screenshots` | Up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. A new project with versions, or an existing one whose pull request adds a version, needs at least one unless it is a `mod` or `native-mod` whose `categories` include `library`. Collections and Nightly-only projects need none. The file must be a PNG or JPEG kept in the checkout and listed here, not a remote address. |
 | `key` | The author's [minisign](https://jedisct1.github.io/minisign/) public key. When set, every version must be signed with it; an update signed with another key is refused. Absent: the project is unsigned and the launcher says so. |
-| `versions` | Newest first, at least one. |
+| `versions` | Newest first. May be empty for a Nightly-only project. |
+| `nightly` | Optional project-level object: `repo` (`owner/name` on GitHub), optional `path` (a directory relative to the repository root), plus optional publisher-supplied `branch` (default branch), `commit` (its head), `pin` (that source's `[native] sunrise`), and `updated` (head commit date, RFC 3339). |
 | `downloads` | How many times its files were downloaded, every version together: GitHub's count of each release asset, summed across release assets. Absent when no file has been downloaded. Read-only: never in an entry. The registry's publish workflow reads the counts from GitHub and hands them to `cargo sunrise-mod registry build --counts <file>` (`{"downloads": {"<file address>": n}, "stars": {"<owner>/<repo>": n}}`), so both refresh each time the index is republished. |
 | `stars` | GitHub stars of the project's source repository, refreshed by the registry. Absent when zero or the source is not on GitHub. Read-only: never in an entry. The launcher shows the count and a button that opens the repository. |
 | `updated` | Its newest version's `published` (the latest of `versions[].published`), set by the registry, so a reader can sort by it beside `downloads` without walking every version. Absent when no version has a date. Read-only: never in an entry. |
 | `api` | A mod's API line (its manifest's `api`); a native mod's pinned revisions (`native-1/<sunrise>/<mixins>`, without `/<mixins>` when the package pins none); a modpack's manifest format (`1`). |
 | `side`, `capabilities` | A mod's, read from its manifest during validation. |
 | `game` | The Minecraft version it is for. |
+| `sunrise` | Optional version-level stable release tag the package was made for, e.g. `26.3-0.1.0`. |
 | `dependencies` | A mod or native mod's [manifest dependencies](../concepts/dependencies.md): `{ id, version, optional, side }`, sorted by `id`. `version` is a SemVer range rendered as text. `optional` is omitted unless true; `side` is omitted unless limited to `client` or `server`. The publisher omits this field when a mod has no dependencies. An explicit `[]` asserts that the manifest has none. Never add this field to `mods/<id>.toml`. |
 | `requires` | A modpack's exact pins: `{ id, version, sha256 }`, each a version in this index with that hash. These are not mod dependencies. |
 | `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`, `.sshader`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
-| `revoked` | Files taken down: one file by `sha256`, or every version of `id` without it. The launcher refuses to install them and turns installed copies off with the reason. |
+| `revoked` | Files taken down: one file by `sha256`, or every version of `id` without it. The launcher refuses to install them and turns installed copies off with the reason. A takedown of every version also stops listing the project's Nightly source; one by `sha256` leaves it. |
 
 Readers ignore fields they don't know, so an optional field can be added to schema 1. Renaming or removing a field, or
 changing what one means, makes schema 2.
 
 The registry's CI checks the whole index. A reader leaves out individual entries that break file or metadata rules:
-a project left with no versions goes too, a modpack version whose mod was left out goes with it, and an id listed twice
+a project left with neither versions nor a Nightly source goes too, a modpack version whose mod was left out goes
+with it, and an id listed twice
 leaves out every project with that id. Dependency failures are diagnosed when planning an install, so the reader can
 tell you which mod is missing or why it cannot be installed. The rest of the index still loads; only text that is not
 an index, or a newer schema, fails as a whole.
@@ -168,7 +173,8 @@ per-version native fit decisions, and an expected plan or refusal details.
 4. A kind this build can't install is refused with "this Sunrise can't install a … yet".
 
 An absent `dependencies` field makes no claim about the package's dependencies: an older schema 1 index may omit
-it. The hash still pins the file; the game loader checks the manifest.
+it. The hash still pins the file; the game loader checks the manifest. When the index lists both the version's
+`sunrise` tag and the release table, a native package's `[native] sunrise` pin must equal that release's commit.
 
 ## Collections
 
@@ -228,7 +234,7 @@ sits in a linked folder, refuses the import before anything is written.
 A project is a file `mods/<id>.toml` in [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods),
 added by a pull request that a person reviews. The [registry submission form](https://playsunrise.net/mods/submit)
 opens the pull request for you. For a mod, you can instead stage it with `cargo sunrise-mod publish` and open the
-pull request yourself. See [Publishing your mod](../how-to/publish.md) for the steps. Its page needs:
+pull request yourself. See [Publishing your mod](../how-to/publish.md) for the steps. A project with versions needs:
 
 - A description of 50–10,000 characters after trimming.
 - 1–3 categories from your project kind’s list and up to 10 lowercase tags.
@@ -270,6 +276,43 @@ changelog = ""
 A mod's API, side, capabilities and dependencies are read from the file, not listed. A new version is a new
 `[[versions]]` table at the top; a listed one never changes, and `registry review` refuses a changed file or hash.
 The category lists are in `crates/sunrise-mod-package/src/index/page.rs`.
+
+A version can declare `sunrise = "26.3-0.1.0"`: the tag is the Minecraft version (dotted numbers, matching `game`),
+a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field is optional during migration.
+`registry check`, `registry review` and `registry build` accept `--releases <file>`: a JSON array of objects with
+`tag` and `commit` (40 hex digits, published as lowercase), one per stable release. A declared tag must be in the
+list (a reader of an index that lists releases leaves out a version naming another), and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
+files are checked, a native package's `[native] sunrise` pin must match the named commit. Once a version is listed
+with `sunrise`, `registry review` refuses changing or removing it. The workflow supplies the file; the tool does not
+discover releases itself.
+
+An entry with neither versions nor a Nightly source publishes nothing and keeps its id; its id, kind and owners are
+still checked. A project with only a Nightly source may leave out its icon and screenshots; the ones it has are
+kept in the registry like any other project's.
+
+### Nightly source
+
+An entry may also list a public GitHub repository for unreviewed builds from source:
+
+```toml
+[nightly]
+repo = "you/coords_hud"
+# path = "mods/coords_hud"  # omit when sunrise-mod.toml is at the repository root
+```
+
+Only `repo` and `path` are accepted in this table; the entry does not name a branch. With no versions, a Nightly-only
+entry needs only `id`, `kind`, `name`, `summary`, `owners` and `[nightly]`. An entry with neither reviewed versions
+nor Nightly source keeps the id and owners in the checkout but is not published in the index.
+
+`registry review` reports the addition or edit of just this table by a base owner as routine. A new Nightly-only
+entry is routine if the author is in its `owners`. That status classifies the entry edit, not unrelated files or
+whether the repository passed the workflow's checks. The JSON report lists these under `nightly_reviews` as
+`{ id, status, reason }` (`routine` or `review_required`).
+
+`registry build --nightly <file>` adds optional display metadata keyed by project id, for example
+`{"coords_hud":{"branch":"main","commit":"<commit>","pin":"<Sunrise commit>","updated":"2026-11-20T18:00:00Z"}}`.
+The workflow reads this metadata from GitHub; the tool uses it only for projects with `[nightly]` and does not fetch
+or execute the repository. `repo` and `path` always come from the entry.
 
 ### The files folder
 
