@@ -8,8 +8,9 @@
 //! a modpack's mods, a file's size) is read from the file, never typed.
 pub use super::open;
 use super::{
-    File, Index, Kind, Nightly, NightlyMetadata, Project, Revoked, SCHEMA, SunriseRelease, Version,
-    check_stable_tag, find_release, hex64, inspect, page as rules, stable_tag, valid_id,
+    File, Index, Kind, Nightly, NightlyBuild, NightlyMetadata, Project, Revoked, SCHEMA,
+    SunriseRelease, Version, check_stable_tag, find_release, hex64, inspect, page as rules,
+    stable_tag, valid_id,
 };
 use crate::manifest::{parse_version, revision};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -389,6 +390,22 @@ pub fn parse_releases(text: &str) -> Result<Vec<SunriseRelease>, String> {
         });
     }
     Ok(releases)
+}
+
+/// Read the workflow's current game Nightly before using its commit as a directory name.
+pub fn parse_nightly_build(text: &str) -> Result<NightlyBuild, String> {
+    let mut build: NightlyBuild = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    build.commit.make_ascii_lowercase();
+    if !revision(&build.commit) {
+        return Err(format!(
+            "Nightly commit {:?} must be 40 hex digits",
+            build.commit
+        ));
+    }
+    if !plain_date(&build.date) {
+        return Err(format!("Nightly date {:?} is not YYYY-MM-DD", build.date));
+    }
+    Ok(build)
 }
 
 /// The release tag a version's file is published under.
@@ -931,6 +948,7 @@ fn version_at(
     }
     Ok(Version {
         sunrise: v.sunrise.clone(),
+        verdicts: BTreeMap::new(),
         native_binaries: v.native_binaries.clone(),
         version: v.version.clone(),
         published: v.published.clone(),
@@ -1115,6 +1133,8 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         generated: src.generated.clone(),
         projects,
         releases: src.releases.map(<[_]>::to_vec),
+        nightly_build: None,
+        unjudged: Vec::new(),
         collections,
         revoked: checkout.revoked.clone(),
         left_out: Vec::new(),

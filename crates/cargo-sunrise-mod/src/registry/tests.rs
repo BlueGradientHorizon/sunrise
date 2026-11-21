@@ -1,6 +1,8 @@
 use std::io::{Cursor, Write};
 use sunrise_mod_package::index::{Index, resolve::RequestResult, sha256};
 
+mod fit;
+
 /// A 320x180 PNG header: all the screenshot check reads of an image's size.
 const SHOT: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\x01\x40\0\0\0\xb4\x08\x06\0\0\0";
 
@@ -169,7 +171,17 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
     };
     write_release(RELEASE_TAG, &RELEASE_PIN.to_ascii_uppercase());
     assert_eq!(r.run("check", &["base", "head"], &flag), Ok(()));
-    let mut index = r.build(&flag).unwrap();
+    let sdk_data = r.0.path().join("sdk");
+    fit::sdk(
+        &sdk_data,
+        RELEASE_PIN,
+        mod_surface::SCHEMA,
+        "api",
+        sunrise_mod_package::manifest::API,
+        serde_json::json!({}),
+    );
+    let build_flags = [flag[0], flag[1], "--sdk-data", sdk_data.to_str().unwrap()];
+    let mut index = r.build(&build_flags).unwrap();
     let release = &index.releases.as_ref().unwrap()[0];
     assert_eq!(
         (&*release.tag, &*release.commit, &*release.line),

@@ -53,7 +53,7 @@ pub const BESIDE_ASSETS: [&str; 3] = [INDEX, "SHA256SUMS", "SHA256SUMS.sig"];
 pub struct Index {
     pub schema: u32,
     pub build: Build,
-    pub package_format: u32,
+    pub package_format: u64,
     pub toolchain: Toolchain,
     /// The content manifest's version ([`crate::manifest::API`]).
     pub content_api: String,
@@ -569,7 +569,7 @@ impl Index {
         Ok(Index {
             schema: SCHEMA,
             build,
-            package_format: PACKAGE_FORMAT,
+            package_format: u64::from(PACKAGE_FORMAT),
             toolchain: Toolchain { rust },
             content_api: crate::manifest::API.to_owned(),
             surface: Surface {
@@ -680,6 +680,20 @@ impl Index {
     /// Read `sdk.json` for build `commit`: its schema, build, package format and every asset's
     /// kind, codec and name, and the mixins revision, are checked here, once.
     pub fn read(bytes: &[u8], commit: &str) -> Result<Index, Refusal> {
+        Self::read_with_format(bytes, commit, Some(u64::from(PACKAGE_FORMAT)))
+    }
+
+    /// Read the index for a fit comparison, which never opens compiled packages.
+    /// All index checks except compiled package format compatibility still apply.
+    pub fn read_for_fit(bytes: &[u8], commit: &str) -> Result<Index, Refusal> {
+        Self::read_with_format(bytes, commit, None)
+    }
+
+    fn read_with_format(
+        bytes: &[u8],
+        commit: &str,
+        expected_format: Option<u64>,
+    ) -> Result<Index, Refusal> {
         let malformed = |error: serde_json::Error| Refusal::Malformed(error.to_string());
         Self::schema(bytes)?;
         let written: Written = serde_json::from_slice(bytes).map_err(malformed)?;
@@ -689,7 +703,7 @@ impl Index {
                 found: written.build.commit,
             });
         }
-        if written.package_format != u64::from(PACKAGE_FORMAT) {
+        if expected_format.is_some_and(|expected| expected != written.package_format) {
             return Err(Refusal::PackageFormat(written.package_format));
         }
         if !crate::manifest::revision(&written.mixins.rev) {
@@ -732,7 +746,7 @@ impl Index {
         Ok(Index {
             schema: SCHEMA,
             build: written.build,
-            package_format: PACKAGE_FORMAT,
+            package_format: written.package_format,
             toolchain: written.toolchain,
             content_api: written.content_api,
             surface: written.surface,

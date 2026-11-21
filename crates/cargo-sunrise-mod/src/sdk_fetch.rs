@@ -52,7 +52,7 @@ impl CacheStamp {
         fs::write(&path, &self.0).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
-const SURFACE: &str = "surface.json";
+pub(crate) const SURFACE: &str = "surface.json";
 const API_SOURCE: &str = "api-source.tar.xz";
 /// The most a small file (`sdk.json`, the sums, the signature, `surface.json`) may be.
 const SMALL: u64 = 16 << 20;

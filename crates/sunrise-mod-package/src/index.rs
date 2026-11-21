@@ -14,7 +14,7 @@ use crate::{
 use mod_vocab::Side;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{io::Read, path::Path};
+use std::{collections::BTreeMap, io::Read, path::Path};
 
 /// The index format this build reads and writes. A reader refuses a newer
 /// one rather than misread it.
@@ -39,6 +39,12 @@ pub struct Index {
     /// Sunrise releases named by the registry, not mod releases.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub releases: Option<Vec<SunriseRelease>>,
+    /// The current game Nightly, separate from a project's unreviewed source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nightly_build: Option<NightlyBuild>,
+    /// Builds for which compatibility could not be judged because of an unsupported SDK schema.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unjudged: Vec<UnjudgedBuild>,
     /// Curated lists of existing mods. Collections have no file or version of their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<Collection>,
@@ -57,6 +63,21 @@ pub struct SunriseRelease {
     pub commit: String,
     /// The game version and Sunrise major version (for example, `26.3-0`).
     pub line: String,
+}
+
+/// The current Nightly's build identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NightlyBuild {
+    pub commit: String,
+    /// The build's date, `YYYY-MM-DD` (UTC).
+    pub date: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnjudgedBuild {
+    /// The stable release tag or `nightly`.
+    pub build: String,
+    pub reason: String,
 }
 
 fn stable_tag(tag: &str) -> Option<(&str, u64)> {
@@ -271,6 +292,9 @@ pub struct Version {
     /// The stable Sunrise release tag it was made for, when declared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sunrise: Option<String>,
+    /// How this version stands on its line's releases and the current Nightly.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub verdicts: BTreeMap<String, BuildVerdict>,
     /// A mod's dependencies, sorted by id. None means the index did not list the field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Vec<Dependency>>,
@@ -280,6 +304,33 @@ pub struct Version {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub native_binaries: Vec<NativeBinary>,
     pub file: File,
+}
+
+/// A published fit decision and the platforms with an exact prebuilt binary for that build.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildVerdict {
+    #[serde(flatten)]
+    pub fit: FitVerdict,
+    pub targets: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "verdict", rename_all = "kebab-case")]
+pub enum FitVerdict {
+    MadeFor,
+    Fits,
+    Rebuild {
+        /// Functions whose bodies changed but whose signatures did not.
+        review: Vec<String>,
+    },
+    Breaks {
+        /// Up to five changed item IDs.
+        changed: Vec<String>,
+    },
+    Exact {
+        /// Why the package cannot be judged on another build.
+        reason: String,
+    },
 }
 
 /// Registry-produced metadata; signature acceptance belongs to the binary verifier.

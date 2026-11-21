@@ -5,6 +5,7 @@ use crate::options::Options;
 use serde::de::DeserializeOwned;
 use std::path::Path;
 
+mod fit;
 #[cfg(test)]
 mod tests;
 use sunrise_mod_package::index::{
@@ -16,7 +17,7 @@ use sunrise_mod_package::index::{
 const RELEASE: &str = "https://github.com/sunrise-org/sunrise-mods/releases/download/";
 const SITE: &str = "https://sunrise-org.github.io/sunrise-mods/";
 
-const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files <dir> --out <index.json> [--release <url>] [--site <url>] [--generated <time>] [--counts <counts.json>] [--releases <file>] [--nightly <file>]
+const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files <dir> --out <index.json> [--release <url>] [--site <url>] [--generated <time>] [--counts <counts.json>] [--releases <file>] [--nightly <file>] [--nightly-build <file>] [--sdk-data <dir>]
        cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--releases <file>] [--json]
        cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--releases <file>] [--json]
        cargo sunrise-mod registry list <checkout>
@@ -39,6 +40,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
         "--counts",
         "--releases",
         "--nightly",
+        "--nightly-build",
+        "--sdk-data",
         "--author",
         "--tag",
         "--published",
@@ -56,6 +59,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
             let (site, counts) = (options.value("--site")?, options.value("--counts")?);
             let releases = options.value("--releases")?;
             let nightly = options.value("--nightly")?;
+            let nightly_build = options.value("--nightly-build")?;
+            let sdk_data = options.value("--sdk-data")?.map(Path::new);
             let pos = options.positional();
             options.finish()?;
             let [checkout] = pos[..] else {
@@ -68,8 +73,9 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 .map(str::to_owned)
                 .or_else(|| std::env::var("REGISTRY_GENERATED").ok())
                 .unwrap_or_default();
-            let releases = read_releases(releases)?;
+            let releases = read_input(releases, registry::parse_releases)?;
             let nightly = nightly.map(read_json).transpose()?;
+            let nightly_build = read_input(nightly_build, registry::parse_nightly_build)?;
             let mut index = registry::build(&Sources {
                 registry: Path::new(checkout),
                 files: Path::new(files),
@@ -80,6 +86,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 nightly: nightly.as_ref(),
             })
             .map_err(lines)?;
+            index.nightly_build = nightly_build;
+            fit::publish(&mut index, Path::new(files), sdk_data)?;
             for problem in uninstallable_versions(&index, |_| true) {
                 eprintln!("warning: {problem}");
             }
@@ -106,7 +114,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 return Err(USAGE.into());
             };
             let author = author.ok_or(USAGE)?;
-            let releases = read_releases(releases)?;
+            let releases = read_input(releases, registry::parse_releases)?;
             let base = registry::load(Path::new(base)).map_err(lines)?;
             let checkout = Path::new(head);
             let head = registry::load(checkout).map_err(lines)?;
@@ -198,7 +206,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 return Err(USAGE.into());
             };
             let files = Path::new(files.ok_or(USAGE)?);
-            let releases = read_releases(releases)?;
+            let releases = read_input(releases, registry::parse_releases)?;
             let base_entries = registry::load(Path::new(base)).map_err(lines)?.entries;
             let old: std::collections::HashSet<String> = base_entries
                 .iter()
@@ -373,12 +381,13 @@ fn read_json<T: DeserializeOwned>(path: &str) -> Result<T, String> {
     serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))
 }
 
-fn read_releases(
+fn read_input<T>(
     path: Option<&str>,
-) -> Result<Option<Vec<sunrise_mod_package::index::SunriseRelease>>, String> {
+    parse: impl FnOnce(&str) -> Result<T, String>,
+) -> Result<Option<T>, String> {
     path.map(|path| {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-        registry::parse_releases(&text).map_err(|e| format!("{path}: {e}"))
+        parse(&text).map_err(|e| format!("{path}: {e}"))
     })
     .transpose()
 }
