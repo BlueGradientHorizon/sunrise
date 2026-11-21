@@ -12,9 +12,17 @@ ids = [
     "type:RecipePropertySetsEvent.additions",
     "handle:RecipePropertySetsEvent::register",
 ]
-why = "Collect hooks with listener attribution and namespace validation (`mod_mismatch`, `recipe_property_sets`, `register_render_pipelines`) now expose scoped append-only methods on their event types instead of mutable reply vectors policed by copying after each listener, matching NeoForge's `ModMismatchEvent` (`markResolved`/`wasResolved`/`getResolver`), `RegisterRecipePropertiesEvent`, and `RegisterRenderPipelinesEvent`. Attribution and validation run at insertion, and `ModMismatchResolution` no longer implements `From<String>` for unattributed markers."
+why = """
+NeoForge's `ModMismatchEvent.markResolved`, `wasResolved`, and `getResolver` anchor scoped mismatch resolution: a listener records its own marker without editing earlier resolutions. `ModMismatchResolution` therefore no longer implements `From<String>` for unattributed markers.
+
+NeoForge's `RegisterRecipePropertiesEvent.register` anchors the scoped recipe registration operation, not Sunrise's timing or duplicate policy. NeoForge posts the event from `RecipePropertySetManager.init` at startup to register extractors and rejects duplicate keys; vanilla `RecipeManager.finalizeRecipeLoading` consumes an existing extractor table. Sunrise still unions item contributions per recipe load, including extensions to vanilla and previously declared custom sets. Each contribution is attributed at insertion so validation names its submitting mod and a custom set keeps its first declarer's identity.
+
+For render pipelines (NeoForge's `RegisterRenderPipelinesEvent`), validation and attribution move into the already-public `event.register` method; the mod-facing method and duplicate policy stay the same.
+"""
 migrate = """
 In `Hooks::mod_mismatch`, replace `event.resolved.push("my_mod".to_owned().into())` with `event.mark_resolved("my_mod")`. Read recorded resolutions with `event.was_resolved(id)`, `event.resolver(id)` or `event.resolved()`.
+
+Replace `use mod_api::game::mismatch_resolution::ModMismatchResolution;` with `use mod_api::ModMismatchResolution;`. For standalone records, replace `ModMismatchResolution::from(mod_id)` or `mod_id.into()` with `ModMismatchResolution { mod_id, resolver }`, providing both the migrated ID and the resolving mod's ID as `String`s. In the hook, use `event.mark_resolved(&mod_id)` instead of constructing a record.
 
 In `Hooks::recipe_property_sets`, replace `event.additions.push(addition)` with `event.register(addition)`.
 

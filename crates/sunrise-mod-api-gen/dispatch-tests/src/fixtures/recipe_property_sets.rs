@@ -9,7 +9,10 @@ fn recipe_property_sets_dispatch_sets_listener_mod_id_on_attributed_event() {
             event: &mut RecipePropertySetsEvent<'_>,
         ) {
             self.0.lock().unwrap().push(event.mod_id);
-            event.additions.push(RecipePropertyAddition);
+            event.additions.push(Answered {
+                answer: RecipePropertyAddition,
+                mod_id: event.mod_id,
+            });
         }
     }
 
@@ -24,5 +27,11 @@ fn recipe_property_sets_dispatch_sets_listener_mod_id_on_attributed_event() {
     let mut additions = Vec::new();
     dispatch_recipe_property_sets(&Load("server"), &mut additions);
     assert_eq!(*seen.lock().unwrap(), ["pot", "extension"]);
-    assert_eq!(additions.len(), 2);
+    assert_eq!(
+        additions
+            .iter()
+            .map(|entry| entry.mod_id)
+            .collect::<Vec<_>>(),
+        ["pot", "extension"]
+    );
 }

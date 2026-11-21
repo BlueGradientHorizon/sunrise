@@ -40,10 +40,14 @@ impl mod_api::Hooks for Extend {
     ) {
         event.register(mod_api::RecipePropertyAddition::new(
             "pot:input",
-            vec!["minecraft:diamond".into()],
+            vec!["minecraft:diamond".into(), "minecraft:emerald".into()],
         ));
         event.register(mod_api::RecipePropertyAddition::new(
             "pot:foreign_new",
+            vec!["minecraft:diamond".into()],
+        ));
+        event.register(mod_api::RecipePropertyAddition::new(
+            "minecraft:unknown_property_test",
             vec!["minecraft:diamond".into()],
         ));
     }
@@ -66,7 +70,14 @@ fn custom_sets_survive_dispatch_and_sync_but_new_foreign_keys_do_not() {
         ]
         .into(),
         || {
+            crate::test_log::install();
+            crate::test_log::clear();
             let resolved = ResolvedSources::resolve(vec![], &context).unwrap();
+            assert_eq!(resolved.property_additions.0["pot:input"].first_mod, "pot");
+            assert!(crate::test_log::records().iter().any(|(level, message)| {
+                *level == log::Level::Warn
+                    && message.contains("extension: unknown set minecraft:unknown_property_test")
+            }));
             assert!(resolved.property_additions.get("foreign:input").is_none());
             assert!(resolved.property_additions.get("pot:foreign_new").is_none());
             assert!(

@@ -11,10 +11,11 @@ pub trait Hooks {
     /// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),
     /// and again after `/reload`. A new namespaced key creates a set when its
     /// namespace belongs to the listener's manifest (its ID or `namespaces`).
-    /// Later listeners may extend existing sets. Invalid or foreign new keys,
-    /// unknown vanilla keys, and air are logged and skipped; unknown items are
-    /// ignored. Custom sets are synced to clients alongside vanilla sets. The
-    /// answer must be the same every time.
+    /// Later listeners may extend existing sets without changing who created them.
+    /// Invalid or foreign new keys, unknown vanilla keys, and air are logged with
+    /// the contributing mod and skipped; unknown items are ignored. Custom sets
+    /// are synced to clients alongside vanilla sets. The answer must be the same
+    /// every time.
     /// A client without this mod predicts vanilla here; the server corrects it.
     #[hook(
         side = "both",
@@ -26,5 +27,5 @@ pub trait Hooks {
         version = 2,
         neoforge = "RegisterRecipePropertiesEvent"
     )]
-    fn recipe_property_sets(additions: &mut Vec<RecipePropertyAddition>);
+    fn recipe_property_sets(additions: &mut Vec<Answered<RecipePropertyAddition>>);
 }

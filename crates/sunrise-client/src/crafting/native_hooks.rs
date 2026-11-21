@@ -33,7 +33,7 @@ pub fn native_ingredient(
 #[inline(never)]
 pub fn native_recipe_property_sets(
     context: &LoadContext,
-    additions: &mut Vec<RecipePropertyAddition>,
+    additions: &mut Vec<mod_api::Answered<RecipePropertyAddition>>,
 ) {
     mod_api::dispatch_recipe_property_sets(
         &sunrise_client_render::api_context::LoadReader(context).context(),

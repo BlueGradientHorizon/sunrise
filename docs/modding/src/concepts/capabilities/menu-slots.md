@@ -21,9 +21,10 @@ quick-move items into a locally hidden slot, and the slot's acceptance rules sti
 a key in the listener's manifest-owned namespaces creates a set. Ownership
 uses the package ID plus the manifest's `namespaces`, so a package named
 `ported_farmersdelight` with `namespaces = ["farmersdelight"]` can create
-`farmersdelight:cooking_pot_input`. A later listener may extend an existing set but cannot
-create a new foreign key. Invalid keys, unknown vanilla keys and air are skipped with a
-warning; unregistered items do not participate in acceptance or network sync.
+`farmersdelight:cooking_pot_input`. A later listener may extend an existing set without
+changing who created it, but cannot create a new foreign key. Warnings for invalid keys,
+new foreign keys, unknown vanilla keys and air name the submitting mod. Unregistered items
+do not participate in acceptance or network sync.
 
 Attach a `MenuPart` to the registered menu type and filter its input slot with the same set:
 
