@@ -1033,7 +1033,7 @@ impl Default for HealthRules {
 
 #[cfg(test)]
 mod tests {
-    use super::{DirtySections, Weather, World};
+    use super::{ConnectionGroupLogEntry, ConnectionGroupNotify, DirtySections, Weather, World};
     use crate::chunk::{Chunk, MIN_Y, SECTIONS};
     use std::sync::Arc;
     use sunrise_world::registry::BlockStateId;
