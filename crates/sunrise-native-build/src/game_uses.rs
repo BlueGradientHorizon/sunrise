@@ -5,6 +5,7 @@ use sunrise_mod_package::mod_surface::uses::{Change, Entry, Misfit};
 use sunrise_mod_package::{
     Manifest,
     build_data::{self, ReadError},
+    manifest::loops::Loop,
 };
 use sunrise_platform::mod_build::api_gen::{
     functions::{self, FunctionIndex},
@@ -92,14 +93,53 @@ pub(crate) fn function_index(dir: &Path, build: &str) -> Result<FunctionIndex, R
         .map_err(|why| ReadError::Invalid(format!("{why}; fetch the SDK again")))
 }
 
-/// The pinned SDK's loop catalog. A missing file is not an empty catalog.
-pub(crate) fn published_loops(dir: &Path, build: &str) -> Result<Vec<PublishedLoop>, ReadError> {
+/// The pinned SDK's published internals, whose header must name that build.
+pub(crate) fn published_internals(
+    dir: &Path,
+    build: &str,
+) -> Result<Vec<ListedInternal>, ReadError> {
     #[derive(serde::Deserialize)]
-    struct Loops {
-        loops: Vec<PublishedLoop>,
+    struct Internals {
+        internals: Vec<ListedInternal>,
     }
-    let Loops { loops } = document(dir, build_data::LOOPS, build)?;
-    for record in &loops {
+    document::<Internals>(dir, build_data::INTERNALS, build).map(|doc| doc.internals)
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct LoopCatalog {
+    #[serde(rename = "loops")]
+    pub(crate) entries: Vec<PublishedLoop>,
+}
+
+impl LoopCatalog {
+    fn find(&self, name: &str) -> Option<&PublishedLoop> {
+        self.entries.iter().find(|entry| entry.name == name)
+    }
+
+    /// Resolve a same-build declaration, reporting unknown loops as the patch build does.
+    pub(crate) fn require(&self, id: &str, row: &Loop) -> Result<&PublishedLoop, String> {
+        self.find(&row.name).ok_or_else(|| {
+            let known = if self.entries.is_empty() {
+                "none".to_owned()
+            } else {
+                self.entries
+                    .iter()
+                    .map(|entry| entry.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            format!(
+                "E_LOOP_UNKNOWN: {id}:{}: the game publishes no loop `{}`; its loops: {known}",
+                row.id, row.name,
+            )
+        })
+    }
+}
+
+/// The pinned SDK's loop catalog. A missing file is not an empty catalog.
+pub(crate) fn published_loops(dir: &Path, build: &str) -> Result<LoopCatalog, ReadError> {
+    let catalog: LoopCatalog = document(dir, build_data::LOOPS, build)?;
+    for record in &catalog.entries {
         // The stager writes an inherent method's qualified path, including any type arguments
         // on its owner, and the name of the generic method on that same owner.
         let qualified = syn::parse_str::<syn::TypePath>(&record.entry).is_ok_and(|entry| {
@@ -120,10 +160,14 @@ pub(crate) fn published_loops(dir: &Path, build: &str) -> Result<Vec<PublishedLo
             )));
         }
     }
-    Ok(loops)
+    Ok(catalog)
 }
 
-/// Each piece of game code `manifest` declares, by id, as it is in `build`, whose complete build data is in `dir`. A function is fingerprinted by signature and body, since a replacement or a call written for an old body could meet a different one; a type by its signature; a loop by what the game publishes of it, its two functions and its slot trait.
+/// Each piece of game code `manifest` declares, by id, as it is in `build`.
+/// `dir` must contain the complete unpacked build-data archive, even for a mixin-only manifest.
+/// A function is fingerprinted by signature and body, since a replacement or a call written for an
+/// old body could meet a different one; a type by its signature; a loop by what the game publishes
+/// of it, its two functions and its slot trait.
 pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(String, Now)>, String> {
     let data = Data::read(dir, build).map_err(|error| error.to_string())?;
     Ok(data.entries(manifest))
@@ -133,19 +177,14 @@ pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(Stri
 pub struct Data {
     index: FunctionIndex,
     internals: Vec<ListedInternal>,
-    loops: Vec<PublishedLoop>,
+    pub(crate) loops: LoopCatalog,
 }
 
 impl Data {
     /// Read and validate all build-data files for `build` before issuing fit verdicts.
     pub fn read(dir: &Path, build: &str) -> Result<Self, ReadError> {
-        #[derive(serde::Deserialize)]
-        struct Internals {
-            internals: Vec<ListedInternal>,
-        }
         let index = function_index(dir, build);
-        let internals =
-            document::<Internals>(dir, build_data::INTERNALS, build).map(|doc| doc.internals);
+        let internals = published_internals(dir, build);
         let loops = published_loops(dir, build);
         // A schema we do not read does not hide missing files, corrupt data, or a wrong build.
         match (index, internals, loops) {
@@ -194,7 +233,7 @@ impl Data {
             ));
         }
         for row in loops {
-            let now = match self.loops.iter().find(|l| l.name == row.name) {
+            let now = match self.loops.find(&row.name) {
                 None => Now::Gone,
                 Some(l) => {
                     let generic = l.generic_target();

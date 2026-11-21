@@ -60,8 +60,12 @@ fn judged_with(
         build,
         &mut || Ok::<_, String>(target.clone()),
         &mut || match data {
-            Some(data) => game_uses::entries(&bundle.manifest, data, build),
-            None => Err("no game code declared: never read".to_owned()),
+            Some(data) => {
+                game_uses::entries(&bundle.manifest, data, build).map_err(GameDataError::Unread)
+            }
+            None => Err(GameDataError::Omitted(
+                "no game code declared: never read".to_owned(),
+            )),
         },
     )
     .unwrap()
@@ -714,7 +718,61 @@ fn build_data_of_another_build_is_refused_by_the_check() {
 }
 
 #[test]
-fn native_check_needs_same_build_loop_data_and_refuses_foreign_loops() {
+fn native_check_reports_missing_loops_even_for_a_known_api_misfit() {
+    let dir = project_dir(
+        "fit-misfit-missing-loops",
+        Some(&[("fn:give", "old")]),
+        None,
+    );
+    let manifest = dir.join(crate::NATIVE_MANIFEST);
+    let text = std::fs::read_to_string(&manifest).unwrap()
+        + "[[native.loop]]\nid = 'l'\nloop = 'ticks'\nhelper = 'src/l.rs'\nwith = 'Slot'\n";
+    std::fs::write(&manifest, text).unwrap();
+    std::fs::write(dir.join("src/l.rs"), "pub struct Slot;").unwrap();
+    let surface_file = dir.join("target-surface.json");
+    std::fs::write(
+        &surface_file,
+        serde_json::to_vec(&surface(&[("fn:give", "new")])).unwrap(),
+    )
+    .unwrap();
+    let mut plan = Plan {
+        contract: crate::contract::CONTRACT,
+        mods: dir.clone(),
+        build: OTHER_BUILD.into(),
+        surface: Some(surface_file),
+        build_data: None,
+    };
+    assert_eq!(
+        check(&plan).unwrap().mods[0].verdict,
+        Some(Verdict::DoesNotFit {
+            made_for: pin(&dir),
+            misfits: vec![Misfit {
+                id: "fn:give".into(),
+                change: Change::Changed
+            }],
+        }),
+    );
+
+    let data = build_data(
+        "fit-misfit-missing-loops-data",
+        OTHER_BUILD,
+        serde_json::json!({}),
+        serde_json::json!([]),
+    );
+    std::fs::remove_file(data.join("loops.json")).unwrap();
+    plan.build_data = Some(data.clone());
+    let error = check(&plan).unwrap_err();
+    assert!(
+        error.contains("loops.json") && error.contains("fetch the SDK again"),
+        "{error}"
+    );
+    for folder in [dir, data] {
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+}
+
+#[test]
+fn native_check_needs_same_build_loop_data_and_refuses_unknown_or_foreign_loops() {
     let dir = project_dir("fit-same-build-loop", None, None);
     let manifest = dir.join(crate::NATIVE_MANIFEST);
     let text = std::fs::read_to_string(&manifest).unwrap()
@@ -737,6 +795,14 @@ fn native_check_needs_same_build_loop_data_and_refuses_foreign_loops() {
         serde_json::json!([]),
     );
     plan.build_data = Some(data.clone());
+    let checked = check(&plan).unwrap();
+    assert_eq!(checked.route, None);
+    assert_eq!(checked.mods[0].verdict, None);
+    assert_eq!(checked.mods[0].needs, None);
+    assert_eq!(
+        checked.mods[0].refusal.as_deref(),
+        Some("E_LOOP_UNKNOWN: greeter:l: the game publishes no loop `ticks`; its loops: none"),
+    );
     let write_loops = |commit: &str| {
         std::fs::write(
             data.join("loops.json"),

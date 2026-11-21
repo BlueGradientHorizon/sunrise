@@ -79,12 +79,31 @@ pub fn table(dir: &Path) -> Result<UsesTable, Unlisted> {
     })
 }
 
-/// How `project` stands against build `build`, whose surface `surface` gives (asked for only when the mod was made for another build), and where the game code the mod declares is as `game` says ([`game_uses::entries`], asked for only when it declares some).
+/// Why the caller could not provide the target build's declared game code.
+pub enum GameDataError<E> {
+    /// The caller did not supply build data. A known misfit does not need to ask for it again.
+    Omitted(E),
+    /// The caller supplied build data but it could not be read or validated.
+    Unread(E),
+}
+
+impl<E> GameDataError<E> {
+    fn into_inner(self) -> E {
+        match self {
+            Self::Omitted(error) | Self::Unread(error) => error,
+        }
+    }
+}
+
+/// How `project` stands against build `build`, whose surface `surface` gives (asked for only when
+/// the mod was made for another build), and where the game code the mod declares is as `game` says
+/// ([`game_uses::entries`], asked for only when it declares some). Report errors from supplied data
+/// even when an API item already makes the mod not fit.
 pub fn judge<E>(
     project: &api::Project<'_>,
     build: &str,
     surface: &mut dyn FnMut() -> Result<Rc<mod_surface::Surface>, E>,
-    game: &mut dyn FnMut() -> Result<Vec<(String, game_uses::Now)>, E>,
+    game: &mut dyn FnMut() -> Result<Vec<(String, game_uses::Now)>, GameDataError<E>>,
 ) -> Result<Verdict, E> {
     let made_for = project.bundle.native().sunrise.clone();
     if made_for == build {
@@ -120,9 +139,8 @@ pub fn judge<E>(
     if game_uses::declared(&project.bundle.manifest) {
         match game() {
             Ok(now) => compared = game_uses::compare(&declared, now),
-            // What is already known to have changed is said, whatever the build data would add.
-            Err(_) if !misfits.is_empty() => {}
-            Err(lack) => return Err(lack),
+            Err(GameDataError::Omitted(_)) if !misfits.is_empty() => {}
+            Err(error) => return Err(error.into_inner()),
         }
     }
     misfits.append(&mut compared.misfits);
@@ -166,6 +184,7 @@ pub struct Plan {
     pub surface: Option<PathBuf>,
     /// The build's complete unpacked build data (`functions.json`, `internals.json`, `loops.json`).
     /// A mod that needs it reports `needs` if it is absent. Same-build mixins and loops need it too.
+    /// When read, missing files or a wrong build are errors even if a misfit is already known.
     #[serde(default)]
     pub build_data: Option<PathBuf>,
 }
@@ -203,12 +222,15 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
     let mut surface: Option<Rc<mod_surface::Surface>> = None;
     // One set of published inputs for this check, opened only if a verdict needs it.
     let build_data = OnceCell::new();
-    let data = || -> Result<&game_uses::Data, Lack> {
-        let dir = plan.build_data.as_ref().ok_or(Lack::Needs("build-data"))?;
+    let data = || {
+        let dir = plan
+            .build_data
+            .as_deref()
+            .ok_or(GameDataError::Omitted(Lack::Needs("build-data")))?;
         build_data
             .get_or_init(|| game_uses::Data::read(dir, &plan.build))
             .as_ref()
-            .map_err(|error| Lack::Unread(error.to_string()))
+            .map_err(|error| GameDataError::Unread(Lack::Unread(error.to_string())))
     };
     let mut mods = Vec::new();
     let mut usable = Vec::new();
@@ -239,7 +261,7 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
         let judged = if native.sunrise == plan.build
             && (!native.mixin.is_empty() || !native.r#loop.is_empty())
         {
-            data().and_then(|data| {
+            data().map_err(GameDataError::into_inner).and_then(|data| {
                 for row in &native.mixin {
                     if let Some(refused) = data.mixin_refusal(&row.target) {
                         return Err(Lack::Refused(format!(
@@ -250,6 +272,9 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                             refused.why,
                         )));
                     }
+                }
+                for row in &native.r#loop {
+                    data.loops.require(&id, row).map_err(Lack::Refused)?;
                 }
                 Ok(Verdict::MadeFor)
             })

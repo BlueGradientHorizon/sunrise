@@ -16,6 +16,9 @@ pub struct Options<'a> {
     pub consent: Option<&'a dyn Fn(&super::RegistryInventory) -> bool>,
     pub adapter: &'a Path,
     pub mixins: &'a super::MixinsIdentity,
+    /// The package identity and internals already checked by `prebuilt::compile`.
+    pub sdk: &'a prebuilt::Identity,
+    pub catalog: &'a internals::Catalog,
 }
 
 fn compiler_plan(
@@ -60,7 +63,7 @@ pub fn compile(
     resolution: &dependencies::Resolution,
     options: Options<'_>,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let sdk = prebuilt::identity(game)?;
+    let sdk = options.sdk;
     let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     check_log_template(&template, sdk.native_log)?;
     let mut patches = sdk.registry_patches.clone();
@@ -90,8 +93,8 @@ pub fn compile(
             spec.insert("path".into(), path.to_string_lossy().into_owned().into());
         }
     }
-    let catalog = internals::Catalog::read(game)?;
-    let generated = catalog
+    let generated = options
+        .catalog
         .prepare(projects.iter().map(|project| &project.bundle.manifest))
         .map_err(|e| e.to_string())?;
     // The last build's staging, kept aside until this one's is written: a file whose bytes didn't
@@ -270,7 +273,7 @@ pub fn compile(
                 .map(String::as_str)
                 .chain(["sunrise_client"])
             {
-                let path = prebuilt::facade_library(&deps, name, &sdk)?;
+                let path = prebuilt::facade_library(&deps, name, sdk)?;
                 prebuilt::refuse_closure_rlib(id, name, &path)?;
                 facade_externs.insert(name.to_owned(), path);
             }
@@ -317,8 +320,7 @@ pub fn compile(
     }
     // `[[native.mixin]]` rows: the patched crates join the workspace beside the mods, whose
     // crates their helpers call, and compile against the SDK like a mod.
-    let patch =
-        super::patch::prepare(rust, game, &out.join("fnr"), projects, &sdk, options.mixins)?;
+    let patch = super::patch::prepare(rust, game, &out.join("fnr"), projects, sdk, options.mixins)?;
     if let Some(patch) = &patch {
         for name in &patch.names {
             let dir = patch.dir.join(name);
@@ -346,7 +348,7 @@ pub fn compile(
             manifest.insert("features".into(), features.into());
             fs::write(dir.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
             let externs: BTreeMap<_, _> =
-                super::patch::sdk_externs(game, &sdk)?.into_iter().collect();
+                super::patch::sdk_externs(game, sdk)?.into_iter().collect();
             for (krate, path) in &externs {
                 prebuilt::refuse_closure_rlib("sunrise_patch", krate, path)?;
             }
@@ -614,7 +616,7 @@ pub fn compile(
         "sunrise-client"
     });
     let release = target_dir.join(rust.target()).join("release");
-    let mut runtime = prebuilt::runtime_libraries(rust, &sdk, game)?;
+    let mut runtime = prebuilt::runtime_libraries(rust, sdk, game)?;
     for &index in &resolution.order {
         let project = &projects[index];
         let library = release.join(prebuilt::dylib_name(&project.crate_name()));
@@ -983,6 +985,8 @@ mod tests {
         let resolution = dependencies::resolve(&inputs).unwrap();
         let rust = crate::rust::tests::system(required("SUNRISE_TEST_REGISTRY_RUST"));
         let approve = std::env::var_os("SUNRISE_TEST_REGISTRY_DECLINE").is_none();
+        let sdk = prebuilt::identity(&game).unwrap();
+        let catalog = internals::Catalog::read(&game, sdk.commit()).unwrap();
         let result = compile(
             &rust,
             &game,
@@ -998,6 +1002,8 @@ mod tests {
                 }),
                 adapter: &adapter,
                 mixins: &crate::MixinsIdentity::resolve([&bundle], None).unwrap(),
+                sdk: &sdk,
+                catalog: &catalog,
             },
         );
         if approve {

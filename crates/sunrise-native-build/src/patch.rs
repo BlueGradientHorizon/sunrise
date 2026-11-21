@@ -277,6 +277,7 @@ fn loop_slots(
     let mut refusals = Vec::new();
     // A loop with a mixin on its function is copied with it, slots or none.
     let mut filled: Vec<api_gen::patch::LoopSlots> = published
+        .entries
         .iter()
         .filter(|l| {
             let generic = l.generic_target();
@@ -294,19 +295,12 @@ fn loop_slots(
     });
     for (bundle, row) in ordered {
         let id = &bundle.manifest.id;
-        let Some(found) = published.iter().find(|l| l.name == row.name) else {
-            let known: Vec<&str> = published.iter().map(|l| l.name.as_str()).collect();
-            refusals.push(format!(
-                "E_LOOP_UNKNOWN: {id}:{}: the game publishes no loop `{}`; its loops: {}",
-                row.id,
-                row.name,
-                if known.is_empty() {
-                    "none".to_owned()
-                } else {
-                    known.join(", ")
-                }
-            ));
-            continue;
+        let found = match published.require(id, row) {
+            Ok(found) => found,
+            Err(refusal) => {
+                refusals.push(refusal);
+                continue;
+            }
         };
         let path = bundle.dir.join(&row.helper);
         let helper = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;

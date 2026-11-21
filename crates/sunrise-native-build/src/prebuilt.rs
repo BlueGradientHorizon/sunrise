@@ -629,13 +629,20 @@ fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// The compiled outputs and the pinned catalog used to record the mods' internals.
+pub struct Built {
+    pub binary: PathBuf,
+    pub libraries: Vec<PathBuf>,
+    pub catalog: internals::Catalog,
+}
+
 /// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) and the
 /// launcher's executable against the prebuilt game `package`, by `route` ([`Route::of`] the same
 /// `projects`), under `builds` (`native/prebuilt-build`), in folders keyed by the SDK's inputs
 /// ([`kept_build`]): the API route in `api-<key>`, the engine route in `rustc-<key>`, each mod's
 /// library reused only while its own inputs are unchanged, and the registry route's cargo build in
-/// `<key>`, staged per mods folder (`mods`). Returns
-/// the executable and the dynamic libraries it loads, to be installed beside it.
+/// `<key>`, staged per mods folder (`mods`). Returns the executable, its dynamic libraries and
+/// the build's validated internals catalog.
 // Unlike the source workspace, this route invokes rustc with only selected --extern
 // libraries; it does not resolve or compile arbitrary transitive Cargo dependencies.
 #[allow(clippy::too_many_arguments)]
@@ -651,7 +658,9 @@ pub fn compile(
     consent: Option<&dyn Fn(&super::RegistryInventory) -> bool>,
     // Each mod is its own library: told which one starts, and how far through them.
     on_mod: &dyn Fn(&str, usize, usize),
-) -> Result<(PathBuf, Vec<PathBuf>), String> {
+) -> Result<Built, String> {
+    let sdk = identity(&package.runtime)?;
+    let catalog = internals::Catalog::read(&package.api, sdk.commit())?;
     let mixins = MixinsIdentity::resolve(projects.iter().map(|project| project.bundle), None)?;
     let mut names = reserved_library_names();
     for item in fs::read_dir(package.runtime.join("deps")).map_err(|e| e.to_string())? {
@@ -671,16 +680,22 @@ pub fn compile(
     }
     // Every route's outputs are kept per SDK build (its files, the toolchain and the launcher's
     // settings): a library reused across builds was always compiled from the same SDK inputs.
-    let key = kept_build(rust, package)?;
+    let key = kept_build(rust, package, sdk.commit())?;
     if route == Route::Api {
         let out = &builds.join(format!("api-{key}"));
-        let built =
-            super::api_route::compile(rust, package, out, projects, declared, resolution, on_mod);
+        let built = super::api_route::compile(
+            rust, package, &sdk, out, projects, declared, resolution, on_mod,
+        );
         // Stamped after the route has made its folder again, failed or not.
         if out.exists() {
             crate::host::mark_used(out)?;
         }
-        return built;
+        let (binary, libraries) = built?;
+        return Ok(Built {
+            binary,
+            libraries,
+            catalog,
+        });
     }
     let game = &package.whole(&builds.with_file_name("prebuilt-package"))?;
     if route == Route::Registry {
@@ -689,7 +704,7 @@ pub fn compile(
         fs::create_dir_all(&kept).map_err(|e| e.to_string())?;
         crate::host::mark_used(&kept)?;
         let stage = kept.join(format!("stage-{}", short_hash(&mods_key(mods)?)));
-        let built = super::registry_compile::compile(
+        let (binary, libraries) = super::registry_compile::compile(
             rust,
             game,
             &stage,
@@ -701,14 +716,19 @@ pub fn compile(
                 consent,
                 adapter: &std::env::current_exe().map_err(|e| e.to_string())?,
                 mixins: &mixins,
+                sdk: &sdk,
+                catalog: &catalog,
             },
         )?;
         // The Storage page's Build files row ages this unit by its last use.
         crate::host::mark_used(&kept)?;
-        return Ok(built);
+        return Ok(Built {
+            binary,
+            libraries,
+            catalog,
+        });
     }
     let out = &builds.join(format!("rustc-{key}"));
-    let catalog = internals::Catalog::read(game)?;
     let generated = catalog
         .prepare(projects.iter().map(|project| &project.bundle.manifest))
         .map_err(|e| e.to_string())?;
@@ -718,7 +738,6 @@ pub fn compile(
     own_folder(builds, out)?;
     crate::host::mark_used(out)?;
     let deps = game.join("deps");
-    let sdk = identity(game)?;
     let mut libraries = std::collections::HashMap::new();
     for (package, name) in native_route::PACKAGES {
         if package != native_route::INTERNALS_PACKAGE {
@@ -849,7 +868,11 @@ pub fn compile(
         super::library_record::stamp(&library, sdk.commit(), "sunrise_patch", "0", true)?;
         installed.push(library);
     }
-    Ok((package.runtime.join("bin").join(crate::CLIENT), installed))
+    Ok(Built {
+        binary: package.runtime.join("bin").join(crate::CLIENT),
+        libraries: installed,
+        catalog,
+    })
 }
 
 pub fn refuse_closure_rlib(id: &str, name: &str, path: &Path) -> Result<(), String> {
@@ -1090,8 +1113,7 @@ const KEPT_BUILD_FLAGS: u32 = 2;
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
 /// game build, Rust toolchain and launcher settings ([`KEPT_BUILD_FLAGS`]). Inside one, cargo's
 /// own fingerprints decide what to rebuild.
-fn kept_build(rust: &dyn Toolchain, package: &Package) -> Result<String, String> {
-    let sdk = identity(&package.runtime)?;
+fn kept_build(rust: &dyn Toolchain, package: &Package, revision: &str) -> Result<String, String> {
     let mut hasher = Sha256::new();
     hasher.update(KEPT_BUILD_FLAGS.to_le_bytes());
     hasher.update(crate::rust::VERSION.as_bytes());
@@ -1116,7 +1138,6 @@ fn kept_build(rust: &dyn Toolchain, package: &Package) -> Result<String, String>
         hasher.update(length.to_le_bytes());
         hasher.update(modified.to_le_bytes());
     }
-    let revision = sdk.commit();
     Ok(format!(
         "{}-{}",
         revision.get(..12).unwrap_or(revision),
@@ -1616,6 +1637,47 @@ mod tests {
         fs::remove_file(dir.join(IDENTITY)).unwrap();
         assert!(check_identity(&dir, "abc123", host, Target::Client).is_err());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn native_build_refuses_an_internals_catalog_from_another_build() {
+        let scratch = tempfile::tempdir().unwrap();
+        let package = Package::at(scratch.path());
+        let (commit, foreign) = (crate::tests::A, crate::tests::B);
+        fs::create_dir_all(package.runtime.join("deps")).unwrap();
+        fs::create_dir_all(&package.api).unwrap();
+        let mut identity = published_identity();
+        identity["commit"] = commit.into();
+        fs::write(package.runtime.join(IDENTITY), identity.to_string()).unwrap();
+        fs::write(
+            package.api.join(internals::INTERNALS),
+            serde_json::json!({"schema": 1, "build": {"commit": foreign}, "internals": []})
+                .to_string(),
+        )
+        .unwrap();
+        let rust = crate::rust::tests::unpacked(scratch.path().join("toolchain"), "test");
+        for route in [Route::Api, Route::Engine, Route::Registry] {
+            let result = compile(
+                &rust,
+                &package,
+                &scratch.path().join("prebuilt-build"),
+                scratch.path(),
+                route,
+                &[],
+                &[],
+                &dependencies::Resolution::default(),
+                None,
+                &|_, _, _| {},
+            );
+            let Err(error) = result else {
+                panic!("build accepted another build's internals catalog");
+            };
+            assert!(error.contains("internals.json"), "{error}");
+            assert!(
+                error.contains(&format!("it describes game build {foreign}, not {commit}")),
+                "{error}"
+            );
+        }
     }
 
     #[test]
