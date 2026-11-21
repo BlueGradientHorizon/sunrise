@@ -720,6 +720,17 @@ impl Game<'_> {
             }
         });
         #[cfg(test)]
+        TEST_POSTED_EVENT_ORDER.with(|order| {
+            if let Some(order) = order.borrow_mut().as_mut() {
+                order.push((
+                    event,
+                    ctx.source.and_then(|source| source.actor()),
+                    self.lan_entity_events.len(),
+                    self.audio.capture.as_ref().map_or(0, Vec::len),
+                ));
+            }
+        });
+        #[cfg(test)]
         super::item_use::interact_vibration_tests::record_event(
             event,
             pos,
@@ -2974,6 +2985,8 @@ mod tests {
 #[cfg(test)]
 thread_local! {
     pub(super) static TEST_POSTED_EVENTS: std::cell::RefCell<Option<Vec<(&'static str, [f64; 3], Option<Who>)>>> = const { std::cell::RefCell::new(None) };
+    // Observe how many entity flashes and sounds have been delivered when the game event posts.
+    pub(super) static TEST_POSTED_EVENT_ORDER: std::cell::RefCell<Option<Vec<(&'static str, Option<Who>, usize, usize)>>> = const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(test)]

@@ -271,6 +271,9 @@ pub enum MotionEvent {
     /// `LivingEntity.handleDamageEvent`: the hurt sound the player hears.
     HurtSound(&'static str),
     Fall(crate::landing::FallEvent),
+    /// `ServerPlayer.resetFallDistance`: where the fall ended, even if the
+    /// block or fluid effects move the player again before this turn ends.
+    FallDistanceReset(Vec3),
     Recorded {
         mover: MoverType,
         movement: Vec3,
@@ -402,6 +405,8 @@ pub struct PlayerMotion {
     pub collision: CollisionFlags,
     pub history: MovementHistory,
     pub fall_distance: f64,
+    /// The packet phase needs the first reset of a tracked server-player fall.
+    pub record_fall_reset: bool,
     /// The block fallOn currently running, consumed by its damage call.
     pub(crate) block_landing: Option<(BlockStateId, BlockPos, f64)>,
     pub stuck_multiplier: Vec3,
@@ -578,6 +583,14 @@ pub struct PlayerMotion {
     pub collision_exclusions: sunrise_world::collision_exclusions::CollisionExclusions,
 }
 impl PlayerMotion {
+    pub fn reset_fall_distance(&mut self) {
+        if std::mem::take(&mut self.record_fall_reset) {
+            self.events
+                .push(MotionEvent::FallDistanceReset(self.position));
+        }
+        self.fall_distance = 0.0;
+    }
+
     /// `ServerGamePacketListenerImpl.handleMovePlayer`: the movement the client
     /// sent is the server copy's own delta movement. A glide's wall hit reads it
     /// as the speed the glide had (`LivingEntity.handleFallFlyingCollisions`'s
@@ -2212,23 +2225,9 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         horizontal: bool,
         movement: Vec3,
     ) -> Result<()> {
-        let position = self.player.position;
-        let bounds = self.player.bounds();
-        let held = self.player.main_hand.clone();
-        let context = player_context(self.player, held.as_deref());
-        let mut collisions = SceneCollisions {
-            world: self.scene,
-            binding: self.collision_binding,
-            subject: Some(self.player.powder_snow_subject()),
-        };
-        self.player.ground.set_with_movement(
-            below,
-            horizontal,
-            bounds,
-            Some(movement),
-            |bounds| find_supporting_block(&mut collisions, context, position, bounds, 1_000_000),
-        )?;
-        Ok(())
+        self.player.ground.on_ground = below;
+        self.player.ground.horizontal_collision = horizontal;
+        self.check_supporting_block(below, movement)
     }
     /// `LocalPlayer.isHorizontalCollisionMinor`: the move that hit a wall was
     /// within 8 degrees of the direction the input asked for.
@@ -2314,6 +2313,26 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
 // The player's footsteps and swim sounds. Flapping and the step game event
 // are not bound here (the sculk listeners track the player's steps themselves).
 impl MotionWorld<'_, '_, '_> {
+    /// `Entity.checkSupportingBlock`: also called by `doCheckFallDamage`,
+    /// independently of (and without changing) the movement flags.
+    pub fn check_supporting_block(&mut self, on_ground: bool, movement: Vec3) -> Result<()> {
+        let position = self.player.position;
+        let bounds = self.player.bounds();
+        let held = self.player.main_hand.clone();
+        let context = player_context(self.player, held.as_deref());
+        let mut collisions = SceneCollisions {
+            world: self.scene,
+            binding: self.collision_binding,
+            subject: Some(self.player.powder_snow_subject()),
+        };
+        self.player
+            .ground
+            .check_support(on_ground, bounds, Some(movement), |bounds| {
+                find_supporting_block(&mut collisions, context, position, bounds, 1_000_000)
+            })?;
+        Ok(())
+    }
+
     pub fn check_guest_fall_damage(
         &mut self,
         dy: f64,

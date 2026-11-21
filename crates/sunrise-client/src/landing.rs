@@ -471,7 +471,7 @@ impl FallDamageWorld for MotionWorld<'_, '_, '_> {
         Ok(())
     }
     fn reset_fall_distance(&mut self) -> Result<()> {
-        self.player.fall_distance = 0.0;
+        self.player.reset_fall_distance();
         Ok(())
     }
 }
