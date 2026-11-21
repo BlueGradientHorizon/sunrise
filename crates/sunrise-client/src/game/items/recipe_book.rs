@@ -453,7 +453,6 @@ impl Game<'_> {
                 maps: None,
                 limited_crafting: self.limited_crafting(),
                 can_equip: None,
-                item_names: Some(self),
                 known_recipes: Some(&self.level.recipe_book),
                 slot_rules: Some(self),
                 stacked: None,
@@ -738,7 +737,7 @@ impl Game<'_> {
             }
             if !query.is_empty()
                 && !book.collection_matches(&c.entries, &query, &|stack| {
-                    sunrise_client::item_tooltip::lines(
+                    let mut lines = sunrise_client::item_tooltip::lines(
                         stack,
                         self.items().get(&stack.item),
                         &crate::game::native_hooks::HookedAttributeTooltips::new(self, None),
@@ -748,7 +747,15 @@ impl Game<'_> {
                         false,
                         &|k| self.pack.names.display_get(k),
                         &|attribute| self.attribute_style(attribute, false),
-                    )
+                    );
+                    // The name a mod item's Part gives the stack is its name line.
+                    if !sunrise_client::stations::names_itself(stack)
+                        && let Some(name) = self.mod_item_name(stack)
+                        && let Some(first) = lines.first_mut()
+                    {
+                        *first = name.plain();
+                    }
+                    lines
                 })
             {
                 continue;
@@ -1976,7 +1983,7 @@ impl Game<'_> {
                         .map(|e| vec![book.entries[e.0].result.clone()])
                         .collect();
                     let stack = screen::display_stack(&results, self.swap_index());
-                    let item = self.stack_hover_name_text(&stack).plain();
+                    let item = sunrise_client::stations::hover_name(&self.pack.names, &stack);
                     let (x, y) = Self::button_pos(xo, yo, n);
                     in_book(
                         Narratable::recipe(item, b.entries.len() > 1, [x, y, 25.0, 25.0]),

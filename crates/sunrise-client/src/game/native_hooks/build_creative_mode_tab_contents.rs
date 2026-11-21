@@ -215,7 +215,24 @@ impl Game<'_> {
                 published.items.clone(),
                 &self.pack.names,
             );
+            self.refresh_creative_search_names();
         }
+    }
+
+    /// The names mod items' parts give the creative search's stacks
+    /// (`Item.getName`), which its search matches as their name lines.
+    pub(in crate::game) fn refresh_creative_search_names(&mut self) {
+        let names = self
+            .creative_screen
+            .search_items()
+            .iter()
+            .map(|stack| {
+                (!sunrise_client::stations::names_itself(stack))
+                    .then(|| self.mod_item_name(stack))
+                    .flatten()
+            })
+            .collect();
+        self.creative_screen.set_search_names(names);
     }
 
     pub(in crate::game) fn creative_tabs(

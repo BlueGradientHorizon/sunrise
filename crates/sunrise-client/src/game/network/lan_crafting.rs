@@ -217,7 +217,6 @@ impl Game<'_> {
             maps: None,
             limited_crafting: self.limited_crafting(),
             can_equip: None,
-            item_names: Some(self),
             known_recipes: Some(&self.level.recipe_book),
             slot_rules: Some(self),
             stacked: None,

@@ -47,7 +47,6 @@ fn a_predicted_throw_from_a_slot_swings_the_hand() {
         maps: None,
         limited_crafting: false,
         can_equip: None,
-        item_names: None,
         known_recipes: None,
         slot_rules: None,
         stacked: None,

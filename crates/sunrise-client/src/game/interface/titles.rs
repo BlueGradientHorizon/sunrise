@@ -69,7 +69,10 @@ impl Game<'_> {
         Some(HeldName {
             item: stack.item.to_string(),
             // `Item.getName` of a mod item whose Part names the stack, under a custom name.
-            hover_name: match self.mod_item_name(stack).filter(|_| !custom) {
+            hover_name: match (!sunrise_client::stations::names_itself(stack))
+                .then(|| self.mod_item_name(stack))
+                .flatten()
+            {
                 Some(name) => name,
                 None => item_tooltip::styled_name(stack, || {
                     item_tooltip::name_line(stack, &|key| self.pack.names.display_get(key))

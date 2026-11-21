@@ -494,6 +494,7 @@ impl Game<'_> {
         // Refresh modifiers from the newly staged packs, including removals.
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
         self.creative_screen.set_pack_modifiers(tab_modifiers);
+        self.refresh_creative_search_names();
         let standalone_geometry =
             super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
         // Keep the working GPU resources, and hand its window surface over.

@@ -1747,7 +1747,6 @@ mod tests {
                 player_entity_id: None,
                 loop_context: crate::test_resources::server_loop_context(),
                 can_equip: None,
-                item_names: None,
                 items: &items,
                 recipes: &recipes,
                 brewing: &brewing,

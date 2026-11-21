@@ -85,6 +85,9 @@ pub struct Creative {
     pub search: EditBox,
     /// The search tab's stacks, in its display order.
     search_items: Vec<ItemStack>,
+    /// The name a mod item's part gives each search stack (`Item.getName`), by index into
+    /// `search_items`; empty while no part names any. Set by the game (`set_search_names`).
+    search_names: Vec<Option<crate::text::Text>>,
     search_index: Vec<SearchEntry>,
     /// Definitions from the same catalog snapshot, rendered in the active language.
     holders: Arc<sunrise_items::creative_catalog::Holders>,
@@ -482,6 +485,7 @@ impl Creative {
                 search
             },
             search_items: Vec::new(),
+            search_names: Vec::new(),
             search_index: Vec::new(),
             holders: Default::default(),
             items: Default::default(),
@@ -522,6 +526,7 @@ impl Creative {
         }
         self.tabs = tabs;
         self.search_items = search;
+        self.search_names.clear();
         self.index_search();
     }
 
@@ -803,6 +808,18 @@ impl Creative {
     pub fn search_items(&self) -> &[ItemStack] {
         &self.search_items
     }
+    /// The names mod items' parts give the search stacks (`Item.getName`), by index into
+    /// [`Self::search_items`]: the search matches them as the stacks' name lines. Nothing but
+    /// `None`s keeps the prepared index.
+    pub fn set_search_names(&mut self, names: Vec<Option<crate::text::Text>>) {
+        self.search_names = if names.iter().any(Option::is_some) {
+            names
+        } else {
+            Vec::new()
+        };
+        *self.lines_cache.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.shown.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
     /// Opening the screen: vanilla rebuilds CreativeModeInventoryScreen, whose
     /// init() makes a fresh search box and a zeroed scrollbar; only the tab
     /// persists (its static selectedTab). selectTab on the reopened screen
@@ -824,6 +841,7 @@ impl Creative {
         let local = if term.is_empty() || term.starts_with('#') {
             Arc::from([])
         } else if english
+            && self.search_names.is_empty()
             && self
                 .search_index
                 .iter()
@@ -850,8 +868,9 @@ impl Creative {
     fn localized_lines(&self, translate: &dyn Fn(&str) -> Option<String>) -> Arc<[Vec<String>]> {
         self.search_items
             .iter()
-            .map(|stack| {
-                let lines = item_tooltip::lines(
+            .enumerate()
+            .map(|(i, stack)| {
+                let mut lines = item_tooltip::lines(
                     stack,
                     self.items.get(&stack.item),
                     &item_tooltip::NoAttributeListener,
@@ -861,6 +880,12 @@ impl Creative {
                     // The search cache has no attribute catalog.
                     &|_| None,
                 );
+                // A mod item's part names the stack: that is its name line.
+                if let Some(Some(name)) = self.search_names.get(i)
+                    && let Some(first) = lines.first_mut()
+                {
+                    *first = name.plain();
+                }
                 lines
                     .iter()
                     .map(|line| java_trim(line))
@@ -905,10 +930,11 @@ impl Creative {
         all.filter(|&i| {
             let e = &self.search_index[i];
             let local = local.get(i).map_or(&[][..], Vec::as_slice);
+            let named = self.search_names.get(i).is_some_and(Option::is_some);
             let hit = |term: &str| {
-                if !e.live_tooltip && english && !e.lines.is_empty() {
+                if !named && !e.live_tooltip && english && !e.lines.is_empty() {
                     any(e.lines.iter().map(String::as_str), term)
-                } else if local.is_empty() && !e.live_tooltip {
+                } else if !named && local.is_empty() && !e.live_tooltip {
                     java_lower(&names.item(&self.search_items[i].item)).contains(term)
                 } else {
                     any(local.iter().map(String::as_str), term)

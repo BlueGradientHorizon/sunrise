@@ -186,18 +186,20 @@ lookup.
 - `ItemPart::item_name` is vanilla's `Item.getName(ItemStack)`: the name of `event.stack`, from its components, so
   one item names each stack (a data model after the mob in it, a filled tank after its fluid). `event.name` arrives
   as `None`, the default name: the `minecraft:item_name` component, else the item's translated name. Set it to
-  `Some(text)`, a translatable `Text` so each viewer reads it in their language. It replaces the default, as the
-  vanilla items that override `getName` do, and a `minecraft:custom_name` still wins over it
-  (`ItemStack.getHoverName`). Every place that names a stack reads it: tooltips, the held item's name above the
-  hotbar, command feedback such as `/give`'s, the anvil's rename box and its comparison, stats, recipe screens and
-  `Host::hover_name`. It is asked often and on both sides, with a read-only host: answer from the stack alone.
+  `Some(text)`, a translatable `Text` (`Text::translate`) so each viewer reads it in their language. It replaces the
+  default, as the vanilla items that override `getName` do, and a `minecraft:custom_name` or a written book's title
+  still wins over it (`ItemStack.getHoverName`); the part isn't asked then. Every place that names a stack reads it,
+  once per naming: tooltips, the held item's name above the hotbar, command feedback such as `/give`'s, the anvil's
+  rename box and its comparison on both sides, stats, the recipe book's and the creative inventory's search, recipe
+  screens and `Host::hover_name`. It takes the loop `context` and no `Host`, so it can't name a stack again: answer
+  from the stack alone, and fast.
 
 ```rust,ignore
 struct DataModel;
 
 #[mod_api::sunrise_part]
 impl ItemPart for DataModel {
-    fn item_name(&self, _host: &dyn Host, event: &mut ItemNameEvent<'_>) {
+    fn item_name(&self, _context: &dyn LoopContext, event: &mut ItemNameEvent<'_>) {
         // The mob in the stack's own component names it: "Zombie Data Model".
         let id = ComponentId::new("mymod:data_model").expect("a component id");
         if let Some(Tag::String(mob)) = ItemResource::of(event.stack).component(&id) {

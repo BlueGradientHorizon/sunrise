@@ -646,7 +646,10 @@ impl Game<'_> {
         match &s.inputs[0] {
             Some(input)
                 if input.custom_name().is_none()
-                    && s.name == self.pack.names.display_item(&input.item) =>
+                    && s.name
+                        == sunrise_client::lang::returned_to_server(|| {
+                            self.stack_hover_name_text(input).plain()
+                        }) =>
             {
                 String::new()
             }
@@ -1539,9 +1542,6 @@ impl Game<'_> {
     pub(in crate::game) fn stack_hover_name(&self, stack: &ItemStack) -> String {
         if let Some(n) = stack.custom_name() {
             n.to_owned()
-        } else if let Some(name) = self.mod_item_name(stack) {
-            // `Item.getName` of a mod item whose Part names the stack.
-            name.plain()
         } else if let Some(key) = brewing::contents_name_key(stack) {
             self.pack
                 .names
