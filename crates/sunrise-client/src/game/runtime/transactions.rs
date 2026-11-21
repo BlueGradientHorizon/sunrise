@@ -1,4 +1,4 @@
-//! `host.transaction` (#41 §7): NeoForge 26.3's `Transaction` and `SnapshotJournal`, kept by
+//! `host.transaction` (#41 §7): NeoForge 26.3's `TransactionContext` and `SnapshotJournal`, kept by
 //! the game at the storage level, so a mod's handlers hold no state and write no journal.
 //!
 //! A capability write applies in place and keeps its storage's first before-image per depth.
@@ -31,7 +31,7 @@ use super::{
     BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData,
     native_server::PlayerRead,
 };
-use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
+use mod_api::{LevelRef, TransactionContext, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     effects::EffectInstance,
@@ -228,11 +228,11 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
 /// One open transaction.
 #[derive(Default)]
 pub(super) struct Level {
-    /// What names it to the mods that write in it (`Transaction`): unguessable in practice, so
+    /// What names it to the mods that write in it (`TransactionContext`): unguessable in practice, so
     /// only the value the game handed out names it.
     token: u64,
     /// What ends it (`TransactionSeal`), drawn apart from `token`: only whoever opened it holds
-    /// it, never a handler lent the `Transaction`.
+    /// it, never a handler lent the `TransactionContext`.
     close_token: u64,
     dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
@@ -639,7 +639,7 @@ impl Game<'_> {
     /// Closes the transaction `seal` ends, first aborting every one opened inside it and left
     /// open, so a guard closing its own is never stranded behind a child a mod abandoned.
     /// Refused when `seal` names no open transaction: only whoever opened one ends it, never a
-    /// handler lent its `Transaction` (a hopper's move lends the game's own).
+    /// handler lent its `TransactionContext` (a hopper's move lends the game's own).
     pub(in crate::game) fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
         let (token, close) = mod_api::__private::seal_tokens(seal);
         let Some(at) = self
@@ -660,7 +660,7 @@ impl Game<'_> {
     }
     /// Whether `tx` names an open transaction: a write given any other changes nothing, so none
     /// happens outside the journal.
-    pub(in crate::game) fn transaction_holds(&self, tx: &Transaction) -> bool {
+    pub(in crate::game) fn transaction_holds(&self, tx: &TransactionContext) -> bool {
         let named = mod_api::__private::transaction_token(tx);
         self.transactions.iter().any(|level| level.token == named)
     }
@@ -673,7 +673,7 @@ impl Game<'_> {
         }
     }
     /// `transaction_current`: the innermost open transaction's write token, never its seal.
-    pub(in crate::game) fn transaction_current(&self) -> Option<Transaction> {
+    pub(in crate::game) fn transaction_current(&self) -> Option<TransactionContext> {
         let level = self.transactions.last()?;
         Some(mod_api::__private::transaction_of(level.token))
     }
@@ -709,7 +709,7 @@ impl Game<'_> {
             .find(|level| level.token == token && level.close_token == close)
     }
     /// `transaction_depth`: how deeply `tx` is nested, 0 for the outermost.
-    pub(in crate::game) fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
+    pub(in crate::game) fn transaction_depth(&self, tx: &TransactionContext) -> Option<u32> {
         let named = mod_api::__private::transaction_token(tx);
         let at = self
             .transactions
@@ -2101,7 +2101,7 @@ mod tests {
     use mod_api::ServerHost;
     use mod_api::{
         Authority, BlockSide, BlockUpdateFlags, FLUIDS, FluidStack, ITEMS, ItemResource,
-        Transaction,
+        TransactionContext,
     };
     use std::{sync::Arc, time::Instant};
     use sunrise_client::{chunk::Chunk, items::ItemStack};
@@ -2423,7 +2423,7 @@ mod tests {
         at: BlockSide,
         slot: usize,
         stack: ItemStack,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<ItemStack> {
         let handler = at
             .level
@@ -2447,7 +2447,7 @@ mod tests {
         at: BlockSide,
         slot: usize,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<mod_api::ItemStack> {
         let handler = at
             .level
@@ -2463,7 +2463,7 @@ mod tests {
         at: BlockSide,
         tank: usize,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> Option<FluidStack> {
         let handler = at
             .level
@@ -2813,7 +2813,7 @@ mod tests {
         // A transaction decoded from bytes, which the game never handed out, names no open
         // transaction (#2424): a write given it changes nothing, and a close given it ends
         // nothing, so the game's own transaction still puts back everything at its abort.
-        let forged: mod_api::Transaction =
+        let forged: mod_api::TransactionContext =
             mod_api::wire::Reader::decode(&0u64.to_le_bytes()).unwrap();
         let host: &mut dyn ServerHost = &mut game;
         assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), &forged).is_some());
@@ -2824,7 +2824,7 @@ mod tests {
         // `put_into_part`): it writes in it and tries every seal it can build from what it
         // knows, the write token and guesses, then the move fails after it. Its writes all go
         // back with the game's abort, which no close of the handler's got ahead of.
-        let handler = |host: &mut dyn ServerHost, tx: &Transaction| {
+        let handler = |host: &mut dyn ServerHost, tx: &TransactionContext| {
             assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), tx).is_none());
             let token = mod_api::__private::transaction_token(tx);
             for close in [0, 1, token, !token, u64::MAX] {
@@ -2836,7 +2836,7 @@ mod tests {
             assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), tx).is_none());
         };
         let host: &mut dyn ServerHost = &mut game;
-        let failed: Result<(), ()> = mod_api::run_transaction(host, |host, tx| {
+        let failed: Result<(), ()> = host.transaction(|host, tx| {
             handler(host, tx);
             Err(())
         });
@@ -2847,7 +2847,7 @@ mod tests {
         // A handler that opens a transaction of its own, writes in it and leaves it open does
         // not strand the game's: the failed move aborts both at once, not at the next tick.
         let host: &mut dyn ServerHost = &mut game;
-        let failed: Result<(), ()> = mod_api::run_transaction(host, |host, _| {
+        let failed: Result<(), ()> = host.transaction(|host, _| {
             let left_open = host.transaction_open();
             let inner = left_open.transaction();
             assert!(insert(host, on([0, 64, 0], None), 0, sticks(1), inner).is_none());

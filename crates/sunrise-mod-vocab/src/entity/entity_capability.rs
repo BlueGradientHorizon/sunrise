@@ -4,7 +4,7 @@
 use crate::{
     Capability, ComponentId, Direction, EnergyHandler, EntityRef, EquipmentSlot, FluidResource,
     Host, ItemPlace, ItemResource, Overanswered, PREVENT_ARMOR_CHANGE, ProvidedBy, ResourceHandler,
-    ServerHost, Tag, Transaction, backend_of,
+    ServerHost, Tag, TransactionContext, backend_of,
 };
 use std::marker::PhantomData;
 
@@ -177,7 +177,7 @@ impl ResourceHandler<ItemResource> for ContainerItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -191,7 +191,7 @@ impl ResourceHandler<ItemResource> for ContainerItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -277,7 +277,7 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -291,7 +291,7 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -338,7 +338,7 @@ impl PlayerItems {
 /// empty place or one with the same item, up to `limit`.
 fn fill(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     place: &ItemPlace,
     resource: &ItemResource,
     amount: u32,
@@ -427,7 +427,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -441,7 +441,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
@@ -465,7 +465,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
     ) -> Result<u32, Overanswered> {

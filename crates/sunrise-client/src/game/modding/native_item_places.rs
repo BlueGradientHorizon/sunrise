@@ -10,7 +10,7 @@ use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
-    ItemStackView, LivingRef, MenuSlotBacking, Transaction,
+    ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
 use sunrise_client::{
     first_person::Hand,
@@ -329,7 +329,7 @@ impl Game<'_> {
     pub(super) fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
     ) -> Result<(), ItemPlaceEditError> {
         self.edit_resolved_stack(
@@ -346,7 +346,7 @@ impl Game<'_> {
     fn edit_resolved_stack<P>(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         prepare: impl FnOnce(
             EquipmentRead<'_>,
             &Items,
@@ -481,7 +481,7 @@ impl Game<'_> {
     pub(super) fn game_on_crafted_by(
         &mut self,
         place: &ItemPlace,
-        tx: &Transaction,
+        tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), CraftedByError> {
         if !self.transaction_holds(tx) {
@@ -580,7 +580,7 @@ impl Game<'_> {
         place: &ItemPlace,
         resource: &ItemStack,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u32 {
         let stack = ItemStack {
             count: amount,
@@ -723,7 +723,7 @@ impl Game<'_> {
         place: &ItemPlace,
         resource: &ItemStack,
         amount: u32,
-        tx: &Transaction,
+        tx: &TransactionContext,
     ) -> u32 {
         let stack = ItemStack {
             count: amount,
@@ -3529,7 +3529,7 @@ pub(super) mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &mod_api::Transaction,
+            _: &mod_api::TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -3555,7 +3555,7 @@ pub(super) mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &mod_api::Transaction,
+            _: &mod_api::TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -3679,7 +3679,7 @@ pub(super) mod tests {
             fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &mod_api::Transaction,
+                _: &mod_api::TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 amount: u32,
@@ -3689,7 +3689,7 @@ pub(super) mod tests {
             fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
-                _: &mod_api::Transaction,
+                _: &mod_api::TransactionContext,
                 _: usize,
                 _: &ItemResource,
                 _: u32,

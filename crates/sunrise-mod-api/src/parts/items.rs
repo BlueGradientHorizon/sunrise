@@ -169,7 +169,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -188,7 +188,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -215,7 +215,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -225,7 +225,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -315,7 +315,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -335,7 +335,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -369,7 +369,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             _: usize,
             resource: &ItemResource,
             amount: u32,
@@ -386,7 +386,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -408,7 +408,7 @@ pub mod tests {
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             [damage / 100, damage % 100][index]
         }
-        fn rewrite(&self, host: &mut dyn ServerHost, tx: &Transaction, damage: u32) -> bool {
+        fn rewrite(&self, host: &mut dyn ServerHost, tx: &TransactionContext, damage: u32) -> bool {
             let case = ItemResource::of(&stack("test:case", 1, damage));
             self.0.exchange(host, tx, &case, 1) == 1
         }
@@ -440,7 +440,7 @@ pub mod tests {
         fn insert_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -457,7 +457,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             resource: &ItemResource,
             amount: u32,
@@ -496,7 +496,7 @@ pub mod tests {
         fn insert(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             key: u64,
             resource: &ItemResource,
             amount: u32,
@@ -518,7 +518,7 @@ pub mod tests {
         fn extract(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             key: u64,
             resource: &ItemResource,
             amount: u32,
@@ -555,7 +555,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -565,7 +565,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -750,7 +750,7 @@ pub mod tests {
             slot: usize,
             resource: &ItemResource,
             amount: u32,
-            _: &Transaction,
+            _: &TransactionContext,
         ) -> Result<Option<ItemStack>, crate::StackWriteError> {
             let Some(stack) = resource.to_stack(amount) else {
                 return Ok(None);
@@ -780,7 +780,7 @@ pub mod tests {
             _: BlockSide,
             slot: usize,
             max: u32,
-            _: &Transaction,
+            _: &TransactionContext,
         ) -> Option<ItemStack> {
             let most = if self.whole_extract { max } else { 1 };
             let split = self.slots.get_mut(slot)?.take()?.split(most);
@@ -841,7 +841,7 @@ pub mod tests {
                 self.slots = slots;
             }
         }
-        fn transaction_current(&self) -> Option<Transaction> {
+        fn transaction_current(&self) -> Option<TransactionContext> {
             self.journal.current()
         }
     }
@@ -890,7 +890,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             amount: u32,
@@ -900,7 +900,7 @@ pub mod tests {
         fn extract_at(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             index: usize,
             _: &ItemResource,
             amount: u32,
@@ -948,7 +948,7 @@ pub mod tests {
         fn rewrite(
             &self,
             host: &mut dyn ServerHost,
-            tx: &Transaction,
+            tx: &TransactionContext,
             energy: u32,
             moved: u32,
         ) -> u32 {
@@ -966,14 +966,14 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
             1000
         }
-        fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
+        fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
             let held = self.amount(host);
             match amount.min(1000 - held) {
                 0 => 0,
                 went => self.rewrite(host, tx, held + went, went),
             }
         }
-        fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, amount: u32) -> u32 {
+        fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
             let held = self.amount(host);
             match amount.min(held) {
                 0 => 0,
@@ -1202,7 +1202,7 @@ pub mod tests {
         fn insert_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             n: u32,
@@ -1212,7 +1212,7 @@ pub mod tests {
         fn extract_at(
             &self,
             _: &mut dyn ServerHost,
-            _: &Transaction,
+            _: &TransactionContext,
             _: usize,
             _: &ItemResource,
             _: u32,
@@ -1660,7 +1660,7 @@ pub mod tests {
             fn insert_at(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: usize,
                 r: &ItemResource,
                 n: u32,
@@ -1678,7 +1678,7 @@ pub mod tests {
             fn extract_at(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 i: usize,
                 r: &ItemResource,
                 n: u32,
@@ -1700,7 +1700,7 @@ pub mod tests {
             fn insert(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: u64,
                 r: &ItemResource,
                 n: u32,
@@ -1710,7 +1710,7 @@ pub mod tests {
             fn extract(
                 &self,
                 host: &mut dyn ServerHost,
-                tx: &Transaction,
+                tx: &TransactionContext,
                 _: u64,
                 r: &ItemResource,
                 n: u32,

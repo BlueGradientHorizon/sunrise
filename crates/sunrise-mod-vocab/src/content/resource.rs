@@ -2,8 +2,8 @@
 //! ([`ItemResource`]), and a [`ResourceHandler`] is the indexed contents of one holder, written
 //! only inside a transaction.
 use crate::{
-    Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost, Tag, Transaction,
-    backend_of,
+    Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost, Tag,
+    TransactionContext, backend_of,
 };
 use std::fmt;
 use sunrise_core::nbt::JavaString;
@@ -504,7 +504,7 @@ pub trait ResourceHandler<R> {
     fn set_max_stack_size(
         &self,
         _host: &mut dyn ServerHost,
-        _tx: &Transaction,
+        _tx: &TransactionContext,
         _limit: u32,
     ) -> bool {
         false
@@ -538,7 +538,7 @@ pub trait ResourceHandler<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
@@ -548,7 +548,7 @@ pub trait ResourceHandler<R> {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
@@ -559,7 +559,7 @@ pub trait ResourceHandler<R> {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
@@ -574,7 +574,7 @@ pub trait ResourceHandler<R> {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
     ) -> Result<u32, Overanswered> {
@@ -588,10 +588,10 @@ pub trait ResourceHandler<R> {
 /// A slot-less transfer owns its journal, so an overanswer cannot leave part of it committed.
 pub(crate) fn in_turn<P>(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+    ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
     if amount == 0 || host.transaction_current().as_ref() != Some(tx) {
         return Ok(0);
@@ -602,10 +602,10 @@ pub(crate) fn in_turn<P>(
 /// Asks each part for the full remaining amount. The owning transaction aborts on `Err`.
 pub(crate) fn try_in_turn<P>(
     host: &mut dyn ServerHost,
-    tx: &Transaction,
+    tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+    mut ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
     let mut done = 0;
     for part in parts {
@@ -651,8 +651,8 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     host: &mut dyn ServerHost,
     ends: Ends<'_, A, B>,
     want: N,
-    extract: impl Fn(&mut dyn ServerHost, &Transaction, N) -> N,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, N) -> Result<N, Overanswered>,
+    extract: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> N,
+    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> Result<N, Overanswered>,
 ) -> Result<N, Overanswered> {
     let Ends { from, to, at } = ends;
     // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: a handler answered more than it

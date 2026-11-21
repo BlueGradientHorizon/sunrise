@@ -1,7 +1,7 @@
 //! The resident server ticker's two sequential loans: its subject and the world.
 use crate::{
     BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey,
-    ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
+    ItemStack, JavaString, LevelRef, ServerHost, Tag, TransactionContext,
 };
 
 /// The block entity this server ticker is running. Its storage stays in the level.
@@ -183,7 +183,7 @@ impl<'a> BlockEntityTickScope<'a> {
     /// open transaction and never open a savepoint by themselves.
     pub fn transaction<T, E>(
         &mut self,
-        f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
+        f: impl FnOnce(&mut Self, &TransactionContext) -> Result<T, E>,
     ) -> Result<T, E> {
         crate::item::transaction::run_transaction_on(
             self,
