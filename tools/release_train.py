@@ -1061,6 +1061,12 @@ def channel_head(channel, head, exception="", daily_run=""):
         raise SystemExit(f"::error::refused: {head} is not a commit of this repository")
     if subprocess.run(["git", "merge-base", "--is-ancestor", sha, "refs/remotes/origin/main"], cwd=ROOT).returncode:
         raise SystemExit(f"::error::refused: {sha} is not on main; a {channel} builds only a commit of main")
+    # Both release.yml (before building the SDK) and nightly.py pick use this commit check.
+    if channel == "dev" and '"dev-"' not in run(
+        "git", "show", f"{sha}:crates/sunrise-core/src/release.rs", check=False
+    ):
+        raise SystemExit(f"::error::refused: {sha} predates Dev build support. "
+                         "Choose a commit that recognizes the dev- version prefix.")
     if channel == "nightly" and not exception and sha != green:
         pointer = f"the head of {NIGHTLY_BRANCH}" if branch else f"the commit `{DAILY_GREEN}` points to"
         raise SystemExit(f"::error::refused: {sha} is not {pointer} ({green or 'none yet'}); "
@@ -1194,8 +1200,7 @@ def main():
         return 0
     head = run("git", "rev-parse", head).strip()
     if args.channel == "dev" and args.command == "decide":
-        # A Dev build is for testing a commit of main, never for players: the gate on its commit is its only rule (no
-        # batch, cap, pause or release-blocker), and its tag is its own (never `nightly`).
+        # The Dev commit is eligible without Nightly's batch, cap, pause or release-blocker checks.
         tag = build_tag("dev", now.date().isoformat(), head)
         result = {"release": True, "reason": f"the gate passed on {head[:9]}: {tag}", "tag": tag,
                   "head": head, "urgent": False}

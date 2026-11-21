@@ -92,7 +92,7 @@ trigger since 2026-11-13.
 | | [Dev](#dev) | [Nightly](#nightly-channel) | [Stable](#release-branches) |
 |---|---|---|---|
 | Started by | Root: `release.yml -f kind=dev -f dry_run=false` on `main` | The [daily run](#daily-run), or a dispatch | Root: `nightly-build.yml -f kind=stable` on `release/26.3` |
-| Built from | Any commit on `main` with the gate (`lint`, `verify`, `verify-static`) green | The head of `nightly/26.3`, which the daily fast-forwards to each fully green commit; `daily-green` while that branch doesn't exist | The approved head of `release/26.3`, with a fully green daily run on that commit |
+| Built from | A commit on `main` with Dev version support and the gate (`lint`, `verify`, `verify-static`) green | The head of `nightly/26.3`, which the daily fast-forwards to each fully green commit; `daily-green` while that branch doesn't exist | The approved head of `release/26.3`, with a fully green daily run on that commit |
 | SDK | `release.yml` publishes `sdk-<sha>` first | The daily publishes `sdk-<sha>` first | A daily on the approved commit publishes `sdk-<sha>` first |
 | Tag / title | `dev-<date>-<short>` / `Dev <date> · <short>` | Rolling `nightly` / `Nightly <date> · <short>` | `26.3-<semver>` / `Sunrise 26.3-<semver>` |
 | Signed for (`.sig` / `.v2.sig`) | `dev` / `dev-<date>-<short>` | `nightly` / `nightly-<date>-<short>` | The release tag for both |
@@ -108,8 +108,9 @@ request. Root dispatches `release.yml` with `kind=dev` on main, for main's head 
 commit on main. In order:
 
 1. `decide` (`tools/release_train.py decide --channel dev`) refuses a commit that is not on main, or whose
-   newest dyna-checks main-push run did not pass every gate job (a pending job is not passed). Nothing else holds
-   it: no daily tests, no `daily-green`, no batch rules, no daily cap, no pause, no release-blocker.
+   newest dyna-checks main-push run did not pass every gate job (a pending job is not passed). It also refuses
+   commits whose source predates the Dev version label. It does not wait for daily tests, `daily-green`,
+   batch rules, a daily cap, a pause or a release-blocker.
 2. `dev-sdk` builds the commit's prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when
    `sdk-<sha>` already exists). A build it makes runs the SDK's own checks too, as the daily run's does: the native
    linkage probe on the Linux and Windows client legs, and the API-source check and the source stage
@@ -707,7 +708,7 @@ reference-registration contract and would defeat this bound. Do not delete a pla
    A tag-only root is conservatively protected by its resolved commit; a release whose tag is missing or whose
    pin is missing, ambiguous or inconsistent aborts the sweep, rather than guessing that it is obsolete.
 4. Build a deduplicated protected set and a reverse map of SHA to all roots for the review summary. Discover
-   SDK candidates only by the exact `prebuilt-[0-9a-f]{40}` release tag-name pattern. Resolve each candidate's tag
+   SDK candidates only by the exact `sdk-[0-9a-f]{40}` release tag-name pattern. Resolve each candidate's tag
    and require it to agree with the SHA in its name. An unreferenced draft whose exact-SHA tag is absent
    (for example, a failed upload) still counts toward the reserve and is eligible for release-only deletion
    outside it; do not invent or delete a tag for that draft. A referenced draft or missing tag still fails

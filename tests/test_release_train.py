@@ -290,8 +290,12 @@ class ReleaseTrainTests(unittest.TestCase):
             git("init", "-q", "-b", "main")
             git("config", "user.name", "Test")
             git("config", "user.email", "test@example.invalid")
+            release = Path(folder, "crates/sunrise-core/src/release.rs")
+            release.parent.mkdir(parents=True)
             commits = []
             for n in range(3):
+                release.write_text('const PREFIX: &str = "snapshot-";' if n == 0 else 'const PREFIX: &str = "dev-";')
+                git("add", ".")
                 git("commit", "-q", "--allow-empty", "-m", str(n))
                 commits.append(git("rev-parse", "HEAD"))
             with mock.patch.object(train, "ROOT", Path(folder)), \
@@ -321,6 +325,11 @@ class ReleaseTrainTests(unittest.TestCase):
                             train.channel_head(channel, commits[2])
                         with self.assertRaisesRegex(SystemExit, "not a commit of this repository"):
                             train.channel_head(channel, "f" * 40)
+                # The worktree knows Dev, but the selected commit would call itself Nightly.
+                with mock.patch.object(train, "fork_gate_passed", return_value=True) as gate:
+                    with self.assertRaisesRegex(SystemExit, "predates Dev build support"):
+                        train.channel_head("dev", commits[0])
+                    gate.assert_not_called()
 
     def test_a_nightly_ships_only_daily_green_unless_the_owner_granted_an_exception(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -329,6 +338,10 @@ class ReleaseTrainTests(unittest.TestCase):
             git("init", "-q", "-b", "main")
             git("config", "user.name", "Test")
             git("config", "user.email", "test@example.invalid")
+            release = Path(folder, "crates/sunrise-core/src/release.rs")
+            release.parent.mkdir(parents=True)
+            release.write_text('const PREFIX: &str = "dev-";')
+            git("add", ".")
             commits = []
             for n in range(2):
                 git("commit", "-q", "--allow-empty", "-m", str(n))

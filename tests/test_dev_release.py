@@ -1,4 +1,4 @@
-"""Dev builds (#4022): release.yml kind dev builds a commit of main with the gate green and publishes it under its
+"""Dev builds: release.yml kind dev builds a commit of main with the gate green and publishes it under its
 own tag, never as the Nightly and never moving `daily-green`."""
 import datetime as dt
 import os
@@ -194,7 +194,9 @@ class DevToolsTests(unittest.TestCase):
                 self.assertEqual(values["tag"], f"dev-{today}-0c02067")
                 self.assertEqual(values["version"], f"dev-{today}")
                 self.assertEqual(values["build"], "true")
-                self.assertIn(f"sunrise-launcher install dev-{today}-0c02067", Path("nightly-notes.md").read_text())
+                notes = Path("nightly-notes.md").read_text()
+                self.assertIn(f"sunrise-launcher install {values['tag']}", notes)
+                self.assertIn(f"sunrise-release-sign verify --tag {values['tag']} --signature SHA256SUMS.v2.sig", notes)
                 # Published already (the same commit the same day): skipped, never replaced.
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly.train, "channel_head", return_value=sha), \
