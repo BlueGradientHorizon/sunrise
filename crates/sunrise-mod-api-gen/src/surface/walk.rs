@@ -150,6 +150,91 @@ impl<'i, 'a> Walker<'i, 'a> {
         outside.internal_module(self.index, module, &path)
     }
 
+    /// What a path rooted in the extern prelude names, without letting a local module shadow its
+    /// first segment. API crate roots are already in the index when the public walk starts.
+    fn rooted_target(
+        &mut self,
+        module: usize,
+        path: &[String],
+        outside: &OutsideSeam,
+    ) -> Result<Option<Target>, String> {
+        let mut path = path.to_vec();
+        if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
+            path[0] = VOCAB.to_owned();
+        }
+        if let Some(external) = outside.external_path(self.index, module, &path, true) {
+            return Ok(Some(Target::External(external)));
+        }
+        let Some((krate, relative)) = path.split_first() else {
+            return Ok(None);
+        };
+        let indexed = *krate == FACADE
+            || crate::index::CRATES
+                .iter()
+                .any(|(name, _)| *name == krate.as_str());
+        if !indexed {
+            return Ok(None);
+        }
+        let root = self.index.module(krate, &[])?;
+        if relative.is_empty() {
+            return Ok(Some(Target::Module(root)));
+        }
+        if let Some(target) = self.index.resolve_module_path(root, relative)? {
+            let module_path = &self.index.modules[target];
+            let canonical = std::iter::once(module_path.krate.clone())
+                .chain(module_path.path.iter().cloned())
+                .collect::<Vec<_>>();
+            if let Some(external) = outside.external_path(self.index, module, &canonical, true) {
+                return Ok(Some(Target::External(external)));
+            }
+            return Ok(Some(Target::Module(target)));
+        }
+        let (last, parent_path) = relative.split_last().expect("a nonempty path");
+        let parent = if parent_path.is_empty() {
+            Some(root)
+        } else {
+            self.index.resolve_module_path(root, parent_path)?
+        };
+        if let Some(parent) = parent {
+            let module_path = &self.index.modules[parent];
+            let canonical = std::iter::once(module_path.krate.clone())
+                .chain(module_path.path.iter().cloned())
+                .collect::<Vec<_>>();
+            if let Some(mut external) = outside.external_path(self.index, module, &canonical, true)
+            {
+                external.push(last.clone());
+                return Ok(Some(Target::External(external)));
+            }
+            if let Some(name) = self
+                .names(parent, outside)?
+                .into_iter()
+                .find(|name| name.name == *last)
+            {
+                return Ok(Some(name.target));
+            }
+        }
+        Ok(match self.index.resolve_path(root, relative) {
+            Ok(Found::Item(id)) => {
+                let (_, name) = defined(self.index.item(id)).expect("resolved items have names");
+                let item_module = &self.index.modules[id.module];
+                let canonical = std::iter::once(item_module.krate.clone())
+                    .chain(item_module.path.iter().cloned())
+                    .chain(std::iter::once(name))
+                    .collect::<Vec<_>>();
+                match outside.external_path(self.index, module, &canonical, true) {
+                    Some(external) => Some(Target::External(external)),
+                    None => Some(Target::Item(id)),
+                }
+            }
+            Ok(Found::External(path)) => Some(Target::External(
+                outside
+                    .external_path(self.index, root, &path, true)
+                    .unwrap_or(path),
+            )),
+            Err(_) => None,
+        })
+    }
+
     /// What `path`, written in a `pub use` of `module`, leads to.
     fn target(
         &mut self,
@@ -159,8 +244,8 @@ impl<'i, 'a> Walker<'i, 'a> {
         rooted: bool,
     ) -> Result<Target, String> {
         if rooted {
-            if let Some(path) = outside.external_path(self.index, module, path, true) {
-                return Ok(Target::External(path));
+            if let Some(target) = self.rooted_target(module, path, outside)? {
+                return Ok(target);
             }
             return Ok(Target::External(path.to_vec()));
         }
@@ -264,8 +349,31 @@ impl<'i, 'a> Walker<'i, 'a> {
                                 )),
                             },
                             None => {
-                                if !rooted
-                                    && let Some(target) = self.module_at(module, &path, outside)
+                                if rooted {
+                                    match self.rooted_target(module, &path, outside)? {
+                                        Some(Target::Module(target)) => {
+                                            for mut name in self.names(target, outside)? {
+                                                name.hidden |= hidden;
+                                                globbed.push(name);
+                                            }
+                                        }
+                                        Some(Target::External(external)) => {
+                                            globbed.push(Name {
+                                                name: String::new(),
+                                                target: Target::ExternalGlob {
+                                                    path: external,
+                                                    written: path.clone(),
+                                                },
+                                                hidden,
+                                            });
+                                        }
+                                        _ => self.notes.push(format!(
+                                            "pub use {}::* in {}: not a module of the API's crates",
+                                            path.join("::"),
+                                            self.module_name(module)
+                                        )),
+                                    }
+                                } else if let Some(target) = self.module_at(module, &path, outside)
                                 {
                                     for mut name in self.names(target, outside)? {
                                         name.hidden |= hidden;
@@ -411,7 +519,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
                         } else if let Some(external) =
-                            outside.external_path(self.index, module, &external, false)
+                            outside.external_path(self.index, module, &external, true)
                         {
                             return Err(OutsideSeam::error(
                                 &format!("mod_api::{}", path.join("::")),

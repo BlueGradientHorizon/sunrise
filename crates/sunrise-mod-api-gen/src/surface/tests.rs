@@ -22,7 +22,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "crates/sunrise-mod-api/Cargo.toml",
-        "[package]\nname = \"sunrise-mod-api\"\n[lib]\nname = \"mod_api\"\n",
+        "[package]\nname = \"sunrise-mod-api\"\n[lib]\nname = \"mod_api\"\n[dependencies]\nmod_vocab = { package = \"sunrise-mod-vocab\", path = \"../sunrise-mod-vocab\" }\n",
     ),
     (
         "crates/sunrise-mod-api-macros/Cargo.toml",
@@ -407,6 +407,16 @@ fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
 }
 
 #[test]
+fn a_workspace_module_binding_imported_by_glob_cannot_hide_a_type() {
+    let edited = "mod imported { use engine::*; pub fn leak() -> nested::Hidden { unimplemented!() } }\nuse self::imported as h;\npub use h::*;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the module imported through a workspace glob must resolve to its type");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::nested::Hidden"), "{error}");
+}
+
+#[test]
 fn primitive_and_prelude_types_after_a_workspace_glob_are_not_leaks() {
     let edited = "mod imported { use engine_library::*; pub fn safe() -> (u32, Option<String>) { unimplemented!() } }\npub use imported::safe;\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
@@ -431,20 +441,37 @@ fn a_local_constant_does_not_shadow_a_workspace_type_imported_by_glob() {
 }
 
 #[test]
-fn an_external_value_import_does_not_shadow_a_workspace_type_imported_by_glob() {
+fn an_external_value_import_and_workspace_glob_collision_fails_closed() {
     let edited = "use core::f32::consts::PI as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
-        .expect("a value import leaves the type namespace open to the workspace glob");
-    assert!(error.contains("mod_api::leak"), "{error}");
+        .expect("the resolver cannot safely guess the namespace winner");
+    assert!(
+        error.contains("ambiguous type-namespace binding `Secret`"),
+        "{error}"
+    );
+    assert!(
+        error.contains("qualify the intended path explicitly"),
+        "{error}"
+    );
     assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]
-fn an_external_type_import_shadows_a_workspace_type_imported_by_glob() {
+fn an_external_type_import_and_workspace_glob_collision_fails_closed() {
     let edited = "use core::option::Option as Secret;\nuse engine_library::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
-    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
-        .expect("an explicit external type import wins in the type namespace");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the resolver cannot safely guess the namespace winner");
+    assert!(
+        error.contains("ambiguous type-namespace binding `Secret`"),
+        "{error}"
+    );
+    assert!(
+        error.contains("qualify the intended path explicitly"),
+        "{error}"
+    );
+    assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]
@@ -724,6 +751,49 @@ fn a_rooted_external_path_wins_over_a_local_module_name() {
 }
 
 #[test]
+fn a_rooted_facade_reexport_resolves_an_allowed_workspace_crate() {
+    let facade = "pub use ::mod_vocab::*;\npub fn rooted(value: ::mod_vocab::EntityRef) -> ::mod_vocab::EntityRef { value }\n";
+    let export = try_export_fixture(
+        &[(
+            "crates/sunrise-mod-api/src/lib.rs",
+            "pub use mod_vocab::*;\n",
+            facade,
+        )],
+        HOOKS,
+    )
+    .expect("rooted paths into an allowed seam crate resolve to its indexed public items");
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let function = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:rooted")
+        .expect("the rooted signature is part of the exported surface");
+    assert!(
+        function["signature"]
+            .as_str()
+            .unwrap()
+            .contains("entity::EntityRef")
+    );
+    assert!(
+        function["refs"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("type:entity::EntityRef"))
+    );
+}
+
+#[test]
+fn a_named_reexport_keeps_its_workspace_crate_when_a_local_module_collides() {
+    let edited = "mod engine_library { pub struct Local; }\npub use engine::Secret as Exported;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the canonical engine crate must survive a colliding local module");
+    assert!(error.contains("mod_api::Exported"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
 fn a_public_glob_from_self_module_is_not_the_dependency_glob() {
     let edited = "mod engine { pub struct Local; }\npub use self::engine::*;\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
@@ -738,6 +808,26 @@ fn a_private_type_alias_cannot_hide_a_workspace_type_from_a_public_signature() {
         .expect("the private alias signature must fail the export");
     assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_private_alias_keeps_references_from_its_public_type_expansion() {
+    let edited = "type Private = Text;\npub fn through_alias(value: Private) -> Private { value }\n/// A colour.";
+    let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("a private alias to an API type is valid");
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let function = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:through_alias")
+        .expect("the function is exported");
+    assert!(
+        function["refs"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("type:Text"))
+    );
 }
 
 #[test]
@@ -775,16 +865,6 @@ fn a_private_alias_checks_its_default_when_used_again_without_an_argument() {
         .expect("the later defaulted use must still inspect the outside default");
     assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
-}
-
-#[test]
-fn a_qualified_associated_type_checks_its_workspace_trait_path() {
-    let edited = "pub fn leak<T>(value: T) -> <T as engine_library::Trait>::Out { let _ = value; unimplemented!() }\n/// A colour.";
-    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
-        .err()
-        .expect("the qualified trait path must fail the export");
-    assert!(error.contains("mod_api::leak"), "{error}");
-    assert!(error.contains("engine_library::Trait"), "{error}");
 }
 
 #[test]

@@ -12,6 +12,8 @@ use syn::{Item, Type};
 
 /// The crates whose paths are written by their last segment (`Arc`, `HashMap`, `Duration`).
 const STD: &[&str] = &["std", "core", "alloc"];
+/// The vocabulary crate is indexed by its public API name, not its Cargo library name.
+const INDEXED_CRATE_ALIASES: &[(&str, &str)] = &[("mod_vocab", "mod_api")];
 
 /// `tokens` with one spacing: a space after `,`, `;` and a lone `:`, around `->`, `=`, `+` and
 /// `=>`, between two words, after a word-ending `>`, `)` or `]` before a word; none elsewhere.
@@ -193,6 +195,24 @@ pub(super) fn ref_kind(item: &Item) -> Option<&'static str> {
 }
 
 impl Paths<'_, '_> {
+    /// Resolve an absolute path from its crate root, where a local module cannot shadow the
+    /// extern-prelude crate name. The vocabulary's Rust crate name differs from its index name.
+    fn rooted_item(&mut self, path: &[String]) -> Option<ItemId> {
+        let (written_crate, relative) = path.split_first()?;
+        let indexed_crate = INDEXED_CRATE_ALIASES
+            .iter()
+            .find_map(|(alias, indexed)| (*alias == written_crate).then_some(*indexed))
+            .unwrap_or(written_crate);
+        if relative.is_empty() {
+            return None;
+        }
+        let root = self.index.module(indexed_crate, &[]).ok()?;
+        match self.index.resolve_path(root, relative) {
+            Ok(Found::Item(id)) => Some(id),
+            _ => None,
+        }
+    }
+
     fn inspect_private_alias(&mut self, id: ItemId, arguments: &syn::PathArguments) {
         let Item::Type(mut alias) = self.index.item(id).clone() else {
             return;
@@ -255,9 +275,11 @@ impl Paths<'_, '_> {
         self.visit_generics_mut(&mut alias.generics);
         let mut ty = *alias.ty;
         self.visit_type_mut(&mut ty);
+        let alias_refs = std::mem::take(&mut self.refs);
         self.module = old_module;
         self.params = old_params;
         self.refs = old_refs;
+        self.refs.extend(alias_refs);
         self.aliases.remove(&id);
     }
 
@@ -272,9 +294,11 @@ impl Paths<'_, '_> {
             return;
         }
         let found = if rooted {
-            // `::` starts at the extern prelude. Let the outside-seam lookup handle dependency
-            // aliases without allowing a local module of the same name to shadow them.
-            Ok(Found::External(segments.clone()))
+            // `::` starts at the extern prelude. Resolve known API crates from their own roots,
+            // not from this module where a local module may shadow the crate name.
+            self.rooted_item(&segments)
+                .map(Found::Item)
+                .map_or_else(|| Ok(Found::External(segments.clone())), Ok)
         } else {
             self.index.resolve_path(self.module, &segments)
         };
