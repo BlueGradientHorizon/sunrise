@@ -1479,7 +1479,7 @@ mod tests {
                     Tag::compound([("minecraft:use_remainder", template)]),
                 ),
             ]);
-            let held = crate::item_nbt::item_from_persistent_nbt(&saved).unwrap();
+            let held = sunrise_items::item_nbt::item_from_persistent_nbt(&saved).unwrap();
             assert_eq!(loads.load(Ordering::Relaxed), 3);
             let sent = crate::lan::guest::stack_to_network(|_| 1, ids, &Some(held)).unwrap();
             assert_eq!(
@@ -1537,9 +1537,9 @@ mod tests {
                     ]),
                 ),
             ]);
-            assert!(crate::item_nbt::item_from_persistent_nbt(&saved).is_none());
+            assert!(sunrise_items::item_nbt::item_from_persistent_nbt(&saved).is_none());
             let inventory = Tag::List(vec![saved]);
-            let slots = crate::item_nbt::decode_items(Some(&inventory), 3);
+            let slots = sunrise_items::item_nbt::decode_items(Some(&inventory), 3);
             let stack = slots[2].as_ref().expect("item survives reopening");
             assert_eq!(
                 (&*stack.item, stack.count, stack.damage),
@@ -1550,7 +1550,10 @@ mod tests {
                 Some([ConsumeEffect::ClearAllEffects])
             ));
             let items = crate::items::Items::for_tests(Default::default());
-            assert_eq!(crate::item_nbt::encode_items(&slots, &items), inventory);
+            assert_eq!(
+                sunrise_items::item_nbt::encode_items(&slots, &items),
+                inventory
+            );
         });
     }
 
