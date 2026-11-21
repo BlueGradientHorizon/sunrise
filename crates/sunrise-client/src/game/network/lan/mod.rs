@@ -3173,6 +3173,19 @@ impl Game<'_> {
         if self.audio.capture.is_some() {
             self.lan_entity_events.push((id, event));
         }
+        self.lan_entity_event_local(id, event, at);
+    }
+    /// Deliver one committed entity event immediately to tracking guests and the entity itself,
+    /// without touching unrelated entries in `self.lan_entity_events`.
+    pub(super) fn deliver_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
+        if let Some(host) = self.lan.as_ref() {
+            host.hub.entity_event(id, event);
+        } else if self.audio.capture.is_some() {
+            self.lan_entity_events.push((id, event));
+        }
+        self.lan_entity_event_local(id, event, at);
+    }
+    fn lan_entity_event_local(&mut self, id: i32, event: i8, at: [f64; 3]) {
         // Event 16: zombie villagers play their cure sound on each client.
         if event == 16 && self.options.execution_role.is_client() {
             self.zombie_villager_cure_sound(id as u32);

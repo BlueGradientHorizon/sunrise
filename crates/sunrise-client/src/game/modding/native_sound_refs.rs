@@ -51,6 +51,7 @@ impl Game<'_> {
             return false;
         }
         self.emit_level_effect(PendingWrite::PlayerStopSound {
+            level: self.dim,
             player,
             sound: sound.map(str::to_owned),
             source: source.map(SoundSource::index),
@@ -81,6 +82,7 @@ impl Game<'_> {
             return false;
         }
         self.emit_level_effect(PendingWrite::PlayerSound {
+            level: self.dim,
             player,
             sound: sound.to_owned(),
             at,
@@ -113,7 +115,16 @@ impl Game<'_> {
         ) else {
             return false;
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, None, Some(id))
+        self.native_queue_sound(super::native_level_effects::NativeSoundRequest {
+            level,
+            sound,
+            at,
+            source,
+            volume,
+            pitch,
+            except: None,
+            entity: Some(id),
+        })
     }
 }
 
@@ -326,14 +337,16 @@ pub(super) mod tests {
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
                 assert!(game.native_queue_sound(
-                    level,
-                    sound,
-                    [0.5, 64.0, 0.0],
-                    SoundSource::Neutral,
-                    1.0,
-                    1.0,
-                    None,
-                    None,
+                    super::super::native_level_effects::NativeSoundRequest {
+                        level,
+                        sound,
+                        at: [0.5, 64.0, 0.0],
+                        source: SoundSource::Neutral,
+                        volume: 1.0,
+                        pitch: 1.0,
+                        except: None,
+                        entity: None,
+                    },
                 ));
             }
             // The gameplay random is exactly where it was: a mod's sound

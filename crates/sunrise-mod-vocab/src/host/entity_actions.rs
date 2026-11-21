@@ -70,6 +70,10 @@ pub trait EntityActionsBackendMut {
     /// (`Player.playSound`) doesn't hear it themself, their own client plays
     /// it. True means queued, not heard; false for an unknown `minecraft:`
     /// event or a volume or pitch that isn't a finite non-negative number.
+    /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
+    /// in call order across deferred effects, and is discarded on rollback or an aborted nested
+    /// transaction. The server sound-seed stream advances at the call outside a transaction, at
+    /// the outermost commit inside one, and stays untouched on rollback or nested abort.
     #[access(WorldOnly)]
     fn entity_play_sound(
         &mut self,
@@ -93,6 +97,9 @@ pub trait EntityActionsBackendMut {
     /// death, `35` a totem...) to the players tracking the entity and to the
     /// entity itself. True means queued; false for an entity outside the
     /// level in place.
+    /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
+    /// in call order across deferred effects, and is discarded on rollback or an aborted nested
+    /// transaction.
     #[access(WorldOnly)]
     fn entity_broadcast_event(&mut self, entity: EntityRef, id: u8) -> bool;
     /// Side: server.
@@ -101,6 +108,10 @@ pub trait EntityActionsBackendMut {
     /// the players within range (16 blocks, times the volume above 1) of
     /// where it is now, the entity's own player too. True means queued, not
     /// heard; false for an entity outside the level in place.
+    /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
+    /// in call order across deferred effects, and is discarded on rollback or an aborted nested
+    /// transaction. The server sound-seed stream advances at the call outside a transaction, at
+    /// the outermost commit inside one, and stays untouched on rollback or nested abort.
     #[access(WorldOnly)]
     fn entity_play_bound_sound(
         &mut self,

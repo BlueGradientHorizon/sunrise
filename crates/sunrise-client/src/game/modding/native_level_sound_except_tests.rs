@@ -199,6 +199,7 @@ fn a_level_sound_inside_a_transaction_waits_for_commit_and_discards_on_rollback(
 fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactions() {
     use sunrise_client::gamerules::Value;
     use sunrise_client::particles::{ParticleOptions, ParticleType};
+    use sunrise_core::random::{LegacyRandom, RandomSource};
 
     with_guests(|game| {
         game.options.dedicated = Some(Vec::new());
@@ -259,8 +260,18 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         decode_packets(&rx12);
         decode_packets(&rx13);
 
+        // Snapshot both RNG streams (hub sound_seeds and level world.random) so we can verify
+        // that rolled-back transactions and aborted nested savepoints advance neither stream.
+        game.lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .set_sound_seeds(LegacyRandom::new(0x5A17_CAFE));
+        let mut expected_sound_seeds = LegacyRandom::new(0x5A17_CAFE);
+        let mut expected_level_random = game.world.random.clone();
+
         // 1. Rolled-back transaction discards every deferred effect path (with
-        // global_sound_events = true).
+        // global_sound_events = true) and leaves both RNG streams untouched.
         assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
         let rolled = mod_api::run_transaction(game, |game, _| {
             assert!(game.entity_play_sound(entity13, burp, 1.0, 1.0));
@@ -290,9 +301,15 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         assert!(game.audio.capture.as_ref().unwrap().is_empty());
         assert!(decode_packets(&rx12).is_empty());
         assert!(decode_packets(&rx13).is_empty());
+        assert_eq!(
+            game.world.random.clone().next_long(),
+            expected_level_random.clone().next_long(),
+            "rolled-back transaction must not advance world.random"
+        );
 
-        // 2. Nested savepoints (global_sound_events = true): aborted child drops its effects;
-        // committed child waits for root commit, then publishes every effect path cleanly.
+        // 2. Nested savepoints (global_sound_events = true): aborted child drops its effects
+        // without advancing RNG; committed child waits for root commit, then publishes every
+        // effect directly in call order.
         let committed = mod_api::run_transaction(game, |game, _| {
             let aborted_child = mod_api::run_transaction(game, |game, _| {
                 assert!(game.entity_play_sound(entity13, anvil, 1.0, 1.0));
@@ -345,51 +362,44 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         });
         assert!(committed.is_ok());
 
-        assert_eq!(
-            game.lan_events,
-            vec![super::QueuedLevelEvent {
-                kind: 1500,
-                pos,
-                data: 0,
-                source: None,
-            }]
-        );
-        assert_eq!(
-            game.lan_global_events,
-            vec![("minecraft:overworld", 1038, pos, 0)]
-        );
-        assert_eq!(game.lan_entity_events, vec![(entity13_id, 35)]);
+        // Committed effects deliver directly without waiting for `lan_flush_effects`.
+        assert!(game.lan_events.is_empty());
+        assert!(game.lan_global_events.is_empty());
+        assert!(game.lan_entity_events.is_empty());
         assert!(
             !game.audio.capture.as_ref().unwrap().is_empty(),
             "global_level_event plays its local global sound on root commit"
         );
 
-        game.lan_flush_effects();
         let packets12 = decode_packets(&rx12);
         let packets13 = decode_packets(&rx13);
+        let expected_burp_seed = expected_sound_seeds.next_long();
+        let expected_bell_seed = expected_sound_seeds.next_long();
+        let expected_anvil_seed = expected_level_random.next_long();
+
         let sounds12: Vec<_> = packets12
             .iter()
             .filter_map(|p| match p {
-                C::Sound(s) => Some(s.sound.0),
+                C::Sound(s) => Some((s.sound.0, s.seed)),
                 _ => None,
             })
             .collect();
         let sounds13: Vec<_> = packets13
             .iter()
             .filter_map(|p| match p {
-                C::Sound(s) => Some(s.sound.0),
+                C::Sound(s) => Some((s.sound.0, s.seed)),
                 _ => None,
             })
             .collect();
         assert_eq!(
             sounds12,
-            vec![burp_id],
-            "entity_play_sound reaches nearby guest 12 only"
+            vec![(burp_id, expected_burp_seed)],
+            "entity_play_sound reaches nearby guest 12 only with the first sound seed"
         );
         assert_eq!(
             sounds13,
-            vec![anvil_id],
-            "guest 13 receives only player_play_sound (not its own entity_play_sound)"
+            vec![(anvil_id, expected_anvil_seed)],
+            "guest 13 receives only player_play_sound with the first world.random seed"
         );
         let stops12: Vec<_> = packets12
             .iter()
@@ -407,19 +417,19 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         let bound12: Vec<_> = packets12
             .iter()
             .filter_map(|p| match p {
-                C::SoundEntity(s) => Some((s.sound.0, s.id)),
+                C::SoundEntity(s) => Some((s.sound.0, s.id, s.seed)),
                 _ => None,
             })
             .collect();
         let bound13: Vec<_> = packets13
             .iter()
             .filter_map(|p| match p {
-                C::SoundEntity(s) => Some((s.sound.0, s.id)),
+                C::SoundEntity(s) => Some((s.sound.0, s.id, s.seed)),
                 _ => None,
             })
             .collect();
-        assert_eq!(bound12, vec![(bell_id, entity13_id)]);
-        assert_eq!(bound13, vec![(bell_id, entity13_id)]);
+        assert_eq!(bound12, vec![(bell_id, entity13_id, expected_bell_seed)]);
+        assert_eq!(bound13, vec![(bell_id, entity13_id, expected_bell_seed)]);
         let particles12: Vec<_> = packets12
             .iter()
             .filter_map(|p| match p {
@@ -462,7 +472,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         assert_eq!(entity_events13, vec![(entity13_id, 35)]);
 
         // 3. `LevelRef::global_level_event` with `global_sound_events = false` defers its plain
-        // `level_event_at` fallback on rollback and emits it as a non-global LevelEvent on commit.
+        // `level_event_at` fallback on rollback and emits it directly as a non-global LevelEvent
+        // on commit.
         assert!(game.ui.rules.set("global_sound_events", Value::Bool(false)));
         clear_queues(game);
         decode_packets(&rx12);
@@ -486,17 +497,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         });
         assert!(committed_plain.is_ok());
         assert!(game.lan_global_events.is_empty());
+        assert!(game.lan_events.is_empty());
         assert!(game.audio.capture.as_ref().unwrap().is_empty());
-        assert_eq!(
-            game.lan_events,
-            vec![super::QueuedLevelEvent {
-                kind: 1023,
-                pos,
-                data: 0,
-                source: None,
-            }]
-        );
-        game.lan_flush_effects();
         let plain12: Vec<_> = decode_packets(&rx12)
             .into_iter()
             .filter_map(|p| match p {
@@ -528,5 +530,363 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         let direct13 = decode_packets(&rx13);
         assert!(direct13.iter().any(|p| matches!(p, C::Sound(_))));
         assert!(direct13.iter().any(|p| matches!(p, C::StopSound(_))));
+    });
+}
+
+/// A transaction that emits Nether effects and commits while the Overworld is active replays each
+/// effect in its recorded `Dim` (so Nether events/particles/sounds never leak to Overworld guests
+/// and `PlayerRef::play_sound` advances Nether's `world.random` rather than the Overworld's) and
+/// delivers packets on a single connection in exact call order across all effect kinds (including
+/// `GlobalEvent(1038)` followed by `StopSound`, both outside and inside `as_guest`).
+#[test]
+#[ignore = "daily"]
+fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order() {
+    use sunrise_client::gamerules::Value;
+    use sunrise_client::particles::{ParticleOptions, ParticleType};
+    use sunrise_core::random::RandomSource;
+
+    with_guests(|game| {
+        game.options.dedicated = Some(Vec::new());
+        game.audio.capture = Some(Vec::new());
+        assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
+        let (tx12, rx12) = mpsc::channel();
+        let (tx13, rx13) = mpsc::channel();
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.sender = PlayerSender::new(tx12, Arc::default());
+        });
+        game.lan.as_mut().unwrap().hub.guests.update(1, |g| {
+            g.sender = PlayerSender::new(tx13, Arc::default());
+            g.dimension = "minecraft:the_nether".to_owned();
+        });
+        // Load Nether once so it sits in `levels.parked` when Overworld is active.
+        game.enter_level(super::Dim::Nether).unwrap();
+        let mut expected_nether_random = game.world.random.clone();
+        game.enter_level(super::Dim::Overworld).unwrap();
+        let mut expected_overworld_random = game.world.random.clone();
+
+        let player13 = game.player(13).unwrap();
+        let entity13 = player13.entity();
+        let entity13_id = i32::try_from(entity13.id()).unwrap();
+        let at = [3.0, 64.0, 5.0];
+        let pos = [3, 64, 5];
+        let anvil = "minecraft:block.anvil.use";
+        let bell = "minecraft:block.bell.use";
+        let end_portal_spawn = "minecraft:block.end_portal.spawn";
+        let anvil_id = game
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .registry_id("minecraft:sound_event", anvil)
+            .unwrap();
+        let bell_id = game
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .registry_id("minecraft:sound_event", bell)
+            .unwrap();
+        let heart = ParticleOptions::simple(ParticleType::Heart);
+        decode_packets(&rx12);
+        decode_packets(&rx13);
+
+        // Open transaction in Overworld, switch to Nether to issue Nether effects across all
+        // effect kinds, then switch back to Overworld before committing.
+        let committed = mod_api::run_transaction(game, |game, _| {
+            game.enter_level(super::Dim::Nether).unwrap();
+            let nether = game.level("minecraft:the_nether").unwrap();
+            assert!(game.level_global_level_event(nether, 1038, pos, 0));
+            assert!(game.player_stop_sound(player13, Some(end_portal_spawn), None));
+            assert!(game.player_play_sound(player13, anvil, SoundSource::Neutral, 1.0, 1.0));
+            assert!(game.level_level_event(nether, 1500, pos, 0));
+            assert!(game.entity_broadcast_event(entity13, 35));
+            assert!(game.level_send_particles(nether, &heart, None, at, [0.0; 3], 0.0, 2));
+            assert!(game.level_play_sound(nether, bell, at, SoundSource::Blocks, 1.0, 1.0, None));
+            game.enter_level(super::Dim::Overworld).unwrap();
+            Ok::<(), ()>(())
+        });
+        assert!(committed.is_ok());
+        assert_eq!(game.dim, super::Dim::Overworld);
+
+        // Overworld guest 12 receives ONLY the global level event (1038); no Nether-local
+        // level event, entity event, particles, or sounds leak into the Overworld.
+        let ow_packets = decode_packets(&rx12);
+        assert_eq!(
+            ow_packets.len(),
+            1,
+            "only global event 1038 reaches Overworld guest 12"
+        );
+        assert!(matches!(
+            ow_packets[0],
+            C::LevelEvent(ref e) if e.kind == 1038 && e.global
+        ));
+
+        // Nether guest 13 receives every packet on one connection in exact call order, and
+        // `PlayerRef::play_sound` drew its seed from Nether's `world.random`.
+        let expected_nether_seed = expected_nether_random.next_long();
+        let nether_packets = decode_packets(&rx13);
+        let tags: Vec<&'static str> = nether_packets
+            .iter()
+            .map(|p| match p {
+                C::LevelEvent(e) if e.kind == 1038 && e.global => "global_1038",
+                C::StopSound(s) if s.sound.as_deref() == Some(end_portal_spawn) => "stop_portal",
+                C::Sound(s) if s.sound.0 == anvil_id && s.seed == expected_nether_seed => {
+                    "player_anvil"
+                }
+                C::LevelEvent(e) if e.kind == 1500 && !e.global => "level_1500",
+                C::EntityEvent(e) if e.id == entity13_id && e.event == 35 => "entity_35",
+                C::LevelParticles(p) if p.count == 2 => "particles_2",
+                C::Sound(s) if s.sound.0 == bell_id => "level_bell",
+                other => panic!("unexpected Nether packet: {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            tags,
+            vec![
+                "global_1038",
+                "stop_portal",
+                "player_anvil",
+                "level_1500",
+                "entity_35",
+                "particles_2",
+                "level_bell",
+            ]
+        );
+
+        // Overworld's `world.random` must remain completely untouched by Nether's `play_sound`.
+        assert_eq!(
+            game.world.random.clone().next_long(),
+            expected_overworld_random.next_long(),
+            "Nether PlayerRef::play_sound must not advance Overworld world.random"
+        );
+
+        // Packet order also holds inside an `as_guest` turn in BOTH directions
+        // (`GlobalEvent(1038)` -> `StopSound` and `StopSound` -> `GlobalEvent(1038)`).
+        game.enter_level(super::Dim::Nether).unwrap();
+        let nether = game.level("minecraft:the_nether").unwrap();
+        decode_packets(&rx13);
+        game.as_guest(13, |game| {
+            let acting = game.player(13).unwrap();
+            let res = mod_api::run_transaction(game, |game, _| {
+                assert!(game.player_stop_sound(acting, Some(anvil), None));
+                assert!(game.level_global_level_event(nether, 1038, pos, 0));
+                assert!(game.player_stop_sound(acting, Some(end_portal_spawn), None));
+                Ok::<(), ()>(())
+            });
+            assert!(res.is_ok());
+        })
+        .expect("guest turn runs");
+        let turn_tags: Vec<&'static str> = decode_packets(&rx13)
+            .into_iter()
+            .filter_map(|p| match p {
+                C::StopSound(s) if s.sound.as_deref() == Some(anvil) => Some("stop_anvil"),
+                C::LevelEvent(e) if e.kind == 1038 && e.global => Some("global_1038"),
+                C::StopSound(s) if s.sound.as_deref() == Some(end_portal_spawn) => {
+                    Some("stop_portal")
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(turn_tags, vec!["stop_anvil", "global_1038", "stop_portal"]);
+    });
+}
+
+/// Committed effects must not drain unrelated queued `lan_sounds`/`lan_particles`/event queues,
+/// must prevent recursive sound delivery if a `play_level_sound_at_*` listener commits another
+/// sound, and non-player `living_hurt_and_break` keeps its equipment break event immediate so an
+/// aborted transaction does not leave equipment broken without its break notification.
+#[test]
+#[ignore = "daily"]
+fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_keep_mob_break_immediate()
+ {
+    use mod_api::{EquipmentSlot, Flow, HostSide, HostTransaction, LivingRef};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use sunrise_client::gamerules::Value;
+    use sunrise_client::items::ItemStack;
+    use sunrise_client::particles::{ParticleOptions, ParticleType};
+
+    struct ReentrantSoundHook {
+        active_depth: Arc<AtomicUsize>,
+        max_depth: Arc<AtomicUsize>,
+        triggered: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ReentrantSoundHook {
+        fn play_level_sound_at_position(
+            &self,
+            host: HostSide<'_>,
+            e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+        ) -> Flow {
+            let depth = self.active_depth.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_depth.fetch_max(depth, Ordering::SeqCst);
+            if e.sound.to_string() == "minecraft:block.bell.use"
+                && !self.triggered.swap(true, Ordering::SeqCst)
+                && let HostSide::Server(server) = host
+            {
+                let res: Result<(), ()> = server.transaction(|server, _| {
+                    assert!(e.level.play_sound(
+                        server,
+                        "minecraft:block.anvil.use",
+                        e.position,
+                        SoundSource::Blocks,
+                        1.0,
+                        1.0,
+                        None,
+                    ));
+                    Ok(())
+                });
+                assert!(res.is_ok());
+            }
+            self.active_depth.fetch_sub(1, Ordering::SeqCst);
+            Flow::Continue
+        }
+    }
+
+    let active_depth = Arc::new(AtomicUsize::new(0));
+    let max_depth = Arc::new(AtomicUsize::new(0));
+    let triggered = Arc::new(AtomicBool::new(false));
+    let mods = vec![mod_api::ModEntry::new(
+        "reentrant_sound_test",
+        Box::new(ReentrantSoundHook {
+            active_depth: Arc::clone(&active_depth),
+            max_depth: Arc::clone(&max_depth),
+            triggered: Arc::clone(&triggered),
+        }),
+    )]
+    .into();
+
+    mod_platform::testing::with_mods(mods, || {
+        with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.audio.capture = Some(Vec::new());
+            assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
+            let (tx12, rx12) = mpsc::channel();
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender = PlayerSender::new(tx12, Arc::default());
+            });
+            let level = game.level(game.dim.id()).unwrap();
+            let player13 = game.player(13).unwrap();
+            let entity13 = player13.entity();
+            let entity13_id = i32::try_from(entity13.id()).unwrap();
+            let at = [3.0, 64.0, 5.0];
+            let pos = [3, 64, 5];
+            let burp = "minecraft:entity.player.burp";
+            let bell = "minecraft:block.bell.use";
+            let anvil = "minecraft:block.anvil.use";
+            let bell_id = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .registry_id("minecraft:sound_event", bell)
+                .unwrap();
+            let anvil_id = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .registry_id("minecraft:sound_event", anvil)
+                .unwrap();
+            let heart = ParticleOptions::simple(ParticleType::Heart);
+            let flame = ParticleOptions::simple(ParticleType::Flame);
+
+            // Part A: Queue unrelated effects outside any transaction first.
+            assert!(game.level_play_sound(level, burp, at, SoundSource::Blocks, 1.0, 1.0, None));
+            assert!(game.level_send_particles(level, &flame, None, at, [0.0; 3], 0.0, 4));
+            assert!(game.level_level_event(level, 1000, pos, 0));
+            assert!(game.level_global_level_event(level, 1028, pos, 0));
+            assert!(game.entity_broadcast_event(entity13, 2));
+            assert_eq!(game.creatures.lan_sounds.len(), 1);
+            assert_eq!(game.creatures.lan_particles.len(), 1);
+            assert_eq!(game.lan_events.len(), 1);
+            assert_eq!(game.lan_global_events.len(), 1);
+            assert_eq!(game.lan_entity_events, vec![(entity13_id, 2)]);
+            decode_packets(&rx12);
+
+            // Part B: Commit a transaction whose bell sound causes the `play_level_sound_at_position`
+            // listener to commit an anvil sound, alongside particles and level/global/entity events.
+            let committed = mod_api::run_transaction(game, |game, _| {
+                assert!(game.level_play_sound(
+                    level,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None
+                ));
+                assert!(game.level_send_particles(level, &heart, None, at, [0.0; 3], 0.0, 2));
+                assert!(game.level_level_event(level, 1500, pos, 0));
+                assert!(game.level_global_level_event(level, 1038, pos, 0));
+                assert!(game.entity_broadcast_event(entity13, 35));
+                Ok::<(), ()>(())
+            });
+            assert!(committed.is_ok());
+
+            // Unrelated queued effects must remain untouched on the normal flush path!
+            assert_eq!(game.creatures.lan_sounds.len(), 1);
+            assert_eq!(game.creatures.lan_sounds[0].sound, burp);
+            assert_eq!(game.creatures.lan_particles.len(), 1);
+            assert_eq!(game.creatures.lan_particles[0].count, 4);
+            assert_eq!(game.lan_events.len(), 1);
+            assert_eq!(game.lan_events[0].kind, 1000);
+            assert_eq!(game.lan_global_events.len(), 1);
+            assert_eq!(game.lan_global_events[0].1, 1028);
+            assert_eq!(game.lan_entity_events, vec![(entity13_id, 2)]);
+
+            // Listener-committed anvil sound ran iteratively without recursing into delivery.
+            assert!(triggered.load(Ordering::SeqCst));
+            assert_eq!(active_depth.load(Ordering::SeqCst), 0);
+            assert_eq!(
+                max_depth.load(Ordering::SeqCst),
+                1,
+                "play_level_sound_at_position must not recurse during committed sound delivery"
+            );
+            let sounds12: Vec<i32> = sound_packets(&rx12)
+                .into_iter()
+                .map(|s| s.sound.0)
+                .collect();
+            assert_eq!(sounds12, vec![bell_id, anvil_id]);
+
+            // Part C: Non-player `living_hurt_and_break` inside an aborted transaction mutates the
+            // mob's equipment immediately (unjournaled), so its break event (49 for Head) must
+            // also emit immediately rather than being discarded on rollback.
+            game.lan_entity_events.clear();
+            let zombie_id = game
+                .spawn_mob(
+                    "minecraft:zombie",
+                    [3.5, 64.0, 5.5],
+                    true,
+                    super::creatures::SpawnSite::Raw,
+                )
+                .unwrap();
+            let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
+            let max_damage = game.items().stack_max_damage(&helmet);
+            assert!(max_damage > 0, "iron helmet has durability");
+            helmet.damage = max_damage - 1;
+            game.mobs
+                .iter_mut()
+                .find(|m| m.id == zombie_id)
+                .unwrap()
+                .set_equipment_stack(EquipmentSlot::Head as usize, Some(helmet));
+            let zombie_living = LivingRef::new(game.entity(zombie_id).unwrap());
+
+            let aborted = mod_api::run_transaction(game, |game, _| {
+                let broken = game.living_hurt_and_break(zombie_living, EquipmentSlot::Head, 1);
+                assert!(broken.is_some(), "helmet breaks on final durability point");
+                Err::<(), ()>(())
+            });
+            assert!(aborted.is_err());
+            assert!(
+                game.living_equipment(zombie_living, EquipmentSlot::Head)
+                    .is_none(),
+                "non-player equipment write stays broken after abort"
+            );
+            assert_eq!(
+                game.lan_entity_events,
+                vec![(zombie_id as i32, 49)],
+                "coupled non-player break event stays on the immediate side of the rollback boundary"
+            );
+        });
     });
 }

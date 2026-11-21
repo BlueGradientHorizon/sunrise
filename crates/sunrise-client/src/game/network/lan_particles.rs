@@ -624,6 +624,107 @@ impl Game<'_> {
         });
     }
 
+    /// Deliver one native sound now (asking `play_level_sound_at_*` hooks in the sound's own
+    /// level, then sending the packet to nearby players and viewers) without draining unrelated
+    /// entries in `self.creatures.lan_sounds`. Re-entrant calls (for example, when a
+    /// `play_level_sound_at_*` listener commits another sound) enqueue on
+    /// `deferred_native_sound_deliveries` and are drained iteratively once the current sound
+    /// finishes.
+    pub(super) fn deliver_native_sound(&mut self, sound: super::creatures::NativeSound) {
+        if self.lan.is_none() {
+            return;
+        }
+        if self.creatures.delivering_native_sound {
+            self.creatures
+                .deferred_native_sound_deliveries
+                .push_back(sound);
+            return;
+        }
+        struct DeliveryGuard<'g, 'a>(&'g mut Game<'a>);
+        impl Drop for DeliveryGuard<'_, '_> {
+            fn drop(&mut self) {
+                self.0.creatures.delivering_native_sound = false;
+                self.0.creatures.deferred_native_sound_deliveries.clear();
+            }
+        }
+        self.creatures.delivering_native_sound = true;
+        let guard = DeliveryGuard(self);
+        guard.0.deliver_one_native_sound(sound);
+        while let Some(next) = guard
+            .0
+            .creatures
+            .deferred_native_sound_deliveries
+            .pop_front()
+        {
+            if guard.0.lan.is_none() {
+                break;
+            }
+            guard.0.deliver_one_native_sound(next);
+        }
+    }
+
+    fn deliver_one_native_sound(&mut self, sound: super::creatures::NativeSound) {
+        let emitter = sound.entity.and_then(|id| u32::try_from(id).ok());
+        let mut asked = LevelSound::new(&sound.sound, sound.at, sound.volume, sound.pitch)
+            .in_source(
+                SoundSource::ALL
+                    .get(sound.source as usize)
+                    .copied()
+                    .unwrap_or(SoundSource::Master),
+            );
+        asked.emitter = emitter;
+        let dim = super::Dim::from_id(sound.dimension);
+        let Some(Some(heard)) =
+            self.with_effect_level(dim, |game| game.ask_level_sound(sound.dimension, asked))
+        else {
+            return;
+        };
+        let Some(host) = &self.lan else { return };
+        if heard.name.starts_with("minecraft:")
+            && host
+                .hub
+                .registry_id("minecraft:sound_event", &heard.name)
+                .is_none()
+        {
+            return;
+        }
+        let packet = host.hub.sound_packet(
+            &heard.name,
+            sound.at,
+            heard.volume,
+            heard.pitch,
+            heard.source as i32,
+            sound.seed,
+        );
+        // `Level.playSound(except, entity, ...)`: the same sound and
+        // seed, bound to the entity.
+        let packet = match (packet, sound.entity) {
+            (C::Sound(s), Some(id)) => C::SoundEntity(play::SoundEntity {
+                sound: s.sound,
+                source: s.source,
+                id,
+                volume: s.volume,
+                pitch: s.pitch,
+                seed: s.seed,
+            }),
+            (packet, _) => packet,
+        }
+        .encode();
+        let range = f64::from(heard.volume.max(1.0)) * 16.0;
+        // Wrapped for the level's viewers too: one bound to an entity for those tracking it.
+        let (dimension, at) = (sound.dimension, sound.at);
+        host.hub
+            .send_viewed_sound(dimension, at, range, sound.entity, || packet.clone());
+        send_native_nearby(
+            host,
+            sound.dimension,
+            packet,
+            false,
+            sound.except,
+            |position| within_range(sound.at, position, range),
+        );
+    }
+
     /// Native sounds wait until the server host is available. An unknown
     /// `minecraft:` event is dropped; a mod's goes by name (`sound_packet`).
     /// Each is asked of the mods first (`play_level_sound_at_entity` when
@@ -634,62 +735,7 @@ impl Game<'_> {
             return;
         }
         for sound in std::mem::take(&mut self.creatures.lan_sounds) {
-            let emitter = sound.entity.and_then(|id| u32::try_from(id).ok());
-            let mut asked = LevelSound::new(&sound.sound, sound.at, sound.volume, sound.pitch)
-                .in_source(
-                    SoundSource::ALL
-                        .get(sound.source as usize)
-                        .copied()
-                        .unwrap_or(SoundSource::Master),
-                );
-            asked.emitter = emitter;
-            let Some(heard) = self.ask_level_sound(sound.dimension, asked) else {
-                continue;
-            };
-            let Some(host) = &self.lan else { return };
-            if heard.name.starts_with("minecraft:")
-                && host
-                    .hub
-                    .registry_id("minecraft:sound_event", &heard.name)
-                    .is_none()
-            {
-                continue;
-            }
-            let packet = host.hub.sound_packet(
-                &heard.name,
-                sound.at,
-                heard.volume,
-                heard.pitch,
-                heard.source as i32,
-                sound.seed,
-            );
-            // `Level.playSound(except, entity, ...)`: the same sound and
-            // seed, bound to the entity.
-            let packet = match (packet, sound.entity) {
-                (C::Sound(s), Some(id)) => C::SoundEntity(play::SoundEntity {
-                    sound: s.sound,
-                    source: s.source,
-                    id,
-                    volume: s.volume,
-                    pitch: s.pitch,
-                    seed: s.seed,
-                }),
-                (packet, _) => packet,
-            }
-            .encode();
-            let range = f64::from(heard.volume.max(1.0)) * 16.0;
-            // Wrapped for the level's viewers too: one bound to an entity for those tracking it.
-            let (dimension, at) = (sound.dimension, sound.at);
-            host.hub
-                .send_viewed_sound(dimension, at, range, sound.entity, || packet.clone());
-            send_native_nearby(
-                host,
-                sound.dimension,
-                packet,
-                false,
-                sound.except,
-                |position| within_range(sound.at, position, range),
-            );
+            self.deliver_native_sound(sound);
         }
     }
 

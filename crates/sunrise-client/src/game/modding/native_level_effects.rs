@@ -10,6 +10,18 @@ use mod_api::{LevelRef, PlayerRef, PlayerWorldRefusal, SoundSource};
 use sunrise_client::particles::ParticleOptions;
 use sunrise_world::registry::BlockStateId;
 
+/// Validated inputs for queueing or deferring a level or entity-bound native sound.
+pub(super) struct NativeSoundRequest<'a> {
+    pub(super) level: LevelRef,
+    pub(super) sound: &'a str,
+    pub(super) at: [f64; 3],
+    pub(super) source: SoundSource,
+    pub(super) volume: f32,
+    pub(super) pitch: f32,
+    pub(super) except: Option<u32>,
+    pub(super) entity: Option<i32>,
+}
+
 impl Game<'_> {
     /// The level's dimension id, for a handle of this open on the server.
     fn native_level_dimension(&self, level: LevelRef) -> Option<&'static str> {
@@ -42,23 +54,31 @@ impl Game<'_> {
                 Err(_) => return false,
             },
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, except, None)
+        self.native_queue_sound(NativeSoundRequest {
+            level,
+            sound,
+            at,
+            source,
+            volume,
+            pitch,
+            except,
+            entity: None,
+        })
     }
     /// Queue or defer a validated level or entity-bound sound (`Level.playSound`), leaving out
     /// `except` and optionally binding to `entity`. Inside an open transaction the sound waits in
     /// `PendingWrite::Sound` until root commit (drawing its seed on publish) and discards on abort.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn native_queue_sound(
-        &mut self,
-        level: LevelRef,
-        sound: &str,
-        at: [f64; 3],
-        source: SoundSource,
-        volume: f32,
-        pitch: f32,
-        except: Option<u32>,
-        entity: Option<i32>,
-    ) -> bool {
+    pub(super) fn native_queue_sound(&mut self, request: NativeSoundRequest<'_>) -> bool {
+        let NativeSoundRequest {
+            level,
+            sound,
+            at,
+            source,
+            volume,
+            pitch,
+            except,
+            entity,
+        } = request;
         let Some(dimension) = self.native_level_dimension(level) else {
             return false;
         };

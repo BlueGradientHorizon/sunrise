@@ -63,10 +63,38 @@ right away; block updates and replacement effects wait for the outermost commit.
 running loot, experience or break effects.
 
 Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
-effect immediately, even inside a transaction. Equipment sounds and equip/unequip
-events from `LivingRef::set_equipment` also happen immediately. An abort does not
-undo these writes or effects. Use journaled capability handlers when you need rollback.
+`LivingRef::set_equipment`, non-player `LivingRef::hurt_and_break`, and the
+armor-stand `slot_set` paths take effect immediately, even inside a transaction.
+Equipment sounds, equip/unequip events from `LivingRef::set_equipment`, and the
+equipment-break entity event from non-player `LivingRef::hurt_and_break` also
+happen immediately so the write and its notification stay on the same side of the
+rollback boundary. An abort does not undo these writes or effects. Use journaled
+capability handlers when you need rollback.
+
+## Deferred level, entity, and player effects
+
+Server-side mod effect calls issued while a transaction is open wait for the outermost commit and
+are discarded on rollback or an aborted nested transaction:
+
+- `LevelRef::play_sound`, `LevelRef::send_particles`, `LevelRef::level_event`,
+  `LevelRef::block_break_effect`, `LevelRef::global_level_event` (and the `LevelWriteHost`
+  counterparts `play_sound`, `send_particles`, `level_event`)
+- `EntityRef::play_sound`, `EntityRef::play_bound_sound`, `EntityRef::broadcast_event`
+- `PlayerRef::play_sound`, `PlayerRef::stop_sound`
+
+Argument and handle validation still happens at the call, so invalid requests return `false`
+immediately. On the outermost commit, each deferred effect replays in the level where it was
+requested (even if another level is active when the transaction commits) and delivers its packets
+in exact call order across all effect kinds without draining unrelated queued effects.
+
+Random-number streams advance only when an effect is actually published:
+
+- The server sound-seed stream (used by `LevelRef::play_sound`, `EntityRef::play_sound`,
+  `EntityRef::play_bound_sound`, and `LevelWriteHost::play_sound`) advances at the call outside a
+  transaction, at the outermost commit inside one, and stays untouched on rollback or nested abort.
+- The request level's random (`world.random`, used by `PlayerRef::play_sound` for its `nextLong`
+  seed) advances at the call outside a transaction, at the outermost commit in the request's level
+  inside one, and stays untouched on rollback or nested abort.
 
 ## Spawning and removing entities
 

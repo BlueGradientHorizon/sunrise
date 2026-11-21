@@ -36,6 +36,14 @@ every player in range hears it, except the player in `except`. Pass the player w
 sound for its action; pass `None` to play it to everyone. The game finds that player's connection itself. A fake
 player has no client, so it leaves no one out; a stale player handle queues nothing and the call returns `false`.
 
+Inside an open transaction, `LevelRef::play_sound`, `EntityRef::play_sound`, `EntityRef::play_bound_sound`,
+`PlayerRef::play_sound`, and `PlayerRef::stop_sound` validate arguments at the call and defer publication until the
+outermost commit, discarding on rollback or an aborted nested transaction. Committed effects replay in each
+request's level and deliver packets in call order across all effect kinds. The server sound-seed stream (for
+level and entity sounds) and the request level's random (for `PlayerRef::play_sound`'s `nextLong` seed) advance at
+the call outside a transaction, at the outermost commit inside one, and remain untouched on rollback or nested
+abort. (By contrast, `HitHost::play_sound_at` and `play_sound_from` below queue immediately at the call.)
+
 ## Engine playback and live parameters
 
 `play_sound` also observes transient playback updates. `event.starting` is true for a
