@@ -481,8 +481,8 @@ comes out of the headless-engine work.
   a game that can't load.
 - Windows:
   `irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex`
-  The script does the same into `%LOCALAPPDATA%\Sunrise` (`-Version`, `-Dir`), with junctions instead of
-  links (no admin rights), and adds `bin` to the user's PATH. It finds OpenSSL 3 on the PATH or in Git for
+  The script does the same into `%LOCALAPPDATA%\Sunrise` (`-Version <tag>`, such as `-Version 26.3-0.1.0` for a
+  stable line, and `-Dir`), with junctions instead of links (no admin rights), and adds `bin` to the user's PATH. It finds OpenSSL 3 on the PATH or in Git for
   Windows to check the signature.
 - **Layout.** Each release goes to `<dir>/releases/<tag>` and `<dir>/current` points at the one in use, so an
   update or a rollback is one link. `<bin>/sunrise-server` and `<bin>/sunrise-prepare` are two-line launchers
