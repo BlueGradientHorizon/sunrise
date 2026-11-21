@@ -887,9 +887,13 @@ struct ServedContentLoadError {
 
 impl std::fmt::Display for ServedContentLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stage = match self.stage {
+            ServedContentStage::Read => "read",
+            ServedContentStage::Admit => "admit",
+        };
         write!(
             f,
-            "Sunrise: served mod {} content failed to load: {}",
+            "Sunrise: served mod {} content failed to {stage}: {}",
             self.mod_id, self.detail
         )
     }
