@@ -1,6 +1,7 @@
-//! The Model Context Protocol, as Sunrise's three servers speak it (`sunrise-ctl mcp`,
-//! `sunrise-server mcp`, `sunrise-launcher mcp`: docs/agent-control.md, docs/server.md section 8):
+//! The Model Context Protocol for `sunrise-ctl mcp` and `sunrise-server mcp`:
 //! JSON-RPC 2.0 over stdin and stdout, one message per line.
+//! The separate launcher has its own MCP implementation. Its `game_*` tools depend on the
+//! wire contract with the installed game's `sunrise-ctl mcp`, not on this crate.
 //!
 //! Two revisions, newest first. `2026-07-28` is stateless: every request carries its version,
 //! its capabilities and who it is in `_meta`, servers answer `server/discover`, every result
@@ -10,9 +11,8 @@
 //! than this crate). A request carrying `_meta` is served statelessly whatever the process
 //! answered before it, as the revision requires.
 //!
-//! Each server supplies its identity, its instructions and the two tool methods; the protocol
-//! methods (`server/discover`, `initialize`), the framing and the line loop live here, so the
-//! three cannot drift apart.
+//! Each binary supplies its identity, instructions and the two tool methods. This crate
+//! handles `server/discover`, `initialize`, framing and the line loop for both.
 //!
 //! ## Input tolerances
 //!
