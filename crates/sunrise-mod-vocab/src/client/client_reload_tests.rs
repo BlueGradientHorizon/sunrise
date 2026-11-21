@@ -63,6 +63,32 @@ fn registry_views_and_explicit_order_before_vanilla() {
 }
 
 #[test]
+fn mixed_graph_leaves_minecraft_and_connected_listeners_in_registration_order() {
+    let mut listeners = ClientListenerRegistry::new();
+    let model_manager = VanillaClientListeners::model_manager();
+    let extra = id("minecraft:extra");
+    let after_extra = id("demo:after_extra");
+    let before = id("demo:before");
+    let dangling = id("demo:dangling");
+    for name in [&extra, &after_extra, &before, &dangling] {
+        listeners
+            .add_listener(name.clone(), files(), Arc::new(Boundary))
+            .unwrap();
+    }
+    listeners
+        .add_dependency(extra.clone(), after_extra.clone())
+        .unwrap();
+    listeners
+        .add_dependency(before.clone(), model_manager.clone())
+        .unwrap();
+    let sorted = listeners.finish().unwrap();
+    assert_eq!(
+        sorted.into_iter().map(|entry| entry.id).collect::<Vec<_>>(),
+        [extra, after_extra, before, model_manager, dangling]
+    );
+}
+
+#[test]
 fn handled_registration_error_does_not_poison_finish() {
     let mut listeners = ClientListenerRegistry::new();
     let ok = id("test_mod:ok");

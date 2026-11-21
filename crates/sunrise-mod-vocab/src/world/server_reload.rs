@@ -25,12 +25,15 @@ impl VanillaServerListeners {
     pub fn first() -> Identifier {
         Self::functions()
     }
+    pub(crate) fn functions_ref() -> &'static Identifier {
+        static ID: LazyLock<Identifier> =
+            LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
+        &ID
+    }
     /// Vanilla's function library. Use this anchor rather than its string value,
     /// which need not match NeoForge's identifier.
     pub fn functions() -> Identifier {
-        static ID: LazyLock<Identifier> =
-            LazyLock::new(|| Identifier::parse("minecraft:function_library").unwrap());
-        ID.clone()
+        Self::functions_ref().clone()
     }
     /// Last vanilla server reload listener, matching NeoForge's
     /// `VanillaServerListeners.LAST` (aliases [`Self::functions`]).
@@ -185,7 +188,6 @@ impl dyn ServerReloadListeners + '_ {
 pub struct ServerListenerRegistry {
     core: ReloadCore<dyn ServerReloadListener>,
     retained: Vec<RetainedEntry>,
-    vanilla_anchor: Identifier,
 }
 impl ServerReloadListeners for ServerListenerRegistry {
     fn add_listener(
@@ -221,24 +223,22 @@ impl ServerReloadListeners for ServerListenerRegistry {
         ServerReloadGraphView { core: &self.core }
     }
     fn get_last_vanilla_listener(&self) -> &Identifier {
-        &self.vanilla_anchor
+        VanillaServerListeners::functions_ref()
     }
 }
 impl ServerListenerRegistry {
     pub(crate) fn new() -> Self {
-        let vanilla_anchor = VanillaServerListeners::functions();
         Self {
             core: ReloadCore::new(
-                vanilla_anchor.clone(),
+                VanillaServerListeners::functions(),
                 || -> Arc<dyn ServerReloadListener> { Arc::new(Boundary) },
             ),
             retained: Vec::new(),
-            vanilla_anchor,
         }
     }
     pub(crate) fn finish(self) -> Result<OrderedServerReload, ReloadOrderError> {
         Ok(OrderedServerReload {
-            listeners: self.core.finish(&self.vanilla_anchor)?,
+            listeners: self.core.finish(VanillaServerListeners::functions_ref())?,
             retained: self.retained,
         })
     }
