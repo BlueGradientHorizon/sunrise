@@ -2,7 +2,6 @@
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
-use crate::game::transactions::decision::InvalidReason;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -1312,11 +1311,11 @@ impl super::Game<'_> {
         pos: [i32; 3],
         inputs: [Option<&EngineStack>; 3],
         cancel: &mut bool,
-    ) -> Result<crate::menu::GrindstonePlaceEdits, InvalidReason> {
+    ) -> crate::menu::GrindstonePlaceEdits {
         use mod_api::item::menu::{GrindstonePlaceEdits, GrindstonePlaceInputs};
 
         let Ok([top, bottom, vanilla_output]) = inputs.try_into_api() else {
-            return Ok(Default::default());
+            return Default::default();
         };
         let inputs = GrindstonePlaceInputs {
             top: top.as_ref(),
@@ -1327,23 +1326,29 @@ impl super::Game<'_> {
             output: None,
             xp: -1,
         };
-        self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
-
-        // Refuse an invalid replacement before considering cancellation or experience.
-        let output = edits
-            .output
-            .try_into_engine(self.items())
-            .map_err(|_| InvalidReason::Count)?;
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
+        }))
+        .is_err()
+        {
+            log::error!("grindstone_place: listener panicked at {pos:?}");
+            *cancel = false;
+            return Default::default();
+        }
         if *cancel {
-            return Ok(Default::default());
+            return Default::default();
         }
-        if edits.xp < -1 {
-            return Err(InvalidReason::Plan);
-        }
-        Ok(crate::menu::GrindstonePlaceEdits {
-            output,
-            xp: edits.xp,
-        })
+        let xp = edits.xp.max(-1);
+        let output = match edits.output.try_into_engine(self.items()) {
+            Ok(output) => output,
+            Err(err) => {
+                log::warn!(
+                    "grindstone_place: ignoring invalid output replacement at {pos:?}: {err:?}"
+                );
+                None
+            }
+        };
+        crate::menu::GrindstonePlaceEdits { output, xp }
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,
@@ -1352,38 +1357,61 @@ impl super::Game<'_> {
         pos: [i32; 3],
         take: &crate::menu::PendingGrindstoneTake,
         cancel: &mut bool,
-    ) -> Result<crate::menu::GrindstoneTakeEdits, InvalidReason> {
+    ) -> crate::menu::GrindstoneTakeEdits {
         use mod_api::item::menu::{GrindstoneTakeEdits, GrindstoneTakeInputs};
 
+        let initial_xp = if take.xp >= 0 {
+            take.xp
+        } else {
+            let amount = take.vanilla_amount(&self.menu_env());
+            self.journal_level_random();
+            crate::stations::grindstone_xp_roll(amount, &mut self.world.random) as i32
+        };
         let Ok([top, bottom]) = [take.top.as_ref(), take.bottom.as_ref()].try_into_api() else {
-            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
         };
         let inputs = GrindstoneTakeInputs {
             top: top.as_ref(),
             bottom: bottom.as_ref(),
         };
         let mut edits = GrindstoneTakeEdits {
-            xp: take.xp,
+            xp: initial_xp,
             new_top: None,
             new_bottom: None,
         };
-        self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
-
-        // Invalid replacements refuse the click, even if the listener also cancelled.
-        let [new_top, new_bottom] = [edits.new_top, edits.new_bottom]
-            .try_into_engine(self.items())
-            .map_err(|_| InvalidReason::Count)?;
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
+        }))
+        .is_err()
+        {
+            log::error!("grindstone_take: listener panicked at {pos:?}");
+            *cancel = false;
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
+        }
         if *cancel {
-            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
+            return crate::menu::GrindstoneTakeEdits::initial(initial_xp);
         }
-        if edits.xp < -1 {
-            return Err(InvalidReason::Plan);
-        }
-        Ok(crate::menu::GrindstoneTakeEdits {
+        let new_top = match edits.new_top.try_into_engine(self.items()) {
+            Ok(stack) => stack,
+            Err(err) => {
+                log::warn!("grindstone_take: ignoring invalid top remainder at {pos:?}: {err:?}");
+                None
+            }
+        };
+        let new_bottom = match edits.new_bottom.try_into_engine(self.items()) {
+            Ok(stack) => stack,
+            Err(err) => {
+                log::warn!(
+                    "grindstone_take: ignoring invalid bottom remainder at {pos:?}: {err:?}"
+                );
+                None
+            }
+        };
+        crate::menu::GrindstoneTakeEdits {
             xp: edits.xp,
             new_top,
             new_bottom,
-        })
+        }
     }
 }
 

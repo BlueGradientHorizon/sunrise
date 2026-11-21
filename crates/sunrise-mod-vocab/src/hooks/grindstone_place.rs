@@ -3,15 +3,16 @@
 pub trait Hooks {
     /// A grindstone at `pos` made its result after its inputs changed, for
     /// the server player `player` (UUID) and `player_entity_id`
-    /// (`GrindstoneEvent.OnPlaceItem`, in `GrindstoneMenu.createResult`):
-    /// `inputs` lends the input stacks and vanilla result. Leave `edits.output` at
-    /// `None` to keep vanilla's result and experience, or set a replacement
-    /// and its `edits.xp` (`-1` for vanilla's award, or a nonnegative amount).
-    /// The hook runs inside an action on the guest's open grindstone. Cancellation, an
-    /// invalid replacement stack, `edits.xp` below `-1` on an uncancelled answer,
-    /// a write to a player's inventory or cursor or to the inputs, or a failing listener
-    /// leaves no result and undoes every write the listener made. A backing block that
-    /// changed and was restored still makes the place stale. Server-side.
+    /// (`GrindstoneEvent.OnPlaceItem`, matching NeoForge `CommonHooks.onGrindstoneChange`
+    /// in `GrindstoneMenu.createResult`): `inputs` lends the input stacks and vanilla
+    /// result. Runs inline without a decided-action transaction or rollback on cancel.
+    /// Cancellation is checked before converting `edits.output` and clears slot 2
+    /// without rolling back listener writes. Otherwise leave `edits.output` at `None`
+    /// to keep vanilla's result and experience, or set a replacement stack and its
+    /// `edits.xp` (any negative value falls through to vanilla's experience roll;
+    /// nonnegative values set the award). An invalid replacement stack is logged and
+    /// ignored, keeping vanilla's result. A panicking listener is caught and leaves
+    /// vanilla's result. Server-side.
     #[hook(
         dispatch = "flat",
         side = "server",

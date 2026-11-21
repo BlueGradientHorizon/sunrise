@@ -8,17 +8,12 @@ use super::{
     Game,
     stations::{Kind as StationKind, Station},
 };
-use crate::game::{
-    api_values::TryIntoApi,
-    decided_action::Epoch,
-    transactions::{After, decision::Reply},
-};
+use crate::game::{api_values::TryIntoApi, transactions::After};
 use mod_api::item::menu::AnvilCraftInputs;
-use std::cell::{Cell, RefCell};
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{GrindstonePlaceEdits, GrindstoneTakeEdits, Kind, Menu},
+    menu::{GrindstoneTakeEdits, Kind, Menu},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -213,8 +208,6 @@ impl Game<'_> {
                     .as_ref()
                     .is_some_and(|h| h.hub.guests[gi].spectator())
             });
-        let mut click_seal = None;
-        let mut commit_click = true;
         if let Some(gi) = guest {
             // createResult runs when the inputs change (or a rename): a click
             // elsewhere must not hand the hooks their own result again.
@@ -236,36 +229,12 @@ impl Game<'_> {
             });
             let mut undo = None;
             let hook = gs.menu.anvil_hook;
-            // A take the mods listen to is one action with its click: the click, the hook and the
-            // take's own effects share one transaction, so a refusal puts the guest's inventory,
-            // cursor and drops back with the menu as it was (`before`).
             let take_listened =
                 gs.menu.grind_hook && mod_api::__private::listened(mod_api::HookId::GrindstoneTake);
             let place_listened = gs.menu.grind_hook
                 && mod_api::__private::listened(mod_api::HookId::GrindstonePlace);
             let pos = gs.pos;
-            // Bind the owner and backing before running any part of the click. The grindstone
-            // has no block entity, so use the level's committed and tentative block epochs.
-            let admission = (take_listened || place_listened)
-                .then(|| {
-                    Some((
-                        self.guest_actor(conn)?,
-                        self.guest_station(conn)?,
-                        self.grindstone_backing(pos),
-                    ))
-                })
-                .flatten();
-            let fresh = |game: &Game<'_>| {
-                admission.is_some_and(|(_, (_, stamp), backing)| {
-                    game.guest_station(conn)
-                        .is_some_and(|(_, now)| now == stamp)
-                        && game.grindstone_backing(pos) == backing
-                })
-            };
-            if gs.kind == StationKind::Grindstone
-                && (take_listened || !self.transactions.is_empty())
-            {
-                click_seal = Some(self.transaction_open());
+            if gs.kind == StationKind::Grindstone && !self.transactions.is_empty() {
                 self.journal_guest_click(conn);
                 self.journal_station_click(conn, owner, &gs);
             }
@@ -325,62 +294,18 @@ impl Game<'_> {
                 .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                 .unwrap_or((0, 0));
             if let Some(take) = taken {
-                if take_listened && let Some((actor, (route, _), _)) = admission {
-                    let read = gs.menu.mutation_stamp();
-                    let answer = RefCell::new(None::<GrindstoneTakeEdits>);
-                    let listener_cancelled = Cell::new(false);
-                    let applied = {
-                        let menu = RefCell::new(&mut *gs.menu);
-                        self.decided_action(
-                            "grindstone_take",
-                            route,
-                            actor,
-                            Epoch::Player,
-                            // The station is the one the click ran on, its block is as it was and
-                            // nothing the take read has changed.
-                            |game| fresh(game) && menu.borrow().mutation_stamp() == read,
-                            |game| {
-                                let mut cancel = false;
-                                let edits = match game.api_grindstone_take(
-                                    uuid,
-                                    entity_id,
-                                    pos,
-                                    &take,
-                                    &mut cancel,
-                                ) {
-                                    Ok(edits) => edits,
-                                    Err(reason) => return Reply::Invalid(reason),
-                                };
-                                if cancel {
-                                    listener_cancelled.set(true);
-                                    return Reply::Cancel;
-                                }
-                                *answer.borrow_mut() = Some(edits);
-                                Reply::Allow
-                            },
-                            |game| {
-                                let Some(edits) = answer.take() else {
-                                    return;
-                                };
-                                if edits.xp < 0 {
-                                    let amount = take.vanilla_amount(&game.menu_env());
-                                    game.grindstone_taken(pos, amount);
-                                } else {
-                                    game.grindstone_award(pos, edits.xp.unsigned_abs());
-                                }
-                                menu.borrow_mut()
-                                    .grindstone_take_inputs(&game.menu_env(), edits);
-                            },
-                        )
-                    };
-                    // A listener's cancel keeps the click (the result is still taken) and skips
-                    // the rest of onTake; any other refusal undoes the click as well.
-                    cancelled |= !applied;
-                    commit_click = applied || listener_cancelled.get();
-                } else if take_listened {
-                    // An unidentifiable actor must not dispatch a listened hook outside an action.
-                    cancelled = true;
-                    commit_click = false;
+                if take_listened {
+                    let mut cancel = false;
+                    let edits = self.api_grindstone_take(uuid, entity_id, pos, &take, &mut cancel);
+                    if cancel {
+                        // NeoForge CommonHooks.onGrindstoneTake: cancel keeps the click (the
+                        // result is still taken) and skips XP, level event 1042 and input
+                        // replacement.
+                        cancelled = true;
+                    } else {
+                        self.grindstone_award(pos, edits.xp.max(0) as u32);
+                        gs.menu.grindstone_take_inputs(&self.menu_env(), edits);
+                    }
                 } else {
                     ground_xp = gs.menu.grindstone_taken(
                         &self.menu_env(),
@@ -416,56 +341,18 @@ impl Game<'_> {
                 gs.menu.anvil_updated(result);
             }
             if recomputed && gs.kind == StationKind::Grindstone && gs.menu.grind_hook {
-                let (uuid, entity_id) = self
-                    .lan
-                    .as_ref()
-                    .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-                    .unwrap_or((0, 0));
-                if place_listened && let Some((actor, (route, _), _)) = admission {
-                    let read = gs.menu.mutation_stamp();
-                    let answer = RefCell::new(None::<GrindstonePlaceEdits>);
-                    let applied = {
-                        let menu = RefCell::new(&mut *gs.menu);
-                        self.decided_action(
-                            "grindstone_place",
-                            route,
-                            actor,
-                            Epoch::Player,
-                            |game| fresh(game) && menu.borrow().mutation_stamp() == read,
-                            |game| {
-                                let mut cancel = false;
-                                let edits = match game.api_grindstone_place(
-                                    uuid,
-                                    entity_id,
-                                    pos,
-                                    menu.borrow().grindstone_place(),
-                                    &mut cancel,
-                                ) {
-                                    Ok(edits) => edits,
-                                    Err(reason) => return Reply::Invalid(reason),
-                                };
-                                if cancel {
-                                    return Reply::Cancel;
-                                }
-                                *answer.borrow_mut() = Some(edits);
-                                Reply::Allow
-                            },
-                            |_| {
-                                if let Some(edits) = answer.take() {
-                                    menu.borrow_mut().grindstone_placed(edits, false);
-                                }
-                            },
-                        )
-                    };
-                    // A cancel, a refusal and a stale read all leave no result.
-                    if !applied {
-                        gs.menu.grindstone_placed(Default::default(), true);
-                    }
+                if place_listened {
+                    let mut cancel = false;
+                    let edits = self.api_grindstone_place(
+                        uuid,
+                        entity_id,
+                        pos,
+                        gs.menu.grindstone_place(),
+                        &mut cancel,
+                    );
+                    gs.menu.grindstone_placed(edits, cancel);
                 } else {
-                    // Without a subscriber use the vanilla result. A missing listener identity
-                    // on the subscribed route instead refuses it, just like a stale read.
-                    gs.menu
-                        .grindstone_placed(Default::default(), place_listened);
+                    gs.menu.grindstone_placed(Default::default(), false);
                 }
             }
             if recomputed && gs.kind == StationKind::Smithing {
@@ -487,7 +374,7 @@ impl Game<'_> {
                 self.grindstone_taken(gs.pos, amount);
             }
             if let Some(xp) = ground_xp {
-                self.grindstone_award(gs.pos, xp.unsigned_abs());
+                self.grindstone_award(gs.pos, xp.max(0) as u32);
             }
             // ItemSmithedEvent comes before the rest of SmithingMenu.onTake.
             let smithed = std::mem::take(&mut gs.menu.item_smithed);
@@ -517,26 +404,12 @@ impl Game<'_> {
         {
             *menus.station = Some(gs);
         }
-        if let Some(seal) = click_seal {
-            self.transaction_close(&seal, commit_click);
-        }
         if grindstone {
             self.after_commit(After::StationContent(conn, owner, window));
         } else {
             self.lan_send_station(conn);
         }
         true
-    }
-
-    fn grindstone_backing(
-        &self,
-        [x, y, z]: [i32; 3],
-    ) -> (u64, u64, sunrise_world::registry::BlockStateId) {
-        (
-            self.world.revision,
-            self.transactions.block_writes(),
-            self.world.block(x, y, z),
-        )
     }
 
     /// How many slots of its own the guest's open station menu has before the

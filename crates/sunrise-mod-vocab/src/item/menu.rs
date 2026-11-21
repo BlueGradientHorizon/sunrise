@@ -242,7 +242,8 @@ pub struct GrindstonePlaceInputs<'a> {
 }
 
 /// The shared answer to `grindstone_place`, initially no override and `-1` XP.
-/// The game validates the final answer before applying it.
+/// Cancellation is checked before converting `output`; an invalid replacement is logged
+/// and ignored so vanilla's result stays intact.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
@@ -250,8 +251,8 @@ pub struct GrindstonePlaceEdits {
     /// Leave vanilla's result and experience with `None`, or replace the result with a
     /// valid stack. To clear the result, cancel the hook instead.
     pub output: Option<ItemStack>,
-    /// Experience to award when the replacement is taken. `-1` uses vanilla's award;
-    /// values below `-1` are refused unless cancelled.
+    /// Experience to award when the replacement is taken. Any negative value falls
+    /// through to vanilla's award; nonnegative values set the award.
     pub xp: i32,
 }
 /// The input stacks before the grindstone result was taken, borrowed for the
@@ -266,15 +267,15 @@ pub struct GrindstoneTakeInputs<'a> {
     pub bottom: Option<&'a ItemStack>,
 }
 
-/// The shared answer to `grindstone_take`. Both remainders start at `None`
-/// and the game validates the final answer before applying any of it.
+/// The shared answer to `grindstone_take`. Both remainders start at `None`;
+/// cancellation is checked before converting remainders, and an invalid remainder is
+/// logged and ignored as an empty slot.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal
 // no wire: staged edits are applied in-process at the end of the hook call.
 pub struct GrindstoneTakeEdits {
-    /// Experience to award, initially what `grindstone_place` set or `-1` for
-    /// vanilla's award. Set a nonnegative amount to override it. Values below
-    /// `-1` are refused unless the take is cancelled.
+    /// Experience to award, initially the resolved award (`>= 0`, from `grindstone_place`
+    /// or vanilla's pre-rolled award). Non-positive values (`<= 0`) spawn no experience orbs.
     pub xp: i32,
     /// A valid replacement for the top input, or `None` to empty the slot.
     pub new_top: Option<ItemStack>,
