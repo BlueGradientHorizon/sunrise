@@ -537,23 +537,62 @@ pub(crate) fn receives_cancelled(hook: generated::HookId) -> bool {
 pub(crate) fn listening(
     hook_id: generated::HookId,
 ) -> impl Iterator<Item = (bool, &'static ModEntry)> {
-    installed().into_iter().flat_map(move |installed| {
-        installed
-            .subscribers
-            .subscribers(hook_id as usize)
-            .filter(move |subscriber| {
-                !installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed)
-            })
-            .map(move |subscriber| {
-                // Every listener of a hook the loop reaches is one more entered: scoped
-                // resources end the previous listener's lease on it.
-                bump_listener_serial();
-                (
-                    subscriber.receives_cancelled,
-                    &installed.mods[subscriber.index],
-                )
-            })
+    listening_matching(hook_id, |_| true)
+}
+
+/// Like [`listening`], skipping any subscriber that `allow` rejects before entering it or
+/// advancing the listener serial.
+pub(crate) fn listening_matching<'a>(
+    hook_id: generated::HookId,
+    mut allow: impl FnMut(&str) -> bool + 'a,
+) -> impl Iterator<Item = (bool, &'static ModEntry)> + 'a {
+    let mut subscribers = installed().map(|installed| {
+        (
+            installed,
+            installed.subscribers.subscribers(hook_id as usize),
+        )
+    });
+    std::iter::from_fn(move || {
+        let (installed, subscribers) = subscribers.as_mut()?;
+        for subscriber in subscribers.by_ref() {
+            if installed.disabled[subscriber.index].load(std::sync::atomic::Ordering::Relaxed) {
+                continue;
+            }
+            let entry = &installed.mods[subscriber.index];
+            if !allow(entry.id) {
+                continue;
+            }
+            // Every listener of a hook the loop reaches is one more entered: scoped
+            // resources end the previous listener's lease on it.
+            bump_listener_serial();
+            return Some((subscriber.receives_cancelled, entry));
+        }
+        None
     })
+}
+
+/// Dispatch `add_pack_finders` only to enabled subscribers admitted by `allow`.
+/// Startup discovery runs before saved switches are applied to the global dispatch table, so the
+/// caller filters disabled mods before entering their crash scope or invoking their listener.
+pub(crate) fn dispatch_add_pack_finders_for(
+    mut host: crate::HostSide<'_>,
+    packs: &mut dyn crate::PackFinders,
+    allow: impl FnMut(&str) -> bool,
+) {
+    if !enabled_listened(generated::HookId::AddPackFinders) {
+        return;
+    }
+    let contained = outside_world();
+    let mut event = crate::AddPackFindersEvent { packs };
+    let mut entered = ListenerScope::new();
+    for (_, entry) in listening_matching(generated::HookId::AddPackFinders, allow) {
+        let hooks = entered.enter(entry, "add_pack_finders");
+        if let Err(refusal) = refusable(contained, || {
+            hooks.add_pack_finders(host.reborrow(), &mut event)
+        }) {
+            refusal.report();
+        }
+    }
 }
 
 /// Look up the enabled subscriber owning a namespaced kind without walking the hook's listeners.

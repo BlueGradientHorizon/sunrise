@@ -130,7 +130,7 @@ impl ModsState {
         }));
     }
 
-    fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
+    pub(super) fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
         for id in mod_api::__private::installed_code_ids() {
             mod_api::__private::set_mod_enabled(id, !disabled.contains(id));
         }
@@ -139,6 +139,13 @@ impl ModsState {
                 .applied
                 .store(true, std::sync::atomic::Ordering::Release);
         }
+    }
+
+    pub(super) fn has_unapplied_code_switches(&self) -> bool {
+        self.code_switches.as_ref().is_some_and(|switches| {
+            !switches.disabled.is_empty()
+                && !switches.applied.load(std::sync::atomic::Ordering::Acquire)
+        })
     }
 
     pub(super) fn code_owner_enabled(&self, owner: &str) -> bool {
