@@ -9,10 +9,7 @@ use mod_api::{
     RegisterGuiLayersEvent, RegistrationContext, content::crash::current_native_mod,
 };
 use std::sync::Mutex;
-use sunrise_client::{
-    gui_layers::VanillaGuiLayer,
-    hud::{Blend, HudBatch, rgba},
-};
+use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -310,6 +307,8 @@ fn a_refused_gui_layer_does_not_leave_partial_paint() {
 #[test]
 #[ignore = "daily"]
 fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
+    use sunrise_client::hud::{Blend, rgba};
+
     let test = "game::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
     crate::game::in_own_process(test, || {
         struct Wrapper(&'static str, bool);
