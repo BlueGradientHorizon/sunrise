@@ -77,8 +77,10 @@ READERS = {
         "tools/release_train.py",
     ],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
+    # content_keys' source guard searches these crates' sources for the files that define declaration types.
     "sunrise-mod-package": [
-        "Cargo.lock", "docs/developer-install.md", "tools/mixins/narrow-reference-rule.patch",
+        "Cargo.lock", "crates/sunrise-core/src", "crates/sunrise-mod-vocab/src", "docs/developer-install.md",
+        "tools/mixins/narrow-reference-rule.patch",
     ],
     "sunrise-mod-render": MOD_API_GEN,
     "sunrise-official": ["packaging/windows/exe.rs"],
@@ -149,12 +151,42 @@ class Workspace:
                 if dependency["name"] in self.dependents:
                     self.dependents[dependency["name"]].add(package["name"])
 
+        # The stable mod API auditor reads every workspace package manifest, then indexes library
+        # sources reachable from the facade and its three seam crates. Discover both sets from
+        # Cargo metadata so adding a workspace member or an internal dependency needs no scope-list edit.
+        packages = {package["name"]: package for package in metadata["packages"]}
+        self.mod_api_gen_inputs = {relative(os.path.join(root, "Cargo.toml"))}
+        self.mod_api_gen_inputs.update(relative(package["manifest_path"]) for package in metadata["packages"])
+        pending = ["sunrise-mod-api", "sunrise-mod-vocab", "sunrise-core", "sunrise-mod-runtime"]
+        indexed = set()
+        while pending:
+            name = pending.pop()
+            if name in indexed or name not in packages:
+                continue
+            indexed.add(name)
+            package = packages[name]
+            for dependency in package["dependencies"]:
+                # OutsideSeam follows normal dependencies (including target-specific ones), not
+                # build or dev dependencies. Cargo metadata resolves workspace package names here.
+                if dependency.get("kind") in (None, "normal") and dependency["name"] in packages:
+                    pending.append(dependency["name"])
+            for target in package["targets"]:
+                if {"lib", "proc-macro"}.intersection(target.get("kind", ())):
+                    self.mod_api_gen_inputs.add(posixpath.dirname(relative(target["src_path"])))
+
     def owners(self, path):
         return {name for name, dirs in self.dirs.items() if any(under(path, d) for d in dirs)}
 
     def readers(self, path, table=None):
+        dynamic = table is None
         table = READERS if table is None else table
-        return {name for name, paths in table.items() if name in self.dirs and any(under(path, p) for p in paths)}
+        readers = {name for name, paths in table.items()
+                   if name in self.dirs and any(under(path, p) for p in paths)}
+        if dynamic and "sunrise-mod-api-gen" in self.dirs and any(
+            under(path, p) for p in self.mod_api_gen_inputs
+        ):
+            readers.add("sunrise-mod-api-gen")
+        return readers
 
     def scope(self, paths):
         """The packages to test, or None for the whole workspace."""

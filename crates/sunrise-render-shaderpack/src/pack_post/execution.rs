@@ -1712,7 +1712,20 @@ impl PackPost {
                 self.draws.bind(&mut rp, "OUTLINE");
             }
             rp.set_vertex_buffer(0, lines.edges.slice(..));
-            rp.draw(0..6, 0..lines.count);
+            // Each edge reads the width of the stroke drawn over it from the second buffer:
+            // the next stroke's edge (the outline buffer from that stroke's first edge on, as
+            // this stroke's edges are instances from its own first edge on), or the last
+            // stroke's own.
+            let stroke_bytes = u64::from(lines.count) * 32;
+            for stroke in 0..lines.strokes {
+                let over = if stroke + 1 < lines.strokes {
+                    stroke_bytes
+                } else {
+                    0
+                };
+                rp.set_vertex_buffer(1, lines.edges.slice(over..));
+                rp.draw(0..6, stroke * lines.count..(stroke + 1) * lines.count);
+            }
         }
         self.mips_valid &= !pass.written;
         self.lines = Some(pass);

@@ -288,6 +288,12 @@ mod sky_disc_blend_tests;
 mod undrawn_terrain_tests;
 
 #[cfg(test)]
+mod line_side_tests;
+
+#[cfg(test)]
+mod geometry_input_tests;
+
+#[cfg(test)]
 mod full_outputs_tests;
 
 #[cfg(test)]
@@ -328,6 +334,9 @@ mod translucent_color_tests;
 
 #[cfg(test)]
 mod noise_resolution_tests;
+
+#[cfg(test)]
+mod player_boolean_tests;
 
 #[cfg(test)]
 mod snorm_tests;

@@ -526,10 +526,12 @@ pub struct World<'a> {
 }
 
 /// This frame's block outline, when the pack draws it: the outline buffer (one instance per
-/// edge, pack_lines.rs) and the edges in it.
+/// edge, pack_lines.rs), the edges of a stroke and the strokes in it, each drawn over the one
+/// before (a high contrast outline's black stroke, then its bright one).
 pub struct Lines {
     pub edges: wgpu::Buffer,
     pub count: u32,
+    pub strokes: u32,
 }
 
 /// This frame's clouds, when the pack draws them: their vertices, uniform, quad indices and

@@ -88,7 +88,7 @@ class FetchTests(unittest.TestCase):
 
 
 class ArchiveTests(unittest.TestCase):
-    def test_a_base_archive_keeps_manifests_for_members_outside_crates(self):
+    def test_a_base_archive_keeps_sources_for_members_outside_crates(self):
         with tempfile.TemporaryDirectory() as directory:
             repo, base = Path(directory, "repo"), Path(directory, "base")
             base.mkdir()
@@ -99,6 +99,7 @@ class ArchiveTests(unittest.TestCase):
                 "Cargo.toml": workspace,
                 f"{member}/Cargo.toml": manifest,
                 f"{member}/src/lib.rs": "pub struct Example;\n",
+                f"{member}/src/nested.rs": "pub struct Nested;\n",
                 "crates/game/src/lib.rs": "",
                 "tools/layering/config.toml": "",
             }.items():
@@ -113,7 +114,8 @@ class ArchiveTests(unittest.TestCase):
                 surface_report.unpack("HEAD", base)
             self.assertEqual((base / "Cargo.toml").read_text(), workspace)
             self.assertEqual((base / member / "Cargo.toml").read_text(), manifest)
-            self.assertFalse((base / member / "src/lib.rs").exists())
+            self.assertEqual((base / member / "src/lib.rs").read_text(), "pub struct Example;\n")
+            self.assertEqual((base / member / "src/nested.rs").read_text(), "pub struct Nested;\n")
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")

@@ -1,6 +1,6 @@
 use super::Game;
 
-pub(super) use sunrise_client_gameplay::motion_ids::motion_at;
+pub use sunrise_client_gameplay::motion_ids::motion_at;
 
 /// A block entity's `mark_motion` id: its position, packed into the 32 bits beside the tag
 /// (x and z wrap at 2048 blocks and y at 1024; two block entities that far apart in one frame's

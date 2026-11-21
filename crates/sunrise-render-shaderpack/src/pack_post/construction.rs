@@ -1497,7 +1497,7 @@ pub fn build_compute(
     pack: &Resources<'_>,
 ) -> Option<Pass> {
     let index = |name: &str, ty: &str| {
-        pack_uniforms::index(name).or_else(|| custom_index(custom, name, ty))
+        pack_uniforms::index_in(name, false).or_else(|| custom_index(custom, name, ty))
     };
     let interface = &c.interface;
     let (entries, samplers, slots, reads, shadow_reads, images) = bindings(
@@ -2411,7 +2411,10 @@ impl PackPost {
             .clouds
             .zip(cloud_geometry.as_ref())
             .and_then(|(p, g)| build(p, Some(g)));
-        let line_buffers = [Some(crate::pack_lines::layout())];
+        let line_buffers = [
+            Some(crate::pack_lines::layout()),
+            Some(crate::pack_lines::over_layout()),
+        ];
         let line_geometry = Geometry {
             buffers: &line_buffers,
             table: None,
