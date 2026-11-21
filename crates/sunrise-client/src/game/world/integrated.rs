@@ -890,7 +890,7 @@ impl Game<'_> {
     }
 
     /// The integrated server's world open: `IntegratedServer.initServer`'s segment
-    /// from `load_world` through `settle_spawn` and the initial `saveEverything`.
+    /// from `load_world` through player spawn preparation and initial `saveEverything`.
     fn integrated_open(
         &mut self,
         launch: &Launch,
@@ -1000,22 +1000,20 @@ impl Game<'_> {
         view.start(Stage::LoadInitialChunks, 0);
         startup::time("server.prepare_levels", || self.prepare_levels())?;
         view.finish(Stage::LoadInitialChunks);
-        startup::time("server.settle_spawn", || self.settle_spawn())?;
+        startup::time("server.settle_spawn", || self.settle_player_spawn())?;
         // IntegratedServer.initServer calls saveEverything(false, true, true)
         // before ServerLifecycleHooks.handleServerStarting(this).
         startup::time("server.initial_save", || self.save_game())?;
         Ok((pipe, self.level.name.clone()))
     }
 
-    /// `MinecraftServer.stopServer`: abort generation, fire config unload,
-    /// then run the shared server shutdown sequence.
+    /// `MinecraftServer.stopServer`: abort generation, then run the shared shutdown.
     pub(super) fn stop_integrated(&mut self, crashed: bool) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
         self.levels.abort_parked_generation();
         // The close request: lifecycle observation stops.
         self.native_lifecycle.begin_close();
-        self.native_configs_server_stop();
         self.finish_server_save(false, crashed)
     }
 }
@@ -1473,6 +1471,83 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(super) mod tests {
+    #[test]
+    #[ignore = "daily"]
+    fn integrated_quit_unloads_the_client_before_requesting_server_stop() {
+        use super::{Flags, Integrated, channel};
+        use crate::game::{
+            native_client_session::tests::logged_client,
+            native_entity_refs::tests::with_client_game, remote::RemoteDimensionEntry,
+        };
+        use mod_api::{ClientHost, ClientLevelUnloadEvent, Hooks, ModEntry};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use sunrise_client::level_loading::Reason;
+        use sunrise_protocol::packets::play::SpawnInfo;
+
+        struct Log(Arc<Flags>, Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Log {
+            fn client_level_unload(
+                &self,
+                _: &mut dyn ClientHost,
+                event: &mut ClientLevelUnloadEvent<'_>,
+            ) {
+                assert_eq!(event.dimension, "minecraft:overworld");
+                assert!(
+                    !self.0.stop.load(Ordering::Relaxed),
+                    "the client unloads before halt"
+                );
+                self.1.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        for closing_screen in [true, false] {
+            let flags = Arc::new(Flags::default());
+            let heard = Arc::new(AtomicUsize::new(0));
+            let mods = vec![ModEntry::new(
+                "unload",
+                Box::new(Log(flags.clone(), heard.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                with_client_game(|game| {
+                    let _server = logged_client(game);
+                    let login = SpawnInfo {
+                        dimension_type: 0,
+                        dimension: "minecraft:overworld".into(),
+                        seed: 0,
+                        game_type: 1,
+                        previous_game_type: None,
+                        debug: false,
+                        flat: true,
+                        last_death: None,
+                        portal_cooldown: 0,
+                        sea_level: 63,
+                    };
+                    game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                    game.integrated = Some(Integrated {
+                        flags: flags.clone(),
+                        thread: None,
+                        emergency_save: None,
+                        tasks: channel().0,
+                        world_name: "Test".into(),
+                        save_folder: "test".into(),
+                        rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                    });
+                    if closing_screen {
+                        game.begin_closing_save(true).unwrap();
+                        assert!(game.poll_closing_save().unwrap());
+                    }
+                    game.save_for_exit().unwrap();
+                    assert!(flags.stop.load(Ordering::Relaxed));
+                    assert_eq!(heard.load(Ordering::Relaxed), 1);
+                });
+            });
+        }
+    }
+
     use super::*;
     use mod_api::prelude::*;
 

@@ -480,11 +480,9 @@ impl Game<'_> {
     pub(in crate::game) fn native_client_level_load(&mut self, dimension: &str) {
         self.fire_client_level_load(dimension);
     }
-    /// The client dropped its level for `dimension` (`LevelEvent.Unload`
-    /// from `Minecraft.setLevel` and `disconnect`): replaced by another
-    /// dimension's, or on leaving the server. Once for each
-    /// `native_client_level_load`. Not told when the game itself quits.
-    /// Client-side.
+    /// NeoForge's client `LevelEvent.Unload` from `Minecraft.setLevel`,
+    /// `clearClientLevel` or `disconnect`: dimension replacement (after the
+    /// new Load), reconfiguration, ordinary leave or quit. Once per Load.
     pub(in crate::game) fn native_client_level_unload(&mut self, dimension: &str) {
         self.fire_client_level_unload(dimension);
     }
@@ -575,7 +573,7 @@ impl Game<'_> {
     /// loaded yet (NeoForge's `ServerAboutToStartEvent`, "called before the
     /// server begins loading anything"). Vanilla's `MinecraftServer.loadLevel`
     /// start. Server-side: the single player server thread once Play is
-    /// pressed, a dedicated server once its settings are read. On a successful
+    /// pressed, a dedicated server once its network listener has bound. On a successful
     /// open this is followed by `native_level_load`, `native_server_starting`,
     /// and `native_server_started`; a failed open skips `native_server_starting`,
     /// `native_server_started`, and `native_server_stopping`, still runs
@@ -602,7 +600,7 @@ impl Game<'_> {
     /// levels, and storage release), on both integrated and dedicated servers.
     /// Always fires once startup has begun, even when startup failed, the tick
     /// loop errored or panicked, the final save failed, or a shutdown listener
-    /// panicked.
+    /// panicked. Server config unloading follows this notification.
     pub(in crate::game) fn native_server_stopped(&mut self, dedicated: bool) {
         self.fire_server_stopped(dedicated);
     }

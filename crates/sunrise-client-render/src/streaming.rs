@@ -498,6 +498,18 @@ pub struct StreamingUpdate {
     paused: bool,
 }
 
+impl StreamingUpdate {
+    /// Live columns that need to be saved before the plan removes them.
+    pub fn unloading_columns(&self) -> &[(i32, i32)] {
+        &self.far
+    }
+
+    /// Leave the live columns alone when their save could not be submitted.
+    pub fn keep_columns(&mut self) {
+        self.far.clear();
+    }
+}
+
 /// Result of processing generation results, pausing before a late full save.
 pub enum PlanStep {
     Ready(StreamingUpdate),

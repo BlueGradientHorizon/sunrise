@@ -6,7 +6,8 @@ pub trait Hooks {
     /// loaded yet (NeoForge's `ServerAboutToStartEvent`, "called before the
     /// server begins loading anything"). Vanilla's `MinecraftServer.loadLevel`
     /// start. Server-side: the single player server thread once Play is
-    /// pressed, a dedicated server once its settings are read. On a successful
+    /// pressed, a dedicated server after its listener has bound. A bind
+    /// failure skips this event and still reaches `server_stopped`. On a successful
     /// open this is followed by `level_load`, `server_starting`, and
     /// `server_started`; a failed open skips `server_starting`,
     /// `server_started`, and `server_stopping`, still runs `stopServer`
@@ -19,7 +20,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "ServerAboutToStartEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn server_about_to_start(dedicated: bool);
 }

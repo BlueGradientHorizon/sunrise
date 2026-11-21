@@ -1,12 +1,39 @@
 ids = [
     "hook:world_lifecycle",
+    "hook:world_lifecycle.context",
+    "hook:world_lifecycle.phase",
+    "hook:world_lifecycle.error_text",
     "method:Hooks::world_lifecycle",
-    "type:WorldPhase",
     "type:WorldLifecycleEvent",
+    "type:WorldLifecycleEvent.context",
+    "type:WorldLifecycleEvent.phase",
+    "type:WorldLifecycleEvent.error_text",
+    "type:WorldPhase",
+    "type:WorldPhase.WorldOpenFailed",
+    "type:WorldPhase.WorldCloseFinal",
+    "type:WorldPhase.WorldCloseFailed",
+    "type:HookId.WorldLifecycle",
+    "hook:server_about_to_start",
     "hook:server_starting",
     "hook:server_stopping",
+    "hook:server_stopped",
     "hook:level_load",
+    "hook:level_save",
     "hook:level_unload",
+    "hook:create_spawn_position",
+    "hook:world_saved",
+    "hook:config_unloading",
+    "hook:client_level_unload",
 ]
-why = "Aligned server and level lifecycle hooks to vanilla 26.3 (`MinecraftServer.runServer`, `MinecraftServer.stopServer`, `DedicatedServer.initServer`, `IntegratedServer.initServer`, `ServerLevel.close`) and NeoForge (`ServerLifecycleHooks`, `ServerStoppingEvent`, `ServerStoppedEvent`, `LevelEvent.Load`, `LevelEvent.Unload`). Removed the Sunrise-only `world_lifecycle` hook and `WorldPhase` enum (including `WorldOpenFailed`, `WorldCloseFinal`, and `WorldCloseFailed`); startup and stop failures are reported through engine logs as in vanilla rather than a separate phase event. Bumped `server_starting` to version 3 so integrated servers also fire it after world/level loading (`level_load`), adopted pack/text setup, spawn preparation, and the initial save, before `server_started` and before handing the ready connection to the client. Bumped `server_stopping` to version 2 so it fires only on an orderly tick-loop exit before `stopServer`, matching NeoForge's `MinecraftServer.java.patch` (failed opens—including dedicated TCP bind failure before `server_about_to_start`—and tick crashes/panics skip straight to `stopServer` teardown and `server_stopped`). Bumped `level_load` to version 3 and `level_unload` to version 3 so all configured startup levels (including datapack dimensions) load in `LEVEL_STEM` order, levels save and close in creation order, idle non-Overworld levels evict chunks/entities without closing or firing `level_unload`/re-`level_load`, `stopServer` tears down network admission and players before the final world save, and `level_unload` fires during `stopServer` only after the final world save and each level's own close (`save.flush()`) succeed."
-migrate = "Remove `Hooks::world_lifecycle`, `WorldLifecycleEvent`, and `WorldPhase` imports and implementations. Move `WorldPhase::WorldCloseFinal` cleanup to `Hooks::server_stopped` (or per-level cleanup to `Hooks::level_unload`, keeping in mind that `level_unload` does not fire if the final world save or that level's own close fails—use `server_stopped` for unconditional cleanup). Where a mod previously handled `WorldPhase::WorldOpenFailed` or `WorldPhase::WorldCloseFailed`, rely on engine logs for the error text and clean up state in `Hooks::server_stopped`, which always runs on teardown after server startup enters. Rebuild against the bumped hook versions (`server_starting` v3, `server_stopping` v2, `level_load` v3, `level_unload` v3): move any work that must run before integrated world loading from `server_starting` to `server_about_to_start`, do not expect idle non-Overworld levels to fire `level_unload` or a second `level_load` on revisit, and move any unconditional shutdown cleanup that must also run after failed opens, tick crashes, or save failures from `server_stopping` or `level_unload` to `server_stopped`."
+why = "Follow vanilla 26.3's MinecraftServer.runServer, stopServer, createLevels, saveAllChunks, DedicatedServer.initServer, IntegratedServer.initServer, and Minecraft.setLevel, clearClientLevel, and exitWorldAndClose. NeoForge posts its server lifecycle events, LevelEvent.Load/Save/Unload and CreateSpawnPosition at those sites; ServerLifecycleHooks.handleServerStopped posts Stopped before unloading synced configs. Keeping a second world_lifecycle callback and separate failure phases would duplicate those events and expose a failure phase NeoForge does not have. A port bind failure now returns an initialization error after Stopped without opening the world."
+migrate = """
+Remove Hooks::world_lifecycle, WorldLifecycleEvent, WorldPhase, and HookId::WorldLifecycle. Replace the hook selection with server_stopped for unconditional server teardown or level_unload for a level's successful close.
+- WorldLifecycleEvent.phase / WorldPhase::WorldCloseFinal -> Hooks::server_stopped(&self, host: &mut dyn ServerHost, event: &mut ServerStoppedEvent) for server cleanup, or Hooks::level_unload with LevelUnloadEvent.dimension for per-level cleanup after a successful close. Do not expect a level unload when the final save or the level's own close fails.
+- WorldPhase::WorldOpenFailed and WorldPhase::WorldCloseFailed -> delete the failure-only branches; clean up in server_stopped and diagnose errors from the engine log or startup error, not a callback. WorldLifecycleEvent.error_text -> delete the read; there is no replacement event field.
+- WorldLifecycleEvent.context -> use ServerStoppedEvent.dedicated instead of context.authority to distinguish dedicated from integrated, or LevelUnloadEvent.dimension for the level being closed. Remove reads of context.epoch and context.tick from lifecycle callbacks; those values are not carried by the stop or unload events. If needed, allocate your state in server_about_to_start or level_load and release it in server_stopped or level_unload respectively.
+- server_about_to_start (v2) -> same signature; do not expect it on a dedicated bind failure. server_stopped (v2) -> same signature; it now covers failures even before AboutToStart. Cleanup must tolerate a server that never opened a world. Server configs are still loaded in the final level_save, level_unload and server_stopped callbacks; config_unloading (v2) -> same signature, now runs after server_stopped.
+- server_starting (v3) -> keep the callback for work after startup's level loading, spawn preparation and initial save. Move work that must precede integrated level creation to server_about_to_start. server_stopping (v2) -> keep for orderly shutdown while players and levels are still present. Move cleanup that must also run on failed init or after tick errors to server_stopped. Fabric SERVER_STOPPING has no exact equivalent at stopServer entry on failures.
+- level_load (v3) -> initialize state for event.dimension; the Overworld opens first, initializes its world spawn if needed, then the remaining configured stems load in registry traversal. Do not depend on any fixed order among those stems. create_spawn_position (v2) -> same signature; on a fresh world it runs between the Overworld Load and the other levels' Loads, not after the other levels have opened.
+- level_save (v2) and world_saved (v2) -> same signatures; the integrated startup save can run before server_starting, and final saves occur after network admission and players have been retired. A world save runs level_save in creation order, not active-level first. level_unload (v3) -> same signature: close notifications follow a successful final save and per-level close, in creation order. Idle chunk/entity eviction does not fire level_save or level_unload or a second level_load on revisit.
+- client_level_unload (v2) -> same signature; use it for per-level cleanup on replacement, reconfiguration, ordinary leave and quitting. It fires once for the retiring level; a replacement's client_level_load still comes first, and integrated quit unloads the client level before halting the server.
+"""

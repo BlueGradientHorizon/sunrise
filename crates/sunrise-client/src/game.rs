@@ -8805,6 +8805,7 @@ impl Game<'_> {
         let world_loading::PreparedWorld {
             save_root,
             shapes,
+            configured_levels,
             level,
             world,
             biomes,
@@ -8985,7 +8986,7 @@ impl Game<'_> {
         if self.remote.is_none() {
             self.load_scoreboard();
         }
-        self.open_configured_levels()?;
+        self.open_configured_levels(&configured_levels)?;
         Ok(stack)
     }
     fn finish_close_world(&mut self) -> Result<()> {
@@ -10221,12 +10222,7 @@ impl Game<'_> {
         }
     }
     /// Copy the live player and world state into the `Level` that gets saved.
-    pub(super) fn sync_level(&mut self) {
-        self.level.player_impulse_grace = self.player.as_ref().map(|p| p.impulse.reset_grace_time);
-        self.level.player_fall_particles = self
-            .player
-            .as_ref()
-            .map(|p| p.spawn_extra_particles_on_fall);
+    fn sync_world_level_data(&mut self) {
         // Level.write saves the game rules (game_rules.dat) with the rest.
         self.level.game_rules = self.ui.rules.by_name();
         // PrimaryLevelData.setDifficulty: /difficulty and the options button change it.
@@ -10237,6 +10233,15 @@ impl Game<'_> {
         // level.dat holds the Overworld clock's total, whichever level is in place.
         self.level.day_time = self.command_clock_time("minecraft:overworld");
         self.level.end_clock = Some(self.world.end_clock);
+    }
+
+    pub(super) fn sync_level(&mut self) {
+        self.sync_world_level_data();
+        self.level.player_impulse_grace = self.player.as_ref().map(|p| p.impulse.reset_grace_time);
+        self.level.player_fall_particles = self
+            .player
+            .as_ref()
+            .map(|p| p.spawn_extra_particles_on_fall);
         // A server has no player of its own; `enter_guest` puts one in
         // `self.player` only while a command reads it.
         if self.player.is_none() && self.options.dedicated.is_some() {
@@ -14173,7 +14178,8 @@ fn write_level_for_role(
 ) -> Result<()> {
     match (role.writes_singleplayer_player(), keep_owner_file) {
         (true, false) => level.write(dir, items),
-        // A crash save keeps the owner's file as last saved, and a legacy `Data.Player`.
+        // Player-first shutdown keeps the file just written by the live owner;
+        // an interrupted owner keeps their last file or legacy `Data.Player`.
         (true, true) => level.write_keeping_player(dir),
         (false, _) => level.write_without_player(dir),
     }

@@ -10,6 +10,102 @@ fn tick_ends_need_the_level_the_login_makes() {
     assert!(!client_has_level(true, Some(40)), "reconfiguring");
 }
 
+#[test]
+#[ignore = "daily"]
+fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit() {
+    use crate::game::{
+        native_client_session::tests::logged_client,
+        native_entity_refs::tests::with_client_game,
+        remote::{Received, RemoteDimensionEntry},
+    };
+    use mod_api::{ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, Hooks, ModEntry};
+    use std::sync::{Arc, Mutex};
+    use sunrise_client::{
+        level_loading::Reason,
+        net::{Event, ingress},
+    };
+    use sunrise_protocol::packets::play::SpawnInfo;
+
+    struct Log(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn client_level_load(&self, _: &mut dyn ClientHost, event: &mut ClientLevelLoadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("load:{}", event.dimension));
+        }
+        fn client_level_unload(
+            &self,
+            _: &mut dyn ClientHost,
+            event: &mut ClientLevelUnloadEvent<'_>,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("unload:{}", event.dimension));
+        }
+    }
+    let log = Arc::new(Mutex::new(Vec::new()));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("levels", Box::new(Log(log.clone())))].into(),
+        || {
+            with_client_game(|game| {
+                let login = SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:overworld".into(),
+                    seed: 0,
+                    game_type: 1,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: true,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 63,
+                };
+                let _server = logged_client(game);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Respawn, Reason::Other);
+                let mut nether = login.clone();
+                nether.dimension = "minecraft:the_nether".into();
+                game.enter_remote_dimension(&nether, RemoteDimensionEntry::Respawn, Reason::Other);
+                let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
+                tx.send(Event::Reconfiguring).unwrap();
+                let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .backlog
+                    .push_back(Received::Event(event, credit));
+                game.poll_remote_events(true).unwrap();
+                // Disconnecting from the reconfiguration screen must not unload twice.
+                game.leave_server(None).unwrap();
+                let _server = logged_client(game);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                game.leave_server(None).unwrap();
+                let _server = logged_client(game);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                game.begin_closing_save(true).unwrap();
+                assert!(game.poll_closing_save().unwrap());
+                game.save_for_exit().unwrap();
+            });
+        },
+    );
+    assert_eq!(
+        *log.lock().unwrap(),
+        [
+            "load:minecraft:overworld",
+            "load:minecraft:the_nether",
+            "unload:minecraft:overworld",
+            "unload:minecraft:the_nether",
+            "load:minecraft:overworld",
+            "unload:minecraft:overworld",
+            "load:minecraft:overworld",
+            "unload:minecraft:overworld",
+        ]
+    );
+}
+
 /// #12148: a proxy moves the player to its next server. The last server's
 /// columns stay until the next Login, but Reconfigured already put in the
 /// next server's biome table, shorter when only the last server had a

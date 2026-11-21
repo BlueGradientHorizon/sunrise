@@ -45,8 +45,9 @@ pub trait Hooks {
         cancellable = false
     )]
     fn config_reloading(config: &ConfigFile);
-    /// A `Server` config is dropped as its server stops
-    /// (`ModConfigEvent.Unloading`), after `server_stopping`; the next
+    /// A `Server` config is dropped after `server_stopped`
+    /// (`ServerLifecycleHooks.handleServerStopped`, `ModConfigEvent.Unloading`).
+    /// Final level save and unload listeners can still use it. The next
     /// world reads it again. `Client` and `Common` configs stay until the
     /// game quits. This notification leaves the World phase unchanged.
     #[hook(
@@ -54,7 +55,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "ModConfigEvent.Unloading",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn config_unloading(config: &ConfigFile);
 }

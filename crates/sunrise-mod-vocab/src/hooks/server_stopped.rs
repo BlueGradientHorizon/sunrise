@@ -11,6 +11,8 @@ pub trait Hooks {
     /// `runServer` enters, even when startup failed (including a dedicated TCP
     /// port bind failure before `server_about_to_start`), the tick loop errored
     /// or panicked, the final save failed, or a shutdown listener panicked.
+    /// The world's Server configs are still loaded; `config_unloading`
+    /// follows this event.
     /// Failed opens save only worlds already adopted by the server (the
     /// prepared level is installed; the session lock alone is not adoption).
     #[hook(
@@ -19,7 +21,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "ServerStoppedEvent",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn server_stopped(dedicated: bool);
 }

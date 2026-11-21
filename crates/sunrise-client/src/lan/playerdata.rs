@@ -119,8 +119,7 @@ pub fn load_owner(guest: &mut Guest, world: &Path, saved: Option<&Level>) -> boo
 }
 
 /// Save the world's single-player owner: its state into `level` (`store`),
-/// then to the file level.dat names, which it loads ([`load_owner`]), and to
-/// its own file, so that the one it loads is never the older of the two.
+/// then to its own file, which level.dat names and [`load_owner`] reads.
 pub fn save_owner(guest: &Guest, level: &mut Level, world: &Path, items: &crate::items::Items) {
     // `MinecraftServer.saveAllChunks`: `saveDataTag(worldData, getSingleplayerProfile().id())`
     // — the server's own profile on every save, never the stale `singleplayer_uuid` a
@@ -133,7 +132,6 @@ pub fn save_owner(guest: &Guest, level: &mut Level, world: &Path, items: &crate:
     if let Err(e) = level.write(world, items) {
         log::warn!("Sunrise: the owner's playerdata is not saved: {e}");
     }
-    save(guest, world, items);
 }
 
 /// Move a world that older Sunrise builds named by the offline profile to the account's

@@ -70,7 +70,9 @@ mod transient_entities {
             );
 
             let chunk = game.world.chunks.remove(&(0, 0)).unwrap();
-            game.unload_entities(std::slice::from_ref(&chunk));
+            let keys = HashSet::from([(0, 0)]);
+            game.save_unloading_entities(&keys).unwrap();
+            game.remove_unloading_entities(&keys);
             game.save.flush().unwrap();
             assert_eq!(game.entity(display.id()), None);
             let records = game.save.load_entities(0, 0);

@@ -11,10 +11,10 @@ pub(in crate::game) enum ServerRunOutcome {
     /// Startup succeeded and the main loop stopped normally; `server_stopping`
     /// fires before teardown.
     Orderly,
-    /// Startup returned early without error (for example a dedicated TCP port
-    /// bind failure, matching `DedicatedServer.initServer` returning `false`);
-    /// teardown still runs and `server_stopped` fires, without `server_stopping`.
-    FailedInit,
+    /// `DedicatedServer.initServer` returned false after failing to bind.
+    /// `runServer` reports initialization failure, then runs teardown without
+    /// `server_stopping`.
+    FailedInit(std::io::Error),
 }
 
 impl Game<'_> {
@@ -30,7 +30,11 @@ impl Game<'_> {
         let crashed = run.is_err();
         let (orderly, result) = match run {
             Ok(Ok(ServerRunOutcome::Orderly)) => (true, Ok(())),
-            Ok(Ok(ServerRunOutcome::FailedInit)) => (false, Ok(())),
+            Ok(Ok(ServerRunOutcome::FailedInit(error))) => {
+                let message = format!("Failed to initialize server: {error}");
+                log::error!("{message}");
+                (false, Err(message.into()))
+            }
             Ok(Err(error)) => (false, Err(error)),
             Err(payload) => {
                 let message = super::dedicated::panic_message(payload.as_ref());
@@ -82,23 +86,16 @@ impl Game<'_> {
                     failure = Some(text);
                 }
             }
-            Err(payload) => {
-                let message = shutdown_panic(payload.as_ref());
-                remember_shutdown(&mut failure, message);
-                // The callback can panic inside a new player's turn, and the save below writes
-                // every player the exclusion does not name.
-                self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
-                // A config callback may unwind before the stop path reaches
-                // `finish_server_save`. Complete that same tail while keeping
-                // the first error.
-                if let Err(error) = self.finish_server_save(dedicated, crashed) {
-                    remember_shutdown(&mut failure, error.to_string());
-                }
-            }
+            Err(payload) => remember_shutdown(&mut failure, shutdown_panic(payload.as_ref())),
         }
         if let Err(payload) =
             catch_unwind(AssertUnwindSafe(|| self.native_server_stopped(dedicated)))
         {
+            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
+        }
+        // ServerLifecycleHooks.handleServerStopped posts the event before
+        // unloading the world's SYNCED configs, even on a failed run.
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_configs_server_stop())) {
             remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
         }
         match failure {
@@ -242,7 +239,12 @@ impl Game<'_> {
             super::dedicated::log("INFO", "Saving worlds");
         }
         let saved = match catch_unwind(AssertUnwindSafe(|| {
-            if save_world { self.save_game() } else { Ok(()) }
+            if save_world {
+                // PlayerList already saved the live owner; the shell is not a player.
+                self.save_world_with(true, false)
+            } else {
+                Ok(())
+            }
         })) {
             Ok(result) => result,
             Err(payload) => Err(shutdown_panic(payload.as_ref()).into()),

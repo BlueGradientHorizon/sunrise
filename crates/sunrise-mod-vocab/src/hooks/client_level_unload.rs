@@ -2,10 +2,11 @@
 // catalog-order: 0141
 
 pub trait Hooks {
-    /// The client dropped its level for `dimension` (`LevelEvent.Unload`
-    /// from `Minecraft.setLevel` and `disconnect`): replaced by another
-    /// dimension's, or on leaving the server. Once for each
-    /// `client_level_load`. Not told when the game itself quits.
+    /// The client is dropping its level for `dimension` (`LevelEvent.Unload`
+    /// from `Minecraft.setLevel`, `clearClientLevel`, and `disconnect`). On
+    /// replacement, the new level's load is heard first. Reconfiguration,
+    /// leaving a server, and quitting all unload the current level once.
+    /// When quitting single player, this fires before halting its server.
     /// Client-side.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_client_level_unload",
@@ -13,7 +14,8 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "LevelEvent.Unload",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn client_level_unload(dimension: &str);
 }

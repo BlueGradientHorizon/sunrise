@@ -380,18 +380,43 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         game.apply_runtime_levels();
         let handle = seen.answers.lock().unwrap()[0].unwrap();
         let dim = super::Dim::extra("idle:a").unwrap();
-        game.levels
-            .parked
-            .get_mut(&dim)
-            .unwrap()
-            .world
+        game.enter_level(dim).unwrap();
+        game.world
             .chunks
-            .insert(
-                (0, 0),
-                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
-            );
-        // What idle eviction does to a parked level nobody is in.
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        game.world.set(1, 64, 1, stone).unwrap();
+        game.summon_with_nbt("minecraft:pig", [2.0, 64.0, 2.0], "{}")
+            .unwrap()
+            .unwrap();
+        let save = game.save.clone();
+        // Encoding is refused before the batch can enter the writer.
+        game.save = Arc::new(sunrise_client::save::SaveDir::new(
+            game.world_root.join("no-item-catalog"),
+            game.world.shape,
+            None,
+        ));
+        game.enter_level(super::Dim::Overworld).unwrap();
+        let error = game.evict_idle_level_chunks(dim).unwrap_err();
+        assert!(error.to_string().contains("without a loaded item catalog"));
+        assert_eq!(game.dim, super::Dim::Overworld);
+        game.enter_level(dim).unwrap();
+        assert_eq!(game.world.block(1, 64, 1), stone);
+        assert!(game.world.modified.contains(&(0, 0)));
+        assert_eq!(game.mobs.len(), 1);
+        game.save = save.clone();
+        game.enter_level(super::Dim::Overworld).unwrap();
+
+        // After a successful submission, only the chunks and entities leave.
         game.evict_idle_level_chunks(dim).unwrap();
+        assert_eq!(
+            save.load(0, 0, registry, world_biomes!(game))
+                .unwrap()
+                .block(1, 64, 1),
+            stone
+        );
+        assert_eq!(save.load_entities(0, 0).len(), 1);
         assert!(game.levels.parked[&dim].world.chunks.is_empty());
         assert!(seen.unloads.lock().unwrap().is_empty());
         assert!(game.runtime_level_is_open("idle:a"));

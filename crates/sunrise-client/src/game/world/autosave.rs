@@ -48,27 +48,38 @@ impl Game<'_> {
     }
 
     pub(super) fn save_game_metadata(&mut self) -> Result<()> {
+        self.save_world_metadata(true)
+    }
+
+    fn save_world_metadata(&mut self, save_players: bool) -> Result<()> {
         self.save_maps();
         self.save_random_sequences();
         self.save_fight();
         self.save_wandering_trader();
         self.save_portal_arrivals();
-        self.save_stats();
-        self.save_advancements();
+        if save_players {
+            self.save_stats();
+            self.save_advancements();
+        }
         self.save_scoreboard();
         self.save_bossbars();
         self.save_schedule();
         self.save_warden_tracker();
-        self.sync_level();
-        // Level::write can synchronously replace the integrated owner file.
-        let _ = self.finish_player_autosaves(true);
-        let stored_owner = self.store_owner();
+        let stored_owner = if save_players {
+            self.sync_level();
+            // Level::write can synchronously replace the integrated owner file.
+            let _ = self.finish_player_autosaves(true);
+            self.store_owner()
+        } else {
+            self.sync_world_level_data();
+            None
+        };
         write_level_for_role(
             &mut self.level,
             &self.world_root,
             self.options.execution_role,
             self.res.items(),
-            self.crash_save.keep_owner_file,
+            self.crash_save.keep_owner_file || !save_players,
         )?;
         // PlayerEvent.SaveToFile for the owner, once level.dat is written.
         if let Some((uuid, name)) = stored_owner {
@@ -79,7 +90,8 @@ impl Game<'_> {
         // their own file (`PlayerDataStorage.save`); the owner is also in the
         // file level.dat names, which is the one it loads from
         // (`playerdata::load_owner`).
-        if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
+        if save_players
+            && self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
             && let Some(host) = self.lan.as_mut()
         {
             // The vehicle tree goes into a player's file when they leave
@@ -101,7 +113,8 @@ impl Game<'_> {
                 }
             });
         }
-        if self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
+        if save_players
+            && self.options.execution_role == execution_role::ExecutionRole::DedicatedServer
             && let Some(host) = self.lan.as_ref()
         {
             self.save_connected_guest_statistics(host);
@@ -126,6 +139,10 @@ impl Game<'_> {
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
     pub(super) fn save_game_with(&mut self, wait: bool) -> Result<()> {
+        self.save_world_with(wait, true)
+    }
+
+    pub(super) fn save_world_with(&mut self, wait: bool, save_players: bool) -> Result<()> {
         if self.remote.is_some() {
             return Ok(());
         }
@@ -137,7 +154,7 @@ impl Game<'_> {
             dedicated::events::record_server("saving", serde_json::json!({}));
         }
         self.save_all_levels(wait)?;
-        self.save_game_metadata()?;
+        self.save_world_metadata(save_players)?;
         let _ = self.finish_player_autosaves(wait);
         self.native_world_saved(wait);
         if dedicated {

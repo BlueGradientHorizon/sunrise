@@ -46,8 +46,6 @@ use sunrise_client::{
 };
 use sunrise_world::level::{LevelEvent, Ticks};
 
-const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
-
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(super) struct EntityCountView<'a> {
     pub(super) fixed: [(&'static str, usize); 19],
@@ -842,26 +840,6 @@ impl Game<'_> {
         })
     }
 
-    /// Every level configured by the world's `LEVEL_STEM` registry at server
-    /// startup: the three built-ins in vanilla order, followed by any datapack
-    /// dimensions (excluding runtime levels opened later by mods).
-    pub(super) fn configured_startup_levels(&self) -> Vec<Dim> {
-        let mut dims =
-            Vec::with_capacity(BUILTIN_LEVEL_ORDER.len() + self.level_shapes.extra.len());
-        dims.extend(BUILTIN_LEVEL_ORDER);
-        for level in self.level_shapes.extra {
-            if self.levels.runtime.holds(level.id) {
-                continue;
-            }
-            if let Some(dim) = Dim::extra(level.id)
-                && !dims.contains(&dim)
-            {
-                dims.push(dim);
-            }
-        }
-        dims
-    }
-
     /// Every currently loaded server level in creation order
     /// (`MinecraftServer.levels`'s `LinkedHashMap` order). Levels inserted
     /// outside startup/open (such as unit tests) follow in deterministic order.
@@ -890,11 +868,10 @@ impl Game<'_> {
     /// `MinecraftServer.createLevels`: open every configured level from the
     /// `LEVEL_STEM` registry in order before `prepare_levels`, which restores
     /// and waits for their saved tickets.
-    pub(super) fn open_configured_levels(&mut self) -> Result<()> {
+    pub(super) fn open_configured_levels(&mut self, configured: &[Dim]) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
-        let configured = self.configured_startup_levels();
         let starting_dim = self.dim;
         // World preparation can build the owner's starting level before the
         // Overworld. Keep it out of both the current and parked slots until
@@ -909,7 +886,12 @@ impl Game<'_> {
             None
         };
         self.native_level_opened(Dim::Overworld);
-        for dim in configured.into_iter().skip(1) {
+        self.initialize_overworld_spawn()?;
+        for dim in configured
+            .iter()
+            .copied()
+            .filter(|&dim| dim != Dim::Overworld)
+        {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
@@ -948,10 +930,7 @@ impl Game<'_> {
             return Ok(());
         }
         let back = self.dim;
-        let mut dims = self.configured_startup_levels();
-        if !dims.contains(&back) {
-            dims.push(back);
-        }
+        let dims = self.loaded_level_order();
         for &dim in &dims {
             self.enter_level(dim)?;
             Self::load_saved_level_tickets(&self.save, &mut self.streaming, &mut self.tickets);
@@ -1744,16 +1723,15 @@ impl Game<'_> {
         self.streaming.radius = -1;
         self.streaming.paused = false;
         self.streaming.force_unload_sweep();
-        self.update_world();
+        let evicted = self.update_world_with_eviction(true);
         self.streaming.radius = prev_radius;
         self.streaming.paused = prev_paused;
         self.streaming.extra = prev_extra;
-        let flushed = self.save.flush();
         self.enter_level(back)?;
         if let Some(parked) = self.levels.parked.get_mut(&dim) {
             parked.idle = 0;
         }
-        flushed
+        evicted
     }
 
     /// Save the parked level `dim` and drop it on explicit runtime-level
@@ -1893,33 +1871,6 @@ impl Game<'_> {
     pub(super) fn save_all_levels(&mut self, wait: bool) -> Result<()> {
         let back = self.dim;
         let dims = self.loaded_level_order();
-        let mut saved = Ok(());
-        for dim in dims {
-            if let Err(error) = self.enter_level(dim).and_then(|()| self.save_level(wait)) {
-                saved = Err(error);
-                break;
-            }
-        }
-        let restored = if self.dim != back {
-            self.enter_level(back)
-        } else {
-            Ok(())
-        };
-        saved.and(restored)
-    }
-
-    /// Save every parked level in creation order (`MinecraftServer.saveAllChunks`);
-    /// the level in place is the caller's to save.
-    pub(super) fn save_parked_levels(&mut self, wait: bool) -> Result<()> {
-        if self.levels.parked.is_empty() {
-            return Ok(());
-        }
-        let back = self.dim;
-        let dims: Vec<Dim> = self
-            .loaded_level_order()
-            .into_iter()
-            .filter(|&dim| dim != back)
-            .collect();
         let mut saved = Ok(());
         for dim in dims {
             if let Err(error) = self.enter_level(dim).and_then(|()| self.save_level(wait)) {
@@ -2302,7 +2253,7 @@ mod tests {
             assert!(game.levels.parked[&end].streaming.commanded().is_empty());
             // An early final save can run after the world is adopted but
             // before ticket activation. The originals on disk must survive.
-            game.save_parked_levels(false).unwrap();
+            game.save_all_levels(false).unwrap();
             game.prepare_levels().unwrap();
             assert!(
                 saw_end.load(Ordering::Relaxed),

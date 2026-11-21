@@ -151,6 +151,8 @@ impl Game<'_> {
                     self.flush_chat_queue();
                     self.send_chat_acknowledgement();
                     self.close_dialogs();
+                    // clearClientLevel posts Unload before clearing the level.
+                    self.set_client_level_notice(None);
                     // The server configuring us now (a proxy's next one)
                     // offers its own far terrain, or none, and announces its
                     // own features again.
@@ -167,13 +169,7 @@ impl Game<'_> {
                     self.remove_local_player_body();
                     self.set_screen(Screen::Playing);
                     self.capture(false);
-                    // clearClientLevel drops the client level now, so its
-                    // unload comes before the configuration screen, not
-                    // after the next login's load.
                     self.forget_all_remote_columns();
-                    if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
-                        self.native_client_level_unload(&old);
-                    }
                     self.native_lifecycle.begin_close();
                     self.native_lifecycle_world_closed();
                     let ticks = self.ticks;

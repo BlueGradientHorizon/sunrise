@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// Fired once at the start of an orderly server shutdown (NeoForge's
     /// `ServerStoppingEvent` in `MinecraftServer.runServer`, after the tick
-    /// loop exits normally and before `stopServer`), before config unloading,
+    /// loop exits normally and before `stopServer`), before network shutdown,
     /// player disconnect and save, final world save, level unloads, and
     /// `server_stopped`. Worlds are still loaded and players are still
     /// connected so a mod can save its own data or notify them. Not fired on a
@@ -16,7 +16,6 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "ServerStoppingEvent",
-        fabric = "ServerLifecycleEvents.SERVER_STOPPING",
         cancellable = false,
         version = 2
     )]

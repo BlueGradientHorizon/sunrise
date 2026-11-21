@@ -1435,7 +1435,7 @@ impl Game<'_> {
     }
     /// Save a guest when they leave or the world closes (after
     /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
-    /// into the level (`/data`) and both its files (`playerdata::save_owner`),
+    /// into the level (`/data`) and the file it names (`playerdata::save_owner`),
     /// anyone else into their own file.
     pub(super) fn save_guest(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         if !guest.participates_in_player_simulation() {

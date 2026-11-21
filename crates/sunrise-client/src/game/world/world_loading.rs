@@ -19,6 +19,8 @@ pub(super) struct PreparedWorld {
     pub save_root: PathBuf,
     /// The levels' shapes, from the world's dimension types.
     pub shapes: sunrise_client::chunk::LevelShapes,
+    /// Traversal of the resolved LEVEL_STEM registry, before Overworld is promoted.
+    pub configured_levels: Vec<Dim>,
     pub level: Level,
     pub world: World,
     pub biomes: Arc<Biomes>,
@@ -288,8 +290,7 @@ impl WorldRequest {
             &level.enabled_features,
             &pack.additional_data,
         );
-        let shapes = level_shapes(&mut overrides, &options.resources, &level);
-        Dim::set_extra(shapes.extra.iter().map(|level| level.id));
+        let (shapes, configured_levels) = level_shapes(&mut overrides, &options.resources, &level);
         // The bounded registry-loader leaf slice: fail world preparation before streaming,
         // rather than letting the flat-generator fallback swallow a selected pack's codec error.
         overrides.validate_fill_layers(pack.assets.registry)?;
@@ -351,6 +352,7 @@ impl WorldRequest {
         Ok(PreparedWorld {
             save_root,
             shapes,
+            configured_levels,
             level,
             world,
             biomes,
@@ -663,17 +665,18 @@ fn level_shapes(
     overrides: &mut sunrise_world::worldgen::overrides::WorldgenOverrides,
     resources: &std::path::Path,
     level: &Level,
-) -> sunrise_client::chunk::LevelShapes {
+) -> (sunrise_client::chunk::LevelShapes, Vec<Dim>) {
     if let Some(generator) = &level.generator {
         generator.merge_dimensions(overrides);
     }
-    let shapes = shapes_of(overrides);
+    let (shapes, stems) = shapes_of(overrides, level.generator.is_none());
+    Dim::set_extra(shapes.extra.iter().map(|level| level.id));
     set_level_sea_levels(
         overrides,
         sunrise_world::worldgen::overrides::mod_dimensions(),
         resources,
     );
-    shapes
+    (shapes, stems.into_iter().map(Dim::from_id).collect())
 }
 
 /// The sea levels of the levels whose stem the mods or the data packs give: a mod's own
@@ -748,14 +751,27 @@ fn set_level_sea_levels(
 /// The levels' shapes the mods' and packs' worldgen entries give.
 fn shapes_of(
     overrides: &sunrise_world::worldgen::overrides::WorldgenOverrides,
-) -> sunrise_client::chunk::LevelShapes {
+    implicit_defaults: bool,
+) -> (sunrise_client::chunk::LevelShapes, Vec<&'static str>) {
     use sunrise_client::chunk::{ExtraLevel, LevelShape, LevelShapes};
+    use sunrise_world::worldgen::overrides::DIMENSIONS;
+    let builtins = [Dim::Overworld.id(), Dim::Nether.id(), Dim::End.id()];
+    // WorldDimensions.bake resolves the effective stems; createLevels walks
+    // the resulting MappedRegistry.entrySet (byKey), not preset insertion or
+    // pack path order. Derive both shape lookup and publication from those entries.
+    let mut stems: std::collections::HashMap<_, _> = overrides
+        .entries(DIMENSIONS)
+        .map(|(id, json)| (id, Some(json)))
+        .collect();
+    if implicit_defaults {
+        for id in builtins {
+            stems.entry(id).or_insert(None);
+        }
+    }
     let mut shapes = LevelShapes::VANILLA;
-    for level in [
-        "minecraft:overworld",
-        "minecraft:the_nether",
-        "minecraft:the_end",
-    ] {
+    let mut extra = Vec::new();
+    let mut configured = Vec::with_capacity(stems.len());
+    for (level, stem) in stems {
         let shape = overrides.level_height(level).and_then(|h| {
             LevelShape::new(
                 h.min_y,
@@ -766,47 +782,40 @@ fn shapes_of(
             )
             .ok()
         });
-        match shape {
-            Some(shape) => *shapes.get_mut(level) = shape,
-            None => log::warn!(
-                "Sunrise: data pack worldgen: the dimension type of {level} is not one the \
-                 game accepts; the level keeps the vanilla build height"
-            ),
-        }
-    }
-    let extra: Vec<_> = overrides
-        .entries(sunrise_world::worldgen::overrides::DIMENSIONS)
-        .filter(|(level, _)| !Dim::is_vanilla(level))
-        .filter_map(|(level, stem)| {
-            let shape = overrides.level_height(level).and_then(|h| {
-                LevelShape::new(
-                    h.min_y,
-                    h.height,
-                    h.logical_height,
-                    h.has_skylight,
-                    h.has_ceiling,
-                )
-                .ok()
-            });
-            if shape.is_none() {
+        if let Some(id) = builtins.into_iter().find(|id| *id == level) {
+            configured.push(id);
+            if let Some(shape) = shape {
+                *shapes.get_mut(id) = shape;
+            } else {
                 log::warn!(
-                    "Sunrise: data pack worldgen: the dimension type of {level} is not one the \
-                     game accepts; the level is left out"
+                    "Sunrise: data pack worldgen: the dimension type of {id} is not one the \
+                     game accepts; the level keeps the vanilla build height"
                 );
             }
+        } else if let Some(shape) = shape {
             // A stem's `type` is a dimension type's id, or the type itself.
-            let stem = serde_json::from_str::<serde_json::Value>(stem).ok()?;
-            let dimension_type = stem["type"].as_str().unwrap_or(level);
-            Some(ExtraLevel {
-                id: level.to_owned().leak(),
-                dimension_type: dimension_type.to_owned().leak(),
-                shape: shape?,
-            })
-        })
-        .collect();
+            let Some(stem) = stem.and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            else {
+                continue;
+            };
+            let id: &'static str = level.to_owned().leak();
+            let dimension_type = stem["type"].as_str().unwrap_or(level).to_owned().leak();
+            extra.push(ExtraLevel {
+                id,
+                dimension_type,
+                shape,
+            });
+            configured.push(id);
+        } else {
+            log::warn!(
+                "Sunrise: data pack worldgen: the dimension type of {level} is not one the \
+                 game accepts; the level is left out"
+            );
+        }
+    }
     shapes.extra = extra.leak();
     set_level_types(overrides, &shapes);
-    shapes
+    (shapes, configured)
 }
 
 /// The dimension types the mods and packs changed or added, for the levels `shapes` holds: what
@@ -1826,7 +1835,7 @@ mod tests {
         use sunrise_client::chunk::{LevelShape, LevelShapes};
         use sunrise_client::datapack::worldgen_overrides_over;
         let (none, _) = worldgen_overrides_over(&[], &[], |_| true);
-        assert_eq!(shapes_of(&none), LevelShapes::VANILLA);
+        assert_eq!(shapes_of(&none, true).0, LevelShapes::VANILLA);
 
         let pocket = sunrise_world::worldgen::overrides::ModDimension {
             id: "test:pocket".into(),
@@ -1837,7 +1846,7 @@ mod tests {
             sea_level: None,
         };
         let (overrides, _) = worldgen_overrides_over(&[pocket], &[], |_| true);
-        let shapes = shapes_of(&overrides);
+        let (shapes, _) = shapes_of(&overrides, true);
         assert!(shapes.has("test:pocket"));
         assert_eq!(
             shapes.get("test:pocket"),
@@ -1891,7 +1900,7 @@ mod tests {
             std::env::temp_dir().join(format!("sunrise-mod-terrain-{}", std::process::id()));
         std::fs::create_dir_all(&world).unwrap();
         let (overrides, _) = worldgen_overrides_of(&world, &root, &biomes, &[], &[]);
-        let shapes = shapes_of(&overrides);
+        let (shapes, _) = shapes_of(&overrides, true);
         use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
         let inputs = LoadInputs::new(Default::default(), root.join("settings"));
         let item_data = Arc::new(

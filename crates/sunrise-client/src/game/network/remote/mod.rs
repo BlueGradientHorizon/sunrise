@@ -1706,9 +1706,6 @@ impl Game<'_> {
         if self.remote.is_some() {
             self.forget_all_remote_columns();
         }
-        if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
-            self.native_client_level_unload(&old);
-        }
         if self.remote.is_some() {
             self.native_client_disconnecting();
         }
@@ -2618,14 +2615,7 @@ impl Game<'_> {
                 renderer.clear_sections(self.world.layout());
             }
             // The new ClientLevel is told before setLevel drops the old one.
-            let old = self
-                .remote
-                .as_mut()
-                .and_then(|r| r.heard_level.replace(spawn.dimension.clone()));
-            self.native_client_level_load(&spawn.dimension);
-            if let Some(old) = old {
-                self.native_client_level_unload(&old);
-            }
+            self.set_client_level_notice(Some(&spawn.dimension));
         }
         self.streaming.relight_resent = relight_resent;
         let has_sky = self

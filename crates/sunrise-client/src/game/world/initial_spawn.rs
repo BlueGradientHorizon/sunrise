@@ -55,6 +55,59 @@ impl Game<'_> {
         };
         Ok(((origin.x, origin.z), 64))
     }
+    /// MinecraftServer.createLevels initializes the Overworld after its Load
+    /// event and before constructing other levels. The owner's player spawn
+    /// is resolved separately, after level preparation.
+    pub(super) fn initialize_overworld_spawn(&mut self) -> Result<()> {
+        let dedicated = self.is_dedicated_server();
+        if self.level.world_spawn.is_none() {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(600);
+            if dedicated {
+                self.streaming.radius = -1;
+            }
+            loop {
+                self.update_world();
+                if self.try_initialize_world_spawn()? {
+                    break;
+                }
+                if std::time::Instant::now() > deadline {
+                    return Err("the spawn area did not load".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            if dedicated {
+                self.streaming.extra.clear();
+            }
+        }
+        if dedicated {
+            self.spawn = self
+                .level
+                .world_spawn
+                .map(|[x, y, z]| Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5));
+        }
+        Ok(())
+    }
+
+    pub(super) fn try_initialize_world_spawn(&mut self) -> Result<bool> {
+        let Some([x, y, z]) = self.find_world_spawn()? else {
+            return Ok(false);
+        };
+        self.spawn = Some(Vec3::new(
+            f64::from(x) + 0.5,
+            f64::from(y),
+            f64::from(z) + 0.5,
+        ));
+        self.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
+        // A personal spawnpoint must not replace the world's spawn.
+        self.level.world_spawn.get_or_insert([x, y, z]);
+        if !self.spawn_hook_cancelled
+            && sunrise_client::save::WorldGen::read(&self.world_root).is_some_and(|g| g.bonus_chest)
+        {
+            self.place_bonus_chest([x, y, z])?;
+        }
+        Ok(true)
+    }
+
     /// MinecraftServer.setInitialSpawn: the first chunk of the spiral with a
     /// valid respawn column gives the world spawn, else the origin chunk's
     /// centre at the spawn height. None while a chunk to test is loading.

@@ -961,7 +961,7 @@ impl Game<'_> {
                 log("WARN", "**** FAILED TO BIND TO PORT!");
                 log("WARN", &format!("The exception was: {e}"));
                 log("WARN", "Perhaps a server is already running on that port?");
-                return Ok(super::server_lifecycle::ServerRunOutcome::FailedInit);
+                return Ok(super::server_lifecycle::ServerRunOutcome::FailedInit(e));
             }
         };
         if online.is_none() {
@@ -1060,7 +1060,6 @@ impl Game<'_> {
         self.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
         // Nothing is kept around the spawn while nobody is on.
         self.streaming.radius = -1;
-        self.settle_spawn()?;
         self.prepare_levels()?;
         let level_load_time = level_load_started.elapsed();
         let gate_lists = lists.clone();
@@ -1432,34 +1431,9 @@ impl Game<'_> {
         }
     }
 
-    /// Load the spawn area and find the world spawn as single player does,
-    /// without keeping a player there. A dedicated server only finds the world
-    /// spawn (MinecraftServer.setInitialSpawn): a player's spawn is found as
-    /// one joins.
-    pub(super) fn settle_spawn(&mut self) -> Result<()> {
+    /// Prepare the integrated owner's player separately from setInitialSpawn.
+    pub(super) fn settle_player_spawn(&mut self) -> Result<()> {
         let deadline = Instant::now() + Duration::from_secs(600);
-        if self.is_dedicated_server() {
-            if self.level.spawn.is_none() {
-                let [x, y, z] = loop {
-                    self.update_world();
-                    if let Some(pos) = self.find_world_spawn()? {
-                        break pos;
-                    }
-                    if Instant::now() > deadline {
-                        return Err("the spawn area did not load".into());
-                    }
-                    std::thread::sleep(Duration::from_millis(2));
-                };
-                self.level.spawn = Some([f64::from(x), f64::from(y), f64::from(z)]);
-                self.level.world_spawn.get_or_insert([x, y, z]);
-                self.streaming.extra.clear();
-            }
-            self.spawn = self
-                .level
-                .spawn
-                .map(|s| sunrise_core::geometry::Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
-            return Ok(());
-        }
         while self.player.is_none() {
             self.update_world();
             self.spawn_player()?;
@@ -2326,7 +2300,6 @@ impl Game<'_> {
         self.levels.abort_parked_generation();
         // The close request starts before player and world saves.
         self.native_lifecycle.begin_close();
-        self.native_configs_server_stop();
         log("INFO", "Stopping server");
         self.finish_server_save(true, crashed)
     }

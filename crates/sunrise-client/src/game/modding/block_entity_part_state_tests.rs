@@ -476,7 +476,7 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
                 .contains(&chunk)
         );
 
-        game.save_parked_levels(true).unwrap();
+        game.save_all_levels(true).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         let reloaded = game
             .save

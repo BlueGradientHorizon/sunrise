@@ -2146,19 +2146,13 @@ impl Game<'_> {
                     .extend(tags.into_iter().map(|(_, _, tag)| tag));
             }
         }
-        let unload = matches!(purpose, EntitySnapshot::Unload);
         for key in keys {
-            let unknown = if unload {
-                self.persist.unknown.remove(key)
-            } else {
-                self.persist.unknown.get(key).cloned()
-            };
-            if let Some(list) = unknown {
-                out.entry(*key).or_default().extend(list);
+            if let Some(list) = self.persist.unknown.get(key) {
+                out.entry(*key).or_default().extend(list.iter().cloned());
             }
         }
-        if unload {
-            self.unload_removed_entities(keys);
+        if matches!(purpose, EntitySnapshot::Unload) {
+            self.remove_unloading_entities(keys);
         }
         out.into_iter().collect()
     }
@@ -2304,24 +2298,27 @@ impl Game<'_> {
                 _ => None,
             };
     }
-    /// Save and remove the entities of chunks that unloaded.
-    pub(super) fn unload_entities(&mut self, unloaded: &[Arc<Chunk>]) {
-        if unloaded.is_empty() {
-            return;
-        }
+    /// `PersistentEntitySectionManager.processChunkUnload`: store the entity
+    /// records before dropping the live rows. A refused write leaves them live.
+    pub(super) fn save_unloading_entities(
+        &mut self,
+        keys: &HashSet<ChunkKey>,
+    ) -> Result<Vec<(ChunkKey, usize)>> {
         self.spawn_loaded_entities();
-        let keys: HashSet<(i32, i32)> = unloaded.iter().map(|c| (c.x, c.z)).collect();
-        let chunks = self.entity_chunks(&keys, true);
-        let counts: Vec<_> = chunks
+        let chunks = self.entity_chunks(keys, false);
+        let counts = chunks
             .iter()
-            .map(|(key, entities)| (*key, entities.len()))
+            .map(|(key, rows)| (*key, rows.len()))
             .collect();
-        if let Err(e) = self.save.save_entities_later(chunks) {
-            log::warn!("Sunrise: failed to save entities: {e}");
+        self.save.save_entities_later(chunks)?;
+        Ok(counts)
+    }
+
+    pub(super) fn remove_unloading_entities(&mut self, keys: &HashSet<ChunkKey>) {
+        for key in keys {
+            self.persist.unknown.remove(key);
         }
-        for (chunk, count) in counts {
-            self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
-        }
+        self.unload_removed_entities(keys);
     }
 }
 impl Game<'_> {

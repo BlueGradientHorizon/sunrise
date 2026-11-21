@@ -319,16 +319,17 @@ pub trait Notes {
 
 - Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server,
   matching NeoForge 26.3 and vanilla's `MinecraftServer` order.
-  `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).
-  After configured world and level loading (`level_load` in `LEVEL_STEM` order), adopted datapack/text setup,
+  `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`), after a successful dedicated bind.
+  After the Overworld loads and initializes spawn if needed, other configured levels load in `LEVEL_STEM` traversal order.
+  After level loading, adopted datapack/text setup,
   spawn preparation, and the initial world save, `server_starting(dedicated)` (`ServerStartingEvent`) runs on both
   dedicated and integrated servers, before accepting play.
   `server_started(dedicated)` runs after initialization completes and before the first tick (`ServerStartedEvent`),
   and before the integrated client receives its ready connection.
   On an orderly shutdown (when the tick loop exits normally), `server_stopping(dedicated)` (`ServerStoppingEvent`)
-  runs before `stopServer` (config unloading, network admission stop, player save/disconnect, final world save in
-  level creation order, per-level close and `level_unload`, and storage release) and `server_stopped(dedicated)`
-  (`ServerStoppedEvent`).
+  runs before `stopServer` (network admission stop, player save/disconnect, final world save in level creation order,
+  per-level close and `level_unload`, and storage release) and `server_stopped(dedicated)` (`ServerStoppedEvent`).
+  `config_unloading` follows `server_stopped`.
   On a failed open (including a dedicated TCP port bind failure before `server_about_to_start`) or a tick
   error/panic, `server_stopping` is skipped; `stopServer` still runs (saving adopted worlds only, closing levels
   with `level_unload` only after a successful save and per-level close, logging stop errors, and releasing storage)
