@@ -342,7 +342,7 @@ fn hud_bars_follow_the_camera_player_like_26_3() {
             case["cameraKind"].as_str().unwrap()
         );
         let has_xp = |g: &Groups| !g.get("xp").unwrap_or(&vec![]).is_empty();
-        let survival = case["gameMode"] == "survival";
+        let survival = matches!(case["gameMode"].as_str(), Some("survival" | "adventure"));
         assert_eq!(
             has_xp(&expected),
             survival,
