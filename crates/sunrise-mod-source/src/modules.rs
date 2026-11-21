@@ -27,13 +27,45 @@ pub fn conditions(attrs: &[syn::Attribute]) -> Vec<String> {
         .collect()
 }
 
-/// Whether an item is compiled only into tests, explicitly or by `#[test]`/`#[bench]`.
+/// Whether a node is compiled only into tests, explicitly or by `#[test]`/`#[bench]`.
 pub fn test_only(attrs: &[syn::Attribute]) -> bool {
+    // Only `test` is known here. A gate that could be true in a non-test build stays in scope.
+    fn without_tests(meta: &syn::Meta) -> Option<bool> {
+        match meta {
+            syn::Meta::Path(path) if path.is_ident("test") => Some(false),
+            syn::Meta::List(list) => {
+                let args = list
+                    .parse_args_with(
+                        syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                    )
+                    .ok()?;
+                if list.path.is_ident("not") && args.len() == 1 {
+                    return without_tests(args.first()?).map(|value| !value);
+                }
+                let all = list.path.is_ident("all");
+                if !all && !list.path.is_ident("any") {
+                    return None;
+                }
+                let mut unknown = false;
+                for arg in &args {
+                    match without_tests(arg) {
+                        Some(value) if value != all => return Some(value),
+                        Some(_) => {}
+                        None => unknown = true,
+                    }
+                }
+                (!unknown).then_some(all)
+            }
+            _ => None,
+        }
+    }
     attrs.iter().any(|attr| {
         attr.path().is_ident("test")
             || attr.path().is_ident("bench")
             || (attr.path().is_ident("cfg")
-                && matches!(attr.parse_args::<syn::Meta>(), Ok(syn::Meta::Path(path)) if path.is_ident("test")))
+                && attr
+                    .parse_args::<syn::Meta>()
+                    .is_ok_and(|meta| without_tests(&meta) == Some(false)))
     })
 }
 

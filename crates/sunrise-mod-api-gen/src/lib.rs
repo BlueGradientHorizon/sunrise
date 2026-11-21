@@ -277,20 +277,18 @@ pub fn neoforge_catalog(root: &Path) -> Result<String, String> {
     serde_json::to_string(&serde_json::json!({ "hooks": hooks })).map_err(|e| e.to_string())
 }
 
-/// The crate folder and module path of a hook target that is a free function
-/// outside `Game`. `sunrise-client-lib` builds from `sunrise-client/src`
-/// (`client_lib.rs`).
-fn free_function_source(target: &str) -> Option<(&'static str, String)> {
+/// The Cargo package and module path of a hook target that is a free function outside `Game`.
+fn free_function_source(target: &str) -> Option<(&'static str, &str)> {
     let prefixes = [
         ("sunrise_world::", "sunrise-world"),
         ("mod_api::", "sunrise-mod-vocab"),
         ("mod_render::", "sunrise-mod-render"),
-        ("sunrise_client_lib::", "sunrise-client"),
+        ("sunrise_client_lib::", "sunrise-client-lib"),
         ("sunrise_client_render::", "sunrise-client-render"),
     ];
     prefixes
         .into_iter()
-        .find_map(|(prefix, krate)| target.strip_prefix(prefix).map(|p| (krate, p.to_owned())))
+        .find_map(|(prefix, krate)| target.strip_prefix(prefix).map(|path| (krate, path)))
 }
 
 /// Whether a hook function needs its dispatch `call` filled in: false when it
@@ -939,6 +937,10 @@ mod tests {
         std::fs::write(&first, original).unwrap();
         let hook_dir = "crates/sunrise-client/src/game/native_hooks";
         copy(&real.join(hook_dir), &root.join(hook_dir));
+        let client = root.join("crates/sunrise-client");
+        std::fs::write(client.join("Cargo.toml"), "").unwrap();
+        std::fs::write(client.join("src/lib.rs"), "mod game;").unwrap();
+        std::fs::write(client.join("src/game.rs"), "mod native_hooks;").unwrap();
         let hooks = root.join(hook_dir).join("item_picked_up.rs");
         let pickup = catalog
             .hooks
@@ -1058,14 +1060,11 @@ mod tests {
     fn library_crate_targets_resolve_to_their_source() {
         assert_eq!(
             super::free_function_source("sunrise_client_lib::menu::native_menu_slot_rules"),
-            Some(("sunrise-client", "menu::native_menu_slot_rules".to_owned()))
+            Some(("sunrise-client-lib", "menu::native_menu_slot_rules"))
         );
         assert_eq!(
             super::free_function_source("sunrise_client_lib::breathing::native_living_drown"),
-            Some((
-                "sunrise-client",
-                "breathing::native_living_drown".to_owned()
-            ))
+            Some(("sunrise-client-lib", "breathing::native_living_drown"))
         );
         assert_eq!(
             super::free_function_source(
@@ -1073,7 +1072,7 @@ mod tests {
             ),
             Some((
                 "sunrise-client-render",
-                "sound_engine::hooks::native_play_sound".to_owned()
+                "sound_engine::hooks::native_play_sound"
             ))
         );
         for target in [
@@ -1084,7 +1083,7 @@ mod tests {
         }
         assert_eq!(
             super::free_function_source("sunrise_client_lib::crafting::native_ingredient"),
-            Some(("sunrise-client", "crafting::native_ingredient".to_owned()))
+            Some(("sunrise-client-lib", "crafting::native_ingredient"))
         );
         assert_eq!(
             super::free_function_source(
