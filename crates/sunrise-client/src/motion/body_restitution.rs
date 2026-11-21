@@ -45,6 +45,15 @@ pub struct BodyContact {
     support: Option<BlockPos>,
 }
 
+/// The body's post-move footprint and the wanted/resolved displacement pair.
+pub struct BodyCollision<'a> {
+    pub footprint: (Vec3, Aabb),
+    pub movement: (Vec3, Vec3),
+    pub authoritative: bool,
+    pub context: CollisionContext<'a>,
+    pub subject: Option<PowderSnowSubject<'a>>,
+}
+
 /// Wanted and clipped motion, with the state selected before the fall phase.
 #[derive(Clone, Copy, Debug)]
 pub struct BodyMove {
@@ -81,18 +90,14 @@ impl BodyMotion<'_> {
     }
 
     /// Record the collision flags and support selected at the end of `Entity.move`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_move(
-        self,
-        feet: Vec3,
-        bounds: Aabb,
-        wanted: Vec3,
-        moved: Vec3,
-        authoritative: bool,
-        context: CollisionContext<'_>,
-        subject: Option<PowderSnowSubject<'_>>,
-        ground: &mut GroundState,
-    ) {
+    pub fn record_move(self, collision: BodyCollision<'_>, ground: &mut GroundState) {
+        let BodyCollision {
+            footprint: (feet, bounds),
+            movement: (wanted, moved),
+            authoritative,
+            context,
+            subject,
+        } = collision;
         ground.horizontal_collision = different(wanted.x, moved.x) || different(wanted.z, moved.z);
         if authoritative || wanted.y.abs() > 0.0 {
             ground.on_ground = wanted.y < 0.0 && wanted.y != moved.y;

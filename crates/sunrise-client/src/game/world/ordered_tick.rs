@@ -326,33 +326,35 @@ impl Game<'_> {
                         &self.res.motion().fluids,
                         tick,
                         server,
-                        &mut next_float,
-                        &mut |pos, pitch| {
-                            audio.play("minecraft:entity.generic.burn", Some(pos), 0.4, pitch)
-                        },
-                        &mut |world| {
-                            let source = sunrise_client::health::HurtSource {
-                                damage_type: "minecraft:lava",
-                                causing: 0,
-                                direct: 0,
-                                position: None,
-                            };
-                            sunrise_client::health::DamageLevel::of(
-                                world,
-                                registry,
-                                Some(tags),
-                                Some(block_registries),
-                                hooks,
-                            )
-                            .no_push()
-                            .invulnerability_check(
-                                sunrise_client::health::Hurting::Entity(
-                                    orb_id as i32,
-                                    "minecraft:experience_orb",
-                                    source,
-                                ),
-                                vanilla,
-                            )
+                        sunrise_client::entities::OrbLavaEffects {
+                            next_float: &mut next_float,
+                            on_sound: &mut |pos, pitch| {
+                                audio.play("minecraft:entity.generic.burn", Some(pos), 0.4, pitch)
+                            },
+                            invulnerable: &mut |world| {
+                                let source = sunrise_client::health::HurtSource {
+                                    damage_type: "minecraft:lava",
+                                    causing: 0,
+                                    direct: 0,
+                                    position: None,
+                                };
+                                sunrise_client::health::DamageLevel::of(
+                                    world,
+                                    registry,
+                                    Some(tags),
+                                    Some(block_registries),
+                                    hooks,
+                                )
+                                .no_push()
+                                .invulnerability_check(
+                                    sunrise_client::health::Hurting::Entity(
+                                        orb_id as i32,
+                                        "minecraft:experience_orb",
+                                        source,
+                                    ),
+                                    vanilla,
+                                )
+                            },
                         },
                     );
                     // PowderSnowBlock.entityInside during the move, before an

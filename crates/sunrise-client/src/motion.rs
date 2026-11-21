@@ -52,7 +52,7 @@ use sunrise_world::{
 mod body_restitution;
 mod exclusions;
 mod restitution;
-pub use body_restitution::{BodyContact, BodyMotion, BodyMove, BodyRestitution};
+pub use body_restitution::{BodyCollision, BodyContact, BodyMotion, BodyMove, BodyRestitution};
 pub mod section_writes;
 
 /// A living entity jumped (`LivingEvent.LivingJumpEvent`); `velocity` is its motion right after
