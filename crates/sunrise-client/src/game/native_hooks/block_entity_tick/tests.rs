@@ -188,6 +188,76 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn aborted_block_entity_edits_preserve_a_queued_client_update() {
+    use sunrise_client::lan::chunks::ChunkEncoder;
+    use sunrise_protocol::registry::Builtin;
+
+    with_game(|game| {
+        let encoder = ChunkEncoder::new([], &Builtin::default(), &[], &[], game.res.shared_items());
+        let replacement = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:glass")
+            .unwrap()
+            .try_into_api()
+            .unwrap();
+        for replace in [false, true] {
+            let subject = place_subject(game, KIND);
+            game.world.block_log = Some(Vec::new());
+            let waiting = Compound::from([("effect".into(), Tag::Int(7))]);
+            let mut tick = access(game, subject);
+            let mut scope = BlockEntityTickScope::new(&mut tick);
+            let level = scope
+                .with_view(|mut view| {
+                    view.set_client_update_fields(waiting.clone());
+                    view.level()
+                })
+                .unwrap();
+            scope.host().block_entity_sync(AT);
+
+            let result: Result<(), ()> = scope.transaction(|scope, _| {
+                if replace {
+                    // The first write captures the row through the world, not a ticker loan.
+                    assert_eq!(
+                        level.set_block(
+                            scope.host(),
+                            AT,
+                            replacement,
+                            BlockUpdateFlags::KNOWN_SHAPE
+                        ),
+                        Ok(true)
+                    );
+                    assert_eq!(scope.with_view(|_| ()), None);
+                } else {
+                    scope
+                        .with_view(|mut view| {
+                            view.set_client_update_fields(Compound::from([(
+                                "effect".into(),
+                                Tag::Int(9),
+                            )]));
+                        })
+                        .unwrap();
+                }
+                Err(())
+            });
+            assert_eq!(result, Err(()));
+
+            let world = &tick.game.world;
+            assert!(world.block_log.as_ref().unwrap().contains(&POS));
+            let state = world.block(POS.0, POS.1, POS.2).0;
+            let entity = world.block_entities.get(&POS).unwrap();
+            assert_eq!(
+                encoder.change_tag(POS, state, entity),
+                Some(Tag::Compound(waiting))
+            );
+            assert_eq!(encoder.change_tag(POS, state, entity), None);
+        }
+    });
+}
+
 fn check_edit_then_replace(commit: bool) {
     with_game(|game| {
         let subject = place_subject(game, KIND);

@@ -223,6 +223,10 @@ impl ModBlockEntity {
     pub fn set_client_update_fields(&self, fields: Compound) {
         sunrise_mod_runtime::block_entities::set_client_update_fields(self.revision.born, fields);
     }
+    /// Keep the queued one-shot fields for transaction rollback without consuming them.
+    pub fn snapshot_client_update_fields(&self) -> Option<Compound> {
+        sunrise_mod_runtime::block_entities::snapshot_client_update_fields(self.revision.born)
+    }
     /// Take the queued one-shot fields for a tag about to go to every viewer.
     pub fn take_client_update_fields(&self) -> Option<Compound> {
         sunrise_mod_runtime::block_entities::take_client_update_fields(self.revision.born)

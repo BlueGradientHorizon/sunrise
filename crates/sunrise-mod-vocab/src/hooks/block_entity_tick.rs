@@ -12,7 +12,8 @@ pub trait Hooks {
     ///
     /// Setters apply checked writes in place. Read-only and unchanged loans do not
     /// clone the row or dirty the chunk. Edits join the ambient transaction;
-    /// nothing opens a per-listener transaction and there is no tick reply.
+    /// an abort restores any one-shot client fields waiting before its first edit.
+    /// Nothing opens a per-listener transaction and there is no tick reply.
     /// Use `event.subject.transaction` when one operation must edit the subject
     /// and other storage atomically. Views don't notify neighbors or send a block
     /// update; normal menu synchronization reads the resident data slots.
@@ -25,7 +26,7 @@ pub trait Hooks {
         scope = "block_entity",
         key = "kind",
         neoforge = "none (vanilla BlockEntityTicker; NeoForge adds no event or extension for it)",
-        version = 2
+        version = 3
     )]
     fn block_entity_tick(
         kind: mod_api::BlockEntityTypeKey,

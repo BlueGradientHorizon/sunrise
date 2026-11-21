@@ -31,6 +31,11 @@ no container drops or neighbor updates, with whole changed chunks published on c
 where ordinary and strict writes are mixed, replay follows their call order and keeps their rows distinct.
 ItemEntityRef::set_stack still uses ItemEntity.setItem. Its write and block replacement join the
 journal of the level in place, not a journal in a different level (ExecuteCommand's in branch).
+
+An aborted block-entity edit restores the batch of one-shot client update fields that was waiting
+at the first edit. This follows NeoForge's SnapshotJournal.onClose for rollback and leaves delivery
+at vanilla 26.3's ChunkHolder.broadcastBlockEntity / BlockEntity.getUpdatePacket site. A requested
+sync still reaches viewers with the restored batch. The block_entity_tick hook version rises to 3.
 """
 migrate = """
 - Change `fn block_entity_tick(&self, host, event: &mut BlockEntityTickEvent)` to
@@ -51,6 +56,9 @@ migrate = """
   `event.subject.transaction(|tick, _| { ... })` and call `item.set_stack(tick.host(), stack)`
   inside that closure. Recheck source values after taking the Host and return `Err` on a stale
   subject or refused write. A setter with no transaction open in that level is not rolled back.
+- Keep `tick.with_view(|mut view| view.set_client_update_fields(fields))` to queue a batch and
+  `tick.host().block_entity_sync(pos)` to request its delivery. Do not requeue a batch that was
+  waiting before a transaction which aborts; rollback restores it for that sync.
 - `level.set_block(host, pos, state, flags)`, `level.remove_block(host, pos, moved)` and
   `host.edit_blocks(dimension, &edit)` keep their signatures. To roll back a replacement in
   another dimension, open a transaction there; a transaction in the original level does not

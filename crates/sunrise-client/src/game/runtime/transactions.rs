@@ -9,9 +9,11 @@
 //! survive abort: the journal restores storage, not observer calls or scheduled comparator
 //! ticks that already happened.
 //!
-//! Covered here: block entities (slots, saved compound, custom name, lock, loot roll, attachments), a hopper's cooldown and
-//! cauldron and composter block states. The attachment map of every other holder (an entity, a player, a
-//! chunk, the level) is kept on the first access to it through `attachment_map`. A block's tentative state is stored only (`World::set_stored`): the
+//! Covered here: block entities (item and data slots, saved compound, queued client update fields,
+//! custom name, lock, loot roll, attachments), a hopper's cooldown and cauldron and composter
+//! block states. The attachment map of every other holder (an entity, a player, a chunk,
+//! the level) is kept on the first access to it through `attachment_map`.
+//! A block's tentative state is stored only (`World::set_stored`): the
 //! one real write, with its remesh, relight and logs, is at the root commit. A jukebox is
 //! told at the root commit from its record before and after, so a disc swapped in one
 //! transaction changes the song. A player's inventory (slots, armour, off hand, cursor) is kept
@@ -138,6 +140,7 @@ impl OpenTransactions {
         if let Some(level) = entities::open_in(self, dim) {
             level.block_entities.entry(pos).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
+                client_update_fields: loan.entity.snapshot_client_update_fields(),
                 generation: Some(loan.identity.generation),
                 attachments: loan.attachments.cloned(),
                 hopper,
@@ -394,6 +397,8 @@ struct KeptAttachments {
 
 struct Kept {
     entity: Option<BlockEntity>,
+    /// The pre-write batch, stored apart from the entity clone's fresh identity.
+    client_update_fields: Option<sunrise_core::nbt::Compound>,
     generation: Option<u64>,
     /// None where it had no map: an abort removes one a write made.
     attachments: Option<Attachments>,
@@ -411,8 +416,13 @@ impl Kept {
         hoppers: &HashMap<Pos, HopperState>,
         pos: Pos,
     ) -> Self {
+        let entity = world.block_entities.get(&pos);
         Self {
-            entity: world.block_entities.get(&pos).cloned(),
+            entity: entity.cloned(),
+            client_update_fields: match entity {
+                Some(BlockEntity::Mod(entity)) => entity.snapshot_client_update_fields(),
+                _ => None,
+            },
             generation: world.block_entities.generation(&pos),
             attachments: world.block_entities.attachments(pos).cloned(),
             hopper: hoppers.get(&pos).copied(),
@@ -2160,6 +2170,11 @@ impl Game<'_> {
             let replaced = current != kept.generation;
             if replaced && current.is_some() {
                 self.world.block_entities.remove(&pos);
+            }
+            if let (Some(BlockEntity::Mod(entity)), Some(fields)) =
+                (&kept.entity, kept.client_update_fields)
+            {
+                entity.set_client_update_fields(fields);
             }
             match (kept.entity, self.world.block_entities.get_mut(&pos)) {
                 (Some(entity), Some(now)) => {
