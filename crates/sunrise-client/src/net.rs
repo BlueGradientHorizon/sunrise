@@ -114,10 +114,7 @@ pub enum Event {
     /// Closing boundary of a `ClientboundBundlePacket`.
     BundleEnd,
     /// Attachment sync decoded at ingress, with the original bytes for `client_packet`.
-    AttachmentSync {
-        payload: cfg::CustomPayload,
-        message: Box<sunrise_protocol::attachment_sync::StagedMessage>,
-    },
+    AttachmentSync(Box<sunrise_protocol::attachment_sync::StagedMessage>),
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A standalone play packet that failed to decode and was skipped.
@@ -169,11 +166,8 @@ fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
 impl Event {
     /// Decode the engine payload at the play ingress boundary, before applying it.
     pub fn decode_attachment_sync(payload: cfg::CustomPayload) -> sunrise_protocol::Result<Self> {
-        let message = sunrise_protocol::attachment_sync::decode_staged(&payload.data)?;
-        Ok(Self::AttachmentSync {
-            payload,
-            message: Box::new(message),
-        })
+        let message = sunrise_protocol::attachment_sync::decode_staged(payload)?;
+        Ok(Self::AttachmentSync(Box::new(message)))
     }
 
     fn ingress_charge(&self) -> usize {
@@ -212,9 +206,9 @@ impl Event {
             }
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
-            Self::AttachmentSync { payload, message } => size_of_val(&**message)
-                .saturating_add(message.owned_heap_bytes())
-                .saturating_add(payload.owned_heap_bytes()),
+            Self::AttachmentSync(message) => {
+                size_of_val(&**message).saturating_add(message.owned_heap_bytes())
+            }
             Self::PackPush(packet) => packet.owned_heap_bytes(),
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
@@ -3261,15 +3255,12 @@ mod tests {
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(p) if *p == ping1));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
-        let Event::AttachmentSync {
-            payload,
-            message: decoded,
-        } = event
-        else {
+        let Event::AttachmentSync(decoded) = event else {
             panic!("expected a decoded attachment sync");
         };
+        let (decoded, payload) = decoded.into_message();
         assert_eq!(payload, sync);
-        assert_eq!(decoded.into_message(), message);
+        assert_eq!(decoded, message);
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::BundleEnd));
         let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();

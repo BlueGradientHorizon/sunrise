@@ -203,6 +203,18 @@ impl<'a> Reader<'a> {
         self.pos += used;
         Ok(tag)
     }
+    /// The same network NBT decoder, with values retained in a compact tape.
+    pub(crate) fn stage_nbt(
+        &mut self,
+        limits: nbt::Limits,
+        tape: &mut nbt::NetworkTape,
+    ) -> Result<u8> {
+        let (id, used) = tape
+            .read(self.data, self.pos, limits)
+            .map_err(|e| Error::new(format!("NBT: {e}")))?;
+        self.pos += used;
+        Ok(id)
+    }
     pub fn long_array(&mut self) -> Result<Vec<i64>> {
         let n = self.count(self.remaining() / 8)?;
         (0..n).map(|_| self.i64()).collect()

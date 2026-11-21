@@ -206,9 +206,10 @@ impl Game<'_> {
                 self.leave_server(Some(Text::literal(reason)))?;
                 return Ok(true);
             }
-            Event::AttachmentSync { payload, message } => {
+            Event::AttachmentSync(staged) => {
+                let (message, payload) = staged.into_message();
                 self.observe_client_packet(&C::CustomPayload(payload));
-                self.remote_attachment_sync(message.into_message());
+                self.remote_attachment_sync(message);
             }
             Event::RawPayload(incoming) => {
                 if let Some(remote) = self.remote.as_ref() {

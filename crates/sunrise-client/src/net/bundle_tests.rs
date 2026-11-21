@@ -92,10 +92,6 @@ fn malformed_attachment_aborts_packet_decoding_with_or_without_a_bundle() {
     use sunrise_protocol::{attachment_sync, general_entity};
 
     for bundled in [false, true] {
-        assert_malformed_attachment_refused(bundled);
-    }
-
-    fn assert_malformed_attachment_refused(bundled: bool) {
         let (root, data) = empty_item_data("malformed-pairing-attachment");
         let transport = Transport::capture(Side::Client).unwrap();
         transport
@@ -209,12 +205,12 @@ fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
     let take = || events.recv_timeout_owned(timeout).unwrap().into_parts().0;
     assert!(matches!(take(), Event::BundleStart(None)));
     assert!(matches!(take(), Event::Packet(p) if *p == spawn));
-    let Event::AttachmentSync { payload, message } = take() else {
+    let Event::AttachmentSync(staged) = take() else {
         panic!("expected a decoded attachment sync");
     };
-    assert_eq!(play::Clientbound::CustomPayload(payload), attachments);
     assert!(matches!(take(), Event::BundleEnd));
-    let message = message.into_message();
+    let (message, payload) = staged.into_message();
+    assert_eq!(play::Clientbound::CustomPayload(payload), attachments);
     assert_eq!(message.holder, Holder::Entity(37));
     assert!(message.replace);
     let [change] = &message.changes[..] else {
@@ -232,6 +228,83 @@ fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
             |item| matches!(item, Tag::Compound(map) if map.get(&key) == Some(&Tag::Byte(-7)))
         )
     );
+    assert_eq!(events.stats().reserved_bytes, 0);
+    let peak = events.stats().peak_reserved_bytes;
+    assert!(peak > 1_200_000 && peak < 96 << 20, "charged {peak} bytes");
+    reader.join().unwrap().unwrap_err();
+    writer.lock().unwrap().take().unwrap().shutdown();
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
+    use sunrise_core::nbt::Tag;
+    use sunrise_mod_runtime::attachments::Holder;
+    use sunrise_protocol::attachment_sync;
+
+    let (root, data) = empty_item_data("memory-only-pairing-attachment");
+    let transport = Transport::capture(Side::Client).unwrap();
+    transport
+        .accept(transport.local.manifest.entries())
+        .unwrap();
+    transport.finish_configuration().unwrap();
+    let (client, server) = Pipe::pair();
+    let (reader, writer) = Connection::local(client).split();
+    let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+    let (send, events) = event_channel();
+    let mut server = Connection::local(server);
+
+    // Each value is under the NBT node limit. The packet exceeds even a
+    // compressed TCP frame's decoded limit. An eight-byte slot per empty
+    // compound plus the original packet would exceed 96 MiB on this route.
+    const FIELDS: u8 = 12;
+    const COUNT: i32 = 980_000;
+    let mut body = vec![0, 37, 1, FIELDS];
+    for index in 0..FIELDS {
+        body.extend([1, b'a', 1, b'a' + index, 10, 9, 0, 1, b'l', 10]);
+        body.extend(COUNT.to_be_bytes());
+        body.resize(body.len() + COUNT as usize + 1, 0);
+    }
+    let wire = body.len();
+    assert!(wire > sunrise_protocol::frame::MAX_UNCOMPRESSED);
+    assert!(wire + 8 * FIELDS as usize * COUNT as usize > 96 << 20);
+
+    let attachments = play::Clientbound::CustomPayload(cfg::CustomPayload {
+        channel: attachment_sync::CHANNEL.into(),
+        data: body,
+    });
+    let reader = play_reader(reader, writer.clone(), send, data, transport);
+    server.send(&attachments.encode()).unwrap();
+    drop(server);
+    let (event, credit) = events
+        .recv_timeout_owned(Duration::from_secs(15))
+        .unwrap()
+        .into_parts();
+    let Event::AttachmentSync(staged) = event else {
+        panic!("expected staged memory attachment sync");
+    };
+    assert!(events.stats().reserved_bytes >= wire);
+    assert!(events.stats().reserved_bytes < wire * 2);
+    let (message, payload) = staged.into_message();
+    assert_eq!(play::Clientbound::CustomPayload(payload), attachments);
+    assert_eq!(message.holder, Holder::Entity(37));
+    assert!(message.replace);
+    assert_eq!(message.changes.len(), FIELDS as usize);
+    let key = JavaString::from("l");
+    for (index, change) in (0..FIELDS).zip(message.changes) {
+        assert_eq!(change.name, JavaString(vec![u16::from(b'a' + index)]));
+        let Some(Tag::List(items)) = change.value.as_ref().and_then(|map| map.get(&key)) else {
+            panic!("expected an attachment list");
+        };
+        assert_eq!(items.len(), COUNT as usize);
+        assert!(
+            items
+                .iter()
+                .all(|item| matches!(item, Tag::Compound(map) if map.is_empty()))
+        );
+    }
+    drop(credit);
     assert_eq!(events.stats().reserved_bytes, 0);
     reader.join().unwrap().unwrap_err();
     writer.lock().unwrap().take().unwrap().shutdown();
