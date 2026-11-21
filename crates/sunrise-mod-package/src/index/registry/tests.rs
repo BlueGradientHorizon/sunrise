@@ -897,11 +897,16 @@ fn invalid_optional_binaries_keep_the_source_and_its_dependents() {
     let mut bad = original;
     *bad.pointer_mut(path).unwrap() = Value::Bool(false);
     let read = Index::parse(&bad.to_string()).unwrap();
-    assert_eq!(read.project("release_probe").unwrap().versions.len(), 1);
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    assert_eq!(version.file.name, "release_probe-1.0.0.smod");
+    assert!(version.native_binary(&commit, client).is_err());
+    assert!(version.native_binary(&commit, server).is_err());
     assert!(
         read.left_out
             .iter()
-            .any(|row| row.reason == "native_binaries must be a list")
+            .any(|row| row.id == source.id
+                && row.version.as_deref() == Some(version.version.as_str()))
     );
 }
 
