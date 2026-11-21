@@ -1327,7 +1327,8 @@ mod tests {
             let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_client::lan::guest::GuestKind::Fake;
             game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
-            assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Cancelled);
+            // Fake players have no client menu. This is a refusal, not a hook cancellation.
+            assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
             assert!(!player.open_menu(game, chest).unwrap());
             let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_client::lan::guest::GuestKind::Network;

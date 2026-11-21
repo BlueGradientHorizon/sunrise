@@ -762,7 +762,10 @@ mod tests {
                     if name == "minecraft:crafting_table" {
                         game.lan_open_crafting(1, [0, 64, 0]);
                     } else {
-                        assert!(game.lan_open_container(1, (0, 64, 0)));
+                        assert_eq!(
+                            game.lan_open_container(1, (0, 64, 0)),
+                            super::super::lan_actions::MenuOpen::Opened
+                        );
                     }
                     // The same accessor works in any acting server turn, not only the notice.
                     game.as_guest(1, |game| {
@@ -881,7 +884,10 @@ mod tests {
             // Own inventory and unsuccessful construction have no open boundary.
             game.lan_guest_packet(1, S::ContainerClose(play::ContainerClose { container: 0 }));
             game.lan_open_mount(1, u32::MAX);
-            assert!(!game.lan_open_container(1, (0, 64, 0)));
+            assert_eq!(
+                game.lan_open_container(1, (0, 64, 0)),
+                super::super::lan_actions::MenuOpen::NoProvider
+            );
             assert!(events.lock().unwrap().is_empty());
             if case == "mount" {
                 game.mobs.push(sunrise_client::mobs::Mob::new(

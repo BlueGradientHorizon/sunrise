@@ -6394,9 +6394,9 @@ impl Game<'_> {
             // EnderChestBlock.useWithoutItem
             self.award_custom_stat("open_enderchest", 1);
             self.anger_piglins(true);
-            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN
-            // (ContainerOpenersCounter.incrementOpeners), as for chests below.
-            if self.container_opener_event(key, true) {
+            // Guests start the opener only when the handoff installs their menu.
+            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN.
+            if self.lan_acting.is_none() && self.container_opener_event(key, true) {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
@@ -6427,7 +6427,9 @@ impl Game<'_> {
             });
             self.container = Some(key);
             self.open_container_slots = Some((key, self.open_container_size()));
-            let first = self.container_opener_event(key, true);
+            // ChestMenu and ShulkerBoxMenu start the opener in their constructors.
+            // For a guest, open_block_menu does that after the turn's handoff.
+            let first = self.lan_acting.is_none() && self.container_opener_event(key, true);
             if first {
                 self.post_block_game_event(
                     "minecraft:container_open",

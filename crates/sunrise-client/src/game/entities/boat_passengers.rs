@@ -1013,13 +1013,16 @@ mod boat_callback_review_tests {
                 .unwrap()
                 .push((event.entity, event.mounting));
             if !event.mounting && event.entity == 72 {
-                assert_eq!(
-                    host.entity(72).unwrap().vehicle(host).map(|v| v.id()),
-                    Some(71),
-                    "callback observes original riding relationship"
+                let rider = host.entity(72).unwrap();
+                assert_eq!(event.vehicle, 71);
+                assert_eq!(rider.is_passenger(host), Some(true));
+                assert_eq!(rider.vehicle(host), None);
+                assert!(
+                    host.entity(71).is_none(),
+                    "boat is already logically removed"
                 );
                 if self.discard {
-                    assert!(host.entity(72).unwrap().discard(host));
+                    assert!(rider.discard(host));
                 } else {
                     let later = host.entity(73).unwrap();
                     let replacement = host.entity(74).unwrap();
