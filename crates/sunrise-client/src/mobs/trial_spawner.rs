@@ -482,7 +482,7 @@ pub trait TrialSpawnerExt: Sized {
     ) -> Option<[f64; 3]>;
     /// `TrialSpawner.tickServer`: the next state of the block.
     #[allow(clippy::too_many_arguments)]
-    fn server_tick<L: TrialSpawnerLevel, R: RandomSource>(
+    fn server_tick<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -495,7 +495,7 @@ pub trait TrialSpawnerExt: Sized {
     ) -> TrialState;
     /// `TrialSpawnerState.tickAndGetNext`.
     #[allow(clippy::too_many_arguments)]
-    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource>(
+    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -506,7 +506,7 @@ pub trait TrialSpawnerExt: Sized {
         events: &mut Vec<TrialEvent>,
     ) -> TrialState;
     /// `TrialSpawner.spawnMob`: the UUID of the mob added, if one was.
-    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource>(
+    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -907,7 +907,7 @@ impl TrialSpawnerExt for TrialSpawner {
             .then_some(down)
     }
     #[allow(clippy::too_many_arguments)]
-    fn server_tick<L: TrialSpawnerLevel, R: RandomSource>(
+    fn server_tick<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -934,7 +934,7 @@ impl TrialSpawnerExt for TrialSpawner {
         self.tick_and_get_next(l, random, pos, state, spawn, eject, events)
     }
     #[allow(clippy::too_many_arguments)]
-    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource>(
+    fn tick_and_get_next<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -1067,7 +1067,7 @@ impl TrialSpawnerExt for TrialSpawner {
             }
         }
     }
-    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource>(
+    fn spawn_mob<L: TrialSpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,

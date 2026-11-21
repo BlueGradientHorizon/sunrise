@@ -384,7 +384,7 @@ pub trait SpawnerExt: Sized {
     fn delay(&mut self, random: &mut impl RandomSource, events: &mut Vec<SpawnerEvent>);
     /// `serverTick`. `spawn` adds an entity the spawner accepted and returns
     /// it, or None when the level would not take it.
-    fn server_tick<L: SpawnerLevel, R: RandomSource>(
+    fn server_tick<L: SpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,
@@ -556,7 +556,7 @@ impl SpawnerExt for Spawner {
         }
         events.push(SpawnerEvent::BlockEvent(1));
     }
-    fn server_tick<L: SpawnerLevel, R: RandomSource>(
+    fn server_tick<L: SpawnerLevel, R: RandomSource + Clone>(
         &mut self,
         l: &L,
         random: &mut R,

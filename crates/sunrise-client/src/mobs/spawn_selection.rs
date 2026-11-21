@@ -1292,7 +1292,7 @@ pub struct Spawned {
 
 /// `NaturalSpawner.spawnForChunk` for the categories already filtered.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1311,7 +1311,7 @@ pub fn spawn_for_chunk<L: NaturalLevel, R: RandomSource>(
 }
 /// `NaturalSpawner.spawnCategoryForChunk`: `getRandomPosWithin` (a column of
 /// the chunk, a height up to one above the world surface).
-pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1333,7 +1333,7 @@ pub fn spawn_category_for_chunk<L: NaturalLevel, R: RandomSource>(
 /// `NaturalSpawner.spawnCategoryForPosition` with the spawn state's
 /// `canSpawn` and `afterSpawn`.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource>(
+pub fn spawn_category_for_position<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     state: &mut SpawnState,
@@ -1593,7 +1593,7 @@ fn right_distance<L: NaturalLevel>(l: &L, chunk: (i32, i32), pos: [i32; 3], dist
 /// `isValidSpawnPostitionForType`, for the entry's type (`mob_type`).
 /// `listed`: the position is where the entry was picked from `mobsAt`.
 #[allow(clippy::too_many_arguments)]
-fn valid_position_for_type<L: NaturalLevel, R: RandomSource>(
+fn valid_position_for_type<L: NaturalLevel, R: RandomSource + Clone>(
     l: &L,
     random: &mut R,
     category: Category,
@@ -1657,7 +1657,11 @@ pub enum GenEvent {
 /// the chunk's surface. `rules` is the region's random, which the spawn
 /// predicates and `spawn` (finalizeSpawn) draw from.
 #[allow(clippy::too_many_arguments)]
-pub fn spawn_mobs_for_chunk_generation<L: NaturalLevel, R: RandomSource, Q: RandomSource>(
+pub fn spawn_mobs_for_chunk_generation<
+    L: NaturalLevel,
+    R: RandomSource,
+    Q: RandomSource + Clone,
+>(
     l: &L,
     source: [i32; 3],
     chunk: (i32, i32),

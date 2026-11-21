@@ -300,7 +300,7 @@ impl<'a> From<&'a MobType> for SpawnEntityType<'a> {
 
 /// `SpawnPlacements.checkSpawnRules` for the resolved entity type, then
 /// `MobSpawnEvent.SpawnPlacementCheck` through [`SpawnLevel::placement_check`].
-pub fn check_spawn_rules<L: SpawnLevel, R: RandomSource>(
+pub fn check_spawn_rules<L: SpawnLevel, R: RandomSource + Clone>(
     kind: SpawnEntityType<'_>,
     l: &L,
     reason: Reason,
