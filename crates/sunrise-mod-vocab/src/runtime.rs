@@ -636,16 +636,6 @@ pub(crate) fn poisoned_count(hook: generated::HookId) -> usize {
     })
 }
 
-/// A hook's enabled subscribers in dispatch order (descending priority, then dependency order),
-/// each marked as running `hook` until the next one is (or the loop ends), so a panic in it
-/// names the mod.
-pub(crate) fn entered_subscribers(
-    hook_id: generated::HookId,
-    hook: &'static str,
-) -> impl Iterator<Item = &'static ModEntry> {
-    entered_subscribers_matching(hook_id, hook, |_| true)
-}
-
 fn entered_subscribers_matching<'a>(
     hook_id: generated::HookId,
     hook: &'static str,
