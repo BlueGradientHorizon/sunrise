@@ -434,6 +434,7 @@ mod tests {
             assert_eq!(
                 SaveDir::new(root.clone(), shape, None)
                     .load_entities(0, 0)
+                    .unwrap()
                     .len(),
                 1
             );
@@ -446,6 +447,7 @@ mod tests {
             assert!(
                 SaveDir::new(root.clone(), shape, None)
                     .load_entities(0, 0)
+                    .unwrap()
                     .is_empty()
             );
             std::fs::remove_dir_all(root).unwrap();
