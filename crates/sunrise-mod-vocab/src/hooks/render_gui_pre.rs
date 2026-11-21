@@ -2,10 +2,11 @@
 
 pub trait Hooks {
     /// Before the in-world HUD is drawn (NeoForge's `RenderGuiEvent.Pre`):
-    /// return `Flow::Cancel` and none of it is, as under F1: no vanilla layer (and so
-    /// no `gui_layer_pre` or `gui_layer_post`), no `render_gui_post`, and no
-    /// chat or toasts. Fires once a frame in a world, not under F1 and not
-    /// while a server dialog or the connection screen covers the window.
+    /// return `Flow::Cancel` to skip vanilla layers (and so `gui_layer_pre` and
+    /// `gui_layer_post`), `render_gui_post`, chat and ordinary toasts. Audio stream
+    /// failure notices are outside this veto; the player can still hide them with F1.
+    /// Fires once a frame in a world, not under F1 and not while a server dialog or
+    /// the connection screen covers the window.
     /// Client-side.
     #[hook(
         receiver = "read",
@@ -14,7 +15,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderGuiEvent.Pre",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn render_gui_pre(canceled: &mut bool);
 }

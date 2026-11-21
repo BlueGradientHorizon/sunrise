@@ -7178,7 +7178,7 @@ impl Game<'_> {
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false);
+            self.draw_pack_toasts(&mut batch, false, false);
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
@@ -7210,7 +7210,7 @@ impl Game<'_> {
             self.draw_title_screen_with_post_hook(&mut batch);
             self.draw_toasts(&mut batch, false);
             self.draw_tutorial_toasts(&mut batch, false);
-            self.draw_pack_toasts(&mut batch, false);
+            self.draw_pack_toasts(&mut batch, false, false);
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
@@ -7219,7 +7219,7 @@ impl Game<'_> {
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
-            self.draw_pack_toasts(&mut batch, false);
+            self.draw_pack_toasts(&mut batch, false, false);
             self.draw_music_toast(&mut batch, false);
             return batch;
         }
@@ -7232,8 +7232,9 @@ impl Game<'_> {
         if !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre: a mod's cancel hides the HUD as F1 does.
-        let show_hud = !self.ui.hide_gui && !gui_canceled && !self.replay.playing();
+        // RenderGuiEvent.Pre can hide the HUD without changing the player's hide-GUI setting.
+        let hide_hud = self.ui.hide_gui || self.replay.playing();
+        let show_hud = !hide_hud && !gui_canceled;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7600,7 +7601,7 @@ impl Game<'_> {
         // after this point and so over what a mod drew.
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, !show_hud);
+        self.draw_every_toast(&mut batch, hide_hud, gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);

@@ -1,14 +1,14 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
 use super::{Control, Ring};
+use crate::crash::{CallError, contain_call};
 use mod_api::{
-    __private::{contain_refusal, mod_index, mod_index_on},
+    __private::{mod_index, mod_index_on},
     AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_TOTAL, AudioRead, AudioRefusal,
     AudioStream,
     content::crash::{ModCall, enter_native_mod},
 };
 use std::{
     collections::HashMap,
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering::*},
@@ -105,20 +105,19 @@ impl Worker {
         }
     }
 
-    pub(super) fn owner(&mut self, id: &'static str) -> Result<Arc<PullOwner>, AudioRefusal> {
+    pub(super) fn owner(&mut self, id: &'static str) -> Arc<PullOwner> {
         let panics = &self.panic_sender;
-        let owner = self.owners.entry(id).or_insert_with(|| {
-            Arc::new(PullOwner {
-                id,
-                index: mod_index(id),
-                poisoned: AtomicBool::new(false),
-                panics: panics.clone(),
+        self.owners
+            .entry(id)
+            .or_insert_with(|| {
+                Arc::new(PullOwner {
+                    id,
+                    index: mod_index(id),
+                    poisoned: AtomicBool::new(false),
+                    panics: panics.clone(),
+                })
             })
-        });
-        if owner.poisoned.load(Acquire) {
-            return Err(AudioRefusal::PullDisabled);
-        }
-        Ok(owner.clone())
+            .clone()
     }
 
     pub(super) fn take_panics(&self) -> Vec<&'static str> {
@@ -163,49 +162,44 @@ pub(super) struct PullOwner {
     panics: Sender<&'static str>,
 }
 
-enum CallFailure {
-    Refused,
-    Panicked,
-}
-
 impl PullOwner {
-    fn enabled(&self) -> bool {
-        !self.poisoned.load(Acquire) && self.index.is_none_or(mod_index_on)
+    pub(super) fn pull_disabled(&self) -> bool {
+        self.poisoned.load(Acquire)
     }
 
-    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, CallFailure> {
+    fn enabled(&self) -> bool {
+        !self.pull_disabled() && self.index.is_none_or(mod_index_on)
+    }
+
+    /// Destruction runs mod code even for a disabled owner. True if the source panicked.
+    pub(super) fn drop_source(&self, source: Box<dyn AudioStream>) -> bool {
+        matches!(
+            self.call("AudioStream drop", || drop(source)),
+            Err(CallError::Panicked(_))
+        )
+    }
+
+    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, CallError> {
         let id = self.id;
         let _guard = enter_native_mod(ModCall {
             id,
             hook,
             part: None,
         });
-        match catch_unwind(AssertUnwindSafe(|| contain_refusal(id, call))) {
-            Ok(Ok(read)) => Ok(read),
-            Ok(Err(refusal)) => {
-                log::warn!("{hook} refused: {refusal}");
-                Err(CallFailure::Refused)
-            }
-            Err(payload) => {
-                // A mod can unwind with any payload, including one with a panicking destructor.
-                // Only ordinary string payloads are safe for the worker to drop.
-                let message = payload
-                    .downcast_ref::<String>()
-                    .map(String::as_str)
-                    .or_else(|| payload.downcast_ref::<&str>().copied());
+        let result = contain_call(call);
+        match &result {
+            Ok(_) => {}
+            Err(CallError::Refused(refusal)) => log::warn!("{hook} refused: {refusal}"),
+            Err(CallError::Panicked(_)) => {
                 log::error!(
-                    "mod {id}: {hook} panicked ({}); its audio stream reads are disabled for this session",
-                    message.unwrap_or("non-string panic payload")
+                    "mod {id}: {hook} panicked; audio stream reads are disabled for this session"
                 );
-                if message.is_none() {
-                    std::mem::forget(payload);
-                }
                 self.poisoned.store(true, Release);
                 // If the output has been destroyed, the log above still reports the panic.
                 let _ = self.panics.send(id);
-                Err(CallFailure::Panicked)
             }
         }
+        result
     }
 }
 
@@ -238,7 +232,7 @@ impl PullJob {
         pcm.fill(0);
         let source = self.source.as_mut().expect("live pull job owns its source");
         match self.owner.call("AudioStream::read", || source.read(pcm)) {
-            Ok(AudioRead::Frames(0)) | Err(CallFailure::Refused) => true,
+            Ok(AudioRead::Frames(0)) | Err(CallError::Refused(_)) => true,
             Ok(AudioRead::Frames(frames)) if frames <= missing => {
                 self.ring.publish_frames(tail, &pcm[..frames * channels]);
                 true
@@ -250,7 +244,7 @@ impl PullJob {
                 );
                 false
             }
-            Err(CallFailure::Panicked) => false,
+            Err(CallError::Panicked(_)) => false,
             Ok(AudioRead::Eof) => {
                 self.demand.eof.store(true, Release);
                 false
@@ -265,10 +259,9 @@ impl Drop for PullJob {
         if !self.demand.eof.load(Relaxed) {
             self.control.stop();
         }
-        // Destruction also runs mod code, even for a disabled owner. Contain it separately so
-        // it cannot unwind the worker during retirement or shutdown.
-        let source = self.source.take();
-        if let Err(CallFailure::Panicked) = self.owner.call("AudioStream drop", || drop(source)) {
+        if let Some(source) = self.source.take()
+            && self.owner.drop_source(source)
+        {
             self.control.stop();
         }
     }
@@ -297,6 +290,7 @@ mod tests {
         mixer: Mutex<Mixer>,
         stream: Arc<dyn AudioStreamSource>,
         job: Option<PullJob>,
+        admitted: Receiver<PullJob>,
         scratch: [i16; 16],
     }
 
@@ -325,6 +319,7 @@ mod tests {
                 mixer,
                 stream,
                 job: Some(receiver.try_recv().unwrap()),
+                admitted: receiver,
                 scratch: [99; 16],
             }
         }
@@ -414,6 +409,7 @@ mod tests {
         mixer.lock().unwrap().stream_gain = [1.0; 11];
         let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
         let (called, calls) = mpsc::sync_channel(2);
+        let (release, released) = mpsc::channel();
         let broken_called = called.clone();
         let broken = audio
             .open_stream(
@@ -424,6 +420,7 @@ mod tests {
                         thread::current().id(),
                         mod_api::content::crash::current_native_call(),
                     ));
+                    let _ = released.recv();
                     pcm.fill(i16::MAX);
                     panic!("broken pull callback");
                 }))),
@@ -452,13 +449,15 @@ mod tests {
                 }))),
             )
             .unwrap();
-        let mut out = [0.0; 2];
-        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
-        assert_eq!(out, [0.0; 2]);
+        // An admission wake may already be scanning the jobs. Only the failing source has
+        // demand until it has entered read, so its sibling cannot be the first to panic.
+        request_pull(&mixer.lock().unwrap().streams[..1], 1, 48_000);
         let timeout = Duration::from_secs(1);
         let (worker, broken_call) = calls
             .recv_timeout(timeout)
             .expect("broken mod did not read");
+        request_pull(&mixer.lock().unwrap().streams[1..], 1, 48_000);
+        release.send(()).unwrap();
         let (good_worker, good_call) = calls
             .recv_timeout(timeout)
             .expect("other mod lost its worker");
@@ -505,8 +504,47 @@ mod tests {
             worker
         );
         // The later job ran on the same worker, after it published the healthy mod's PCM.
+        let mut out = [0.0; 2];
         mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
         assert_eq!(out, [0.5; 2]);
+    }
+
+    #[test]
+    fn eof_pcm_still_drains_after_a_sibling_source_panics() {
+        let mut first = true;
+        let mut rig = Rig::new(move |pcm| {
+            if std::mem::take(&mut first) {
+                pcm[..4].fill(16_384);
+                AudioRead::Frames(2)
+            } else {
+                AudioRead::Eof
+            }
+        });
+        // Ask for one more source frame without consuming the frames already queued.
+        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+        assert!(rig.refill());
+        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+        assert!(!rig.refill());
+
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
+        let sibling = rig
+            .pool
+            .open(
+                &rig.mixer,
+                "mod",
+                &spec,
+                Some(Box::new(Source(|_: &mut [i16]| panic!("sibling read")))),
+            )
+            .unwrap();
+        rig.job = Some(rig.admitted.try_recv().unwrap());
+        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
+        assert!(!rig.refill());
+        assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
+        assert_eq!(sibling.state(), AudioStreamState::Stopped);
+        assert_eq!(rig.stream.state(), AudioStreamState::Playing);
+        assert_eq!(rig.play::<8>(), [0.5; 8]);
+        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+        assert_eq!(rig.play::<2>(), [0.0; 2]);
     }
 
     #[test]
@@ -544,6 +582,68 @@ mod tests {
         assert!(rig.refill());
         assert_eq!(rig.play::<4>(), [0.5; 4]);
         assert!(rig.pool.take_pull_panics().is_empty());
+    }
+
+    #[test]
+    fn a_rejected_job_contains_source_destruction_on_the_opening_thread() {
+        use crate::crash::{contained_panic, tests::with_claimed_panics};
+
+        struct Payload;
+        impl Drop for Payload {
+            fn drop(&mut self) {
+                panic!("must not run opaque panic payload's destructor");
+            }
+        }
+        struct SourceDrop;
+        impl AudioStream for SourceDrop {
+            fn read(&mut self, _: &mut [i16]) -> AudioRead {
+                panic!("the queue refused this source")
+            }
+        }
+        impl Drop for SourceDrop {
+            fn drop(&mut self) {
+                std::panic::panic_any(Payload);
+            }
+        }
+
+        mod_platform::__private::initialize().unwrap();
+        let pool = StreamPool::default();
+        // This queue has a receiver but no available slot, so admit returns the job.
+        let (sender, _receiver) = mpsc::sync_channel(0);
+        pool.state().worker = Some(Worker::with_queue(
+            sender,
+            Wake {
+                pending: Arc::default(),
+                thread: thread::current(),
+            },
+        ));
+        let mixer = Mutex::new(Mixer::default());
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
+        let recovered = Arc::new(AtomicUsize::new(0));
+        let at_hook = recovered.clone();
+        with_claimed_panics(
+            move |info| {
+                if !info.payload().is::<Payload>() {
+                    return false;
+                }
+                if contained_panic(info) {
+                    at_hook.fetch_add(1, Relaxed);
+                }
+                true
+            },
+            || {
+                let open = || pool.open(&mixer, "mod", &spec, Some(Box::new(SourceDrop)));
+                assert!(matches!(open(), Err(AudioRefusal::WorkerUnavailable)));
+                assert!(matches!(open(), Err(AudioRefusal::PullDisabled)));
+            },
+        );
+        assert_eq!(
+            recovered.load(Relaxed),
+            2,
+            "both drops bypass the fatal hook"
+        );
+        assert_eq!(pool.take_pull_panics(), ["mod", "mod"]);
+        assert!(mixer.lock().unwrap().streams.is_empty());
     }
 
     #[test]

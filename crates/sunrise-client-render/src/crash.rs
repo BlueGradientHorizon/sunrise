@@ -72,6 +72,25 @@ fn attributed(message: String) -> String {
 /// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
 /// the load phase comes back as an error that names it.
 pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    match contain_call(f) {
+        Ok(value) => Ok(value),
+        Err(CallError::Refused(refusal)) => {
+            refusal.report();
+            Err(refusal.to_string())
+        }
+        Err(CallError::Panicked(message)) => Err(message),
+    }
+}
+
+pub(crate) enum CallError {
+    Refused(mod_api::__private::PhaseRefusal),
+    Panicked(String),
+}
+
+/// The same crash boundary for callers with different policies for panics and phase refusals.
+/// The crash hook logs panics; the caller decides how to report refusals and recover.
+pub(crate) fn contain_call<T>(f: impl FnOnce() -> T) -> Result<T, CallError> {
+    let outer = CAUGHT.with(|c| c.replace(None));
     CONTAINED.with(|c| c.set(c.get() + 1));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         mod_api::__private::contain_refusal(
@@ -80,22 +99,24 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
         )
     }));
     CONTAINED.with(|c| c.set(c.get() - 1));
+    let message = CAUGHT.with(|c| c.replace(outer));
     match result {
-        Ok(Ok(value)) => Ok(value),
-        // A mod's Host call the load phase does not admit: named, not a panic, and no crash report.
-        Ok(Err(refusal)) => {
-            refusal.report();
-            Err(refusal.to_string())
+        Ok(result) => result.map_err(CallError::Refused),
+        Err(payload) => {
+            let message = message.unwrap_or_else(|| payload_text(&*payload));
+            // Opaque payloads can have mod-defined destructors. Don't run them outside the
+            // catch boundary (or risk another panic while disposing of that second payload).
+            if !payload.is::<String>() && !payload.is::<&str>() {
+                std::mem::forget(payload);
+            }
+            Err(CallError::Panicked(message))
         }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
     }
 }
 
 /// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
 /// return. False for any other panic.
-fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
+pub(crate) fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
     if CONTAINED.with(Cell::get) == 0 {
         return false;
     }
@@ -890,7 +911,7 @@ pub fn debug_crash_after() -> Option<std::time::Duration> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use mod_api::__private::game::*;
 
@@ -902,7 +923,7 @@ mod tests {
     /// Runs `body` under a panic hook that offers each panic to `claim` first. The other tests of this binary run
     /// beside it, so a panic `claim` does not take goes on to the hook it replaced: their failure messages still
     /// print. The replaced hook is back before a panic out of `body` goes on, since a panicking thread can't swap it.
-    fn with_claimed_panics<R>(
+    pub(crate) fn with_claimed_panics<R>(
         claim: impl Fn(&std::panic::PanicHookInfo) -> bool + Send + Sync + 'static,
         body: impl FnOnce() -> R,
     ) -> R {

@@ -23,7 +23,7 @@ pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
 /// Muting or unplacing the stream does not pause demand. The worker drops an admitted source
 /// at EOF or after stop, without waiting for another device callback. Disabling the owning mod
-/// stops its pull streams.
+/// retires its remaining pull sources; streams that already reached EOF drain their queued PCM.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
@@ -88,8 +88,9 @@ pub enum AudioStreamState {
     /// The audio is still consumed, so no latency builds up.
     Unplaced,
     /// Over: `stop` was called, the handle was dropped, or the game's sound output went away.
-    /// A pull stream also stops after EOF and drain, an invalid frame count, or if its owning
-    /// mod or pull callbacks are disabled. A stopped stream never plays again.
+    /// A pull stream also stops after an invalid frame count, or when the worker retires its
+    /// live source because the owning mod or its pull callbacks were disabled. A stream that
+    /// already reached EOF stops once its queued PCM drains. A stopped stream never plays again.
     #[default]
     Stopped,
 }

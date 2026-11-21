@@ -445,13 +445,12 @@ impl StreamPool {
                     }
                 },
             };
-            let owner = match worker.owner(owner) {
-                Ok(owner) => owner,
-                Err(refusal) => {
-                    drop(state);
-                    return Err(refusal);
-                }
-            };
+            let owner = worker.owner(owner);
+            if owner.pull_disabled() {
+                drop(state);
+                owner.drop_source(source);
+                return Err(AudioRefusal::PullDisabled);
+            }
             let demand = Arc::new(worker.demand());
             control.pull = Some(demand.clone());
             let control = Arc::new(control);

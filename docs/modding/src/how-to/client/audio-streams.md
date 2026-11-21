@@ -38,7 +38,7 @@ The mixer owns the `Send + 'static` source. Keep `read` bounded and nonblocking:
 
 Write up to `pcm.len() / channels` whole interleaved frames into the cleared buffer and return `AudioRead::Frames(n)` with the **frame** count, not the sample count. A short read plays what was supplied; `Frames(0)` is temporary silence. The worker tries again on later demand. A count larger than the buffer can hold stops that stream and is logged. When no more PCM will arrive, return `AudioRead::Eof` on a read after reporting the final frames. The mixer drains those frames before stopping. The worker drops an admitted source off the device callback, even if no further callback runs after you stop it. `push` on a pull handle always returns zero.
 
-If a pull callback panics, the client logs the owning mod and shows an error toast. Its pull streams stop, and it cannot open another pull stream until the client restarts. Other mods' streams continue on the same worker; push streams are unaffected. Disabling a mod also stops its pull streams.
+If a pull callback panics, the client logs the owning mod and shows an error toast, even if a mod cancels the HUD. The player's hide-GUI setting still applies. The worker retires that mod's live pull sources, and the mod cannot open another pull stream until the client restarts. Other mods' streams continue on the same worker; push streams are unaffected. Disabling a mod also retires its live pull sources. In either case, streams that already returned `AudioRead::Eof` drain their queued PCM as usual.
 
 ## Push PCM from an async producer
 
@@ -80,7 +80,7 @@ Use the `AudioStreamRef` handle to set placement or volume, read state, or stop 
 
 - `Playing`: open and placed (or flat), even if muted or dry.
 - `Unplaced`: open, but at a place nobody hears (see below).
-- `Stopped`: stopped explicitly, dropped, or lost sound output. A pull stream also stops after EOF and drain, an invalid frame count, or if its owning mod or pull callbacks are disabled. A stopped stream never plays again; if output is lost, open a new stream once it is back. Changing devices successfully does not stop streams.
+- `Stopped`: stopped explicitly, dropped, or lost sound output. A pull stream also stops after EOF and drain, an invalid frame count, or when the worker retires its live source because its owning mod or pull callbacks were disabled. A stopped stream never plays again; if output is lost, open a new stream once it is back. Changing devices successfully does not stop streams.
 
 ## The player's switch
 
