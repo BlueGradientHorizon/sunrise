@@ -986,7 +986,7 @@ pub struct MenuType {
     pub player_inventory: bool,
     /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
-    pub data_slots: u16,
+    pub data_slots: usize,
     /// slots a player takes from but never puts into, each below `slots`.
     #[serde(default)]
     pub results: Vec<u16>,
@@ -2863,13 +2863,24 @@ capabilities = ["registries"]
         let wide = smod(
             "menu-wide-data",
             MANIFEST_TEXT,
-            &[(
-                "data/ruby/sunrise/menu/wide.json",
-                br#"{"slots": 1, "data_slots": 300}"#,
-            )],
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 1, "data_slots": 300}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/huge.json",
+                    br#"{"slots": 1, "data_slots": 70000}"#,
+                ),
+            ],
         )
         .unwrap();
-        assert_eq!(wide.menu_types[0].data_slots, 300);
+        let wide_counts: Vec<_> = wide
+            .menu_types
+            .iter()
+            .map(|m| (m.id.as_str(), m.data_slots))
+            .collect();
+        assert_eq!(wide_counts, [("ruby:huge", 70_000), ("ruby:wide", 300)]);
         for (case, file, details) in [
             ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
             (

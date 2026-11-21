@@ -5002,11 +5002,9 @@ impl Game<'_> {
                 self.remote_station_data(usize::try_from(p.id).unwrap_or(usize::MAX), p.value);
             }
             C::ContainerSetData(p)
-                if self.native_screen_data(
-                    p.container,
-                    usize::from(p.id as u16),
-                    i32::from(p.value),
-                ) => {}
+                if usize::try_from(p.id).is_ok_and(|index| {
+                    self.native_screen_data(p.container, index, i32::from(p.value))
+                }) => {}
             C::ContainerSetData(p) => {
                 let v = i32::from(p.value);
                 match self

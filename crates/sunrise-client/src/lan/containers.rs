@@ -1207,21 +1207,32 @@ impl Hub {
             .into_iter()
             .map(|v| v as i16)
             .collect::<Vec<i16>>();
-            m.sent_data.resize(data.len(), None);
+            let max_syncable = usize::from(i16::MAX as u16) + 1;
+            let sync_len = data.len().min(max_syncable);
+            m.sent_data.resize(sync_len, None);
             let window = m.window;
-            let changed: Vec<(usize, i16)> = data
-                .iter()
-                .enumerate()
-                .filter(|&(k, v)| m.sent_data[k] != Some(*v))
-                .map(|(k, &v)| (k, v))
-                .collect();
-            for &(k, value) in &changed {
-                m.sent_data[k] = Some(value);
+            let mut changed = Vec::new();
+            for (k, &value) in data[..sync_len].iter().enumerate() {
+                if m.sent_data[k] != Some(value) {
+                    m.sent_data[k] = Some(value);
+                    changed.push((
+                        i16::try_from(k).expect("sync_len is bounded by i16::MAX + 1"),
+                        value,
+                    ));
+                }
             }
-            for (k, value) in changed {
+            if data.len() > sync_len {
+                log::warn!(
+                    "Sunrise: container window {window} cannot sync {} data slot(s) at indices {sync_len}..{} (ContainerSetData id max is {})",
+                    data.len() - sync_len,
+                    data.len(),
+                    i16::MAX,
+                );
+            }
+            for (id, value) in changed {
                 g.send(&C::ContainerSetData(play::ContainerSetData {
                     container: window,
-                    id: k as i16,
+                    id,
                     value,
                 }));
             }

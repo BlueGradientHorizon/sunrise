@@ -703,9 +703,15 @@ pub fn decode_end_gateway(tag: &Tag) -> crate::containers::EndGateway {
     }
 }
 /// A mod's block entity: its compound without `id` and the position, and
+/// (when `decode_items` is true, i.e. container-backed or unknown-block loads)
 /// the `Items` rows that can be represented losslessly as modeled slots.
+/// Slotless holders loaded at a known block keep `Items` verbatim in `nbt`.
 /// The game sizes the modeled vector to its container when it uses it.
-fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::ModBlockEntity> {
+fn decode_mod_block_entity(
+    id: String,
+    tag: &Tag,
+    decode_items: bool,
+) -> Option<crate::containers::ModBlockEntity> {
     use crate::block_entity_nbt::saved_item_slot;
     let Tag::Compound(map) = tag else {
         return None;
@@ -719,33 +725,35 @@ fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::M
         .remove(&crate::containers::SHAPES_KEY.into())
         .and_then(|tag| crate::containers::PublishedShapes::from_tag(&tag));
     let mut items = Vec::new();
-    let key = "Items".into();
-    if let Some(Tag::List(entries)) = nbt.get_mut(&key) {
-        let mut occurrences = [0u8; 256];
-        for slot in entries.iter().filter_map(saved_item_slot) {
-            occurrences[slot] = occurrences[slot].saturating_add(1);
-        }
-        entries.retain(|raw| {
-            let Some(slot) = saved_item_slot(raw) else {
-                return true;
-            };
-            if occurrences[slot] == 1
-                && let Some(stack) = item_from_nbt(raw)
-                && let Tag::Compound(mut canonical) = Tag::from(&stack)
-            {
-                canonical.insert("Slot".into(), Tag::Byte(slot as i8));
-                if raw == &Tag::Compound(canonical) {
-                    if items.len() <= slot {
-                        items.resize(slot + 1, None);
-                    }
-                    items[slot] = Some(stack);
-                    return false;
-                }
+    if decode_items {
+        let key = "Items".into();
+        if let Some(Tag::List(entries)) = nbt.get_mut(&key) {
+            let mut occurrences = [0u8; 256];
+            for slot in entries.iter().filter_map(saved_item_slot) {
+                occurrences[slot] = occurrences[slot].saturating_add(1);
             }
-            true
-        });
-        if entries.is_empty() && !items.is_empty() {
-            nbt.remove(&key);
+            entries.retain(|raw| {
+                let Some(slot) = saved_item_slot(raw) else {
+                    return true;
+                };
+                if occurrences[slot] == 1
+                    && let Some(stack) = item_from_nbt(raw)
+                    && let Tag::Compound(mut canonical) = Tag::from(&stack)
+                {
+                    canonical.insert("Slot".into(), Tag::Byte(slot as i8));
+                    if raw == &Tag::Compound(canonical) {
+                        if items.len() <= slot {
+                            items.resize(slot + 1, None);
+                        }
+                        items[slot] = Some(stack);
+                        return false;
+                    }
+                }
+                true
+            });
+            if entries.is_empty() && !items.is_empty() {
+                nbt.remove(&key);
+            }
         }
     }
     let mut entity = crate::containers::ModBlockEntity::new(
@@ -775,7 +783,9 @@ pub fn decode_block_entity_replacing(
     block: &str,
     previous: Option<&crate::containers::BlockEntity>,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    let decoded = decode_block_entity_with_history(tag, previous)?;
+    let decode_mod_items =
+        mod_api::__private::parts_installation::block_container(block).is_some_and(|c| c.slots > 0);
+    let decoded = decode_block_entity_with_history(tag, previous, decode_mod_items)?;
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
     let saved_id = text(tag.get("id"))?;
@@ -790,12 +800,13 @@ pub fn decode_block_entity_replacing(
 }
 
 pub fn decode_block_entity(tag: &Tag) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
-    decode_block_entity_with_history(tag, None)
+    decode_block_entity_with_history(tag, None, true)
 }
 
 fn decode_block_entity_with_history(
     tag: &Tag,
     previous: Option<&crate::containers::BlockEntity>,
+    decode_mod_items: bool,
 ) -> Option<((i32, i32, i32), crate::containers::BlockEntity)> {
     use crate::containers::BlockEntity;
     let int = |k: &str| tag.get(k).and_then(crate::nbt_path::int_value); // getIntOr
@@ -804,7 +815,11 @@ fn decode_block_entity_with_history(
     if id.contains(':') && !id.starts_with("minecraft:") {
         return Some((
             pos,
-            BlockEntity::Mod(Box::new(decode_mod_block_entity(id, tag)?)),
+            BlockEntity::Mod(Box::new(decode_mod_block_entity(
+                id,
+                tag,
+                decode_mod_items,
+            )?)),
         ));
     }
     if id == "minecraft:end_gateway" {

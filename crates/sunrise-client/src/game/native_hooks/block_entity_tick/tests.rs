@@ -17,6 +17,7 @@ const CHUNK: (i32, i32) = (0, 0);
 const KIND: &str = "view_tick:subscribed";
 const UNSUBSCRIBED: &str = "view_tick:unsubscribed";
 const MACHINE: &str = "view_tick:machine";
+const CONTAINER_MACHINE: &str = "view_tick:container_machine";
 const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
 
 fn row(kind: &str, value: i32) -> BlockEntity {
@@ -230,18 +231,32 @@ impl BlockPart for Effects {
 #[mod_api::__subscriptions]
 impl Hooks for Effects {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        let kind = r.block_entity_type("subscribed").blocks(&[MACHINE]).build();
+        let kind = r
+            .block_entity_type("subscribed")
+            .blocks(&[MACHINE, CONTAINER_MACHINE])
+            .build();
         r.block_entity_part(&kind, Tick).unwrap();
         r.block_entity_type("unsubscribed")
             .blocks(&[UNSUBSCRIBED_MACHINE])
             .build();
         let machine = r.block_key(MACHINE);
         r.block_part(machine, Effects(self.0.clone()));
+        let container_machine = r.block_key(CONTAINER_MACHINE);
+        r.block_container(
+            &container_machine,
+            mod_api::ModContainer {
+                slots: 1,
+                ..Default::default()
+            },
+        );
     }
 
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
             .register(mod_api::Block::new(MACHINE, "minecraft:furnace").with_item(false))
+            .unwrap();
+        event
+            .register(mod_api::Block::new(CONTAINER_MACHINE, "minecraft:furnace").with_item(false))
             .unwrap();
         event
             .register(mod_api::Block::new(UNSUBSCRIBED_MACHINE, "minecraft:stone").with_item(false))
@@ -457,5 +472,70 @@ fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
             game.res.items(),
         );
         assert_eq!(saved.get("Items"), None);
+
+        // Save/reload round-trip: canonical item-shaped "Items" stays verbatim in `nbt`
+        // for slotless holders and is readable via `with_view`, while container-backed
+        // holders still decode canonical entries into `entity.items`.
+        {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(view.set_nbt("Items".into(), Some(expected_decoded.clone())));
+                    assert_eq!(view.nbt().get(&"Items".into()), Some(&expected_decoded));
+                })
+                .unwrap();
+        }
+        let saved_canonical = sunrise_client::save::block_entity_encode::encode(
+            POS,
+            game.world.block_entities.get(&POS).unwrap(),
+            MACHINE,
+            game.res.items(),
+        );
+        assert_eq!(saved_canonical.get("Items"), Some(&expected_decoded));
+
+        let (reloaded_pos, reloaded) =
+            sunrise_client::save::decode_block_entity_for_block(&saved_canonical, MACHINE)
+                .expect("slotless entity reloads");
+        assert_eq!(reloaded_pos, POS);
+        let BlockEntity::Mod(reloaded_mod) = &reloaded else {
+            panic!("expected mod block entity");
+        };
+        assert!(
+            reloaded_mod.items.is_empty(),
+            "slotless load must keep canonical Items in nbt, not entity.items"
+        );
+        assert_eq!(
+            reloaded_mod.nbt.get(&"Items".into()),
+            Some(&expected_decoded)
+        );
+        game.world.block_entities.insert(POS, reloaded);
+        let level = game.level(game.dim.id()).unwrap();
+        let reloaded_subject = game.block_entity(level, [POS.0, POS.1, POS.2]).unwrap();
+        {
+            let mut access = access(game, reloaded_subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert_eq!(view.nbt().get(&"Items".into()), Some(&expected_decoded));
+                    assert!(!view.set_nbt("Items".into(), Some(expected_decoded.clone())));
+                })
+                .unwrap();
+        }
+
+        let (_, container_reloaded) = sunrise_client::save::decode_block_entity_for_block(
+            &saved_canonical,
+            CONTAINER_MACHINE,
+        )
+        .expect("container-backed entity reloads");
+        let BlockEntity::Mod(container_mod) = &container_reloaded else {
+            panic!("expected mod block entity");
+        };
+        assert_eq!(
+            container_mod.items,
+            vec![Some(sunrise_client::items::ItemStack::new(
+                "minecraft:stone",
+                3
+            ))]
+        );
+        assert!(container_mod.nbt.get(&"Items".into()).is_none());
     });
 }

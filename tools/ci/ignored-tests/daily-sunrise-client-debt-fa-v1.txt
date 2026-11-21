@@ -1,2 +1,3 @@
-# Slotless Items NBT coverage for BlockEntityView::set_nbt (debt fa-v1).
+# Audit follow-up coverage for debt fa-v1 (slotless Items NBT and stock-menu ContainerSetData sync).
 sunrise-client game::native_hooks::block_entity_tick::tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots lib daily child-process
+sunrise-client game::native_hooks::screen_position_tests::stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary lib daily child-process
