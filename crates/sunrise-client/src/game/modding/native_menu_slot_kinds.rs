@@ -240,6 +240,7 @@ mod tests {
             slots: 9,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![7],
             inputs: vec![5, 8],
             crafting: Some(ModCrafting {

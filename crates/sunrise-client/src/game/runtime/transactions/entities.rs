@@ -131,6 +131,10 @@ fn committing_in(commits: &mut [Committing], dimension: Dim) -> Option<&mut Comm
         .find(|commit| commit.dimension == dimension)
 }
 
+pub(super) fn is_committing(commits: &[Committing], dimension: Dim) -> bool {
+    commits.iter().any(|commit| commit.dimension == dimension)
+}
+
 /// The innermost open transaction of `dimension`: it journals what happens in that level only,
 /// whatever other levels' transactions are open inside it (a command run `in` another level can
 /// open one). What happens in a level with none open (a command run `in` it from another
@@ -338,9 +342,23 @@ impl Game<'_> {
         };
         Some((step, commit.removed.clone()))
     }
-    /// Tells the running commit's queue: every join first, as the queue grows with what the
-    /// listeners ask for, then each step in order, the joins already told skipped.
-    fn tell_commit(&mut self, frame: usize) {
+    /// Publish an item spawned by `preRemoveSideEffects` before returning to the block
+    /// write. At commit, tell the already-queued batches first, excluding pending removes.
+    pub(super) fn flush_removal_join(&mut self, watch: u32) -> bool {
+        let Some(frame) = self
+            .transactions
+            .committing
+            .iter()
+            .rposition(|commit| commit.dimension == self.dim)
+        else {
+            return self.native_joins_flush(false, watch);
+        };
+        self.tell_commit_joins(frame);
+        let removed = self.transactions.committing[frame].removed.clone();
+        self.flush_joins(false, watch, &removed, Some(JoinSeq::latest()))
+    }
+
+    fn tell_commit_joins(&mut self, frame: usize) -> usize {
         let mut next = 0;
         while let Some((step, removed)) = self.commit_step(frame, next, false) {
             next += 1;
@@ -352,7 +370,12 @@ impl Game<'_> {
                 self.flush_joins(loaded_from_disk, 0, &removed, Some(through));
             }
         }
-        let joined = next;
+        next
+    }
+
+    /// Tells every join first, as the queue grows, then the remaining steps in order.
+    fn tell_commit(&mut self, frame: usize) {
+        let joined = self.tell_commit_joins(frame);
         let mut next = 0;
         while let Some((step, removed)) = self.commit_step(frame, next, true) {
             match step {
@@ -388,9 +411,7 @@ impl Game<'_> {
                     if killed {
                         self.mob_removal_effects(id);
                     }
-                    // As `remove_mob_now` does outside a transaction: the leave is told at
-                    // the removal, here the root commit's.
-                    self.native_entity_left(id);
+                    self.finish_mob_removal(id);
                 }
                 Removal::Other(entity) => {
                     // The commit lists the entity as removed until now, so the handle resolves

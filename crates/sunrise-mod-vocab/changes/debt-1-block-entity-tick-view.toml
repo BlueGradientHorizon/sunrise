@@ -12,5 +12,44 @@ ids = [
     "type:BlockEntityTickEvent.pos",
     "type:BlockEntityTickEvent.reply",
 ]
-why = "A resident server block entity can be read and edited in place without a payload snapshot, reply, or per-listener savepoint. Taking the Host and borrowing the subject are sequential operations; any later subject loan verifies that the original entity still occupies the same level and state. Every successful storage write follows one save-mark rule."
-migrate = "Change `fn block_entity_tick(&self, host, event: &mut BlockEntityTickEvent)` to `fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>)`. Instead of reading a handle through `host` or modifying `event.entity` and setting `event.reply`, call `event.subject.with_view(|mut subject| { ... })`. Use `subject.set_data_slot` for existing menu data, `set_data_slots` to initialize or resize it, `set_item_slot` for internal stacks, and `set_nbt` for saved fields. To use another object, return any owned input from the view closure, then borrow `event.subject.host()`. Reborrow using `with_view` and handle `None` instead of writing to the replacement. To commit both subject and neighbor or dropped-item edits together, wrap the sequence in `event.subject.transaction`, recheck any source values after taking the Host, and return `Err` on a stale subject or failed write. Keep `subject.handle()` only for later calls. A tick no longer commits a reply or opens a transaction for you. Menu-data writes through a handle now mark the chunk unsaved just like the view does; those slots remain transient and are not serialized."
+why = """
+A resident server block entity can be read and edited in place without a payload snapshot, reply,
+or per-listener savepoint. This follows vanilla 26.3's Level.tickBlockEntities and BlockEntityTicker;
+NeoForge adds no ticker event. Taking the Host and borrowing the subject are sequential; a later
+loan checks that the original entity still occupies the same level and state. Every successful
+storage write follows one save-mark rule.
+
+The server's block replacement replays vanilla 26.3's LevelChunk.setBlockState: preRemoveSideEffects
+uses the row as it stood at replacement, and Containers.dropItemStack joins the resulting drops
+(before removeBlockEntity and neighbor notifications), at NeoForge's EntityJoinLevelEvent site in
+PersistentEntitySectionManager.addEntity. In keeping with NeoForge's SnapshotJournal.onClose,
+only abort restores the first-write snapshot. Bulk edits keep FillCommand.fillBlocks' strict rules:
+no container drops or neighbor updates, with whole changed chunks published on commit. At a cell
+where ordinary and strict writes are mixed, replay follows their call order and keeps their rows distinct.
+ItemEntityRef::set_stack still uses ItemEntity.setItem. Its write and block replacement join the
+journal of the level in place, not a journal in a different level (ExecuteCommand's in branch).
+"""
+migrate = """
+- Change `fn block_entity_tick(&self, host, event: &mut BlockEntityTickEvent)` to
+  `fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>)`. Instead of reading a handle
+  through `host` or modifying `event.entity` and setting `event.reply`, call
+  `event.subject.with_view(|mut subject| { ... })`. Use `subject.set_data_slot` for existing menu data,
+  `set_data_slots` to initialize or resize it, `set_item_slot` for internal stacks, and `set_nbt` for
+  saved fields. Menu-data writes through a handle now mark the chunk unsaved just like the view does;
+  those slots remain transient and are not serialized.
+- For Part state, get `event.subject.with_view(|view| view.handle())` and pass that handle and
+  `event.subject.host()` to `edit_state`. To use another object, return any owned input from the view
+  closure, then borrow `event.subject.host()`. Reborrow using `with_view` and handle `None` instead
+  of writing to the replacement.
+- A tick no longer commits a reply or opens a transaction for you. For a standalone dropped-item
+  write, change `item.set_stack(host, stack)` to `item.set_stack(event.subject.host(), stack)`.
+  The Host setter writes live storage instead of proposing an edit to the engine's old internal
+  buffer. To roll it back together with subject edits, wrap the work in
+  `event.subject.transaction(|tick, _| { ... })` and call `item.set_stack(tick.host(), stack)`
+  inside that closure. Recheck source values after taking the Host and return `Err` on a stale
+  subject or refused write. A setter with no transaction open in that level is not rolled back.
+- `level.set_block(host, pos, state, flags)`, `level.remove_block(host, pos, moved)` and
+  `host.edit_blocks(dimension, &edit)` keep their signatures. To roll back a replacement in
+  another dimension, open a transaction there; a transaction in the original level does not
+  cover it. For `edit_blocks`, no call change is needed to take part in the level's transaction.
+"""

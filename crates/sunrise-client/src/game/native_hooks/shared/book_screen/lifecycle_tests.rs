@@ -122,6 +122,7 @@ fn with_bound_menu_type(test: impl FnOnce()) {
             None,
             None,
             true,
+            None,
         )],
         test,
     );
@@ -920,6 +921,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                 None,
                 None,
                 false,
+                None,
             )],
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {

@@ -609,8 +609,8 @@ impl Game<'_> {
         if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
             return mod_api::LevelWriteHost::remove_block(&mut host, pos, moved);
         }
-        let changed =
-            self.with_level(|_, level, ticks| level.remove_block_write(ticks, pos, moved));
+        let (state, flags) = self.level_removal_write(pos, moved);
+        let changed = self.set_block_live(pos, state, flags, false);
         let _ = self.process_level_events();
         changed
     }

@@ -30,8 +30,8 @@ pub trait Notes {
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
-- Server commands and players: `register_commands` (the commands a mod adds to every player's
-  command tree) and `run_mod_command` (a player's command on the server), with helpers to answer
+- Server commands and players: `register_commands` adds usages to the server tree with
+  `Command::executes` to bind their executors, with helpers to answer
   ([Server commands and players](#server-commands-and-players)).
 
 - A player's items for server mods: counting, taking and giving go through the player's
@@ -123,14 +123,17 @@ pub trait Notes {
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
-  `entity.id()` reads its type identity, fixed at construction; mutable events give a `ModBlockEntityView` whose
-  payload contains `nbt`, `items` and `data`. A mod cannot replace the view or access its private entity handle.
+  `block_entity_tick` receives `&mut BlockEntityTickEvent<'_>` without a separate Host.
+  `event.subject.with_view` lends the resident type ID, saved data, and slots; it returns `None`
+  if the subject is no longer available. To edit Part state, get the handle with
+  `event.subject.with_view(|view| view.handle())`, then use `event.subject.host()` for `edit_state`.
+  To commit edits to the subject and other objects together, use `event.subject.transaction`.
 
 - Item slots for those block entities (`r.block_container(&block, container)`): hoppers, comparators and breaking the
-  block use them as they use vanilla's containers, and `block_entity_tick` also gets the slots.
+  block use them as they use vanilla's containers, and the tick's resident view lends the slots.
 
-- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used,
-  and `block_entity_tick` takes the whole block entity, with the data slots the menu shows.
+- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used.
+  The tick's resident view lends the data slots the menu shows.
 
 - A machine reaches neighbouring storage through the block's Parts and capabilities, not a raw mutable
   block-entity callback. `block_entity.data_slots(host)` reads a mod entity's menu data on the server or
@@ -382,10 +385,11 @@ pub trait Notes {
   changing the player's saved shader selection); other packs are unaffected.
 
 ### Custom ingredient metadata
-`ingredient` and `ingredient_test` carry an API `Compound`. Recipe JSON is
+`ingredient` receives its recipe metadata as an API `Compound`. Recipe JSON is
 converted at load by the shared JsonOps-to-NbtOps boundary; mod code matches
 `Tag` variants rather than JSON fields. Nested null refuses the recipe as an
-unclaimed kind does; numeric and heterogeneous arrays remain lists. Matching
-borrows the retained compound and never converts metadata on the tick."#]
+unclaimed kind does; numeric and heterogeneous arrays remain lists. Read `event.data`
+while claiming the kind and capture the parsed configuration in the predicate. Matching
+borrows the live stack, not the recipe's JSON or its converted compound."#]
     fn capabilities();
 }

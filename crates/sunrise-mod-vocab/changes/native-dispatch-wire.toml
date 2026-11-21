@@ -108,8 +108,6 @@ ids = [
   "type:LivingVisibilityEvent",
   "type:MakesOpenTrapdoorAboveClimbableEvent",
   "type:MayPlaceOnEvent",
-  "type:MenuClickedEvent",
-  "type:MenuClosedEvent",
   "type:MinecartPassEvent",
   "type:MobEffectAddedEvent",
   "type:MobEffectApplicableEvent",

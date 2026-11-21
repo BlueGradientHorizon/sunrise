@@ -6,7 +6,9 @@ pub trait Hooks {
     /// `event.subject.with_view` lends its live storage. To reach the level or
     /// another object, return from the loan and call `event.subject.host()`.
     /// Ask for another loan afterwards; it returns `None` if the level, state
-    /// or generation no longer matches. Keep a handle only to use across calls.
+    /// or generation no longer matches. For a Part-state edit, first get the
+    /// handle with `event.subject.with_view(|view| view.handle())`, then borrow
+    /// `event.subject.host()` to call `edit_state`.
     ///
     /// Setters apply checked writes in place. Read-only and unchanged loans do not
     /// clone the row or dirty the chunk. Edits join the ambient transaction;

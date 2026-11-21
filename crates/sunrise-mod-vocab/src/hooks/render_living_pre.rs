@@ -18,12 +18,14 @@ pub trait Hooks {
     /// `model.hide(index)` to leave it and its descendants out of the body and layers drawn on
     /// that model (such as a spider's eyes). Armour, held items and independent layers are
     /// unaffected. Missing names return `None`; invalid indices return `false` without an edit.
-    /// Edits last for this draw only; `draw.keep()` does nothing here.
+    /// Edits last for this draw only; `draw.keep()` does nothing here. In the ordered body pass,
+    /// this hook follows level join order, including this window's player at its own slot,
+    /// interleaved with general entity renderer submissions.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 3,
+        version = 6,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",

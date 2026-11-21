@@ -55,6 +55,17 @@ wrapper omitted the previous body. If Pre cancels the slot, neither the installe
 runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
 
+## Status rows and fixed text positions
+
+`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
+in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
+`minecraft:vehicle_health` layer.
+
+Adding a taller status bar does not move the selected item name or the action bar. The name starts
+59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
+pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
+`minecraft:selected_item_name` or `minecraft:overlay_message`.
+
 ## Registering F3 text
 
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client

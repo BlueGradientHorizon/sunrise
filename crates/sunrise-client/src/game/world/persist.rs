@@ -61,6 +61,7 @@ pub(super) enum OffLevel {
 
 /// Formerly resident vehicles kept solely by surviving passenger edges.
 pub(super) enum RemovedVehicle {
+    Mob { position: Vec3, kind: String },
     Boat(super::boats::Boat),
     Cart(super::minecarts::Minecart),
 }
@@ -68,6 +69,7 @@ pub(super) enum RemovedVehicle {
 impl RemovedVehicle {
     pub(super) fn position(&self) -> Vec3 {
         match self {
+            Self::Mob { position, .. } => *position,
             Self::Boat(boat) => boat.position,
             Self::Cart(cart) => cart.position,
         }
@@ -75,6 +77,7 @@ impl RemovedVehicle {
 
     pub(super) fn retire_attachment_registration(&self) {
         match self {
+            Self::Mob { .. } => {}
             Self::Boat(boat) => {
                 boat.attachment_lifetime.retire();
             }
@@ -86,6 +89,7 @@ impl RemovedVehicle {
 
     pub(super) fn kind(&self) -> String {
         match self {
+            Self::Mob { kind, .. } => kind.clone(),
             Self::Boat(boat) => boat.entity_type(),
             Self::Cart(cart) => cart.kind.id().into(),
         }
@@ -193,7 +197,7 @@ pub struct EntityMemory {
     /// Full rejected passenger objects, not resident entities or frozen NBT copies.
     /// Kept with the level while any live object graph still refers to them.
     pub(super) off_level: HashMap<u32, OffLevel>,
-    /// Removed boat/cart objects are never part of level residency.
+    /// Formerly resident vehicles kept for vetoed dismounts, never for ticking.
     pub(super) removed_vehicles: HashMap<u32, RemovedVehicle>,
     /// Destruction callbacks already consumed for geometry retained after removal.
     score_destroyed: HashSet<u32>,
@@ -201,6 +205,8 @@ pub struct EntityMemory {
     pub(super) mount_notifications: HashSet<(u32, u32, bool)>,
     /// Deferred native removals already notified their passenger edges.
     pub(super) notified_vehicle_removals: HashSet<u32>,
+    /// Pre-removal effects in progress. The vehicle still resolves during these effects.
+    pub(super) preparing_vehicle_removals: HashSet<super::commands::Target>,
     /// Vehicle destruction is logically visible before its passenger callbacks.
     pub(super) destroying_vehicles: HashSet<super::commands::Target>,
     /// Synched entity-data entries dirtied by forced writes since the last sync.
@@ -1735,6 +1741,10 @@ impl Game<'_> {
     /// A mob's entity tag with the mobs riding it under `Passengers`.
     pub(super) fn mob_tree_nbt(&mut self, i: usize) -> Tag {
         self.mob_object_tree_nbt(MobObject::Resident(i), false)
+    }
+    /// A hive stores just its entering bee, not its riding tree.
+    pub(super) fn mob_own_nbt(&mut self, i: usize) -> Tag {
+        self.mob_object_nbt(MobObject::Resident(i))
     }
     /// Forget an entity that left the world (its UUID and loaded compound).
     pub(super) fn forget_entity(&mut self, id: u32) {

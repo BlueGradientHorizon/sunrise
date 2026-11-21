@@ -179,16 +179,20 @@ impl Value {
 
     /// Whether a program that declares the built-in `name` as `ty` reads this value. Iris 1.11.7
     /// disables a built-in declared with another GLSL type than the one it gives ("Wrong uniform
-    /// type ... Disabling that uniform"), and the program reads 0. Our probe packs saw it for a
+    /// type ... Disabling that uniform"), so it keeps its initial value (zero unless the shader
+    /// specifies an initializer). Our probe packs saw it for a
     /// float declared `int` or `vec2`, an int `float`, an `ivec2` `vec2`, `int` or `ivec3`, a
     /// `vec3` `vec2` or `vec4`, a `mat4` `mat3`, and any `uint`; an int or a bool built-in
-    /// declared `bool` or `int` was kept. A float declared `bool` is left as it was: Iris warned,
-    /// but our probe read true.
+    /// declared `bool` or `int` was kept. A scalar float declared `bool` is left as it was: Iris
+    /// warned, but our probe read true. A float vector or matrix declared `bool` (a `vec4` such as
+    /// `lightningBoltPosition`) is a mismatch like any other and keeps its initial value, not the
+    /// first component.
     pub fn read_as(&self, name: &str, ty: &str) -> bool {
         let int = matches!(self, Value::I(_));
+        let name = name.strip_prefix("gbuffers.").unwrap_or(name);
         let (declared_int, size) = match ty {
             "float" => (false, 1),
-            "bool" if !int => return true,
+            "bool" if !int && components(name) == 1 => return true,
             "int" | "bool" => (true, 1),
             "mat2" => (false, 4),
             "mat3" => (false, 9),
@@ -198,7 +202,6 @@ impl Value {
             t if let Some(n) = t.strip_prefix("vec") => (false, n.parse().unwrap_or(0)),
             _ => return true,
         };
-        let name = name.strip_prefix("gbuffers.").unwrap_or(name);
         declared_int == int && size == components(name)
     }
 
@@ -271,6 +274,7 @@ pub const NAMES: &[&str] = &[
     "rainStrength",
     "wetness",
     "thunderStrength",
+    "lightningBoltPosition",
     "fogColor",
     "skyColor",
     "fogMode",
@@ -957,6 +961,10 @@ impl FrameUniforms {
                 "rainStrength" => Value::f(&[inputs.rain]),
                 "wetness" => Value::f(&[self.wetness]),
                 "thunderStrength" => Value::f(&[inputs.thunder]),
+                "lightningBoltPosition" => Value::f(&lightning_bolt_position(
+                    frame.lightning.bolts,
+                    frame.camera,
+                )),
                 "fogColor" => Value::f(&fog_color),
                 "skyColor" => Value::f(&frame.sky.sky_color),
                 // Iris 1.11.7, measured: programs that draw no geometry read no fog mode (0) and
@@ -1115,6 +1123,21 @@ fn status_value(name: &str, inputs: &PackInputs) -> Option<Value> {
     })
 }
 
+/// `lightningBoltPosition` (spec 5.2): the last bolt in Sunrise's draw list (`bolts`, the
+/// frame's `lightning.bolts`), in player space (its offset from `camera`, the `cameraPosition`
+/// of the frame, as the renderer draws it), with w = 1; zeros when the list is empty. The
+/// order bolts are submitted in doesn't decide whose pixels end up on screen last; the value
+/// only follows the list, and which bolts are visible or how they sort is the renderer's
+/// business. A bolt never moves, so its interpolated render position
+/// (`EntityRenderer.extractRenderState`) is where it struck. Recorded as decision D-1
+/// (`docs/cleanroom/decisions.md`).
+pub fn lightning_bolt_position(bolts: &[super::lightning::Bolt], camera: DVec3) -> [f32; 4] {
+    bolts.last().map_or([0.0; 4], |bolt| {
+        let [x, y, z] = super::lightning::offset(bolt, camera);
+        [x, y, z, 1.0]
+    })
+}
+
 /// How many components the uniform `name` has (16 for a matrix).
 fn components(name: &str) -> usize {
     match name {
@@ -1136,7 +1159,7 @@ fn components(name: &str) -> usize {
         | "skyColor"
         | "endFlashPosition" => 3,
         "eyeBrightness" | "eyeBrightnessSmooth" | "atlasSize" => 2,
-        "entityColor" => 4,
+        "entityColor" | "lightningBoltPosition" => 4,
         // Sunrise's own vec4s, a dynamic light and half a boat's water patch box; their counts
         // are ints.
         n if n.starts_with("sunriseDynamicLight") && n != "sunriseDynamicLightCount" => 4,
@@ -1205,6 +1228,10 @@ mod tests {
             (&Value::i(&[2048, 2048]), "atlasSize", "ivec3", false),
             (&float, "sunAngle", "float", true),
             (&float, "sunAngle", "vec2", false),
+            // A scalar float declared `bool` is kept; a float vector or matrix isn't.
+            (&float, "sunAngle", "bool", true),
+            (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "bool", false),
+            (&matrix, "gbufferModelView", "bool", false),
             (&float, "viewWidth", "int", false),
             (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "vec3", true),
             (&Value::f(&[1.0, 2.0, 3.0]), "cameraPosition", "vec4", false),
@@ -2834,3 +2861,6 @@ fn dynamic_light_index(name: &str) -> Option<usize> {
 #[cfg(test)]
 #[path = "pack_uniforms/ftransform_test.rs"]
 mod ftransform_test;
+#[cfg(test)]
+#[path = "pack_uniforms/lightning_bolt_test.rs"]
+mod lightning_bolt_test;

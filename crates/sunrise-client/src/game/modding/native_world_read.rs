@@ -693,12 +693,13 @@ mod tests {
                 let oak_tag = tags
                     .key(&mod_api::Identifier::parse("minecraft:oak_logs").unwrap())
                     .unwrap();
+                let mod_api::TagMembers::Members(keys) = tags.items(oak_tag) else {
+                    panic!("the oak logs tag is loaded");
+                };
                 assert_eq!(
-                    tags.items(oak_tag)
-                        .and_then(|keys| keys
-                            .into_iter()
-                            .map(|key| key.id(host))
-                            .collect::<Option<Vec<_>>>())
+                    keys.into_iter()
+                        .map(|key| key.id(host))
+                        .collect::<Option<Vec<_>>>()
                         .as_deref(),
                     Some(&oak.each_ref().map(String::as_str)[..])
                 );
@@ -995,7 +996,7 @@ mod tests {
             let item = host
                 .item_key(&mod_api::Identifier::parse("minecraft:oak_log").unwrap())
                 .unwrap();
-            assert_eq!(tags.items(oak_tag), None);
+            assert_eq!(tags.items(oak_tag), mod_api::TagMembers::Unavailable);
             assert_eq!(tags.is_in_tag(item, oak_tag), None);
             game.session_lock = None;
             let _ = std::fs::remove_dir_all(dir);

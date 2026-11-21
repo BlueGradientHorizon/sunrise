@@ -39,7 +39,7 @@ The journal covers writes through capability handlers to these storages:
 | Hopper | Cooldown |
 | Cauldron | Block state |
 | Composter | Block state and composter-local random stream; fill feedback, game events and maturation scheduling wait for outer commit |
-| World block set, removal, and fluid pickup and placement | Block state, and a block entity the new block removes |
+| World block set, removal, bulk edits, and fluid pickup and placement | Block state, and a block entity the new block removes |
 | Player | Inventory slots, armour, offhand, body, saddle, cursor, ender chest and persistent data, for host and guest players |
 | Entity inventory | Chest or hopper minecart, chest boat, chested donkey, mule or llama inventory |
 | Item entity | Stack; an emptied entity remains until the outermost commit removes it |
@@ -58,15 +58,52 @@ unlike `trigger_sound_and_game_event`, which acts at once. The `block_drops` lis
 replaced block see it as it was, and a cancelled drop keeps the replacement.
 
 `LevelRef::set_block` and `LevelRef::remove_block` expose the tentative block state
-right away; block updates and replacement effects wait for the outermost commit.
-`LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
-running loot, experience or break effects.
+right away; block updates and replacement effects wait for the outermost commit
+in that level. Removal uses the block entity as it stood at replacement, including
+any edits made before the replacement. Its drops join before the row is removed and
+before neighbor notifications. On abort, the journal restores the original entity
+and undoes those edits. `host.edit_blocks` also restores the original blocks and
+block entities on abort; it publishes whole chunks on commit without drops or
+neighbor updates. If both kinds of write touch one position, they replay in call
+order; a later bulk edit cannot substitute its new block entity for the ordinary
+removal's old one. `LevelRef::destroy_block` returns `Ok(None)` while a transaction
+is open, before running loot, experience or break effects.
 
-Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
-effect immediately, even inside a transaction. Equipment sounds and equip/unequip
-events from `LivingRef::set_equipment` also happen immediately. An abort does not
-undo these writes or effects. Use journaled capability handlers when you need rollback.
+`ItemEntityRef::set_stack` writes the replacement stack immediately and joins the
+innermost transaction in the item's level, if one is open. An abort restores the old
+stack. A command run in another level (`execute in`) does not share the original
+level's journal; open a transaction in the other level to stage writes there. A block-entity
+tick does not open a transaction for you. Use `event.subject.transaction` to make
+a subject edit and a dropped-item write atomic:
+
+```rust,ignore
+use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+
+fn update(
+    tick: &mut BlockEntityTickScope<'_>,
+    item: ItemEntityRef,
+    replacement: ItemStack,
+    progress: i32,
+) -> Result<(), &'static str> {
+    tick.transaction(|tick, _| {
+        if !item.set_stack(tick.host(), replacement).map_err(|_| "invalid stack")? {
+            return Err("dropped-item write was refused");
+        }
+        let changed = tick.with_view(|mut view| view.set_data_slot(0, progress))
+            .ok_or("subject is unavailable")?;
+        if !changed {
+            return Err("progress was not updated");
+        }
+        Ok(())
+    })
+}
+```
+
+Other direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
+`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds
+and equip/unequip events from `LivingRef::set_equipment` also happen immediately.
+An abort does not undo these writes or effects. Use journaled capability handlers
+when you need rollback.
 
 ## Spawning and removing entities
 

@@ -163,7 +163,7 @@ impl ServerHost for DiscoveryHost {}
 mod_api::impl_server_host_areas!(DiscoveryHost);
 
 pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
-    if !mod_api::__private::listened(HookId::AddPackFinders) {
+    if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
         return Vec::new();
     }
     let mut registry = Registry::new(kind, mods.clone());
@@ -173,7 +173,11 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
         PackType::ServerData => HostSide::Server(&mut host),
         _ => return Vec::new(),
     };
-    mod_api::dispatch_add_pack_finders(host, |listen| registry.register_listener(listen));
+    mod_api::dispatch_add_pack_finders_for(
+        host,
+        |listen| registry.register_listener(listen),
+        |id| mods.code_owner_enabled(id),
+    );
     registry.packs
 }
 
@@ -203,7 +207,7 @@ pub(super) fn data_repository(
 
 impl Game<'_> {
     pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Pack> {
-        if !mod_api::__private::listened(HookId::AddPackFinders) {
+        if !mod_api::__private::enabled_listened(HookId::AddPackFinders) {
             return Vec::new();
         }
         let mut registry = Registry::new(kind, self.mods.clone());

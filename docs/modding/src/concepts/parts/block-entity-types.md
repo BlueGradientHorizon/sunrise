@@ -102,14 +102,21 @@ impl BlockEntityPartState for Press {
     const DATA: &'static AttachmentType<u32> = &PROGRESS;
 }
 r.block_entity_part_with_state(&press, Press)?;
+```
 
-// In its tick, where the block entity is out of the world and `block_entity` finds nothing:
-let level = host.level(host.dimension()).unwrap();
-let entity = host.block_entity_identity(level, event.pos).unwrap();
-let done = Press::edit_state(host, entity, |_, progress| {
-    *progress += 1;
-    *progress >= 200
-})?;
+In `BlockEntityPart::block_entity_tick`, take the handle from the subject, then borrow the Host
+for the Part-state edit. If an earlier Part replaced the subject, the view is unavailable:
+
+```rust,ignore
+fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+    let Some(entity) = event.subject.with_view(|view| view.handle()) else {
+        return;
+    };
+    let host = event.subject.host();
+    if let Err(err) = Press::edit_state(host, entity, |_, progress| *progress += 1) {
+        eprintln!("press progress edit failed: {err}");
+    }
+}
 ```
 
 - `Press::state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
@@ -138,11 +145,12 @@ let done = Press::edit_state(host, entity, |_, progress| {
   depth 512. The 2 MiB quota of a chunk packet's block entity data is a network limit and does not
   cap saved state.
 - Registration refuses a declaration that syncs, copies on death, lies outside the mod's namespaces
-  or reuses a key with a type of another Rust type name. It refuses a type whose Wire form holds a resource
-  handle (an erased handler such as `Arc<dyn BlockPart>`): such a value cannot be saved. The refusal names the Part,
-  the key, the type and the reason.
+  or reuses a key with a type of another Rust type name. The refusal names the Part, the key,
+  the type and the reason.
 - Values without a codec last for the session. Part state is server-side for now. A client reads the
   default, because nothing is sent to it yet.
+- Part registration and state errors are local values, not `Wire` records.
+  The attachment codec persists the state value, not its declaration or errors.
 
 ## Saved data
 

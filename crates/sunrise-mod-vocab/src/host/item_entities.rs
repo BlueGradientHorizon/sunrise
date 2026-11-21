@@ -56,10 +56,11 @@ pub trait ItemEntitiesBackendMut {
     /// remove an item entity, use the removal handle. False also for an
     /// unavailable item or outside a server.
     ///
-    /// The new stack is visible immediately. On an open transaction, abort
-    /// restores the old stack for the same resident item. A block-entity tick
-    /// does not open a transaction automatically; use the tick scope's
-    /// `transaction` to commit this write together with a subject edit.
+    /// The new stack is visible immediately. This write joins the item's level's
+    /// innermost transaction, if any; abort restores the old stack for the same resident
+    /// item. A block-entity tick does not open a transaction automatically;
+    /// use the tick scope's `transaction` to commit this write and a subject
+    /// edit together.
     #[access(WorldOnly)]
     fn item_entity_set_stack(
         &mut self,

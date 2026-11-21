@@ -9,15 +9,18 @@ pub trait Hooks {
     /// `has_mod_renderer` tell what renderers this load built. A target that is no living entity
     /// type is refused by name. Asked on the client on every resource load, the first one and each
     /// reload, after the renderers resolve (`register_entity_renderers`): layers don't carry over
-    /// from one load to the next, so add them again each time. A listener that panics or incurs
-    /// a phase refusal adds no layers; later listeners still register in the same order.
+    /// from one load to the next, so add them again each time. In the ordered body pass,
+    /// layers submit in level join order, interleaved with general entity renderer submissions.
+    /// A listener that panics or incurs a phase refusal adds no layers; later listeners still register.
     #[notes = r#"## Entity layers
 
 An entity layer (NeoForge's `EntityRenderersEvent.AddLayers` and `RenderLayer`) draws over a living entity
 renderer: armour of a mod's own, a glow, something held or worn. `Hooks::register_entity_layers` is asked on
 every resource load, after the entity renderers resolve, since a reload builds the renderers again and the
 layers don't carry over; the game resolves each target's layers to the slot its draw reads, so a frame
-hands an entity to its target's layers only.
+hands an entity to its target's layers only. In the ordered body pass the layers submit in level join
+order, including the local player at its own slot when its body is submitted, interleaved with
+submissions from general entity renderers.
 
 ```rust,ignore
 struct Halo;
@@ -80,6 +83,7 @@ layers, in a follow-up of #860, which lifts their refusal."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 3,
         contract = "listen",
         staged_surface = "layers",
         version = 3,
