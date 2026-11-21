@@ -63,8 +63,6 @@ READERS = {
     "sunrise-game": ["packaging/windows/exe.rs"],
     # Shared source-only module discovery reads the game's declarations and vocabulary export fragments.
     "sunrise-game-discovery": ["crates/sunrise-client/src", "crates/sunrise-mod-vocab/src"],
-    # The shared guest-stack tests read the sources that use its constants, and the jobs they wait on.
-    "sunrise-guest-stack": ["crates/sunrise-client/src", "crates/sunrise-threads/src"],
     "sunrise-mod-api": MOD_API_GEN,
     "sunrise-mod-api-gen": MOD_API_GEN,
     "sunrise-mod-api-gen-tests": MOD_API_GEN,

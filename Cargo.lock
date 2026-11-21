@@ -4242,7 +4242,6 @@ dependencies = [
  "sunrise-friends",
  "sunrise-game-discovery",
  "sunrise-gameplay",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-items",
  "sunrise-java-properties",
@@ -4340,7 +4339,6 @@ dependencies = [
  "sunrise-core",
  "sunrise-dualsense",
  "sunrise-game-discovery",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-items",
  "sunrise-java-properties",
@@ -4402,7 +4400,6 @@ dependencies = [
  "sunrise-command",
  "sunrise-connected",
  "sunrise-core",
- "sunrise-guest-stack",
  "sunrise-hdr",
  "sunrise-hooks",
  "sunrise-items",
@@ -4540,13 +4537,6 @@ name = "sunrise-gameplay"
 version = "0.1.0"
 dependencies = [
  "sunrise-client-lib",
-]
-
-[[package]]
-name = "sunrise-guest-stack"
-version = "0.1.0"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -4705,7 +4695,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "sunrise-client",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-mod-api",
  "sunrise-mod-package",
@@ -4928,7 +4917,6 @@ version = "0.1.0"
 dependencies = [
  "sunrise-bench",
  "sunrise-core",
- "sunrise-guest-stack",
  "sunrise-hooks",
  "sunrise-java-properties",
  "sunrise-mod-api-gen",
@@ -5139,7 +5127,6 @@ dependencies = [
  "mimalloc",
  "object",
  "rustc-demangle",
- "sunrise-guest-stack",
  "windows-sys 0.61.2",
 ]
 
