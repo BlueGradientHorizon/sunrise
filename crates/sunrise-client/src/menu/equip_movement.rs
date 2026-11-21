@@ -1,110 +1,177 @@
 //! Equipment-aware movement helpers for `AbstractContainerMenu`.
 use super::*;
 
+/// Cursor of one vanilla moveItemStackTo pass. A station can run createResult
+/// between destinations without restarting the pass or re-checking its route.
+pub(super) struct MovePass {
+    start: usize,
+    end: usize,
+    backwards: bool,
+    next: usize,
+    filling: bool,
+    pub(super) changed: bool,
+}
+
+impl MovePass {
+    pub(super) fn new(start: usize, end: usize, backwards: bool) -> Self {
+        Self {
+            start,
+            end,
+            backwards,
+            next: 0,
+            filling: false,
+            changed: false,
+        }
+    }
+
+    fn next_slot(&mut self) -> Option<usize> {
+        if self.next >= self.end - self.start {
+            return None;
+        }
+        let offset = self.next;
+        self.next += 1;
+        Some(if self.backwards {
+            self.end - 1 - offset
+        } else {
+            self.start + offset
+        })
+    }
+}
+
 impl Menu {
     pub(super) fn move_item_stack_to(
         &mut self,
         env: &Env,
+        origin: Option<usize>,
         stack: &mut ItemStack,
         start: usize,
         end: usize,
         backwards: bool,
     ) -> bool {
+        let mut pass = MovePass::new(start, end, backwards);
+        self.move_from_source(env, origin, stack, &mut pass);
+        pass.changed
+    }
+
+    pub(super) fn resume_station_transfer(
+        &mut self,
+        env: &Env,
+        origin: usize,
+        stack: &mut ItemStack,
+        pass: &mut MovePass,
+    ) {
+        self.move_from_source(env, Some(origin), stack, pass);
+    }
+
+    fn move_from_source(
+        &mut self,
+        env: &Env,
+        origin: Option<usize>,
+        stack: &mut ItemStack,
+        pass: &mut MovePass,
+    ) {
         self.touch();
-        let mut changed = false;
-        let order = |_: ()| -> Vec<usize> {
-            if backwards {
-                (start..end).rev().collect()
-            } else {
-                (start..end).collect()
-            }
-        };
-        if Self::stackable(env, stack) {
-            for dest in order(()) {
-                if stack.count == 0 {
-                    break;
-                }
+        if !pass.filling {
+            while stack.count > 0 && Self::stackable(env, stack) {
+                let Some(dest) = pass.next_slot() else { break };
                 // Empty destinations belong only to the insertion pass. Do not ask their
                 // placement rule with a different top-up maximum first.
-                if !self.has_item(dest) {
+                let Some(target) = self
+                    .slot(dest)
+                    .filter(|held| held.same_item_same_components(stack))
+                else {
                     continue;
-                }
+                };
                 // A mod menu's result (unless a mod's hook opens it) and a
                 // hidden slot get no top-up either, as a furnace's quick move
                 // never aims at its result.
                 let refuses = if self.state.slots[dest].role == Role::Hidden {
                     true
                 } else if let Some(id) = self.registry_id() {
-                    !self
-                        .ask_slot_rules(
-                            env,
-                            id,
-                            dest,
-                            stack,
-                            (
-                                self.state.slots[dest].role != Role::ModResult,
-                                true,
-                                CONTAINER_MAX,
-                            ),
-                            Self::max_stack(env, stack),
-                        )
-                        .0
+                    let own = (
+                        self.state.slots[dest].role != Role::ModResult,
+                        true,
+                        CONTAINER_MAX,
+                    );
+                    !slot_context::apply_menu_slot_rules(
+                        env.slot_rules,
+                        id,
+                        self.state.slots[dest].index,
+                        stack,
+                        self.slot_context(env, dest),
+                        own,
+                        Self::max_stack(env, stack),
+                    )
+                    .0
                 } else {
                     false
                 };
-                let max = match self.slot(dest) {
-                    Some(target) if !refuses && target.same_item_same_components(stack) => {
-                        self.slot_max(env, dest, target)
-                    }
-                    _ => continue,
-                };
+                if refuses {
+                    continue;
+                }
+                let max = self.slot_max(env, dest, target);
                 let slot = self.state.slots[dest];
                 let target = self.state.containers[slot.container][slot.index]
                     .as_mut()
                     .expect("checked");
-                let total = target.count + stack.count;
-                if total <= max {
-                    stack.count = 0;
-                    target.count = total;
-                    changed = true;
+                let moved = stack.count.min(max.saturating_sub(target.count));
+                if moved > 0 {
+                    stack.count -= moved;
+                    target.count += moved;
+                    self.store_transfer_remainder(origin, stack);
+                    pass.changed = true;
                     self.slot_changed(env, dest);
-                } else if target.count < max {
-                    stack.count -= max - target.count;
-                    target.count = max;
-                    changed = true;
-                    self.slot_changed(env, dest);
-                }
-            }
-        }
-        if stack.count > 0 {
-            let mut chosen = None;
-            let mut scan = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
-                for dest in order(()) {
-                    if self.has_item(dest) {
-                        continue;
-                    }
-                    let (allowed, max) = self.placement_rules_with(env, can_equip, dest, stack);
-                    if allowed {
-                        chosen = Some((dest, max));
-                        break;
+                    if self.result_pending() {
+                        return;
                     }
                 }
-            };
-            match env.can_equip {
-                Some(parts) if parts.listens(&stack.item) => {
-                    parts.with_stack(stack, &mut |scoped| scan(Some(scoped)));
-                }
-                can_equip => scan(can_equip),
             }
-            if let Some((dest, max)) = chosen {
-                let part = split(stack, stack.count.min(max));
-                self.set_by_player(env, dest, Some(part));
-                changed = true;
-            }
+            pass.filling = true;
+            pass.next = 0;
         }
-        changed
+        if stack.count == 0 {
+            return;
+        }
+        let mut chosen = None;
+        let mut scan = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
+            while let Some(dest) = pass.next_slot() {
+                if self.has_item(dest) {
+                    continue;
+                }
+                let (allowed, max) = self.placement_rules_with(env, can_equip, dest, stack);
+                if allowed && max != 0 {
+                    chosen = Some((dest, max));
+                    break;
+                }
+            }
+        };
+        match env.can_equip {
+            Some(parts) if parts.listens(&stack.item) => {
+                parts.with_stack(stack, &mut |scoped| scan(Some(scoped)));
+            }
+            can_equip => scan(can_equip),
+        }
+        if let Some((dest, max)) = chosen {
+            let part = split(stack, stack.count.min(max));
+            self.store_transfer_remainder(origin, stack);
+            self.set_by_player(env, dest, Some(part));
+            if matches!(self.kind, Kind::Anvil | Kind::Grindstone) {
+                // moveItemStackTo also notifies after Slot.setByPlayer.
+                self.slot_changed(env, dest);
+            }
+            pass.changed = true;
+            pass.next = pass.end - pass.start;
+        }
     }
-
+    fn store_transfer_remainder(&mut self, origin: Option<usize>, stack: &ItemStack) {
+        if let Some(origin) = origin {
+            let slot = self.state.slots[origin];
+            // This is an in-place ItemStack.shrink. The source slot's setChanged runs
+            // only when quickMoveStack finishes, after the destination pass.
+            self.state.containers[slot.container][slot.index] =
+                (stack.count > 0).then(|| stack.clone());
+        }
+    }
     pub(super) fn safe_insert_with_placement(
         &mut self,
         env: &Env,
@@ -172,7 +239,7 @@ mod tests {
                 ..*env
             };
             let mut helmet = ItemStack::new("minecraft:iron_helmet", 3);
-            assert!(menu.move_to(&env, &mut helmet, 5, 9, false));
+            assert!(menu.move_to(&env, None, &mut helmet, 5, 9, false));
             assert_eq!(parts.scopes.get(), 1);
             assert_eq!(parts.asks.get(), 4);
             assert_eq!(helmet.count, 2);
@@ -192,7 +259,7 @@ mod tests {
                 ..*env
             };
             let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
-            assert!(menu.move_to(&env, &mut helmet, 5, 6, false));
+            assert!(menu.move_to(&env, None, &mut helmet, 5, 6, false));
             assert_eq!(menu.slot(5).unwrap().item.as_ref(), "minecraft:iron_helmet");
             assert_eq!(parts.asks.get(), 0);
             let env = Env {

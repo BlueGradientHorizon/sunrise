@@ -73,6 +73,7 @@ type EngineStack = Stack;
 struct Game { change: bool }
 static VALIDATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 mod mod_api {
+    pub mod runtime { pub fn isolated_failures() -> u64 { 0 } }
     #[derive(Debug)] pub enum StackWriteError { Unavailable }
     pub enum HookId { Proof, MenuButton }
     pub mod __private {

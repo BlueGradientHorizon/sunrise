@@ -492,3 +492,154 @@ fn registered_kind_receives_the_full_empty_grid_at_every_match_entry() {
         },
     );
 }
+
+struct SizedKind {
+    input: mod_api::ItemKey,
+    output: mod_api::ItemKey,
+    rest: mod_api::ItemKey,
+}
+impl mod_api::CraftingRecipeKind for SizedKind {
+    type Value = ();
+    fn decode(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn write(&self, _: &()) -> Result<String, String> {
+        Ok("{}".into())
+    }
+    fn matches(&self, _context: &dyn mod_api::LoopContext, _: &(), grid: CraftingGrid) -> bool {
+        match (grid.width, grid.height) {
+            (0, 0) | (0, u32::MAX) | (u32::MAX, 0) => grid.cells.is_empty(),
+            (4, 4) => {
+                grid.cells.len() == 16
+                    && grid.cells[15]
+                        .as_ref()
+                        .is_some_and(|s| s.item() == self.input)
+            }
+            _ => false,
+        }
+    }
+    fn assemble(
+        &self,
+        _context: &dyn mod_api::LoopContext,
+        _: &(),
+        grid: CraftingGrid,
+    ) -> Option<mod_api::ItemStack> {
+        let count = if grid.cells.is_empty() { 1 } else { 4 };
+        mod_api::ItemStack::new(self.output, count)
+    }
+    fn remaining_items(
+        &self,
+        context: &dyn mod_api::CraftingRemainders,
+        _: &(),
+        grid: CraftingGrid,
+    ) -> Option<Vec<Option<mod_api::ItemStack>>> {
+        if grid.cells.is_empty() {
+            assert!(context.default_remainder(0).is_none());
+            return Some(Vec::new());
+        }
+        let mut out = vec![None; grid.cells.len()];
+        out[15] = mod_api::ItemStack::new(self.rest, 1);
+        Some(out)
+    }
+}
+struct SizedMod;
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for SizedMod {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        let kind = SizedKind {
+            input: r.item_key("test:input"),
+            output: r.item_key("test:output"),
+            rest: r.item_key("test:rest"),
+        };
+        r.register_crafting_recipe_serializer("sized", kind);
+    }
+}
+#[test]
+fn registered_kind_matches_and_returns_remainders_for_empty_and_4x4_grids() {
+    mod_platform::testing::with_mods(
+        vec![mod_api::ModEntry::new("test", Box::new(SizedMod))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(&[mod_api::ModEntry::new(
+                "test",
+                Box::new(SizedMod),
+            )])
+            .unwrap();
+            mod_api::__private::resolve_items(["test:input", "test:output", "test:rest"]).unwrap();
+            let mut recipes = Recipes::empty();
+            recipes.mod_crafting = true;
+            recipes.crafting.push((
+                "test:sized".into(),
+                load("test:sized", &serde_json::json!({"type":"test:sized"})).unwrap(),
+            ));
+            let context = crate::test_resources::server_loop_context();
+
+            let empty_grid: Vec<Option<ItemStack>> = Vec::new();
+            for (w, h) in [(0, 0), (0, u32::MAX as usize), (u32::MAX as usize, 0)] {
+                let (id, output) = recipes
+                    .find_with_dimensions(context, &empty_grid, w, w, h, &|_| None)
+                    .unwrap();
+                assert_eq!(id, "test:sized");
+                assert_eq!(output, ItemStack::new("test:output", 1));
+                assert!(
+                    recipes
+                        .mod_remainders_rect(context, id, &empty_grid, w, w, h, &|_| None)
+                        .is_empty()
+                );
+            }
+
+            let mut large_grid = vec![None; 16];
+            large_grid[15] = Some(ItemStack::new("test:input", 1));
+            let (id, output) = recipes
+                .find_with_dimensions(context, &large_grid, 4, 4, 4, &|_| None)
+                .unwrap();
+            assert_eq!(id, "test:sized");
+            assert_eq!(output, ItemStack::new("test:output", 4));
+            let mut expected_remainders = vec![None; 16];
+            expected_remainders[15] = Some(ItemStack::new("test:rest", 1));
+            assert_eq!(
+                recipes.mod_remainders_rect(context, "test:sized", &large_grid, 4, 4, 4, &|_| None),
+                expected_remainders
+            );
+        },
+    );
+}
+
+#[test]
+fn extreme_aspect_ratio_rectangular_grids_avoid_square_padding() {
+    let load = crate::test_resources::server_load();
+    let context = load.captured_loop_context(engine::LoopSide::Server);
+    let root = tempfile::tempdir().unwrap();
+    let items = Items::empty();
+    let sources = ResolvedSources::resolve(
+        vec![(
+            "test:planks".into(),
+            serde_json::json!({
+                "type": "minecraft:crafting_shapeless",
+                "ingredients": ["minecraft:oak_log"],
+                "result": {"id": "minecraft:oak_planks", "count": 4}
+            }),
+        )],
+        &load,
+    )
+    .unwrap();
+    let recipes =
+        Recipes::from_resolved(root.path(), &items, &PackOverlay::NONE, &sources).unwrap();
+    let log = ItemStack::new("minecraft:oak_log", 1);
+    let remainder = ItemStack::new("minecraft:stick", 1);
+
+    for (w, h, slot) in [(1, 50_000, 49_999), (50_000, 1, 49_999)] {
+        let mut grid = vec![None; w * h];
+        grid[slot] = Some(log.clone());
+        let (id, output) = recipes
+            .find_with_dimensions(&context, &grid, w, w, h, &|_| None)
+            .unwrap();
+        assert_eq!(id, "test:planks");
+        assert_eq!(output, ItemStack::new("minecraft:oak_planks", 4));
+        let remainders = recipes.remainders_rect(&context, id, &grid, w, w, h, &|s| {
+            (&*s.item == "minecraft:oak_log").then(|| remainder.clone())
+        });
+        assert_eq!(remainders.len(), w * h);
+        assert_eq!(remainders[slot], Some(remainder.clone()));
+        assert_eq!(remainders[0], None);
+    }
+}

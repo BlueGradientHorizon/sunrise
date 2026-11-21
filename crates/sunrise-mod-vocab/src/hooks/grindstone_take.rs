@@ -2,20 +2,20 @@
 
 pub trait Hooks {
     /// The server player `player` (UUID) and `player_entity_id` took a
-    /// grindstone's result at `pos` (`GrindstoneEvent.OnTakeItem`, in its
-    /// result slot's `onTake`): `inputs` lends the pre-take stacks. Use `edits.xp` to
-    /// change the experience (-1 for vanilla's, or a nonnegative award) and
-    /// `edits.new_top` and `edits.new_bottom` to leave items in the input slots.
-    /// Set `cancelled` to skip the rest of `onTake`: the result is still taken,
-    /// but no experience or sound is given, and the inputs stay.
-    /// The click, this hook and the take's own effects are one action. What a listener writes
-    /// through the `Host` stays only when the take is applied; a cancel keeps the click and
-    /// undoes the listener's writes. Invalid remainders refuse even a cancelled answer.
-    /// An uncancelled XP below `-1`, a stale read, or a failing listener also refuses the
-    /// whole take: the result, inputs, cursor, inventory and drops go back as they were.
-    /// Writing to the player's inventory or cursor can make the take stale, as can changing
-    /// the backing block even if it is restored. Accepted writes and experience remain
-    /// tentative until the outermost transaction commits. Server-side.
+    /// grindstone's result at `pos` (`GrindstoneEvent.OnTakeItem`, matching NeoForge
+    /// `CommonHooks.onGrindstoneTake` in `GrindstoneMenu.java.patch`): `inputs` lends
+    /// the pre-take stacks. Runs inline after the click has taken the result, without a
+    /// decided-action transaction or click rollback. `edits.xp` starts at the resolved
+    /// experience (`>= 0`, from `grindstone_place` or vanilla's pre-rolled award);
+    /// non-positive values (`<= 0`) spawn 0 orbs while still firing level event 1042 and
+    /// replacing the inputs. Replacing each slot and finally notifying the
+    /// input container each run `grindstone_place`. This completes before
+    /// the click drops its taken stack or checks for another result. Use `edits.new_top` and `edits.new_bottom` to leave items
+    /// in the input slots (invalid stacks are logged and ignored as empty slots).
+    /// Set `cancelled` to skip experience, level event 1042 and input replacement;
+    /// cancel is checked before converting remainders and does not undo the click or
+    /// listener writes. A panicking listener is caught and completes the take with the
+    /// initial experience and cleared inputs. Server-side.
     #[hook(
         dispatch = "flat",
         side = "server",
@@ -23,7 +23,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "GrindstoneEvent.OnTakeItem",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn grindstone_take(
         player: u128,

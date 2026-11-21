@@ -445,14 +445,13 @@ impl Game<'_> {
                     native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
                     &stack,
                     SlotContext::blockless(
-                        uuid,
+                        guest,
                         open.pos.map(|(x, y, z)| [x, y, z]),
                         if slot < size {
                             MenuContainer::Main
                         } else {
                             MenuContainer::Player
                         },
-                        &guest.native_menu,
                     ),
                     (true, true, u32::MAX),
                     item_max_stack(game.items(), &stack),

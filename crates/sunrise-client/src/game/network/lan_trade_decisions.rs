@@ -16,7 +16,7 @@ use sunrise_client::{
     advancements::Advancement,
     items::ItemStack,
     lan::conn::transaction_packets::Scope,
-    menu::{Input, Menu, RuleAnswers, StackedOutcome, StoredRules},
+    menu::{Input, Menu, StackedOutcome},
     merchant::Event,
 };
 use sunrise_protocol::packets::play;
@@ -208,9 +208,7 @@ impl Game<'_> {
         let mob = identity.target.id();
         let button = i32::from(p.button);
         let mut stacked = None::<StackedOutcome>;
-        let mut rules = None;
         if input == Input::Pickup && Self::stacked_listened() {
-            let answers = RuleAnswers::default();
             let mut seen = None;
             self.lan_merchant_op_with(
                 conn,
@@ -243,27 +241,11 @@ impl Game<'_> {
                             && guest.carried == same.carried)
                             .then(|| same.clone())
                     },
-                    |game, answer| {
-                        if !game.lan_merchant_op_with(
-                            conn,
-                            Some(p.container),
-                            false,
-                            MerchantRun::Probe,
-                            |menu, env| {
-                                super::stacked_on_other::plan_click(
-                                    menu, env, 2, button, &answers, answer,
-                                );
-                            },
-                        ) {
-                            answer.refused.set(true);
-                        }
-                    },
                     |_, answer| stacked = answer.cloned(),
                 ) == Pickup::Refused
                 {
                     return false;
                 }
-                rules = Some(answers);
             }
         }
 
@@ -297,10 +279,9 @@ impl Game<'_> {
             if input == Input::Throw && button != 0 && previous.is_none() {
                 throw_amount = gm.slots[2].as_ref().map_or(0, |stack| stack.count);
             }
-            let stored = rules.as_ref().map(StoredRules);
-            let run = stored.as_ref().map_or(MerchantRun::Plain, |stored| {
-                MerchantRun::Decided(stored, stacked.as_ref())
-            });
+            let run = stacked
+                .as_ref()
+                .map_or(MerchantRun::Plain, |s| MerchantRun::Decided(Some(s)));
             let mut moved = None;
             let map_id = self.peek_map_id();
             let Some((menu, made)) = self.read_merchant_menu(conn, gm, run, |menu, env| {
@@ -309,6 +290,12 @@ impl Game<'_> {
             }) else {
                 return false;
             };
+            if stacked.as_ref().is_some_and(|s| s.refused.get()) {
+                log::warn!(
+                    "item_stacked_on_other: the slot refused the replacement; nothing changed"
+                );
+                return false;
+            }
             if !made.is_empty() {
                 reads.map_id = Some(map_id);
             }

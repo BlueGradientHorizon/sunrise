@@ -209,7 +209,8 @@ Retain keys to avoid formatting identifiers on hot paths.
 
 Use `level.recipe_for(host, &recipe_type, &inputs)` to find a matching recipe.
 Use `RecipeInput::Crafting { width, height, slots }` for `minecraft:crafting`
-(row-major slots, dimensions 1 through 3), `Single(stack)` for smelting, blasting,
+(row-major slots matching `width * height`; zero-area grids have no slots but keep their
+dimensions for registered crafting serializers), `Single(stack)` for smelting, blasting,
 smoking, campfire cooking and stonecutting, or `Smithing { template, base, addition }`
 for `minecraft:smithing`. Recipe **types** are not serializers: shaped and shapeless
 files both belong to `minecraft:crafting`, and transform/trim both belong to smithing.
@@ -321,8 +322,9 @@ A changed argument is validated in full; a refusal commits no listener edits. Th
 rule applies to menu cursor and quick-move stacks.
 
 Anvil and grindstone hook inputs are borrowed, read-only snapshots, not stack writes.
-`anvil_update` validates an output replacement only if it differs from vanilla. An invalid
-replacement or cancellation leaves no result and zero costs. The anvil's Pre and Post
+`anvil_update` validates an output replacement only if it differs from vanilla: cancellation
+leaves no result and zero costs, whereas an invalid replacement is logged and ignored so
+vanilla's output stays intact while the cost edits still apply. The anvil's Pre and Post
 hooks lend the same pre-take snapshot and do not take any stack edits. `grindstone_place`
 validates an explicit output override and `grindstone_take` validates supplied remainders,
 not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged

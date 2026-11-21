@@ -83,9 +83,6 @@ impl Game<'_> {
                         .or_insert(StrictBlockStep { to, row: None });
                 },
             );
-            if out.changed != 0 {
-                self.transactions.advance_block_writes();
-            }
             (out, Some(publication))
         } else {
             (

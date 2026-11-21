@@ -74,9 +74,6 @@ pub(super) struct OpenTransactions {
     /// The same count for a player's own state only (inventory, cursor, menu storage): what a
     /// decision that must stay open to other writes (a mod's move into another block) reads.
     player_writes: u64,
-    /// Tentative block writes do not advance the world's published revision. This epoch does
-    /// advance on those writes and never rolls back, even when the final state is unchanged.
-    block_writes: u64,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
     committing: Vec<entities::Committing>,
@@ -90,10 +87,6 @@ pub(super) struct OpenTransactions {
 impl OpenTransactions {
     pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
-    }
-
-    pub(super) fn advance_block_writes(&mut self) {
-        self.block_writes = self.block_writes.wrapping_add(1);
     }
 
     fn player_write(&mut self) -> Option<&mut Level> {
@@ -185,9 +178,6 @@ impl OpenTransactions {
     /// The journaled-write epoch of players' own state.
     pub(in crate::game) fn player_writes(&self) -> u64 {
         self.player_writes
-    }
-    pub(super) fn block_writes(&self) -> u64 {
-        self.block_writes
     }
 }
 
@@ -880,6 +870,14 @@ impl Game<'_> {
     /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
     /// at the root makes them final and tells the world; otherwise every storage it wrote goes
     /// back to how it was. Nothing happens with none open.
+    /// Abort any storage transactions left open above `depth` (for example when a
+    /// listener panics before closing a seal it opened via `Host::transaction_open`).
+    pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
+        while self.transactions.len() > depth {
+            self.close_storage_transaction(false);
+        }
+    }
+
     fn close_storage_transaction(&mut self, commit: bool) {
         let Some(level) = self.transactions.pop() else {
             return;
@@ -1698,7 +1696,6 @@ impl Game<'_> {
             replay: step,
             removed: None,
         }));
-        self.transactions.advance_block_writes();
         true
     }
     /// Hide a replaced block entity from staged reads, without dropping its

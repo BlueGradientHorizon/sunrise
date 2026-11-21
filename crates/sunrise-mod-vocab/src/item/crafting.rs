@@ -278,6 +278,8 @@ impl Recipe {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum RecipeInput {
+    /// Row-major slots matching the checked area. Either dimension may be zero
+    /// with no slots; registered crafting serializers still receive the given dimensions.
     Crafting {
         width: u32,
         height: u32,

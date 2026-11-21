@@ -35,6 +35,27 @@ fn rapid_clicks_on_a_crafting_result_each_craft() {
     });
 }
 
+#[test]
+fn pickup_takes_the_shown_result_instead_of_reassembling_a_registered_recipe() {
+    crate::crafting::mod_kinds::tests::with_recipe(0, |recipes, _| {
+        bare_env(|env| {
+            let env = Env {
+                recipes: &recipes,
+                ..*env
+            };
+            let mut menu = Menu::new(mod_crafting_table());
+            menu.set_slot(&env, 1, Some(ItemStack::new("test:input", 1)));
+            assert_eq!(menu.slot(0), Some(&ItemStack::new("test:output", 3)));
+            // The authoritative result has been edited since recipe preparation.
+            menu.load_slot(0, stack("stone", 5));
+            menu.click(&env, 0, 0, Input::Pickup).unwrap();
+            assert_eq!(menu.carried, stack("stone", 5));
+            assert_eq!(menu.slot(1), None);
+            assert_eq!(menu.slot(0), None);
+        });
+    });
+}
+
 /// The recipe book's placement (`ServerPlaceRecipe`) and the viewers'
 /// transfer fill a mod crafting grid as the crafting table's, and a
 /// placement without the items leaves the grid empty for a ghost.
@@ -158,49 +179,25 @@ fn slot_rule_answers_follow_the_grid_slots_that_were_read() {
         let mut live = Menu::new(mod_crafting_table());
         let held = stack("stone", 1).unwrap();
         live.load_slot(2, Some(held.clone()));
-        let mut preview = live.clone();
         let rules = NeedsIngredient(Cell::new(0));
-        let answers = RuleAnswers::default();
-        let planning = PlanningRules {
-            rules: Some(&rules),
-            answers: &answers,
-        };
-        let run = |menu: &mut Menu, rules: &dyn SlotRules| {
-            let env = Env {
-                slot_rules: Some(rules),
-                ..*env
-            };
-            menu.planned(Asked::default(), |menu| {
-                let before = menu.slot_rules(&env, 2, &held).1;
-                // Changing an unread slot keeps the same answer for this question.
-                menu.load_slot(4, stack("dirt", 1));
-                let unrelated = menu.slot_rules(&env, 2, &held).1;
-                // An empty slot the part read gains the ingredient it needed.
-                menu.load_slot(1, stack("oak_planks", 1));
-                let with_ingredient = menu.slot_rules(&env, 2, &held).1;
-                [before, unrelated, with_ingredient]
-            })
-            .0
-        };
-        assert_eq!(run(&mut preview, &planning), [false, false, true]);
-        assert_eq!(rules.0.get(), 2);
-        let replay = StoredRules(&answers);
-        assert_eq!(run(&mut live, &replay), [false, false, true]);
-        assert_eq!(answers.missed(), 0);
-
         let env = Env {
-            slot_rules: Some(&replay),
+            slot_rules: Some(&rules),
             ..*env
         };
-        live.planned(Asked::default(), |menu| {
-            // A grid not seen in planning keeps the slot's own vanilla answer.
-            menu.load_slot(1, stack("dirt", 1));
-            assert!(menu.slot_rules(&env, 2, &held).1);
-            // The miss must not mask the stored refusal when the original grid returns.
-            menu.load_slot(1, None);
-            assert!(!menu.slot_rules(&env, 2, &held).1);
-        });
-        assert_eq!(answers.missed(), 1);
-        assert_eq!(rules.0.get(), 2, "apply only replays the recorded answers");
+        let before = live.slot_rules(&env, 2, &held).1;
+        // Changing an unrelated slot keeps the live rule reading the empty grid slot.
+        live.load_slot(4, stack("dirt", 1));
+        let unrelated = live.slot_rules(&env, 2, &held).1;
+        // An empty slot the part reads gains the ingredient it needed, observed immediately.
+        live.load_slot(1, stack("oak_planks", 1));
+        let with_ingredient = live.slot_rules(&env, 2, &held).1;
+        // Clearing it again immediately restores the refusal.
+        live.load_slot(1, None);
+        let cleared = live.slot_rules(&env, 2, &held).1;
+        assert_eq!(
+            [before, unrelated, with_ingredient, cleared],
+            [false, false, true, false]
+        );
+        assert_eq!(rules.0.get(), 4);
     });
 }

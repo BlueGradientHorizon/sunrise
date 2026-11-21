@@ -1,14 +1,10 @@
 //! `menu_slot_rules` on the game's side. A menu click cannot reach the game, so the game lends
 //! itself to the click as its [`SlotRules`] (`Env::slot_rules`), with the read-only `Host`
-//! behind it: the click asks while it plans, once for each slot and stack it consults, and the
-//! answers stay in what it planned. A menu type no part answers is never asked, and nothing is
-//! converted for it.
+//! behind it: each live slot check asks the parts directly. A menu type no part answers is never
+//! asked, and nothing is converted for it.
 use super::*;
 use crate::game::api_values::TryIntoApi;
-use sunrise_client::{
-    containers::ModMenuType,
-    menu::{Asked, Kind, Menu, SlotContext, SlotRules},
-};
+use sunrise_client::menu::{SlotContext, SlotRules};
 
 impl SlotRules for Game<'_> {
     fn listens(&self, menu: &str) -> bool {
@@ -30,52 +26,21 @@ impl SlotRules for Game<'_> {
         let Ok(stack) = stack.try_into_api() else {
             return;
         };
-        // Lend the staged menu slots. Convert only what the part reads; a stack that cannot
-        // cross the API boundary shows empty, as an absent slot does.
+        // Lend the live menu and player slots. Convert only what the part reads; a stack that
+        // cannot cross the API boundary shows empty, as an absent slot does.
         let read = |container, index| context.slot(container, index)?.try_into_api().ok();
         let view = mod_api::MenuSlotContext::new(context.player, context.pos, &read);
-        // A listener that panics is a failed ask, not a failed click: the slot's own answers
-        // stand (the dispatcher disables that mod's `menu_slot_rules` for the session and
-        // reports it once), and the click goes on.
-        let failures = mod_api::runtime::isolated_failures();
-        let (mut place, mut pickup, mut maximum) = (*may_place, *may_pickup, *max_stack);
+        // The shared dispatcher discards only a failed callback's answers, reports the
+        // failure, and continues the live slot check with the other parts.
         self.native_menu_slot_rules(mod_api::__private::MenuSlotRulesCall {
             menu,
             slot,
             container: context.container,
             stack: &stack,
             context: &view,
-            may_place: &mut place,
-            may_pickup: &mut pickup,
-            max_stack: &mut maximum,
+            may_place,
+            may_pickup,
+            max_stack,
         });
-        if mod_api::runtime::isolated_failures() == failures {
-            (*may_place, *may_pickup, *max_stack) = (place, pickup, maximum);
-        }
-    }
-}
-
-impl Game<'_> {
-    /// `Slot.mayPickup` of slot `slot` (the menu's index) of mod menu type `menu` while it holds
-    /// `stack`, as the click itself answers it: the slot's own answer, then the parts' `may_pickup`.
-    /// For the server's own steps that run before the click, as `menu_quick_move` does; the
-    /// answers go to the click (`Menu::click_asked`), which does not ask again.
-    pub(super) fn mod_menu_slot_gives(
-        &self,
-        menu: &'static ModMenuType,
-        slot: usize,
-        stack: &ItemStack,
-        pos: [i32; 3],
-        items: &[Option<ItemStack>],
-    ) -> (bool, Asked) {
-        let mut view = Menu::new(Kind::Mod(menu));
-        view.set_registry_id(Some(menu.id));
-        view.set_block_pos(Some(pos));
-        view.load_container(&self.menu_env(), items);
-        for (i, held) in self.inventory.iter().enumerate() {
-            view.set_player_item(i, held.clone());
-        }
-        view.load_slot(slot, Some(stack.clone()));
-        view.ask_pickup(&self.menu_env(), slot)
     }
 }

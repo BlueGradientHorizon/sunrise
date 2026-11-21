@@ -514,7 +514,7 @@ impl Game<'_> {
             rules.set_container_limits(limits);
             rules.set_block_pos(open.pos.map(|(x, y, z)| [x, y, z]));
             if open.owned_slots().is_some() {
-                rules.load_container(&env, &guest.native_menu);
+                rules.load_container(&env, &guest.native_menu, None);
             }
         }
         (slot < rules.slot_count()).then_some(())?;
