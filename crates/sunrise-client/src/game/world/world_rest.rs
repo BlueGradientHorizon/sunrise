@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::mobs::spawner::SpawnerTypeFacts;
 
 pub(super) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
@@ -85,6 +86,12 @@ pub(super) fn load_world_rest(
     let load_animate = || resource_tables::load_animate_tables(root, registry, draws, biomes);
     let load_mobs = || -> Result<_> {
         let _step = startup::step("rest.mobs");
+        let mut spawner_types = SpawnerTypeFacts::load_all(root)?;
+        for kind in mod_api::__private::general_entity_type_declarations() {
+            spawner_types
+                .entry(kind.id.clone())
+                .or_insert_with(|| SpawnerTypeFacts::general_entity(kind.width, kind.height));
+        }
         let catalog = &resources.motion().attributes;
         let mut types = if draws {
             match entity_models {
@@ -136,11 +143,11 @@ pub(super) fn load_world_rest(
             })
             .collect();
         let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
-        // Spawn placements are keyed by the entity registry, not the subset backed by
-        // MobTypes. Vanilla registers the dragon, and NeoForge accepts any EntityType.
+        // NeoForge keys placements by EntityType, not by the subset backed by MobTypes.
+        // Use exactly the registry the spawners will consult, with facts already validated.
         mob_data
             .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
-                mod_api::__private::resolved_entity_type_key(id).is_some()
+                spawner_types.contains_key(id)
             })?;
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
@@ -151,7 +158,7 @@ pub(super) fn load_world_rest(
             sunrise_client::mobs::cem::CemModels::default()
         }));
         sunrise_client::mobs::trial_spawner::load_registry(root);
-        Ok((mob_types, mob_data))
+        Ok((mob_types, mob_data, spawner_types))
     };
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
@@ -278,7 +285,7 @@ pub(super) fn load_world_rest(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
-    let (mob_types, mut mob_data) = mobs?;
+    let (mob_types, mut mob_data, spawner_types) = mobs?;
     let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
     if draws {
         mob_data.frame_models = startup::time("rest.frame_models", || {
@@ -317,6 +324,7 @@ pub(super) fn load_world_rest(
         behaviours: behaviours?,
         mob_types,
         mob_data,
+        spawner_types,
         player_type,
         player_arm,
         player_arm_slim,

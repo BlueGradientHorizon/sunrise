@@ -2945,6 +2945,8 @@ struct WorldRest {
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
     mob_data: sunrise_client::mobs::MobData,
+    /// Complete pre-creation facts for the registered entity types.
+    spawner_types: HashMap<String, sunrise_client::mobs::spawner::SpawnerTypeFacts>,
     providers: Providers,
     block_entity_render: BlockEntityRenderer,
     animate: sunrise_client::animate_tick::AnimateTables,

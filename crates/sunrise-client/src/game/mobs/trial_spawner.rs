@@ -176,7 +176,6 @@ impl Game<'_> {
         current: TrialState,
         ominous: bool,
     ) -> Result<()> {
-        self.load_entity_types();
         let pos = [key.0, key.1, key.2];
         let mut random = std::mem::replace(
             &mut self.world.random,

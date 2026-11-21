@@ -100,7 +100,7 @@ struct Shared<'a> {
     collision: &'a BlockCollisionRegistry<'a>,
     air: BlockStateId,
     /// Every entity type's registry row (`entity-types.json`).
-    entity_types: &'a HashMap<String, Option<SpawnerTypeFacts>>,
+    entity_types: &'a HashMap<String, SpawnerTypeFacts>,
 }
 struct World<'a> {
     border: sunrise_core::geometry::border::BorderGeometry,
@@ -368,11 +368,8 @@ impl SpawnerLevel for World<'_> {
     fn spawner_blocks_work(&self) -> bool {
         self.spawners_work
     }
-    fn entity_exists(&self, id: &str) -> bool {
-        self.s.types.types.contains_key(id) || self.s.entity_types.contains_key(id)
-    }
-    fn other_entity_type(&self, id: &str) -> Option<SpawnerTypeFacts> {
-        self.s.entity_types.get(id).copied().flatten()
+    fn spawner_type(&self, id: &str) -> Option<SpawnerTypeFacts> {
+        self.s.entity_types.get(id).copied()
     }
     fn count_entities(&self, id: &str, bounds: Aabb) -> usize {
         self.entities

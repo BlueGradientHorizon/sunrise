@@ -951,7 +951,7 @@ impl TrialSpawnerExt for TrialSpawner {
                 // getOrCreateDisplayEntity: made once, from the next data's id.
                 if !self.has_display {
                     let id = self.next_or_create(random, events).id();
-                    self.has_display = id.is_some_and(|id| l.entity_exists(&id));
+                    self.has_display = id.is_some_and(|id| l.spawner_type(&id).is_some());
                 }
                 if self.has_display {
                     S::WaitingForPlayers
@@ -1078,7 +1078,7 @@ impl TrialSpawnerExt for TrialSpawner {
         let data = self.next_or_create(random, events).clone();
         // EntityType.by: an unknown type spawns nothing.
         let id = data.id()?;
-        let (kind, mob) = l.spawner_type(&id)?;
+        let kind = l.spawner_type(&id)?;
         let at = match spawner::read_pos(data.entity.get(&JavaString::from("Pos"))) {
             Some(p) => p,
             None => {
@@ -1110,7 +1110,7 @@ impl TrialSpawnerExt for TrialSpawner {
             return None;
         }
         // loadEntityRecursive: entity types Sunrise cannot create spawn nothing.
-        let mob = mob?;
+        let mob = l.mob_type(&id)?;
         let species = mob.species;
         let yaw = random.next_float() * 360.0;
         let placed = spawner::entity_position(species, at);

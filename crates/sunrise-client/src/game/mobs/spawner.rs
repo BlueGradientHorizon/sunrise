@@ -12,10 +12,7 @@ use sunrise_client::{
     containers::BlockEntity,
     mobs::{
         Mob, Who,
-        spawner::{
-            SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn,
-            SpawnerTypeFacts,
-        },
+        spawner::{SpawnDataExt, Spawner, SpawnerAdded, SpawnerEvent, SpawnerExt, SpawnerSpawn},
         trial_spawner::{TrialSpawnerExt, TrialState},
     },
     particles::{ParticleOptions, ParticleType},
@@ -42,8 +39,6 @@ pub(super) enum Planned {
 /// What the spawner code keeps between ticks.
 #[derive(Default)]
 pub(super) struct SpawnerState {
-    /// Every entity type id and its pre-creation spawner facts, read once.
-    pub(super) entity_types: Option<HashMap<String, Option<SpawnerTypeFacts>>>,
     /// The mob shown in each spawner and the id it was made for
     /// (`getOrCreateDisplayEntity`).
     displays: HashMap<Pos, (String, Mob)>,
@@ -52,24 +47,14 @@ pub(super) struct SpawnerState {
 impl Game<'_> {
     /// `EntityType.byString`: the type is in the registry.
     pub(super) fn entity_type_exists(&self, id: &str) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| t.contains_key(id))
+        self.res
+            .rest
+            .get()
+            .is_some_and(|rest| rest.spawner_types.contains_key(id))
     }
     /// Whether `entity_type_exists` has a registry to answer from.
     pub(super) fn entity_types_loaded(&self) -> bool {
-        self.spawners
-            .entity_types
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
-    }
-    pub(super) fn load_entity_types(&mut self) {
-        if self.spawners.entity_types.is_some() {
-            return;
-        }
-        self.spawners.entity_types =
-            Some(SpawnerTypeFacts::load_all(&self.options.resources).unwrap_or_default());
+        self.res.rest.get().is_some()
     }
     /// The server tick of the spawner at `key`. Its client tick comes after
     /// every block entity's (`client_tick_spawners`).
@@ -136,7 +121,6 @@ impl Game<'_> {
             spawner.spawn_delay -= 1;
             return Ok(());
         }
-        self.load_entity_types();
         let pos = [key.0, key.1, key.2];
         let mut random = std::mem::replace(
             &mut self.world.random,
