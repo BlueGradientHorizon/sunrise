@@ -183,8 +183,9 @@ pub(crate) fn hooks(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// `sdk diff <a> <b>`: what changed in the surface from build `a` to build `b` (Nightly names
-/// or shas). Only each build's small files are read, so a pruned build still answers.
+/// `sdk diff <a> <b>`: what changed in the surface from build `a` to build `b` (release names
+/// or shas, as `--sunrise` takes them). Only each build's small files are read, so a pruned build
+/// still answers.
 pub(crate) fn sdk(args: &[String]) -> Result<(), String> {
     let usage = "cargo sunrise-mod sdk diff <build> <build>";
     let [command, a, b] = args else {
