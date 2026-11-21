@@ -659,15 +659,6 @@ impl Manifest {
                 m.api
             ));
         }
-        for (key, value) in &m.properties {
-            if let Property::Float(number) = value
-                && !number.is_finite()
-            {
-                return Err(format!(
-                    "{MANIFEST}: [properties] {key} is {number}: a float must be finite"
-                ));
-            }
-        }
         let property_bytes: usize = m
             .properties
             .iter()

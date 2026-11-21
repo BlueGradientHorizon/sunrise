@@ -1,2 +1,0 @@
-manifest:
-refused: sunrise-mod.toml: [properties] ratio is -inf: a float must be finite
