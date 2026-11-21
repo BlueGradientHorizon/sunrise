@@ -527,7 +527,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(set(jobs["break-glass"]["needs"]), {"pick", *bound})
         self.assertIn("break-glass-approvals", jobs["break-glass"]["steps"][-1]["run"])
         self.assertIn("needs.pick.result == 'success'", jobs["exporters"]["if"])
-        self.assertIn("github.run_attempt == '1'", jobs["break-glass"]["if"])
+        # A re-run, of failed jobs too, never re-enters an approval, a build or a signing of a break-glass release.
+        for name in ("break-glass", *bound):
+            with self.subTest(job=name):
+                self.assertIn("github.run_attempt == '1'", jobs[name]["if"])
+        for name in ("build", "musl-build", "musl-attach"):
+            with self.subTest(job=name):
+                self.assertIn("(needs.pick.outputs.break_glass == 'false' || github.run_attempt == '1')",
+                              " ".join(jobs[name]["if"].split()) if name == "musl-attach" else f"({jobs[name]['if']})")
         for name in ("exporters", "sign", "publish"):
             with self.subTest(job=name):
                 self.assertIn("break-glass", jobs[name]["needs"])
