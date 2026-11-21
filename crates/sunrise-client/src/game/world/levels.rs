@@ -134,10 +134,53 @@ macro_rules! entity_count_view {
 }
 pub(super) use entity_count_view;
 
-/// Server ticks a level other than the Overworld stays loaded with no player
-/// in it, before it is saved and closed (vanilla unloads a level's chunks
-/// once no ticket holds them; the Overworld stays loaded).
+/// Server ticks a custom level stays loaded with no player or ticket holding
+/// it, before it is saved and closed. Built-in levels (Overworld, Nether, End)
+/// stay open until server shutdown and only unload unticketed chunks while idle.
 const IDLE_TICKS: u32 = 300;
+
+/// What one server tick's idle check asks for a parked level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum IdleAction {
+    /// Still active, or already drained and retained (built-in), or below the
+    /// custom-level close threshold.
+    Keep,
+    /// Built-in level with no players or tickets that still holds unticketed
+    /// chunks or streaming work to unload while the level itself stays open.
+    UnloadChunks,
+    /// Custom level that has been idle for at least [`IDLE_TICKS`]: save and close.
+    Close,
+}
+
+#[derive(Default)]
+struct IdlePlan {
+    unload_chunks: Vec<Dim>,
+    close: Vec<Dim>,
+}
+
+fn step_parked_idle(
+    dim: Dim,
+    idle: &mut u32,
+    active: bool,
+    has_unloadable_chunks: bool,
+) -> IdleAction {
+    if active {
+        *idle = 0;
+        return IdleAction::Keep;
+    }
+    *idle = idle.saturating_add(1);
+    if dim.is_builtin() {
+        if has_unloadable_chunks {
+            IdleAction::UnloadChunks
+        } else {
+            IdleAction::Keep
+        }
+    } else if *idle >= IDLE_TICKS {
+        IdleAction::Close
+    } else {
+        IdleAction::Keep
+    }
+}
 
 /// A level that is not in place: every per-level field of `Game`.
 pub(super) struct Parked {
@@ -504,6 +547,47 @@ impl Levels {
     /// Drop a save of `dim` still waiting for a tick: its level is gone.
     pub(super) fn cancel_requested_save(&mut self, dim: Dim) {
         self.requested_saves.retain(|saved| *saved != dim);
+    }
+
+    /// Whether mods have already been notified of `dim` opening.
+    fn has_heard_open(&self, dim: Dim) -> bool {
+        self.heard_open.contains(&dim)
+    }
+
+    /// Record `dim` as announced open; returns `true` iff it was not already open.
+    fn note_opened(&mut self, dim: Dim) -> bool {
+        if self.heard_open.contains(&dim) {
+            return false;
+        }
+        self.heard_open.push(dim);
+        true
+    }
+
+    /// Record `dim` as announced closed; returns `true` iff it was open.
+    fn note_closed(&mut self, dim: Dim) -> bool {
+        if let Some(i) = self.heard_open.iter().position(|d| *d == dim) {
+            self.heard_open.remove(i);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Advance every parked level's idle state and plan which built-in levels
+    /// should unload unticketed chunks and which custom levels should close.
+    fn plan_idle_step(&mut self, is_active: impl Fn(Dim) -> bool) -> IdlePlan {
+        let mut plan = IdlePlan::default();
+        for (&dim, p) in &mut self.parked {
+            let active = is_active(dim);
+            let has_unloadable_chunks =
+                !p.streaming.paused && (!p.world.chunks.is_empty() || p.streaming.has_idle_work());
+            match step_parked_idle(dim, &mut p.idle, active, has_unloadable_chunks) {
+                IdleAction::Keep => {}
+                IdleAction::UnloadChunks => plan.unload_chunks.push(dim),
+                IdleAction::Close => plan.close.push(dim),
+            }
+        }
+        plan
     }
 
     /// Clear every parked level and dimensions recorded as heard open.
@@ -1611,8 +1695,9 @@ impl Game<'_> {
             .collect()
     }
 
-    /// Count the parked levels' empty ticks, and save and close the ones
-    /// (other than the Overworld) nobody has been in for a while.
+    /// Count the parked levels' empty ticks: unload unticketed chunks from
+    /// idle built-in levels while keeping them open until server shutdown, and
+    /// save and close idle custom levels after [`IDLE_TICKS`].
     pub(super) fn close_idle_levels(&mut self) -> Result<()> {
         let mut occupied = self.levels_to_tick();
         // A level a viewed area names, ticked or not, or one a client still holds chunks of.
@@ -1625,29 +1710,42 @@ impl Game<'_> {
             .copied()
             .filter(|d| self.vehicle_waits_in(*d))
             .collect();
-        let mut closing = Vec::new();
-        for (dim, p) in &mut self.levels.parked {
-            if occupied.contains(dim) || waiting.contains(dim) {
-                p.idle = 0;
-                continue;
-            }
-            p.idle += 1;
-            if *dim != Dim::Overworld && p.idle >= IDLE_TICKS {
-                closing.push(*dim);
-            }
+        let plan = self
+            .levels
+            .plan_idle_step(|dim| occupied.contains(&dim) || waiting.contains(&dim));
+        for dim in plan.unload_chunks {
+            self.unload_parked_level_chunks(dim)?;
         }
-        if closing.is_empty() {
-            return Ok(());
-        }
-        for dim in closing {
+        for dim in plan.close {
             self.close_parked_level(dim)?;
         }
         Ok(())
     }
 
-    /// Save the parked level `dim` and drop it: the mods hear its chunks and the level unload. A
-    /// level a mod opened at run time stays known, and opens again when entered, as any other.
+    /// Unload unticketed chunks from an idle parked built-in level while
+    /// keeping the level itself open (`ChunkMap.processUnloads` while the
+    /// `ServerLevel` stays registered until server shutdown).
+    fn unload_parked_level_chunks(&mut self, dim: Dim) -> Result<()> {
+        debug_assert!(dim.is_builtin());
+        let back = self.dim;
+        self.enter_level(dim)?;
+        let spawn_wait = std::mem::take(&mut self.spawn_wait);
+        self.streaming.radius = -1;
+        self.streaming.extra.clear();
+        self.update_world();
+        self.spawn_wait = spawn_wait;
+        self.enter_level(back)?;
+        Ok(())
+    }
+
+    /// Save the parked custom level `dim` and drop it: the mods hear its chunks
+    /// and the level unload. A level a mod opened at run time stays known, and
+    /// opens again when entered, as any other custom level.
     pub(super) fn close_parked_level(&mut self, dim: Dim) -> Result<()> {
+        debug_assert!(
+            !dim.is_builtin(),
+            "built-in levels stay open until server shutdown"
+        );
         let back = self.dim;
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
@@ -1674,7 +1772,7 @@ impl Game<'_> {
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
         if self.remote.is_some()
             || self.options.execution_role.is_client()
-            || self.levels.heard_open.contains(&dim)
+            || self.levels.has_heard_open(dim)
         {
             return;
         }
@@ -1685,16 +1783,16 @@ impl Game<'_> {
             parked.bind_resident_owners(&journal, dim.key(), true);
         }
         self.bind_dimension_attachments(dim);
-        self.levels.heard_open.push(dim);
-        self.native_level_load(dim.id());
+        if self.levels.note_opened(dim) {
+            self.native_level_load(dim.id());
+        }
     }
 
     /// The mods hear `dim`'s level close (`LevelEvent.Unload`), once for
     /// each open they heard.
     fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
-        if let Some(i) = self.levels.heard_open.iter().position(|d| *d == dim) {
-            self.levels.heard_open.remove(i);
+        if self.levels.note_closed(dim) {
             self.native_level_unload(dim.id());
         }
         if dim == self.dim {
@@ -1804,6 +1902,139 @@ mod tests {
         levels.clear();
         assert!(levels.heard_open.is_empty());
         assert!(levels.parked.is_empty());
+    }
+
+    #[test]
+    fn built_in_levels_stay_open_while_unloading_chunks_and_custom_levels_idle_close() {
+        use sunrise_client::chunk::Chunk;
+        use sunrise_world::registry::BlockStateId;
+
+        let custom = Dim::Extra(mod_api::__private::dimension_key("test_idle:custom"));
+        assert!(Dim::Overworld.is_builtin());
+        assert!(Dim::Nether.is_builtin());
+        assert!(Dim::End.is_builtin());
+        assert!(!custom.is_builtin());
+
+        // Startup opens all three built-in levels once in registry order.
+        let mut levels = Levels::default();
+        let mut loads = Vec::new();
+        let mut unloads = Vec::new();
+        for dim in BUILTIN_LEVEL_ORDER {
+            if levels.note_opened(dim) {
+                loads.push(dim);
+            }
+        }
+        assert_eq!(loads, [Dim::Overworld, Dim::Nether, Dim::End]);
+
+        // Also open a custom level to verify custom idle-close still applies.
+        assert!(levels.note_opened(custom));
+        loads.push(custom);
+
+        let mut overworld_world = World::new(BlockStateId(0), 0);
+        overworld_world
+            .chunks
+            .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
+        let mut nether_world = World::new(BlockStateId(0), 0);
+        nether_world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let end_world = World::new(BlockStateId(0), 0);
+
+        let mut overworld_idle = 0u32;
+        let mut nether_idle = 0u32;
+        let mut end_idle = 0u32;
+        let mut custom_idle = 0u32;
+        let mut custom_open = true;
+
+        // Idle past IDLE_TICKS: built-ins unload unticketed chunks and stay open;
+        // the custom level stays open until IDLE_TICKS and then closes.
+        let mut overworld_unload_requests = 0u32;
+        let mut nether_unload_requests = 0u32;
+        for tick in 1..=IDLE_TICKS + 50 {
+            match step_parked_idle(
+                Dim::Overworld,
+                &mut overworld_idle,
+                false,
+                !overworld_world.chunks.is_empty(),
+            ) {
+                IdleAction::UnloadChunks => {
+                    overworld_unload_requests += 1;
+                    assert!(overworld_world.unload_chunk((2, 3)).is_some());
+                }
+                IdleAction::Keep => {}
+                IdleAction::Close => panic!("Overworld must not idle-close"),
+            }
+            match step_parked_idle(
+                Dim::Nether,
+                &mut nether_idle,
+                false,
+                !nether_world.chunks.is_empty(),
+            ) {
+                IdleAction::UnloadChunks => {
+                    nether_unload_requests += 1;
+                    assert!(nether_world.unload_chunk((0, 0)).is_some());
+                }
+                IdleAction::Keep => {}
+                IdleAction::Close => panic!("Nether must not idle-close"),
+            }
+            assert_eq!(
+                step_parked_idle(Dim::End, &mut end_idle, false, !end_world.chunks.is_empty()),
+                IdleAction::Keep,
+                "empty parked End stays open with no work"
+            );
+            if custom_open {
+                let action = step_parked_idle(custom, &mut custom_idle, false, false);
+                if tick < IDLE_TICKS {
+                    assert_eq!(action, IdleAction::Keep);
+                } else {
+                    assert_eq!(action, IdleAction::Close);
+                    custom_open = false;
+                    if levels.note_closed(custom) {
+                        unloads.push(custom);
+                    }
+                }
+            }
+        }
+
+        // Unticketed chunks unloaded once; idle ticks afterwards did no extra work.
+        assert_eq!(overworld_unload_requests, 1);
+        assert_eq!(nether_unload_requests, 1);
+        assert!(overworld_world.chunks.is_empty());
+        assert!(nether_world.chunks.is_empty());
+        // Built-ins never unloaded; only the custom level idle-closed.
+        assert_eq!(unloads, [custom]);
+        assert!(levels.has_heard_open(Dim::Overworld));
+        assert!(levels.has_heard_open(Dim::Nether));
+        assert!(levels.has_heard_open(Dim::End));
+        assert!(!levels.has_heard_open(custom));
+
+        // An active custom level resets its idle counter and does not close.
+        let mut active_custom_idle = IDLE_TICKS - 1;
+        assert_eq!(
+            step_parked_idle(custom, &mut active_custom_idle, true, false),
+            IdleAction::Keep
+        );
+        assert_eq!(active_custom_idle, 0);
+
+        // Visiting Nether or End after the idle period does not fire a second level_load.
+        for dim in [Dim::Nether, Dim::End] {
+            if levels.note_opened(dim) {
+                loads.push(dim);
+            }
+        }
+        assert_eq!(loads, [Dim::Overworld, Dim::Nether, Dim::End, custom]);
+
+        // Shutdown closes every still-open built-in level once (and not the already-closed custom level).
+        for dim in BUILTIN_LEVEL_ORDER.into_iter().chain([custom]) {
+            if levels.note_closed(dim) {
+                unloads.push(dim);
+            }
+        }
+        assert_eq!(unloads, [custom, Dim::Overworld, Dim::Nether, Dim::End]);
+        // Repeating close at shutdown never fires a duplicate unload.
+        for dim in BUILTIN_LEVEL_ORDER {
+            assert!(!levels.note_closed(dim));
+        }
     }
 
     /// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no
@@ -2204,6 +2435,95 @@ mod tests {
                 (BUILT_INS[2].into(), [true, true, true]),
             ]
         );
+    }
+
+    /// Built-in levels open once at startup, unload unticketed chunks while
+    /// idle without closing the level itself, do not fire a second `level_load`
+    /// on later visits, and fire `level_unload` once at server shutdown.
+    #[test]
+    #[ignore = "daily"]
+    fn built_in_levels_stay_open_across_idle_ticks_until_shutdown() {
+        use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::chunk::Chunk;
+
+        const BUILT_INS: [&str; 3] = [
+            "minecraft:overworld",
+            "minecraft:the_nether",
+            "minecraft:the_end",
+        ];
+        struct Observer {
+            loads: Arc<Mutex<Vec<String>>>,
+            unloads: Arc<Mutex<Vec<String>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl Hooks for Observer {
+            fn level_load(&self, _: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
+                self.loads.lock().unwrap().push(event.dimension.to_owned());
+            }
+            fn level_unload(&self, _: &mut dyn ServerHost, event: &mut LevelUnloadEvent<'_>) {
+                self.unloads
+                    .lock()
+                    .unwrap()
+                    .push(event.dimension.to_owned());
+            }
+        }
+
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let home = tempfile::tempdir().unwrap();
+        let world = home.path().join("world");
+        let loads = Arc::new(Mutex::new(Vec::new()));
+        let unloads = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "builtin_lifetime",
+            Box::new(Observer {
+                loads: loads.clone(),
+                unloads: unloads.clone(),
+            }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let mut resources = None;
+            let mut game = open_game(&mut resources, &root, home.path(), &world);
+            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            assert!(unloads.lock().unwrap().is_empty());
+
+            // Seed an unticketed chunk in the parked Nether to verify it unloads while idle.
+            game.levels
+                .parked
+                .get_mut(&Dim::Nether)
+                .expect("Nether parked at startup")
+                .world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+
+            for _ in 0..=IDLE_TICKS + 10 {
+                game.close_idle_levels().unwrap();
+            }
+
+            assert!(game.levels.parked.contains_key(&Dim::Nether));
+            assert!(game.levels.parked.contains_key(&Dim::End));
+            assert!(
+                game.levels.parked[&Dim::Nether].world.chunks.is_empty(),
+                "unticketed Nether chunk unloaded while parked"
+            );
+            assert!(
+                unloads.lock().unwrap().is_empty(),
+                "built-in levels stay open past IDLE_TICKS"
+            );
+
+            // First visit to Nether and End after the idle period must not fire another level_load.
+            game.enter_level(Dim::Nether).unwrap();
+            game.enter_level(Dim::End).unwrap();
+            game.enter_level(Dim::Overworld).unwrap();
+            assert_eq!(*loads.lock().unwrap(), BUILT_INS);
+            assert!(unloads.lock().unwrap().is_empty());
+
+            // Shutdown unloads each built-in level once.
+            game.native_levels_closing();
+            assert_eq!(*unloads.lock().unwrap(), BUILT_INS);
+        });
     }
 
     /// Expected values from the official 26.3 dedicated server restarted on the
