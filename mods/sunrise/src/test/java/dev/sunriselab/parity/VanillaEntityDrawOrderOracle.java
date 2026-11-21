@@ -31,6 +31,7 @@ import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
@@ -38,8 +39,11 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.entity.EntityTickList;
@@ -152,6 +156,7 @@ public final class VanillaEntityDrawOrderOracle {
         Entity entity = switch (type) {
             case "minecraft:zombie" -> new Zombie(EntityTypes.ZOMBIE, level);
             case "minecraft:tnt" -> new PrimedTnt(EntityTypes.TNT, level);
+            case "minecraft:item" -> new ItemEntity(EntityTypes.ITEM, level);
             default -> throw new IllegalArgumentException(type);
         };
         entity.setId(id);
@@ -183,6 +188,8 @@ public final class VanillaEntityDrawOrderOracle {
     public static void main(String[] args) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        // No world data load binds the prototype; the recorder only needs a nonempty stack.
+        Items.STONE.builtInRegistryHolder().bindComponents(DataComponentMap.EMPTY);
         var unsafe = Class.forName("sun.misc.Unsafe");
         var allocator = new Allocator(field(unsafe, "theUnsafe").get(null), unsafe.getMethod("allocateInstance", Class.class));
 
@@ -231,6 +238,8 @@ public final class VanillaEntityDrawOrderOracle {
                     cameraEntity.set(camera, minecraft.player);
                 }
                 case "add" -> addEntity(level, Integer.parseInt(words[1]), words[2]);
+                case "item" -> ((ItemEntity) level.getEntity(Integer.parseInt(words[1])))
+                    .setItem(new ItemStack(Items.STONE));
                 case "remove" -> {
                     for (int i = 1; i < words.length; i++) {
                         level.removeEntity(Integer.parseInt(words[i]), Entity.RemovalReason.DISCARDED);

@@ -24,3 +24,12 @@ camera 3
 frame
 camera 4321
 frame
+add 7 minecraft:item
+add 8 minecraft:tnt
+add 9 minecraft:item
+item 9
+item 7
+frame
+add 7 minecraft:item
+item 7
+frame

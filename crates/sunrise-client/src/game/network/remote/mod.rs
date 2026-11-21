@@ -48,6 +48,7 @@ use sunrise_client::{
     entities::{Experience, ExperienceOrb, ItemEntity},
     hud::HudBatch,
     items::ItemStack,
+    join_seq::JoinSeq,
     lan::data::{BIOME_REGISTRY, client_biomes},
     menu::Input,
     mobs::{Mob, MobType, Who},
@@ -259,6 +260,13 @@ pub(super) struct Tracked {
     silent: bool,
     /// `Entity.vehicle`: the entity it rides (`SetPassengers`), whatever either one's type.
     pub(in crate::game) vehicle: Option<u32>,
+}
+
+/// An item has joined the client level, but has no stack to draw yet.
+pub(super) struct PendingItem {
+    join: JoinSeq,
+    position: [f64; 3],
+    velocity: Vec3,
 }
 
 /// `Entity.startRiding` / `removePassenger` for a `SetPassengers` packet: the
@@ -746,7 +754,7 @@ pub(super) struct Remote {
     /// The player's place in its vehicle's `getPassengers`.
     pub(super) passenger_index: usize,
     /// Item entities waiting for their item data: where they are and their motion.
-    pub(super) pending_items: HashMap<i32, ([f64; 3], Vec3)>,
+    pub(super) pending_items: HashMap<i32, PendingItem>,
     health: (f32, i32, f32),
     /// `LocalPlayer.flashOnSetHealth`: set by the first health the server
     /// sends; from then on a drop starts the hurt animation.
@@ -2927,8 +2935,22 @@ impl Game<'_> {
             // A new entity has a new interpolation handler (a mob's or an
             // armor stand's), even under an id the server used before.
             r.stepped.remove(&id);
+            if r.entities
+                .get(&id)
+                .is_some_and(|old| old.kind == "minecraft:item")
+            {
+                self.dropped.retain(|item| item.id != id as u32);
+                r.pending_items.remove(&id);
+            }
             if kind == "minecraft:item" {
-                r.pending_items.insert(id, (position, Vec3::ZERO));
+                r.pending_items.insert(
+                    id,
+                    PendingItem {
+                        join: JoinSeq::next(),
+                        position,
+                        velocity: Vec3::ZERO,
+                    },
+                );
             }
             r.entities.insert(
                 id,
@@ -3127,7 +3149,7 @@ impl Game<'_> {
                 return;
             }
             if let Some(p) = r.pending_items.get_mut(&id) {
-                p.0 = position;
+                p.position = position;
             }
             // ItemEntity, FallingBlockEntity and PrimedTnt keep Entity's
             // NO_OP InterpolationHandler: moveOrInterpolateTo puts them there
@@ -5978,7 +6000,7 @@ impl Game<'_> {
         let Some(stack) = self.to_stack(stack) else {
             return;
         };
-        let position = self
+        let pending = self
             .remote
             .as_mut()
             .and_then(|r| r.pending_items.remove(&id));
@@ -5986,17 +6008,29 @@ impl Game<'_> {
             item.stack = stack;
             return;
         }
-        let Some((p, velocity)) = position else {
+        let Some(PendingItem {
+            join,
+            position: [x, y, z],
+            velocity,
+        }) = pending
+        else {
             return;
         };
-        let at = Vec3::new(p[0], p[1], p[2]);
+        let at = Vec3::new(x, y, z);
         // ItemEntity's constructor draws bobOffs from the item's own random.
         let mut random = sunrise_client::mobs::entity_random(id as u32, at);
         let bob = super::item_entities::bob_offset(at, random.next_float(), self.clock.still());
-        self.dropped.push(ItemEntity {
-            random,
-            ..ItemEntity::new(id as u32, stack, at, velocity, bob)
-        });
+        // Metadata can arrive after newer entities (including other items). Insert at the
+        // reserved ClientLevel.addEntity slot, not the tail at metadata time.
+        let index = self.dropped.partition_point(|item| item.join < join);
+        self.dropped.insert(
+            index,
+            ItemEntity {
+                join,
+                random,
+                ..ItemEntity::new(id as u32, stack, at, velocity, bob)
+            },
+        );
     }
 
     /// `Entity.lerpMotion` (and `recreateFromPacket`'s motion) for the
@@ -6058,7 +6092,7 @@ impl Game<'_> {
             .as_mut()
             .and_then(|r| r.pending_items.get_mut(&id))
         {
-            p.1 = v;
+            p.velocity = v;
         } else if !self.potions.remote_thrown_motion(id as u32, v) {
             self.end.remote_eye_motion(id as u32, velocity);
         }

@@ -211,13 +211,22 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
 #[ignore = "daily"]
 fn entity_draw_order_after_client_packets() {
     use sunrise_client::camera::CameraType;
-    use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_protocol::{
+        entity_data::{ITEM_ENTITY_ITEM, Value, serializer::ITEM_STACK},
+        item::Stack,
+        packets::play::{self, Clientbound as C},
+    };
 
     super::native_entity_refs::tests::with_client_game(|game| {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Steve").unwrap();
         let builtin = game.remote.as_ref().unwrap().builtin.clone();
         let types = builtin.get("minecraft:entity_type").unwrap();
+        let stone = builtin
+            .get("minecraft:item")
+            .unwrap()
+            .id("minecraft:stone")
+            .unwrap();
         let spawn = play::SpawnInfo {
             dimension_type: 0,
             dimension: "minecraft:overworld".into(),
@@ -266,6 +275,14 @@ fn entity_draw_order_after_client_packets() {
                         data: 0,
                     })
                 }
+                ["item", id] => C::SetEntityData(play::SetEntityData {
+                    id: id.parse().unwrap(),
+                    values: vec![(
+                        ITEM_ENTITY_ITEM,
+                        ITEM_STACK,
+                        Value::Item(Some(Stack::new(stone, 1))),
+                    )],
+                }),
                 ["remove", ids @ ..] => C::RemoveEntities(play::RemoveEntities {
                     ids: ids.iter().map(|id| id.parse().unwrap()).collect(),
                 }),
@@ -339,6 +356,8 @@ fn entity_draw_order_after_client_packets() {
                 vec![4321, 91, 40, 3],
                 vec![91, 40, 3],
                 vec![4321, 91, 40, 3],
+                vec![4321, 91, 40, 3, 7, 8, 9],
+                vec![4321, 91, 40, 3, 8, 9, 7],
             ]
         );
     });

@@ -1121,37 +1121,54 @@ macro_rules! define_entity_handles {
         }
 
 
-        impl EntityLists<'_> {
-            /// Visits every entity once, in the order they joined, whatever the
-            /// kind: a merge of the lists, each already in join order, by a
-            /// cursor per list. Static dispatch and nothing allocated. Checked:
-            /// a list out of join order, or an entity that never joined, stops
-            /// the walk with the entity at fault.
+        impl<'w> EntityLists<'w> {
+            /// Merge lists already ordered by join number, taking the lowest head at each
+            /// step. The cursors live on the stack. The draw pass reads only its own lists.
+            fn merge_in_join_order<const DRAWN_ONLY: bool>(self)
+                -> impl Iterator<Item = (EntityHandle, JoinSeq)> + use<'w, DRAWN_ONLY>
+            {
+                let mut cursors = [$(self.$field.len()),*].map(|_| 0usize);
+                std::iter::from_fn(move || {
+                    let mut best: Option<(usize, EntityHandle, JoinSeq)> = None;
+                    let mut list = 0;
+                    $(
+                        let index = cursors[list];
+                        let handle = EntityHandle::$kind(index);
+                        if (!DRAWN_ONLY || DrawFamily::of(handle).is_some())
+                            && let Some(row) = self.$field.get(index)
+                        {
+                            let seq = row.join_seq();
+                            if best.is_none_or(|(_, _, lowest)| seq < lowest) {
+                                best = Some((list, handle, seq));
+                            }
+                        }
+                        list += 1;
+                    )*
+                    let _ = list;
+                    let (list, handle, seq) = best?;
+                    cursors[list] += 1;
+                    Some((handle, seq))
+                })
+            }
+
+            /// Visits every entity once in join order. On authoritative lists, tick passes
+            /// can reorder storage; report any such list rather than taking it as join order.
             pub(super) fn walk_in_join_order(
                 self,
-                visit: impl FnMut(EntityHandle, JoinSeq),
+                mut visit: impl FnMut(EntityHandle, JoinSeq),
             ) -> Result<(), JoinOrderError> {
-                let lens = [$(self.$field.len()),*];
-                merge_in_join_order(
-                    lens,
-                    |kind, i| {
-                        let mut at = 0;
-                        $(if kind == at {
-                            return self.$field[i].join_seq();
-                        } at += 1;)*
-                        let _ = at;
-                        unreachable!("kind {kind} is not a list")
-                    },
-                    |kind, i| {
-                        let mut at = 0;
-                        $(if kind == at {
-                            return EntityHandle::$kind(i);
-                        } at += 1;)*
-                        let _ = at;
-                        unreachable!("kind {kind} is not a list")
-                    },
-                    visit,
-                )
+                let mut last = JoinSeq::UNJOINED;
+                for (handle, seq) in self.merge_in_join_order::<false>() {
+                    if !seq.is_joined() {
+                        return Err(JoinOrderError::Unjoined(handle));
+                    }
+                    if seq <= last {
+                        return Err(JoinOrderError::OutOfOrder(handle));
+                    }
+                    last = seq;
+                    visit(handle, seq);
+                }
+                Ok(())
             }
         }
 
@@ -1320,16 +1337,14 @@ fn push_draw_run(runs: &mut Vec<DrawRun>, handle: EntityHandle) {
 fn draw_runs(lists: EntityLists<'_>, local_player: Option<JoinSeq>, runs: &mut Vec<DrawRun>) {
     runs.clear();
     let mut pending = local_player.unwrap_or(JoinSeq::MAX);
-    lists
-        .walk_in_join_order(|handle, seq| {
-            // The local player has its own resident slot, outside these entity lists.
-            if pending < seq {
-                runs.push(LOCAL_PLAYER_RUN);
-                pending = JoinSeq::MAX;
-            }
-            push_draw_run(runs, handle);
-        })
-        .expect("drawn level entities must be stored in join order");
+    for (handle, seq) in lists.merge_in_join_order::<true>() {
+        // The local player has its own resident slot, outside these entity lists.
+        if pending < seq {
+            runs.push(LOCAL_PLAYER_RUN);
+            pending = JoinSeq::MAX;
+        }
+        push_draw_run(runs, handle);
+    }
     if pending != JoinSeq::MAX {
         runs.push(LOCAL_PLAYER_RUN);
     }
@@ -1344,54 +1359,20 @@ impl Game<'_> {
     /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
     /// order they joined the level (`EntityLookup.byId`, which
     /// `LevelExtractor.extractVisibleEntities` follows), whatever their family.
+    ///
+    /// The window sees a client level, including when the server is integrated. Its packet
+    /// handlers append freshly joined bodies, removing old copies without reordering the
+    /// survivors. A dropped item reserves its sequence at AddEntity and is inserted at that
+    /// place when its stack arrives. Client ticks restore lifted rows before nested spawns
+    /// and put a lent mount back at its old index. Respawn either keeps the lists or clears
+    /// them for a new level. The server's save loads, level swaps, and tick-specific list
+    /// reorders never feed this merge; they publish to the window through packets.
     pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
         // A first-person body can draw into the shadow pass only.
         let local_player = self
             .player_model_shown()
             .then(|| self.resident_entities.local_player.join());
         draw_runs(entity_lists_of!(self), local_player, runs);
-    }
-}
-
-/// The merge behind the join-order walk, over `N` lists: `lens` are their
-/// lengths, `seq(list, i)` the join number of entity `i` of a list, `handle`
-/// names it. Each step takes the lowest next number among the `N` cursors
-/// (a stack array; no allocation).
-#[allow(
-    dead_code,
-    reason = "the tick order work that reads this has not landed yet"
-)]
-fn merge_in_join_order<const N: usize>(
-    lens: [usize; N],
-    seq: impl Fn(usize, usize) -> JoinSeq,
-    handle: impl Fn(usize, usize) -> EntityHandle,
-    mut visit: impl FnMut(EntityHandle, JoinSeq),
-) -> Result<(), JoinOrderError> {
-    let mut cursor = [0usize; N];
-    let mut last = JoinSeq::UNJOINED;
-    loop {
-        let mut best: Option<(usize, JoinSeq)> = None;
-        for list in 0..N {
-            if cursor[list] < lens[list] {
-                let s = seq(list, cursor[list]);
-                if !s.is_joined() {
-                    return Err(JoinOrderError::Unjoined(handle(list, cursor[list])));
-                }
-                if best.is_none_or(|(_, b)| s < b) {
-                    best = Some((list, s));
-                }
-            }
-        }
-        let Some((list, s)) = best else {
-            return Ok(());
-        };
-        let h = handle(list, cursor[list]);
-        if s <= last {
-            return Err(JoinOrderError::OutOfOrder(h));
-        }
-        last = s;
-        cursor[list] += 1;
-        visit(h, s);
     }
 }
 
@@ -3226,15 +3207,6 @@ mod join_order_tests {
                 .collect::<Vec<_>>(),
             [(DrawFamily::ArmorStand, 0..2)]
         );
-    }
-
-    /// A broken join invariant must not silently switch the ordered pass to storage order.
-    #[test]
-    #[should_panic(expected = "drawn level entities must be stored in join order")]
-    fn draw_runs_reject_a_list_out_of_join_order() {
-        let (mut lists, _) = mixed();
-        lists.tridents.swap(0, 1);
-        runs(&lists, None);
     }
 
     /// An entity taken out and put back (a tick takes its list) keeps its place.
