@@ -306,7 +306,7 @@ impl Game<'_> {
             was_shared_flags: 0,
             was_living_flags: 0,
             last_recorded_pose: None,
-            abilities: None,
+            abilities: sunrise_client::lan::abilities::PlayerAbilities::default(),
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
@@ -564,7 +564,7 @@ impl Game<'_> {
             was_living_flags: 0,
             last_recorded_pose: None,
             carried: std::cell::Cell::new(None),
-            abilities: None,
+            abilities: sunrise_client::lan::abilities::PlayerAbilities::default(),
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
@@ -849,6 +849,18 @@ impl Game<'_> {
         if !same {
             self.forget_all_remote_columns();
         }
+        let adjust_mode = if matches!(
+            entry,
+            RemoteDimensionEntry::Respawn | RemoteDimensionEntry::DeathRespawn
+        ) {
+            self.mode
+        } else {
+            sunrise_client::command::args::GameMode::Survival
+        };
+        let mode = crate::game::game_mode::mode_from_id(spawn.game_type);
+        let previous = spawn
+            .previous_game_type
+            .map(crate::game::game_mode::mode_from_id);
         let r = self.remote.as_mut().unwrap();
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
@@ -864,7 +876,10 @@ impl Game<'_> {
         r.level = spawn.dimension.clone();
         r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
         r.hashed_seed = spawn.seed;
-        r.game_mode = spawn.game_type;
+        r.game_mode = mode.id();
+        r.abilities = sunrise_client::lan::abilities::PlayerAbilities::default();
+        // handleLogin/handleRespawn run adjustPlayer(newPlayer) before setLocalMode.
+        r.abilities.update_for_mode(adjust_mode.id());
         r.flat = spawn.flat;
         r.loaded_sent = false;
         // A replacement LevelLoadingScreen starts its bar from nothing (the
@@ -882,7 +897,7 @@ impl Game<'_> {
         self.ambience.moodiness = 0.0;
         r.position_sender = Default::default();
         r.predictions.clear();
-        self.set_mode_id(spawn.game_type);
+        self.set_local_mode_with_previous(mode, previous);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
         // ClientPacketListener.handleLogin / handleRespawn: the server's

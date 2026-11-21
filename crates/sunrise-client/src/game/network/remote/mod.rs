@@ -404,10 +404,8 @@ pub(super) struct Remote {
     was_shared_flags: u8,
     was_living_flags: u8,
     last_recorded_pose: Option<crate::pose::Pose>,
-    /// The last ClientboundPlayerAbilitiesPacket. Vanilla's LocalPlayer
-    /// holds its abilities from the login on; here the player is made at
-    /// the first teleport, which takes them then.
-    abilities: Option<play::PlayerAbilities>,
+    /// Live `LocalPlayer.abilities`, mutated in arrival order by `CHANGE_GAME_MODE` and `PlayerAbilities`.
+    abilities: sunrise_client::lan::abilities::PlayerAbilities,
     /// The old player's motion, from a Respawn with KEEP_ENTITY_DATA
     /// (`handleRespawn`: `newPlayer.setDeltaMovement(oldPlayer.getDeltaMovement())`),
     /// for the player made at the next teleport: a portal's teleport adds to it.
@@ -1433,9 +1431,11 @@ impl Game<'_> {
 
     // tick_remote and tick_remote_player: remote/tick.rs
 
-    /// The last `ClientboundPlayerAbilities` the server sent, on a client.
-    pub(super) fn remote_abilities(&self) -> Option<&play::PlayerAbilities> {
-        self.remote.as_ref()?.abilities.as_ref()
+    /// Live client `Abilities` (`LocalPlayer.abilities`) when connected to a server.
+    pub(super) fn remote_abilities(
+        &self,
+    ) -> Option<&sunrise_client::lan::abilities::PlayerAbilities> {
+        self.remote.as_ref().map(|r| &r.abilities)
     }
 
     // tick_remote_guardian_eyes: remote/tick.rs
@@ -2090,7 +2090,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         !self.0.mod_mappings_screen_open()
     }
     fn spectator_hotbar(&mut self) {
-        while self.0.spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
+        while self.0.player_is_spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
             self.0.spectator_action_key();
         }
     }

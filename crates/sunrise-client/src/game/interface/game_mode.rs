@@ -46,18 +46,36 @@ impl Game<'_> {
         }
     }
 
+    /// `MultiPlayerGameMode.isSpectator()` on a client; `ServerPlayer.isSpectator()` on a server.
     pub(in crate::game) fn spectator(&self) -> bool {
         self.mode == GameMode::Spectator
     }
+    /// `AbstractClientPlayer.gameMode()` on a remote client (`PlayerInfo.getGameMode()` for our UUID), else `Some(self.mode)`.
+    pub(in crate::game) fn player_info_game_mode(&self) -> Option<GameMode> {
+        match self.remote.as_ref() {
+            Some(r) => r.own_player_info_game_mode().map(mode_from_id),
+            None => Some(self.mode),
+        }
+    }
+    /// `Player.isSpectator()`: reads `PlayerInfo` on a remote client and `self.mode` locally.
+    pub(in crate::game) fn player_is_spectator(&self) -> bool {
+        self.player_info_game_mode() == Some(GameMode::Spectator)
+    }
     /// `Abilities.mayBuild`.
     pub(super) fn may_build(&self) -> bool {
+        if let Some(a) = self.remote_abilities() {
+            return a.may_build;
+        }
         self.acting_abilities.map_or(
             matches!(self.mode, GameMode::Survival | GameMode::Creative),
             |a| a.may_build,
         )
     }
-    /// `Abilities.instabuild`. A client and the in-frame world derive it from the mode.
-    pub(super) fn instabuild(&self) -> bool {
+    /// `Abilities.instabuild`. A client reads its live `Remote::abilities`.
+    pub(in crate::game) fn instabuild(&self) -> bool {
+        if let Some(a) = self.remote_abilities() {
+            return a.instabuild;
+        }
         self.acting_abilities
             .map_or(self.creative, |a| a.instabuild)
     }
@@ -67,11 +85,44 @@ impl Game<'_> {
     pub(super) fn set_mode_id(&mut self, id: i32) {
         self.set_mode(mode_from_id(id));
     }
-    /// `ServerPlayer.setGameMode` and `GameType.updatePlayerAbilities`.
+    /// `MultiPlayerGameMode.setLocalMode(GameType)`: updates only the local mode and `Abilities`.
+    pub(in crate::game) fn set_local_mode(&mut self, mode: GameMode) {
+        if mode != self.mode {
+            self.previous_mode = Some(self.mode);
+        }
+        self.mode = mode;
+        if let (Some(r), Some(p)) = (self.remote.as_mut(), self.player.as_ref()) {
+            r.sync_body_flight(p.flying, p.flying_speed);
+        }
+        self.finish_local_mode_update(mode);
+    }
+    /// `MultiPlayerGameMode.setLocalMode(GameType, @Nullable GameType)` for `Login` and `Respawn`.
+    pub(in crate::game) fn set_local_mode_with_previous(
+        &mut self,
+        mode: GameMode,
+        previous: Option<GameMode>,
+    ) {
+        self.mode = mode;
+        self.previous_mode = previous;
+        self.finish_local_mode_update(mode);
+    }
+    fn finish_local_mode_update(&mut self, mode: GameMode) {
+        if let Some(r) = self.remote.as_mut() {
+            self.creative = r.update_local_mode_abilities(mode.id());
+        } else {
+            self.creative = mode == GameMode::Creative;
+        }
+        self.apply_remote_abilities();
+        self.sync_remote_player_game_mode();
+        self.mode_changed_under_inventory();
+    }
+    /// `ServerPlayer.setGameMode` on a local/server world; delegates to `set_local_mode` on a remote client.
     pub(super) fn set_mode(&mut self, mode: GameMode) {
-        let was_spectator = self.spectator();
+        if self.remote.is_some() {
+            self.set_local_mode(mode);
+            return;
+        }
         let changed = mode != self.mode;
-        // MultiPlayerGameMode.setLocalMode: the mode it leaves.
         if changed {
             self.previous_mode = Some(self.mode);
         }
@@ -93,16 +144,13 @@ impl Game<'_> {
             if let Some(p) = self.player.as_mut() {
                 p.flying = true;
                 p.spectator = true;
+                p.local_spectator = None;
             }
         } else if let Some(p) = self.player.as_mut() {
             p.spectator = false;
-            if was_spectator {
-                p.flying_speed = 0.05;
-            }
+            p.local_spectator = None;
             if !self.creative {
                 p.flying = false;
-            } else if was_spectator {
-                p.flying = true;
             }
         }
         // ServerPlayerGameMode.changeGameModeForPlayer: a player left flying
@@ -130,9 +178,6 @@ impl Game<'_> {
                 }
             }
         }
-        // InventoryScreen.containerTick: the open inventory follows the mode. Here, not in
-        // the command, so the window hears it too: it changes mode through the server's
-        // game event (`set_mode_id`), never through `set_game_mode`.
         self.mode_changed_under_inventory();
     }
 }

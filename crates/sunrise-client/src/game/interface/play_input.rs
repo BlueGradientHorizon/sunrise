@@ -343,14 +343,18 @@ impl Game<'_> {
     /// What one whole wheel step does in play (`MouseHandler.onScroll`): a spectator's menu or
     /// flying speed, else the selected hotbar slot.
     pub(super) fn hotbar_wheel_step(&mut self, wheel: i32, vertical_steps: i32) {
-        if self.spectator() && self.spectator_gui.is_menu_active() {
+        if self.player_is_spectator() && self.spectator_gui.is_menu_active() {
             self.spectator_scroll(-wheel);
-        } else if self.spectator() {
-            if let Some(player) = &mut self.player {
+        } else if self.player_is_spectator() {
+            let speed = self.player.as_mut().map(|player| {
                 player.flying_speed = sunrise_client::mouse::spectator_flying_speed(
                     player.flying_speed,
                     vertical_steps,
                 );
+                player.flying_speed
+            });
+            if let Some(speed) = speed {
+                self.set_remote_flying_speed(speed);
             }
         } else {
             self.selected = sunrise_client::mouse::ScrollWheelHandler::next_selection(
@@ -433,7 +437,11 @@ impl Game<'_> {
     /// to is one of those it is bound to, for this player now.
     pub(super) fn shared_default_acts(&self, button: MouseButton, input: Option<&str>) -> bool {
         button != MouseButton::Middle
-            || input.is_none_or(|input| self.settings.keys.middle_acts(input, self.spectator()))
+            || input.is_none_or(|input| {
+                self.settings
+                    .keys
+                    .middle_acts(input, self.player_is_spectator())
+            })
     }
     /// A mouse button while playing (window or control socket).
     pub(super) fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
@@ -446,7 +454,7 @@ impl Game<'_> {
         let name = match button {
             MouseButton::Left => "key.attack",
             MouseButton::Right => "key.use",
-            MouseButton::Middle if self.spectator() => "key.spectatorHotbar",
+            MouseButton::Middle if self.player_is_spectator() => "key.spectatorHotbar",
             MouseButton::Middle => "key.pickItem",
             _ => return Ok(()),
         };

@@ -425,8 +425,10 @@ pub struct PlayerMotion {
     pub mobility_restricted: bool,
     /// Abilities.invulnerable (creative): only damage bypassing invulnerability hurts.
     pub invulnerable: bool,
-    /// Spectator mode: no physics, always flying (`Player.tick`).
+    /// `Player.isSpectator()` (`PlayerInfo` on remote clients): controls `noPhysics` and ground clearing.
     pub spectator: bool,
+    /// `MultiPlayerGameMode.isSpectator()` on remote clients; `None` mirrors `spectator`.
+    pub local_spectator: Option<bool>,
     pub flying: bool,
     /// Client-side `Abilities.flyingSpeed`, adjusted by the spectator scroll wheel.
     pub flying_speed: f32,
@@ -591,6 +593,10 @@ impl PlayerMotion {
         self.fall_distance = 0.0;
     }
 
+    /// `MultiPlayerGameMode.isSpectator()` for `LocalPlayer.aiStep` flight checks.
+    pub fn local_spectator(&self) -> bool {
+        self.local_spectator.unwrap_or(self.spectator)
+    }
     /// `ServerGamePacketListenerImpl.handleMovePlayer`: the movement the client
     /// sent is the server copy's own delta movement. A glide's wall hit reads it
     /// as the speed the glide had (`LivingEntity.handleFallFlyingCollisions`'s
@@ -1136,8 +1142,11 @@ impl MotionWorld<'_, '_, '_> {
         let was_jumping = std::mem::replace(&mut self.player.was_jumping, jumping);
         let flying_before = self.player.flying;
         if self.player.spectator {
-            self.player.flying = true;
             self.player.ground.on_ground = false;
+        }
+        // LocalPlayer.aiStep forces flight for a local spectator only when may_fly is set.
+        if self.player.may_fly && self.player.local_spectator() {
+            self.player.flying = true;
         } else if self.player.may_fly && !was_jumping && jumping && !self.player.was_auto_jump {
             // `LocalPlayer.aiStep`: mayfly gates the flight toggle, not the
             // flying state independently supplied by the server's abilities.
@@ -1244,7 +1253,7 @@ impl MotionWorld<'_, '_, '_> {
         }
         if self.player.flying {
             self.player.fall_distance = 0.0;
-            if self.player.ground.on_ground && !self.player.spectator {
+            if self.player.ground.on_ground && !self.player.local_spectator() {
                 self.player.flying = false;
             }
         }

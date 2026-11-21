@@ -263,8 +263,9 @@ impl Game<'_> {
                 let mut player = PlayerMotion::new(self.motion, position)?;
                 // The id the server gave, for the hooks the motion fires.
                 player.entity_id = self.own_entity_id();
-                // Player.tick derives noPhysics from the current game mode.
-                player.spectator = self.spectator();
+                // Player.tick reads PlayerInfo (`noPhysics`); LocalPlayer.aiStep reads local mode.
+                player.spectator = self.player_is_spectator();
+                player.local_spectator = Some(self.spectator());
                 player.velocity = delta;
                 self.take_carried_attributes(&mut player)?;
                 self.hook.discard();

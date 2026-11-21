@@ -1047,21 +1047,18 @@ impl Game<'_> {
         }))
     }
 
-    /// The local player's `Abilities` on a client: what its game mode gives
-    /// (`GameType.updatePlayerAbilities`, `mayBuild` among them), then the
-    /// flags and speeds `ClientPacketListener.handlePlayerAbilities` took, except
-    /// flying, which follows the local body's prediction between packets.
+    /// The local player's `Abilities` on a client: live `Remote::abilities` mutated in packet
+    /// arrival order, with predicted `flying` and spectator-scroll `flying_speed` from the body.
     fn client_abilities(&self) -> PlayerAbilities {
-        let mut a = PlayerAbilities::default();
-        a.update_for_mode(self.mode_id());
-        if let Some(p) = self.remote_abilities() {
-            a.invulnerable = p.flags & 1 != 0;
-            a.may_fly = p.flags & 4 != 0;
-            a.instabuild = p.flags & 8 != 0;
-            a.flying_speed = p.flying_speed;
-            a.walking_speed = p.walking_speed;
+        let mut a = self.remote_abilities().copied().unwrap_or_else(|| {
+            let mut fallback = PlayerAbilities::default();
+            fallback.update_for_mode(self.mode_id());
+            fallback
+        });
+        if let Some(body) = self.player.as_ref() {
+            a.flying = body.flying;
+            a.flying_speed = body.flying_speed;
         }
-        a.flying = self.player.as_ref().is_some_and(|body| body.flying);
         a
     }
 

@@ -272,7 +272,7 @@ impl Game<'_> {
             let own = self
                 .player
                 .as_ref()
-                .filter(|p| !p.health.dead_or_dying() && !self.spectator())
+                .filter(|p| !p.health.dead_or_dying() && !p.spectator)
                 .map(|p| {
                     let feet = [p.position.x, p.position.y, p.position.z];
                     let eye = f64::from(p.dimensions.eye_height);
@@ -937,6 +937,7 @@ impl Game<'_> {
         );
         let was_flying = player.flying;
         self.sync_player_body();
+        self.sync_remote_player_game_mode();
         let sleeping = self.sleeping;
         if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
             && let Some(player) = self.player.as_mut()
@@ -1162,6 +1163,9 @@ impl Game<'_> {
             self.remote_tick_using();
         }
         if flying != was_flying {
+            if let Some(r) = self.remote.as_mut() {
+                r.abilities.flying = flying;
+            }
             self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
                 flags: if flying { 2 } else { 0 },
             }));

@@ -337,7 +337,7 @@ impl Game<'_> {
             if !self.consume_mapping_click(name) {
                 continue;
             }
-            if self.spectator() {
+            if self.player_is_spectator() {
                 self.spectator_hotbar_key(slot as i32);
                 continue;
             }
@@ -503,7 +503,10 @@ impl Game<'_> {
                     }
                 }
             }
-            while !using && self.spectator() && self.consume_mapping_click("key.spectatorHotbar") {
+            while !using
+                && self.player_is_spectator()
+                && self.consume_mapping_click("key.spectatorHotbar")
+            {
                 self.spectator_action_key();
             }
             self.release_tick_targets();

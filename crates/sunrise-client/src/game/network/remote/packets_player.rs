@@ -229,11 +229,16 @@ impl Game<'_> {
         }
     }
 
-    /// `C::PlayerAbilities`: its arms of `apply_packet`, guard and order kept.
+    /// `C::PlayerAbilities`: mutates `Remote::abilities` in arrival order, preserving `may_build`.
     pub(super) fn apply_player_abilities_packet(&mut self, p: play::PlayerAbilities) {
         self.creative = p.flags & 8 != 0;
         if let Some(r) = self.remote.as_mut() {
-            r.abilities = Some(p);
+            r.abilities.invulnerable = p.flags & 1 != 0;
+            r.abilities.flying = p.flags & 2 != 0;
+            r.abilities.may_fly = p.flags & 4 != 0;
+            r.abilities.instabuild = p.flags & 8 != 0;
+            r.abilities.flying_speed = p.flying_speed;
+            r.abilities.walking_speed = p.walking_speed;
         }
         self.apply_remote_abilities();
     }
@@ -411,6 +416,7 @@ impl Game<'_> {
                 }
             }
         }
+        self.sync_remote_player_game_mode();
     }
 
     /// `C::PlayerInfoRemove`: its arms of `apply_packet`, guard and order kept.
@@ -426,6 +432,7 @@ impl Game<'_> {
                 r.attachments.remove(&Holder::Player(u));
             }
         }
+        self.sync_remote_player_game_mode();
     }
 
     /// `C::TabList`: its arms of `apply_packet`, guard and order kept.
