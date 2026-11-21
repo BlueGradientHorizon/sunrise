@@ -79,7 +79,8 @@ pub(super) struct Stage<'p> {
     pub(super) sampler_functions: HashMap<String, Vec<bool>>,
     /// The pack's structs: each member's type and name with its array suffix.
     pub(super) structs: HashMap<String, Vec<(String, String)>>,
-    /// `out struct S { .. } s;`: the qualifiers and `S`, read with the declarators after `}`.
+    /// `out struct S { .. } s;` or `struct S { .. } s;`: the qualifiers and `S`, read with the
+    /// declarators after `}`.
     struct_qualifiers: Vec<usize>,
     pub(super) outputs: BTreeSet<u32>,
     pub(super) frag_coord: bool,
@@ -602,15 +603,14 @@ impl<'p> Stage<'p> {
         let mut words: Vec<usize> = (from..to)
             .filter(|&i| significant(self.tokens[i]))
             .collect();
-        // A struct defined in an interface declaration (GLSL 4.60, 4.1.8): `flat out struct S
-        // { .. } s;` declares `s` as `flat out S s;` would, after the definition.
+        // A struct defined with its variables: `struct S { .. } a, b;` declares `a` and `b` as
+        // `S a, b;` would, after the definition, and in an interface declaration (GLSL 4.60,
+        // 4.1.8) `flat out struct S { .. } s;` as `flat out S s;` would. An anonymous struct
+        // has its name by now (`anonymous_structs`).
         let pending = std::mem::take(&mut self.struct_qualifiers);
         if body {
             if let Some(s) = words.iter().position(|&i| self.tokens[i] == "struct")
                 && let Some(&name) = words.get(s + 1)
-                && words[..s]
-                    .iter()
-                    .any(|&i| matches!(self.tokens[i], "in" | "out" | "varying"))
             {
                 self.struct_qualifiers = words[..s].to_vec();
                 self.struct_qualifiers.push(name);
@@ -888,7 +888,9 @@ impl<'p> Stage<'p> {
     /// also take uniforms and other globals there), so each initializer becomes a function of
     /// ours on the same line (`T a; T hz_init_a() { return T(...); } T b; ...`), called by our
     /// `main` before the pack's, in file order. The return converts as GLSL's initialization
-    /// does (`vec2 v = ivec2(...)`).
+    /// does (`vec2 v = ivec2(...)`). A declarator without one beside them (`T a, b = 1.0;`) is
+    /// recorded as `uninitialized` records `T a;`, with the same type. Types and sizes are
+    /// written as the rewrite writes their words (`written_words`).
     pub(super) fn initializer(&mut self, words: &[usize], to: usize) {
         let text = |i: usize| self.tokens[i];
         let Some(eq) = words.iter().position(|&i| text(i) == "=") else {
@@ -984,8 +986,10 @@ impl<'p> Stage<'p> {
         if ty.is_empty() {
             return;
         }
+        let ty = self.written_words(&ty);
         let mut replaced = Vec::new();
         let mut names = Vec::new();
+        let mut zeros = Vec::new();
         for (n, &(begin, assign, end)) in declarators.iter().enumerate() {
             let name_at = if n == 0 { name_at } else { begin };
             let name = text(words[name_at]).to_owned();
@@ -1001,6 +1005,12 @@ impl<'p> Stage<'p> {
                     None => return,
                 }
             }
+            let array = self.written_words(&array);
+            let declared = format!(
+                "{}{}",
+                reversed_array_dimensions(&ty),
+                reversed_array_dimensions(&array),
+            );
             let next = if n + 1 < declarators.len() {
                 let qualifier = if constant && !runtime[n + 1] {
                     "const "
@@ -1012,6 +1022,10 @@ impl<'p> Stage<'p> {
                 String::new()
             };
             let end_token = words.get(end).copied().unwrap_or(to);
+            // `T a, b = 1.0;`: `a` is set back as `T a;` is (`uninitialized`).
+            if assign.is_none() {
+                zeros.push((to, name.clone(), declared.clone()));
+            }
             match assign {
                 Some(a) if runtime[n] => {
                     let dimensions = if array.is_empty() { &ty } else { &array };
@@ -1044,14 +1058,9 @@ impl<'p> Stage<'p> {
                     } else {
                         (String::new(), "")
                     };
-                    let return_ty = format!(
-                        "{}{}",
-                        reversed_array_dimensions(&ty),
-                        reversed_array_dimensions(&array),
-                    );
                     replaced.push((
                         words[a],
-                        format!(";{capture} {return_ty} hz_init_{name}() {{ return {open}"),
+                        format!(";{capture} {declared} hz_init_{name}() {{ return {open}"),
                     ));
                     replaced.push((end_token, format!("{close}; }}{next}")));
                     names.push(name);
@@ -1067,6 +1076,7 @@ impl<'p> Stage<'p> {
         }
         self.replaced.extend(replaced);
         self.inits.extend(names);
+        self.uninitialized.extend(zeros);
     }
 
     /// A global `T a, b[2];` with neither storage nor an initializer (`uninitialized`): its
@@ -1105,7 +1115,8 @@ impl<'p> Stage<'p> {
                 reversed_array_dimensions(&ty),
                 reversed_array_dimensions(&array)
             );
-            self.uninitialized.push((to, text(name).to_owned(), ty));
+            self.uninitialized
+                .push((to, text(name).to_owned(), self.written_words(&ty)));
         }
     }
 

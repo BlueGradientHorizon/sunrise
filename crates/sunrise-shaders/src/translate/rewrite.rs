@@ -725,6 +725,24 @@ impl Stage<'_> {
         self.later_keyword(name).unwrap_or_else(|| name.to_owned())
     }
 
+    /// A type or an array size (`filter[input]`) as the rewrite writes it: each word through
+    /// `written_name`.
+    pub(super) fn written_words(&self, text: &str) -> String {
+        let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(start) = rest.find(word) {
+            out.push_str(&rest[..start]);
+            let end = rest[start..]
+                .find(|c| !word(c))
+                .map_or(rest.len(), |e| start + e);
+            out.push_str(&self.written_name(&rest[start..end]));
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
     fn later_keyword(&self, t: &str) -> Option<String> {
         LATER_KEYWORDS.contains(&t).then(|| format!("hz_kw_{t}"))
     }

@@ -411,12 +411,15 @@ fn translate(
     f.paged_maps = v.paged_maps;
     // A vertex stage the game's `after` runs again starts each run with the pack's globals as
     // the first run does: an uninitialized one from `hz_zero_<name>`, of its type and never
-    // written, declared after it; one with an initializer from `hz_init_*`, as always.
+    // written, declared after it; one with an initializer from `hz_init_*`, as always. The
+    // zeros follow what the initializers write at the statement's `;` (`T a, b = 1.0;`).
     let run_again = gbuffers.is_some_and(|g| g.after.contains("hz_vertex()"));
     if run_again {
         let mut zeros: BTreeMap<usize, String> = BTreeMap::new();
         for (end, name, ty) in &v.uninitialized {
-            let text = zeros.entry(*end).or_insert_with(|| ";".to_owned());
+            let text = zeros
+                .entry(*end)
+                .or_insert_with(|| v.replaced.get(end).cloned().unwrap_or_else(|| ";".into()));
             write!(text, " {ty} hz_zero_{name};").unwrap();
         }
         v.replaced.extend(zeros);
@@ -1863,7 +1866,7 @@ mod tests {
     /// A gbuffers vertex stage that declares an image or a buffer isn't run again for another
     /// vertex (`hz_vertex_reruns` is false): its writes would be repeated. Others may be.
     #[test]
-    fn a_vertex_stage_writing_images_or_buffers_is_not_run_again() {
+    fn a_vertex_stage_declaring_images_or_buffers_is_not_run_again() {
         let reruns = |declarations: &str, write: &str| {
             let vsh = format!(
                 "#version 430\n{declarations}\nvoid main() {{\n    {write}\n    \
@@ -1910,19 +1913,37 @@ mod tests {
     /// globals as the first run does: `hz_vertex()` sets each one without an initializer back
     /// to its first value, whatever its type, and each one with an initializer from it, before
     /// the pack's `main` (which reads them before writing them here), so `b`'s initializer
-    /// reads `acc` at its first value. A stage the game runs once doesn't.
+    /// reads `acc` at its first value. That holds for every form of declaration: beside
+    /// initialized declarators (either order), with its struct's definition, or named with a
+    /// later keyword (`filter`, `input`), and of an anonymous struct (named `hz_struct<n>`
+    /// before the scan). A stage the game runs once doesn't.
     #[test]
     fn a_vertex_stage_run_again_starts_from_its_globals_first_values() {
         let vsh = "#version 130\nprecision highp float;\ninvariant gl_Position;\n\
                    struct Pair { float x; };\nfloat t = 0.5;\nfloat acc;\nfloat b = acc + 1.0;\n\
                    highp float u, w[2];\nfloat grid[2][3];\nfloat[2] row;\n\
                    float[2][3] cells, sample;\nPair pair;\n\
+                   float lead, gain = 2.0;\nfloat bias = 2.0, tail;\n\
+                   float[2] pa, pb = float[2](1.0, 2.0);\n\
+                   struct Two { float x; } p, q;\nstruct Arr { float x; } ps[2], pt;\n\
+                   struct One { float x; } solo;\nstruct { float x; } an, bn;\n\
+                   struct Init { float x; } start = Init(0.5);\n\
+                   struct filter { float x; };\nfilter f;\nfilter fi = filter(1.0);\n\
+                   const int input = 2;\nfloat sized[input];\n\
+                   float sizes[input] = float[2](1.0, 2.0);\n\
+                   struct filter_x { float x; };\nfilter_x fx;\nconst int input2 = 2;\n\
+                   float sized2[input2];\n\
                    void count() { acc += 1.0; }\nvoid main() {\n    t *= 2.0;\n    count();\n    \
                    u += 1.0;\n    w[1] += 1.0;\n    grid[1][2] += 1.0;\n    row[1] += 1.0;\n    \
                    cells[1][2] += 1.0;\n    sample[0][1] += 1.0;\n    \
-                   pair.x += 1.0;\n    \
+                   pair.x += 1.0;\n    lead += gain;\n    tail += bias;\n    pa[1] += pb[1];\n    \
+                   p.x += 1.0;\n    q.x += 1.0;\n    ps[1].x += 1.0;\n    pt.x += 1.0;\n    \
+                   solo.x += 1.0;\n    an.x += 1.0;\n    bn.x += 1.0;\n    f.x += 1.0;\n    \
+                   sized[1] += 1.0;\n    fx.x += 1.0;\n    sized2[1] += 1.0;\n    \
                    gl_Position = vec4(t * acc * b * u * w[1], grid[1][2] * row[1] * cells[1][2], \
-                   sample[0][1], pair.x);\n}\n";
+                   sample[0][1] * lead * tail * pa[1] * an.x * bn.x, \
+                   pair.x * p.x * q.x * ps[1].x * pt.x * solo.x * f.x * sized[1] * start.x \
+                   * fi.x * sizes[1] * fx.x * sized2[1]);\n}\n";
         let files = [
             ("shaders/gbuffers_line.vsh", vsh),
             (
@@ -1975,8 +1996,23 @@ mod tests {
             "cells",
             "hz_kw_sample",
             "pair",
+            "lead",
+            "tail",
+            "pa",
+            "p",
+            "q",
+            "ps",
+            "pt",
+            "solo",
+            "an",
+            "bn",
+            "f",
+            "sized",
+            "fx",
+            "sized2",
         ];
-        for name in reset.iter().chain(&["t", "b"]) {
+        let initialized = ["t", "b", "gain", "bias", "pb", "start", "fi", "sizes"];
+        for name in reset.iter().chain(&initialized) {
             assert!(again.iter().any(|n| n == name), "{name}: {again:?}");
         }
         // `b`'s initializer reads `acc` set back.
