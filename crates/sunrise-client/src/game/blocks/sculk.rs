@@ -1625,7 +1625,12 @@ impl Game<'_> {
     pub(super) fn night_vision_intensity(&self, partial: f32) -> f32 {
         use mod_api::client::fog::FogType;
         if let Some(e) = self.potions.effects.get("night_vision") {
-            return night_vision_scale(e, partial);
+            // MobEffectInstance.endsWithin(200); -1 is infinite.
+            return if e.duration < 0 || e.duration > 200 {
+                1.0
+            } else {
+                0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
+            };
         }
         if self.potions.effects.get("conduit_power").is_some()
             && let Some(eye) = self.eye_position()
@@ -2668,19 +2673,35 @@ pub(in crate::game) fn darkness_blend_tick(
 }
 
 /// The darkness effect's blend factor at the partial tick, from its (previous, current)
-/// factors.
+/// factors (`Mth.lerp(partial, previous, current)`).
 pub(in crate::game) fn darkness_blend_at((previous, current): (f32, f32), partial: f32) -> f32 {
     previous + (current - previous) * partial
 }
 
-/// `GameRenderer.getNightVisionScale` of a night vision instance: 1, flickering over its last
-/// 200 ticks (`MobEffectInstance.endsWithin(200)`; -1 is infinite).
-pub(in crate::game) fn night_vision_scale(e: &EffectInstance, partial: f32) -> f32 {
-    if e.duration < 0 || e.duration > 200 {
-        1.0
+/// `LivingEntity.getEffectBlendFactor(DARKNESS, partial)` for the view: the fade `blend` while
+/// `effects` holds a darkness instance, 0 from the moment it is removed (the fade lives in the
+/// instance, so it goes with it, with no tick in between).
+pub(in crate::game) fn view_darkness_blend(
+    effects: &PlayerEffects,
+    blend: (f32, f32),
+    partial: f32,
+) -> f32 {
+    if effects.get("darkness").is_some() {
+        darkness_blend_at(blend, partial)
     } else {
-        0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
+        0.0
     }
+}
+
+/// `GameRenderer.nightVisionScale` of another entity's night vision instance: 1, or over its
+/// last 200 ticks (`MobEffectInstance.endsWithin(200)`: only -1 is infinite) a flicker on
+/// `Mth.sin`'s table, in vanilla's float order.
+pub(in crate::game) fn night_vision_scale(e: &EffectInstance, partial: f32) -> f32 {
+    if !e.ends_within(200) {
+        return 1.0;
+    }
+    let angle = (e.duration as f32 - partial) * std::f32::consts::PI * 0.2;
+    0.7 + sunrise_core::geometry::trig::sin(f64::from(angle)) * 0.3
 }
 
 /// A new darkness instance's `BlendState`: from nothing, or, when the server

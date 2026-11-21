@@ -85,39 +85,4 @@ impl Game<'_> {
         let id = id as u32;
         self.mob_index.get(&self.mobs, id).is_some() || self.armor_stands.iter().any(|a| a.id == id)
     }
-
-    /// `LivingEntity.tickEffects` on a client (`MobEffectInstance.tickClient`) for the other
-    /// living entities' effects: they count down and blend on the ticks their entity ticks
-    /// (`ClientLevel.tickEntities`: a frozen level ticks only the players, the mount this
-    /// client drives ticks too, a tick a mod canceled doesn't run), and the server removes
-    /// them. An entry whose entity this client no longer holds is dropped.
-    pub(super) fn tick_remote_entity_effects(
-        &mut self,
-        running: bool,
-        driven: Option<u32>,
-        canceled: impl Fn(u32) -> bool,
-    ) {
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        if r.entity_effects.is_empty() {
-            return;
-        }
-        let (index, mobs, stands) = (&mut self.mob_index, &self.mobs, &self.armor_stands);
-        let players = &r.level_players;
-        r.entity_effects.retain(|&id, fx| {
-            let entity = id as u32;
-            let ticks = if index.get(mobs, entity).is_some() {
-                running || players.contains_key(&id) || driven == Some(entity)
-            } else if stands.iter().any(|a| a.id == entity) {
-                running
-            } else {
-                return false;
-            };
-            if ticks && !canceled(entity) {
-                super::super::potions::client_tick_effects(&mut fx.effects, &mut fx.darkness);
-            }
-            true
-        });
-    }
 }

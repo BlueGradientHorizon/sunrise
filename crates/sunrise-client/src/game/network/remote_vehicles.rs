@@ -951,6 +951,11 @@ impl Game<'_> {
             .on_client(true);
             mob.tick(&world, &mut level, &mut events);
         }
+        // LivingEntity.baseTick's tickEffects, inside the mount's own tick (#3948).
+        let effects = self.remote.as_mut().map(|r| &mut r.entity_effects);
+        if let Some(fx) = effects.and_then(|e| e.get_mut(&(mob.id as i32))) {
+            super::potions::client_tick_effects(&mut fx.effects, &mut fx.darkness);
+        }
         // Only the server's packets take the mount away.
         mob.removed = false;
         lent.give_back(&mut self.world);

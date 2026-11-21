@@ -606,7 +606,11 @@ impl Game<'_> {
                 living: true,
                 blindness: f32::from(u8::from(self.potions.effects.get("blindness").is_some())),
                 night_vision: self.night_vision_intensity(partial),
-                darkness: self.darkness_lighting(partial).0,
+                darkness: super::sculk::view_darkness_blend(
+                    &self.potions.effects,
+                    self.sculk.darkness,
+                    partial,
+                ) * self.darkness_effect_scale(),
                 mood: self.ambience.moodiness,
                 eye_light,
             };
@@ -631,7 +635,7 @@ impl Game<'_> {
             blindness: f32::from(u8::from(fx.effects.get("blindness").is_some())),
             night_vision: (fx.effects.get("night_vision"))
                 .map_or(0.0, |e| super::sculk::night_vision_scale(e, partial)),
-            darkness: super::sculk::darkness_blend_at(fx.darkness, partial)
+            darkness: super::sculk::view_darkness_blend(&fx.effects, fx.darkness, partial)
                 * self.darkness_effect_scale(),
             mood: 0.0,
             eye_light,

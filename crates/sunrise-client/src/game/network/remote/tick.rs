@@ -141,11 +141,12 @@ impl Game<'_> {
         let driven = self.driven_mount().map(|m| m.id);
         let alone_player = round.alone_kind(PLAYER);
         let mut alone_any = false;
+        let unfrozen = FrozenTicks::of(self.remote.as_ref(), running);
         if round.listening() {
             let players = self.remote.as_ref().map(|r| &r.level_players);
             for m in self.mobs.iter() {
                 let player = players.is_some_and(|p| p.contains_key(&(m.id as i32)));
-                if (running || player) && driven != Some(m.id) {
+                if unfrozen.ticks(m.id) && driven != Some(m.id) {
                     let alone = if player {
                         alone_player
                     } else {
@@ -162,7 +163,6 @@ impl Game<'_> {
             }
             self.native_tick_pre_batch(&mut round);
         }
-        self.tick_remote_entity_effects(running, driven, |id| round.canceled(id));
         // EntityFluidInteraction.update for the entities this window only displays: the
         // server never sends the fluid contact, and the renderers read it (cod, salmon and
         // tropical fish lie on their side without `in_water`, #1591).
@@ -182,10 +182,10 @@ impl Game<'_> {
         };
         let thundering = {
             let w = self.mob_world_base(&[]);
-            let players = self.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
-            fluids.extend(self.mobs.iter().map(|m| {
-                (running || players.is_some_and(|p| p.contains_key(&(m.id as i32))))
+            fluids.extend((self.mobs.iter()).map(|m| {
+                unfrozen
+                    .ticks(m.id)
                     .then(|| w.fluids(m.bounds(), m.eye_y()))
             }));
             rain.clear();
@@ -359,7 +359,7 @@ impl Game<'_> {
                 .unwrap()
                 .level_players
                 .contains_key(&(id as i32));
-            if (!running && !player) || driven == Some(id) || round.canceled(id) {
+            if !unfrozen.ticks(id) || driven == Some(id) || round.canceled(id) {
                 continue;
             }
             // Of a type a mod named: its own Pre, then its fluid step and its tick.
@@ -508,7 +508,13 @@ impl Game<'_> {
             if let Some(player) = player_ref {
                 self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
             }
-            let head_lerps = &mut self.remote.as_mut().unwrap().head_lerps;
+            let r = self.remote.as_mut().unwrap();
+            // LivingEntity.baseTick's tickEffects, inside this tick (after its Pre, and a
+            // player's tick Pre): its effects count down and fade (#3948).
+            if let Some(fx) = r.entity_effects.get_mut(&(id as i32)) {
+                super::super::potions::client_tick_effects(&mut fx.effects, &mut fx.darkness);
+            }
+            let head_lerps = &mut r.head_lerps;
             let m = &mut self.mobs[i];
             // LivingEntity.aiStep: the head's own interpolation.
             if let Some((yaw, steps)) = head_lerps.get_mut(&(m.id as i32))
@@ -768,20 +774,29 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 general::tick_remote_general(&mut r.general.rows, &mut lerps);
             }
-            // Armor stands: ClientLevel.tickNonPassenger's setOldPosAndRot,
-            // then their SteppedInterpolationHandler's step, as the mobs'.
-            if let Some(r) = self.remote.as_mut() {
-                for a in &mut self.armor_stands {
-                    let step = r
-                        .stepped
-                        .get_mut(&(a.id as i32))
-                        .and_then(|h| h.interpolate());
-                    a.interpolate(step.map(|at| {
-                        let p = at.position;
-                        (Vec3::new(p[0], p[1], p[2]), at.yaw)
-                    }));
+        }
+        // Armor stands: ClientLevel.tickNonPassenger's setOldPosAndRot, then their
+        // SteppedInterpolationHandler's step, as the mobs', and LivingEntity.baseTick's
+        // tickEffects; in a frozen level only one whose stack carries a player.
+        if let Some(r) = self.remote.as_mut() {
+            for a in &mut self.armor_stands {
+                if !unfrozen.ticks(a.id) {
+                    continue;
+                }
+                let step = r
+                    .stepped
+                    .get_mut(&(a.id as i32))
+                    .and_then(|h| h.interpolate());
+                a.interpolate(step.map(|at| {
+                    let p = at.position;
+                    (Vec3::new(p[0], p[1], p[2]), at.yaw)
+                }));
+                if let Some(fx) = r.entity_effects.get_mut(&(a.id as i32)) {
+                    super::super::potions::client_tick_effects(&mut fx.effects, &mut fx.darkness);
                 }
             }
+        }
+        if running {
             // The yaw of a boat eases toward the server's over the same steps
             // as its position, read before `step` counts one off.
             let turns: HashMap<i32, (f32, u32)> = lerps
@@ -1364,5 +1379,37 @@ impl Game<'_> {
                 self.mobs[i].extra.ints[5] = duration;
             }
         }
+    }
+}
+
+/// `TickRateManager.isEntityFrozen` through `ClientLevel.tickEntities`: a frozen level ticks a
+/// stack of riders only when its root is a player or carries one at any depth
+/// (`countPlayerPassengers`), and the root's passengers tick through it (`tickPassenger`). The
+/// entities that tick in a frozen level, found once per frozen tick from the riding graph.
+pub(super) struct FrozenTicks(Option<std::collections::HashSet<u32>>);
+
+impl FrozenTicks {
+    pub(super) fn of(remote: Option<&Remote>, running: bool) -> Self {
+        if running {
+            return Self(None);
+        }
+        let Some(r) = remote else {
+            return Self(Some(Default::default()));
+        };
+        use crate::game::remote_vehicles::passenger_root;
+        let vehicles = &r.passenger_vehicles;
+        let root = |id: u32| passenger_root(vehicles, id).unwrap_or_else(|last| last);
+        let players = std::iter::once(r.entity_id).chain(r.level_players.keys().copied());
+        let mut ticking: std::collections::HashSet<u32> = players.map(|p| root(p as u32)).collect();
+        let riders: Vec<u32> = (vehicles.keys().copied())
+            .filter(|&p| ticking.contains(&root(p)))
+            .collect();
+        ticking.extend(riders);
+        Self(Some(ticking))
+    }
+
+    /// Whether the entity `id` ticks this tick.
+    pub(super) fn ticks(&self, id: u32) -> bool {
+        self.0.as_ref().is_none_or(|t| t.contains(&id))
     }
 }
