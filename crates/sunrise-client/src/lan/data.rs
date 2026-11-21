@@ -1355,7 +1355,15 @@ mod tests {
             ..Default::default()
         };
         let read_tags = |overlay: &sunrise_world::loot::PackOverlay| {
-            SyncData::load_tags(root.path(), overlay, &Builtin::default(), &dynamic).unwrap()
+            SyncData::load_tags(
+                root.path(),
+                overlay,
+                &Builtin::default(),
+                &dynamic,
+                None,
+                None,
+            )
+            .unwrap()
         };
         assert_eq!(
             read_tags(&sunrise_world::loot::PackOverlay::NONE).registries[0].tags[0].ids,
@@ -1392,6 +1400,8 @@ mod tests {
                 &sunrise_world::loot::PackOverlay::new(&files[..count]),
                 &builtin,
                 &Dynamic::default(),
+                None,
+                None,
             )
             .unwrap();
             let mut received = Dynamic::default();
@@ -1444,6 +1454,8 @@ mod tests {
             &sunrise_world::loot::PackOverlay::new(&files),
             &builtin,
             &Dynamic::default(),
+            None,
+            None,
         )
         .unwrap();
         let mut client = Dynamic::default();
@@ -1821,6 +1833,8 @@ mod tests {
             &overlay,
             &Builtin::default(),
             &dynamic,
+            None,
+            None,
         )
         .unwrap();
         let dialog = tags
@@ -2191,7 +2205,7 @@ mod tests {
             ),
         ];
         let overlay = sunrise_world::loot::PackOverlay::new(&files);
-        let tags = SyncData::load_tags(&root, &overlay, &builtin, &dynamic).unwrap();
+        let tags = SyncData::load_tags(&root, &overlay, &builtin, &dynamic, None, None).unwrap();
         let _ = std::fs::remove_dir_all(&root);
         let sent = |registry: &str, tag: &str| -> Vec<i32> {
             tags.registries
