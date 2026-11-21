@@ -625,14 +625,8 @@ impl Edits<'_, '_> {
                 }
                 other => other,
             };
-            write_unspawned_attribute(
-                &game.motion.attributes,
-                world_items!(game),
-                m,
-                &name,
-                write,
-            )
-            .ok_or(UnspawnedMobError::Unsupported)
+            write_unspawned_attribute(&game.motion.attributes, world_items!(game), m, &name, write)
+                .ok_or(UnspawnedMobError::Unsupported)
         })
     }
 }
