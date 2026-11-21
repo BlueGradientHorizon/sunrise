@@ -32,7 +32,9 @@ damage fits `0..=i32::MAX` when accepting a write. Adding only a maximum-damage 
 an item does not invent a damage component: explicitly adding `Some(0)` is what makes that
 component present.
 
-All numeric damage lives in the optional field. Raw `minecraft:damage` entries use vanilla's
+Use full component keys in raw stack patches and resident edits. The write keeps the supplied
+key rather than adding a namespace: a bare `damage` entry remains opaque, not a damage override.
+Numeric damage overrides live in the optional field. Raw `minecraft:damage` entries use vanilla's
 numeric-to-int codec: for example, a Float containing `2.75` becomes damage `2`. A
 nonnumeric tag or a negative decoded result refuses the entire replacement. Numeric
 values replace old damage in the scalar field, not in the patch. `!minecraft:damage`

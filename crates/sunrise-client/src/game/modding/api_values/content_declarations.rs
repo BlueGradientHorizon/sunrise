@@ -751,7 +751,7 @@ mod effect_write_tests {
         let key = mod_api::__private::item_key("minecraft:stick").unwrap();
         for (component, effects) in [
             ("minecraft:consumable", "on_consume_effects"),
-            ("death_protection", "death_effects"),
+            ("minecraft:death_protection", "death_effects"),
         ] {
             let invalid = Tag::compound([(
                 effects,

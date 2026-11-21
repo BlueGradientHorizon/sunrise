@@ -287,9 +287,10 @@ impl<'a> ItemComponentEditor<'a> {
     }
 
     /// Merge values and explicit `!id` removals into the staged edits, leaving other
-    /// components alone. A removal wins over a value in the same patch, including for
-    /// damage. Raw damage uses the same codec as [Self::set]; invalid damage refuses
-    /// the entire patch without disturbing earlier edits.
+    /// components alone. Use full component keys: the write does not add a namespace.
+    /// A removal wins over a value in the same patch, including for damage.
+    /// Raw `minecraft:damage` uses the same codec as [Self::set]; invalid damage
+    /// refuses the entire patch without disturbing earlier edits.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => {
@@ -535,8 +536,9 @@ pub enum StackWriteError {
         /// The record-level normalization refusal.
         reason: StackError,
     },
-    /// A decoded consume or death-protection component refused its opaque effect payload.
-    /// `use_remainder` and `sulfur_cube_content` defer effect decoding until materialization.
+    /// A decoded `minecraft:consumable` or `minecraft:death_protection` component
+    /// refused its opaque effect payload. `minecraft:use_remainder` and
+    /// `minecraft:sulfur_cube_content` defer effect decoding until materialization.
     InvalidEffectPayload,
     /// A stack carries both maximum durability and a stack limit above one.
     StackableDamageable,
@@ -781,9 +783,10 @@ impl ItemStack {
         self.components.as_deref()
     }
     /// `ItemStack.applyComponents`: merge a patch without discarding other overrides.
-    /// Incoming values replace removals and incoming removals replace values. If both
-    /// are supplied for one component, removal wins, including for damage.
-    /// Damage uses the same codec as [Self::set]; invalid damage leaves the stack unchanged.
+    /// Use full component keys, as in [Self::set_components]. Incoming values replace
+    /// removals and incoming removals replace values. If both are supplied for one
+    /// component, removal wins, including for damage. Raw `minecraft:damage` uses
+    /// the same codec as [Self::set]; invalid damage leaves the stack unchanged.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => self.apply_component_edit(id, edit.map(Tag::clone)),
@@ -822,8 +825,9 @@ impl ItemStack {
             ComponentEdit::Inherit
         }
     }
-    /// Replace the component patch at an NBT conversion boundary.
-    /// A numeric damage value uses the same codec as [Self::set] and replaces prior damage.
+    /// Replace the component patch at an NBT conversion boundary. Use full component keys:
+    /// a bare `damage` entry stays opaque rather than becoming a damage override.
+    /// `minecraft:damage` uses the same codec as [Self::set] and replaces prior damage.
     /// `!minecraft:damage` clears any prior or incoming damage value. Invalid damage
     /// refuses the entire replacement and leaves the stack unchanged.
     pub fn set_components(&mut self, mut patch: Compound) -> Result<(), StackError> {

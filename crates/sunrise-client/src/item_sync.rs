@@ -1455,7 +1455,7 @@ mod tests {
                     (
                         "components",
                         Tag::compound([(
-                            "death_protection",
+                            "minecraft:death_protection",
                             Tag::compound([("death_effects", Tag::List(effects))]),
                         )]),
                     ),

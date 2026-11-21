@@ -5,14 +5,14 @@ In `Hooks::register`, call `register_consume_effect_type` on the engine's
 `ConsumeEffectsRegistrar`. Use your package ID as the type's namespace;
 this is how the game finds your `consume_effect` listener. The two functions
 in `ConsumeEffectType::new` read and write the
-saved map; the game handles the `type` field. `load` validates the fields when
-the containing stack is decoded. A bare saved component key such as
-`death_protection` means `minecraft:death_protection`, including inside templates.
-Effects on a new stack or in a decoded child such as a bundle entry are checked
-before a write is applied. `use_remainder` and `sulfur_cube_content` keep their
-saved templates and check effects when the child is materialized. `save`
-supplies the canonical fields with exact NBT types, including for values
-received over the network.
+saved map; the game handles the `type` field. Use the full component keys
+`minecraft:consumable` and `minecraft:death_protection` in raw stack patches,
+including in child stacks. Bare keys are not admitted as overrides of these
+components. `load` checks effects on a new stack or in a decoded child such as
+a bundle entry before a write is applied. `minecraft:use_remainder` and
+`minecraft:sulfur_cube_content` keep their saved templates and check effects
+when the child is materialized. `save` supplies the canonical fields with
+exact NBT types, including for values received over the network.
 
 Derive `Wire` on the value itself. Its bytes follow the server's registry ID,
 just as a built-in effect's stream fields do. Install the registering mod on

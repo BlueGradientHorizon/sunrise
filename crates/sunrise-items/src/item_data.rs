@@ -16,7 +16,7 @@ mod persistence;
 use crate::banner_layer::BannerLayer;
 use crate::items::{ItemInfo, ItemStack};
 use persistence::encode_stack_components;
-use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_core::nbt::{Compound, JavaString, Tag};
 
 /// One item attribute modifier, as `ItemAttributeModifiers.Entry` holds it.
 #[derive(Clone, Debug, PartialEq)]
@@ -64,7 +64,7 @@ pub fn modifier_rows(tag: &Tag) -> Vec<ModifierRow> {
         })
         .collect()
 }
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 /// Enchantment id and level, in insertion order.
 pub type Levels = Vec<(Arc<str>, u32)>;
@@ -2181,6 +2181,22 @@ fn components_tag_inner(
     }
     (!out.is_empty()).then_some(Tag::Compound(out))
 }
+/// Borrow an ASCII component key in `buf` without allocating. Every modeled ID
+/// is ASCII and fits; other spellings are preserved in the raw patch.
+fn ascii_key<'a>(key: &JavaString, buf: &'a mut [u8; 64]) -> Option<&'a str> {
+    let units = &key.0;
+    if units.len() > buf.len() {
+        return None;
+    }
+    for (slot, &unit) in buf.iter_mut().zip(units) {
+        if unit > 0x7f {
+            return None;
+        }
+        *slot = unit as u8;
+    }
+    std::str::from_utf8(&buf[..units.len()]).ok()
+}
+
 /// The saved tags of the component IDs `decode_components` models, found in one
 /// pass over the compound. Reading them one at a time built a key and walked the
 /// tree for every ID, present or not, and most items carry one or two.
@@ -2215,59 +2231,43 @@ struct Seen<'a> {
     trim: Option<&'a Tag>,
 }
 impl<'a> Seen<'a> {
-    fn read(c: &'a Tag) -> (Self, Vec<(String, &'a Tag)>) {
-        let Tag::Compound(map) = c else {
-            return (Self::default(), Vec::new());
-        };
+    fn read(map: &'a Compound) -> Self {
         let mut seen = Self::default();
-        let mut entries = Vec::with_capacity(map.len());
+        let mut buf = [0u8; 64];
         for (key, value) in map {
-            let key = key.to_string_lossy();
-            let (prefix, name) = key
-                .strip_prefix('!')
-                .map_or(("", key.as_str()), |name| ("!", name));
-            let key = match normalized_identifier(name) {
-                Ok(Cow::Owned(name)) if prefix.is_empty() => name,
-                Ok(Cow::Owned(name)) => format!("{prefix}{name}"),
-                _ => key,
-            };
-            let field = match key.as_str() {
-                "minecraft:damage" => &mut seen.damage,
-                "minecraft:death_protection" => &mut seen.death_protection,
-                "minecraft:consumable" => &mut seen.consumable,
-                "minecraft:use_remainder" => &mut seen.use_remainder,
-                "minecraft:sulfur_cube_content" => &mut seen.sulfur_cube_content,
-                "minecraft:kinetic_weapon" => &mut seen.kinetic_weapon,
-                "minecraft:banner_patterns" => &mut seen.banner_patterns,
-                "minecraft:potion_contents" => &mut seen.potion_contents,
-                "minecraft:enchantments" => &mut seen.enchantments,
-                "minecraft:stored_enchantments" => &mut seen.stored_enchantments,
-                "minecraft:repair_cost" => &mut seen.repair_cost,
-                "minecraft:custom_name" => &mut seen.custom_name,
-                "minecraft:map_id" => &mut seen.map_id,
-                "minecraft:base_color" => &mut seen.base_color,
-                "minecraft:writable_book_content" => &mut seen.writable_book_content,
-                "minecraft:written_book_content" => &mut seen.written_book_content,
-                "minecraft:fireworks" => &mut seen.fireworks,
-                "minecraft:firework_explosion" => &mut seen.firework_explosion,
-                "minecraft:dyed_color" => &mut seen.dyed_color,
-                "minecraft:pot_decorations" => &mut seen.pot_decorations,
-                "minecraft:bundle_contents" => &mut seen.bundle_contents,
-                "minecraft:suspicious_stew_effects" => &mut seen.suspicious_stew,
-                "minecraft:map_post_processing" => &mut seen.map_post_processing,
-                "minecraft:charged_projectiles" => &mut seen.charged_projectiles,
-                "minecraft:container" => &mut seen.container,
-                "minecraft:ominous_bottle_amplifier" => &mut seen.amplifier,
-                "minecraft:trim" => &mut seen.trim,
-                _ => {
-                    entries.push((key, value));
-                    continue;
-                }
+            let field = match ascii_key(key, &mut buf) {
+                Some("minecraft:damage") => &mut seen.damage,
+                Some("minecraft:death_protection") => &mut seen.death_protection,
+                Some("minecraft:consumable") => &mut seen.consumable,
+                Some("minecraft:use_remainder") => &mut seen.use_remainder,
+                Some("minecraft:sulfur_cube_content") => &mut seen.sulfur_cube_content,
+                Some("minecraft:kinetic_weapon") => &mut seen.kinetic_weapon,
+                Some("minecraft:banner_patterns") => &mut seen.banner_patterns,
+                Some("minecraft:potion_contents") => &mut seen.potion_contents,
+                Some("minecraft:enchantments") => &mut seen.enchantments,
+                Some("minecraft:stored_enchantments") => &mut seen.stored_enchantments,
+                Some("minecraft:repair_cost") => &mut seen.repair_cost,
+                Some("minecraft:custom_name") => &mut seen.custom_name,
+                Some("minecraft:map_id") => &mut seen.map_id,
+                Some("minecraft:base_color") => &mut seen.base_color,
+                Some("minecraft:writable_book_content") => &mut seen.writable_book_content,
+                Some("minecraft:written_book_content") => &mut seen.written_book_content,
+                Some("minecraft:fireworks") => &mut seen.fireworks,
+                Some("minecraft:firework_explosion") => &mut seen.firework_explosion,
+                Some("minecraft:dyed_color") => &mut seen.dyed_color,
+                Some("minecraft:pot_decorations") => &mut seen.pot_decorations,
+                Some("minecraft:bundle_contents") => &mut seen.bundle_contents,
+                Some("minecraft:suspicious_stew_effects") => &mut seen.suspicious_stew,
+                Some("minecraft:map_post_processing") => &mut seen.map_post_processing,
+                Some("minecraft:charged_projectiles") => &mut seen.charged_projectiles,
+                Some("minecraft:container") => &mut seen.container,
+                Some("minecraft:ominous_bottle_amplifier") => &mut seen.amplifier,
+                Some("minecraft:trim") => &mut seen.trim,
+                _ => continue,
             };
             *field = Some(value);
-            entries.push((key, value));
         }
-        (seen, entries)
+        seen
     }
 }
 /// Damage and extra components from a stack's `components` compound.
@@ -2288,10 +2288,10 @@ fn decode_components_inner(
     compact_banner: bool,
     received_effects: Option<&Arc<[Admitted]>>,
 ) -> (u32, Option<Box<StackData>>) {
-    let Some(c) = components else {
+    let Some(Tag::Compound(map)) = components else {
         return (0, None);
     };
-    let (seen, entries) = Seen::read(c);
+    let seen = Seen::read(map);
     // NbtOps.getNumberValue supplies a boxed number; Codec.INT truncates its value.
     let damage = sunrise_world::datafix::dynamic::as_int(seen.damage, 0).max(0) as u32;
     let potion = match seen.potion_contents {
@@ -2452,7 +2452,8 @@ fn decode_components_inner(
         other: Vec::new(),
         wire: Wire::default(),
     };
-    for (key, v) in entries {
+    for (key, v) in map {
+        let key = key.to_string_lossy();
         if key == "minecraft:villager_food" {
             data.set_other(&key, Some(v.clone()));
             // Persistence has no refusal channel. Retain a malformed patch

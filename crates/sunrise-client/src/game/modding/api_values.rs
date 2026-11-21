@@ -942,13 +942,15 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
 
 fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
     let stack = decode_stack_record(value, item);
+    // Check the original override even if its value failed to decode.
+    let patch = value.components().map(|patch| patch.as_nbt());
     content_declarations::validate_decoded_components(|name| {
-        stack.data()?.sets_component(name).then_some(&stack)
+        patch?.get(&JavaString::from(name)).map(|_| &stack)
     })?;
     Ok(stack)
 }
 
-/// Decode the record, normalizing saved component names before the caller checks admission.
+/// Decode the record's component overrides without changing their saved keys.
 fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> EngineStack {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
@@ -2195,6 +2197,10 @@ mod stack_limit_tests {
 
     pub(super) fn catalog() -> Items {
         prepare_stack_boundary_tests();
+        fixture_catalog()
+    }
+
+    fn fixture_catalog() -> Items {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
             "sunrise-api-limits-{}-{}",
@@ -2557,6 +2563,30 @@ mod stack_limit_tests {
             items.items.get("minecraft:stick"),
             "minecraft:max_stack_size"
         ));
+    }
+
+    #[test]
+    fn full_stack_write_round_trips_bare_damage() {
+        mod_api::testing::with_parts_registration_probe(
+            Default::default(),
+            |_| (),
+            |_, ()| {
+                let mut registries = mod_api::testing::FakeRegistries::default();
+                registries
+                    .resolve_items([mod_api::Identifier::parse("minecraft:iron_sword").unwrap()])
+                    .unwrap();
+                let key = mod_api::__private::item_key("minecraft:iron_sword").unwrap();
+                let items = fixture_catalog();
+                let patch: Compound = [(JavaString::from("damage"), Tag::Int(4))].into();
+                let mut draft = ApiStack::of(key);
+                draft.set_components(patch.clone()).unwrap();
+
+                let written = draft.try_into_engine(&items).unwrap();
+                let round_trip = written.try_into_api().unwrap();
+                assert_eq!(round_trip.damage_component(), None);
+                assert_eq!(round_trip.components().unwrap().as_nbt(), &patch);
+            },
+        );
     }
 
     #[test]
