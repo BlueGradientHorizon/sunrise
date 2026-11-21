@@ -322,7 +322,7 @@ fn load_clouds(
     root: &ResourceSource,
     defaults: &ResourceSource,
 ) -> Option<Arc<crate::clouds::pack::Programs>> {
-    use crate::gfx::core_clouds::{FACES, GLUE, INFO_BLOCK, OIT_STAGES};
+    use crate::gfx::core_clouds::{CLASSIC_DEFINES, FACES, GLUE, INFO_BLOCK, OIT_STAGES};
     let translate = |defines: &[&str], samplers: &[&str]| {
         translate_pair(
             root,
@@ -334,7 +334,7 @@ fn load_clouds(
         )
     };
     // None: no pack replaces either stage.
-    let classic = match translate(&[], &[])? {
+    let classic = match translate(&CLASSIC_DEFINES, &[])? {
         Ok(program) => {
             log::info!("the resource pack's clouds shader translated");
             Some(program)

@@ -96,8 +96,8 @@ fn samples(frame: &(Vec<u8>, usize)) -> [[u8; 4]; 3] {
 ///   colour for that path, fancy and fast; with the clouds off nothing of them is drawn (the
 ///   frame is the clouds-off one, to the byte);
 /// - once a reload removes them, the frame is the one drawn before the pack, to the byte. (This
-///   scene's native clouds are out of view, so that frame shows no clouds: the identity shows
-///   that nothing of the pack's is left.)
+///   scene draws no native clouds anywhere in its frame, so the identity shows only that nothing
+///   of the pack's is left; the native clouds are checked in game.)
 #[test]
 #[ignore = "daily"]
 fn a_packs_clouds_draw_with_and_without_improved_transparency() {

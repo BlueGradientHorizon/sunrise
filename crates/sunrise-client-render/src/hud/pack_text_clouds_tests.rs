@@ -155,3 +155,17 @@ fn a_refused_classic_clouds_program_keeps_the_improved_transparency_ones() {
     assert!(programs.classic.is_none());
     assert!(programs.oit.is_some());
 }
+
+/// `GlslCompiler` defines `RENDERPEARL_DEPTH_IS_ZERO_TO_ONE` for every program on a backend whose
+/// depth runs from 0 to 1, `CLOUDS` among them: a shader reading a block no pipeline gives where
+/// it is undefined still loads, outside Improved Transparency and under it.
+#[test]
+fn every_clouds_program_has_the_zero_to_one_depth_define() {
+    let fsh = fragment(
+        "layout(std140) uniform Other {\n    vec4 Tint;\n};\nlayout(location = 0) out vec4 fragColor;",
+        "fragColor = vertexColor;\n#ifndef RENDERPEARL_DEPTH_IS_ZERO_TO_ONE\n    fragColor *= Tint;\n#endif",
+    );
+    let programs = clouds(&fsh).expect("the pack's clouds");
+    assert!(programs.classic.is_some());
+    assert!(programs.oit.is_some());
+}
