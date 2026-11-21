@@ -102,6 +102,10 @@ jobs:
         run: python3 tools/ci/source_mtimes.py "${CARGO_TARGET_DIR:-target}/ci-source-mtimes-v2.json"
       - name: Cap build parallelism to the runner
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
+      # The tool names the commit it was built from (`--version`, a release plan's `tool_commit`), as a release
+      # tool does. Set for every later step, so the test builds below don't rebuild it as `dev`.
+      - name: The tool's commit
+        run: echo "SUNRISE_TOOL_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       # debug_assertions on (the dev profile): the build that honours SUNRISE_SDK_TRUSTED_KEY.
       - name: Build this commit's tool
         run: cargo build --locked -p cargo-sunrise-mod
