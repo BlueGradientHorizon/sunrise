@@ -303,7 +303,7 @@ pub fn signed_digest(
         }
         Some(Channel::Dev) => {
             return Err(format!(
-                "{tag} is a Dev build: only `sunrise-launcher install {tag}` installs it."
+                "{tag} is a Dev build, made to test main: it is never installed as a release."
             ));
         }
         None => {}
@@ -981,7 +981,12 @@ mod tests {
                 Some(&signature),
                 &[key.public()],
             );
-            assert!(err.is_err(), "{tag}");
+            assert_eq!(
+                err,
+                Err(format!(
+                    "{tag} is a Dev build, made to test main: it is never installed as a release."
+                ))
+            );
         }
     }
 

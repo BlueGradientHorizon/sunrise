@@ -195,6 +195,7 @@ class DevToolsTests(unittest.TestCase):
                 self.assertEqual(values["version"], f"dev-{today}")
                 self.assertEqual(values["build"], "true")
                 notes = Path("nightly-notes.md").read_text()
+                self.assertIn(f"sunrise-launcher install {values['tag']}", notes)
                 self.assertIn(f"sunrise-release-sign verify --tag {values['tag']} --signature SHA256SUMS.v2.sig", notes)
                 # Published already (the same commit the same day): skipped, never replaced.
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \

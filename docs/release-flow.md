@@ -98,7 +98,7 @@ trigger since 2026-11-13.
 | Signed for (`.sig` / `.v2.sig`) | `dev` / `dev-<date>-<short>` | `nightly` / `nightly-<date>-<short>` | The release tag for both |
 | GitHub release kind | Pre-release, not latest | Pre-release, not latest | Full release, `--latest=false` |
 | Retention | Seven days; the newest is always kept (`nightly.py prune-dev`) | Current `nightly` stays; dated copies are kept for seven days, with at most one per date | Kept permanently |
-| Launcher | Not offered; download manually | Nightly profiles follow `nightly` | Stable profiles read full releases with stable tags |
+| Launcher | From 1.1.3, install by exact tag (`sunrise-launcher install <tag>`); until then, download and verify by hand | Nightly profiles follow `nightly` | Stable profiles read full releases with stable tags |
 | `sunrise-server` | Refuses Dev builds | Uses `nightly` by default | Can install by explicit stable tag |
 
 ### Dev
@@ -130,7 +130,8 @@ It never touches the `nightly` tag or channel, its rotation, its `nightly-source
 (the default for a dispatch, and any run off main) builds, indexes and signs the SDK with a throwaway key
 (`sdk-publish.yml` with `publish: false`, run only when `sdk-<sha>` does not exist yet), builds the game (a
 `nightly build` dry run, signed with a throwaway key) and publishes nothing; its summary names what a real run would
-publish. Download Dev builds from their GitHub release and verify the files for the exact tag:
+publish. Starting with Sunrise Launcher 1.1.3, install Dev builds by exact tag (`sunrise-launcher install <tag>`);
+until then, download the assets from GitHub and verify the files for the exact tag:
 
 ```sh
 sunrise-release-sign verify --tag dev-<date>-<short> --signature SHA256SUMS.v2.sig <folder>
