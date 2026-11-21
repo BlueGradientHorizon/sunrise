@@ -424,8 +424,7 @@ pub fn compile(
     let mut plan = registry_plan::Plan::read(lock, projects, &wanted)?;
     plan.authorize_game_patches(&patches);
     plan.fetch_with_patches(rust, out, &patches)?;
-    let mut metadata = super::registry_inventory::read(rust, out)
-        .map_err(|error| plan.explain_resolution(error))?;
+    let mut metadata = super::registry_inventory::read(rust, out)?;
     // When two or more mods link registry crates, those crates, as cargo just resolved them, come
     // from one library, so a mod depending on several mods doesn't reach a copy of each through
     // each of them (`registry_shared`). The mods' manifests were checked above without it; it adds
@@ -492,8 +491,7 @@ pub fn compile(
         );
         // Cargo records the new local package in the lock, offline: every crate it names is
         // already resolved there, at that exact version.
-        metadata = super::registry_inventory::read(rust, out)
-            .map_err(|error| plan.explain_resolution(error))?;
+        metadata = super::registry_inventory::read(rust, out)?;
     }
     let resolved = super::read_lock(out)?;
     plan.check_resolved(&super::registry_lock::RegistryLock::parse(&resolved)?)?;

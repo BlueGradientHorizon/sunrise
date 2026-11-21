@@ -210,6 +210,12 @@ pub fn generate<T: Toolchain>(
     let rust = rust()?;
     let text = super::registry_resolve::resolve(work.path(), &seed, &seed, None, |subcommand| {
         super::cargo(&rust, work.path(), subcommand)
+    })
+    .map_err(|error| {
+        crate::host::trf(
+            "{mod}: could not write Cargo.lock.\n{error}",
+            &[("mod", &bundle.manifest.id), ("error", &error)],
+        )
     })?;
     // Refusals and resolution errors above never mutate the existing lock.
     let mut pending = tempfile::NamedTempFile::new_in(&bundle.dir).map_err(|e| e.to_string())?;
@@ -358,7 +364,7 @@ mod tests {
             ("getrandom", "0.4.3", "libc='0.2'"),
             ("getrandom", "0.4.4", "libc='0.2'"),
             ("libc", "0.2.190", ""),
-            ("libc", "0.2.191", ""),
+            ("libc", "0.2.191", "[features]\nnew_api=[]"),
             ("libc", "0.3.0", ""),
             ("unused", "1.0.0", ""),
         ] {
@@ -471,6 +477,7 @@ mod tests {
         } = game_seed_fixture();
         let manifest = input.path().join("Cargo.toml");
         let original = fs::read_to_string(&manifest).unwrap();
+        let older_parent = original.replace("zipish='1'", "zipish='=1.0.0'");
         let lock = input.path().join("Cargo.lock");
         generate(
             || Ok(toolchain.clone()),
@@ -483,13 +490,17 @@ mod tests {
         for (cargo, expected) in [
             (
                 format!(
-                    "{original}\n[target.'cfg(unix)'.build-dependencies]\nnewer={{package='libc',version='=0.2.191'}}\n"
+                    "{older_parent}\n[target.'cfg(unix)'.build-dependencies]\nnewer={{package='libc',version='=0.2.191'}}\n"
                 ),
-                ["libc", "0.2.190", "0.2.191", "=0.2.191"],
+                ["libc", "0.2.190", "=0.2.191", "fixture v0.1.0"],
             ),
             (
                 original.replace("zipish='1'", "zipish='=1.0.1'"),
-                ["getrandom", "0.4.3", "0.4.4", "zipish v1.0.1"],
+                ["getrandom", "0.4.3", "=0.4.4", "zipish v1.0.1"],
+            ),
+            (
+                format!("{older_parent}\nlibc={{version='0.2',features=['new_api']}}\n"),
+                ["libc", "0.2.190", "0.2.191", "`new_api`"],
             ),
         ] {
             fs::write(&manifest, cargo).unwrap();
@@ -500,7 +511,7 @@ mod tests {
                 true,
             )
             .unwrap_err();
-            for detail in expected {
+            for detail in expected.into_iter().chain(["registry_fixture"]) {
                 assert!(error.contains(detail), "{error}");
             }
             assert_eq!(fs::read(&lock).unwrap(), old);
