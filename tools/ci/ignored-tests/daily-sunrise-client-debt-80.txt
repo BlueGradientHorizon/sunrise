@@ -1,0 +1,2 @@
+sunrise-client game::native_level_refs::environment_read_tests::block_tint_blends_on_client_and_refuses_server_and_stale_handles lib daily resources
+sunrise-client game::native_world_columns::tests::read_columns_returns_server_water_colors_without_colormaps lib daily resources

@@ -221,6 +221,46 @@ impl Game<'_> {
         self.native_read_biome(level, pos)
     }
 
+    /// `ClientLevel.getBlockTint(pos, resolver)` (`BiomeColors.getAverageGrassColor`,
+    /// `getAverageFoliageColor`, `getAverageDryFoliageColor`, `getAverageWaterColor`, and mod
+    /// resolvers): blends `resolver` over the client's biome blend radius around `pos` using the
+    /// client's loaded chunks (plains where absent) and active biome colours, returning opaque
+    /// ARGB (`0xFF00_0000 | rgb`).
+    pub(super) fn level_block_tint(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        resolver: mod_api::ColorResolver,
+    ) -> Result<u32, mod_api::LevelReadError> {
+        if self.is_logical_server() || !self.remote.as_ref().is_some_and(|r| r.logged_in) {
+            return Err(mod_api::LevelReadError::Unavailable);
+        }
+        if !self.level_handle_current(level) || level.dimension() != self.native_level_key() {
+            return Err(mod_api::LevelReadError::Stale);
+        }
+        let (cx, cz) = (pos[0] >> 4, pos[2] >> 4);
+        let region: [[Option<&sunrise_client::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
+            std::array::from_fn(|dx| {
+                self.world
+                    .chunks
+                    .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))
+                    .map(|c| &**c)
+            })
+        });
+        let biomes = self
+            .world_biomes
+            .as_deref()
+            .unwrap_or(&self.pack.context.biomes);
+        Ok(sunrise_client::mesher::block_tint(
+            pos,
+            &region,
+            biomes,
+            self.streaming.biome_zoom,
+            self.streaming.biome_blend,
+            resolver,
+        ))
+    }
+
     /// A biome's natural spawners by category from the world's biome table.
     pub(super) fn level_biome_spawners(
         &self,
@@ -3087,7 +3127,10 @@ mod tests {
 
 #[cfg(test)]
 mod environment_read_tests {
-    use crate::game::{Dim, native_entity_refs::tests::with_game};
+    use crate::game::{
+        Dim,
+        native_entity_refs::tests::{with_client_game, with_game},
+    };
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
@@ -3164,6 +3207,135 @@ mod environment_read_tests {
             assert_eq!(
                 client_level.client_biome(game, [8, 64, 8]),
                 None,
+                "logged out"
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn block_tint_blends_on_client_and_refuses_server_and_stale_handles() {
+        use crate::game::execution_role::ExecutionRole;
+        use mod_api::{ColorResolver, LevelReadError};
+        use sunrise_protocol::connection::Pipe;
+
+        with_client_game(|game| {
+            let (client, _server) = Pipe::pair();
+            game.connect_local(client, "BiomeTintTest").unwrap();
+            let before_login = LevelRef::new(WorldEpoch::new(1), game.dim.key());
+            assert_eq!(
+                before_login.block_tint(game, [8, 64, 8], ColorResolver::Grass),
+                Err(LevelReadError::Unavailable),
+                "not logged in"
+            );
+
+            game.remote.as_mut().unwrap().logged_in = true;
+            paint_biome(game, "minecraft:plains");
+            let swamp = world_biomes!(game).id("minecraft:swamp");
+            let mut east = Chunk::empty(1, 0);
+            for y in 0..east.sections.len() as i32 * 4 {
+                for x in 0..4 {
+                    for z in 0..4 {
+                        east.set_biome_cell(x, y, z, swamp);
+                    }
+                }
+            }
+            game.world.chunks.insert((1, 0), Arc::new(east));
+
+            let client_level = game.level("minecraft:overworld").unwrap();
+            {
+                let _scope =
+                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+                assert_eq!(
+                    client_level.block_tint(game, [15, 64, 8], ColorResolver::Grass),
+                    Err(LevelReadError::Unavailable)
+                );
+            }
+            let stale = LevelRef::new(
+                WorldEpoch::new(client_level.epoch().get() + 1),
+                client_level.dimension(),
+            );
+            let foreign = LevelRef::new(client_level.epoch(), mod_api::DimensionKey::NETHER);
+            assert_eq!(
+                stale.block_tint(game, [8, 64, 8], ColorResolver::Grass),
+                Err(LevelReadError::Stale)
+            );
+            assert_eq!(
+                foreign.block_tint(game, [8, 64, 8], ColorResolver::Grass),
+                Err(LevelReadError::Stale)
+            );
+
+            let before = (game.world.chunks.len(), game.streaming.pending());
+            for resolver in [
+                ColorResolver::Grass,
+                ColorResolver::Foliage,
+                ColorResolver::DryFoliage,
+                ColorResolver::Water,
+            ] {
+                game.streaming.biome_blend = 0;
+                let r0 = client_level
+                    .block_tint(game, [15, 64, 8], resolver)
+                    .unwrap();
+                assert_eq!(r0 & 0xFF00_0000, 0xFF00_0000);
+                if resolver == ColorResolver::Grass {
+                    assert_ne!(r0, 0xFFFF_00FF, "client loads real grass colormap");
+                }
+                game.streaming.biome_blend = 2;
+                let r2 = client_level
+                    .block_tint(game, [15, 64, 8], resolver)
+                    .unwrap();
+                assert_eq!(r2 & 0xFF00_0000, 0xFF00_0000);
+                if matches!(
+                    resolver,
+                    ColorResolver::Grass | ColorResolver::Foliage | ColorResolver::Water
+                ) {
+                    assert_ne!(r0, r2, "{resolver:?} blends across plains/swamp border");
+                }
+                let region: [[Option<&Chunk>; 3]; 3] = std::array::from_fn(|dz| {
+                    std::array::from_fn(|dx| {
+                        game.world
+                            .chunks
+                            .get(&(dx as i32 - 1, dz as i32 - 1))
+                            .map(|c| &**c)
+                    })
+                });
+                let biomes = game
+                    .world_biomes
+                    .as_deref()
+                    .unwrap_or(&game.pack.context.biomes);
+                let expected = sunrise_client::mesher::block_tint(
+                    [15, 64, 8],
+                    &region,
+                    biomes,
+                    game.streaming.biome_zoom,
+                    2,
+                    resolver,
+                );
+                assert_eq!(r2, expected);
+            }
+            // Unloaded chunks and extreme coordinates never load chunks or panic.
+            let unloaded = client_level
+                .block_tint(game, [64, 64, 64], ColorResolver::Grass)
+                .unwrap();
+            assert_eq!(unloaded & 0xFF00_0000, 0xFF00_0000);
+            let extreme = client_level
+                .block_tint(game, [i32::MIN, i32::MAX, i32::MIN], ColorResolver::Grass)
+                .unwrap();
+            assert_eq!(extreme & 0xFF00_0000, 0xFF00_0000);
+            assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
+
+            game.options.execution_role = ExecutionRole::IntegratedServer;
+            assert_eq!(
+                client_level.block_tint(game, [8, 64, 8], ColorResolver::Grass),
+                Err(LevelReadError::Unavailable),
+                "server side refuses client tint read"
+            );
+            game.options.execution_role = ExecutionRole::Client;
+
+            game.remote.as_mut().unwrap().logged_in = false;
+            assert_eq!(
+                client_level.block_tint(game, [8, 64, 8], ColorResolver::Grass),
+                Err(LevelReadError::Unavailable),
                 "logged out"
             );
         });

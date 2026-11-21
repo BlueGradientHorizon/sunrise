@@ -22,6 +22,11 @@ notify no neighbors and send whole changed chunks.
 same block with different properties have distinct entries. Only distinct numeric
 states are converted to API values, not each block in the returned columns.
 
+`ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
+colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
+unloaded). Colormap-derived grass and foliage tints are client-side only: read
+blended biome tints on the client with `LevelRef::block_tint(host, pos, resolver)`.
+
 ## Query terrain before loading chunks
 
 `ServerHost::terrain_surface(dimension, columns)` reads the level's generator, not resident

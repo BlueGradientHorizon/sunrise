@@ -47,11 +47,11 @@ impl Game<'_> {
         Ok(out)
     }
     /// For a server mod: `below` blocks under and `above` blocks from each column's height by `heightmap`, as a
-    /// palette and indexes, with the biome's grass, foliage and water tints (air outside the column and in columns
-    /// not loaded). The tints are the biome's at the column's top, not blended over the biome blend radius as the
-    /// game draws them: near a biome border they can differ from what players see. `Err` says why nothing was
-    /// read: another dimension or a client of a server, `below + above` of 0 or more than the level's height, or
-    /// a read of more than 1,048,576 blocks (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
+    /// palette and indexes, with each column's server-side biome JSON water colour (`water_colors`, `0xRRGGBB`, `0`
+    /// where not loaded; air outside the column and in columns not loaded). Colormap-derived grass and foliage tints
+    /// are client-side only (`LevelRef::block_tint`). `Err` says why nothing was read: another dimension or a client
+    /// of a server, `below + above` of 0 or more than the level's height, or a read of more than 1,048,576 blocks
+    /// (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
     pub(super) fn read_columns(
         &self,
         dimension: &str,
@@ -207,6 +207,80 @@ mod tests {
             assert!(game.terrain_surface(dimension, &[]).unwrap().is_empty());
             game.options.dedicated = None;
             assert!(game.terrain_surface(dimension, &[]).is_err());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn read_columns_returns_server_water_colors_without_colormaps() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use sunrise_assets::resource_source::ResourceRoot;
+        use sunrise_client::{biome::Biomes, chunk::Chunk};
+
+        struct TempDir(std::path::PathBuf);
+        impl Drop for TempDir {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "sunrise-read-columns-server-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let biome_dir = dir.join("data/minecraft/worldgen/biome");
+        std::fs::create_dir_all(&biome_dir).unwrap();
+        let _guard = TempDir(dir.clone());
+        std::fs::write(
+            biome_dir.join("plains.json"),
+            r#"{"temperature": 0.8, "downfall": 0.4, "has_precipitation": true, "effects": {"water_color": 4159204}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            biome_dir.join("swamp.json"),
+            r#"{"temperature": 0.8, "downfall": 0.9, "has_precipitation": true, "effects": {"water_color": 6388580}}"#,
+        )
+        .unwrap();
+
+        let root = ResourceRoot::directory(dir);
+        assert!(Biomes::load(&root).is_err());
+        let server_biomes = Arc::new(Biomes::load_for_server(&root).unwrap());
+        let plains = server_biomes.id("minecraft:plains");
+        let swamp = server_biomes.id("minecraft:swamp");
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world_biomes = Some(server_biomes.clone());
+            let mut chunk = Chunk::empty(0, 0);
+            for qy in 0..chunk.sections.len() as i32 * 4 {
+                for qz in 0..4 {
+                    chunk.set_biome_cell(0, qy, qz, plains);
+                    chunk.set_biome_cell(1, qy, qz, swamp);
+                }
+            }
+            game.world.chunks.insert((0, 0), Arc::new(chunk));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(0, 64, 0, stone).unwrap();
+            game.world.set(4, 64, 0, stone).unwrap();
+
+            let dimension = game.dim.id();
+            let result = game
+                .read_columns(
+                    dimension,
+                    &[(0, 0), (4, 0), (32, 0)],
+                    mod_api::Heightmap::WorldSurface,
+                    (1, 1),
+                )
+                .unwrap();
+            assert_eq!(result.bases, vec![Some(65), Some(65), None]);
+            assert_eq!(result.water_colors, vec![0x3F_76E4, 0x61_7B64, 0]);
         });
     }
 }

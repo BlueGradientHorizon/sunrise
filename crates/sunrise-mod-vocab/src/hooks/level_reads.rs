@@ -14,6 +14,12 @@ before reading or writing a far position, rather than learning it from a failed 
 including its hashed seed, and return `None` when the selected noise column is not loaded.
 They do not generate or load chunks. A biome read may select a neighbouring column.
 
+`LevelRef::block_tint(host, pos, resolver)` is client-only (`ClientLevel.getBlockTint`,
+`BiomeColors.getAverageGrassColor` / `getAverageFoliageColor` / `getAverageDryFoliageColor` /
+`getAverageWaterColor` and mod `ColorResolver`s): it blends the resolver's colour over the
+client's biome blend radius around `pos` and returns opaque ARGB (`0xFF00_0000 | rgb`),
+matching what the mesher draws (plains where a chunk is absent, without loading chunks).
+
 `find_closest_biome(host, biome, BiomeSearch::new(origin, radius, horizontal_step, vertical_step))`
 uses the server generator's sampled search, as `/locate biome` does. `biome` is an id or `#tag`.
 The result names the biome and its sample position. This searches generated biomes, not later

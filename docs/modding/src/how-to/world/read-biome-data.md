@@ -22,3 +22,22 @@ fn inspect(host: &dyn Host, level: LevelRef) {
 ```
 
 The table includes data packs and biome modifiers. Spawners describe the biome's own natural spawn lists, not a position-specific potential-spawn query.
+
+## Read blended biome tints on the client
+
+Grass, foliage and dry-foliage colormaps are client-only resources. On the client, read the blended tint at a block position with `LevelRef::block_tint(host, pos, resolver)` (matching `ClientLevel.getBlockTint` and `BiomeColors.getAverageGrassColor` / `getAverageFoliageColor` / `getAverageDryFoliageColor` / `getAverageWaterColor`):
+
+```rust,ignore
+use mod_api::{ClientHost, ColorResolver, LevelRef};
+
+fn sample_tints(host: &dyn ClientHost, level: LevelRef, pos: [i32; 3]) {
+    if let Ok(grass_argb) = level.block_tint(host, pos, ColorResolver::Grass) {
+        let _grass_rgb = grass_argb & 0x00FF_FFFF;
+    }
+    let _foliage_argb = level.block_tint(host, pos, ColorResolver::Foliage);
+    let _dry_foliage_argb = level.block_tint(host, pos, ColorResolver::DryFoliage);
+    let _water_argb = level.block_tint(host, pos, ColorResolver::Water);
+}
+```
+
+`block_tint` averages over the client's biome blend radius using the loaded chunks (plains where absent) and active biome colours (including resource pack colormaps and `biome_colors`), without loading chunks. It returns `Err(LevelReadError::Unavailable)` before login or outside the world phase, and `Err(LevelReadError::Stale)` for a stale handle or another dimension.
