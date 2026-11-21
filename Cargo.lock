@@ -4380,6 +4380,7 @@ name = "sunrise-client-render"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "alsa",
  "base64 0.22.1",
  "bytemuck",
  "chrono",
@@ -4388,6 +4389,7 @@ dependencies = [
  "glam",
  "half",
  "image-webp",
+ "libc",
  "log",
  "lz4_flex",
  "miniz_oxide 0.8.9",

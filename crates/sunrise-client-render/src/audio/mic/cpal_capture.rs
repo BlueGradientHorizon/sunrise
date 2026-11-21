@@ -1,4 +1,4 @@
-//! CPAL microphone capture.
+//! CPAL microphone capture on platforms with independently enumerable input endpoints.
 
 use super::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -10,24 +10,6 @@ pub(super) struct CpalDevice {
     device: cpal::Device,
     label: Option<String>,
     selector: Option<String>,
-}
-
-#[cfg(all(
-    feature = "audio",
-    any(
-        target_os = "linux",
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        target_os = "netbsd"
-    )
-))]
-fn fnv1a_64(bytes: &[u8]) -> u64 {
-    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
-    for &b in bytes {
-        hash ^= u64::from(b);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
 }
 
 fn pcm_format_from_cpal(format: cpal::SampleFormat) -> Option<PcmFormat> {
@@ -81,7 +63,43 @@ fn map_play_stream_error(err: cpal::PlayStreamError) -> mod_api::MicRefusal {
     }
 }
 
+impl CpalDevice {
+    fn from_device(device: cpal::Device) -> Self {
+        let label = device.name().ok().filter(|name| !name.is_empty());
+        #[cfg(target_os = "macos")]
+        let selector = {
+            let cpal::platform::DeviceInner::CoreAudio(dev) = device.as_inner();
+            parse_coreaudio_device_id(&format!("{dev:?}")).map(|id| format!("coreaudio:{id}"))
+        };
+        #[cfg(windows)]
+        let selector = None;
+        #[cfg(not(any(target_os = "macos", windows)))]
+        let selector = label.clone();
+        Self {
+            device,
+            label,
+            selector,
+        }
+    }
+
+    fn default_input_config(&self) -> Result<InputConfig, mod_api::MicRefusal> {
+        let cfg = self
+            .device
+            .default_input_config()
+            .map_err(map_default_config_error)?;
+        let format =
+            pcm_format_from_cpal(cfg.sample_format()).ok_or(mod_api::MicRefusal::DeviceFailed)?;
+        Ok(InputConfig {
+            channels: cfg.channels(),
+            rate: cfg.sample_rate().0,
+            format,
+        })
+    }
+}
+
 impl BackendDevice for CpalDevice {
+    type InputConfigs = Vec<InputConfigRange>;
+
     fn label(&self) -> Option<String> {
         self.label.clone()
     }
@@ -119,7 +137,7 @@ impl BackendDevice for CpalDevice {
         }
     }
 
-    fn supported_input_configs(&self) -> Result<ProbeConfigs, mod_api::MicRefusal> {
+    fn input_configs(&self) -> Result<Option<Self::InputConfigs>, mod_api::MicRefusal> {
         match self.device.supported_input_configs() {
             Ok(configs) => {
                 let ranges: Vec<InputConfigRange> = configs
@@ -132,11 +150,7 @@ impl BackendDevice for CpalDevice {
                         })
                     })
                     .collect();
-                if ranges.is_empty() {
-                    Ok(ProbeConfigs::NotInput)
-                } else {
-                    Ok(ProbeConfigs::Supported(ranges))
-                }
+                Ok((!ranges.is_empty()).then_some(ranges))
             }
             Err(cpal::SupportedStreamConfigsError::DeviceNotAvailable)
             | Err(cpal::SupportedStreamConfigsError::InvalidArgument) => {
@@ -147,216 +161,93 @@ impl BackendDevice for CpalDevice {
             }
         }
     }
-
-    fn default_input_config(&self) -> Result<InputConfig, mod_api::MicRefusal> {
-        let cfg = self
-            .device
-            .default_input_config()
-            .map_err(map_default_config_error)?;
-        let format =
-            pcm_format_from_cpal(cfg.sample_format()).ok_or(mod_api::MicRefusal::DeviceFailed)?;
-        Ok(InputConfig {
-            channels: cfg.channels(),
-            rate: cfg.sample_rate().0,
-            format,
-        })
-    }
 }
 
 impl CaptureBackend for CpalBackend {
     type Device = CpalDevice;
     type Stream = cpal::Stream;
 
-    fn preserve_hardware_rate(&self) -> bool {
-        cfg!(target_os = "macos")
-    }
-
     fn devices(&self) -> Result<Vec<Self::Device>, mod_api::MicRefusal> {
-        let host = cpal::default_host();
-        let raw_devices = host.devices().map_err(map_devices_error)?;
-        #[cfg(any(
-            target_os = "linux",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "netbsd"
-        ))]
-        let (cards_hash, mut occurrences) = {
-            let cards = std::fs::read_to_string("/proc/asound/cards").unwrap_or_default();
-            (fnv1a_64(cards.as_bytes()), HashMap::<String, usize>::new())
-        };
-
-        let mut out = Vec::new();
-        for device in raw_devices {
-            let label = device.name().ok().filter(|name| !name.is_empty());
-            #[cfg(target_os = "macos")]
-            let selector = {
-                let cpal::platform::DeviceInner::CoreAudio(dev) = device.as_inner();
-                parse_coreaudio_device_id(&format!("{dev:?}")).map(|id| format!("coreaudio:{id}"))
-            };
-            #[cfg(windows)]
-            let selector = None;
-            #[cfg(any(
-                target_os = "linux",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "netbsd"
-            ))]
-            let selector = label.as_deref().map(|name| {
-                const BUILTINS: &[&str] = &["default", "pipewire", "pulse", "jack", "oss"];
-                let occ = *occurrences
-                    .entry(name.to_owned())
-                    .and_modify(|n| *n += 1)
-                    .or_insert(0);
-                if occ == 0 && BUILTINS.contains(&name) {
-                    format!("alsa:builtin:{name}")
-                } else {
-                    format!("alsa:{cards_hash:016x}:{occ}:{name}")
-                }
-            });
-            #[cfg(not(any(
-                target_os = "macos",
-                windows,
-                target_os = "linux",
-                target_os = "dragonfly",
-                target_os = "freebsd",
-                target_os = "netbsd"
-            )))]
-            let selector = label.clone();
-
-            out.push(CpalDevice {
-                device,
-                label,
-                selector,
-            });
-        }
-        Ok(out)
+        Ok(cpal::default_host()
+            .devices()
+            .map_err(map_devices_error)?
+            .map(CpalDevice::from_device)
+            .collect())
     }
 
-    fn default_input_device(&self) -> Option<Self::Device> {
-        let device = cpal::default_host().default_input_device()?;
-        let label = device.name().ok().filter(|name| !name.is_empty());
-        Some(CpalDevice {
-            device,
-            label,
-            selector: None,
-        })
+    fn default_input_device(&self) -> Result<Option<Self::Device>, mod_api::MicRefusal> {
+        let Some(device) = cpal::default_host().default_input_device() else {
+            return Ok(None);
+        };
+        let device = CpalDevice::from_device(device);
+        #[cfg(target_os = "macos")]
+        {
+            // Only enumerated CPAL devices register a removal listener. Open the same
+            // CoreAudio endpoint via that route even when the OS selected it by default.
+            Ok(enumerated_default(&device, self.devices()?))
+        }
+        #[cfg(not(target_os = "macos"))]
+        Ok(Some(device))
     }
 
     fn open_stream(
         &self,
         device: &Self::Device,
-        config: InputConfig,
+        probed: Option<Vec<InputConfigRange>>,
         spec: &mod_api::MicSpec,
         ring: Arc<CaptureRing>,
-        closed: Arc<AtomicBool>,
-        device_open: Arc<AtomicBool>,
-        error_stop: mpsc::Sender<()>,
+        events: Arc<StreamEvents>,
     ) -> Result<Self::Stream, mod_api::MicRefusal> {
+        let config = if cfg!(target_os = "macos") {
+            // Changing the nominal rate on CoreAudio mutates the hardware clock for
+            // all streams. Keep its current rate and resample through InputConverter.
+            device.default_input_config()?
+        } else {
+            let configs = match probed {
+                Some(configs) => configs,
+                None => device
+                    .input_configs()?
+                    .ok_or(mod_api::MicRefusal::NoDevice)?,
+            };
+            choose_best_config(&configs, spec).ok_or(mod_api::MicRefusal::DeviceFailed)?
+        };
         let stream_config = cpal::StreamConfig {
             channels: config.channels,
             sample_rate: cpal::SampleRate(config.rate),
             buffer_size: cpal::BufferSize::Default,
         };
         let stream = match config.format {
-            PcmFormat::I16 => build_i16_stream(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::I8 => build_typed_stream::<i8>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::I24 => build_typed_stream::<cpal::I24>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::I32 => build_typed_stream::<i32>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::I64 => build_typed_stream::<i64>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::U8 => build_typed_stream::<u8>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::U16 => build_typed_stream::<u16>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::U32 => build_typed_stream::<u32>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::U64 => build_typed_stream::<u64>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::F32 => build_typed_stream::<f32>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
-            PcmFormat::F64 => build_typed_stream::<f64>(
-                &device.device,
-                &stream_config,
-                spec,
-                ring,
-                closed,
-                device_open,
-                error_stop,
-            ),
+            PcmFormat::I16 => build_i16_stream(&device.device, &stream_config, spec, ring, events),
+            PcmFormat::I8 => {
+                build_typed_stream::<i8>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::I24 => {
+                build_typed_stream::<cpal::I24>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::I32 => {
+                build_typed_stream::<i32>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::I64 => {
+                build_typed_stream::<i64>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::U8 => {
+                build_typed_stream::<u8>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::U16 => {
+                build_typed_stream::<u16>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::U32 => {
+                build_typed_stream::<u32>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::U64 => {
+                build_typed_stream::<u64>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::F32 => {
+                build_typed_stream::<f32>(&device.device, &stream_config, spec, ring, events)
+            }
+            PcmFormat::F64 => {
+                build_typed_stream::<f64>(&device.device, &stream_config, spec, ring, events)
+            }
         }
         .map_err(map_build_stream_error)?;
         stream.play().map_err(map_play_stream_error)?;
@@ -364,15 +255,12 @@ impl CaptureBackend for CpalBackend {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_i16_stream(
     device: &cpal::Device,
     stream_config: &cpal::StreamConfig,
     spec: &mod_api::MicSpec,
     ring: Arc<CaptureRing>,
-    closed: Arc<AtomicBool>,
-    device_open: Arc<AtomicBool>,
-    error_stop: mpsc::Sender<()>,
+    events: Arc<StreamEvents>,
 ) -> Result<cpal::Stream, cpal::BuildStreamError> {
     let mut converter = InputConverter::new(
         stream_config.channels,
@@ -380,33 +268,26 @@ fn build_i16_stream(
         spec.channels,
         spec.rate,
     );
-    let err_open = Arc::clone(&device_open);
+    let input_events = Arc::clone(&events);
     device.build_input_stream(
         stream_config,
         move |data: &[i16], _info: &cpal::InputCallbackInfo| {
-            if closed.load(Ordering::Relaxed) || !device_open.load(Ordering::Relaxed) {
+            if !input_events.device_open.load(Ordering::Relaxed) {
                 return;
             }
             converter.push_i16_samples(data, &ring);
         },
-        move |e| {
-            err_open.store(false, Ordering::Release);
-            let _ = error_stop.send(());
-            log::warn!("Sunrise: microphone stream error: {e}");
-        },
+        move |e| report_stream_error(&events, e),
         None,
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_typed_stream<T>(
     device: &cpal::Device,
     stream_config: &cpal::StreamConfig,
     spec: &mod_api::MicSpec,
     ring: Arc<CaptureRing>,
-    closed: Arc<AtomicBool>,
-    device_open: Arc<AtomicBool>,
-    error_stop: mpsc::Sender<()>,
+    events: Arc<StreamEvents>,
 ) -> Result<cpal::Stream, cpal::BuildStreamError>
 where
     T: cpal::SizedSample,
@@ -418,20 +299,25 @@ where
         spec.channels,
         spec.rate,
     );
-    let err_open = Arc::clone(&device_open);
+    let input_events = Arc::clone(&events);
     device.build_input_stream(
         stream_config,
         move |data: &[T], _info: &cpal::InputCallbackInfo| {
-            if closed.load(Ordering::Relaxed) || !device_open.load(Ordering::Relaxed) {
+            if !input_events.device_open.load(Ordering::Relaxed) {
                 return;
             }
             converter.push_cpal_samples(data, &ring);
         },
-        move |e| {
-            err_open.store(false, Ordering::Release);
-            let _ = error_stop.send(());
-            log::warn!("Sunrise: microphone stream error: {e}");
-        },
+        move |e| report_stream_error(&events, e),
         None,
     )
+}
+
+fn report_stream_error(events: &StreamEvents, err: cpal::StreamError) {
+    let refusal = match &err {
+        cpal::StreamError::DeviceNotAvailable => mod_api::MicRefusal::NoDevice,
+        cpal::StreamError::BackendSpecific { err } => classify_error_message(&err.description),
+    };
+    events.report_error(refusal);
+    log::warn!("Sunrise: microphone stream error: {err}");
 }

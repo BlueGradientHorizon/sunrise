@@ -399,7 +399,7 @@ mod tests {
         assert_send_sync::<MicRef>();
 
         let source = Arc::new(StubMicSource::new(2, 16_000, 12, vec![10, -10, 20, -20]));
-        let handle: Arc<dyn MicSource> = Arc::clone(&source);
+        let handle = Arc::<StubMicSource>::clone(&source);
         let mic = MicRef::new(handle);
 
         assert_eq!(mic.channels(), 2);
@@ -420,7 +420,7 @@ mod tests {
         assert_eq!(source.closes.load(Ordering::Relaxed), 2);
 
         let drop_source = Arc::new(StubMicSource::new(1, 48_000, 0, vec![5]));
-        let drop_handle: Arc<dyn MicSource> = Arc::clone(&drop_source);
+        let drop_handle = Arc::<StubMicSource>::clone(&drop_source);
         let drop_mic = MicRef::new(drop_handle);
         assert!(drop_mic.is_open());
         drop(drop_mic);

@@ -1,11 +1,7 @@
 //! Client-side microphone capture: bounded drop-oldest lock-free PCM ring, pure-Rust
-//! channel/sample-rate converter, distinct endpoint resolution, and a dedicated per-stream
-//! teardown thread that owns each `!Send` `cpal::Stream` locally.
+//! channel/sample-rate converter, distinct endpoint resolution, and a worker that owns and
+//! releases the platform stream.
 
-#[cfg(feature = "audio")]
-mod cpal_capture;
-#[cfg(feature = "audio")]
-use cpal_capture::CpalBackend;
 #[cfg(all(
     feature = "audio",
     any(
@@ -15,7 +11,37 @@ use cpal_capture::CpalBackend;
         target_os = "netbsd"
     )
 ))]
-use std::collections::HashMap;
+mod alsa_capture;
+#[cfg(all(
+    feature = "audio",
+    not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    ))
+))]
+mod cpal_capture;
+#[cfg(all(
+    feature = "audio",
+    any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    )
+))]
+use alsa_capture::AlsaBackend as NativeBackend;
+#[cfg(all(
+    feature = "audio",
+    not(any(
+        target_os = "linux",
+        target_os = "dragonfly",
+        target_os = "freebsd",
+        target_os = "netbsd"
+    ))
+))]
+use cpal_capture::CpalBackend as NativeBackend;
 #[cfg(any(feature = "audio", test))]
 use std::collections::HashMap as ActiveMap;
 use std::sync::Arc;
@@ -27,6 +53,9 @@ use std::sync::{
 };
 #[cfg(any(feature = "audio", test))]
 use std::thread;
+
+#[cfg(any(feature = "audio", test))]
+mod stop;
 
 /// Validates a requested microphone capture specification.
 pub(super) fn validate_spec(spec: &mod_api::MicSpec) -> Result<(), mod_api::MicRefusal> {
@@ -397,33 +426,58 @@ impl InputConverter {
         self.push_samples(samples, ring, std::convert::identity);
     }
 
-    #[cfg(feature = "audio")]
+    #[cfg(all(
+        feature = "audio",
+        not(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd"
+        ))
+    ))]
     fn push_cpal_samples<T: cpal::SizedSample>(&mut self, samples: &[T], ring: &CaptureRing)
     where
         f32: cpal::FromSample<T>,
     {
-        self.push_samples(samples, ring, f32::from_sample);
+        self.push_samples(samples, ring, <f32 as cpal::Sample>::from_sample);
     }
 }
 
-#[cfg(any(feature = "audio", test))]
+#[cfg(any(
+    test,
+    all(
+        feature = "audio",
+        not(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd"
+        ))
+    )
+))]
 mod cpal_config;
-#[cfg(any(feature = "audio", test))]
+#[cfg(any(
+    test,
+    all(
+        feature = "audio",
+        not(any(
+            target_os = "linux",
+            target_os = "dragonfly",
+            target_os = "freebsd",
+            target_os = "netbsd"
+        ))
+    )
+))]
 use cpal_config::*;
 
 #[cfg(any(feature = "audio", test))]
-enum ProbeConfigs {
-    Supported(Vec<InputConfigRange>),
-    NotInput,
-}
-
-#[cfg(any(feature = "audio", test))]
 trait BackendDevice: Clone + Send + 'static {
+    type InputConfigs;
+
     fn label(&self) -> Option<String>;
     fn stable_selector(&self) -> Option<String>;
     fn same_endpoint(&self, other: &Self) -> bool;
-    fn supported_input_configs(&self) -> Result<ProbeConfigs, mod_api::MicRefusal>;
-    fn default_input_config(&self) -> Result<InputConfig, mod_api::MicRefusal>;
+    fn input_configs(&self) -> Result<Option<Self::InputConfigs>, mod_api::MicRefusal>;
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -431,27 +485,23 @@ trait CaptureBackend: Send + Sync + 'static {
     type Device: BackendDevice;
     type Stream;
 
-    /// On macOS CoreAudio, opening at a sample rate other than the device's current nominal rate
-    /// mutates the system-wide hardware clock under active streams. Open at `default_input_config`
-    /// and resample locally instead.
-    fn preserve_hardware_rate(&self) -> bool;
-
     /// Enumerates all backend devices without an error-erasing `supports_input()` filter.
     fn devices(&self) -> Result<Vec<Self::Device>, mod_api::MicRefusal>;
 
-    fn default_input_device(&self) -> Option<Self::Device>;
-
-    #[allow(clippy::too_many_arguments)]
+    fn default_input_device(&self) -> Result<Option<Self::Device>, mod_api::MicRefusal>;
     fn open_stream(
         &self,
         device: &Self::Device,
-        config: InputConfig,
+        probed: Option<<Self::Device as BackendDevice>::InputConfigs>,
         spec: &mod_api::MicSpec,
         ring: Arc<CaptureRing>,
-        closed: Arc<AtomicBool>,
-        device_open: Arc<AtomicBool>,
-        error_stop: mpsc::Sender<()>,
+        events: Arc<StreamEvents>,
     ) -> Result<Self::Stream, mod_api::MicRefusal>;
+
+    fn run_stream(&self, stream: Self::Stream, stop: stop::Receiver) {
+        stop.wait();
+        drop(stream);
+    }
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -495,23 +545,6 @@ impl<D: BackendDevice> DeviceRegistry<D> {
 }
 
 #[cfg(any(feature = "audio", test))]
-fn select_config_for_device<D: BackendDevice>(
-    device: &D,
-    spec: &mod_api::MicSpec,
-    preserve_hardware_rate: bool,
-) -> Result<InputConfig, mod_api::MicRefusal> {
-    if preserve_hardware_rate {
-        return device.default_input_config();
-    }
-    match device.supported_input_configs()? {
-        ProbeConfigs::NotInput => Err(mod_api::MicRefusal::NoDevice),
-        ProbeConfigs::Supported(ranges) => {
-            choose_best_config(&ranges, spec).ok_or(mod_api::MicRefusal::DeviceFailed)
-        }
-    }
-}
-
-#[cfg(any(feature = "audio", test))]
 fn list_devices_with<B: CaptureBackend>(
     backend: &B,
     registry: &Mutex<DeviceRegistry<B::Device>>,
@@ -522,8 +555,8 @@ fn list_devices_with<B: CaptureBackend>(
     let mut reg = registry.lock().unwrap_or_else(|e| e.into_inner());
 
     for dev in devices {
-        match dev.supported_input_configs() {
-            Ok(ProbeConfigs::Supported(_)) => {
+        match dev.input_configs() {
+            Ok(Some(_)) => {
                 if let Some(label) = dev.label()
                     && !label.is_empty()
                 {
@@ -531,7 +564,7 @@ fn list_devices_with<B: CaptureBackend>(
                     found.push(mod_api::MicDevice::new(id, label));
                 }
             }
-            Ok(ProbeConfigs::NotInput) | Err(mod_api::MicRefusal::NoDevice) => {}
+            Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
             Err(mod_api::MicRefusal::OsDenied) => return Err(mod_api::MicRefusal::OsDenied),
             Err(err) => {
                 first_actionable_err.get_or_insert(err);
@@ -552,18 +585,14 @@ fn resolve_and_open_stream<B: CaptureBackend>(
     registry: &Mutex<DeviceRegistry<B::Device>>,
     spec: &mod_api::MicSpec,
     ring: Arc<CaptureRing>,
-    closed: Arc<AtomicBool>,
-    device_open: Arc<AtomicBool>,
-    error_stop: mpsc::Sender<()>,
+    events: Arc<StreamEvents>,
 ) -> Result<B::Stream, mod_api::MicRefusal> {
-    let preserve_rate = backend.preserve_hardware_rate();
-    let (device, config) = match spec.device.as_deref() {
+    let (device, probed) = match spec.device.as_deref() {
         None => {
             let dev = backend
-                .default_input_device()
+                .default_input_device()?
                 .ok_or(mod_api::MicRefusal::NoDevice)?;
-            let cfg = select_config_for_device(&dev, spec, preserve_rate)?;
-            (dev, cfg)
+            (dev, None)
         }
         Some(target) => {
             let devices = backend.devices()?;
@@ -578,8 +607,7 @@ fn resolve_and_open_stream<B: CaptureBackend>(
                     return Err(mod_api::MicRefusal::AmbiguousDevice);
                 }
                 let dev = by_selector.remove(0);
-                let cfg = select_config_for_device(&dev, spec, preserve_rate)?;
-                (dev, cfg)
+                (dev, None)
             } else if let Some(remembered) = registry
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -596,8 +624,7 @@ fn resolve_and_open_stream<B: CaptureBackend>(
                     return Err(mod_api::MicRefusal::AmbiguousDevice);
                 }
                 let dev = by_endpoint.remove(0);
-                let cfg = select_config_for_device(&dev, spec, preserve_rate)?;
-                (dev, cfg)
+                (dev, None)
             } else {
                 let by_label: Vec<B::Device> = devices
                     .into_iter()
@@ -609,9 +636,9 @@ fn resolve_and_open_stream<B: CaptureBackend>(
                 let mut candidates = Vec::new();
                 let mut first_actionable_err = None;
                 for dev in by_label {
-                    match dev.supported_input_configs() {
-                        Ok(ProbeConfigs::Supported(ranges)) => candidates.push((dev, ranges)),
-                        Ok(ProbeConfigs::NotInput) | Err(mod_api::MicRefusal::NoDevice) => {}
+                    match dev.input_configs() {
+                        Ok(Some(configs)) => candidates.push((dev, configs)),
+                        Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
                         Err(mod_api::MicRefusal::OsDenied) => {
                             return Err(mod_api::MicRefusal::OsDenied);
                         }
@@ -623,14 +650,8 @@ fn resolve_and_open_stream<B: CaptureBackend>(
                 if candidates.len() > 1 {
                     return Err(mod_api::MicRefusal::AmbiguousDevice);
                 }
-                if let Some((dev, ranges)) = candidates.pop() {
-                    let cfg = if preserve_rate {
-                        dev.default_input_config()?
-                    } else {
-                        choose_best_config(&ranges, spec)
-                            .ok_or(mod_api::MicRefusal::DeviceFailed)?
-                    };
-                    (dev, cfg)
+                if let Some((dev, configs)) = candidates.pop() {
+                    (dev, Some(configs))
                 } else {
                     return Err(first_actionable_err.unwrap_or(mod_api::MicRefusal::NoDevice));
                 }
@@ -638,13 +659,52 @@ fn resolve_and_open_stream<B: CaptureBackend>(
         }
     };
 
-    backend.open_stream(&device, config, spec, ring, closed, device_open, error_stop)
+    backend.open_stream(&device, probed, spec, ring, events)
 }
 
 #[cfg(any(feature = "audio", test))]
-struct StreamTeardown {
-    stop_tx: mpsc::Sender<()>,
-    join: thread::JoinHandle<()>,
+enum StreamStartup {
+    Opening(Option<mod_api::MicRefusal>),
+    Published,
+}
+
+#[cfg(any(feature = "audio", test))]
+struct StreamEvents {
+    closed: AtomicBool,
+    device_open: AtomicBool,
+    // Shared only by the startup worker and the error callback, never the PCM callback.
+    startup: Mutex<StreamStartup>,
+    stop: stop::Sender,
+}
+
+#[cfg(any(feature = "audio", test))]
+impl StreamEvents {
+    fn publish_ready(
+        &self,
+        ready: &mpsc::SyncSender<Result<(), mod_api::MicRefusal>>,
+        result: Result<(), mod_api::MicRefusal>,
+    ) -> bool {
+        let mut startup = self.startup.lock().unwrap_or_else(|err| err.into_inner());
+        let result = match *startup {
+            StreamStartup::Opening(Some(refusal)) => Err(refusal),
+            _ => result,
+        };
+        *startup = StreamStartup::Published;
+        ready.send(result).is_ok() && result.is_ok()
+    }
+
+    fn report_error(&self, refusal: mod_api::MicRefusal) {
+        let mut startup = self.startup.lock().unwrap_or_else(|err| err.into_inner());
+        if let StreamStartup::Opening(first_error) = &mut *startup {
+            first_error.get_or_insert(refusal);
+        }
+        self.stop();
+    }
+
+    fn stop(&self) {
+        self.device_open.store(false, Ordering::Release);
+        self.stop.signal();
+    }
 }
 
 /// Engine-side handle backing a mod's [`mod_api::MicRef`].
@@ -657,15 +717,14 @@ struct MicHandle {
     ring: Arc<CaptureRing>,
     channels: u8,
     rate: u32,
-    closed: Arc<AtomicBool>,
-    device_open: Arc<AtomicBool>,
-    teardown: Mutex<Option<StreamTeardown>>,
+    events: Arc<StreamEvents>,
+    teardown: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
 #[cfg(any(feature = "audio", test))]
 impl mod_api::MicSource for MicHandle {
     fn read(&self, pcm: &mut [i16]) -> u32 {
-        if self.closed.load(Ordering::Acquire) {
+        if self.events.closed.load(Ordering::Acquire) {
             return 0;
         }
         self.ring.read_frames(pcm)
@@ -684,16 +743,16 @@ impl mod_api::MicSource for MicHandle {
     }
 
     fn is_open(&self) -> bool {
-        !self.closed.load(Ordering::Acquire) && self.device_open.load(Ordering::Acquire)
+        !self.events.closed.load(Ordering::Acquire)
+            && self.events.device_open.load(Ordering::Acquire)
     }
 
     fn close(&self) {
-        self.closed.store(true, Ordering::Release);
-        self.device_open.store(false, Ordering::Release);
+        self.events.closed.store(true, Ordering::Release);
         let mut slot = self.teardown.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(teardown) = slot.take() {
-            let _ = teardown.stop_tx.send(());
-            let _ = teardown.join.join();
+        if let Some(join) = slot.take() {
+            self.events.stop();
+            let _ = join.join();
         }
     }
 }
@@ -706,7 +765,7 @@ impl Drop for MicHandle {
 }
 
 #[cfg(any(feature = "audio", test))]
-type ActiveStreams = ActiveMap<u64, (Arc<AtomicBool>, mpsc::Sender<()>)>;
+type ActiveStreams = ActiveMap<u64, Arc<StreamEvents>>;
 
 #[cfg(any(feature = "audio", test))]
 struct MicPoolInner<B: CaptureBackend> {
@@ -747,11 +806,18 @@ impl<B: CaptureBackend> MicPoolInner<B> {
             return Err(mod_api::MicRefusal::NoDevice);
         }
         let ring = Arc::new(CaptureRing::new(spec.rate, spec.channels));
-        let closed = Arc::new(AtomicBool::new(false));
-        let device_open = Arc::new(AtomicBool::new(true));
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), mod_api::MicRefusal>>(1);
-        let (stop_tx, stop_rx) = mpsc::channel::<()>();
+        let (stop_tx, stop_rx) = stop::channel().map_err(|err| {
+            log::warn!("Sunrise: failed to create microphone stop signal: {err}");
+            mod_api::MicRefusal::DeviceFailed
+        })?;
+        let events = Arc::new(StreamEvents {
+            closed: AtomicBool::new(false),
+            device_open: AtomicBool::new(true),
+            startup: Mutex::new(StreamStartup::Opening(None)),
+            stop: stop_tx,
+        });
 
         let backend = Arc::clone(&self.backend);
         let registry = Arc::clone(&self.registry);
@@ -759,10 +825,7 @@ impl<B: CaptureBackend> MicPoolInner<B> {
         let shutdown = Arc::clone(&self.shutdown);
         let spec_owned = spec.clone();
         let ring_t = Arc::clone(&ring);
-        let closed_t = Arc::clone(&closed);
-        let dev_open_t = Arc::clone(&device_open);
-        let err_stop_tx = stop_tx.clone();
-        let shutdown_stop_tx = stop_tx.clone();
+        let worker_events = Arc::clone(&events);
 
         let join = thread::Builder::new()
             .name("mic-stream".into())
@@ -772,39 +835,31 @@ impl<B: CaptureBackend> MicPoolInner<B> {
                     &registry,
                     &spec_owned,
                     ring_t,
-                    closed_t,
-                    Arc::clone(&dev_open_t),
-                    err_stop_tx,
+                    Arc::clone(&worker_events),
                 );
                 match opened {
                     Ok(stream) => {
                         let registered = match active.lock() {
-                            Ok(mut map) => {
-                                if shutdown.load(Ordering::Acquire) {
-                                    false
-                                } else {
-                                    map.insert(id, (Arc::clone(&dev_open_t), shutdown_stop_tx));
-                                    true
-                                }
+                            Ok(mut map) if !shutdown.load(Ordering::Acquire) => {
+                                map.insert(id, Arc::clone(&worker_events));
+                                true
                             }
-                            Err(_) => false,
+                            _ => false,
                         };
-                        if !registered {
-                            dev_open_t.store(false, Ordering::Release);
-                            drop(stream);
-                            let _ = ready_tx.send(Err(mod_api::MicRefusal::NoDevice));
-                            return;
+                        let result = if registered {
+                            Ok(())
+                        } else {
+                            Err(mod_api::MicRefusal::NoDevice)
+                        };
+                        if worker_events.publish_ready(&ready_tx, result) {
+                            backend.run_stream(stream, stop_rx);
                         }
-                        let _ = ready_tx.send(Ok(()));
-                        let _ = stop_rx.recv();
-                        drop(stream);
                     }
                     Err(refusal) => {
-                        dev_open_t.store(false, Ordering::Release);
-                        let _ = ready_tx.send(Err(refusal));
+                        worker_events.publish_ready(&ready_tx, Err(refusal));
                     }
                 }
-                dev_open_t.store(false, Ordering::Release);
+                worker_events.device_open.store(false, Ordering::Release);
                 if let Ok(mut map) = active.lock() {
                     map.remove(&id);
                 }
@@ -819,9 +874,8 @@ impl<B: CaptureBackend> MicPoolInner<B> {
                 ring,
                 channels: spec.channels,
                 rate: spec.rate,
-                closed,
-                device_open,
-                teardown: Mutex::new(Some(StreamTeardown { stop_tx, join })),
+                events,
+                teardown: Mutex::new(Some(join)),
             })),
             Ok(Err(refusal)) => {
                 let _ = join.join();
@@ -840,9 +894,8 @@ impl<B: CaptureBackend> Drop for MicPoolInner<B> {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Release);
         if let Ok(mut map) = self.active.lock() {
-            for (_, (dev_open, stop_tx)) in map.drain() {
-                dev_open.store(false, Ordering::Release);
-                let _ = stop_tx.send(());
+            for (_, events) in map.drain() {
+                events.stop();
             }
         }
     }
@@ -851,7 +904,7 @@ impl<B: CaptureBackend> Drop for MicPoolInner<B> {
 /// Client microphone capture pool. Spawns no threads until a stream is opened.
 pub(super) struct MicPool {
     #[cfg(feature = "audio")]
-    inner: MicPoolInner<CpalBackend>,
+    inner: MicPoolInner<NativeBackend>,
 }
 
 impl MicPool {
@@ -861,7 +914,7 @@ impl MicPool {
         let _ = enabled;
         Self {
             #[cfg(feature = "audio")]
-            inner: MicPoolInner::new(enabled, Arc::new(CpalBackend)),
+            inner: MicPoolInner::new(enabled, Arc::new(NativeBackend)),
         }
     }
 
@@ -899,6 +952,14 @@ fn parse_coreaudio_device_id(debug: &str) -> Option<u32> {
     let rest = debug.split_once("audio_device_id:")?.1.trim_start();
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     digits.parse().ok()
+}
+
+#[cfg(any(all(feature = "audio", target_os = "macos"), test))]
+fn enumerated_default<D: BackendDevice>(default: &D, devices: Vec<D>) -> Option<D> {
+    let selector = default.stable_selector()?;
+    devices
+        .into_iter()
+        .find(|dev| dev.stable_selector().as_ref() == Some(&selector))
 }
 
 #[cfg(test)]
@@ -939,6 +1000,8 @@ mod tests {
     }
 
     impl BackendDevice for FakeDevice {
+        type InputConfigs = Vec<InputConfigRange>;
+
         fn label(&self) -> Option<String> {
             Some(self.label.clone())
         }
@@ -951,16 +1014,12 @@ mod tests {
             self.endpoint_id == other.endpoint_id
         }
 
-        fn supported_input_configs(&self) -> Result<ProbeConfigs, MicRefusal> {
+        fn input_configs(&self) -> Result<Option<Self::InputConfigs>, MicRefusal> {
             match &self.supported {
-                Ok(ranges) if ranges.is_empty() => Ok(ProbeConfigs::NotInput),
-                Ok(ranges) => Ok(ProbeConfigs::Supported(ranges.clone())),
+                Ok(ranges) if ranges.is_empty() => Ok(None),
+                Ok(ranges) => Ok(Some(ranges.clone())),
                 Err(err) => Err(*err),
             }
-        }
-
-        fn default_input_config(&self) -> Result<InputConfig, MicRefusal> {
-            self.default_cfg
         }
     }
 
@@ -979,8 +1038,7 @@ mod tests {
         config: InputConfig,
         disposed: Arc<AtomicBool>,
         ring: Arc<CaptureRing>,
-        device_open: Arc<AtomicBool>,
-        error_stop: mpsc::Sender<()>,
+        events: Arc<StreamEvents>,
     }
 
     struct FakeBackendState {
@@ -988,6 +1046,7 @@ mod tests {
         default_device: Option<FakeDevice>,
         devices_error: Option<MicRefusal>,
         preserve_hardware_rate: bool,
+        startup_error: Option<MicRefusal>,
         opened: Vec<OpenedStreamRecord>,
         devices_barrier: Option<Arc<Barrier>>,
     }
@@ -1004,6 +1063,7 @@ mod tests {
                     default_device,
                     devices_error: None,
                     preserve_hardware_rate: false,
+                    startup_error: None,
                     opened: Vec::new(),
                     devices_barrier: None,
                 }),
@@ -1014,10 +1074,6 @@ mod tests {
     impl CaptureBackend for FakeBackend {
         type Device = FakeDevice;
         type Stream = FakeStream;
-
-        fn preserve_hardware_rate(&self) -> bool {
-            self.state.lock().unwrap().preserve_hardware_rate
-        }
 
         fn devices(&self) -> Result<Vec<Self::Device>, MicRefusal> {
             let barrier = self.state.lock().unwrap().devices_barrier.clone();
@@ -1032,28 +1088,38 @@ mod tests {
             Ok(st.devices.clone())
         }
 
-        fn default_input_device(&self) -> Option<Self::Device> {
-            self.state.lock().unwrap().default_device.clone()
+        fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
+            Ok(self.state.lock().unwrap().default_device.clone())
         }
 
         fn open_stream(
             &self,
             device: &Self::Device,
-            config: InputConfig,
-            _spec: &MicSpec,
+            probed: Option<Vec<InputConfigRange>>,
+            spec: &MicSpec,
             ring: Arc<CaptureRing>,
-            _closed: Arc<AtomicBool>,
-            device_open: Arc<AtomicBool>,
-            error_stop: mpsc::Sender<()>,
+            events: Arc<StreamEvents>,
         ) -> Result<Self::Stream, MicRefusal> {
+            let mut state = self.state.lock().unwrap();
+            let config = if state.preserve_hardware_rate {
+                device.default_cfg?
+            } else {
+                let ranges = match probed {
+                    Some(ranges) => ranges,
+                    None => device.input_configs()?.ok_or(MicRefusal::NoDevice)?,
+                };
+                choose_best_config(&ranges, spec).ok_or(MicRefusal::DeviceFailed)?
+            };
             let disposed = Arc::new(AtomicBool::new(false));
-            self.state.lock().unwrap().opened.push(OpenedStreamRecord {
+            if let Some(refusal) = state.startup_error {
+                events.report_error(refusal);
+            }
+            state.opened.push(OpenedStreamRecord {
                 endpoint_id: device.endpoint_id.clone(),
                 config,
                 disposed: Arc::clone(&disposed),
                 ring,
-                device_open,
-                error_stop,
+                events,
             });
             Ok(FakeStream { disposed })
         }
@@ -1545,13 +1611,12 @@ mod tests {
 
         // 3. Backend stream error callback disposes the stream promptly without close/drop/open.
         let mic3 = pool.open(&MicSpec::new(1, 48_000)).unwrap();
-        let (disposed3, dev_open3, err_stop3, ring3) = {
+        let (disposed3, events3, ring3) = {
             let st = backend.state.lock().unwrap();
             let rec = &st.opened[2];
             (
                 Arc::clone(&rec.disposed),
-                Arc::clone(&rec.device_open),
-                rec.error_stop.clone(),
+                Arc::clone(&rec.events),
                 Arc::clone(&rec.ring),
             )
         };
@@ -1561,8 +1626,7 @@ mod tests {
         assert_eq!(pcm, [123]);
 
         // Simulate OS device disconnect error callback.
-        dev_open3.store(false, Ordering::Release);
-        err_stop3.send(()).unwrap();
+        events3.report_error(MicRefusal::NoDevice);
         assert!(!mic3.is_open());
 
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -1576,6 +1640,34 @@ mod tests {
         // Subsequent close/drop after error disposal is a safe no-op.
         mic3.close();
         drop(mic3);
+    }
+
+    #[test]
+    fn callback_error_before_ready_returns_typed_refusal_and_disposes_stream() {
+        let dev = FakeDevice::input("mic-1", "Desk Mic", 48_000, PcmFormat::I16);
+        let backend = Arc::new(FakeBackend::new(vec![dev.clone()], Some(dev)));
+        backend.state.lock().unwrap().startup_error = Some(MicRefusal::OsDenied);
+        let pool = MicPoolInner::new(true, Arc::clone(&backend));
+        assert_eq!(
+            pool.open(&MicSpec::new(1, 48_000)).err(),
+            Some(MicRefusal::OsDenied)
+        );
+        assert!(
+            backend.state.lock().unwrap().opened[0]
+                .disposed
+                .load(Ordering::Acquire)
+        );
+    }
+
+    #[test]
+    fn coreaudio_default_uses_the_enumerated_endpoint_not_its_unmonitored_handle() {
+        let default = FakeDevice::input("coreaudio:14", "Default token", 48_000, PcmFormat::F32);
+        let concrete = FakeDevice::input("coreaudio:14", "Headset", 48_000, PcmFormat::F32);
+        let other = FakeDevice::input("coreaudio:38", "Headset", 48_000, PcmFormat::F32);
+        let matched = enumerated_default(&default, vec![other.clone(), concrete]).unwrap();
+        assert_eq!(matched.endpoint_id, "coreaudio:14");
+        assert_eq!(matched.label, "Headset");
+        assert!(enumerated_default(&default, vec![other]).is_none());
     }
 
     #[test]

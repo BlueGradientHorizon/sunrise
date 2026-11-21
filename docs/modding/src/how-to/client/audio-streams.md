@@ -142,7 +142,7 @@ fn read_mono<'a>(mic: &MicRef, pcm: &'a mut [i16]) -> &'a [i16] {
 }
 ```
 
-Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target a specific endpoint even when multiple devices share the same display label. Passing a display label directly works only when it matches a single input device; if multiple input devices share that label, `open_microphone` refuses with `MicRefusal::AmbiguousDevice`.
+Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target a specific endpoint even when multiple devices share the same display label. If that endpoint vanishes, refresh the device list rather than treating another device with the same label as the same input. Passing a display label directly works only when it matches a single available input device; if multiple available inputs share that label, `open_microphone` refuses with `MicRefusal::AmbiguousDevice`.
 
 `MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` is nonblocking: it writes whole interleaved signed 16-bit PCM frames into the returned prefix `pcm[..frames * channels]`, leaves any remaining suffix untouched, and returns `0` without modifying `pcm` if no whole frames are ready or another reader is concurrently draining the same handle. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
 
