@@ -543,6 +543,19 @@ mod tests {
     use super::{copied_respawn_point, eye_columns, reset_use_attack_strength};
     use crate::game::api_values::TryIntoApi;
     use sunrise_client::pose::Pose;
+
+    struct StopMenu;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for StopMenu {
+        fn container_opened(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            _: &mut mod_api::ContainerOpenedEvent<'_>,
+        ) -> mod_api::Flow {
+            mod_api::Flow::Cancel
+        }
+    }
+
     #[test]
     fn a_block_break_suppresses_its_positional_duplicate_but_not_an_entity_sound() {
         let mut sound = sunrise_client::audio::CapturedSound {
@@ -1075,17 +1088,6 @@ mod tests {
             assert_eq!(game.lid_openers.get(&pos), Some(&1));
             game.guest_close_all(12);
             assert!(!game.lid_openers.contains_key(&pos));
-            struct StopMenu;
-            #[mod_api::__subscriptions]
-            impl mod_api::Hooks for StopMenu {
-                fn container_opened(
-                    &self,
-                    _: &mut dyn mod_api::ServerHost,
-                    _: &mut mod_api::ContainerOpenedEvent<'_>,
-                ) -> mod_api::Flow {
-                    mod_api::Flow::Cancel
-                }
-            }
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new("stop_menu", Box::new(StopMenu))].into(),
                 || {
@@ -1151,7 +1153,7 @@ mod tests {
     fn block_menu_click_keeps_spent_action_on_cancellation() {
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, lan::guest::GuestKind};
+        use sunrise_client::chunk::Chunk;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -1169,14 +1171,13 @@ mod tests {
                 Ok(true)
             );
             assert!(!game.lan_open_container(12, (2, 64, 0)));
-            let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = GuestKind::Fake;
-            game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
-            assert!(game.lan_open_container(12, (0, 64, 0)));
-            assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
-            let mut guest = game.lan.as_mut().unwrap().hub.guests.remove(0);
-            guest.kind = GuestKind::Network;
-            game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new("stop_menu", Box::new(StopMenu))].into(),
+                || {
+                    assert!(game.lan_open_container(12, (0, 64, 0)));
+                    assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+                },
+            );
             assert!(game.lan_open_container(12, (0, 64, 0)));
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
         });
