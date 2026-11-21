@@ -39,7 +39,7 @@ struct Script {
     change_cursor: bool,
     /// `menu_button`: consume the player's carried stack.
     clear_cursor: bool,
-    /// `menu_button`: issue a contents notice whose listener panics.
+    /// `menu_button` or `menu_quick_move`: issue an explicit notice whose listener panics.
     panic_in_contents_changed: bool,
     /// `menu_button`: attempt an over-limit `set_data_slots` write and assert boundary refusal.
     invalid_data_slots: bool,
@@ -254,6 +254,10 @@ impl BlockEntityPart for Part {
             .unwrap()
             .expect("guest is online");
             return Flow::Cancel;
+        }
+        if s.panic_in_contents_changed {
+            let entity = event.subject.with_view(|view| view.handle()).unwrap();
+            assert!(entity.set_changed(event.subject.host()).unwrap());
         }
         if s.panic {
             panic!("a listener failed");
@@ -1254,44 +1258,59 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
     });
 }
 
-#[test]
-#[ignore = "daily"]
-fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
-    #[derive(Clone, Default)]
-    struct Observer(Arc<std::sync::Mutex<Vec<[u32; 3]>>>);
-    #[mod_api::sunrise_part]
-    impl mod_api::BlockPart for Observer {
-        fn contents_changed(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut mod_api::ContentsChangedEvent,
-        ) {
-            if event.pos == mod_api::BlockPos::new(POS.0, POS.1, POS.2) {
-                let items = event
-                    .level
-                    .capability(host, &ITEMS, [POS.0, POS.1, POS.2], None)
-                    .unwrap();
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push([0, 1, 2].map(|slot| items.amount(host, slot)));
-            }
-        }
-    }
-    #[mod_api::__subscriptions]
-    impl Hooks for Observer {
-        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            let kind = r.block_entity_type("depot").build();
-            r.block_entity_part(&kind, Part).unwrap();
-            let stone = r.block_key("minecraft:stone");
-            r.block_part(stone, self.clone());
-        }
-    }
+#[derive(Debug, PartialEq, Eq)]
+struct QuickMoveNotice {
+    at: [i32; 3],
+    source_slots: [u32; 3],
+}
 
-    let observer = Observer::default();
+#[derive(Clone, Default)]
+struct QuickMoveObserver(Arc<std::sync::Mutex<Vec<QuickMoveNotice>>>);
+
+#[mod_api::sunrise_part]
+impl mod_api::BlockPart for QuickMoveObserver {
+    fn contents_changed(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::ContentsChangedEvent,
+    ) {
+        if SCRIPT.with(|s| s.borrow().panic_in_contents_changed) {
+            panic!("the nested contents_changed listener failed");
+        }
+        let items = event
+            .level
+            .capability(host, &ITEMS, [POS.0, POS.1, POS.2], None)
+            .unwrap();
+        self.0.lock().unwrap().push(QuickMoveNotice {
+            at: [event.pos.x, event.pos.y, event.pos.z],
+            source_slots: [0, 1, 2].map(|slot| items.amount(host, slot)),
+        });
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for QuickMoveObserver {
+    fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+        let kind = r.block_entity_type("depot").build();
+        r.block_entity_part(&kind, Part).unwrap();
+        let stone = r.block_key("minecraft:stone");
+        r.block_part(stone, self.clone());
+    }
+}
+
+fn with_quick_move_observer(test: impl FnOnce(&QuickMoveObserver)) {
+    let observer = QuickMoveObserver::default();
     let mods: Mods = vec![ModEntry::new("movemod", Box::new(observer.clone()))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
+        test(&observer);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
+    with_quick_move_observer(|observer| {
         with_guests(|game| {
             let window = open_depot(game);
             observer.0.lock().unwrap().clear();
@@ -1301,7 +1320,71 @@ fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
             });
             game.lan_guest_packet(12, container_click(window, 0, 1));
 
-            assert_eq!(observer.0.lock().unwrap().as_slice(), [[1, 4, 5]]);
+            assert_eq!(
+                observer.0.lock().unwrap().as_slice(),
+                [QuickMoveNotice {
+                    at: [1, 64, 1],
+                    source_slots: [1, 4, 5],
+                }]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_handled_items_quick_move_notifies_the_destination_after_settling_the_source() {
+    with_quick_move_observer(|observer| {
+        with_guests(|game| {
+            let window = open_depot(game);
+            second_block(game);
+            observer.0.lock().unwrap().clear();
+            script(Script {
+                cross: true,
+                handle_cross: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_eq!(stone_everywhere(game), (6, 4, 0));
+            assert_eq!(
+                observer.0.lock().unwrap().as_slice(),
+                [
+                    QuickMoveNotice {
+                        at: [2, 64, 1],
+                        source_slots: [6, 0, 0]
+                    },
+                    QuickMoveNotice {
+                        at: [1, 64, 1],
+                        source_slots: [6, 0, 0]
+                    },
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_nested_contents_panic_does_not_reject_an_unanswered_quick_move() {
+    with_quick_move_observer(|_| {
+        with_guests(|game| {
+            let window = open_depot(game);
+            second_block(game);
+            script(Script {
+                panic_in_contents_changed: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_eq!(stone_everywhere(game), (0, 0, 10));
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "movemod",
+                    hook: "contents_changed",
+                }]
+            );
         });
     });
 }

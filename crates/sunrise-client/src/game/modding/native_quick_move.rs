@@ -296,13 +296,13 @@ impl Game<'_> {
         let original = Some(api_clicked);
         let mut held = original.clone();
         let mut handled = false;
-        let failures = mod_api::runtime::isolated_failures();
-        let items_changed = {
-            let mut access = ResidentBlockEntityAccess::for_handle(self, handle, state);
+        let ((items_changed, panicked), notices) = self.collect_quick_move_notices(|game| {
+            let mut access = ResidentBlockEntityAccess::for_handle(game, handle, state);
             let scope = mod_api::BlockEntityScope::new(&mut access);
-            Game::native_menu_quick_move(kind, scope, size, slot, &mut held, &mut handled);
-            access.items_changed()
-        };
+            let panicked =
+                Game::native_menu_quick_move(kind, scope, size, slot, &mut held, &mut handled);
+            (access.items_changed(), panicked)
+        });
         let (outcome, settlement) = if handled {
             // Dispatch restores only the failed listener's outputs. An accepted answer can
             // settle even if another callback failed. Keep untouched engine stacks as-is.
@@ -318,7 +318,7 @@ impl Game<'_> {
                     (QuickMoveOutcome::Rejected, None)
                 }
             }
-        } else if mod_api::runtime::isolated_failures() != failures {
+        } else if panicked {
             (QuickMoveOutcome::Rejected, None)
         } else {
             (QuickMoveOutcome::Unhandled { items_changed }, None)
@@ -362,8 +362,19 @@ impl Game<'_> {
                 }
             }
         }
-        // Like ChestMenu.quickMoveStack, settle the source before notifying observers. Publish
-        // surviving edits even without a valid answer, but not at a replacement holder.
+        // AbstractContainerMenu.moveItemStackTo changes the source before notifying the
+        // destination. Release committed capability notices only once the remainder is settled.
+        // Surviving edits still notify after an unanswered or refused move.
+        for (dim, destination) in notices {
+            let back = self.enter_command_level(dim);
+            if self.dim == dim {
+                self.after_commit(After::Changed(destination));
+            }
+            if let Some(back) = back {
+                self.enter_command_level(back);
+            }
+        }
+        // Notify about any live source edits, but not at a replacement holder.
         if publish && self.quick_move_holder_matches(handle) {
             self.after_commit(After::Changed(pos));
         }

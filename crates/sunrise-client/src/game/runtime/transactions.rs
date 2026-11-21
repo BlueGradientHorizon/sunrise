@@ -68,6 +68,8 @@ pub(super) struct OpenTransactions {
     closing: Option<TransactionLifecycle>,
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
+    /// Committed implicit container notices waiting for a quick move's source slot.
+    quick_move_notices: Option<Vec<(super::Dim, Pos)>>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
@@ -197,6 +199,18 @@ impl Drop for ClosingPhase<'_, '_> {
             .transactions
             .closing_configuration_completions
             .truncate(self.keep_completions);
+    }
+}
+
+/// Restore the enclosing notice scope even if the engine unwinds out of a quick move.
+struct QuickMoveNotices<'a, 'g> {
+    game: &'a mut Game<'g>,
+    outer: Option<Vec<(super::Dim, Pos)>>,
+}
+
+impl Drop for QuickMoveNotices<'_, '_> {
+    fn drop(&mut self) {
+        self.game.transactions.quick_move_notices = self.outer.take();
     }
 }
 
@@ -1521,6 +1535,24 @@ impl Game<'_> {
     pub(super) fn defer_effect(&mut self, effect: DeferredEffect) {
         self.after_commit(After::Effect(effect));
     }
+    /// Collect implicit `setChanged` notices published while a quick-move callback runs.
+    /// This does not open a transaction or intercept explicit calls to `set_changed`.
+    pub(super) fn collect_quick_move_notices<R>(
+        &mut self,
+        dispatch: impl FnOnce(&mut Self) -> R,
+    ) -> (R, Vec<(super::Dim, Pos)>) {
+        let outer = self.transactions.quick_move_notices.replace(Vec::new());
+        let scope = QuickMoveNotices { game: self, outer };
+        let result = dispatch(&mut *scope.game);
+        let notices = scope
+            .game
+            .transactions
+            .quick_move_notices
+            .take()
+            .expect("active quick-move notice scope");
+        (result, notices)
+    }
+
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
         match self.transactions.last_mut() {
@@ -1541,7 +1573,13 @@ impl Game<'_> {
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
-            After::Changed(pos) => self.container_changed(pos),
+            After::Changed(pos) => {
+                if let Some(notices) = &mut self.transactions.quick_move_notices {
+                    notices.push((self.dim, pos));
+                } else {
+                    self.container_changed(pos);
+                }
+            }
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 

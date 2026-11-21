@@ -1412,11 +1412,13 @@ and set `handled`: the slot holds what is left of `stack` (`None` empties it, ov
 the game's routing is skipped, and the player's client gets the whole menu again. Left unhandled, the game routes the
 stack as for any container; a later mod sees what an earlier one did to `stack`. Writes through `subject.with_view(...)`
 validate at the boundary and apply to the live resident block entity in place, marking the chunk dirty. A handled move
-settles the clicked slot before issuing one `BlockEntity.setChanged` notice for its resident slot edits, then calls
-`menu_slot_take` where applicable. Surviving slot edits on a refused or unhandled move still notify the original holder
-if it is present. Use `subject.transaction(...)` when an edit must span the subject and other world storage atomically.
-A panicking callback loses its `stack` and `handled` outputs and is disabled for `menu_quick_move` for the rest of the
-session. A later Part can still handle the move; if none does after a panic, the menu is resynced instead of falling back.
+settles the clicked slot before publishing implicit `BlockEntity.setChanged` notices for its resident slot edits and
+committed `ITEMS` writes, then calls `menu_slot_take` where applicable. Surviving slot edits on a refused or unhandled
+move still notify. An explicit `BlockEntityRef::set_changed` call is immediate. Use `subject.transaction(...)` when an
+edit must span the subject and other world storage atomically. A panicking callback loses its `stack` and `handled`
+outputs and is disabled for `menu_quick_move` for the rest of the session. A later Part can still handle the move; if
+none does after a quick-move Part panics, the menu is resynced instead of falling back. A panic contained in a nested
+hook does not by itself reject the move.
 An invalid `stack` remainder leaves the clicked slot's original stack untouched. If the mod removes its own block, the menu
 closes and the player's inventory is sent again. This is how a storage terminal whose items live in other blocks, or a
 screen that hides the container's slots, takes a shift-click from the inventory, and how a machine sends fuel to its

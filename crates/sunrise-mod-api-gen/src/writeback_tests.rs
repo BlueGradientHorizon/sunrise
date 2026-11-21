@@ -37,7 +37,7 @@ fn untouched_writeback_runtime_and_mutants() {
         (
             "menu_quick_move",
             quick_move,
-            "fn apply_quick_move_remainder(",
+            "let (outcome, settlement) = if handled {",
         ),
     ] {
         let start = source.find(adapter).unwrap();
@@ -61,17 +61,20 @@ fn untouched_writeback_runtime_and_mutants() {
                 "let mut cursor = carried.try_into_api().unwrap(); let original = cursor.clone(); self.native_menu_button(\"test:menu\", None, context, &mut cursor); let items = self.items(); let (original, cursor) = (&original, &cursor);"
             }
             "menu_quick_move" => {
-                "let mut held = carried.try_into_api().unwrap(); let original = held.clone(); let mut candidate_handled = *handled; self.native_menu_quick_move(pos, entity, container_slots, slot, &mut held, &mut candidate_handled); let items = self.items(); let stack = &mut *carried; let (original, held) = (&original, &held);"
+                "let clicked = carried.clone().unwrap(); let original = carried.try_into_api().unwrap(); let mut held = original.clone(); if self.change { held = Some(Stack(252)); }"
             }
             _ => "let entity = 0;",
         };
         let body = if matches!(name, "grindstone_place" | "grindstone_take") {
             body.to_owned()
         } else if name == "menu_quick_move" {
-            // The checked remainder helper answers whether the mods' answer was valid; a refusal
-            // leaves `stack` and `handled` untouched.
+            // Compile the handled branch of run_mod_quick_move, where a rejected
+            // replacement produces no settlement for the clicked slot.
             format!(
-                "if (|| -> bool {{ {body} }})() {{ *handled = candidate_handled; Ok(()) }} else {{ Err(InvalidReason::Count) }}"
+                "let (outcome, settlement) = {{ {body} }};
+                 if let (QuickMoveOutcome::Handled, Some(remainder)) = (outcome, settlement) {{
+                     *carried = remainder; *handled = true; Ok(())
+                 }} else {{ Err(InvalidReason::Count) }}"
             )
         } else {
             // Keep the adapter's early `return` inside its original unit-returning body.
@@ -86,10 +89,11 @@ extern crate self as log;
 #[derive(Clone, Debug, PartialEq)] struct Stack(u32);
 type EngineStack = Stack;
 struct Game { change: bool }
+enum QuickMoveOutcome { Handled, Rejected }
 static VALIDATIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 mod mod_api {
     #[derive(Debug)] pub enum StackWriteError { Unavailable }
-    pub enum HookId { Proof, MenuButton, MenuQuickMove }
+    pub enum HookId { Proof, MenuButton }
     pub mod __private {
         pub fn listened(_: super::HookId) -> bool { true }
         pub fn has_part_hook(_: super::HookId) -> bool { true }
@@ -116,7 +120,6 @@ impl Game {
     fn native_grindstone_place(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
     fn native_grindstone_take(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
     fn native_menu_button(&mut self, _: &str, _: Option<&str>, _: &(), stack: &mut Option<Stack>) { if self.change { *stack = Some(Stack(252)); } }
-    fn native_menu_quick_move(&mut self, _: [i32; 3], _: &mut Stack, _: usize, _: usize, stack: &mut Option<Stack>, handled: &mut bool) { if self.change { *stack = Some(Stack(252)); } *handled = true; }
     METHODS
 }
 fn main() {

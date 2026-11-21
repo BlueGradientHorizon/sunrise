@@ -1302,7 +1302,8 @@ impl Game<'_> {
     /// `subject` lends sequential access to the resident block entity and the server `Host`;
     /// `slot` is the menu's index (below `container_slots` it is the block's own slot, from
     /// there on the player's inventory). `stack` is a copy of what the slot holds; a part sets
-    /// `handled` to keep the remainder in `stack` and skip the game's routing.
+    /// `handled` to keep the remainder in `stack` and skip the game's routing. Returns whether
+    /// one of this dispatch's Parts panicked, independently of any nested hooks.
     pub(in crate::game) fn native_menu_quick_move(
         kind: mod_api::BlockEntityTypeKey,
         subject: mod_api::BlockEntityScope<'_>,
@@ -1310,8 +1311,18 @@ impl Game<'_> {
         slot: usize,
         stack: &mut Option<mod_api::ItemStack>,
         handled: &mut bool,
-    ) {
-        Self::fire_menu_quick_move(kind, subject, container_slots, slot, stack, handled);
+    ) -> bool {
+        let mut panicked = false;
+        Self::fire_menu_quick_move(
+            kind,
+            subject,
+            container_slots,
+            slot,
+            stack,
+            handled,
+            &mut panicked,
+        );
+        panicked
     }
     /// The commands native mods add to the session's tree: push the complete current set.
     /// Asked at world open before functions compile, on each reload and data pack change,

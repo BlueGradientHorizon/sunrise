@@ -183,8 +183,10 @@ state, never saved. Unloading the source does not cancel watches of its position
 
 The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
-for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
-notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
+for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
+inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
+it finishes without one). Explicit `BlockEntityRef::set_changed` notifies immediately, even
+inside a transaction and for unchanged contents; abort does not retract
 it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
 a successful nested transaction merges into the Part's frame, but a panic in that Part discards
 its writes without undoing the backing change that raised the notice. The next Part can still

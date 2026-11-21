@@ -6,8 +6,9 @@ impl Game<'_> {
     /// The block's storage calls `setChanged` (`Container.setChanged` and
     /// `BlockEntity.setChanged`), after its contents were written and before
     /// dirty/comparator updates. A native transaction tells it once per backing
-    /// block at the root commit, never for an abort or a simulation. Explicit
-    /// `set_changed` also tells it, even if the contents compare equal. Writes
+    /// block at the root commit, never for an abort or a simulation. If that commit
+    /// happens inside `menu_quick_move`, the notice waits for source settlement.
+    /// Explicit `set_changed` still tells it immediately, even if contents compare equal. Writes
     /// inside this notice still apply, but do not re-enter it for the same block;
     /// a write to another backing block has its own notice.
     ///

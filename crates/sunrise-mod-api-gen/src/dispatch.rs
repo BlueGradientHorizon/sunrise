@@ -94,6 +94,9 @@ pub(super) fn emit<'a>(
         };
         let ticks = hook.engine_ticks;
         let inert_signal = hook.engine_inert;
+        // The click owner needs to distinguish an unanswered move from a failed Part, not
+        // from a panic in some other hook the Part happened to call.
+        let panic_signal = name == "menu_quick_move";
         let is_level = host_param::is_level(hook);
         if (ticks && !is_level) || ((ticks || inert_signal) && !in_game) {
             return Err(format!(
@@ -603,6 +606,9 @@ pub(super) fn emit<'a>(
         if inert_signal {
             dispatch_params.push("inert: &mut bool".into());
         }
+        if panic_signal {
+            dispatch_params.push("panicked: &mut bool".into());
+        }
         let (generics, elided) = match (lifetimes.a, lifetimes.b) {
             (_, true) => ("<'a, 'b>", "<'_, '_>"),
             (true, false) => ("<'a>", "<'_>"),
@@ -800,6 +806,10 @@ pub(super) fn emit<'a>(
             if inert_signal {
                 parameter("inert", "&mut bool");
                 passed.push("inert".to_owned());
+            }
+            if panic_signal {
+                parameter("panicked", "&mut bool");
+                passed.push("panicked".to_owned());
             }
             let receiver = match hook.receiver {
                 Receiver::Read => "&self",
@@ -1064,12 +1074,17 @@ pub(super) fn emit<'a>(
             .iter()
             .map(|(output, _)| format!("*{event}.{output} = __previous_{output}.clone(); "))
             .collect::<String>();
+        let report_panic = if panic_signal {
+            "*panicked = true; "
+        } else {
+            ""
+        };
         let run_with = |mod_id_expr: &str,
                         on_abort: &str,
                         extra_restore: &str,
                         expression: &str| {
             format!(
-                "match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, contained, || {expression}) {{ super::runtime::DispatchOutcome::Ok(answer) => answer, super::runtime::DispatchOutcome::Refused(refusal) => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}refusal.report(); {on_abort} }} super::runtime::DispatchOutcome::Panicked => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
+                "match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {mod_id_expr}, contained, || {expression}) {{ super::runtime::DispatchOutcome::Ok(answer) => answer, super::runtime::DispatchOutcome::Refused(refusal) => {{ {restore_statement}{clear_batch}{stack_restore}{extra_restore}refusal.report(); {on_abort} }} super::runtime::DispatchOutcome::Panicked => {{ {report_panic}{restore_statement}{clear_batch}{stack_restore}{extra_restore}{on_abort} }} }}"
             )
         };
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {

@@ -70,6 +70,8 @@ attachment compound keeps entries it does not know on save), and is read again i
 `pre_remove_side_effects` runs on the authoritative server while the block entity and its
 attachments are still readable, before removal's neighbor effects. The level host permits
 reads and random draws, not world writes. Flag 256 skips the call and its outputs.
+Contract version 3 includes removal when a menu button callback removes the backing block.
+Do not drop those contents manually in the button callback.
 
 The engine applies the answers after the level write, in this order:
 
@@ -83,7 +85,7 @@ The engine applies the answers after the level write, in this order:
 Each list accepts at most 1024 entries; positions must be finite. Invalid list sizes or
 positions refuse the outputs. Stack writes use the usual checked item boundary. The same
 fields go to the Part. A part that answers nothing consumes no random draws.
-Version 2 uses optional drops to represent empty slots; wrap a filled slot in `Some`.
+The optional drops represent empty slots; wrap a filled slot in `Some`.
 
 ## Part state
 

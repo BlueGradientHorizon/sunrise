@@ -325,13 +325,14 @@ set-slot never reach it, and it cannot know whether the click changes anything.
 live resident block entity and the server `Host` sequentially through `event.subject: BlockEntityScope<'_>` instead of
 detaching a snapshot or wrapping untaken fallbacks in a rollback transaction. Writes through
 `event.subject.with_view(...)` validate at the boundary and apply in place, marking the chunk dirty. A handled move
-settles the clicked slot before issuing one container notice (`BlockEntity.setChanged`) for its resident slot edits,
-then calls `menu_slot_take` where applicable. Surviving slot edits on a refused or unhandled move still notify the
-original holder if it is present. Use `event.subject.transaction(...)` when an edit must span the subject and other
-world storage atomically. A panicking callback is contained and disabled for `menu_quick_move` for the rest of the
-session; only its `stack` and `handled` outputs are discarded. A later Part can still handle the move. If no Part
-handles it after a panic, the menu is resynced instead of running the game's routing. An invalid `stack` remainder
-leaves the clicked slot's original stack untouched.
+settles the clicked slot before publishing implicit container notices (`BlockEntity.setChanged`) for its resident
+slot edits and committed `ITEMS` writes, then calls `menu_slot_take` where applicable. Surviving slot edits on a
+refused or unhandled move still notify. An explicit `BlockEntityRef::set_changed` call is immediate. Use
+`event.subject.transaction(...)` when an edit must span the subject and other world storage atomically.
+A panicking callback is contained and disabled for `menu_quick_move` for the rest of the session; only its `stack`
+and `handled` outputs are discarded. A later Part can still handle the move. If no Part handles it after a quick-move
+Part panics, the menu is resynced instead of running the game's routing. A panic contained in a nested hook does not
+by itself reject the move. An invalid `stack` remainder leaves the clicked slot's original stack untouched.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill
