@@ -1,21 +1,24 @@
 //! The `register_item_models` hooks: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// The item model node types a mod adds (NeoForge's `RegisterItemModelsEvent`): push each
-    /// type id, `<mod id>:<path>`. Asked once at start on the client, before resources load. An
-    /// item definition's node whose `type` is a registered id draws, per stack, the named models
-    /// `item_model_update` answers. An id in vanilla's namespace, not of that form, or registered
-    /// already is logged and left out.
+    /// Register the item model node types a mod adds (NeoForge's `RegisterItemModelsEvent`). Asked
+    /// once at start on the client, before resources load. Use [`RegisterItemModelsEvent::register`]
+    /// to bind each type identifier directly to its decode-time factory, which parses the node's
+    /// JSON object once on each load/reload and returns the per-stack callback that pushes
+    /// [`ItemModelLayer`] choices naming the node's declared `models`. Any valid
+    /// `<namespace>:<path>` identifier (including `minecraft:`) is accepted; a later registration
+    /// for the same id replaces the earlier one (last-writer-wins), and registering a built-in
+    /// vanilla or engine item model type id overrides that built-in when decoding item definitions.
     #[notes = r#"## Item model types
 
 An item definition (`assets/<namespace>/items/<path>.json`) is a tree of model nodes: vanilla's `minecraft:model`,
 `condition`, `select`, `range_dispatch`, `composite`, `special` and the rest. A mod adds a node type of its own
-(NeoForge's `RegisterItemModelsEvent`) in two steps, as an item tint source: `Hooks::register_item_models`
-pushes the type id once at start, before resources load, and `Hooks::item_model_update` answers each time an item
-whose definition holds that node is drawn.
+(NeoForge's `RegisterItemModelsEvent`) once at client startup in `Hooks::register_item_models` via
+`event.register(id, decode)`: `decode` parses the node's JSON object (as a `Tag`) once on each load and reload
+and returns the bound per-stack callback.
 
 The node lists the models it can draw in a `models` object; they are ordinary nodes, decoded and baked by the
-game. Per stack, the mod pushes a layer for each one to draw, in order, naming it:
+game. Per stack, the bound callback pushes an `ItemModelLayer` for each one to draw, in order, naming it:
 
 ```rust,ignore
 fn register_item_models(
@@ -23,14 +26,12 @@ fn register_item_models(
     _context: &RegistrationContext,
     event: &mut RegisterItemModelsEvent<'_>,
 ) {
-    event.models.push("example:charge".into());
-}
-
-fn item_model_update(&self, _host: &dyn ClientHost, event: &mut ItemModelUpdateEvent<'_>) {
-    if event.kind == "example:charge" {
-        let name = if event.stack.count() > 1 { "full" } else { "empty" };
-        event.layers.push(ItemModelLayer::new(name));
-    }
+    event.register(Identifier::parse("example:charge").unwrap(), |_config| {
+        Ok(|_host, input, layers| {
+            let name = if input.stack.count() > 1 { "full" } else { "empty" };
+            layers.push(ItemModelLayer::new(name));
+        })
+    });
 }
 ```
 
@@ -40,25 +41,31 @@ fn item_model_update(&self, _host: &dyn ClientHost, event: &mut ItemModelUpdateE
              "full": {"type": "minecraft:model", "model": "example:item/cell_full"}}}}
 ```
 
-The node's whole object reaches the hook as `event.config`, converted once at load, and its `transformation`
-applies to every model it draws. A name the node's `models` doesn't have draws nothing, and so does a node no
-mod answers.
-
-A layer also owns whose display transform its models draw under. `ItemModelLayer::new` keeps each model's own
-transform for the display context (a hand, a screen, the ground). A layer built with
+The node's `transformation` applies to every model it draws. A name the node's `models` doesn't have draws
+nothing. A layer also owns whose display transform its models draw under: `ItemModelLayer::new` keeps each
+model's own transform for the display context (a hand, a screen, the ground), while
 `.with_item_transform(ItemTransformMode::None)` draws its models, and every model nested under them, with no
-display transform, only centred as every item is: use it where the node sits in a model that already placed the
-item (a pan holding its food), so the transform is not applied twice. `item_model_update` is at version 2, which
-replaced the pushed names (`models: Vec<String>`) with these layers. A node type no mod registered is an error naming it: the item definition holding it isn't loaded,
-and the item draws the missing model."#]
+display transform, only centred as every item is (use it where the node sits in a model that already placed
+the item, so the transform is not applied twice).
+
+Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted; a later registration for the
+same id replaces the earlier one (last-writer-wins, matching NeoForge's `LateBoundIdMapper`), and registering
+a built-in vanilla or engine item model type id overrides that built-in when decoding item definitions.
+Returning `Err(reason)` from the decoder rejects the enclosing item definition without falling back to a
+built-in; panicking in the decoder or per-stack callback disables that mod's callback for the session and
+surfaces an error toast. A node type no mod registered is an error naming it: the item definition holding it
+isn't loaded, and the item draws the missing model."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "collect",
         out = "models",
         context = "registration",
+        answered_by = "mod",
+        registration_append = "custom",
         neoforge = "RegisterItemModelsEvent"
     )]
-    fn register_item_models(models: &mut Vec<String>);
+    fn register_item_models(models: &mut Vec<Answered<ItemModelRegistration>>);
 }

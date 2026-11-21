@@ -23,11 +23,7 @@ mod foreign;
 mod mod_properties;
 mod special;
 pub use fluid_container::{FluidAppearance, FluidContainer, FluidContainerTextures};
-pub use mod_properties::{
-    is_item_model_type, is_mod_id, is_range_property, is_select_property, is_skull_kind,
-    is_tint_source, keep_mod_ids, register_item_models, register_range_properties,
-    register_select_properties, register_skull_kinds, register_tint_sources,
-};
+pub use mod_properties::{is_skull_kind, register_skull_kinds};
 pub use special::{SpecialKind, SpecialModel};
 
 type Result<T> = std::result::Result<T, DecodeError>;
@@ -371,6 +367,30 @@ pub type SpecialModelLoader<'a> = dyn Fn(
     ) -> std::result::Result<Option<RegisteredSpecialModel>, String>
     + 'a;
 
+/// Engine callback for a registered item tint source, called while loading the item definition.
+/// `kind` is canonical. `Ok(None)` lets the built-in decoder handle the type; `Err` rejects the
+/// enclosing definition, even if the type is also built-in.
+pub type TintSourceLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredTintSource>, String>
+    + 'a;
+
+/// Engine callback for a registered item model node type, called while loading the item definition.
+/// `kind` is canonical. `Ok(None)` lets the built-in decoder handle the type; `Err` rejects the
+/// enclosing definition, even if the type is also built-in.
+pub type ItemModelLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredItemModel>, String>
+    + 'a;
+
+/// Engine callback for a registered `range_dispatch` numeric property, called while loading the
+/// item definition. `kind` is canonical. `Ok(None)` lets the built-in decoder handle the property;
+/// `Err` rejects the enclosing definition, even if the property is also built-in.
+pub type RangePropertyLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredRangeProperty>, String>
+    + 'a;
+
+/// Engine callback for a registered `select` categorical property, called while loading the item
+/// definition. `kind` is canonical. `Ok(None)` lets the built-in decoder handle the property;
+/// `Err` rejects the enclosing definition, even if the property is also built-in.
+pub type SelectPropertyLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result::Result<Option<RegisteredSelectProperty>, String>
+    + 'a;
+
 /// A registered special renderer's baked model. The payload is opaque to assets; the
 /// baker and draw host agree on its type. Clones retain the same model identity.
 #[derive(Clone)]
@@ -386,6 +406,77 @@ impl PartialEq for RegisteredSpecialModel {
     }
 }
 
+/// A registered item tint source bound at decode time. The payload is opaque to assets; the
+/// decoder and draw host agree on its type. Clones retain the same instance identity.
+#[derive(Clone)]
+pub struct RegisteredTintSource(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for RegisteredTintSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RegisteredTintSource")
+    }
+}
+impl PartialEq for RegisteredTintSource {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// A registered item model node bound at decode time. The payload is opaque to assets; the
+/// decoder and draw host agree on its type. Clones retain the same instance identity.
+#[derive(Clone)]
+pub struct RegisteredItemModel(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for RegisteredItemModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RegisteredItemModel")
+    }
+}
+impl PartialEq for RegisteredItemModel {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// A registered `range_dispatch` numeric property bound at decode time. The payload is opaque to
+/// assets; the decoder and draw host agree on its type. Clones retain the same instance identity.
+#[derive(Clone)]
+pub struct RegisteredRangeProperty(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for RegisteredRangeProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RegisteredRangeProperty")
+    }
+}
+impl PartialEq for RegisteredRangeProperty {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// A registered `select` categorical property bound at decode time. The payload is opaque to
+/// assets; the decoder and draw host agree on its type. Clones retain the same instance identity.
+#[derive(Clone)]
+pub struct RegisteredSelectProperty(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for RegisteredSelectProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RegisteredSelectProperty")
+    }
+}
+impl PartialEq for RegisteredSelectProperty {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// Optional decode-time provider callbacks for item definitions, checked ahead of built-in
+/// decoders so registered overrides take effect.
+#[derive(Clone, Copy, Default)]
+pub struct ItemModelDecoders<'a> {
+    pub special: Option<&'a SpecialModelLoader<'a>>,
+    pub tint: Option<&'a TintSourceLoader<'a>>,
+    pub item_model: Option<&'a ItemModelLoader<'a>>,
+    pub range_property: Option<&'a RangePropertyLoader<'a>>,
+    pub select_property: Option<&'a SelectPropertyLoader<'a>>,
+}
+
 /// One `items/<name>.json` file: a model tree plus the client properties.
 #[derive(Clone, Debug)]
 pub struct ClientItem {
@@ -397,23 +488,20 @@ pub struct ClientItem {
 impl ClientItem {
     pub const DEFAULT_PROPERTIES: (bool, bool, f32) = (true, false, 1.0);
     pub fn from_json(text: &str) -> Result<Self> {
-        Self::parse(text, None)
+        Self::from_json_with_decoders(text, &ItemModelDecoders::default())
     }
-    /// Decode an item with the engine's registrations, including special nodes in child models.
-    pub fn from_json_with_specials(text: &str, loader: &SpecialModelLoader<'_>) -> Result<Self> {
-        Self::parse(text, Some(loader))
-    }
-    fn parse(text: &str, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
+    /// Decode an item with the engine's decode-time provider registrations, including child nodes.
+    pub fn from_json_with_decoders(text: &str, decoders: &ItemModelDecoders<'_>) -> Result<Self> {
         let value: Value = serde_json::from_str(text.strip_prefix('\u{feff}').unwrap_or(text))?;
-        Self::decode_with(&value, loader)
+        Self::decode_with(&value, decoders)
     }
     pub fn decode(value: &Value) -> Result<Self> {
-        Self::decode_with(value, None)
+        Self::decode_with(value, &ItemModelDecoders::default())
     }
-    fn decode_with(value: &Value, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
+    pub fn decode_with(value: &Value, decoders: &ItemModelDecoders<'_>) -> Result<Self> {
         let m = object(value)?;
         Ok(Self {
-            model: ItemModelNode::decode_with(required(m, "model")?, loader)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, decoders)?,
             hand_animation_on_swap: get(m, "hand_animation_on_swap").map_or(Ok(true), boolean)?,
             oversized_in_gui: get(m, "oversized_in_gui").map_or(Ok(false), boolean)?,
             swap_animation_scale: get(m, "swap_animation_scale").map_or(Ok(1.0), float)?,
@@ -469,13 +557,11 @@ pub enum ItemModelNode {
     },
     FluidContainer(FluidContainer),
     BundleSelectedItem,
-    /// A node of a type a native mod registered (`register_item_models`): per stack, its mod
-    /// answers which of `models`, by name, draw (`item_model_update`).
+    /// A node decoded by a registered item model provider (`register_item_models`): per stack, its
+    /// bound provider answers which of `models`, by name, draw.
     Registered {
-        kind: String,
+        model: RegisteredItemModel,
         transformation: Option<Mat4>,
-        /// The node's JSON object, converted once at load.
-        config: Arc<sunrise_core::nbt::Tag>,
         /// The node's `models` object: named nodes decoded and baked as any other.
         models: Vec<(String, ItemModelNode)>,
     },
@@ -489,13 +575,31 @@ pub struct SwitchCase {
 
 impl ItemModelNode {
     pub fn decode(v: &Value) -> Result<Self> {
-        Self::decode_with(v, None)
+        Self::decode_with(v, &ItemModelDecoders::default())
     }
 
-    fn decode_with(v: &Value, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
-        let decode = |node: &Value| Self::decode_with(node, loader);
+    pub fn decode_with(v: &Value, decoders: &ItemModelDecoders<'_>) -> Result<Self> {
+        let decode = |node: &Value| Self::decode_with(node, decoders);
         let m = object(v)?;
         let kind = ident(required(m, "type")?)?;
+        // Registered item model decoders run ahead of built-ins (including vanilla arms and
+        // `neoforge:fluid_container`) so overrides take effect. An error rejects the enclosing
+        // item definition and never falls back to a built-in.
+        if let Some(load) = decoders.item_model
+            && let Some(model) = load(&kind, m).map_err(DecodeError)?
+        {
+            return Ok(Self::Registered {
+                model,
+                transformation: optional_transformation(m)?,
+                models: match get(m, "models") {
+                    None => Vec::new(),
+                    Some(models) => object(models)?
+                        .iter()
+                        .map(|(name, node)| Ok((name.clone(), decode(node)?)))
+                        .collect::<Result<_>>()?,
+                },
+            });
+        }
         if kind == "minecraft:condition" {
             let property = ident(required(m, "property")?)?;
             if !property.starts_with("minecraft:") {
@@ -516,7 +620,7 @@ impl ItemModelNode {
                     None => Vec::new(),
                     Some(t) => list(t)?
                         .iter()
-                        .map(TintSource::decode)
+                        .map(|tint| TintSource::decode_with(tint, decoders))
                         .collect::<Result<_>>()?,
                 },
             }),
@@ -537,21 +641,19 @@ impl ItemModelNode {
                 on_true: Box::new(decode(required(m, "on_true")?)?),
                 on_false: Box::new(decode(required(m, "on_false")?)?),
             },
-            // A mod's registered property is read per stack; no case matches any other foreign one.
-            "minecraft:select"
-                if foreign::property_is_foreign(m)?
-                    && !is_select_property(&ident(required(m, "property")?)?) =>
-            {
-                // No case can match a property Sunrise cannot read.
-                let fallback = get(m, "fallback").map(decode).transpose()?;
-                foreign::wrap(fallback.unwrap_or(Self::Empty), optional_transformation(m)?)
-            }
             "minecraft:select" => {
+                let Some(property) = SelectProperty::decode_with(m, decoders)? else {
+                    // No case can match an unregistered foreign property.
+                    let fallback = get(m, "fallback").map(decode).transpose()?;
+                    return Ok(foreign::wrap(
+                        fallback.unwrap_or(Self::Empty),
+                        optional_transformation(m)?,
+                    ));
+                };
                 let transformation = optional_transformation(m)?;
-                let property = SelectProperty::decode(m)?;
                 let cases = list(required(m, "cases")?)?
                     .iter()
-                    .map(|c| SwitchCase::decode(&property, c, loader))
+                    .map(|c| SwitchCase::decode(&property, c, decoders))
                     .collect::<Result<Vec<_>>>()?;
                 if cases.is_empty() {
                     return Err(err("empty case list"));
@@ -573,9 +675,7 @@ impl ItemModelNode {
                 }
             }
             "minecraft:range_dispatch" => {
-                // A mod's registered property is read per stack; any other foreign one is 0.
-                let foreign_property = foreign::property_is_foreign(m)?
-                    && !is_range_property(&ident(required(m, "property")?)?);
+                let property = NumericProperty::decode_with(m, decoders)?;
                 let mut entries = list(required(m, "entries")?)?
                     .iter()
                     .map(|e| {
@@ -588,8 +688,8 @@ impl ItemModelNode {
                     .collect::<Result<Vec<_>>>()?;
                 // `Comparator.comparingDouble`: Double.compare, a total order.
                 entries.sort_by(|a, b| f64::from(a.0).total_cmp(&f64::from(b.0)));
-                if foreign_property {
-                    // A property Sunrise cannot read is 0.
+                let Some(property) = property else {
+                    // An unregistered foreign property reads 0.
                     let fallback = get(m, "fallback").map(decode).transpose()?;
                     let chosen = last_index_less_or_equal(&entries, 0.0)
                         .map(|i| entries.swap_remove(i).1)
@@ -598,10 +698,10 @@ impl ItemModelNode {
                         chosen.unwrap_or(Self::Empty),
                         optional_transformation(m)?,
                     ));
-                }
+                };
                 Self::RangeDispatch {
                     transformation: optional_transformation(m)?,
-                    property: NumericProperty::decode(m)?,
+                    property,
                     scale: get(m, "scale").map_or(Ok(1.0), float)?,
                     entries,
                     fallback: get(m, "fallback")
@@ -616,7 +716,7 @@ impl ItemModelNode {
                 let fields = object(model)?;
                 let kind = ident(required(fields, "type")?)?;
                 // A registration may replace a vanilla decoder. A refusal is an error, not a miss.
-                let registered = match loader {
+                let registered = match decoders.special {
                     Some(load) => load(&kind, &base, fields).map_err(DecodeError)?,
                     None => None,
                 };
@@ -634,24 +734,7 @@ impl ItemModelNode {
                 }
             }
             "minecraft:bundle/selected_item" => Self::BundleSelectedItem,
-            // NeoForge's own item model type, which the engine owns. It is matched ahead of
-            // the types mods register, so no mod can take it over.
             "neoforge:fluid_container" => Self::FluidContainer(FluidContainer::decode(m)?),
-            kind if is_item_model_type(kind) => Self::Registered {
-                kind: kind.to_owned(),
-                transformation: optional_transformation(m)?,
-                config: Arc::new(
-                    sunrise_core::json_nbt::json_to_tag(v)
-                        .map_err(|_| err("invalid item model data"))?,
-                ),
-                models: match m.get("models") {
-                    None => Vec::new(),
-                    Some(models) => object(models)?
-                        .iter()
-                        .map(|(name, node)| Ok((name.clone(), decode(node)?)))
-                        .collect::<Result<_>>()?,
-                },
-            },
             other => return Err(err(&format!("unknown item model type {other}"))),
         })
     }
@@ -691,7 +774,7 @@ impl SwitchCase {
     fn decode(
         property: &SelectProperty,
         v: &Value,
-        loader: Option<&SpecialModelLoader<'_>>,
+        decoders: &ItemModelDecoders<'_>,
     ) -> Result<Self> {
         let m = object(v)?;
         let when = required(m, "when")?;
@@ -706,7 +789,7 @@ impl SwitchCase {
                 .into_iter()
                 .map(|v| property.decode_value(v))
                 .collect::<Result<_>>()?,
-            model: ItemModelNode::decode_with(required(m, "model")?, loader)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, decoders)?,
         })
     }
 }
@@ -730,16 +813,21 @@ pub enum TintSource {
     Firework(i32),
     Potion(i32),
     Team(i32),
-    /// A source a native mod registered (`register_tint_sources`), read through
-    /// [`ItemEnv::item_tint_source`] with its entry in the model's `tints`.
-    Mod {
-        id: String,
-        config: Arc<sunrise_core::nbt::Tag>,
-    },
+    /// A source bound by a registered tint decoder (`register_item_tint_sources`), read through
+    /// [`ItemEnv::item_tint_source`].
+    Registered(RegisteredTintSource),
 }
 impl TintSource {
-    fn decode(v: &Value) -> Result<Self> {
+    fn decode_with(v: &Value, decoders: &ItemModelDecoders<'_>) -> Result<Self> {
         let m = object(v)?;
+        let kind = ident(required(m, "type")?)?;
+        // Registered tint decoders run ahead of built-ins so vanilla overrides take effect.
+        // An error rejects the enclosing item definition and never falls back to a built-in.
+        if let Some(load) = decoders.tint
+            && let Some(bound) = load(&kind, m).map_err(DecodeError)?
+        {
+            return Ok(Self::Registered(bound));
+        }
         let default = || rgb(required(m, "default")?);
         let unit = |v: &Value| -> Result<f32> {
             let f = float(v)?;
@@ -749,7 +837,7 @@ impl TintSource {
                 Err(err("value must be within range [0;1]"))
             }
         };
-        Ok(match ident(required(m, "type")?)?.as_str() {
+        Ok(match kind.as_str() {
             "minecraft:constant" => Self::Constant(opaque(rgb(required(m, "value")?)?)),
             "minecraft:custom_model_data" => Self::CustomModelData {
                 index: get(m, "index").map_or(Ok(0), non_negative)?,
@@ -763,14 +851,7 @@ impl TintSource {
             "minecraft:firework" => Self::Firework(default()?),
             "minecraft:potion" => Self::Potion(default()?),
             "minecraft:team" => Self::Team(default()?),
-            other if is_tint_source(other) => Self::Mod {
-                id: other.to_owned(),
-                config: Arc::new(
-                    sunrise_core::json_nbt::json_to_tag(v)
-                        .map_err(|_| err("unknown item tint source"))?,
-                ),
-            },
-            // A mod's own tint source, which its Java code computes: untinted here.
+            // A mod's own tint source that no mod registered: untinted here.
             other if foreign::is_foreign(other) => Self::Constant(-1),
             _ => return Err(err("unknown item tint source")),
         })
@@ -830,9 +911,9 @@ impl ConditionProperty {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum SelectProperty {
-    /// A property a native mod registered (`register_select_properties`), read through
-    /// [`ItemEnv::item_model_select_property`]; its `when` values are strings.
-    Custom(String),
+    /// A property bound by a registered select decoder (`register_select_item_model_property`),
+    /// read through [`ItemEnv::item_model_select_property`]; its `when` values are strings.
+    Registered(RegisteredSelectProperty),
     CustomModelData(i32),
     MainHand,
     ChargeType,
@@ -849,12 +930,23 @@ pub enum SelectProperty {
     Component(String),
 }
 impl SelectProperty {
-    fn decode(m: &Map<String, Value>) -> Result<Self> {
+    /// Decode a `minecraft:select` property, checking registered decoders ahead of built-ins.
+    /// Returns `Ok(None)` only for an unregistered foreign property, which collapses to its
+    /// fallback.
+    fn decode_with(
+        m: &Map<String, Value>,
+        decoders: &ItemModelDecoders<'_>,
+    ) -> Result<Option<Self>> {
         let property = ident(required(m, "property")?)?;
-        if is_select_property(&property) {
-            return Ok(Self::Custom(property));
+        if let Some(load) = decoders.select_property
+            && let Some(bound) = load(&property, m).map_err(DecodeError)?
+        {
+            return Ok(Some(Self::Registered(bound)));
         }
-        Ok(match property.as_str() {
+        if foreign::is_foreign(&property) {
+            return Ok(None);
+        }
+        Ok(Some(match property.as_str() {
             "minecraft:custom_model_data" => {
                 Self::CustomModelData(get(m, "index").map_or(Ok(0), non_negative)?)
             }
@@ -874,12 +966,12 @@ impl SelectProperty {
             "minecraft:context_dimension" => Self::ContextDimension,
             "minecraft:component" => Self::Component(component_type(required(m, "component")?)?),
             _ => return Err(err("unknown select property")),
-        })
+        }))
     }
     /// A `when` value in canonical form (identifiers normalised).
     fn decode_value(&self, v: &Value) -> Result<Value> {
         Ok(match self {
-            Self::Custom(_)
+            Self::Registered(_)
             | Self::CustomModelData(_)
             | Self::BlockState(_)
             | Self::LocalTime { .. } => Value::String(string(v)?),
@@ -965,9 +1057,9 @@ impl PartialEq for NeedleState {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NumericProperty {
-    /// A property a native mod registered (`register_range_properties`), read through
-    /// [`ItemEnv::item_model_range_property`].
-    Custom(String),
+    /// A property bound by a registered range decoder (`register_range_select_item_model_property`),
+    /// read through [`ItemEnv::item_model_range_property`].
+    Registered(RegisteredRangeProperty),
     BundleFullness,
     Compass {
         wobble: bool,
@@ -994,13 +1086,23 @@ pub enum NumericProperty {
     },
 }
 impl NumericProperty {
-    fn decode(m: &Map<String, Value>) -> Result<Self> {
+    /// Decode a `minecraft:range_dispatch` property, checking registered decoders ahead of
+    /// built-ins. Returns `Ok(None)` only for an unregistered foreign property, which reads 0.
+    fn decode_with(
+        m: &Map<String, Value>,
+        decoders: &ItemModelDecoders<'_>,
+    ) -> Result<Option<Self>> {
         let normalize = || get(m, "normalize").map_or(Ok(true), boolean);
         let property = ident(required(m, "property")?)?;
-        if is_range_property(&property) {
-            return Ok(Self::Custom(property));
+        if let Some(load) = decoders.range_property
+            && let Some(bound) = load(&property, m).map_err(DecodeError)?
+        {
+            return Ok(Some(Self::Registered(bound)));
         }
-        Ok(match property.as_str() {
+        if foreign::is_foreign(&property) {
+            return Ok(None);
+        }
+        Ok(Some(match property.as_str() {
             "minecraft:custom_model_data" => {
                 Self::CustomModelData(get(m, "index").map_or(Ok(0), non_negative)?)
             }
@@ -1045,7 +1147,7 @@ impl NumericProperty {
                 normalize: normalize()?,
             },
             _ => return Err(err("unknown range dispatch property")),
-        })
+        }))
     }
 }
 
@@ -1175,23 +1277,27 @@ pub trait ItemEnv {
     fn item_model_property(&self, _property: &str, _stack: &StackView) -> bool {
         false
     }
-    /// A mod's registered numeric `range_dispatch` property, 0 when no mod answers.
-    fn item_model_range_property(&self, _property: &str, _stack: &StackView) -> f32 {
+    /// A mod's bound numeric `range_dispatch` property, 0 when no mod answers.
+    fn item_model_range_property(
+        &self,
+        _property: &RegisteredRangeProperty,
+        _stack: &StackView,
+        _ctx: &Context,
+    ) -> f32 {
         0.0
     }
-    /// A mod's registered categorical `select` property, `None` (the fallback) when no
+    /// A mod's bound categorical `select` property, `None` (the fallback) when no
     /// mod answers.
-    fn item_model_select_property(&self, _property: &str, _stack: &StackView) -> Option<String> {
+    fn item_model_select_property(
+        &self,
+        _property: &RegisteredSelectProperty,
+        _stack: &StackView,
+        _ctx: &Context,
+    ) -> Option<String> {
         None
     }
-    /// A mod's registered tint source for `stack`, with its entry in the model's `tints`:
-    /// ARGB, white when no mod answers.
-    fn item_tint_source(
-        &self,
-        _source: &str,
-        _config: &sunrise_core::nbt::Tag,
-        _stack: &StackView,
-    ) -> i32 {
+    /// A mod's bound tint source for `stack`: ARGB, white when no mod answers.
+    fn item_tint_source(&self, _source: &RegisteredTintSource, _stack: &StackView) -> i32 {
         -1
     }
     /// The fluid `stack` holds (`FluidUtil.getFirstStackContained`), or `None` when it
@@ -1207,13 +1313,12 @@ pub trait ItemEnv {
     fn fluid_appearance(&self, _fluid: &str) -> Option<FluidAppearance> {
         None
     }
-    /// A mod's registered node type for `stack`, with the node's object and the surroundings
-    /// `ItemModel.update` reads (`ctx`): push the layers to draw, in order, each naming one of the
-    /// node's `models`. None draw when no mod answers.
+    /// A mod's bound node type for `stack` and the surroundings `ItemModel.update` reads (`ctx`):
+    /// push the layers to draw, in order, each naming one of the node's `models`. None draw when
+    /// no mod answers.
     fn item_model_update(
         &self,
-        _kind: &str,
-        _config: &sunrise_core::nbt::Tag,
+        _model: &RegisteredItemModel,
         _stack: &StackView,
         _ctx: &Context,
         _layers: &mut Vec<ModelChoice>,
@@ -1659,14 +1764,13 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
                 ControlFlow::Continue(())
             }
             ItemModelNode::Registered {
-                kind,
+                model,
                 transformation,
-                config,
                 models,
             } => {
                 let mut drawn = Vec::new();
                 self.env
-                    .item_model_update(kind, config, self.stack, self.ctx, &mut drawn);
+                    .item_model_update(model, self.stack, self.ctx, &mut drawn);
                 let child = compose(parent, transformation);
                 for choice in &drawn {
                     if let Some((_, model)) = models.iter().find(|(key, _)| *key == choice.model) {
@@ -1827,9 +1931,9 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
     fn select_value(&self, property: &SelectProperty) -> Option<Value> {
         let owner = self.ctx.owner;
         match property {
-            SelectProperty::Custom(property) => self
+            SelectProperty::Registered(property) => self
                 .env
-                .item_model_select_property(property, self.stack)
+                .item_model_select_property(property, self.stack, self.ctx)
                 .map(Value::String),
             SelectProperty::CustomModelData(i) => self
                 .component("minecraft:custom_model_data")
@@ -1892,9 +1996,9 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
     fn numeric(&self, property: &NumericProperty) -> f32 {
         let owner = self.ctx.owner;
         match property {
-            NumericProperty::Custom(property) => {
-                self.env.item_model_range_property(property, self.stack)
-            }
+            NumericProperty::Registered(property) => self
+                .env
+                .item_model_range_property(property, self.stack, self.ctx),
             NumericProperty::BundleFullness => self
                 .env
                 .bundle_fullness(self.stack, &self.components.to_map()),
@@ -2105,7 +2209,7 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
                     .and_then(|o| o.team_color)
                     .unwrap_or(*default),
             ),
-            TintSource::Mod { id, config } => self.env.item_tint_source(id, config, self.stack),
+            TintSource::Registered(source) => self.env.item_tint_source(source, self.stack),
         }
     }
 }
