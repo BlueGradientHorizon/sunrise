@@ -66,8 +66,8 @@ At client startup, implement `Hooks::register_layer_definitions` and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
 The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
-inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
-ID outside the `minecraft` namespace.
+inputs, not the event or its registration context. Use an unused `<namespace>:<path>#<layer>`
+ID (built-in vanilla layers cannot be overwritten).
 
 The game calls each accepted supplier once when it freezes the layer table, in
 registration order. A duplicate ID does not run its supplier. The frozen table

@@ -471,7 +471,7 @@ pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std
     }
     let mut suppliers = Vec::new();
     Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-    sunrise_client::mobs::model_layers::register(suppliers);
+    sunrise_client::mobs::model_layers::register(suppliers, Some(vanilla_root));
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);

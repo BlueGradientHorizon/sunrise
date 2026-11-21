@@ -44,7 +44,7 @@ pub struct PartRegistrar {
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
     pub(crate) menu_screen_factories: HashMap<String, HashMap<usize, MenuScreenRegistration>>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
-    pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
+    pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, MenuSlotExclusion>>,
     /// Loading warnings for each owning mod, in registration order.
     pub(crate) warnings: Vec<(&'static str, Vec<crate::LoadingMessage>)>,
     pub(crate) recipe_book_types: HashMap<String, String>,
@@ -53,7 +53,7 @@ pub struct PartRegistrar {
     pub(crate) game_rule_categories: Vec<String>,
     pub(crate) game_rules: Vec<crate::GameRuleDecl>,
     pub(crate) attachment_uses: Vec<(String, String, String)>,
-    pub(crate) attachment_types: HashMap<String, HashMap<String, bool>>,
+    pub(crate) attachment_types: HashMap<String, HashMap<String, AttachmentTypeDeclaration>>,
     pub(crate) custom_stats: Vec<String>,
     /// The entity types each named to `entity_tick_each`, in order: `None` for every type.
     pub(crate) entity_tick_each: Vec<Option<String>>,

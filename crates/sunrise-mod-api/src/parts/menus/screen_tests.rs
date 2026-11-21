@@ -3,12 +3,20 @@ use super::*;
 #[test]
 fn a_second_factory_for_the_same_menu_and_owner_is_refused() {
     const CUSTOM: &str = "alpha:pack";
+    const FOREIGN_CUSTOM: &str = "shared:pack";
+    const MC_CUSTOM: &str = "minecraft:custom_pack";
     const STOCK: &str = "minecraft:hopper";
     let factory = || -> Arc<dyn crate::MenuScreenFactory> {
         Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
     };
     let mut registrar = PartRegistrar::new("alpha");
     assert!(registrar.register_menu_screen(CUSTOM, factory()).is_ok());
+    assert!(
+        registrar
+            .register_menu_screen(FOREIGN_CUSTOM, factory())
+            .is_ok()
+    );
+    assert!(registrar.register_menu_screen(MC_CUSTOM, factory()).is_ok());
     assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
     assert!(
         registrar
@@ -22,7 +30,13 @@ fn a_second_factory_for_the_same_menu_and_owner_is_refused() {
         registrar
             .register_menu_screen(CUSTOM, factory())
             .unwrap_err()
-            .contains("owned")
+            .contains("duplicate")
+    );
+    assert!(
+        registrar
+            .register_menu_screen(MC_CUSTOM, factory())
+            .unwrap_err()
+            .contains("duplicate")
     );
     assert!(registrar.register_menu_screen(STOCK, factory()).is_ok());
     let error = registrar
@@ -30,9 +44,17 @@ fn a_second_factory_for_the_same_menu_and_owner_is_refused() {
         .unwrap_err();
     assert!(error.contains("duplicate") && error.contains("beta") && error.contains(STOCK));
     assert_eq!(registrar.menu_screen_factories[CUSTOM].len(), 1);
+    assert_eq!(
+        registrar.menu_screen_factories[FOREIGN_CUSTOM][&0].owner,
+        "alpha"
+    );
+    assert_eq!(
+        registrar.menu_screen_factories[MC_CUSTOM][&0].owner,
+        "alpha"
+    );
     let stock = &registrar.menu_screen_factories[STOCK];
     assert_eq!((stock[&0].owner, stock[&1].owner), ("alpha", "beta"));
-    assert_eq!(registrar.refused.len(), 3);
+    assert_eq!(registrar.refused.len(), 4);
 }
 
 #[test]
@@ -53,7 +75,7 @@ fn constructing_or_requiring_a_menu_screen_requires_the_client() {
                     )
                     .unwrap(),
                 Self::Mask => r
-                    .menu_slot_exclusions("minecraft:hopper", Some("masked:machine"), &[4])
+                    .menu_slot_exclusions("minecraft:hopper", Some("other:machine"), &[4])
                     .unwrap(),
                 Self::NoScreen => {}
             }
@@ -75,6 +97,7 @@ fn constructing_or_requiring_a_menu_screen_requires_the_client() {
             crate::__private::client_requirement("masked").as_deref(),
             Some("excludes menu slots that require a client menu screen")
         );
+        assert_eq!(crate::__private::client_requirement("other"), None);
         assert_eq!(crate::__private::client_requirement("unrelated"), None);
     });
 }
@@ -103,7 +126,7 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     assert!(registrar.menu_slot_exclusions(STOCK, None, &[2]).is_err());
     assert!(
         registrar
-            .menu_slot_exclusions(STOCK, Some("beta:machine"), &[2])
+            .menu_slot_exclusions(STOCK, Some(BLOCK), &[2])
             .is_err()
     );
     assert!(
@@ -114,7 +137,7 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     registrar.mod_id = "beta";
     assert!(
         registrar
-            .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
+            .menu_slot_exclusions(MENU, Some(BLOCK), &[2])
             .is_err()
     );
     assert_eq!(registrar.menu_slot_exclusions, good);
@@ -125,6 +148,9 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     assert!(menu_slot_exclusions(MENU, None).is_empty());
 
     let mut registrar = declare();
+    registrar
+        .menu_slot_exclusions("minecraft:custom_pack", None, &[2])
+        .unwrap();
     let rollback = registrar.registration_checkpoint();
     registrar
         .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
@@ -134,6 +160,7 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     assert_eq!(menu_slot_exclusions(MENU, None), &[1, 3]);
     assert!(menu_slot_exclusions(MENU, Some(BLOCK)).is_empty());
     assert_eq!(menu_slot_exclusions(MENU, Some("beta:machine")), &[1, 3]);
+    assert_eq!(menu_slot_exclusions("minecraft:custom_pack", None), &[2]);
     assert_eq!(menu_slot_exclusions(STOCK, Some(BLOCK)), &[4]);
     assert!(menu_slot_exclusions(STOCK, Some("alpha:other")).is_empty());
     assert!(menu_slot_exclusions(STOCK, None).is_empty());

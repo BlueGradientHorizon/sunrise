@@ -1,6 +1,55 @@
 use super::*;
 use crate::client::menu_screen::OwnedMenuScreen;
 
+/// Built-in menu types from vanilla 26.3 `net.minecraft.world.inventory.MenuType`.
+const VANILLA_MENU_TYPES: &[&str] = &[
+    "minecraft:generic_9x1",
+    "minecraft:generic_9x2",
+    "minecraft:generic_9x3",
+    "minecraft:generic_9x4",
+    "minecraft:generic_9x5",
+    "minecraft:generic_9x6",
+    "minecraft:generic_3x3",
+    "minecraft:crafter_3x3",
+    "minecraft:anvil",
+    "minecraft:beacon",
+    "minecraft:blast_furnace",
+    "minecraft:brewing_stand",
+    "minecraft:crafting",
+    "minecraft:enchantment",
+    "minecraft:furnace",
+    "minecraft:grindstone",
+    "minecraft:hopper",
+    "minecraft:lectern",
+    "minecraft:loom",
+    "minecraft:merchant",
+    "minecraft:shulker_box",
+    "minecraft:smithing",
+    "minecraft:smoker",
+    "minecraft:cartography_table",
+    "minecraft:stonecutter",
+];
+
+/// Whether `menu` names one of vanilla 26.3's built-in `MenuType` entries.
+// hidden: engine/registrar menu classification; authors pass menu ids directly.
+#[doc(hidden)]
+pub fn is_vanilla_menu_type(menu: &str) -> bool {
+    VANILLA_MENU_TYPES.contains(&menu)
+}
+
+/// One registered permanent slot exclusion mask and its declaring mod.
+// hidden: engine staging; mods register masks through `MenusRegistrar::menu_slot_exclusions`.
+// exhaustive: engine-only staging carries the full owner and sorted slot indices.
+#[doc(hidden)]
+// no wire: process-local registration metadata with a static mod id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MenuSlotExclusion {
+    /// The package id that declared this exclusion mask.
+    pub owner: &'static str,
+    /// Sorted, deduplicated backing slot indices excluded from menu interaction.
+    pub slots: Box<[u16]>,
+}
+
 // no wire: frozen registration storage; each boundary value has its own Wire derive.
 #[derive(Clone)]
 pub(crate) struct MenuBookDeclaration {
@@ -26,11 +75,26 @@ fn menu_screen_factory(
     menu_owner: Option<&str>,
     opener: Option<&str>,
 ) -> Option<&'static MenuScreenRegistration> {
-    let rows = installed()?.menu_screen_factories.get(menu)?;
-    let index = match menu_owner {
-        Some(owner) => crate::__private::mod_index(owner)?,
-        None => crate::runtime::content_owner_index(opener?)?,
-    };
+    let installed = installed()?;
+    let rows = installed.menu_screen_factories.get(menu)?;
+    if let Some(owner) = menu_owner {
+        if let Some(index) = crate::__private::mod_index(owner)
+            && let Some(reg) = rows.get(&index)
+        {
+            return Some(reg);
+        }
+        return (!is_vanilla_menu_type(menu) && rows.len() == 1)
+            .then(|| rows.values().next())
+            .flatten();
+    }
+    let opener = opener?;
+    if let Some(index) = crate::runtime::content_owner_index(opener)
+        && let Some(reg) = rows.get(&index)
+    {
+        return Some(reg);
+    }
+    let owner = installed.menu_slot_exclusions.get(menu)?.get(opener)?.owner;
+    let index = crate::__private::mod_index(owner)?;
     rows.get(&index)
 }
 
@@ -71,37 +135,59 @@ impl HookParts {
         attached(&self.menus, id)
     }
     /// The menu's owner lookup: only the part whose package owns the menu type, or the block
-    /// opening a vanilla menu, receives callbacks. A bound recipe book keeps ownership with
-    /// its declaring mod.
+    /// opening a built-in vanilla menu, receives callbacks. A bound recipe book, a custom
+    /// menu screen factory, or an opener-scoped slot exclusion identifies its declaring mod
+    /// directly without inferring ownership from the key's namespace.
     pub(crate) fn menu_for_opener(
         &self,
         menu: &str,
         block: Option<&str>,
     ) -> &[Attached<dyn MenuPart>] {
         let parts = attached(&self.menus, || Some(menu));
-        let owner = crate::RecipeBookLayout::declaring_mod(menu);
-        let namespace = match owner {
-            Some(owner) => owner,
-            None if menu.starts_with("minecraft:") => {
-                let Some((namespace, _)) = block.and_then(|b| b.split_once(':')) else {
-                    return &[];
-                };
-                namespace
-            }
-            None => {
-                let Some((namespace, _)) = menu.split_once(':') else {
-                    return &[];
-                };
-                namespace
-            }
-        };
-        match parts
-            .iter()
-            .position(|p| owns_namespace(p.mod_id, namespace))
-        {
-            Some(i) => std::slice::from_ref(&parts[i]),
-            None => &[],
+        if parts.is_empty() {
+            return &[];
         }
+        let owner = crate::RecipeBookLayout::declaring_mod(menu)
+            .or_else(|| {
+                (!is_vanilla_menu_type(menu))
+                    .then(|| installed()?.menu_screen_factories.get(menu))
+                    .flatten()
+                    .filter(|rows| rows.len() == 1)
+                    .and_then(|rows| rows.values().next())
+                    .map(|reg| reg.owner)
+            })
+            .or_else(|| {
+                let block = block?;
+                installed()?
+                    .menu_slot_exclusions
+                    .get(menu)?
+                    .get(block)
+                    .map(|exclusion| exclusion.owner)
+            });
+        if let Some(owner) = owner {
+            return match parts.iter().position(|p| p.mod_id == owner) {
+                Some(i) => std::slice::from_ref(&parts[i]),
+                None => &[],
+            };
+        }
+        if is_vanilla_menu_type(menu) {
+            let Some(block) = block else {
+                return &[];
+            };
+            let Some(owner_index) = crate::runtime::content_owner_index(block) else {
+                return &[];
+            };
+            return match parts.iter().position(|p| p.mod_index == owner_index) {
+                Some(i) => std::slice::from_ref(&parts[i]),
+                None => &[],
+            };
+        }
+        if let Some(owner_index) = crate::runtime::content_owner_index(menu)
+            && let Some(i) = parts.iter().position(|p| p.mod_index == owner_index)
+        {
+            return std::slice::from_ref(&parts[i]);
+        }
+        parts
     }
 }
 
@@ -127,7 +213,7 @@ pub fn menu_slot_exclusions(menu: &str, block: Option<&str>) -> &'static [u16] {
     block
         .and_then(|block| scopes.get(block))
         .or_else(|| scopes.get(""))
-        .map_or(&[], |slots| slots.as_ref())
+        .map_or(&[], |exclusion| exclusion.slots.as_ref())
 }
 
 /// All permanent masks for a menu, including the default and each exact opener override.
@@ -139,10 +225,10 @@ pub fn menu_slot_exclusion_masks(
         .and_then(|installed| installed.menu_slot_exclusions.get(menu))
         .into_iter()
         .flatten()
-        .map(|(scope, slots)| {
+        .map(|(scope, exclusion)| {
             (
                 (!scope.is_empty()).then_some(scope.as_str()),
-                slots.as_ref(),
+                exclusion.slots.as_ref(),
             )
         })
 }
@@ -158,14 +244,16 @@ impl dyn Registrar + '_ {
 
 /// Registrar operations for menus.
 pub trait MenusRegistrar {
-    /// Register one client constructor for a namespaced menu type. A custom menu must
-    /// be in your namespace. For a stock menu, the constructor is called only when
-    /// a verified mod block owned by your package opens that menu.
+    /// Register one client constructor for a namespaced menu type. Any valid
+    /// namespaced custom menu accepts at most one factory; its declaring mod is
+    /// recorded directly without requiring namespace ownership. For a built-in
+    /// vanilla menu, each mod may register one constructor, called only when a
+    /// verified mod block opened for that mod triggers the menu.
     /// The factory builds a fresh screen on the client for each opening. The
     /// window owns its callbacks and local slot moves until close or replacement.
     /// If a custom menu or a stock opener with excluded slots lacks its factory,
     /// the client warns and leaves the current menu unchanged.
-    /// A duplicate or out-of-scope registration refuses installation, even if its
+    /// A duplicate or malformed registration refuses installation, even if its
     /// error is ignored. A package with a factory cannot declare `side = "server"`.
     fn register_menu_screen(
         &mut self,
@@ -175,12 +263,13 @@ pub trait MenusRegistrar {
 
     /// Exclude container backing indices from server pickup and quick-move and
     /// from the client layout. Indices stay in place; the player inventory is unaffected.
-    /// The owning mod of a custom `menu` may use `None` for its default or `Some(block)`
-    /// to replace it when that exact mod block's container opens this menu type.
-    /// For a stock menu, `block` must name an explicit mod block owned by the registrar.
-    /// Both IDs must be namespaced. Indices are sorted and deduplicated.
+    /// For a custom `menu`, use `None` for its default or `Some(block)` to replace it
+    /// when that exact mod block's container opens this menu type.
+    /// For a built-in vanilla menu, `block` must name an explicit non-built-in mod block.
+    /// Both IDs must be namespaced; declaring-mod attribution is recorded directly rather
+    /// than inferred from either key's namespace. Indices are sorted and deduplicated.
     /// An empty slice is an explicit empty mask.
-    /// A duplicate or out-of-scope declaration refuses installation even if the error
+    /// A duplicate or invalid declaration refuses installation even if the error
     /// is ignored. An index outside the actual container backing refuses the open.
     /// Screen layouts leave these positions empty, without renumbering later slots.
     /// Local hides never change this mask or server-side slot validation.
@@ -191,9 +280,10 @@ pub trait MenusRegistrar {
         excluded: &[u16],
     ) -> Result<(), String>;
 
-    /// Declare this menu's book, authoritative recipe type and destination roles.
-    /// The menu remains content-owned; loading checks these roles against its
-    /// actual container slots, crafting declaration and every permanent mask
+    /// Declare this custom menu's book, authoritative recipe type and destination roles.
+    /// Any valid namespaced non-built-in menu id is accepted and attributed to the
+    /// declaring mod. The menu remains content-owned; loading checks these roles against
+    /// its actual container slots, crafting declaration and every permanent mask
     /// declared with [`Self::menu_slot_exclusions`].
     /// To show this menu, register a factory with [`Self::register_menu_screen`]
     /// whose layout sets [`crate::MenuScreenLayout::recipe_book`] to this `book`.
@@ -201,7 +291,7 @@ pub trait MenusRegistrar {
     /// menu opens and validates geometry when the factory constructs the screen. The
     /// declaring mod owns the screen's presentation callbacks and slot controls.
     /// This does not turn display candidates into ingredient predicates.
-    /// Invalid ownership, unknown books, duplicate menus or malformed roles
+    /// Built-in menus, unknown books, duplicate menus or malformed roles
     /// refuse installation, even when the caller ignores the error.
     fn menu_recipe_book(
         &mut self,
@@ -212,4 +302,18 @@ pub trait MenusRegistrar {
     ) -> Result<(), String>;
     /// Attach `part`, of kind `kind`, to the menu type `menu`.
     fn attach_menu_part(&mut self, menu: &str, kind: &'static str, part: Arc<dyn MenuPart>);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vanilla_menu_list_matches_stock_menus_not_custom_minecraft_ids() {
+        assert!(is_vanilla_menu_type("minecraft:hopper"));
+        assert!(is_vanilla_menu_type("minecraft:generic_9x6"));
+        assert!(is_vanilla_menu_type("minecraft:stonecutter"));
+        assert!(!is_vanilla_menu_type("minecraft:custom_machine"));
+        assert!(!is_vanilla_menu_type("demo:hopper"));
+    }
 }

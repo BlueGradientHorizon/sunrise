@@ -16,7 +16,7 @@ pub struct DebugEntry {
 }
 
 impl DebugEntry {
-    /// Declare a text entry under a non-vanilla `<namespace>:<path>` such as `mymod:tick_cost`.
+    /// Declare a text entry under an unused `<namespace>:<path>` such as `mymod:tick_cost`.
     /// The client retains `lines` for the session and calls it as the registering mod only
     /// while the entry is visible. Append lines to the supplied vector; legacy colour codes (§)
     /// work. Appending nothing leaves the group unchanged. Disabled owners are skipped;
@@ -32,7 +32,7 @@ impl DebugEntry {
         }
     }
 
-    /// Declare a renderer toggle under the same non-vanilla `<namespace>:<path>` as the
+    /// Declare a renderer toggle under the same unused `<namespace>:<path>` as the
     /// corresponding [`DebugRenderer`]. A toggle has no text group or line callback.
     pub fn renderer(id: String) -> Self {
         Self { id, text: None }

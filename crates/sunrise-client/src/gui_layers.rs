@@ -140,10 +140,8 @@ impl GuiLayerRegistrar for GuiLayers {
         placement: GuiLayerPlacement,
         draw: Box<GuiLayerDraw>,
     ) -> bool {
-        if Identifier::parse_namespaced(&id).is_none_or(|id| id.namespace() == "minecraft") {
-            log::warn!(
-                "HUD layer {id:?} must be <namespace>:<path> outside the minecraft namespace"
-            );
+        if Identifier::parse_namespaced(&id).is_none() {
+            log::warn!("HUD layer {id:?} must be <namespace>:<path>");
             return false;
         }
         let position = |key: &str| self.slots.iter().position(|slot| slot.id() == key);
@@ -331,7 +329,7 @@ mod tests {
         let mut layers = GuiLayers::default();
         for (id, placement, accepted) in [
             ("minecraft:hotbar", AboveAll, false),
-            ("minecraft:mine", AboveAll, false),
+            ("minecraft:mine", AboveAll, true),
             ("no_namespace", AboveAll, false),
             ("compass:bad space", AboveAll, false),
             ("compass:bar", AboveAll, true),
@@ -359,10 +357,18 @@ mod tests {
             .filter(|slot| slot.vanilla_anchor().is_none())
             .map(GuiLayerSlot::id)
             .collect();
-        assert_eq!(mods, ["compass:bar", "compass:early", "compass:late"]);
+        assert_eq!(
+            mods,
+            [
+                "minecraft:mine",
+                "compass:bar",
+                "compass:early",
+                "compass:late"
+            ]
+        );
         assert_eq!(
             order.slots()[VanillaGuiLayer::ALL.len()].id(),
-            "compass:bar"
+            "minecraft:mine"
         );
     }
 

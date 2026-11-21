@@ -7,6 +7,13 @@ mod book_tests;
 #[path = "menus/screen_tests.rs"]
 mod screen_tests;
 
+impl PartRegistrar {
+    fn is_builtin_menu(&self, menu: &str) -> bool {
+        mod_vocab::__private::is_vanilla_menu_type(menu)
+            || self.has_builtin_entry("minecraft:menu", menu)
+    }
+}
+
 impl MenusRegistrar for PartRegistrar {
     fn register_menu_screen(
         &mut self,
@@ -17,12 +24,9 @@ impl MenusRegistrar for PartRegistrar {
             if mod_vocab::__private::parts_installation::parts_installed() {
                 return Err("registry is frozen");
             }
-            let id = crate::Identifier::parse_namespaced(menu)
+            crate::Identifier::parse_namespaced(menu)
                 .ok_or("menu must be a namespaced identifier")?;
-            let stock = id.namespace() == "minecraft";
-            if !stock && !owns_namespace(self.mod_id, id.namespace()) {
-                return Err("the custom menu must be owned by the registering mod");
-            }
+            let stock = self.is_builtin_menu(menu);
             let rows = self.menu_screen_factories.entry(menu.into()).or_default();
             if (!stock && !rows.is_empty()) || rows.contains_key(&self.mod_index) {
                 return Err("duplicate menu screen factory");
@@ -55,26 +59,17 @@ impl MenusRegistrar for PartRegistrar {
             if mod_vocab::__private::parts_installation::parts_installed() {
                 return Err("registry is frozen");
             }
-            let menu_id = crate::Identifier::parse_namespaced(menu)
+            crate::Identifier::parse_namespaced(menu)
                 .ok_or("menu must be a namespaced identifier")?;
-            let block_id = block
-                .map(|block| {
-                    crate::Identifier::parse_namespaced(block)
-                        .filter(|id| id.namespace() != "minecraft")
-                        .ok_or("opener must be a namespaced mod block identifier")
-                })
-                .transpose()?;
-            if menu_id.namespace() == "minecraft" {
-                if !block_id
-                    .as_ref()
-                    .is_some_and(|id| owns_namespace(self.mod_id, id.namespace()))
-                {
-                    return Err(
-                        "a stock menu requires an opener block owned by the registering mod",
-                    );
+            if let Some(block) = block {
+                crate::Identifier::parse_namespaced(block)
+                    .ok_or("opener must be a namespaced mod block identifier")?;
+                if self.has_builtin_entry("minecraft:block", block) {
+                    return Err("opener must be a mod block, not a built-in block");
                 }
-            } else if !owns_namespace(self.mod_id, menu_id.namespace()) {
-                return Err("the custom menu must be owned by the registering mod");
+            }
+            if self.is_builtin_menu(menu) && block.is_none() {
+                return Err("a stock menu requires an explicit opener block");
             }
             let scopes = self.menu_slot_exclusions.entry(menu.into()).or_default();
             let scope = block.unwrap_or_default();
@@ -84,7 +79,13 @@ impl MenusRegistrar for PartRegistrar {
             let mut excluded = excluded.to_vec();
             excluded.sort_unstable();
             excluded.dedup();
-            scopes.insert(scope.into(), excluded.into_boxed_slice());
+            scopes.insert(
+                scope.into(),
+                MenuSlotExclusion {
+                    owner: self.mod_id,
+                    slots: excluded.into_boxed_slice(),
+                },
+            );
             Ok(())
         })();
         result.map_err(|reason| {
@@ -108,12 +109,10 @@ impl MenusRegistrar for PartRegistrar {
             if mod_vocab::__private::parts_installation::parts_installed() {
                 return Err("registry is frozen".into());
             }
-            let menu_id =
-                crate::Identifier::parse(menu).map_err(|e| format!("invalid menu: {e:?}"))?;
-            if !menu.contains(':') || !owns_namespace(self.mod_id, menu_id.namespace()) {
-                return Err(
-                    "menu namespace must be explicit and owned by the registering mod".into(),
-                );
+            crate::Identifier::parse_namespaced(menu)
+                .ok_or_else(|| "menu must be a namespaced identifier".to_owned())?;
+            if self.is_builtin_menu(menu) {
+                return Err("cannot bind a recipe book to a built-in menu".into());
             }
             if !self.recipe_book_types.contains_key(book.as_str()) {
                 return Err(format!("unknown recipe book {}", book.as_str()));
@@ -121,11 +120,8 @@ impl MenusRegistrar for PartRegistrar {
             if self.menu_recipe_books.contains_key(menu) {
                 return Err("duplicate menu recipe book".into());
             }
-            crate::Identifier::parse(recipe_type)
-                .map_err(|e| format!("invalid recipe type: {e:?}"))?;
-            if !recipe_type.contains(':') {
-                return Err("explicit recipe type namespace required".into());
-            }
+            crate::Identifier::parse_namespaced(recipe_type)
+                .ok_or_else(|| "recipe type must be a namespaced identifier".to_owned())?;
             layout.validate(256)?;
             self.menu_recipe_books.insert(
                 menu.into(),

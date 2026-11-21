@@ -380,10 +380,11 @@ r.register_menu_screen("mymod:backpack", Arc::new(
 
 `open.menu` names the active type; `open.block` is the verified mod block whose container opened
 it, or `None` without a matching block. This lets one constructor handle different openers
-without retaining the borrowed context. For a stock menu, only the factory registered by the
-actual mod block's owner runs. An ordinary vanilla opener keeps its usual screen. Two mods can
-register for the same stock menu; a second registration by the same mod is refused. A custom
-menu accepts a factory only from its owner.
+without retaining the borrowed context. For a built-in vanilla menu, only the factory registered
+by the mod associated with the actual opener runs. An ordinary vanilla opener keeps its usual
+screen. Two mods can register for the same built-in vanilla menu; a second registration by the
+same mod is refused. A custom menu (any valid namespaced ID other than vanilla's built-in menu
+types) accepts at most one factory, attributed to the declaring mod regardless of namespace.
 
 Add only the callbacks the new screen uses: `with_draw(|host, frame, draw| ...)`,
 `with_click(|host, frame, right| ...)` and `with_tooltip(|host, frame, slot, lines| ...)`.
@@ -435,9 +436,10 @@ fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
 }
 ```
 
-A stock type requires an explicit opener block you own. For a custom menu type you own,
+A built-in vanilla menu requires an explicit non-built-in opener block. For a custom menu type,
 use `None` for the default and `Some("namespace:block")` to replace it for that exact
 block when its container opens the type. Use `&[]` for an override with no exclusions.
+Declaring-mod attribution is recorded directly rather than inferred from the menu or block namespace.
 If an old layout used `None` or omitted trailing slots to exclude them, move those
 original indices into the registration mask. A permanently excluded slot stays indexed
 but takes no server clicks or quick-move. Give every other slot geometry at its original

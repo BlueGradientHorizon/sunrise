@@ -185,20 +185,10 @@ pub fn client_requirement(id: &str) -> Option<String> {
     {
         return Some("binds a recipe book that requires a client menu screen".into());
     }
-    if installed.menu_slot_exclusions.iter().any(|(menu, scopes)| {
-        scopes.iter().any(|(opener, slots)| {
-            if slots.is_empty() {
-                return false;
-            }
-            let scope = if menu.starts_with("minecraft:") {
-                opener
-            } else {
-                menu
-            };
-            scope
-                .split_once(':')
-                .is_some_and(|(namespace, _)| crate::parts::owns_namespace(id, namespace))
-        })
+    if installed.menu_slot_exclusions.values().any(|scopes| {
+        scopes
+            .values()
+            .any(|exclusion| exclusion.owner == id && !exclusion.slots.is_empty())
     }) {
         return Some("excludes menu slots that require a client menu screen".into());
     }
@@ -207,14 +197,18 @@ pub fn client_requirement(id: &str) -> Option<String> {
             "attaches the part {part}, which listens to the client hook {hook}"
         ));
     }
-    if let Some(types) = installed.attachment_types.get(id)
-        && let Some(name) = types
-            .iter()
-            .filter(|(_, sync)| **sync)
-            .map(|(name, _)| name)
-            .min()
+    if let Some((namespace, name)) = installed
+        .attachment_types
+        .iter()
+        .flat_map(|(namespace, types)| {
+            types
+                .iter()
+                .filter(|(_, decl)| decl.owner == id && decl.sync)
+                .map(move |(name, _)| (namespace.as_str(), name.as_str()))
+        })
+        .min()
     {
-        return Some(format!("declares the synced attachment {id}:{name}"));
+        return Some(format!("declares the synced attachment {namespace}:{name}"));
     }
     let channel = installed.keys.payloads.as_ref()?.client_bound(id)?;
     Some(format!("sends the required payload {channel} to clients"))

@@ -15,8 +15,9 @@ with a namespaced ID, a `GuiLayerPlacement` and an owned draw callback. The four
 are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, `registerBelow`,
 `registerAbove` and `registerAboveAll`. `Below` and `Above` name a vanilla layer (the IDs
 `Hooks::gui_layer_pre` lists) or a layer already registered. Calls take effect in order, in mod
-load order. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
-refused. The client calls each installed callback as the mod that registered it.
+load order. Invalid or duplicate IDs (including built-in vanilla layer IDs) and unknown relative
+anchors are logged and refused. The client calls each installed callback as the mod that
+registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
@@ -37,7 +38,7 @@ pass regardless of F1 uses `Hooks::gui_render_post`."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         context = "registration",
         neoforge = "RegisterGuiLayersEvent"

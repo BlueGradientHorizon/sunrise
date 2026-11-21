@@ -12,7 +12,7 @@ pub trait Hooks {
 `EntityRenderersEvent.RegisterLayerDefinitions`. It receives a `RegistrationContext` once at
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
-IDs have the form `<namespace>:<path>#<layer>`; malformed IDs and the `minecraft` namespace
+IDs have the form `<namespace>:<path>#<layer>`; malformed IDs and built-in vanilla layer IDs
 are logged and dropped. The first valid registration for an ID wins.
 
 The game calls accepted suppliers in registration order when assembling the frozen layer table.
@@ -48,7 +48,7 @@ The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions",
-        version = 2
+        version = 3
     )]
     fn register_layer_definitions(layers: &mut Vec<Answered<LayerDefinitionRegistration>>);
 }

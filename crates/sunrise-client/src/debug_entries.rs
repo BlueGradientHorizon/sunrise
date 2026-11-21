@@ -202,8 +202,8 @@ pub struct ActiveDebugRenderer {
 static REGISTERED: OnceLock<Arc<[RegisteredDebugEntry]>> = OnceLock::new();
 
 /// Keeps the entries native mods registered, once at start. One whose id is not
-/// `<namespace>:<path>` in a namespace other than vanilla's, or that another entry has
-/// already, is logged and left out.
+/// `<namespace>:<path>`, collides with a built-in vanilla entry, or duplicates an
+/// earlier registration is logged and left out.
 pub fn register(entries: Vec<Answered<DebugEntry>>) {
     if REGISTERED.set(collect_registrations(entries)).is_err() {
         log::warn!("debug entries were registered already; these are left out");
@@ -228,9 +228,17 @@ fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<Regis
     let mut kept: Vec<RegisteredDebugEntry> = Vec::new();
     for registered in entries {
         let id = registered.entry.id();
-        if Identifier::parse_namespaced(id).is_none_or(|id| id.namespace() == "minecraft") {
+        if Identifier::parse_namespaced(id).is_none() {
             log::warn!(
-                "{}: debug entry {id:?} must be <namespace>:<path> outside the minecraft namespace",
+                "{}: debug entry {id:?} must be <namespace>:<path>",
+                registered.owner.id()
+            );
+        } else if id
+            .strip_prefix("minecraft:")
+            .is_some_and(|path| ENTRIES.iter().any(|vanilla| vanilla.path == path))
+        {
+            log::warn!(
+                "{}: debug entry {id} is a built-in vanilla entry; left out",
                 registered.owner.id()
             );
         } else if kept.iter().any(|k| k.entry.id() == id) {
@@ -268,9 +276,9 @@ fn all<'a>(registered: &'a [RegisteredDebugEntry]) -> impl Iterator<Item = Entry
         .chain(registered.iter().map(as_entry))
 }
 
-/// `DebugScreenEntries.getEntry` by path.
+/// `DebugScreenEntries.getEntry` by path or namespaced identifier.
 fn entry<'a>(registered: &'a [RegisteredDebugEntry], path: &str) -> Option<Entry<'a>> {
-    all(registered).find(|e| e.path == path)
+    all(registered).find(|e| e.path == path || path.strip_prefix("minecraft:") == Some(e.path))
 }
 
 /// `DebugOptionsScreen.OptionList.updateSearch`: the entries whose path
@@ -564,8 +572,7 @@ impl DebugEntries {
     ) -> bool {
         self.statuses
             .keys()
-            .map(|id| id.strip_prefix("minecraft:").unwrap_or(id))
-            .any(|path| self.enabled(registered, path, overlay, reduced))
+            .any(|id| self.enabled(registered, id, overlay, reduced))
     }
 }
 
@@ -732,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn a_native_mods_entries_need_their_own_namespace_and_a_free_id() {
+    fn a_native_mods_entries_need_a_valid_non_builtin_free_id() {
         let kept = checked([
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
@@ -741,6 +748,10 @@ mod tests {
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
                 entry: DebugEntry::renderer("minecraft:fps".into()),
+            },
+            RegisteredDebugEntry {
+                owner: CallbackOwner::for_mod("mymod"),
+                entry: DebugEntry::renderer("minecraft:custom_metric".into()),
             },
             RegisteredDebugEntry {
                 owner: CallbackOwner::for_mod("mymod"),
@@ -760,12 +771,20 @@ mod tests {
             },
         ]);
         let ids: Vec<&str> = kept.iter().map(|e| e.entry.id()).collect();
-        assert_eq!(ids, ["mymod:tick_cost", "other:queue"]);
+        assert_eq!(
+            ids,
+            ["mymod:tick_cost", "minecraft:custom_metric", "other:queue"]
+        );
         assert_eq!(kept[0].owner.id(), "mymod");
+        assert_eq!(kept[1].owner.id(), "mymod");
         assert_eq!(
             kept[0].entry.text_lines().map(|(group, _)| group),
             Some(DebugGroup::Memory)
         );
+        let mut selection = DebugEntries::default();
+        selection.set_status("minecraft:custom_metric", Status::AlwaysOn);
+        assert!(selection.enabled(&kept, "minecraft:custom_metric", false, false));
+        assert!(selection.any_enabled(&kept, false, false));
     }
 
     #[test]

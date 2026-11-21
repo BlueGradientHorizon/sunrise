@@ -12,9 +12,10 @@ F3 off. F1 hides the overlay unless a screen is open. The read is available only
 
 In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box::new(draw))` on the
 `GuiLayerRegistrar`. Registration runs once at client startup.
-Use your own namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
+Use any unused namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
 below or above a vanilla anchor or a layer already registered. The client logs and refuses
-invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it installed the layer.
+invalid IDs, duplicate IDs (including built-in vanilla layer IDs) and unknown anchors; `register`
+returns whether it installed the layer.
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
@@ -71,9 +72,9 @@ pixels from the bottom. A mod that needs to move either can cancel and redraw it
 ## Registering F3 text
 
 Push a `DebugEntry::text(id, group, lines)` in `Hooks::register_debug_entries` at client
-startup. Use a non-vanilla namespaced ID, which also identifies the entry in the debug options
-and saved profile. The group says which vanilla lines yours join; the closure receives the
-current client host and appends to the entry's lines.
+startup. Use any unused namespaced ID (including non-vanilla `minecraft:` keys), which also
+identifies the entry in the debug options and saved profile. The group says which vanilla lines
+yours join; the closure receives the current client host and appends to the entry's lines.
 
 ```rust,ignore
 use mod_api::{DebugEntry, DebugGroup, RegisterDebugEntriesEvent, RegistrationContext};

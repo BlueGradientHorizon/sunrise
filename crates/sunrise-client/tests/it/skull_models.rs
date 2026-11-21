@@ -43,14 +43,6 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
             });
         }
     }
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("skulltest", Box::new(Goblin))].into(),
-        || {
-            let mut layers = Vec::new();
-            mod_api::dispatch_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-            model_layers::register(layers);
-        },
-    );
     // A vanilla layer, read from `entity-models.json` under the vanilla root.
     let vanilla_root = std::env::temp_dir().join(format!("skull-models-{}", std::process::id()));
     std::fs::create_dir_all(&vanilla_root).unwrap();
@@ -60,6 +52,14 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
             {"head": {"pose": [0,2,0,0,0,0,1,1,1], "polygons": [[[0,0,0,0,0],[1,0,0,1,0],[1,1,0,1,1],[0,1,0,0,1]]]}}}}"#,
     )
     .unwrap();
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("skulltest", Box::new(Goblin))].into(),
+        || {
+            let mut layers = Vec::new();
+            mod_api::dispatch_register_layer_definitions(&RegistrationContext::new(), &mut layers);
+            model_layers::register(layers, Some(&vanilla_root));
+        },
+    );
     let kept = skull_models::register(
         vec![
             skull(

@@ -4,8 +4,9 @@ pub trait Hooks {
     /// Register the mod's own render pipelines, once at client startup (NeoForge's
     /// `RegisterRenderPipelinesEvent`; 1.21.1 mods used `RegisterShadersEvent`): call
     /// `event.register(pipeline)` with each [`RenderPipeline`]. The game builds them with its own
-    /// at startup and again on every resource reload. An id outside the mod's namespaces or one
-    /// already registered is logged with the mod and dropped. A required pipeline whose shader
+    /// at startup and again on every resource reload. Any unused [`Identifier`] is accepted and
+    /// attributed to the submitting mod; one already registered is logged with the mod and
+    /// dropped. A required pipeline whose shader
     /// is missing or doesn't build fails the load: the game does not start, and a reload fails
     /// and keeps the previous resources. An [optional](RenderPipeline::optional()) one is
     /// logged and resolves to [`RenderPipelineError::Invalid`].
@@ -78,7 +79,7 @@ game reaches."#]
         collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
         context = "registration",
         neoforge = "RegisterRenderPipelinesEvent",
-        version = 2
+        version = 3
     )]
     fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
 }
