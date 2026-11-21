@@ -201,15 +201,22 @@ impl Default for ResourceSource {
     }
 }
 
-/// `name` from the highest-priority source that supplies it, read when the
-/// whole resource fits `max` bytes. Sources are ordered lowest priority first,
-/// as vanilla's `MultiPackResourceManager` lists a pack stack: a later source
-/// overrides an earlier one. None when no source has the file, the winning
-/// source cannot read it, or it is larger than `max` (a lower source's copy is
-/// not substituted for an oversized winner).
-pub fn read_winning_resource(sources: &[&ResourceSource], name: &str, max: u64) -> Option<Vec<u8>> {
-    let winner = sources.iter().rev().find(|source| source.contains(name))?;
-    winner.read_limited(name, max).ok()
+/// Open `name` from the first source that supplies it, in highest-first priority
+/// order. As in vanilla's `FallbackResourceManager`, an I/O error from the winner
+/// is not a reason to try a lower layer.
+pub fn open_winning_resource<'a>(
+    sources: impl IntoIterator<Item = &'a ResourceSource>,
+    name: &str,
+) -> io::Result<Option<Box<dyn io::Read + 'a>>> {
+    if !stays_inside(name) {
+        return Ok(None);
+    }
+    for source in sources {
+        if let Some(reader) = source.open_resource(name)? {
+            return Ok(Some(reader));
+        }
+    }
+    Ok(None)
 }
 
 /// A resource name cannot escape its layer. ZIP names already have separators
@@ -433,6 +440,35 @@ impl ResourceSource {
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
                 .read(),
+        }
+    }
+    /// Open a validated resource path without loading its contents. Prefixes are
+    /// validated at construction; indexed paths may come from a different layer.
+    fn open_resource(&self, name: &str) -> io::Result<Option<Box<dyn io::Read + '_>>> {
+        match self.0.as_ref() {
+            Storage::Directory(root) => {
+                sunrise_core::prepared_files::open_resource(&root.join(name))
+            }
+            Storage::Archive(archive) => archive.open_entry(name),
+            Storage::Prefix { source, prefix } => source.open_resource(&format!("{prefix}{name}")),
+            Storage::Index(files, ..) => match files.get(name).map(|file| &file.0) {
+                Some(ResourceStorage::Bytes(bytes)) => Ok(Some(Box::new(bytes.as_ref()))),
+                Some(ResourceStorage::File { source, name }) => {
+                    if !stays_inside(name) {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "unsafe indexed resource name",
+                        ));
+                    }
+                    // The index already chose this source; a deleted file is an I/O
+                    // error, not an absent entry that would reveal a lower layer.
+                    let reader = source
+                        .open_resource(name)?
+                        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?;
+                    Ok(Some(reader))
+                }
+                None => Ok(None),
+            },
         }
     }
     /// The folder that supplies `name`, following an index to the layer its
@@ -708,7 +744,7 @@ impl ResourceSource {
 mod tests {
     use super::*;
     use std::{
-        io::Write,
+        io::{Read, Seek, SeekFrom, Write},
         sync::atomic::{AtomicU64, Ordering},
     };
 
@@ -955,6 +991,14 @@ mod tests {
         assert!(source.contains(sound));
         assert_eq!(source.read_limited(image, 5).unwrap(), b"image");
         assert_eq!(source.read_limited(sound, 5).unwrap(), b"sound");
+        fs::write(fixture.0.join(image), b"not in the prepared generation").unwrap();
+        let mut bytes = Vec::new();
+        open_winning_resource([&source], image)
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"image");
         assert!(!source.contains("assets/demo/textures/added.png"));
         assert!(!source.contains("assets/demo/textures"));
         assert!(
@@ -965,65 +1009,101 @@ mod tests {
     }
 
     #[test]
-    fn winning_resource_takes_the_last_layer_with_a_bounded_read() {
+    fn winning_resource_opens_the_highest_layer_without_masking_errors() {
+        let fixture = Fixture::new();
+        let name = "data/demo/config.json";
+        let broken_name = "data/demo/broken.json";
         let base = ResourceSource::indexed(BTreeMap::from([
+            (name.to_owned(), Resource::bytes(b"base".to_vec())),
+            (broken_name.to_owned(), Resource::bytes(b"backup".to_vec())),
+        ]));
+        let pack = ResourceSource::indexed(BTreeMap::from([
+            (name.to_owned(), Resource::bytes(b"pack".to_vec())),
             (
-                "data/demo/config.json".to_owned(),
-                Resource::bytes(b"base".to_vec()),
-            ),
-            (
-                "data/demo/only-base.json".to_owned(),
-                Resource::bytes(b"base-only".to_vec()),
+                broken_name.to_owned(),
+                Resource::file(
+                    ResourceSource::directory(fixture.0.clone()),
+                    broken_name.to_owned(),
+                ),
             ),
         ]));
-        let pack = ResourceSource::indexed(BTreeMap::from([(
-            "data/demo/config.json".to_owned(),
-            Resource::bytes(b"pack".to_vec()),
-        )]));
-        let empty = ResourceSource::default();
-        let sources = [&base, &empty, &pack];
-        assert_eq!(
-            read_winning_resource(&sources, "data/demo/config.json", 64),
-            Some(b"pack".to_vec())
+        let sources = [&pack, &base];
+        let mut bytes = Vec::new();
+        open_winning_resource(sources, name)
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"pack");
+        assert!(
+            open_winning_resource(sources, "data/demo/missing.json")
+                .unwrap()
+                .is_none()
         );
-        assert_eq!(
-            read_winning_resource(&sources, "data/demo/only-base.json", 64),
-            Some(b"base-only".to_vec())
+        assert!(matches!(
+            open_winning_resource(sources, broken_name),
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+        ));
+        assert!(
+            open_winning_resource(sources, "../data/demo/config.json")
+                .unwrap()
+                .is_none()
         );
+    }
+
+    #[test]
+    fn resource_reader_streams_past_the_old_limit() {
+        let fixture = Fixture::new();
+        let name = "data/demo/large.bin";
+        let path = fixture.0.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let old_limit = 64 * 1024 * 1024;
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(b"start").unwrap();
+        file.seek(SeekFrom::Start(old_limit)).unwrap();
+        file.write_all(b"end").unwrap();
+        drop(file);
+        let source = ResourceSource::directory(fixture.0.clone());
+
+        let mut reader = open_winning_resource([&source], name).unwrap().unwrap();
+        let mut marker = [0; 5];
+        reader.read_exact(&mut marker).unwrap();
+        assert_eq!(&marker, b"start");
         assert_eq!(
-            read_winning_resource(&sources, "data/demo/missing.json", 64),
-            None
+            io::copy(&mut reader.by_ref().take(old_limit - 5), &mut io::sink()).unwrap(),
+            old_limit - 5
         );
-        // The winning layer is too large: the lower layer's smaller copy is not used.
-        assert_eq!(
-            read_winning_resource(&sources, "data/demo/config.json", 3),
-            None
-        );
-        assert_eq!(
-            read_winning_resource(&sources, "../data/demo/config.json", 64),
-            None
-        );
+        let mut tail = Vec::new();
+        reader.read_to_end(&mut tail).unwrap();
+        assert_eq!(tail, b"end");
     }
 
     #[test]
     fn reload_opens_new_bytes_and_existing_readers_keep_their_snapshot() {
         let fixture = Fixture::new();
-        let path = fixture.archive("pack.jar", &[("assets/demo/value.txt", b"before")]);
+        let name = "assets/demo/value.txt";
+        let path = fixture.archive("pack.jar", &[(name, b"before")]);
         let before = ResourceSource::archive(&path).unwrap();
         let shared = before.clone();
+        let mut reader = open_winning_resource([&before], name).unwrap().unwrap();
         let replacement = fixture.archive(
             "new.jar",
-            &[
-                ("assets/demo/value.txt", b"after"),
-                ("data/demo/new.json", b"new"),
-            ],
+            &[(name, b"after"), ("data/demo/new.json", b"new")],
         );
         fs::rename(&path, fixture.0.join("old.jar")).unwrap();
         fs::rename(replacement, &path).unwrap();
         let after = ResourceSource::archive(&path).unwrap();
-        assert_eq!(before.read("assets/demo/value.txt").unwrap(), b"before");
-        assert_eq!(shared.read("assets/demo/value.txt").unwrap(), b"before");
-        assert_eq!(after.read("assets/demo/value.txt").unwrap(), b"after");
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"before");
+        assert_eq!(shared.read(name).unwrap(), b"before");
+        bytes.clear();
+        open_winning_resource([&after], name)
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"after");
         assert!(before.list("data/").is_empty());
         assert_eq!(after.list("data/"), ["data/demo/new.json"]);
         assert!(!fixture.0.join("assets").exists());

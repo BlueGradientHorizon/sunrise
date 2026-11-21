@@ -1,0 +1,9 @@
+ids = [
+    "method:prelude::ResourcesHost::resource",
+    "method:prelude::ResourcesHost::open_resource",
+    "type:ResourceOpenError",
+    "type:ResourceOpenError.Unavailable",
+    "type:ResourceOpenError.Io",
+]
+why = "Vanilla ResourceManager.getResource (FallbackResourceManager.getResource) selects the winning pack before Resource.open asks its IoSupplier for a stream; NeoForge JarContentsPackResources.getResource also opens the selected entry lazily. The native API no longer allocates the entire file on lookup, imposes the former guest reply limit MAX_RESOURCE_BYTES, or conflates I/O failure with absence."
+migrate = "Replace host.resource(pack_type, &id) with host.open_resource(pack_type, &id). Handle Err(ResourceOpenError) separately from Ok(None). Use the reader in Ok(Some(reader)) with std::io::Read while the host is borrowed; for the old owned result, use let mut bytes = Vec::new(); reader.read_to_end(&mut bytes)?; and handle read errors. Remove MAX_RESOURCE_BYTES imports and checks; apply any required limits in your own decoder."

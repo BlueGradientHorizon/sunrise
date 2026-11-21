@@ -2,10 +2,40 @@
 //! and reload listeners (`AddPackFindersEvent`).
 use crate::{Identifier, Text};
 
-/// The largest resource [`ResourcesHost::resource`](crate::prelude::ResourcesHost::resource)
-/// returns, in bytes. A larger winning file reads as `None` rather than as a
-/// truncated or unbounded value.
-pub const MAX_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
+// no wire: native I/O errors stay in the calling process.
+/// Failure to open a pack resource. A missing resource is `Ok(None)`, not an error.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ResourceOpenError {
+    /// The current mod phase cannot access the published pack stack.
+    Unavailable,
+    /// Resource lookup or opening failed. Preserves the original I/O cause.
+    Io(std::io::Error),
+}
+
+impl crate::AccessRefusal for ResourceOpenError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl std::fmt::Display for ResourceOpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable => f.write_str("pack resources are unavailable in this phase"),
+            Self::Io(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ResourceOpenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unavailable => None,
+            Self::Io(error) => Some(error),
+        }
+    }
+}
 
 /// Which repository is being discovered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

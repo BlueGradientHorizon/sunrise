@@ -214,6 +214,30 @@ impl Zip {
     pub fn contains(&self, name: &str) -> bool {
         self.index(name).is_some()
     }
+    /// Open the entry without allocating its compressed or decompressed contents.
+    /// Like Java's `ZipFile`, don't use the uncompressed size or verify the CRC.
+    pub(crate) fn open_entry(&self, name: &str) -> io::Result<Option<Box<dyn Read>>> {
+        let Some(index) = self.index(name) else {
+            return Ok(None);
+        };
+        let mut archive = self.archive.clone();
+        let entry = archive.by_index_raw(index).map_err(invalid)?;
+        let start = entry
+            .data_start()
+            .ok_or_else(|| invalid("missing zip entry data offset"))?;
+        let (method, size) = (entry.compression(), entry.compressed_size());
+        drop(entry);
+        let mut reader = archive.into_inner();
+        reader.position = start;
+        let raw = reader.take(size);
+        match method {
+            CompressionMethod::Stored => Ok(Some(Box::new(raw))),
+            CompressionMethod::Deflated => {
+                Ok(Some(Box::new(flate2::read::DeflateDecoder::new(raw))))
+            }
+            _ => Err(invalid("unsupported zip compression")),
+        }
+    }
     pub fn read(&self, name: &str) -> io::Result<Vec<u8>> {
         self.read_within(name, &self.budget)
     }
@@ -534,6 +558,32 @@ mod tests {
         assert_eq!(zip.read("pack.mcmeta").unwrap(), b"{\"pack\":{}}");
         assert_eq!(zip.read("a/b.txt").unwrap(), b"hello hello hello hello");
         assert!(zip.read("missing").is_err());
+    }
+
+    #[test]
+    fn opened_entries_stream_bytes_and_report_deflate_errors() {
+        let mut bytes = archive_of(&[
+            ("stored", b"plain", false),
+            ("deflated", b"inflated", true),
+            ("broken", b"data", true),
+        ]);
+        let central = central_header(&bytes, "broken");
+        let local = u32_at(&bytes, central + 42) as usize;
+        // The first deflate block uses the reserved block type (BTYPE = 3).
+        bytes[local + 30 + "broken".len()] = 0b0000_0111;
+        let zip = Zip::from_bytes(bytes).unwrap();
+
+        for (name, expected) in [("stored", b"plain".as_slice()), ("deflated", b"inflated")] {
+            let mut read = Vec::new();
+            zip.open_entry(name)
+                .unwrap()
+                .unwrap()
+                .read_to_end(&mut read)
+                .unwrap();
+            assert_eq!(read, expected);
+        }
+        let mut broken = zip.open_entry("broken").unwrap().unwrap();
+        assert!(broken.read_to_end(&mut Vec::new()).is_err());
     }
 
     /// A per-entry cap is not a total one: an archive whose entries together

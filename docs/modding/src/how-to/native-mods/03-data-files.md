@@ -41,14 +41,23 @@ or `std::io::Error::other(message)`. `error.resource()` borrows the failing reso
 `ReloadOrderError` values for dependency and listener failures. No listener applies until every
 prepare succeeds.
 
-Outside a listener, `host.resource(pack_type, &identifier)` reads one file from the selected
+Outside a listener, `host.open_resource(pack_type, &identifier)` opens one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and
 `PackType::ClientResources` takes `mymod:models/block/furnace.json` from `assets/`. As with
-`ResourceManager.getResource`, the highest selected pack that supplies the file wins; filters,
-a world's datapacks and a mod's own root data all apply. The answer is the winning bytes, or
-`None` for a missing, unreadable or over-64-MiB file. Use a reload listener for a whole folder
-or for parsing at reload time; a single read does not reload packs. Directory-pack
-symlinks follow vanilla pack behavior: linked resource files are read through the pack.
+`ResourceManager.getResource`, the highest selected pack that supplies the file wins. Opening
+never reloads packs or substitutes a lower pack's file if the winner fails.
+
+- `Ok(Some(reader))` gives a `std::io::Read` scoped to the host's published pack generation. Pass it
+  to a streaming decoder, or call `reader.read_to_end(&mut bytes)` to fill a `Vec<u8>` when you need owned bytes.
+  Opening does not load the whole resource or set a file-size limit; apply your codec's own limits
+  when reading. The reader can report I/O or archive decoding errors, and the consumer reports its
+  own format errors.
+- `Ok(None)` means no matching resource or pack stack.
+- `Err(ResourceOpenError)` means the published stack is unavailable in this phase or lookup/opening
+  failed. The `Io` variant preserves the original error.
+
+Use a reload listener to process a whole folder or parse resources when the packs change. Directory
+packs follow vanilla's symlink behavior: linked resource files are read through the pack.
 
 ## Embedded data
 

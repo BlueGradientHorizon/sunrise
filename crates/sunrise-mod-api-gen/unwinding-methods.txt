@@ -1034,7 +1034,6 @@ recipes::recipes_of_type
 recipes::transfer_recipe
 recipes::transfer_recipe_check
 recipes::transfer_recipe_id
-resources::resource
 scoreboard::add_objective
 scoreboard::add_team
 scoreboard::client_scoreboard
