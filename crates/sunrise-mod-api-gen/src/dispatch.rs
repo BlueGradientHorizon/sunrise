@@ -946,13 +946,18 @@ pub(super) fn emit<'a>(
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
+        let independent_cancel = hook.event_per_listener
+            && hook.isolate
+            && contract == Contract::Cancel
+            && mod_cancel
+            && rollback.is_empty()
+            && hook.output_validator.is_none();
         let (build, local_event) = if hook.event_per_listener || isolated_collect {
-            // A replace answer is returned outside the event. A regular collect
-            // output borrows one slot, reborrowed for each listener above. Answered
-            // collect batches and cancellation do not use this mode. An isolated collector's
-            // one return value is outside the event too; each mod gets the original inputs.
-            let reply_outside_event =
-                matches!(contract, Contract::Listen | Contract::Replace) || isolated_collect;
+            // A replace or isolated collect answer is returned outside the event. A regular
+            // collect output borrows one slot. Independent vetoes merge only completed answers.
+            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace)
+                || isolated_collect
+                || independent_cancel;
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (!reply_outside_event && !shared_collect_output)
                 || !stack_outputs.is_empty()
@@ -960,7 +965,7 @@ pub(super) fn emit<'a>(
                 || hook.context == Some(PhaseContext::ChunkDisk)
             {
                 return Err(format!(
-                    "{name}: event_per_listener requires a listen or replace hook, or a collect hook with a shared borrowed output, without scalar or stack writeback or other shared event state"
+                    "{name}: event_per_listener requires independent listener events, without shared stack or other shared event state"
                 ));
             }
             (String::new(), build)
@@ -1261,6 +1266,13 @@ pub(super) fn emit<'a>(
                 String::new(),
                 format!(
                     "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ let mod_id = {mod_entry}.id; if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(Some(answer))) => {o}(Answered {{ answer, mod_id }}), Ok(Ok(None)) => {{}}, Ok(Err(refusal)) => refusal.report(), Err(payload) => {{ if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))) {{ std::mem::forget(payload); }} super::runtime::poison(HookId::{hook_id}, mod_id); }} }} }} }}",
+                    o = out.unwrap()
+                ),
+            ),
+            None if independent_cancel => (
+                String::new(),
+                format!(
+                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ let mod_id = {mod_entry}.id; if super::runtime::poisoned(HookId::{hook_id}, mod_id) || (*{o} && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} match crate::callback_owner::contain_unwind(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke}))) {{ Ok(Ok(flow)) => {{ *{o} = {event}.cancelled || matches!(flow, Flow::Cancel); }} Ok(Err(refusal)) => refusal.report_each(), Err(message) => {{ super::runtime::poison(HookId::{hook_id}, mod_id); crate::callback_owner::report_hook_panic(mod_id, \"{name}\", message); }} }} }} }}",
                     o = out.unwrap()
                 ),
             ),

@@ -140,9 +140,20 @@ impl Game<'_> {
     /// before it applies: what a screen's own `onClose` does only when it really
     /// closes (a container screen's close packet).
     pub(super) fn set_screen_with(&mut self, screen: Screen, before: impl FnOnce(&mut Self)) {
+        self.transition_screen(screen, false, |game, _| before(game));
+    }
+
+    /// A new instance can replace the current screen of the same kind. The preparation
+    /// sees the accepted screen, or `None` when a replacement opens through its own path.
+    pub(in crate::game) fn transition_screen(
+        &mut self,
+        screen: Screen,
+        new_instance: bool,
+        before: impl FnOnce(&mut Self, Option<Screen>),
+    ) {
         let opening_native =
             screen == Screen::Inventory && self.active_native_screen().is_some_and(|s| !s.shown);
-        if self.screen == screen {
+        if self.screen == screen && !new_instance {
             if opening_native {
                 self.apply_screen_with_mod_book(screen, None);
             }
@@ -170,7 +181,7 @@ impl Game<'_> {
                     owner = Some(mod_id);
                 }
                 ScreenDecision::Vanilla(target) => {
-                    before(self);
+                    before(self, None);
                     if opening_native && self.active_native_screen().is_some() {
                         self.remote_close_container();
                     }
@@ -186,10 +197,10 @@ impl Game<'_> {
                 ScreenDecision::Open => {}
             }
         }
-        if self.screen == screen && owner.is_none() {
+        if self.screen == screen && owner.is_none() && !new_instance {
             return;
         }
-        before(self);
+        before(self, Some(screen));
         if self.screen == Screen::Options {
             self.ui.options.discard_draw();
         }
@@ -283,7 +294,9 @@ impl Game<'_> {
             }
             ScreenTarget::Advancements => self.open_advancements(false),
             ScreenTarget::Stats => self.open_stats(),
-            ScreenTarget::Chat => self.begin_chat_screen("", false),
+            ScreenTarget::Chat => {
+                self.begin_chat_screen("", false);
+            }
             _ => {
                 // A title screen: one of the game's own screens over the title goes.
                 self.set_screen(Screen::Playing);
@@ -305,6 +318,9 @@ impl Game<'_> {
         // underneath don't pass through this replacement path.
         if screen != Screen::Inventory && self.active_native_screen().is_some() {
             self.remote_close_container();
+        }
+        if self.screen == Screen::Chat && screen != Screen::Chat {
+            self.remove_chat_screen(crate::game::chat::ChatExit::Interrupted);
         }
         self.screen = screen;
         if let Some(owner) = owner {

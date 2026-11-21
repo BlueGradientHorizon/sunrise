@@ -4083,31 +4083,31 @@ impl Game<'_> {
         let message = self.expand_selectors(&raw);
         let name = self.source_display_name();
         let line = match id {
-            "say" => {
-                // A visible copy for the acting player goes with their captured output, in order.
-                let captured_for = self.chat_capture.as_ref().and(self.lan_acting);
-                let capture_say = self
-                    .lan_broadcast_source_say(&name, &message, captured_for)
-                    .ok_or_else(|| err("command.failed", &[]))?;
-                let line = Text::translate("chat.type.announcement", &[name, message]);
-                if self.lan.is_some() && self.is_dedicated_server() {
-                    self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
-                        line: line.plain(),
-                        secure: false,
-                    });
-                }
-                if self.lan.is_some()
-                    && let Some(capture) = self.chat_capture.as_mut()
-                {
-                    if capture_say {
-                        capture.push(line);
+            "say" | "me" => {
+                let (chat_type, key) = if id == "say" {
+                    ("say_command", "chat.type.announcement")
+                } else {
+                    ("emote_command", "chat.type.emote")
+                };
+                self.lan_broadcast_source_chat(chat_type, &name, &message);
+                let line = Text::translate(key, &[name, message]);
+                if self.lan.is_some() {
+                    if self.is_dedicated_server() {
+                        self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {
+                            line: line.plain(),
+                            secure: false,
+                        });
+                    } else {
+                        log::info!("[Not Secure] {}", line.plain());
+                        if self.chat_capture.is_none() {
+                            self.player_message(line);
+                        }
                     }
                 } else {
                     self.player_message(line);
                 }
                 return Ok(1);
             }
-            "me" => Text::translate("chat.type.emote", &[name, message]),
             _ => {
                 let _ = self.entities(ctx, "targets", true)?;
                 // Whispering to yourself: the incoming and outgoing lines.

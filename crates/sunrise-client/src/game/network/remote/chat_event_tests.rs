@@ -96,23 +96,60 @@ fn mods_replace_and_cancel_received_chat() {
 
 #[test]
 #[ignore = "daily"]
-fn mod_chat_needs_a_joined_player_and_what_the_chat_option_allows() {
-    with_game(|game| {
-        game.options.execution_role = ExecutionRole::Client;
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_err());
-        let (client, _server) = Pipe::pair();
-        game.connect_local(client, "ChatTest").unwrap();
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_err());
-        game.remote.as_mut().unwrap().joined = true;
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "  ").is_err());
-        // Full, then Commands Only, then Hidden.
-        game.settings.chat_visibility = 0;
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "hello").is_ok());
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_ok());
-        game.settings.chat_visibility = 1;
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "hello").is_err());
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_ok());
-        game.settings.chat_visibility = 2;
-        assert!(mod_api::prelude::NetworkClientHost::send_chat(game, "/warp spawn").is_err());
+fn direct_chat_sends_through_play_without_the_chat_screen_gate() {
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    use mod_api::prelude::NetworkClientHost;
+    use std::sync::{Arc, Mutex};
+
+    if run_fresh_cases(
+        "game::remote::tests::chat_event_tests::direct_chat_sends_through_play_without_the_chat_screen_gate",
+        "SUNRISE_DIRECT_CHAT_CASE",
+        &["send"],
+    ) {
+        return;
+    }
+    struct Packets(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Packets {
+        fn client_packet_send(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut mod_api::ClientPacketSendEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push(event.packet.id.to_string());
+            Flow::Continue
+        }
+    }
+    let packets = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "chat_probe",
+        Box::new(Packets(packets.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.execution_role = ExecutionRole::Client;
+            assert!(NetworkClientHost::send_chat(game, "/warp spawn").is_err());
+            let (client, _server) = Pipe::pair();
+            game.connect_local(client, "ChatTest").unwrap();
+            assert!(NetworkClientHost::send_chat(game, "/warp spawn").is_err());
+            game.remote.as_mut().unwrap().joined = true;
+            packets.lock().unwrap().clear();
+            game.settings.chat_visibility = 2; // Hidden.
+            game.handle_chat_input("hello");
+            game.handle_chat_input("/warp spawn");
+            assert!(
+                packets.lock().unwrap().is_empty(),
+                "screen input is still restricted"
+            );
+            let history = game.ui.chat.recent.len();
+            assert!(NetworkClientHost::send_chat(game, "hello").is_ok());
+            assert!(NetworkClientHost::send_chat(game, "/warp spawn").is_ok());
+            assert_eq!(
+                *packets.lock().unwrap(),
+                ["minecraft:chat", "minecraft:chat_command"]
+            );
+            assert_eq!(game.ui.chat.recent.len(), history);
+        });
     });
 }

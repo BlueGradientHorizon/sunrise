@@ -1,6 +1,6 @@
 //! `chat_recipient`: asked once for each placed receiver before a public line is sent, and a
 //! receiver it hides is sent nothing while the others still get the line.
-use super::native_entity_refs::tests::with_game;
+use super::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, PermissionLevel, ServerHost};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_client::lan::hub::chat::ChatMessage;
@@ -53,14 +53,17 @@ impl Hooks for Echo {
             event.message.to_owned(),
             event.recipient,
         ));
-        // Only retry the outer message so a missing guard fails without overflowing the stack.
         if event.message == "outer" && event.recipient == 12 {
             let result = host
                 .commands()
                 .run_command_with_output("execute run say nested");
             *self.nested.lock().unwrap() = Some(result);
         }
-        Flow::Continue
+        if event.message == "nested" && event.recipient == 13 {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
     }
 }
 
@@ -312,7 +315,6 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
                     ("Announcer", "block secret", 12),
                     ("Announcer", "block secret", 13),
                     ("Server", "public announcement", 12),
-                    ("Server", "public announcement", 13),
                 ]
                 .map(|(name, message, receiver)| (
                     0,
@@ -327,7 +329,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
 
 #[test]
 #[ignore = "daily"]
-fn dispatcher_say_filters_the_acting_guests_captured_copy() {
+fn dispatcher_say_uses_player_chat_for_the_source_too() {
     use super::lan_actions::GuestCommand;
     use play::Clientbound as C;
     use sunrise_client::scoreboard::{comp_text, tag_to_json};
@@ -353,7 +355,14 @@ fn dispatcher_say_filters_the_acting_guests_captured_copy() {
             };
             chat(&peer);
             chat(&actor);
-            for (message, should_capture) in [("a secret", false), ("hello", true)] {
+            for (message, visibility, delivered) in [
+                ("a secret", 0, false),
+                ("hello", 0, true),
+                ("commands only", 1, false),
+            ] {
+                game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
+                    guest.info.chat_visibility = visibility;
+                });
                 assert!(game.run_guest_command(GuestCommand {
                     conn: 13,
                     command: format!("execute run say {message}"),
@@ -363,13 +372,10 @@ fn dispatcher_say_filters_the_acting_guests_captured_copy() {
                 }));
                 assert_eq!(chat(&peer), [(false, message.to_owned())]);
                 let actor_lines = chat(&actor);
-                if should_capture {
-                    assert_eq!(actor_lines, [(true, "[guest13] hello".to_owned())]);
+                if delivered {
+                    assert_eq!(actor_lines, [(false, message.to_owned())]);
                 } else {
-                    assert!(
-                        actor_lines.is_empty(),
-                        "the veto also hides captured output: {actor_lines:?}"
-                    );
+                    assert!(actor_lines.is_empty(), "no indirect copy: {actor_lines:?}");
                 }
             }
             assert_eq!(
@@ -378,7 +384,8 @@ fn dispatcher_say_filters_the_acting_guests_captured_copy() {
                     ("a secret", 12),
                     ("a secret", 13),
                     ("hello", 12),
-                    ("hello", 13)
+                    ("hello", 13),
+                    ("commands only", 12),
                 ]
                 .map(|(message, recipient)| (
                     13,
@@ -423,7 +430,7 @@ fn listener_commands_do_not_count_as_command_block_successes() {
 
 #[test]
 #[ignore = "daily"]
-fn nested_say_fails_without_sending_an_unchecked_line() {
+fn nested_say_passes_through_the_same_recipient_checks() {
     let asked = Asked::default();
     let nested = Arc::new(Mutex::new(None));
     let mods = vec![mod_api::ModEntry::new(
@@ -441,15 +448,59 @@ fn nested_say_fails_without_sending_an_unchecked_line() {
             lines(&second);
             game.dedicated_console_say("outer".into());
             let result = nested.lock().unwrap().take().unwrap();
-            assert!(!result.success, "nested /say must fail");
-            assert_eq!(result.feedback.len(), 1, "the command reports its failure");
-            assert_eq!(lines(&first), 1);
-            assert_eq!(lines(&second), 1);
+            assert!(result.success, "nested /say is a normal command");
+            assert_eq!(lines(&first), 2);
+            assert_eq!(lines(&second), 1, "the nested veto still applies");
+            let seen = asked.lock().unwrap();
             assert_eq!(
-                *asked.lock().unwrap(),
-                [12, 13].map(|recipient| (0, "Server".to_owned(), "outer".to_owned(), recipient)),
-                "both delivered copies were asked; no nested copy was asked or sent",
+                seen.iter()
+                    .map(|row| (row.2.as_str(), row.3))
+                    .collect::<Vec<_>>(),
+                [("outer", 12), ("nested", 12), ("nested", 13), ("outer", 13)],
             );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_chat_filter_is_reported_without_losing_other_vetoes() {
+    if run_fresh_cases(
+        "game::native_chat_recipients_tests::panicking_chat_filter_is_reported_without_losing_other_vetoes",
+        "SUNRISE_CHAT_FILTER_PANIC_CASE",
+        &["panic"],
+    ) {
+        return;
+    }
+    struct Broken;
+    #[mod_api::__subscriptions]
+    impl Hooks for Broken {
+        fn chat_recipient(&self, _: &mut dyn ServerHost, _: &mut ChatRecipientEvent<'_>) -> Flow {
+            panic!("chat filter failed");
+        }
+    }
+    let mods = vec![
+        mod_api::ModEntry::new("a_broken", Box::new(Broken)),
+        mod_api::ModEntry::new("z_ignorer", Box::new(Ignorer(Asked::default()))),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (first, second) = two_guests(game);
+            lines(&first);
+            lines(&second);
+            game.dedicated_console_say("first secret".into());
+            game.dedicated_console_say("second secret".into());
+            assert_eq!(lines(&first), 2);
+            assert_eq!(lines(&second), 0);
+            let notices = mod_api::__private::game::take_callback_panic_notices();
+            let reports: Vec<_> = notices
+                .iter()
+                .filter(|n| n.operation == "chat_recipient")
+                .collect();
+            assert_eq!(reports.len(), 1);
+            assert_eq!(reports[0].mod_id, "a_broken");
+            assert!(reports[0].message.contains("chat filter failed"));
         });
     });
 }

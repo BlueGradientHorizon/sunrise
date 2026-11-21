@@ -19,12 +19,8 @@ pub(super) struct NativeNet {
 }
 
 impl Game<'_> {
-    /// A mod's chat line or command (`/` first), sent as `send_chat` sends
-    /// it (ClientPacketListener.sendChat / sendCommand), to any server: no
-    /// chat history, and no client chat event (vanilla's `ClientChatEvent`
-    /// comes only from ChatScreen). An error when the player isn't in a
-    /// server's play state or the Chat option blocks the message. API
-    /// 404.
+    /// Send directly through the play listener, not `ChatScreen` input. The
+    /// server still applies signature validation, permissions and chat policy.
     pub(super) fn send_chat(&mut self, message: &str) -> Result<(), String> {
         let Some(remote) = self.remote.as_ref() else {
             return Err("not connected to a server".into());
@@ -33,14 +29,11 @@ impl Game<'_> {
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err("the player has not joined yet".into());
         }
-        let message = message.trim();
-        if message.is_empty() {
-            return Err("the message is empty".into());
+        if let Some(command) = message.strip_prefix('/') {
+            self.send_command(command);
+        } else {
+            self.send_signed_chat(message);
         }
-        if !self.chat_abilities().allows(message) {
-            return Err("the Chat option blocks this message".into());
-        }
-        self.send_signed_chat_input(message);
         Ok(())
     }
 
@@ -48,17 +41,14 @@ impl Game<'_> {
     /// as T and / open it (`ChatScreen` with its initial text): a command
     /// macro can fill in `/tp ` for the player to finish. Nothing is sent; the
     /// player edits and sends it, or presses Escape. The box keeps its limit
-    /// (256 characters) and its character filter. An error with no player in a
-    /// world, or while another screen is open. API @API:open_chat@.
+    /// (256 UTF-16 units) and its character filter. The ordinary screen
+    /// opening and closing hooks govern the transition. API @API:open_chat@.
     pub(super) fn open_chat(&mut self, text: &str) -> Result<(), String> {
-        if self.player.is_none() {
-            return Err("no player in a world".into());
+        if self.begin_chat_screen(text, false) {
+            Ok(())
+        } else {
+            Err("no player in a world".into())
         }
-        if self.screen != super::Screen::Playing {
-            return Err("another screen is open".into());
-        }
-        self.begin_chat_screen(text, false);
-        Ok(())
     }
 
     /// Validate and reserve a vanilla packet for root-commit publication on this
@@ -87,6 +77,81 @@ mod tests {
     use mod_api::Identifier;
     use sunrise_core::vanilla_bytes::Writer;
     use sunrise_protocol::connection::Pipe;
+
+    #[test]
+    #[ignore = "daily"]
+    fn open_chat_replaces_screens_but_a_veto_keeps_the_old_chat() {
+        use crate::game::Screen;
+        use mod_api::{ClientHost, Hooks, ScreenClosingEvent, ScreenOpening, ScreenOpeningEvent};
+        use std::sync::{
+            Arc, Mutex,
+            atomic::{AtomicBool, Ordering},
+        };
+        use sunrise_client::motion::PlayerMotion;
+        use sunrise_core::geometry::Vec3;
+
+        if run_fresh_cases(
+            "game::native_net::tests::open_chat_replaces_screens_but_a_veto_keeps_the_old_chat",
+            "SUNRISE_OPEN_CHAT_CASE",
+            &["transition"],
+        ) {
+            return;
+        }
+        #[derive(Default)]
+        struct Probe {
+            cancel: AtomicBool,
+            events: Mutex<Vec<bool>>,
+        }
+        struct Listener(Arc<Probe>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn screen_opening(
+                &self,
+                _: &dyn ClientHost,
+                _: &mut ScreenOpeningEvent<'_>,
+            ) -> Option<ScreenOpening> {
+                self.0.events.lock().unwrap().push(true);
+                self.0
+                    .cancel
+                    .load(Ordering::Relaxed)
+                    .then_some(ScreenOpening::Cancel)
+            }
+
+            fn screen_closing(&self, _: &dyn ClientHost, _: &mut ScreenClosingEvent<'_>) {
+                self.0.events.lock().unwrap().push(false);
+            }
+        }
+        let probe = Arc::new(Probe::default());
+        let mods = vec![mod_api::ModEntry::new(
+            "chat_screens",
+            Box::new(Listener(probe.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                game.player =
+                    Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+                game.screen = Screen::Paused;
+                assert_eq!(game.open_chat("first draft"), Ok(()));
+                assert!(game.screen == Screen::Chat);
+                assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "first draft");
+                probe.cancel.store(true, Ordering::Relaxed);
+                assert_eq!(game.open_chat("vetoed"), Ok(()));
+                assert_eq!(game.ui.chat_screen.as_ref().unwrap().value(), "first draft");
+                probe.cancel.store(false, Ordering::Relaxed);
+                assert_eq!(game.open_chat("second draft"), Ok(()));
+                assert_eq!(
+                    game.ui.chat_screen.as_ref().unwrap().value(),
+                    "second draft"
+                );
+                assert_eq!(game.ui.chat_draft.as_ref().unwrap().text, "first draft");
+                assert_eq!(
+                    *probe.events.lock().unwrap(),
+                    [true, false, true, true, false]
+                );
+            });
+        });
+    }
 
     /// A joined flag cannot manufacture a physical transport. Packet codec,
     /// reservation, and framing cases live in net::mod_packet_tests.

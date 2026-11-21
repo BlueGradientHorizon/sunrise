@@ -48,7 +48,11 @@ No menu, reach, state or editor checks are replicated. Without a client connecti
 returns `PacketBuildError::Unavailable`. `validate_container_click_limits` is also available
 for preflighting the ID, slot and changed-slot-count wire limits.
 
-For chat and commands, call `send_chat`; the game owns signing. There are no typed builders
+For chat and commands, call `ClientHost::send_chat`; a leading `/` selects the command path. The play
+connection owns signing. This is a direct send, not chat-box input: it doesn't trim, check the local Chat
+setting or add history, and the server's own policy still applies. To let the player edit and submit a draft
+instead, use `ClientHost::open_chat`; it can replace the current screen through normal screen hooks and sends
+nothing. There are no typed builders
 for chat, signed commands, chat sessions, login/configuration, keep-alive, pong or custom
 payload packets. Registered and engine-reserved custom-payload channels use their payload
 or service API.

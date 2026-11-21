@@ -6,8 +6,9 @@ use crate::*;
 pub trait NetworkClientHost {
     /// Side: client.
     /// Opens the chat screen with `text` typed in for the player to finish and
-    /// send, as T and / open it; nothing is sent. Returns an error with no
-    /// player in a world or while another screen is open.
+    /// send; nothing is sent. It can replace an open screen, including another
+    /// chat screen. Normal screen-opening hooks may cancel or replace it.
+    /// Returns an error when there is no local player.
     #[access(WorldOnly)]
     fn open_chat(&mut self, text: &str) -> Result<(), String>;
     /// Side: client.
@@ -22,12 +23,11 @@ pub trait NetworkClientHost {
     #[access(WorldOnly)]
     fn chat_line(&mut self, line: Text) -> Result<(), TextFormError>;
     /// Side: client.
-    /// A mod's chat line or command (`/` first), sent as `send_chat` sends
-    /// it (ClientPacketListener.sendChat / sendCommand), to any server: no
-    /// chat history, and no client chat event (vanilla's `ClientChatEvent`
-    /// comes only from ChatScreen). An error when the player isn't in a
-    /// server's play state or the Chat option blocks the message. API
-    /// 404.
+    /// Sends directly through `ClientPacketListener.sendChat` or `sendCommand`
+    /// (strip the initial `/` for a command). This does not trim the input,
+    /// check the client's Chat setting, add to history or fire `client_chat`.
+    /// The server still checks signatures, permissions and chat policy.
+    /// Returns an error without a joined play connection. API 404.
     #[access(WorldOnly)]
     fn send_chat(&mut self, message: &str) -> Result<(), String>;
     /// Side: client.

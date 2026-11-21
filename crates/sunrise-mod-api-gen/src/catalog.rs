@@ -177,9 +177,9 @@ pub struct Hook {
     pub inert: Option<String>,
     /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
     /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
-    /// session. A cancel hook rolls outputs back to the requested values and stops (#2414).
-    /// A collector receives at most one returned value per registration, and later listeners
-    /// still run after a failure.
+    /// session. A shared cancel event rolls outputs back to the requested values and stops
+    /// (#2414). A listener-local cancel event or collector only merges completed answers;
+    /// later listeners still run after a failure.
     pub isolate: bool,
     /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of

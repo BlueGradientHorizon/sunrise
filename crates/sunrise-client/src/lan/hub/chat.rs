@@ -337,6 +337,13 @@ impl Hub {
         }
     }
 
+    /// The placed network players whose `ServerPlayer.sendChatMessage` accepts public chat.
+    pub fn chat_recipients(&self) -> impl Iterator<Item = (usize, &crate::lan::guest::Guest)> {
+        self.guests
+            .simulation_indexed_iter()
+            .filter(|(_, g)| g.placed && g.participates_online() && g.info.chat_visibility == 0)
+    }
+
     /// PlayerList.broadcastChatMessage: logged (`[Not Secure]` unless signed
     /// and fresh), then sent to every player but the ones in `hidden` (the
     /// receivers a mod kept it from, `chat_recipient`).
@@ -351,7 +358,8 @@ impl Hub {
         let secure = message.trusted(now_millis());
         events.push(HostEvent::Chat { line, secure });
         for k in 0..self.guests.len() {
-            if self.guests[k].placed && !hidden.contains(&self.guests[k].uuid) {
+            let guest = &self.guests[k];
+            if guest.placed && guest.participates_online() && !hidden.contains(&guest.uuid) {
                 self.send_chat(k, message, bound);
             }
         }
@@ -507,49 +515,45 @@ impl Hub {
                     target: None,
                 },
             }),
-            self.online_players()
-                .filter(|guest| guest.info.chat_visibility == 0 && !hidden.contains(&guest.uuid)),
+            self.chat_recipients()
+                .map(|(_, guest)| guest)
+                .filter(|guest| !hidden.contains(&guest.uuid)),
         );
     }
 
     /// `PlayerList.broadcastChatMessage` for an unsigned message with the command source's
-    /// display name, visible as player chat. `except` gets its copy with captured command
-    /// output unless a mod hides it too.
-    pub fn broadcast_source_chat(
-        &self,
-        chat_type: &str,
-        name: Tag,
-        message: Tag,
-        except: Option<u32>,
-        hidden: &[u128],
-    ) {
+    /// display name. This is player chat, not system or command feedback, for every receiver.
+    pub fn broadcast_source_chat(&self, chat_type: &str, name: Tag, message: Tag, hidden: &[u128]) {
         let bound = play::ChatTypeBound {
             chat_type: self.chat_type_id(chat_type),
             name,
             target: None,
         };
-        for (k, guest) in self.guests.iter().enumerate() {
-            if guest.placed && Some(guest.conn) != except && !hidden.contains(&guest.uuid) {
-                self.send_disguised(k, message.clone(), bound.clone());
-            }
-        }
+        self.broadcast_to(
+            &C::DisguisedChat(play::DisguisedChat {
+                message,
+                chat_type: bound,
+            }),
+            self.chat_recipients()
+                .map(|(_, guest)| guest)
+                .filter(|guest| !hidden.contains(&guest.uuid)),
+        );
     }
 
     /// A message command's chat (SayCommand, EmoteCommands): to everyone but
     /// the players in `hidden`, bound to `chat_type` and the sender's name.
     pub fn broadcast_command_chat(
         &mut self,
-        i: usize,
+        (uuid, name): (u128, &str),
         chat_type: &str,
         message: Option<ChatMessage>,
         text: &str,
         hidden: &[u128],
         events: &mut Vec<HostEvent>,
     ) {
-        let (uuid, name) = (self.guests[i].uuid, self.guests[i].name.clone());
         let bound = play::ChatTypeBound {
             chat_type: self.chat_type_id(chat_type),
-            name: self.player_display_name(uuid, &name),
+            name: self.player_display_name(uuid, name),
             target: None,
         };
         let line = match chat_type {
@@ -565,11 +569,15 @@ impl Hub {
                     line,
                     secure: false,
                 });
-                for k in 0..self.guests.len() {
-                    if self.guests[k].placed && !hidden.contains(&self.guests[k].uuid) {
-                        self.send_disguised(k, literal(text), bound.clone());
-                    }
-                }
+                self.broadcast_to(
+                    &C::DisguisedChat(play::DisguisedChat {
+                        message: literal(text),
+                        chat_type: bound,
+                    }),
+                    self.chat_recipients()
+                        .map(|(_, guest)| guest)
+                        .filter(|guest| !hidden.contains(&guest.uuid)),
+                );
             }
         }
     }

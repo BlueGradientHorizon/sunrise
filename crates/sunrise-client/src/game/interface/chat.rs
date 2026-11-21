@@ -957,45 +957,52 @@ impl Game<'_> {
             .filter(|d| !command || d.command)
             .map(|d| d.text.clone());
         self.begin_chat_screen(draft.as_deref().unwrap_or(prefix), draft.is_some());
-        self.ui.chat_draft_shown = draft.is_some() && self.ui.chat_screen.is_some();
     }
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub(super) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
+    /// Returns false without a local player. Otherwise the ordinary screen lifecycle
+    /// can open, cancel, or replace the requested screen.
+    pub(super) fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) -> bool {
         if self.player.is_none() {
-            return;
+            return false;
         }
-        self.ui.chat_draft_shown = false;
-        self.refresh_dynamic_registries();
-        let size = self
-            .renderer
-            .as_ref()
-            .map_or([1280, 720], |r| [r.config.width, r.config.height]);
-        let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-        let m = Measure(&self.gui.atlas.font);
-        let c = Commands {
-            dispatcher: chat_tree(&self.remote),
-            registries: &self.ui.registries,
-        };
-        let mut screen = ChatScreen::new(
-            &m,
-            &c,
-            initial,
-            is_draft,
-            self.ui.chat.recent.len(),
-            b.width as i32,
-            b.height as i32,
-            self.chat_abilities(),
-        );
-        screen.auto_suggestions = self.settings.auto_suggestions;
-        self.ui.chat_screen = Some(screen);
-        self.ui.chat_opened = Some(std::time::Instant::now());
-        self.set_screen(Screen::Chat);
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
-        self.capture(false);
+        self.transition_screen(Screen::Chat, true, |game, accepted| {
+            if accepted != Some(Screen::Chat) {
+                return;
+            }
+            game.remove_chat_screen(ChatExit::Interrupted);
+            game.refresh_dynamic_registries();
+            let size = game
+                .renderer
+                .as_ref()
+                .map_or([1280, 720], |r| [r.config.width, r.config.height]);
+            let b = HudBatch::new(size, game.settings.gui_scale_inputs());
+            let m = Measure(&game.gui.atlas.font);
+            let c = Commands {
+                dispatcher: chat_tree(&game.remote),
+                registries: &game.ui.registries,
+            };
+            let mut screen = ChatScreen::new(
+                &m,
+                &c,
+                initial,
+                is_draft,
+                game.ui.chat.recent.len(),
+                b.width as i32,
+                b.height as i32,
+                game.chat_abilities(),
+            );
+            screen.auto_suggestions = game.settings.auto_suggestions;
+            game.ui.chat_screen = Some(screen);
+            game.ui.chat_draft_shown = is_draft;
+            game.ui.chat_opened = Some(std::time::Instant::now());
+            game.keys.clear();
+            game.left = false;
+            game.right = false;
+            game.capture(false);
+        });
+        true
     }
     pub(super) fn close_chat(&mut self, reason: ChatExit) {
         // InBedChatScreen.onClose: leaving the screen means getting up; the
@@ -1004,18 +1011,23 @@ impl Game<'_> {
             self.wake_up(false, true);
             return;
         }
-        let text = self
-            .ui
-            .chat_screen
-            .as_ref()
-            .map_or_else(String::new, |s| s.value().to_owned());
-        self.keep_chat_draft(&text, reason);
-        self.ui.chat_draft_shown = false;
-        self.ui.chat_screen = None;
-        self.ui.chat.reset_scroll();
         if self.screen == Screen::Chat {
-            self.set_screen(Screen::Playing);
-            self.capture(true);
+            self.set_screen_with(Screen::Playing, |game| game.remove_chat_screen(reason));
+            if self.screen == Screen::Playing {
+                self.capture(true);
+            }
+        } else {
+            self.remove_chat_screen(reason);
+        }
+    }
+    /// `ChatScreen.removed`, called only after the screen transition is accepted.
+    pub(in crate::game) fn remove_chat_screen(&mut self, reason: ChatExit) {
+        if let Some(screen) = self.ui.chat_screen.take() {
+            self.keep_chat_draft(screen.value(), reason);
+            self.ui.chat_draft_shown = false;
+            self.ui.chat_opened = None;
+            self.ui.chat.reset_scroll();
+            self.ui.in_bed_chat = false;
         }
     }
     /// `ChatScreen.removed`: the text left in the box becomes the draft unless
@@ -1052,16 +1064,8 @@ impl Game<'_> {
     pub(super) fn tick_in_bed_chat(&mut self) {
         // Another screen took over the open chat (death, a container the
         // server opened): `ChatScreen.removed` runs with the INTERRUPTED reason.
-        if self.screen != Screen::Chat && self.ui.chat_screen.is_some() {
-            let text = self
-                .ui
-                .chat_screen
-                .as_ref()
-                .map_or_else(String::new, |s| s.value().to_owned());
-            self.keep_chat_draft(&text, ChatExit::Interrupted);
-            self.ui.chat_draft_shown = false;
-            self.ui.chat_screen = None;
-            self.ui.chat.reset_scroll();
+        if self.screen != Screen::Chat {
+            self.remove_chat_screen(ChatExit::Interrupted);
         }
         if self.screen != Screen::Chat {
             self.ui.in_bed_chat = false;
@@ -1263,8 +1267,7 @@ impl Game<'_> {
                     self.ui.chat.reset_scroll();
                     self.ui.chat_screen = Some(screen);
                 } else {
-                    // The screen is taken here, so close_chat sees no text: a sent
-                    // message discards the draft (DONE).
+                    self.ui.chat_screen = Some(screen);
                     self.close_chat(ChatExit::Done);
                 }
                 if !message.is_empty() {

@@ -466,7 +466,7 @@ impl Game<'_> {
             }
             // Gui.openChatAndAddText.
             (true, CommandAccept::Suggest, _) => {
-                self.begin_chat_screen(&format!("/{}", prompt.command), false)
+                self.begin_chat_screen(&format!("/{}", prompt.command), false);
             }
             (true, CommandAccept::Copy, _) => {
                 use sunrise_client::clipboard::Clipboard;

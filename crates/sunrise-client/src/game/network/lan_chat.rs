@@ -163,7 +163,7 @@ impl Game<'_> {
         name: &str,
         shown: &str,
     ) -> Option<()> {
-        let hidden = self.chat_hidden_from(|_| (message.sender, name, shown))?;
+        let hidden = self.chat_hidden_from(|_| (message.sender, name, shown));
         let mut chat = Vec::new();
         let host = self.lan.as_mut()?;
         host.hub
@@ -174,40 +174,30 @@ impl Game<'_> {
         Some(())
     }
 
-    /// Unsigned `/say` from the command dispatcher. Returns whether the acting player's copy
-    /// should go with its captured command output. `None` refuses reentrant `/say`.
-    pub(super) fn lan_broadcast_source_say(
+    /// Public chat from the command dispatcher (`SayCommand` / `EmoteCommands`). Every copy,
+    /// including the source player's, uses disguised chat, not the command's feedback channel.
+    pub(super) fn lan_broadcast_source_chat(
         &mut self,
+        chat_type: &str,
         name: &Text,
         message: &Text,
-        captured_for: Option<u32>,
-    ) -> Option<bool> {
-        use sunrise_client::lan::data::component_nbt;
-
+    ) {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
                 Some(Target::Player) => game.lan_acting_uuid.unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
-                _ => 0, // PlayerChatMessage.system uses the nil UUID.
+                _ => 0,
             };
             (sender, name.plain(), message.plain())
-        })?;
-        let Some(host) = &self.lan else {
-            return Some(false);
-        };
-        host.hub.broadcast_source_chat(
-            "say_command",
-            component_nbt(&name.component()),
-            component_nbt(&message.component()),
-            captured_for,
-            &hidden,
-        );
-        Some(
-            captured_for.is_some()
-                && !self
-                    .lan_acting_uuid
-                    .is_some_and(|uuid| hidden.contains(&uuid)),
-        )
+        });
+        if let Some(host) = &self.lan {
+            host.hub.broadcast_source_chat(
+                chat_type,
+                component_nbt(&name.component()),
+                component_nbt(&message.component()),
+                &hidden,
+            );
+        }
     }
 
     /// SayCommand, EmoteCommands and MsgCommand for a guest: chat to the
@@ -306,15 +296,17 @@ impl Game<'_> {
                 "emote_command"
             };
             let (sender, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
-            let Some(hidden) = self.chat_hidden_from(|_| (sender, name.as_str(), text.as_str()))
-            else {
-                return true;
-            };
-            let Some(host) = self.lan.as_mut() else {
-                return false;
-            };
-            host.hub
-                .broadcast_command_chat(i, chat_type, message, text, &hidden, &mut events);
+            let hidden = self.chat_hidden_from(|_| (sender, name.as_str(), text.as_str()));
+            if let Some(host) = self.lan.as_mut() {
+                host.hub.broadcast_command_chat(
+                    (sender, &name),
+                    chat_type,
+                    message,
+                    text,
+                    &hidden,
+                    &mut events,
+                );
+            }
         }
         for event in events {
             self.lan_log_event(event);

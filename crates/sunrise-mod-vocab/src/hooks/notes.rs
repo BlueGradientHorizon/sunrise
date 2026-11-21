@@ -1310,13 +1310,11 @@ pieces.
 
 ### Chat and commands a client mod sends
 
-`ClientHost::send_chat(message)` sends what the player could type in chat, to any server, a vanilla one included:
-`ClientPacketListener.sendChat` and `sendCommand`. A leading `/` sends the rest as a command, signed where its
-arguments are messages; anything else goes as signed chat. The message is trimmed first, as the chat screen trims it.
-It fires no `client_chat` (vanilla's `ClientChatEvent` comes only from the chat screen) and isn't added to the chat
-history. It is an error when the player isn't in a server's play state (not connected, not joined yet or being
-reconfigured), when the trimmed message is empty, and when the Chat option blocks it: Commands Only blocks chat,
-Hidden blocks chat and commands. The server's own spam limits apply as they do to typed chat.
+`ClientHost::send_chat(message)` calls the play connection's `sendChat` or `sendCommand`. A leading `/` sends
+its remainder as a command; other input is sent as chat. It uses the ordinary chat session for signatures and
+last-seen updates. It doesn't trim input, check the client's Chat option, fire `client_chat`, or add to chat
+history; those are screen and input concerns. It returns an error without a joined play connection. The server's
+chat visibility, permissions, signature validation and spam policy still apply.
 
 ### Server menus
 

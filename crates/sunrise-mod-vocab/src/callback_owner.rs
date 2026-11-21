@@ -165,6 +165,14 @@ pub fn take_callback_panic_notices() -> Vec<CallbackPanicNotice> {
     queue.drain(..).collect()
 }
 
+/// Report an event listener's panic through the same diagnostic queue as retained callbacks.
+pub(crate) fn report_hook_panic(owner: &'static str, hook: &'static str, message: String) {
+    log::error!(
+        "mod {owner}: {hook} callback panicked and is disabled for this session: {message}"
+    );
+    record_callback_panic(owner, "hook", hook, message);
+}
+
 fn record_callback_panic(
     owner: &'static str,
     kind: &'static str,
