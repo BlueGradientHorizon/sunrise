@@ -104,8 +104,9 @@ fn submissions<'a>(
         .key
         .as_deref()
         .ok_or("builds need a project signing key")?;
-    let source_repo = super::github_repo(&entry.source_url())
-        .ok_or("builds need the project's GitHub repository in `source`")?;
+    let source_repo = super::github_repo(&entry.source_url()).ok_or(
+        "builds need the project's GitHub repository in `source`, or in `repo` when `source` is omitted",
+    )?;
     let mut seen = BTreeSet::new();
     version
         .builds
@@ -287,7 +288,7 @@ pub(super) fn verify(
     let canonical = source.manifest.version.to_string();
     if version.version != canonical {
         return Err(format!(
-            "builds require a canonical version label: publish the version under {canonical:?}"
+            "builds require a canonical version label ({canonical:?}); a version already published under a short label stays source-only. Publish a new mod version to add builds"
         ));
     }
     let submissions = submissions(entry, version)?;

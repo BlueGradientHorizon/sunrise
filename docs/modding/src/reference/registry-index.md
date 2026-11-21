@@ -348,8 +348,9 @@ if any change falls outside the append, including changes to the workflow itself
 The descriptor `<id>-<version>+<release>.binaries.json` names `id`, `version`, `build` (the SDK commit),
 `rust` (the SDK's Rust release), and `archives`. Every archive record has `target`, `name`, `size`,
 `sha256` and `signature` (its `.minisig` text). Its name is `<id>-<version>+<release>-<target>.tar.xz`
-and its URL is beside the descriptor in a release of the project's `source` repository on GitHub. The archive contains exactly the
-library and `identity.json`, both regular root files. `identity.json` has `target`, `file` (the library
+and its URL is beside the descriptor in a release of the project's GitHub repository. `source` names that
+repository; if `source` is omitted, `repo` supplies it. The archive contains exactly the library and
+`identity.json`, both regular root files. `identity.json` has `target`, `file` (the library
 name), `sha256` (the library digest) and `identity` (`<build> <id> <version> <rust> unwind`). The same
 project key signs the source, every archive, and the descriptor. The descriptor binds each archive's
 bytes to the declared project, mod version and SDK host. Validation checks every host the SDK ships,
