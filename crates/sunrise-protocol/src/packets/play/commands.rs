@@ -2,7 +2,7 @@
 //! and their parser properties.
 use crate::{
     Result,
-    buf::{Codec, Reader},
+    buf::{Codec, MAX_STRING_UTF16, Reader},
 };
 use sunrise_core::vanilla_bytes::Writer;
 
@@ -177,7 +177,7 @@ impl ArgumentProperties {
             | "minecraft:resource_key"
             | "minecraft:resource_or_tag"
             | "minecraft:resource_or_tag_key"
-            | "minecraft:resource_selector" => Self::Registry(r.string(32767)?),
+            | "minecraft:resource_selector" => Self::Registry(r.string(MAX_STRING_UTF16)?),
             _ => Self::None,
         })
     }

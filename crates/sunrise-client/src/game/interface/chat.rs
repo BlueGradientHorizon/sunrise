@@ -174,28 +174,24 @@ impl Game<'_> {
             let owner = registration.mod_id;
             let (command, call) =
                 mod_api::__private::split_client_command_registration(registration.answer);
+            let executor = super::native_server::RegisteredClientExecutor::new(
+                mod_api::__private::game::CallbackOwner::for_mod(owner),
+                call,
+            );
             if command.level != 0 {
                 log::warn!(
-                    "Sunrise: a client command was left out: `{}` has an operator level",
+                    "Sunrise: mod {owner} client command `{}` was left out: it has an operator level",
                     command.usage
                 );
                 continue;
             }
-            let owner = mod_api::__private::game::CallbackOwner::new(owner)
-                .unwrap_or_else(|| mod_api::__private::game::CallbackOwner::for_mod(owner));
             usages.push(command);
-            executors.push(super::native_server::RegisteredClientExecutor::new(
-                owner, call,
-            ));
+            executors.push(Some(executor));
         }
         let arguments = super::native_server::command_arguments();
         let mut slots = super::native_server::CommandExecutorSlots::new();
-        let (tree, _, problems) = super::native_server::client_command_tree(
-            &usages,
-            |name| base.find(name).is_some(),
-            &arguments,
-            Some(&mut slots),
-        );
+        let (tree, _, problems) =
+            super::native_server::client_command_tree(&usages, &arguments, Some(&mut slots));
         for problem in problems {
             log::warn!("Sunrise: a client command was left out: {problem}");
         }
@@ -207,8 +203,14 @@ impl Game<'_> {
             &arguments,
             Some(&slots),
         );
+        let retained: std::collections::HashSet<_> = slots.values().copied().collect();
+        for (slot, executor) in executors.iter_mut().enumerate() {
+            if !retained.contains(&slot) {
+                *executor = None;
+            }
+        }
         self.native_client_commands
-            .install(client_dispatcher, executors);
+            .install(client_dispatcher, usages, executors);
         let mut tree_with_mods = base.clone();
         super::native_server::register_dispatcher(
             &mut tree_with_mods,
@@ -916,9 +918,6 @@ impl Game<'_> {
             .map(|(k, _)| k.clone())
             .collect();
         self.sync_enchantment_registries();
-        if self.remote.is_none() {
-            self.ui.registries.selector_tokens = super::native_entity_selectors::selector_tokens();
-        }
         // After the export, which keys the registry with vanilla's tags.
         self.sync_stat_registries();
         self.sync_pack_tag_ids();
@@ -1369,17 +1368,12 @@ impl Game<'_> {
         // On a server (single player's own included) the server runs it,
         // unless a client mod owns the command.
         if self.remote.is_some() {
-            if let Some(command) = message.strip_prefix('/')
-                && self.run_client_native_command(command)
-            {
-                return;
-            }
             self.send_chat_from_screen(&message);
             return;
         }
         if let Some(command) = message.strip_prefix('/') {
             // A native mod's command first.
-            if !self.run_client_native_command(command) {
+            if self.run_client_native_command(command).is_none() {
                 self.run_command(command);
             }
         } else {
@@ -1632,14 +1626,13 @@ impl Game<'_> {
     /// first, as `ClientPacketListener.sendUnattendedCommand` lets client
     /// commands take it.
     pub(super) fn click_command(&mut self, command: &str) {
-        let command = command.strip_prefix('/').unwrap_or(command);
-        if self.run_client_native_command(command) {
-            return;
-        }
         if self.remote.is_some() {
             self.send_unattended_command(command);
         } else {
-            self.run_command(command);
+            let command = command.strip_prefix('/').unwrap_or(command);
+            if self.run_client_native_command(command).is_none() {
+                self.run_command(command);
+            }
         }
     }
     /// PvP & HUD's chat search on or off. The box holds the query: what was typed is put aside
@@ -2665,7 +2658,6 @@ mod tests {
         let mut slots = super::super::native_server::CommandExecutorSlots::new();
         let (tree, _, problems) = super::super::native_server::client_command_tree(
             &commands,
-            |name| vanilla.find(name).is_some(),
             &arguments,
             Some(&mut slots),
         );
@@ -2722,14 +2714,6 @@ mod tests {
             chat.parse("tp 0 64 0", &op_reg).executable().unwrap().1,
             "teleport.location"
         );
-        // A name the game has is not taken over.
-        let (_, _, problems) = super::super::native_server::client_command_tree(
-            &[mod_api::Command::new("help <x:word>")],
-            |name| vanilla.find(name).is_some(),
-            &arguments,
-            None,
-        );
-        assert_eq!(problems.len(), 1);
     }
 
     #[test]

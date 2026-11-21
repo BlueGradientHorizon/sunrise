@@ -16,19 +16,42 @@ use std::{collections::HashMap, sync::Arc};
 
 pub(in crate::game) struct RegisteredClientExecutor {
     pub(super) owner: CallbackOwner,
-    pub(super) call: Arc<ClientCommandExecutor>,
+    call: Option<Arc<ClientCommandExecutor>>,
 }
 
 impl RegisteredClientExecutor {
     pub(in crate::game) fn new(owner: CallbackOwner, call: Arc<ClientCommandExecutor>) -> Self {
-        Self { owner, call }
+        Self {
+            owner,
+            call: Some(call),
+        }
+    }
+
+    pub(super) fn execute(
+        &self,
+        host: &mut dyn mod_api::ClientHost,
+        invocation: &mod_api::CommandInvocation,
+    ) -> Result<Option<i32>, String> {
+        let call = self.call.as_ref().expect("live client executor");
+        self.owner
+            .call("client_command", "execute", || call(host, invocation))
+    }
+}
+
+impl Drop for RegisteredClientExecutor {
+    fn drop(&mut self) {
+        self.owner
+            .dispose("client_command", "drop", self.call.take());
     }
 }
 
 /// The client's own native mod commands, bound to the current client dispatcher generation.
 pub(in crate::game) struct NativeClientCommandState {
     pub(in crate::game) dispatcher: sunrise_client::command::Dispatcher,
-    pub(super) executors: Vec<RegisteredClientExecutor>,
+    pub(super) executors: Vec<Option<Arc<RegisteredClientExecutor>>>,
+    // Keep the panic state of a registration across server-tree refreshes. Retired,
+    // healthy registrations need not survive a generation.
+    owners: HashMap<(&'static str, String), CallbackOwner>,
 }
 
 impl Default for NativeClientCommandState {
@@ -36,6 +59,7 @@ impl Default for NativeClientCommandState {
         Self {
             dispatcher: sunrise_client::command::Dispatcher::new(),
             executors: Vec::new(),
+            owners: HashMap::new(),
         }
     }
 }
@@ -44,10 +68,29 @@ impl NativeClientCommandState {
     pub(in crate::game) fn install(
         &mut self,
         dispatcher: sunrise_client::command::Dispatcher,
-        executors: Vec<RegisteredClientExecutor>,
+        usages: Vec<mod_api::Command>,
+        executors: Vec<Option<RegisteredClientExecutor>>,
     ) {
+        let mut active = HashMap::new();
+        let next = executors
+            .into_iter()
+            .zip(usages)
+            .map(|(executor, usage)| {
+                executor.map(|mut executor| {
+                    let key = (executor.owner.id(), usage.usage);
+                    if let Some(owner) = self.owners.remove(&key) {
+                        executor.owner = owner;
+                    }
+                    active.insert(key, executor.owner.clone());
+                    Arc::new(executor)
+                })
+            })
+            .collect();
         self.dispatcher = dispatcher;
-        self.executors = executors;
+        // Dropping an old callable here may also poison its replacement's shared owner.
+        self.executors = next;
+        self.owners.retain(|_, owner| !owner.is_enabled());
+        self.owners.extend(active);
     }
 }
 
@@ -101,6 +144,8 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return;
         }
+        self.ui.registries.selector_tokens =
+            super::super::native_entity_selectors::selector_tokens();
         let mut registrations = Vec::new();
         self.native_register_commands(&mut registrations);
         let (usages, executors): (Vec<_>, Vec<_>) = registrations
@@ -181,7 +226,7 @@ impl Game<'_> {
             let tree = without_reserved_roots(&state.report, |name| host.hub.vanilla_command(name));
             host.native_commands_sent = revision;
             host.hub
-                .set_selector_tokens(super::super::native_entity_selectors::selector_tokens());
+                .set_selector_tokens(self.ui.registries.selector_tokens.clone());
             if !force_resend && !replacing {
                 host.hub.set_mod_commands(0, tree);
                 return;

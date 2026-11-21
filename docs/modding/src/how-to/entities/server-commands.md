@@ -268,12 +268,15 @@ impl CommandArgumentType for WarpName {
 ```
 
 The engine does not filter `suggest` answers by prefix or sender: each argument type owns its
-own sender and filtering policy, and `tab_complete` still sees the merged suggestions on the
-server. Suggestions are sorted and deduplicated across the dispatcher first; vanilla's
+own sender and filtering policy. `tab_complete` sees the merged server suggestions, including
+custom argument completions; use each entry's byte `range` relative to `event.command` to change
+what it replaces. After the hook, the engine drops invalid ranges and sorts, expands and
+deduplicates the surviving suggestions with Brigadier's common replacement span. Vanilla's
 `ClientboundCommandSuggestionsPacket` string bounds (32,767 UTF-16 code units for text; 65,535
 bytes of Java modified UTF-8 for a literal NBT tooltip) drop oversized entries individually with
 a warning log without discarding valid siblings, followed by vanilla's post-sort 1,000-entry
-packet limit (`ServerCommandSuggestionsProvider.limitSuggestionCount`).
+packet limit (`ServerCommandSuggestionsProvider.limitSuggestionCount`). The reply keeps the
+sorted prefix that fits the connection's actual compression and frame codec.
 
 A panic in `kind`, `parse`, or `suggest` is contained under the argument type's `CallbackOwner`:
 it disables only that argument type for the rest of the session and reports an error notice
@@ -298,6 +301,9 @@ mod. A client mod registers client command argument types the same way; they are
 available to `register_client_commands`, where each client usage binds its executor
 with `Command::executes_client(|host, command| { /* ... */ Some(1) })` and server-only
 handle argument kinds (`player`, `players`, `entity`, `entities`, `dimension`) are refused.
+Client and server commands can share a root in chat. Typed and unattended commands try the
+client dispatcher first; an unknown command or argument proceeds to the server, while a
+client argument error or failure stays local.
 
 ### Completing one token of a greedy text
 
@@ -353,7 +359,7 @@ after it changes them.
 ## Custom selector tokens
 
 Side: server. Register a token such as `@allies` once from `Hooks::register` with
-`r.register_entity_selector("allies", Allies)?`, where `Allies` implements
+`r.register_entity_selector("allies", Allies)`, where `Allies` implements
 `EntitySelectorType` (NeoForge's `EntitySelectorManager.register` and
 `IEntitySelectorType`). `base` returns its `SelectorBase`: players only, a limit, a
 `SelectorSort` and the translation key of its completion tooltip. `matches(host, source,
@@ -370,7 +376,10 @@ with `argument.entity.selector.unknown`. `register_entity_selector` returns
 `Result<(), EntitySelectorRegistrationError>` for an empty name, a character outside
 Brigadier's unquoted-string alphabet (`[0-9A-Za-z_.+-]`), one of vanilla's `p a r s e n`,
 a duplicate token name, or a call after startup registration closes, without poisoning
-unrelated registrations. `base()` is not called during registration.
+unrelated registrations. Handle the result in `Hooks::register`, for example with
+`if let Err(error) = r.register_entity_selector("allies", Allies) { eprintln!("{error}"); }`.
+`base()` is called only when the logical server builds its command registry; the same
+snapshot goes to clients.
 
 The server sends token metadata alongside each command tree to connected Sunrise clients,
 including the single-player window. Their command parser and completion use the server's

@@ -21,7 +21,9 @@ mod selector_tests;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
 use crate::game::level_control_hooks::LevelControl;
-pub(super) use argument_kinds::{CommandArguments, RegisteredArgument, command_arguments};
+#[cfg(test)]
+pub(super) use argument_kinds::RegisteredArgument;
+pub(super) use argument_kinds::{CommandArguments, command_arguments};
 use argument_kinds::{
     UNCENTERED, argument_type, custom_value, dimension_value, nbt_value, parsed_type, parser,
     positional_value, resource_parser,
@@ -185,11 +187,10 @@ pub(super) fn command_tree(
 /// argument grammar and custom argument types as the server (excluding server-only handle kinds).
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
-    vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
     executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, true, executors)
+    command_tree_for(commands, |_| false, custom, true, executors)
 }
 
 // Executable paths (including argument names) mapped to the input registration slot.
@@ -323,6 +324,13 @@ fn finish(children: &mut Value) {
     }
 }
 
+/// The result of a command handled by the client's dispatcher, never sent to the server.
+#[derive(Debug, PartialEq, Eq)]
+pub(in crate::game) enum ClientCommandOutcome {
+    Failed,
+    Success(i32),
+}
+
 /// Add a validated native report for descriptor-only consumers.
 pub(super) fn register_dispatcher(
     dispatcher: &mut Dispatcher,
@@ -353,6 +361,7 @@ pub(super) fn register_command_nodes(
     ) {
         for (name, node) in children {
             path.push(name.clone());
+            let before = dispatcher.nodes.len();
             let id = if node["type"] == "literal" {
                 dispatcher.literal(parent, name)
             } else {
@@ -362,15 +371,21 @@ pub(super) fn register_command_nodes(
                 .as_str()
                 .and_then(|level| LEVELS.iter().position(|known| *known == level))
                 .unwrap_or(0) as u8;
-            dispatcher.requires(id, level);
-            if node["executable"] == true {
+            // For display merges, a shared node keeps the server's parser, permissions
+            // and redirect. Only its missing children (and executable marker) are added.
+            if id == before {
+                dispatcher.requires(id, level);
+            }
+            if node["executable"] == true && dispatcher.nodes[id].command.is_none() {
                 dispatcher.executes(id, handler);
-                dispatcher.requires_execution(
-                    id,
-                    node["execution_level"]
-                        .as_u64()
-                        .expect("runnable usage level") as u8,
-                );
+                if id == before {
+                    dispatcher.requires_execution(
+                        id,
+                        node["execution_level"]
+                            .as_u64()
+                            .expect("runnable usage level") as u8,
+                    );
+                }
                 on_executable(path, id);
             }
             if let Some(children) = node["children"].as_object() {
@@ -2359,51 +2374,19 @@ impl Game<'_> {
         command: &str,
     ) {
         self.client_command_failure(error.message.clone());
-        let Some(window) = error.context_window() else {
-            return;
-        };
-        let suggest = sunrise_client::text::Style {
-            click: Some(sunrise_client::text::ClickEvent::SuggestCommand(format!(
-                "/{command}"
-            ))),
-            ..sunrise_client::text::Style::default()
-        };
-        let mut context = Text::empty();
-        if window.ellipsis {
-            context.push("...");
+        if let Some(context) = Self::command_syntax_context(error, command) {
+            self.client_command_failure(context);
         }
-        context.push(window.before.as_str());
-        if !window.after.is_empty() {
-            context.push(
-                Text::literal(window.after)
-                    .with_color(sunrise_client::text::RED)
-                    .underlined(),
-            );
-        }
-        context.push(
-            Text::translate("command.context.here", &[])
-                .with_color(sunrise_client::text::RED)
-                .italic(),
-        );
-        self.client_command_failure(
-            context
-                .with_color(sunrise_client::text::GRAY)
-                .with_style(&suggest),
-        );
     }
 
-    /// `ClientCommandHandler.runCommand`: parse and execute a client-registered native command
-    /// directly against the current client dispatcher generation. Returns `false` when the root
-    /// literal is not registered on the client so the command proceeds to the server / vanilla
-    /// handler, and `true` when the client owns the root literal (handled, errored locally, or
-    /// disabled).
-    pub(in crate::game) fn run_client_native_command(&mut self, line: &str) -> bool {
-        if self.lan_acting.is_some() {
-            return false;
-        }
-        let root = line.split(' ').next().unwrap_or_default();
-        if self.native_client_commands.dispatcher.find(root).is_none() {
-            return false;
+    /// `ClientCommandHandler.runCommand`: only Brigadier's unknown command and unknown argument
+    /// outcomes leave the line to the server. All other failures stay on this client.
+    pub(in crate::game) fn run_client_native_command(
+        &mut self,
+        line: &str,
+    ) -> Option<ClientCommandOutcome> {
+        if self.is_logical_server() || self.lan_acting.is_some() {
+            return None;
         }
         let parse = self
             .native_client_commands
@@ -2412,32 +2395,48 @@ impl Game<'_> {
         let context = match parse.executable() {
             Ok((context, _)) => context.clone(),
             Err(error) => {
+                if matches!(
+                    error.key.as_str(),
+                    "command.unknown.command" | "command.unknown.argument"
+                ) {
+                    return None;
+                }
                 self.client_syntax_failure(&error, line);
-                return true;
+                return Some(ClientCommandOutcome::Failed);
             }
         };
         let Some(executor) = context
             .executor
             .filter(|&key| self.native_client_commands.dispatcher.owns_executor(key))
             .and_then(|key| self.native_client_commands.executors.get(key.slot()))
-            .filter(|executor| executor.owner.is_enabled())
+            .and_then(Option::as_ref)
+            .cloned()
         else {
-            return true;
+            log::error!("client command has no executor in its dispatcher generation: {line}");
+            self.client_command_failure(Text::translate("command.failed", &[]));
+            return Some(ClientCommandOutcome::Failed);
         };
-        let owner = executor.owner.clone();
-        let call = Arc::clone(&executor.call);
         let invocation = match self.resolve_client_native_command(context) {
             Ok(invocation) => invocation,
             Err(error) => {
                 self.client_syntax_failure(&error, line);
-                return true;
+                return Some(ClientCommandOutcome::Failed);
             }
         };
-        if let Err(why) = owner.call("client_command", "execute", || call(self, &invocation)) {
-            log::warn!("client command failed: {why}");
-            self.client_command_failure(Text::translate("command.failed", &[]));
+        match executor.execute(self, &invocation) {
+            Ok(Some(result)) => Some(ClientCommandOutcome::Success(result)),
+            failure => {
+                match failure {
+                    Err(why) => log::warn!("client command failed: {why}"),
+                    _ => log::warn!(
+                        "client command failed: mod {} returned no result",
+                        executor.owner.id()
+                    ),
+                }
+                self.client_command_failure(Text::translate("command.failed", &[]));
+                Some(ClientCommandOutcome::Failed)
+            }
         }
-        true
     }
 
     /// `EntityArgument.getEntity` / `getEntities` / `getPlayer` / `getPlayers`:
@@ -6424,7 +6423,7 @@ pub(super) mod fake_action_tests {
             mod_api::Command::new("c_dim <dim:dimension>"),
         ];
         let (refused_tree, _, refused_problems) =
-            client_command_tree(&server_only, |_| false, &arguments, None);
+            client_command_tree(&server_only, &arguments, None);
         assert_eq!(
             refused_problems.len(),
             server_only.len(),
@@ -6455,8 +6454,7 @@ pub(super) mod fake_action_tests {
             mod_api::Command::new("c_res <r:resource:minecraft:item>"),
         ];
         let mut slots = CommandExecutorSlots::new();
-        let (tree, _, problems) =
-            client_command_tree(&client_safe, |_| false, &arguments, Some(&mut slots));
+        let (tree, _, problems) = client_command_tree(&client_safe, &arguments, Some(&mut slots));
         assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(slots.len(), client_safe.len());
 
@@ -6492,9 +6490,19 @@ pub(super) mod fake_action_tests {
     #[ignore = "daily"]
     fn client_commands_execute_bound_typed_invocations_contain_panics_and_reject_stale_generations()
     {
+        struct DropBomb(Arc<AtomicBool>);
+        impl Drop for DropBomb {
+            fn drop(&mut self) {
+                if !self.0.swap(true, Ordering::Relaxed) {
+                    panic!("client command capture destructor fixture");
+                }
+            }
+        }
+
         struct ClientCommandsMod {
             heard: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
             sibling: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
+            dropped: Arc<AtomicBool>,
         }
 
         #[mod_api::__subscriptions]
@@ -6531,6 +6539,16 @@ pub(super) mod fake_action_tests {
                         },
                     ),
                 );
+                let bomb = DropBomb(self.dropped.clone());
+                event.commands.extend([
+                    mod_api::Command::new("capture").executes_client(move |_, _| {
+                        let _capture = &bomb;
+                        Some(1)
+                    }),
+                    mod_api::Command::new("shared local <value:integer>")
+                        .executes_client(|_, _| Some(42)),
+                    mod_api::Command::new("shared refused").executes_client(|_, _| None),
+                ]);
                 event
                     .commands
                     .push(mod_api::Command::op("cop", 2).executes_client(|_, _| Some(1)));
@@ -6543,11 +6561,13 @@ pub(super) mod fake_action_tests {
 
         let heard = Arc::new(Mutex::new(Vec::new()));
         let sibling = Arc::new(Mutex::new(Vec::new()));
+        let dropped = Arc::new(AtomicBool::new(false));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "client_cmd_fixture",
             Box::new(ClientCommandsMod {
                 heard: heard.clone(),
                 sibling: sibling.clone(),
+                dropped: dropped.clone(),
             }),
         )]
         .into();
@@ -6555,7 +6575,7 @@ pub(super) mod fake_action_tests {
         let _ = mod_api::testing::rebuild_parts(|| -> Result<(), ()> {
             crate::game::api_values::install_parts(&mods).unwrap();
             mod_platform::testing::with_mods(mods, || {
-                super::super::native_entity_refs::tests::with_game(|game| {
+                super::super::native_entity_refs::tests::with_client_game(|game| {
                     let _ = mod_api::__private::game::take_callback_panic_notices();
                     let chat_tree = game.chat_tree_for(None);
                     assert!(chat_tree.find("cmach").is_some());
@@ -6569,12 +6589,15 @@ pub(super) mod fake_action_tests {
                     assert_eq!(chat_tree.nodes[tp].permission, 2);
 
                     // Unregistered or rejected roots return false so they proceed to the server.
-                    assert!(!game.run_client_native_command("unknown_root foo"));
-                    assert!(!game.run_client_native_command("cop"));
-                    assert!(!game.run_client_native_command("cserver @a"));
+                    assert_eq!(game.run_client_native_command("unknown_root foo"), None);
+                    assert_eq!(game.run_client_native_command("cop"), None);
+                    assert_eq!(game.run_client_native_command("cserver @a"), None);
 
                     // Typed client invocation parses custom arguments, coordinates and optionals.
-                    assert!(game.run_client_native_command("cmach press 1 2 3 7"));
+                    assert_eq!(
+                        game.run_client_native_command("cmach press 1 2 3 7"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
                     {
                         let heard = heard.lock().unwrap();
                         assert_eq!(heard.len(), 1);
@@ -6598,13 +6621,19 @@ pub(super) mod fake_action_tests {
 
                     // A syntax error on a registered client root reports locally and never calls the executor.
                     let before_err = game.ui.chat.recent_lines(50).len();
-                    assert!(game.run_client_native_command("cmach nope 1 2 3"));
+                    assert_eq!(
+                        game.run_client_native_command("cmach nope 1 2 3"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
                     assert_eq!(heard.lock().unwrap().len(), 1);
                     assert!(game.ui.chat.recent_lines(50).len() > before_err);
 
                     // A panicking client executor disables only itself, emits a notice, and leaves siblings working.
                     let before_panic = game.ui.chat.recent_lines(50).len();
-                    assert!(game.run_client_native_command("cpanic"));
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
                     assert!(game.ui.chat.recent_lines(50).len() > before_panic);
                     let notices: Vec<_> = mod_api::__private::game::take_callback_panic_notices()
                         .into_iter()
@@ -6615,13 +6644,19 @@ pub(super) mod fake_action_tests {
                     assert_eq!(notices[0].operation, "execute");
 
                     // Disabled executor is not invoked again, and sibling commands still run.
-                    assert!(game.run_client_native_command("cpanic"));
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
                     assert!(
                         mod_api::__private::game::take_callback_panic_notices()
                             .into_iter()
                             .all(|notice| notice.mod_id != "client_cmd_fixture")
                     );
-                    assert!(game.run_client_native_command("csibling ok"));
+                    assert_eq!(
+                        game.run_client_native_command("csibling ok"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
                     {
                         let sibling = sibling.lock().unwrap();
                         assert_eq!(sibling.len(), 1);
@@ -6646,7 +6681,75 @@ pub(super) mod fake_action_tests {
                             .dispatcher
                             .owns_executor(old_key)
                     );
-                    let _ = game.chat_tree_for(None);
+                    let mut server = Dispatcher::new();
+                    let shared = server.literal(0, "shared");
+                    let remote = server.literal(shared, "server");
+                    let target = server.literal(0, "target");
+                    server.requires(shared, 2);
+                    server.requires(remote, 3);
+                    server.requires_execution(remote, 3);
+                    server.executes(remote, "remote");
+                    server.redirect(remote, target);
+                    // A real connection rebuild asks the client hook again, then a server-tree
+                    // refresh merges the same local usage without claiming the shared root.
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "CommandsTest").unwrap();
+                    assert!(dropped.load(Ordering::Relaxed));
+                    let notices: Vec<_> = mod_api::__private::game::take_callback_panic_notices()
+                        .into_iter()
+                        .filter(|notice| notice.mod_id == "client_cmd_fixture")
+                        .collect();
+                    assert_eq!(notices.len(), 1);
+                    assert_eq!(
+                        (notices[0].kind, notices[0].operation),
+                        ("client_command", "drop")
+                    );
+                    let display = game.chat_tree_for(Some(&server));
+                    let children = &display.nodes[shared].children;
+                    assert!(
+                        children
+                            .iter()
+                            .any(|&id| display.nodes[id].name() == "local")
+                    );
+                    assert!(children.contains(&remote));
+                    assert_eq!(display.nodes[shared].permission, 2);
+                    assert_eq!(display.nodes[remote].execution_permission, 3);
+                    assert_eq!(display.nodes[remote].redirect, Some(target));
+                    assert_eq!(game.run_client_native_command("shared server"), None);
+                    assert_eq!(game.run_client_native_command("shared"), None);
+                    assert_eq!(
+                        game.run_client_native_command("shared local nope"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/shared local 7"),
+                        Some(ClientCommandOutcome::Success(42))
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/shared refused"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert!(
+                        mod_api::__private::game::take_callback_panic_notices()
+                            .into_iter()
+                            .all(|notice| notice.mod_id != "client_cmd_fixture")
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/csibling signed"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    game.send_unattended_command("/csibling unattended");
+                    let sibling = sibling.lock().unwrap();
+                    assert_eq!(sibling.len(), 3);
+                    assert_eq!(
+                        sibling[2].argument("word"),
+                        Some(&mod_api::CommandArgumentValue::String("unattended".into()))
+                    );
+                    assert!(game.command_prompt_message().is_none());
                     assert!(
                         !game
                             .native_client_commands

@@ -20,6 +20,8 @@ use sunrise_protocol::{
     registry::Builtin,
 };
 
+mod suggestion_reply;
+
 /// Commands.CommandSelection: registered only on dedicated servers.
 const DEDICATED_ONLY: &[&str] = &[
     "ban",
@@ -75,7 +77,7 @@ struct Node {
     restricted: bool,
     children: Vec<usize>,
     redirect: Option<Vec<String>>,
-    parser: Option<(String, Value)>,
+    parser: Option<(String, Vec<u8>)>,
     suggestions: Option<String>,
 }
 
@@ -241,7 +243,7 @@ impl CommandTree {
                     name: node.name.clone(),
                     parser: node.parser.as_ref().map(|(parser, props)| {
                         let id = argument_types.and_then(|t| t.id(parser)).unwrap_or(0);
-                        (id, properties(parser, props))
+                        (id, props.clone())
                     }),
                     suggestions: node.suggestions.clone(),
                 }
@@ -300,8 +302,23 @@ fn fill(
         {
             continue;
         }
-        path.push(name.clone());
         let argument = child["type"] == "argument";
+        let parser = if argument {
+            let parser = child["parser"].as_str().unwrap_or_default();
+            match properties(parser, &child["properties"]) {
+                Ok(properties) => Some((parser.to_owned(), properties)),
+                Err(err) => {
+                    log::warn!(
+                        "Sunrise: command wire branch `{} {name}` omitted: {err}",
+                        path.join(" ")
+                    );
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+        path.push(name.clone());
         let index = nodes.len();
         nodes.push(Node {
             name: name.clone(),
@@ -311,12 +328,7 @@ fn fill(
             restricted: required > 0,
             children: Vec::new(),
             redirect: redirect(child),
-            parser: argument.then(|| {
-                (
-                    child["parser"].as_str().unwrap_or_default().to_owned(),
-                    child["properties"].clone(),
-                )
-            }),
+            parser,
             suggestions: if argument {
                 // A mod's argument type the client does not know asks the server, like a vanilla
                 // argument whose provider is `ask_server`; vanilla's own providers are the
@@ -366,7 +378,7 @@ fn redirect(node: &Value) -> Option<Vec<String>> {
 }
 
 /// ArgumentTypeInfo.serializeToNetwork for the report's properties.
-fn properties(parser: &str, p: &Value) -> Vec<u8> {
+fn properties(parser: &str, p: &Value) -> sunrise_protocol::Result<Vec<u8>> {
     let mut w = Writer::new();
     let flags = |w: &mut Writer| {
         w.u8(u8::from(p.get("min").is_some()) | u8::from(p.get("max").is_some()) << 1);
@@ -420,10 +432,21 @@ fn properties(parser: &str, p: &Value) -> Vec<u8> {
         | "minecraft:resource_key"
         | "minecraft:resource_or_tag"
         | "minecraft:resource_or_tag_key"
-        | "minecraft:resource_selector" => w.string(p["registry"].as_str().unwrap_or_default()),
+        | "minecraft:resource_selector" => {
+            let name = p["registry"].as_str().ok_or_else(|| {
+                sunrise_protocol::Error::new("missing resource argument registry")
+            })?;
+            // ResourceArgument.Info -> FriendlyByteBuf.writeIdentifier -> Utf8String.write.
+            // Checking the wire string here does not limit the local dispatcher's typed key.
+            sunrise_protocol::buf::write_utf8(
+                &mut w,
+                name,
+                sunrise_protocol::buf::MAX_STRING_UTF16,
+            )?;
+        }
         _ => {}
     }
-    w.data
+    Ok(w.data)
 }
 
 #[cfg(test)]
@@ -466,13 +489,39 @@ mod tests {
     fn integer_bounds_and_entity_flags() {
         let p: Value = serde_json::from_str(r#"{"min": 1, "max": 1000}"#).unwrap();
         assert_eq!(
-            properties("brigadier:integer", &p),
+            properties("brigadier:integer", &p).unwrap(),
             vec![3, 0, 0, 0, 1, 0, 0, 3, 0xE8]
         );
         let p: Value = serde_json::from_str(r#"{"amount": "single", "type": "players"}"#).unwrap();
-        assert_eq!(properties("minecraft:entity", &p), vec![3]);
+        assert_eq!(properties("minecraft:entity", &p).unwrap(), vec![3]);
         let p: Value = serde_json::from_str(r#"{"type": "greedy"}"#).unwrap();
-        assert_eq!(properties("brigadier:string", &p), vec![2]);
+        assert_eq!(properties("brigadier:string", &p).unwrap(), vec![2]);
+    }
+
+    #[test]
+    fn a_registry_that_cannot_be_written_does_not_break_other_wire_branches() {
+        use sunrise_protocol::buf::{Codec, MAX_STRING_UTF16, Reader};
+        let name = format!("test:{}", "r".repeat(MAX_STRING_UTF16));
+        let mods = serde_json::json!({"type": "root", "children": {
+            "pick": {"type": "literal", "children": {
+                "registry": {"type": "argument", "parser": "minecraft:resource_key",
+                    "properties": {"registry": name}, "executable": true},
+                "other": {"type": "literal", "executable": true}
+            }},
+            "list": {"type": "literal", "executable": true}
+        }});
+        let tree = CommandTree { root: Value::Null };
+        let outbound = tree.packet_with(0, true, &Builtin::default(), &mods);
+        let mut writer = Writer::new();
+        Commands::write(&outbound, &mut writer);
+        let packet = Commands::read(&mut Reader::new(&writer.data)).unwrap();
+        let dispatcher =
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                .unwrap();
+        let registries = crate::command::Registries::default();
+        assert!(dispatcher.parse("pick other", &registries).is_valid());
+        assert!(dispatcher.parse("list", &registries).is_valid());
+        assert!(!dispatcher.parse("pick stone", &registries).is_valid());
     }
 
     /// A mod's root of a vanilla name (`mod_api::Command::replace_vanilla`)

@@ -445,18 +445,19 @@ impl Game<'_> {
     }
 
     /// `C::Commands`: its arms of `apply_packet`, guard and order kept.
-    pub(super) fn apply_commands_packet(&mut self, p: play::Commands) {
+    pub(super) fn apply_commands_packet(&mut self, p: play::Commands) -> Result<()> {
         let tree = sunrise_client::command::network::from_packet(
             &p,
             sunrise_client::command::vanilla::dispatcher(),
-        );
+        )?;
         // The chat's tree follows the server's now; a mod's commands
         // go into it again (`chat_tree_for`).
         let chat_tree = self.chat_tree_for(Some(&tree));
         if let Some(r) = self.remote.as_mut() {
             r.chat_tree = chat_tree;
-            r.chat_tree_received = true;
+            r.server_chat_tree = Some(tree);
         }
+        Ok(())
     }
 
     /// `C::DisguisedChat`: its arms of `apply_packet`, guard and order kept.

@@ -287,7 +287,7 @@ impl mod_api::Hooks for IdentifierCompletion {
             assert_eq!(event.range, [6, 8]);
             event
                 .suggestions
-                .push(mod_api::Suggestion::new((6, 8), "example:stone"));
+                .push(mod_api::Suggestion::new((7, 8), "xample:stone").with_tooltip("a stone"));
         }
     }
 }
@@ -338,12 +338,16 @@ fn an_identifier_listener_replies_on_the_wire_and_leaves_room_for_the_next_argum
                 let length = reader.varint().unwrap();
                 assert_eq!(reader.varint().unwrap(), 1);
                 let text = reader.string(32767).unwrap();
-                assert!(!reader.bool().unwrap());
+                assert!(reader.bool().unwrap());
+                assert_eq!(
+                    reader.nbt().unwrap(),
+                    sunrise_protocol::text::literal("a stone")
+                );
                 assert!(answer.replace((start, length, text)).is_none());
             }
         }
         let (start, length, text) = answer.expect("no suggestion packet");
-        assert_eq!((start, length, text.as_str()), (6, 2, "example:stone"));
+        assert_eq!((start, length, text.as_str()), (7, 1, "xample:stone"));
         let mut applied = typed.to_owned();
         applied.replace_range(start as usize..(start + length) as usize, &text);
         assert_eq!(applied, "probe example:stone");

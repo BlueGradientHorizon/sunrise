@@ -6,9 +6,10 @@ pub trait Hooks {
     /// each usage with its executor attached by [`Command::executes_client`]
     /// (`Command::new("x <mode:word>").executes_client(...)`).
     /// Asked when a connection starts and again when the server sends its
-    /// own tree, so the chat box colours, completes and lists them as the
-    /// game's own; a name the game already has keeps that command's
-    /// behaviour. A client command has no operator level: one with a nonzero
+    /// own tree. Client and server branches can share a root in the chat's
+    /// display tree, but run in separate dispatchers. Only an unknown command
+    /// or argument in the client dispatcher proceeds to the server.
+    /// A client command has no operator level: one with a nonzero
     /// `level` is left out, and server-only handle argument kinds (`player`,
     /// `players`, `entity`, `entities`, `dimension`) are refused.
     #[hook(

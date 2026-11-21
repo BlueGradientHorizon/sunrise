@@ -72,7 +72,9 @@ pub fn split_client_command_registration(
 /// the first such registration wins on ties.
 ///
 /// A `resource:<registry>` usage requires a `namespace:path` registry name; an invalid name
-/// refuses the usage. There is no separate registration budget for registry names.
+/// refuses the usage. Registry names have no registration budget. A branch whose
+/// name cannot be written by vanilla's registry-identifier string codec is kept
+/// in the local dispatcher but left out of the command tree sent to players.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
@@ -132,7 +134,8 @@ impl Command {
     /// or `None` for failure. A failed executor or disabled owner never forwards the
     /// command to the server or gives another mod a turn. Only a parse from the current
     /// client dispatcher generation can reach this executor. Capture owned or shared
-    /// state rather than borrowing the registration event.
+    /// state rather than borrowing the registration event. A panic disables the
+    /// usage from that mod for the session, including across command-tree refreshes.
     pub fn executes_client(
         self,
         executor: impl Fn(&mut dyn ClientHost, &CommandInvocation) -> Option<i32>

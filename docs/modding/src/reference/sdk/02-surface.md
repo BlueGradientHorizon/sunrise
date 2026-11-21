@@ -107,8 +107,9 @@ Command argument completion and `tab_complete` share one `Suggestion` type carry
 replacement `text`, optional `tooltip`, and optional `int_value`. `CommandArgumentType::suggest`
 takes `&SuggestionRequest` (`prefix`, prior `arguments`, and optional `sender`) and returns
 `Vec<Suggestion>` on both server and client commands. Range offsets into `request.prefix` must be
-ordered, within `request.prefix`, and on UTF-8 character boundaries; invalid entries are logged and
-skipped individually. See [Server commands](../../how-to/entities/server-commands.md) for replacement
+ordered, within `request.prefix`, and on UTF-8 character boundaries. `tab_complete` sees custom
+argument results on the server; its final entries have ranges relative to the entire command. The
+engine logs and skips invalid ranges individually and merges valid results after the hook. See [Server commands](../../how-to/entities/server-commands.md) for replacement
 examples and the `id` argument's `tab_complete` completion route.
 
 ## Change notes

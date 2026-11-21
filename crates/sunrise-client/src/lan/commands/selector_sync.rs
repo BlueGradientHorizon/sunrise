@@ -1,4 +1,5 @@
 //! Sunrise's selector-token metadata, sent beside the server command tree.
+use std::collections::HashSet;
 use sunrise_client_core::registries::SelectorToken;
 use sunrise_core::vanilla_bytes::Writer;
 use sunrise_protocol::{Error, Result, buf::Reader};
@@ -89,14 +90,13 @@ pub fn decode(data: &[u8]) -> Result<Snapshot> {
         return Err(Error::new("selector tokens: invalid count"));
     }
     let mut tokens = Vec::new();
+    let mut names = HashSet::new();
     for _ in 0..count {
         let name = r.string(MAX_STRING_UTF16)?;
         if name.is_empty()
             || !name.bytes().all(sunrise_command::is_unquoted)
             || ["p", "a", "r", "s", "e", "n"].contains(&name.as_str())
-            || tokens
-                .iter()
-                .any(|token: &SelectorToken| token.name == name)
+            || !names.insert(name.clone())
         {
             return Err(Error::new("selector tokens: invalid or duplicate name"));
         }

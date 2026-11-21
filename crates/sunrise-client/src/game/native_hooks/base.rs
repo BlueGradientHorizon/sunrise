@@ -747,9 +747,9 @@ impl Game<'_> {
     /// The client's own commands (`RegisterClientCommandsEvent`): push each
     /// usage with its executor attached by `Command::executes_client`. Asked
     /// when a connection starts and again when the server sends its own tree,
-    /// so the chat box colours, completes and lists them as the game's own; a
-    /// name the game already has keeps that command's behaviour. A client
-    /// command has no operator level: one with a nonzero level is left out.
+    /// so chat can display the branches from both trees. Only a command or
+    /// argument unknown to the client dispatcher proceeds to the server.
+    /// A client command has no operator level: one with a nonzero level is left out.
     pub(in crate::game) fn native_register_client_commands(
         &mut self,
         commands: &mut Vec<mod_api::Answered<mod_api::ClientCommandRegistration>>,
@@ -2747,7 +2747,7 @@ impl Game<'_> {
     }
 
     /// A guest asked to complete `command`; `suggestions` may be added to or
-    /// filtered. `range` is the replaced byte range.
+    /// filtered. `range` is the initial byte span; final entries can replace a different span.
     pub(in crate::game) fn native_tab_complete(
         &mut self,
         player: u128,

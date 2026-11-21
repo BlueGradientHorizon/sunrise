@@ -207,8 +207,7 @@ fn a_custom_argument_reading_arguments_and_prefix_works_on_both_server_and_clien
     )];
 
     // Client command tree accepts the same custom argument type without refusal.
-    let (client_tree, _, client_problems) =
-        super::client_command_tree(&commands, |_| false, &arguments, None);
+    let (client_tree, _, client_problems) = super::client_command_tree(&commands, &arguments, None);
     assert!(client_problems.is_empty(), "{client_problems:?}");
     let mut chat = sunrise_client::command::vanilla::game_dispatcher().clone();
     register_dispatcher(&mut chat, &client_tree, "native_mod_command", &arguments);

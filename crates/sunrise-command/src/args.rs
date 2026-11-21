@@ -128,17 +128,12 @@ impl RegistryId {
     /// Parse a fully qualified `namespace:path` registry name, with neither part empty.
     /// The character sets and the `..` namespace refusal follow vanilla's `Identifier`.
     pub fn parse(name: &str) -> Option<Self> {
-        let (namespace, path) = name.split_once(':')?;
-        let valid = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_.-".contains(&b);
-        if namespace.is_empty()
-            || path.is_empty()
-            || namespace == ".."
-            || !namespace.bytes().all(valid)
-            || !path.bytes().all(|b| valid(b) || b == b'/')
-        {
-            return None;
-        }
+        sunrise_core::identifier::Identifier::parse_namespaced(name)?;
         Some(Self(Cow::Owned(name.to_owned())))
+    }
+
+    pub(crate) fn from_identifier(id: sunrise_core::identifier::Identifier) -> Self {
+        Self(Cow::Owned(id.to_string()))
     }
 
     /// The qualified registry name as text.

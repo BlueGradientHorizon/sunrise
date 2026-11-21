@@ -231,42 +231,97 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn synced_selector_tokens_survive_client_registry_refresh() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
-            game.options.dedicated = None;
-            let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-            game.connect_local(client, "SelectorSyncTest").unwrap();
-            let tokens = vec![SelectorToken {
-                name: "remote_allies".into(),
-                tooltip: "test.remote_allies".into(),
-                players_only: true,
-                limit: 1,
-                sort: "nearest",
-            }];
-            game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
-                sunrise_protocol::packets::configuration::CustomPayload {
-                    channel: sunrise_client::lan::commands::selector_sync::CHANNEL.into(),
-                    data: sunrise_client::lan::commands::selector_sync::encode(&tokens),
-                },
-            ))
-            .unwrap();
-            assert_eq!(game.ui.registries.selector_tokens, tokens);
-            game.build_registries();
-            assert_eq!(game.ui.registries.selector_tokens, tokens);
-            for data in [
-                vec![2],
-                vec![9],
-                sunrise_client::lan::commands::selector_sync::encode(&tokens),
-            ] {
-                game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
-                    sunrise_protocol::packets::configuration::CustomPayload {
-                        channel: sunrise_client::lan::commands::selector_sync::CHANNEL.into(),
-                        data,
-                    },
-                ))
-                .unwrap();
-                assert!(game.ui.registries.selector_tokens.is_empty());
+        struct ClientMustNotBuildSelector(Arc<AtomicUsize>);
+        impl mod_api::EntitySelectorType for ClientMustNotBuildSelector {
+            fn base(&self) -> mod_api::SelectorBase {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                mod_api::SelectorBase::new(
+                    true,
+                    Some(3),
+                    SelectorSort::Nearest,
+                    "test.local_allies",
+                )
             }
+
+            fn matches(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                _: &mod_api::CommandSource,
+                _: mod_api::EntityRef,
+            ) -> bool {
+                true
+            }
+        }
+
+        struct LocalSelector(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for LocalSelector {
+            fn register(
+                &self,
+                registrar: &mut dyn mod_api::Registrar,
+                _: &mod_api::RegistrationContext,
+            ) {
+                registrar
+                    .register_entity_selector(
+                        "local_allies",
+                        ClientMustNotBuildSelector(self.0.clone()),
+                    )
+                    .unwrap();
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "selector_client_fixture",
+            Box::new(LocalSelector(calls.clone())),
+        )]
+        .into();
+        let _ = mod_api::testing::rebuild_parts(|| -> Result<(), ()> {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            mod_platform::testing::with_mods(mods, || {
+                super::super::native_entity_refs::tests::with_client_game(|game| {
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "SelectorSyncTest").unwrap();
+                    assert!(game.ui.registries.selector_tokens.is_empty());
+                    assert_eq!(calls.load(Ordering::Relaxed), 0);
+                    let tokens = vec![SelectorToken {
+                        name: "remote_allies".into(),
+                        tooltip: "test.remote_allies".into(),
+                        players_only: true,
+                        limit: 1,
+                        sort: "nearest",
+                    }];
+                    game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
+                        sunrise_protocol::packets::configuration::CustomPayload {
+                            channel: sunrise_client::lan::commands::selector_sync::CHANNEL.into(),
+                            data: sunrise_client::lan::commands::selector_sync::encode(&tokens),
+                        },
+                    ))
+                    .unwrap();
+                    assert_eq!(game.ui.registries.selector_tokens, tokens);
+                    game.build_registries();
+                    assert_eq!(game.ui.registries.selector_tokens, tokens);
+                    assert_eq!(calls.load(Ordering::Relaxed), 0);
+                    for data in [
+                        vec![2],
+                        vec![9],
+                        sunrise_client::lan::commands::selector_sync::encode(&tokens),
+                    ] {
+                        game.apply_packet(
+                            sunrise_protocol::packets::play::Clientbound::CustomPayload(
+                                sunrise_protocol::packets::configuration::CustomPayload {
+                                    channel: sunrise_client::lan::commands::selector_sync::CHANNEL
+                                        .into(),
+                                    data,
+                                },
+                            ),
+                        )
+                        .unwrap();
+                        assert!(game.ui.registries.selector_tokens.is_empty());
+                    }
+                });
+            });
+            Err(())
         });
     }
 
