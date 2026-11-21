@@ -214,16 +214,16 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
         assert_eq!(marker.set_body_yaw(game, 15.0), Ok(false));
 
         let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 540.75, 0);
-        dragon.id = 42;
+        dragon.id = 100;
         game.dragon.replace(dragon);
-        let dragon = game.entity(42).expect("the dragon's handle");
+        let dragon = game.entity(100).expect("the dragon's handle");
         assert!(game.mob(dragon).is_some());
         assert_eq!(dragon.body_yaw(game), Some(540.75));
         assert_eq!(dragon.set_body_yaw(game, 71.0), Ok(true));
         assert_eq!(game.dragon.as_ref().unwrap().yaw, 540.75);
         let stale_dragon = EntityRef::new(stale.epoch(), dragon.id());
         assert_eq!(stale_dragon.body_yaw(game), None);
-        let part = game.entity(43).expect("the dragon head's handle");
+        let part = game.entity(101).expect("the dragon head's handle");
         assert_eq!(part.body_yaw(game), None);
 
         let other = game

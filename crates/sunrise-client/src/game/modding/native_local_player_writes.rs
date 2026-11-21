@@ -189,6 +189,7 @@ mod tests {
                 loaded_client(game);
                 game.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
                 game.yaw = 15.0;
+                game.previous_position = game.player.as_ref().unwrap().position;
                 game.tick_player_model();
                 game.native_render_frame_pre(Duration::ZERO, 0.5, 0.5);
                 game.prepare_entity_culling();
