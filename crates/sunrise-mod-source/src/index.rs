@@ -345,6 +345,44 @@ impl<'a> Index<'a> {
         }
     }
 
+    /// Resolve a function-body path with its active block imports, innermost first.
+    pub fn resolve_with_imports(
+        &mut self,
+        module: usize,
+        path: &[String],
+        imports: &[&UseTree],
+    ) -> Result<Found, String> {
+        if imports.is_empty() {
+            return self.resolve_path(module, path);
+        }
+        let mut path = path.to_vec();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(first) = path.first() {
+            let mut named = None;
+            for tree in imports {
+                uses(tree, &mut Vec::new(), &mut |prefix, alias| {
+                    if named.is_none() && alias.as_ref() == Some(first) {
+                        named = Some(prefix);
+                    }
+                });
+                if named.is_some() {
+                    break;
+                }
+            }
+            let Some(mut prefix) = named else { break };
+            if !seen.insert(first.clone()) {
+                return Err(format!("{first} imports itself"));
+            }
+            let same_name = prefix.first() == Some(first);
+            prefix.extend_from_slice(&path[1..]);
+            path = prefix;
+            if same_name {
+                break;
+            }
+        }
+        self.resolve_path(module, &path)
+    }
+
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
         if path.len() == 1 {

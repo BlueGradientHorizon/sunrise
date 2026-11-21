@@ -1,8 +1,8 @@
 //! Calls reached by entering the checked function or callback, not merely written inside it.
 use super::{Build, source};
 use mod_source::index::{Found, Index, ItemId};
-use std::{collections::HashSet, fmt};
-use syn::{Block, Expr, FnArg, Item, ItemFn, Pat, Stmt, visit::Visit};
+use std::{collections::HashSet, fmt, ops::ControlFlow};
+use syn::{Block, Expr, FnArg, Item, ItemFn, Pat, Stmt, UseTree, visit::Visit};
 
 pub(crate) enum Callee<'ast> {
     Method(&'ast syn::Ident),
@@ -27,7 +27,7 @@ pub(super) fn ungroup(expr: &Expr) -> &Expr {
     }
 }
 
-pub(super) fn function_path(expr: &Expr) -> Option<&syn::Path> {
+fn function_path(expr: &Expr) -> Option<&syn::Path> {
     match ungroup(expr) {
         Expr::Path(path) if path.qself.is_none() => Some(&path.path),
         _ => None,
@@ -54,14 +54,22 @@ pub(crate) fn has_call_matching<'ast>(
     calls
         .in_block(block)
         .into_iter()
-        .filter_map(Callee::from_expr)
+        .filter_map(|call| Callee::from_expr(call.expr))
         .any(matches)
 }
 
 struct Scope<'ast> {
     functions: Vec<&'ast ItemFn>,
+    imports: Vec<&'ast UseTree>,
     locals: Vec<(&'ast syn::Ident, Option<&'ast Expr>)>,
 }
+
+pub(super) struct Invocation<'ast> {
+    pub(super) expr: &'ast Expr,
+    imports: Vec<&'ast UseTree>,
+}
+
+type NoHelpers = fn(&syn::Path, usize, &[&UseTree]) -> bool;
 
 /// The calls in one active cfg assignment. Closures (including stored local closures) each
 /// start a new body, entered only when invoked or when passed to a helper that invokes them.
@@ -70,36 +78,104 @@ pub(super) struct Calls<'b, 'ast, F> {
     runs_arg: F,
     scopes: Vec<Scope<'ast>>,
     active_closures: Vec<&'ast Expr>,
-    found: Vec<&'ast Expr>,
+    active_functions: Vec<&'ast ItemFn>,
+    found: Vec<Invocation<'ast>>,
     syntax_only: bool,
 }
 
-impl<'b, 'ast> Calls<'b, 'ast, fn(&syn::Path, usize) -> bool> {
-    pub(super) fn new(build: &'b Build) -> Self {
-        Self::with_helpers(build, |_, _| false)
+impl<'b, 'ast> Calls<'b, 'ast, NoHelpers> {
+    fn new(build: &'b Build) -> Self {
+        Self::with_helpers(build, |_, _, _| false)
     }
 }
 
-impl<'b, 'ast, F: FnMut(&syn::Path, usize) -> bool> Calls<'b, 'ast, F> {
+impl<'b, 'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Calls<'b, 'ast, F> {
     fn with_helpers(build: &'b Build, runs_arg: F) -> Self {
         Self {
             build,
             runs_arg,
             scopes: Vec::new(),
             active_closures: Vec::new(),
+            active_functions: Vec::new(),
             found: Vec::new(),
             syntax_only: false,
         }
     }
 
-    pub(super) fn in_block(mut self, block: &'ast Block) -> Vec<&'ast Expr> {
+    pub(super) fn in_block(mut self, block: &'ast Block) -> Vec<Invocation<'ast>> {
         self.visit_block(block);
         self.found
     }
 
-    fn in_expr(mut self, expression: &'ast Expr) -> Vec<&'ast Expr> {
+    fn in_expr(
+        mut self,
+        expression: &'ast Expr,
+        imports: &[&'ast UseTree],
+    ) -> Vec<Invocation<'ast>> {
+        self.scopes.push(Scope {
+            functions: Vec::new(),
+            imports: imports.to_vec(),
+            locals: Vec::new(),
+        });
         self.visit_expr(expression);
         self.found
+    }
+
+    fn imports(&self) -> Vec<&'ast UseTree> {
+        self.scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.imports.iter().copied())
+            .collect()
+    }
+
+    fn record(&mut self, expr: &'ast Expr) {
+        let imports = self.imports();
+        self.found.push(Invocation { expr, imports });
+    }
+
+    fn local_function(&self, path: &syn::Path) -> Option<&'ast ItemFn> {
+        let name = path.get_ident()?;
+        self.scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| &scope.functions)
+            .find(|helper| helper.sig.ident == *name)
+            .copied()
+    }
+
+    fn constant_condition(&self, expr: &Expr) -> Option<bool> {
+        match ungroup(expr) {
+            Expr::Macro(expr) if expr.mac.path.is_ident("cfg") => {
+                self.build.evaluate(&expr.mac.tokens.to_string())
+            }
+            Expr::Lit(expr) => match &expr.lit {
+                syn::Lit::Bool(value) => Some(value.value),
+                _ => None,
+            },
+            Expr::Unary(expr) if matches!(expr.op, syn::UnOp::Not(_)) => {
+                self.constant_condition(&expr.expr).map(|value| !value)
+            }
+            Expr::Binary(expr) => {
+                let short = match expr.op {
+                    syn::BinOp::And(_) => false,
+                    syn::BinOp::Or(_) => true,
+                    _ => return None,
+                };
+                let left = self.constant_condition(&expr.left);
+                if left == Some(short) {
+                    left
+                } else {
+                    let right = self.constant_condition(&expr.right);
+                    if left.is_some() || right == Some(short) {
+                        right
+                    } else {
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
     }
 
     fn local(&self, path: &syn::Path) -> Option<Option<&'ast Expr>> {
@@ -141,34 +217,33 @@ impl<'b, 'ast, F: FnMut(&syn::Path, usize) -> bool> Calls<'b, 'ast, F> {
         if path_is(path, "sunrise_client::crash::contain") {
             return argument == 0;
         }
-        if let Some(name) = path.get_ident()
-            && let Some(helper) = self
-                .scopes
-                .iter()
-                .rev()
-                .flat_map(|scope| &scope.functions)
-                .find(|helper| helper.sig.ident == *name)
-        {
+        if let Some(helper) = self.local_function(path) {
             return parameter_called(self.build, helper, argument);
         }
-        (self.runs_arg)(path, argument)
+        let imports = self.imports();
+        (self.runs_arg)(path, argument, &imports)
     }
 }
 
-impl<'ast, F: FnMut(&syn::Path, usize) -> bool> Visit<'ast> for Calls<'_, 'ast, F> {
+impl<'ast, F: FnMut(&syn::Path, usize, &[&UseTree]) -> bool> Visit<'ast> for Calls<'_, 'ast, F> {
     fn visit_block(&mut self, block: &'ast Block) {
-        let functions = block
-            .stmts
-            .iter()
-            .filter_map(|stmt| match stmt {
-                Stmt::Item(Item::Fn(item)) if self.build.enabled(&item.attrs) => Some(item),
-                _ => None,
-            })
-            .collect();
-        self.scopes.push(Scope {
-            functions,
+        let mut scope = Scope {
+            functions: Vec::new(),
+            imports: Vec::new(),
             locals: Vec::new(),
-        });
+        };
+        for stmt in &block.stmts {
+            match stmt {
+                Stmt::Item(Item::Fn(item)) if self.build.enabled(&item.attrs) => {
+                    scope.functions.push(item)
+                }
+                Stmt::Item(Item::Use(item)) if self.build.enabled(&item.attrs) => {
+                    scope.imports.push(&item.tree)
+                }
+                _ => (),
+            }
+        }
+        self.scopes.push(scope);
         syn::visit::visit_block(self, block);
         self.scopes.pop();
     }
@@ -207,15 +282,55 @@ impl<'ast, F: FnMut(&syn::Path, usize) -> bool> Visit<'ast> for Calls<'_, 'ast, 
         }
         if self.syntax_only {
             if matches!(expr, Expr::Call(_) | Expr::MethodCall(_)) {
-                self.found.push(expr);
+                self.record(expr);
             }
         } else {
             match expr {
                 Expr::Closure(_) | Expr::Async(_) => return,
+                Expr::If(expr) => {
+                    self.visit_expr(&expr.cond);
+                    let condition = self.constant_condition(&expr.cond);
+                    if condition != Some(false) {
+                        self.visit_block(&expr.then_branch);
+                    }
+                    if condition != Some(true)
+                        && let Some((_, other)) = &expr.else_branch
+                    {
+                        self.visit_expr(other);
+                    }
+                    return;
+                }
+                Expr::While(expr) => {
+                    self.visit_expr(&expr.cond);
+                    if self.constant_condition(&expr.cond) != Some(false) {
+                        self.visit_block(&expr.body);
+                    }
+                    return;
+                }
+                Expr::Binary(expr) if matches!(expr.op, syn::BinOp::And(_) | syn::BinOp::Or(_)) => {
+                    self.visit_expr(&expr.left);
+                    let short = matches!(expr.op, syn::BinOp::Or(_));
+                    if self.constant_condition(&expr.left) != Some(short) {
+                        self.visit_expr(&expr.right);
+                    }
+                    return;
+                }
                 Expr::Call(call) => {
                     let path = function_path(&call.func);
                     if path.is_none_or(|path| self.local(path).is_none()) {
-                        self.found.push(expr);
+                        if let Some(helper) = path.and_then(|path| self.local_function(path)) {
+                            if !self
+                                .active_functions
+                                .iter()
+                                .any(|active| std::ptr::eq(*active, helper))
+                            {
+                                self.active_functions.push(helper);
+                                self.visit_block(&helper.block);
+                                self.active_functions.pop();
+                            }
+                        } else {
+                            self.record(expr);
+                        }
                     }
                     if let Some(closure) = self.closure(&call.func) {
                         self.invoke(closure);
@@ -233,7 +348,7 @@ impl<'ast, F: FnMut(&syn::Path, usize) -> bool> Visit<'ast> for Calls<'_, 'ast, 
                     }
                 }
                 Expr::MethodCall(call) => {
-                    self.found.push(expr);
+                    self.record(expr);
                     // LevelControl::hear invokes the dispatch with the current control marked.
                     if call.method == "hear"
                         && let Some(receiver) = function_path(&call.receiver)
@@ -282,7 +397,7 @@ fn parameter_called(build: &Build, helper: &ItemFn, argument: usize) -> bool {
         return false;
     };
     Calls::new(build).in_block(&helper.block).iter().any(|expr| {
-        matches!(Callee::from_expr(expr), Some(Callee::Function(path)) if path.is_ident(&pat.ident))
+        matches!(Callee::from_expr(expr.expr), Some(Callee::Function(path)) if path.is_ident(&pat.ident))
     })
 }
 
@@ -309,7 +424,7 @@ impl fmt::Display for Target<'_> {
     }
 }
 
-/// Follow the functions actually called by an installed callback through the shared resolver.
+/// Follow invoked functions through the shared resolver.
 pub(super) struct Routes<'b, 'i, 's> {
     index: &'i mut Index<'s>,
     build: &'b Build,
@@ -320,13 +435,33 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
         Self { index, build }
     }
 
+    pub(super) fn module(&mut self, package: &str, module: &str) -> Result<usize, String> {
+        let path: Vec<_> = module.split("::").map(str::to_owned).collect();
+        self.index.module(package, &path)
+    }
+
+    pub(super) fn functions(&self, scope: usize, name: &str) -> Vec<Block> {
+        super::functions(self.index.modules[scope].items.iter(), name, self.build)
+            .cloned()
+            .collect()
+    }
+
+    pub(super) fn has_slot(&self, scope: usize, table: &str, name: &str) -> bool {
+        self.index.modules[scope].items.iter().any(|item| {
+            matches!(item, Item::Struct(item) if item.ident == table && item.fields.iter().any(|field| {
+                field.ident.as_ref().is_some_and(|ident| ident == name)
+                    && self.build.enabled(&field.attrs)
+            }))
+        })
+    }
+
     pub(super) fn calls<'r, 'ast>(
         &'r mut self,
         scope: usize,
-    ) -> Calls<'r, 'ast, impl FnMut(&syn::Path, usize) -> bool + 'r> {
+    ) -> Calls<'r, 'ast, impl FnMut(&syn::Path, usize, &[&UseTree]) -> bool + 'r> {
         let build = self.build;
-        Calls::with_helpers(build, move |path, argument| {
-            if let Some(Found::Item(id)) = self.resolve(scope, path)
+        Calls::with_helpers(build, move |path, argument, imports| {
+            if let Some(Found::Item(id)) = self.resolve(scope, path, imports)
                 && let Item::Fn(helper) = self.index.item(id)
             {
                 parameter_called(build, helper, argument)
@@ -336,91 +471,164 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
         })
     }
 
-    pub(super) fn reaches(&mut self, scope: usize, callback: &Expr, target: Target<'_>) -> bool {
-        let mut seen = HashSet::new();
+    pub(super) fn block_reaches(
+        &mut self,
+        scope: usize,
+        block: &Block,
+        target: Target<'_>,
+    ) -> bool {
+        let calls = self.calls(scope).in_block(block);
+        self.calls_reach(scope, &calls, target)
+    }
+
+    fn calls_reach(&mut self, scope: usize, calls: &[Invocation<'_>], target: Target<'_>) -> bool {
+        self.visit_routes(
+            scope,
+            calls,
+            target,
+            &mut HashSet::new(),
+            &mut |_, _, _, _| ControlFlow::Break(()),
+        )
+        .is_break()
+    }
+
+    pub(super) fn callback_reaches(
+        &mut self,
+        scope: usize,
+        imports: &[&UseTree],
+        callback: &Expr,
+        target: Target<'_>,
+    ) -> bool {
         match ungroup(callback) {
             Expr::Path(path) if path.qself.is_none() => {
-                self.follows(scope, &path.path, target, &mut seen)
+                if matches!(target, Target::Path(expected) if path_is(&path.path, expected)) {
+                    return true;
+                }
+                let Some(found) = self.resolve(scope, &path.path, imports) else {
+                    return false;
+                };
+                if self.is_target(&found, target) {
+                    return true;
+                }
+                if let Found::Item(id) = found
+                    && let Item::Fn(callback) = self.index.item(id)
+                {
+                    let body = callback.block.clone();
+                    return self.block_reaches(id.module, &body, target);
+                }
+                false
             }
             Expr::Closure(callback) if self.build.enabled(&callback.attrs) => {
-                let calls = self.calls(scope).in_expr(&callback.body);
-                self.follow_calls(scope, &calls, target, &mut seen)
+                let calls = self.calls(scope).in_expr(&callback.body, imports);
+                self.calls_reach(scope, &calls, target)
             }
             _ => false,
         }
     }
 
-    fn follow_calls(
+    /// Unlike dispatch reachability, every invoked binding is inspected: installers may keep
+    /// their first table, so a later wired table cannot excuse an earlier disconnected one.
+    pub(super) fn check_bindings(
         &mut self,
         scope: usize,
-        calls: &[&Expr],
-        target: Target<'_>,
-        seen: &mut HashSet<ItemId>,
-    ) -> bool {
-        let mut paths = calls
-            .iter()
-            .filter_map(|expr| match Callee::from_expr(expr) {
-                Some(Callee::Function(path)) => Some(path),
-                _ => None,
-            });
-        if let Target::Path(expected) = target
-            && paths.clone().any(|path| path_is(path, expected))
-        {
-            return true;
+        block: &Block,
+        installer: Target<'_>,
+        mut inspect: impl FnMut(&mut Self, usize, &syn::ExprCall, &[&UseTree]) -> Result<(), String>,
+    ) -> Result<bool, String> {
+        let mut installed = false;
+        let calls = self.calls(scope).in_block(block);
+        match self.visit_routes(
+            scope,
+            &calls,
+            installer,
+            &mut HashSet::new(),
+            &mut |routes, scope, call, imports| {
+                installed = true;
+                match inspect(routes, scope, call, imports) {
+                    Ok(()) => ControlFlow::Continue(()),
+                    Err(error) => ControlFlow::Break(error),
+                }
+            },
+        ) {
+            ControlFlow::Break(error) => Err(error),
+            ControlFlow::Continue(()) => Ok(installed),
         }
-        paths.any(|path| self.follows(scope, path, target, seen))
     }
 
-    fn follows(
+    fn visit_routes<B>(
         &mut self,
         scope: usize,
-        path: &syn::Path,
+        calls: &[Invocation<'_>],
         target: Target<'_>,
         seen: &mut HashSet<ItemId>,
-    ) -> bool {
-        if matches!(target, Target::Path(expected) if path_is(path, expected)) {
-            return true;
+        hit: &mut impl FnMut(&mut Self, usize, &syn::ExprCall, &[&UseTree]) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
+        let paths = calls.iter().filter_map(|invocation| {
+            let Expr::Call(call) = invocation.expr else {
+                return None;
+            };
+            Some((
+                call,
+                function_path(&call.func)?,
+                invocation.imports.as_slice(),
+            ))
+        });
+        // Generated dispatch paths don't have source bodies. Try direct calls before following
+        // incidental helpers (e.g. data conversion), which might visit much of the engine.
+        let is_direct = |path| matches!(target, Target::Path(expected) if path_is(path, expected));
+        for (call, _, imports) in paths.clone().filter(|(_, path, _)| is_direct(path)) {
+            hit(self, scope, call, imports)?;
         }
-        match self.resolve(scope, path) {
-            Some(Found::Item(id)) => {
-                let Item::Fn(callback) = self.index.item(id) else {
-                    return false;
-                };
-                let module = &self.index.modules[id.module];
-                if let Target::Definition {
+        for (call, path, imports) in paths.filter(|(_, path, _)| !is_direct(path)) {
+            let Some(found) = self.resolve(scope, path, imports) else {
+                continue;
+            };
+            if self.is_target(&found, target) {
+                hit(self, scope, call, imports)?;
+            } else if let Found::Item(id) = found
+                && seen.insert(id)
+                && let Item::Fn(helper) = self.index.item(id)
+            {
+                let body = helper.block.clone();
+                let calls = self.calls(id.module).in_block(&body);
+                self.visit_routes(id.module, &calls, target, seen, hit)?;
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn is_target(&self, found: &Found, target: Target<'_>) -> bool {
+        match (found, target) {
+            (
+                Found::Item(id),
+                Target::Definition {
                     package,
                     module: expected,
                     name,
-                } = target
-                    && module.krate == package
-                    && callback.sig.ident == name
+                },
+            ) => {
+                let module = &self.index.modules[id.module];
+                module.krate == package
                     && module
                         .path
                         .iter()
                         .map(String::as_str)
                         .eq(expected.split("::"))
-                {
-                    return true;
-                }
-                if !seen.insert(id) {
-                    return false;
-                }
-                let body = callback.block.clone();
-                let calls = self.calls(id.module).in_block(&body);
-                self.follow_calls(id.module, &calls, target, seen)
+                    && matches!(self.index.item(*id), Item::Fn(function) if function.sig.ident == name)
             }
-            Some(Found::External(path)) => matches!(target, Target::Path(expected)
-                if path.iter().map(String::as_str).eq(expected.split("::"))),
-            None => false,
+            (Found::External(path), Target::Path(expected)) => {
+                path.iter().map(String::as_str).eq(expected.split("::"))
+            }
+            _ => false,
         }
     }
 
-    fn resolve(&mut self, scope: usize, path: &syn::Path) -> Option<Found> {
+    fn resolve(&mut self, scope: usize, path: &syn::Path, imports: &[&UseTree]) -> Option<Found> {
         let path: Vec<_> = path
             .segments
             .iter()
             .map(|segment| segment.ident.to_string())
             .collect();
-        self.index.resolve_path(scope, &path).ok()
+        self.index.resolve_with_imports(scope, &path, imports).ok()
     }
 }

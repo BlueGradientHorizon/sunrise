@@ -4,18 +4,31 @@ mod sources;
 
 use crate::{Catalog, Hook, catalog::DispatchStyle, dispatch, free_function_source, source};
 pub(super) use calls::{Callee, has_call_matching};
-use calls::{Calls, Target, function_path, path_is};
-use mod_source::index::Index;
+use calls::{Routes, Target, path_is};
 use sources::{Build, Sources};
 use std::path::Path;
 use syn::{Block, Expr, Item};
 
 /// Check that each declared hook target reaches its adapter or dispatcher. Never writes sources.
-pub fn check_hook_wiring(root: &Path) -> Result<(), String> {
-    check(root, &Catalog::load(root)?.hooks)
+/// Each entry in `target_cfgs` is one supported build's `rustc --print cfg` output.
+pub fn check_hook_wiring(root: &Path, target_cfgs: &[String]) -> Result<(), String> {
+    check_with_builds(
+        root,
+        &Catalog::load(root)?.hooks,
+        Build::from_targets(target_cfgs)?,
+    )
 }
 
+#[cfg(test)]
 pub(super) fn check(root: &Path, hooks: &[Hook]) -> Result<(), String> {
+    let targets = [
+        "unix\ntarget_family=\"unix\"\ntarget_os=\"linux\"".into(),
+        "windows\ntarget_family=\"windows\"\ntarget_os=\"windows\"".into(),
+    ];
+    check_with_builds(root, hooks, Build::from_targets(&targets).unwrap())
+}
+
+fn check_with_builds(root: &Path, hooks: &[Hook], initial: Build) -> Result<(), String> {
     let root = root
         .canonicalize()
         .map_err(|error| format!("{}: {error}", root.display()))?;
@@ -23,7 +36,7 @@ pub(super) fn check(root: &Path, hooks: &[Hook]) -> Result<(), String> {
     let errors: Vec<_> = hooks
         .iter()
         .filter_map(|hook| {
-            check_builds(&mut sources, hook)
+            check_builds(&mut sources, hook, &initial)
                 .err()
                 .map(|error| format!("{} ({}): {error}", hook.name, hook.target))
         })
@@ -35,17 +48,13 @@ pub(super) fn check(root: &Path, hooks: &[Hook]) -> Result<(), String> {
     }
 }
 
-fn check_builds(sources: &mut Sources<'_>, hook: &Hook) -> Result<(), String> {
+fn check_builds(sources: &mut Sources<'_>, hook: &Hook, initial: &Build) -> Result<(), String> {
     let mut found = false;
-    let mut pending = vec![Build::default()];
+    let mut pending = vec![initial.clone()];
     while let Some(build) = pending.pop() {
         let result = check_target(sources, hook, &build);
-        if let Some(atom) = build.unknown.take() {
-            for value in [true, false] {
-                let mut build = build.clone();
-                build.values.insert(atom.clone(), value);
-                pending.push(build);
-            }
+        if let Some(builds) = build.split() {
+            pending.extend(builds);
         } else {
             found |= result?;
         }
@@ -94,7 +103,7 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
     let Some(items) = sources.items(build, &package, &module)? else {
         return Ok(false);
     };
-    let bodies: Vec<&Block> = if let Some(owner) = owner {
+    let bodies = if let Some(owner) = owner {
         items
             .filter_map(|item| match item {
                 Item::Impl(item)
@@ -115,25 +124,32 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
                 }
                 _ => None,
             })
-            .collect()
+            .cloned()
+            .collect::<Vec<_>>()
     } else {
-        functions(items, target, build).collect()
+        functions(items, target, build).cloned().collect()
     };
     if bodies.is_empty() {
         return Err("target definition not found".into());
     }
     let name = &hook.name;
+    let mut index = sources.index(build);
+    let mut routes = Routes::new(&mut index, build);
     if dispatch::is_render(hook) {
         // The raw target is an intentionally empty replacement slot. Start at the bound
         // renderer callback, not a helper elsewhere in the module.
         check_slot(
-            sources,
+            &mut routes,
             build,
             SlotTable {
                 package: "sunrise_mod_render",
                 module: &module,
                 installer: "install",
-                install: "engine::install",
+                install: Target::Definition {
+                    package: "sunrise_client_render",
+                    module: "render_slots",
+                    name: "install",
+                },
                 slots: "engine::Slots",
             },
             name,
@@ -141,114 +157,132 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
         )?;
         return Ok(true);
     }
+    let scope = routes.module(&package, &module)?;
+    let bodies: Vec<_> = bodies
+        .iter()
+        .map(|body| routes.calls(scope).in_block(body))
+        .collect();
     if hook.target == crate::catalog::EFFECT_TICK_TARGET {
-        require_calls(build, &bodies, Some(name), &[])?;
+        require_calls(&bodies, Some(name), &[])?;
         return Ok(true);
     }
     if owner.is_some() && hook.dispatch != DispatchStyle::Direct {
         let fire = format!("fire_{name}");
-        require_calls(build, &bodies, Some(&fire), &[&format!("Self::{fire}")])?;
+        require_calls(&bodies, Some(&fire), &[&format!("Self::{fire}")])?;
         return Ok(true);
     }
     let direct = format!("mod_api::dispatch_{name}");
     if package == "sunrise_mod_vocab" {
-        require_calls(build, &bodies, None, &[&format!("crate::dispatch_{name}")])?;
+        require_calls(&bodies, None, &[&format!("crate::dispatch_{name}")])?;
         return Ok(true);
     }
-    let (bridge, table, installer, install, slots) = match package.as_str() {
+    let (bridge, table, installer, slots) = match package.as_str() {
         "sunrise_client_lib" => (
             "native_client_hooks",
             "NativeClientHooks",
             "install_client_hooks",
-            "crate::native_client_hooks::install",
             "crate::native_client_hooks::NativeClientHooks",
         ),
         "sunrise_world" => (
             "native_load_hooks",
             "NativeLoadHooks",
             "start",
-            "sunrise_world::native_load_hooks::install",
             "sunrise_world::native_load_hooks::NativeLoadHooks",
         ),
         _ => {
-            require_calls(build, &bodies, None, &[&direct])?;
+            require_calls(&bodies, None, &[&direct])?;
             return Ok(true);
         }
     };
-    let wrapper = format!("crate::{bridge}::{name}");
+    let wrapper_path = format!("crate::{bridge}::{name}");
     let outgoing = bodies
         .iter()
-        .any(|body| calls(build, body, None, &[&wrapper]));
+        .any(|body| calls(body, None, &[&wrapper_path]));
     if package == "sunrise_client_lib" {
-        require_calls(build, &bodies, None, &[&direct, &wrapper])?;
+        require_calls(&bodies, None, &[&direct, &wrapper_path])?;
     } else {
-        require_calls(build, &bodies, None, &[&wrapper])?;
+        require_calls(&bodies, None, &[&wrapper_path])?;
     }
-    // Some client-library targets already call the dispatcher: the callback slot is upstream
-    // of them. Discover those routes from the same-named field in the installed table.
-    let incoming = if outgoing {
-        false
+    // These client-library slots precede their catalog targets. The gameplay entry is
+    // part of the route even when the slot declaration is accidentally deleted.
+    let incoming = if package == "sunrise_client_lib" {
+        match name.as_str() {
+            "can_grindstone_repair" => Some(("stations", "can_grindstone_repair")),
+            "is_combine_repairable" => Some(("crafting::repair_item", "combine_repairable")),
+            "can_fit_inside_container_items" => {
+                Some(("menu::container_items", "fits_inside_container_items"))
+            }
+            _ => None,
+        }
     } else {
-        sources
-            .items(build, &package, bridge)?
-            .into_iter()
-            .flatten()
-            .any(|item| {
-                let Item::Struct(item) = item else {
-                    return false;
-                };
-                item.ident == table
-                    && build.enabled(&item.attrs)
-                    && item.fields.iter().any(|field| {
-                        field.ident.as_ref().is_some_and(|ident| ident == name)
-                            && build.enabled(&field.attrs)
-                    })
-            })
+        None
     };
-    if outgoing || incoming {
-        let invokes_slot = {
-            let mut wrappers = functions(
-                sources
-                    .items(build, &package, bridge)?
+    if let Some((entry_module, entry_name)) = incoming {
+        let scope = routes.module(&package, entry_module)?;
+        let entries = routes.functions(scope, entry_name);
+        let wrapper = Target::Definition {
+            package: &package,
+            module: bridge,
+            name,
+        };
+        if entries.is_empty()
+            || entries
+                .iter()
+                .any(|body| !routes.block_reaches(scope, body, wrapper))
+        {
+            return Err(format!(
+                "{entry_module}::{entry_name} does not call {wrapper}"
+            ));
+        }
+    }
+    if outgoing || incoming.is_some() {
+        let scope = routes.module(&package, bridge)?;
+        if !routes.has_slot(scope, table, name) {
+            return Err(format!("{bridge}::{table} is missing its {name} slot"));
+        }
+        let wrappers = routes.functions(scope, name);
+        let invokes_slot = !wrappers.is_empty()
+            && wrappers.iter().all(|body| {
+                routes
+                    .calls(scope)
+                    .in_block(body)
                     .into_iter()
-                    .flatten(),
-                name,
-                build,
-            )
-            .peekable();
-            wrappers.peek().is_some()
-                && wrappers.all(|body| {
-                    Calls::new(build).in_block(body).into_iter().any(|expr| {
-                        let Expr::Call(call) = expr else { return false };
+                    .any(|invocation| {
+                        let Expr::Call(call) = invocation.expr else {
+                            return false;
+                        };
                         let Expr::Field(field) = calls::ungroup(&call.func) else {
                             return false;
                         };
                         matches!(&field.member, syn::Member::Named(member) if member == name)
                     })
-                })
-        };
+            });
         if !invokes_slot {
             return Err(format!(
                 "{bridge}::{name} does not invoke its callback slot"
             ));
         }
-        let destination = if outgoing {
-            Target::Path(&direct)
-        } else {
+        let destination = if incoming.is_some() {
             Target::Definition {
                 package: &package,
                 module: &module,
                 name: target,
             }
+        } else {
+            Target::Path(&direct)
         };
         check_slot(
-            sources,
+            &mut routes,
             build,
             SlotTable {
                 package: "sunrise_client",
                 module: "entry",
                 installer,
-                install,
+                install: Target::Definition {
+                    package: &package,
+                    module: bridge,
+                    name: "install",
+                },
                 slots,
             },
             name,
@@ -259,12 +293,11 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
 }
 
 fn require_calls(
-    build: &Build,
-    bodies: &[&Block],
+    bodies: &[Vec<calls::Invocation<'_>>],
     method: Option<&str>,
     paths: &[&str],
 ) -> Result<(), String> {
-    if bodies.iter().any(|body| !calls(build, body, method, paths)) {
+    if bodies.iter().any(|body| !calls(body, method, paths)) {
         let expected = method
             .into_iter()
             .chain(paths.iter().copied())
@@ -275,11 +308,9 @@ fn require_calls(
     Ok(())
 }
 
-fn calls(build: &Build, body: &Block, method: Option<&str>, paths: &[&str]) -> bool {
-    Calls::new(build)
-        .in_block(body)
-        .into_iter()
-        .filter_map(Callee::from_expr)
+fn calls(body: &[calls::Invocation<'_>], method: Option<&str>, paths: &[&str]) -> bool {
+    body.iter()
+        .filter_map(|invocation| Callee::from_expr(invocation.expr))
         .any(|call| match call {
             Callee::Method(called) => method.is_some_and(|method| called == method),
             Callee::Function(called) => paths.iter().any(|path| path_is(called, path)),
@@ -291,20 +322,13 @@ struct SlotTable<'a> {
     package: &'static str,
     module: &'a str,
     installer: &'a str,
-    install: &'a str,
+    install: Target<'a>,
     slots: &'a str,
 }
 
-const CRATES: &[(&str, &str)] = &[
-    ("sunrise_client", ""),
-    ("sunrise_client_lib", ""),
-    ("sunrise_mod_render", ""),
-    ("sunrise_world", ""),
-];
-
 /// Check the field in every table actually passed to the installer in this build.
 fn check_slot(
-    sources: &mut Sources<'_>,
+    routes: &mut Routes<'_, '_, '_>,
     build: &Build,
     SlotTable {
         package,
@@ -316,72 +340,30 @@ fn check_slot(
     name: &str,
     target: Target<'_>,
 ) -> Result<(), String> {
-    let mut index = Index::new(sources.root, &[], CRATES).loading_functions(|krate, path| {
-        let path = path.join("::");
-        let items = sources
-            .items(build, krate, &path)?
-            .ok_or_else(|| format!("module {krate}::{path} was not declared in this build"))?;
-        Ok(items
-            .filter_map(|item| match item {
-                Item::Fn(item) if build.enabled(&item.attrs) => Some(Item::Fn(item.clone())),
-                Item::Use(item) if build.enabled(&item.attrs) => Some(Item::Use(item.clone())),
-                Item::Mod(item) if build.enabled(&item.attrs) => Some(Item::Mod(syn::ItemMod {
-                    vis: item.vis.clone(),
-                    ident: item.ident.clone(),
-                    content: None,
-                    attrs: vec![],
-                    unsafety: item.unsafety,
-                    mod_token: item.mod_token,
-                    semi: item.semi,
-                })),
-                _ => None,
-            })
-            .collect())
-    });
-    let scope = index.module(
-        package,
-        &module.split("::").map(str::to_owned).collect::<Vec<_>>(),
-    )?;
-    let installers: Vec<_> = functions(index.modules[scope].items.iter(), installer, build)
-        .cloned()
-        .collect();
+    let scope = routes.module(package, module)?;
+    let installers = routes.functions(scope, installer);
     let missing = || format!("{module}::{installer} does not install {slots}::{name}");
     if installers.is_empty() {
         return Err(missing());
     }
     for body in &installers {
-        let mut route = calls::Routes::new(&mut index, build);
-        let mut installed = false;
-        for expr in route.calls(scope).in_block(body) {
-            let Expr::Call(call) = expr else { continue };
-            if !function_path(&call.func).is_some_and(|path| path_is(path, install)) {
-                continue;
-            }
+        let installed = routes.check_bindings(scope, body, install, |routes, scope, call, imports| {
             let Some(Expr::Struct(table)) = call.args.first().map(calls::ungroup) else {
                 return Err(format!(
                     "{module}::{installer}: cannot inspect the {slots} binding passed to {install}"
                 ));
             };
-            if !path_is(&table.path, slots) {
-                return Err(format!(
-                    "{module}::{installer}: expected a {slots} binding passed to {install}"
-                ));
-            }
-            let field = table
-                .fields
-                .iter()
-                .find(|field| {
-                    matches!(&field.member, syn::Member::Named(member) if member == name)
-                        && build.enabled(&field.attrs)
-                })
-                .ok_or_else(missing)?;
-            installed = true;
-            if !route.reaches(scope, &field.expr, target) {
+            let field = table.fields.iter().find(|field| {
+                matches!(&field.member, syn::Member::Named(member) if member == name)
+                    && build.enabled(&field.attrs)
+            }).ok_or_else(missing)?;
+            if !routes.callback_reaches(scope, imports, &field.expr, target) {
                 return Err(format!(
                     "{module}::{installer}: installed {slots}::{name} does not call {target}"
                 ));
             }
-        }
+            Ok(())
+        })?;
         if !installed {
             return Err(missing());
         }
@@ -503,6 +485,28 @@ mod tests {
     }
 
     #[test]
+    fn pickup_can_use_a_module_level_closure_invoker() {
+        let root = tempfile::tempdir().unwrap();
+        let hook = pickup(root.path(), "mod pickup;");
+        for (helper, wired) in [("drop(f);", false), ("f();", true)] {
+            fixture(
+                root.path(),
+                PICKUP,
+                &format!(
+                    "
+                fn at_pickup(f: impl FnOnce()) {{ {helper} }}
+                impl Game<'_> {{
+                    fn native_item_picked_up(&self) {{ at_pickup(|| self.fire_item_picked_up()); }}
+                }}
+            "
+                ),
+            );
+            let result = check(root.path(), std::slice::from_ref(&hook));
+            assert_eq!(result.is_ok(), wired, "{helper}: {result:?}");
+        }
+    }
+
+    #[test]
     fn pickup_uses_its_declared_path_or_inline_body() {
         let root = tempfile::tempdir().unwrap();
         let native = "sunrise-client/src/game/native_hooks";
@@ -574,16 +578,48 @@ mod tests {
         check(root.path(), &[hook]).unwrap();
     }
 
+    const RENDER: &str = "sunrise-mod-render/src/render.rs";
+
+    fn render_needs(root: &Path) -> Hook {
+        fixture(root, "sunrise-mod-render/Cargo.toml", "");
+        fixture(root, "sunrise-mod-render/src/lib.rs", "mod render;");
+        fixture(root, "sunrise-client-render/Cargo.toml", "");
+        fixture(
+            root,
+            "sunrise-client-render/src/lib.rs",
+            "pub mod render_slots {
+            pub struct Slots { pub render_needs: fn(&mut RenderNeeds) }
+            pub fn install(_: Slots) {}
+        }",
+        );
+        let mut hook = Hook::sample("mod_render::render::render_needs", Side::Client);
+        hook.name = "render_needs".into();
+        hook
+    }
+
     #[test]
     fn render_check_requires_the_installed_slot_not_an_unrelated_caller() {
         let root = tempfile::tempdir().unwrap();
-        fixture(root.path(), "sunrise-mod-render/Cargo.toml", "");
-        fixture(root.path(), "sunrise-mod-render/src/lib.rs", "mod render;");
-        let mut hook = Hook::sample("mod_render::render::render_needs", Side::Client);
-        hook.name = "render_needs".into();
+        let hook = render_needs(root.path());
         for (callback, wired) in [
             ("|needs| { generated::fire_render_needs(needs); }", true),
             ("|_needs| {}", false),
+            (
+                "|needs| { if cfg!(test) { generated::fire_render_needs(needs); } }",
+                false,
+            ),
+            (
+                "|needs| { if cfg!(test) && { generated::fire_render_needs(needs); true } {} }",
+                false,
+            ),
+            (
+                "|needs| { if !cfg!(test) { generated::fire_render_needs(needs); } }",
+                true,
+            ),
+            (
+                "|needs| { if cfg!(test) {} else { generated::fire_render_needs(needs); } }",
+                true,
+            ),
             (
                 "|needs| { let _unused = || generated::fire_render_needs(needs); }",
                 false,
@@ -600,7 +636,7 @@ mod tests {
         ] {
             fixture(
                 root.path(),
-                "sunrise-mod-render/src/render.rs",
+                RENDER,
                 &format!(
                     r"
                 fn render_needs(_: &mut RenderNeeds) {{}}
@@ -629,10 +665,7 @@ mod tests {
     #[test]
     fn render_checks_every_invoked_production_binding() {
         let root = tempfile::tempdir().unwrap();
-        fixture(root.path(), "sunrise-mod-render/Cargo.toml", "");
-        fixture(root.path(), "sunrise-mod-render/src/lib.rs", "mod render;");
-        let mut hook = Hook::sample("mod_render::render::render_needs", Side::Client);
-        hook.name = "render_needs".into();
+        let hook = render_needs(root.path());
         let wired =
             "engine::install(engine::Slots { render_needs: generated::fire_render_needs });";
         let disconnected = "engine::install(engine::Slots { render_needs: |_| {} });";
@@ -659,14 +692,52 @@ mod tests {
                 format!("#[cfg(unix)] {{ {wired} }} #[cfg(not(unix))] {{ {wired} }}"),
                 None,
             ),
+            (
+                format!(
+                    r#"
+                    #[cfg(unix)] {{ {wired} }}
+                    #[cfg(not(target_family = "unix"))] {{ {wired} }}
+                    #[cfg(all(target_os = "linux", target_os = "windows"))] {{ {disconnected} }}
+                "#
+                ),
+                None,
+            ),
+            (
+                format!(
+                    "use engine::install as bind; bind(engine::Slots {{ render_needs: |_| {{}} }}); {wired}"
+                ),
+                Some("does not call generated::fire_render_needs"),
+            ),
+            (
+                format!("fn bind_first() {{ {disconnected} }} bind_first(); {wired}"),
+                Some("does not call generated::fire_render_needs"),
+            ),
+            (
+                format!("bind_first(); {wired}"),
+                Some("does not call generated::fire_render_needs"),
+            ),
+            (
+                format!(
+                    "use engine::install as bind; let table = engine::Slots {{ render_needs: |_| {{}} }}; bind(table); {wired}"
+                ),
+                Some("cannot inspect the engine::Slots binding"),
+            ),
+            ("bind_wired();".to_owned(), None),
             (format!("let bind = || {{ {wired} }}; bind();"), None),
             (format!("run(|| {{ {wired} }});"), None),
         ] {
             fixture(
                 root.path(),
-                "sunrise-mod-render/src/render.rs",
+                RENDER,
                 &format!(
-                    "fn render_needs() {{}} fn run(f: impl FnOnce()) {{ f(); }} fn install() {{ {body} }}"
+                    "
+                    use sunrise_client_render::render_slots as engine;
+                    fn render_needs() {{}}
+                    fn run(f: impl FnOnce()) {{ f(); }}
+                    fn bind_first() {{ {disconnected} }}
+                    fn bind_wired() {{ {wired} }}
+                    fn install() {{ {body} }}
+                "
                 ),
             );
             let result = check(root.path(), std::slice::from_ref(&hook));
@@ -691,7 +762,7 @@ mod tests {
         fixture(
             root,
             "sunrise-client/src/client_lib.rs",
-            "mod hunger; mod native_client_hooks;",
+            "mod hunger; pub mod native_client_hooks;",
         );
         fixture(
             root,
@@ -701,10 +772,16 @@ mod tests {
         fixture(
             root,
             "sunrise-client/src/native_client_hooks.rs",
-            "fn living_heal() { (hooks.living_heal)(); }",
+            "pub struct NativeClientHooks { pub living_heal: fn() }
+             pub fn install(_: NativeClientHooks) {}
+             fn living_heal(hooks: &NativeClientHooks) { (hooks.living_heal)(); }",
         );
         fixture(root, "sunrise-client/Cargo.toml", "");
-        fixture(root, "sunrise-client/src/lib.rs", "mod entry; mod game;");
+        fixture(
+            root,
+            "sunrise-client/src/lib.rs",
+            "mod entry; mod game; pub use sunrise_client_lib::*;",
+        );
         fixture(
             root,
             "sunrise-client/src/game.rs",
@@ -719,7 +796,7 @@ mod tests {
         fixture(
             root,
             "sunrise-world/src/lib.rs",
-            "mod loot; mod native_load_hooks;",
+            "mod loot; pub mod native_load_hooks;",
         );
         fixture(
             root,
@@ -729,7 +806,9 @@ mod tests {
         fixture(
             root,
             "sunrise-world/src/native_load_hooks.rs",
-            "fn loot_table_load() { (hooks.loot_table_load)(); }",
+            "pub struct NativeLoadHooks { pub loot_table_load: fn() }
+             pub fn install(_: NativeLoadHooks) {}
+             fn loot_table_load(hooks: &NativeLoadHooks) { (hooks.loot_table_load)(); }",
         );
         let mut heal = Hook::sample(
             "sunrise_client_lib::hunger::native_living_heal",
@@ -814,22 +893,24 @@ mod tests {
         fixture(
             root,
             "sunrise-client/src/client_lib.rs",
-            "pub mod stations; mod native_client_hooks;",
+            "pub mod stations; pub mod native_client_hooks;",
         );
+        const STATIONS: &str = "sunrise-client/src/stations.rs";
+        const GAMEPLAY: &str = "pub fn can_grindstone_repair() { crate::native_client_hooks::can_grindstone_repair(); }";
+        const DISPATCH: &str =
+            "pub fn native_can_grindstone_repair() { mod_api::dispatch_can_grindstone_repair(); }";
+        fixture(root, STATIONS, &format!("{GAMEPLAY}\n{DISPATCH}"));
+        const BRIDGE: &str = "sunrise-client/src/native_client_hooks.rs";
+        const BRIDGE_BODY: &str = "
+            pub fn install(_: NativeClientHooks) {}
+            pub(crate) fn can_grindstone_repair(hooks: &NativeClientHooks) { (hooks.can_grindstone_repair)(); }
+        ";
         fixture(
             root,
-            "sunrise-client/src/stations.rs",
-            "
-            pub fn native_can_grindstone_repair() { mod_api::dispatch_can_grindstone_repair(); }
-        ",
-        );
-        fixture(
-            root,
-            "sunrise-client/src/native_client_hooks.rs",
-            "
-            struct NativeClientHooks { can_grindstone_repair: fn() }
-            fn can_grindstone_repair(hooks: &NativeClientHooks) { (hooks.can_grindstone_repair)(); }
-        ",
+            BRIDGE,
+            &format!(
+                "pub struct NativeClientHooks {{ can_grindstone_repair: fn() }}\n{BRIDGE_BODY}"
+            ),
         );
         fixture(root, "sunrise-client/Cargo.toml", "");
         fixture(
@@ -843,12 +924,12 @@ mod tests {
         );
         hook.name = "can_grindstone_repair".into();
         for (adapter, wired) in [
+            ("mod_api::dispatch_can_grindstone_repair();", false),
+            ("", false),
             (
                 "sunrise_client::stations::native_can_grindstone_repair();",
                 true,
             ),
-            ("mod_api::dispatch_can_grindstone_repair();", false),
-            ("", false),
         ] {
             fixture(root, "sunrise-client/src/entry.rs", &format!("
                 fn adapter() {{ {adapter} }}
@@ -871,6 +952,24 @@ mod tests {
                 );
             }
         }
+        fixture(
+            root,
+            STATIONS,
+            &format!("pub fn can_grindstone_repair() {{}}\n{DISPATCH}"),
+        );
+        let error = check(root, std::slice::from_ref(&hook)).unwrap_err();
+        assert!(error.contains("stations::can_grindstone_repair does not call sunrise_client_lib::native_client_hooks::can_grindstone_repair"), "{error}");
+        fixture(root, STATIONS, &format!("{GAMEPLAY}\n{DISPATCH}"));
+        fixture(
+            root,
+            BRIDGE,
+            &format!("pub struct NativeClientHooks {{}}\n{BRIDGE_BODY}"),
+        );
+        let error = check(root, &[hook]).unwrap_err();
+        assert!(
+            error.contains("NativeClientHooks is missing its can_grindstone_repair slot"),
+            "{error}"
+        );
     }
 
     #[test]

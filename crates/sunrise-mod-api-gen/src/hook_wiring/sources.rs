@@ -1,45 +1,98 @@
 use crate::source;
-use mod_source::modules::{ModuleVariant, cfg_conditions, evaluate_cfg, walk_module_variants};
+use mod_source::{
+    index::Index,
+    modules::{ModuleVariant, cfg_conditions, evaluate_cfg, walk_module_variants},
+};
+use quote::ToTokens;
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     path::Path,
+    rc::Rc,
 };
 use syn::Item;
 
-/// A non-test cfg assignment. A first pass discovers a relevant unknown predicate; the check
-/// then repeats with each value. Unrelated crates and modules don't split the check's builds.
+/// The non-test builds that still agree on every predicate the check has needed so far.
+/// Target facts stay together; feature and custom cfgs split independently when encountered.
 #[derive(Clone, Default)]
 pub(super) struct Build {
-    pub(super) values: BTreeMap<String, bool>,
-    pub(super) unknown: RefCell<Option<String>>,
+    targets: Vec<Rc<HashSet<String>>>,
+    values: BTreeMap<String, bool>,
+    unknown: RefCell<Option<String>>,
 }
 
 impl Build {
-    fn permits(&self, conditions: &[String]) -> bool {
-        for condition in conditions {
-            let mut missing = None;
-            match evaluate_cfg(condition, |atom| {
-                if atom == "test" {
-                    Some(false)
-                } else if let Some(value) = self.values.get(atom) {
-                    Some(*value)
-                } else {
-                    missing.get_or_insert_with(|| atom.to_owned());
-                    None
-                }
-            }) {
-                Some(false) => return false,
-                None if missing.is_some() => {
-                    if self.unknown.borrow().is_none() {
-                        *self.unknown.borrow_mut() = missing;
-                    }
-                }
-                _ => {}
-            }
+    pub(super) fn from_targets(targets: &[String]) -> Result<Self, String> {
+        if targets.is_empty() {
+            return Err("expected at least one supported target's rustc --print cfg output".into());
         }
-        true
+        let targets = targets
+            .iter()
+            .map(|output| {
+                output
+                    .lines()
+                    .filter(|line| !line.is_empty())
+                    .map(|line| {
+                        syn::parse_str::<syn::Meta>(line)
+                            .map(|meta| meta.to_token_stream().to_string())
+                            .map_err(|error| format!("invalid target cfg {line:?}: {error}"))
+                    })
+                    .collect::<Result<HashSet<_>, _>>()
+                    .map(Rc::new)
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
+            targets,
+            ..Self::default()
+        })
+    }
+
+    pub(super) fn split(&self) -> Option<[Self; 2]> {
+        let atom = self.unknown.take()?;
+        Some([true, false].map(|value| {
+            let mut build = self.clone();
+            if is_target_atom(&atom) {
+                build
+                    .targets
+                    .retain(|target| target.contains(&atom) == value);
+            } else {
+                build.values.insert(atom.clone(), value);
+            }
+            build
+        }))
+    }
+
+    pub(super) fn evaluate(&self, predicate: &str) -> Option<bool> {
+        let mut missing = None;
+        let value = evaluate_cfg(predicate, |atom| {
+            let known = if atom == "test" {
+                Some(false)
+            } else if is_target_atom(atom) {
+                let mut values = self.targets.iter().map(|target| target.contains(atom));
+                values
+                    .next()
+                    .and_then(|first| values.all(|value| value == first).then_some(first))
+            } else {
+                self.values.get(atom).copied()
+            };
+            if known.is_none() {
+                missing.get_or_insert_with(|| atom.to_owned());
+            }
+            known
+        });
+        if value.is_none()
+            && let Some(missing) = missing
+        {
+            self.unknown.borrow_mut().get_or_insert(missing);
+        }
+        value
+    }
+
+    fn permits(&self, conditions: &[String]) -> bool {
+        !conditions
+            .iter()
+            .any(|condition| self.evaluate(condition) == Some(false))
     }
 
     pub(super) fn enabled(&self, attrs: &[syn::Attribute]) -> bool {
@@ -47,12 +100,25 @@ impl Build {
     }
 }
 
+fn is_target_atom(atom: &str) -> bool {
+    matches!(atom, "unix" | "windows") || atom.starts_with("target_")
+}
+
 type ModuleItems = Vec<(Vec<String>, Vec<Item>)>;
+
+const CRATES: &[(&str, &str)] = &[
+    ("sunrise_client", ""),
+    ("sunrise_client_lib", ""),
+    ("sunrise_client_render", ""),
+    ("sunrise_mod_render", ""),
+    ("sunrise_mod_vocab", ""),
+    ("sunrise_world", ""),
+];
 
 /// Index packages by Cargo's library roots (including client-lib's out-of-package root).
 /// Cache parsed bodies only for modules the check inspects.
 pub(super) struct Sources<'a> {
-    pub(super) root: &'a Path,
+    root: &'a Path,
     files: HashMap<String, Result<Vec<ModuleVariant>, String>>,
     modules: HashMap<(String, String), ModuleItems>,
 }
@@ -64,6 +130,36 @@ impl<'a> Sources<'a> {
             files: HashMap::new(),
             modules: HashMap::new(),
         }
+    }
+
+    pub(super) fn index<'s>(&'s mut self, build: &'s Build) -> Index<'s> {
+        Index::new(self.root, &[], CRATES).loading_functions(move |krate, path| {
+            let path = path.join("::");
+            let items = self
+                .items(build, krate, &path)?
+                .ok_or_else(|| format!("module {krate}::{path} was not declared in this build"))?;
+            Ok(items
+                .filter_map(|item| match item {
+                    Item::Fn(item) if build.enabled(&item.attrs) => Some(Item::Fn(item.clone())),
+                    Item::Struct(item) if build.enabled(&item.attrs) => {
+                        Some(Item::Struct(item.clone()))
+                    }
+                    Item::Use(item) if build.enabled(&item.attrs) => Some(Item::Use(item.clone())),
+                    Item::Mod(item) if build.enabled(&item.attrs) => {
+                        Some(Item::Mod(syn::ItemMod {
+                            vis: item.vis.clone(),
+                            ident: item.ident.clone(),
+                            content: None,
+                            attrs: vec![],
+                            unsafety: item.unsafety,
+                            mod_token: item.mod_token,
+                            semi: item.semi,
+                        }))
+                    }
+                    _ => None,
+                })
+                .collect())
+        })
     }
 
     pub(super) fn items<'s>(
