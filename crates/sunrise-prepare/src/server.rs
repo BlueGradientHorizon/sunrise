@@ -16,17 +16,9 @@ use std::{
 
 const RUNTIMES: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .redirects(0)
-        .try_proxy_from_env(true)
-        .timeout_connect(Duration::from_secs(15))
-        .timeout_read(Duration::from_secs(30))
-        .build()
-}
-
-/// Never follow a location to another host, or accept HTTP from manifest metadata.
-fn request(agent: &ureq::Agent, url: &str) -> Result<ureq::Request, String> {
+/// Never follow a location to another host, or accept HTTP from manifest metadata. The request goes
+/// through the proxy the environment names, by Sunrise's proxy rules (`sunrise-proxy`).
+fn request(url: &str) -> Result<ureq::Request, String> {
     let authority = url
         .strip_prefix("https://")
         .and_then(|s| s.split_once('/'))
@@ -43,6 +35,13 @@ fn request(agent: &ureq::Agent, url: &str) -> Result<ureq::Request, String> {
     ) {
         return Err(format!("Not a Mojang download URL: {url}"));
     }
+    let agent = sunrise_proxy::agent("sunrise-prepare", url, |builder| {
+        builder
+            .redirects(0)
+            .timeout_connect(Duration::from_secs(15))
+            .timeout_read(Duration::from_secs(30))
+    })
+    .map_err(|e| format!("{url}: {e}"))?;
     Ok(agent.get(url))
 }
 
@@ -58,11 +57,11 @@ fn pin(sha1: &str) -> Result<&str, String> {
 }
 
 /// Keep interrupted downloads private and resumable, and publish only after verifying the pin.
-fn download(agent: &ureq::Agent, url: &str, path: &Path, sha1: &str) -> Result<(), String> {
+fn download(url: &str, path: &Path, sha1: &str) -> Result<(), String> {
     if checked(path, sha1) {
         return Ok(());
     }
-    let request = request(agent, url)?;
+    let request = request(url)?;
     mkdir(path.parent().unwrap())?;
     let mut partial = path.as_os_str().to_os_string();
     partial.push(".part");
@@ -138,7 +137,7 @@ pub(crate) fn jar(
             "Downloading Minecraft {version}'s server.jar from Mojang (SHA-1 checked)"
         ));
         let url = format!("https://piston-data.mojang.com/v1/objects/{sha1}/server.jar");
-        download(&agent(), &url, &path, sha1).map_err(|e| format!(
+        download(&url, &path, sha1).map_err(|e| format!(
             "couldn't download Minecraft {version}'s server.jar from Mojang ({e}).\n  Download it on another computer and copy it here, then:\n  sunrise-prepare --server --server-jar /path/to/server.jar\n  (it must have sha1 {sha1})"
         ))?;
     }
@@ -182,13 +181,12 @@ fn install_runtime(root: &Path, lock: &Lock, log: Log) -> Result<PathBuf, String
             return Err(format!(
                 "Mojang has no Java runtime for this system; install Java {} or pass --java-home",
                 lock.java_major
-            ))
+            ));
         }
     };
     // `java_component` is the pinned version JSON's javaVersion.component.
     let component = lock.pin("java_component")?;
-    let agent = agent();
-    let response = request(&agent, RUNTIMES)?
+    let response = request(RUNTIMES)?
         .call()
         .map_err(|e| format!("Mojang's Java index: {e}"))?;
     let index = pyjson::loads(&response.into_string().map_err(|e| e.to_string())?)?;
@@ -202,7 +200,7 @@ fn install_runtime(root: &Path, lock: &Lock, log: Log) -> Result<PathBuf, String
     let cache = root.join(".local/server-downloads").join(sha1);
     let _lock = crate::hold_lock(&cache, log)?;
     let manifest_path = cache.join("manifest.json");
-    download(&agent, text(manifest, "url")?, &manifest_path, sha1)?;
+    download(text(manifest, "url")?, &manifest_path, sha1)?;
     let manifest = read_json(&manifest_path)?;
     let files = manifest
         .get("files")
@@ -247,7 +245,7 @@ fn install_runtime(root: &Path, lock: &Lock, log: Log) -> Result<PathBuf, String
         lock.java_major
     ));
     crate::pool::map(&downloads, |(path, url, sha1, executable)| {
-        download(&agent, url, path, sha1)?;
+        download(url, path, sha1)?;
         #[cfg(unix)]
         if *executable {
             use std::os::unix::fs::PermissionsExt;
