@@ -146,9 +146,9 @@ pub struct BlockEntities {
     /// set), so the level's tick checks those alone instead of every sign.
     sign_editors: FxHashSet<Pos>,
     asleep: FxHashSet<Pos>,
-    /// The block entities moving pistons carry, by the moving piston's
-    /// position (`carry`): out of the map until they land.
-    carried: FxHashMap<Pos, carry::Carried>,
+    /// The block entities moving pistons carry, by destination column and position:
+    /// out of the live map until they land.
+    carried: FxHashMap<(i32, i32), FxHashMap<Pos, carry::Carried>>,
     /// The block entity a player's break just removed, kept readable while that break's
     /// `block_drops` listeners run (`hold_broken`), and dropped after (`release_broken`).
     broken: Option<Broken>,
@@ -979,7 +979,10 @@ impl BlockEntities {
     /// the positions `gone` names and changes none it keeps, so those that
     /// sleep stay asleep (a moving player unloads chunks most ticks).
     pub fn unload(&mut self, mut gone: impl FnMut(&Pos) -> bool) {
-        self.carried.retain(|p, _| !gone(p));
+        self.carried.retain(|_, payloads| {
+            payloads.retain(|p, _| !gone(p));
+            !payloads.is_empty()
+        });
         let asleep = std::mem::take(&mut self.asleep);
         self.retain(|p, _| !gone(p));
         self.retire_taken(gone);
@@ -995,8 +998,12 @@ impl BlockEntities {
     /// chunk's alone, so a frame that loads or unloads many columns costs what they hold, not
     /// what the whole map holds.
     pub fn unload_column_where(&mut self, chunk: (i32, i32), mut gone: impl FnMut(&Pos) -> bool) {
-        self.carried
-            .retain(|p, _| chunk_of(*p) != chunk || !gone(p));
+        if let std::collections::hash_map::Entry::Occupied(mut column) = self.carried.entry(chunk) {
+            column.get_mut().retain(|p, _| !gone(p));
+            if column.get().is_empty() {
+                column.remove();
+            }
+        }
         let Some(listed) = self.columns.get(&chunk) else {
             return;
         };
