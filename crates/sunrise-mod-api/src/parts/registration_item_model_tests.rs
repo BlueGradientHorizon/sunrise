@@ -20,7 +20,9 @@ impl Hooks for Selected {
         event: &mut RegisterRangeSelectItemModelPropertyEvent<'_>,
     ) {
         event.register(Identifier::parse("example:selected").unwrap(), |_| {
-            Ok(|_, input| input.bundle_selected as f32 / input.stack.count() as f32)
+            Ok(|_: &dyn ClientHost, input: &ItemModelPropertyInput<'_>| {
+                input.bundle_selected as f32 / input.stack.count() as f32
+            })
         });
     }
     fn register_select_item_model_property(
@@ -35,8 +37,9 @@ impl Hooks for Selected {
                     _ => Err("expected string".into()),
                 },
                 |_: &dyn ClientHost, input: &ItemModelPropertyInput<'_>| {
-                    (input.bundle_selected >= 0)
-                        .then(|| format!("{}:{}", input.bundle_selected, input.stack.count()))
+                    (input.bundle_selected >= 0).then(|| {
+                        format!("{}:{}", input.bundle_selected, input.stack.count()).into()
+                    })
                 },
             ))
         });
@@ -47,7 +50,7 @@ impl Hooks for Selected {
         event: &mut RegisterItemTintSourcesEvent<'_>,
     ) {
         event.register(Identifier::parse("example:selected").unwrap(), |_| {
-            Ok(|_, input| {
+            Ok(|_: &dyn ClientHost, input: &ItemTintInput<'_>| {
                 if input.bundle_selected < 0 {
                     u32::MAX
                 } else {
@@ -87,8 +90,9 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
             level: None,
             seed: 0,
         };
-        for (selected, boolean, number, text, tint) in [
-            (3, true, 1.5, Some("3:2"), 0xff03_0002),
+        let when = select_case_decode(&crate::Tag::String("3:2".into())).unwrap();
+        for (selected, boolean, number, case, tint) in [
+            (3, true, 1.5, Some(7), 0xff03_0002),
             (-1, false, -0.5, None, u32::MAX),
         ] {
             let mut value = false;
@@ -107,8 +111,8 @@ fn model_callbacks_receive_owned_counts_and_the_exact_runtime_selection() {
             };
             assert_eq!(range_eval(&NoClient, &prop_input), number);
             assert_eq!(
-                select_eval(&NoClient, &prop_input),
-                text.map(|s| select_case_decode(&crate::Tag::String(s.to_owned())).unwrap())
+                select_eval(&NoClient, &prop_input, &mut std::iter::once((7, &when))),
+                case
             );
             let tint_input = ItemTintInput {
                 stack: &stack,
