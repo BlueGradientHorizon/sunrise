@@ -245,6 +245,7 @@ impl Game<'_> {
         gi: usize,
         hit: Hit,
         hand: Hand,
+        _receipt: Option<i64>,
     ) -> Result<bool, ActionRefused> {
         let mut consumed = false;
         let Some(host) = self.lan.as_mut() else {
@@ -309,7 +310,7 @@ impl Game<'_> {
                 let attempt = g.was_block_placement_attempt(hand);
                 let saved = (g.forced_hit, g.guest_use);
                 g.forced_hit = Some(hit);
-                g.guest_use = Some(GuestUse::OnBlock(hand));
+                g.guest_use = Some(GuestUse::on_block(hand));
                 let swings = g.swings_started;
                 let predicted = g.predicted_swings;
                 let result = g.with_block_use_original(hand, |g| {

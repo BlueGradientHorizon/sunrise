@@ -590,7 +590,7 @@ impl Game<'_> {
                 host.hub.ack(conn, p.sequence);
                 let hit = Hit::from_use_item_on(&p);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-                let result = self.guest_use_item_on(conn, gi, hit, hand);
+                let result = self.guest_use_item_on(conn, gi, hit, hand, None);
                 if let Some(receipt) = receipt
                     && let Some(host) = self.lan.as_ref()
                 {

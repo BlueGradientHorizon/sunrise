@@ -731,7 +731,7 @@ impl Game<'_> {
                     point: hit.point,
                     inside: hit.inside,
                 };
-                self.guest_use_item_on(conn, gi, hit, hand)
+                self.guest_use_item_on(conn, gi, hit, hand, None)
             }
             PlayerAction::UseItem { hand } => self.guest_use_item(conn, gi, hand, None),
             PlayerAction::InteractOn {
@@ -5994,7 +5994,7 @@ pub(super) mod fake_action_tests {
                 inside: false,
             };
             assert_eq!(
-                game.guest_use_item_on(real_conn, gi, hit, Hand::Main),
+                game.guest_use_item_on(real_conn, gi, hit, Hand::Main, None),
                 Ok(true)
             );
             assert_eq!(

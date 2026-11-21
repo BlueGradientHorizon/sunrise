@@ -11368,7 +11368,8 @@ pub(crate) mod tests {
                         12,
                         game.guest_index(12).unwrap(),
                         hit,
-                        super::Hand::Main
+                        super::Hand::Main,
+                        None,
                     )
                     .unwrap()
                 );

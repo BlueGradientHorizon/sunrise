@@ -283,7 +283,7 @@ fn matrix(mods: mod_api::Mods) {
                         let used = if client {
                             game.remote_use_item_on(hand, mod_api::InteractionAttempt::Press, None)
                         } else {
-                            game.guest_use = Some(super::super::super::GuestUse::OnBlock(hand));
+                            game.guest_use = Some(super::super::super::GuestUse::on_block(hand));
                             game.with_hand(hand, |g| g.use_hand(Some(&hit()))).unwrap()
                         };
                         assert_eq!(used, case.used, "{client:?} {hand:?} {case:?}");

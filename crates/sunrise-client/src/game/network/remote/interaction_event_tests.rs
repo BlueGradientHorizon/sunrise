@@ -337,7 +337,7 @@ fn use_block(game: &mut Game<'_>, client: bool) -> bool {
     if client {
         game.remote_use_item_on(Hand::Main, mod_api::InteractionAttempt::Press, None)
     } else {
-        game.guest_use = Some(super::super::GuestUse::OnBlock(Hand::Main));
+        game.guest_use = Some(super::super::GuestUse::on_block(Hand::Main));
         game.use_hand(Some(&hit())).unwrap()
     }
 }
@@ -691,7 +691,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                 let used = if client {
                     game.remote_use_item_on(Hand::Off, mod_api::InteractionAttempt::Press, None)
                 } else {
-                    game.guest_use = Some(super::super::GuestUse::OnBlock(Hand::Off));
+                    game.guest_use = Some(super::super::GuestUse::on_block(Hand::Off));
                     game.with_hand(Hand::Off, |g| g.use_hand(Some(&hit())).unwrap())
                 };
                 assert!(used);
@@ -1296,7 +1296,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.forced_hit = Some(hit());
-            for guest in [None, Some(super::super::GuestUse::OnBlock(Hand::Off))] {
+            for guest in [None, Some(super::super::GuestUse::on_block(Hand::Off))] {
                 game.inventory[game.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
@@ -1692,7 +1692,7 @@ fn item_use_overlap_matrix_on_the_server() {
                                                 Answer::Success | Answer::Fail | Answer::Consume
                                             )
                                     };
-                                    game.guest_use = Some(super::super::GuestUse::OnBlock(hand));
+                                    game.guest_use = Some(super::super::GuestUse::on_block(hand));
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
                                     let used =

@@ -35,7 +35,7 @@ impl Game<'_> {
         // mods' hook, the block's own use, then the item's.
         use mod_api::InteractionResult as Answer;
         use mod_api::TriState;
-        let on_block = matches!(self.guest_use, Some(GuestUse::OnBlock(_)));
+        let on_block = matches!(self.guest_use, Some(GuestUse::OnBlock { .. }));
         let mut block_hit = block_hit;
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
         let block_phase = sunrise_client::spans::guard("use_block");
