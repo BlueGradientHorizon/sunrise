@@ -1,6 +1,5 @@
 ids = [
   "hook:register_special_model_renderer",
-  "trait:SpecialModelRenderers",
   "method:SpecialModelRenderers::register",
   "trait:SpecialModelRenderer",
   "method:SpecialModelRenderer::extract",
