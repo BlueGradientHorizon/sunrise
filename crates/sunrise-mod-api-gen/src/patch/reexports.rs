@@ -441,7 +441,10 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             self.visit_signature(sig);
             if let Some(body) = body {
                 for arg in &sig.inputs {
-                    if let syn::FnArg::Typed(arg) = arg {
+                    if let syn::FnArg::Typed(arg) = arg
+                        && !mod_source::modules::test_only(&arg.attrs)
+                    {
+                        // A cfg-gated parameter can still shadow a name on some builds.
                         self.bind(&arg.pat);
                     }
                 }
@@ -572,8 +575,21 @@ pub(super) fn check_paths(source: &mut Source, found: &Found) -> Result<(), Stri
             self.function(&item.sig, Some(&item.block));
         }
 
+        fn visit_fn_arg(&mut self, arg: &'ast syn::FnArg) {
+            let attrs = match arg {
+                syn::FnArg::Receiver(arg) => &arg.attrs,
+                syn::FnArg::Typed(arg) => &arg.attrs,
+            };
+            if !conditional(attrs) {
+                syn::visit::visit_fn_arg(self, arg);
+            }
+        }
+
         fn visit_trait_item(&mut self, item: &'ast syn::TraitItem) {
-            self.scoped(|check| syn::visit::visit_trait_item(check, item));
+            use syn::TraitItem;
+            if !conditional(attrs!(TraitItem, item; Const, Fn, Type, Macro)) {
+                self.scoped(|check| syn::visit::visit_trait_item(check, item));
+            }
         }
 
         fn visit_trait_item_fn(&mut self, item: &'ast syn::TraitItemFn) {

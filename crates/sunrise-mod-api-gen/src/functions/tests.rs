@@ -554,6 +554,55 @@ mod copy {
 }
 
 #[test]
+fn cfg_gates_on_nested_parameters_and_trait_items_do_not_refuse_the_copy() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/lib.rs"),
+        "pub mod game; fn hidden() {}",
+    )
+    .unwrap();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod types {
+    mod imp { pub type Tag = (); }
+    pub(super) use imp::Tag;
+}
+mod copy {
+    use super::types::*;
+    fn disabled_parameter() {
+        fn helper(#[cfg(any())] _: Option<Tag>) {}
+        helper();
+    }
+    fn active_parameter() {
+        fn helper(_: Option<Tag>) {}
+        helper(None);
+    }
+    fn disabled_trait_item() {
+        trait Local { #[cfg_attr(all(), cfg(any()))] fn helper() { crate::hidden(); } }
+    }
+    fn active_trait_item() {
+        trait Local { fn helper() { crate::hidden(); } }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::copy::{name}"));
+    check("disabled_parameter").unwrap();
+    check("disabled_trait_item").unwrap();
+    for (name, path) in [
+        ("active_parameter", "Tag"),
+        ("active_trait_item", "crate::hidden"),
+    ] {
+        let (code, why) = check(name).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(why.contains(&format!("`{path}`")), "{why}");
+    }
+}
+
+#[test]
 fn a_private_crate_root_call_refuses_the_target() {
     let root = fixture();
     fs::write(
