@@ -15,7 +15,7 @@ pub struct EntityType {
     /// one of [`super::ENTITY_TEMPLATES`].
     pub template: String,
     /// Whether a living type may spawn and remain in Peaceful. Omitted inherits the template.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_peaceful_setting")]
     pub allowed_in_peaceful: Option<bool>,
     /// Renderer shadow overrides; omitted values inherit the template.
     #[serde(default, deserialize_with = "deserialize_shadow")]
@@ -128,6 +128,12 @@ impl EntityType {
     }
 }
 
+fn deserialize_peaceful_setting<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<bool>, D::Error> {
+    bool::deserialize(d).map(Some)
+}
+
 fn deserialize_shadow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f32>, D::Error> {
     let value = f32::deserialize(d)?;
     if !value.is_finite() || value < 0.0 {
@@ -167,13 +173,25 @@ capabilities = ["registries"]
             read(r#"{"template":"minecraft:wandering_trader","allowed_in_peaceful":false}"#)
                 .unwrap();
         assert_eq!(living.entity_types[0].allowed_in_peaceful, Some(false));
-        for value in ["false", "true"] {
+        for value in ["false", "true", "null"] {
             let error = read(&format!(
                 r#"{{"template":"minecraft:snowball","item":"bird:ball","allowed_in_peaceful":{value}}}"#
             ))
             .unwrap_err();
+            let reason = if value == "null" {
+                "expected a boolean"
+            } else {
+                "allowed_in_peaceful"
+            };
+            assert!(error.contains(name) && error.contains(reason), "{error}");
+        }
+        for value in ["null", "\"false\""] {
+            let error = read(&format!(
+                r#"{{"template":"minecraft:wandering_trader","allowed_in_peaceful":{value}}}"#
+            ))
+            .unwrap_err();
             assert!(
-                error.contains(name) && error.contains("allowed_in_peaceful"),
+                error.contains(name) && error.contains("expected a boolean"),
                 "{error}"
             );
         }

@@ -4343,6 +4343,43 @@ capabilities = ["registries"]
 
     #[test]
     #[ignore = "daily"]
+    fn a_persisted_mod_type_despawns_when_difficulty_switches_to_peaceful() {
+        with_types(ExecutionRole::IntegratedServer, |game| {
+            // Restoring a saved entity still works in Peaceful. Its own
+            // despawn check, not the save loader, enforces the type's rule.
+            let saved = Tag::compound([
+                ("id", Tag::String(TRADER.into())),
+                (
+                    "Pos",
+                    Tag::List(
+                        [4.5_f64, 64.0, 4.5]
+                            .map(|v| Tag::Double(v.to_bits()))
+                            .to_vec(),
+                    ),
+                ),
+                ("PersistenceRequired", Tag::Byte(1)),
+                ("NoAI", Tag::Byte(1)),
+            ]);
+            let id = game.load_mob(saved, None).unwrap();
+            let trader = game.mobs.iter().find(|mob| mob.id == id).unwrap();
+            assert!(trader.persistent && trader.no_ai);
+            game.tickets
+                .update(Some(sunrise_client::ticket_levels::Sources {
+                    forced: vec![(0, 0)],
+                    ..Default::default()
+                }));
+
+            game.set_difficulty_forced(2);
+            game.tick_creature_entities().unwrap();
+            assert!(game.mobs.iter().any(|mob| mob.id == id));
+            game.set_difficulty_forced(0);
+            game.tick_creature_entities().unwrap();
+            assert!(!game.mobs.iter().any(|mob| mob.id == id));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn summon_checks_the_mod_type_instead_of_its_template() {
         with_types(ExecutionRole::IntegratedServer, |game| {
             let context = |id: &str, nbt: Option<&str>| {
