@@ -7,12 +7,23 @@ pub(super) fn owned_item_ids(
     manifest: &Manifest,
     declarations: &BTreeMap<&'static str, DeclaredContent>,
 ) -> Vec<String> {
-    declarations
+    let own = declarations
         .get(manifest.id.as_str())
         .into_iter()
-        .flat_map(|batch| &batch.items)
-        .map(|item| item.get().id.clone())
-        .collect()
+        .flat_map(|batch| batch.items.iter().map(|item| item.get().id.clone()));
+    let from_host = manifest
+        .served_by
+        .as_deref()
+        .and_then(|host| declarations.get(host))
+        .into_iter()
+        .flat_map(|batch| batch.items.iter())
+        .map(|item| &item.get().id)
+        .filter(|id| {
+            id.split_once(':')
+                .is_some_and(|(ns, _)| manifest.owned_namespaces().any(|owned| owned == ns))
+        })
+        .cloned();
+    own.chain(from_host).collect()
 }
 
 #[cfg(test)]
@@ -94,5 +105,56 @@ mod tests {
             "{error}"
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn served_content_remainders_see_only_host_items_in_served_namespaces() {
+        let manifest = Manifest::parse(
+            r#"
+            id = "runes"
+            name = "Runes"
+            version = "1.0.0"
+            api = "0.2"
+            side = "both"
+            capabilities = ["registries"]
+            namespaces = ["runes_extra"]
+            served_by = "horizon_java"
+        "#,
+        )
+        .unwrap();
+        let item = |id: &str| {
+            Item {
+                id: id.into(),
+                template: "minecraft:stick".into(),
+                ..Item::default()
+            }
+            .validate_local()
+            .unwrap()
+        };
+        let batches = BTreeMap::from([
+            (
+                "horizon_java",
+                DeclaredContent {
+                    items: vec![
+                        item("runes:bowl"),
+                        item("runes_extra:jar"),
+                        item("horizon_java:wrench"),
+                        item("other_served:wand"),
+                    ],
+                    ..Default::default()
+                },
+            ),
+            (
+                "unrelated",
+                DeclaredContent {
+                    items: vec![item("runes:spoofed")],
+                    ..Default::default()
+                },
+            ),
+        ]);
+        assert_eq!(
+            owned_item_ids(&manifest, &batches),
+            ["runes:bowl", "runes_extra:jar"]
+        );
     }
 }

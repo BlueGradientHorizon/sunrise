@@ -5,12 +5,36 @@ use crate::{
 };
 
 /// The package inventory carries the same namespace set as content files and
+/// the package loader's collision fence. A package always owns its own ID,
+/// and a code mod also owns the namespaces of any installed content package
+/// whose manifest declares `served_by = "<owner>"`.
+pub(crate) fn owns_namespace_in(
+    packages: &crate::LoadedMods,
+    owner: &str,
+    namespace: &str,
+) -> bool {
+    if owner == namespace {
+        return true;
+    }
+    let Some(package) = packages.get(owner) else {
+        return false;
+    };
+    if package.namespaces().any(|owned| owned == namespace) {
+        return true;
+    }
+    package.kind() == crate::PackageKind::Code
+        && !matches!(namespace, "minecraft" | "c" | "sunrise")
+        && packages.iter().any(|content| {
+            content.kind() == crate::PackageKind::Content
+                && content.served_by() == Some(owner)
+                && content.namespaces().any(|owned| owned == namespace)
+        })
+}
+
+/// The package inventory carries the same namespace set as content files and
 /// the package loader's collision fence. A package always owns its own ID.
 pub fn owns_namespace(owner: &str, namespace: &str) -> bool {
-    owner == namespace
-        || crate::LoadedMods::new()
-            .get(owner)
-            .is_some_and(|package| package.namespaces().any(|owned| owned == namespace))
+    owns_namespace_in(&crate::LoadedMods::new(), owner, namespace)
 }
 
 /// `name` with its namespace: a bare name is in mod `owner`'s own, for a declared id and

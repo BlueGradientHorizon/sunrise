@@ -8313,3 +8313,128 @@ fn plain_block_properties_replace_template_facts_and_face_rule() {
         fs::remove_dir_all(base.parent().unwrap()).unwrap();
     }
 }
+
+#[test]
+fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_remainders() {
+    use sunrise_mod_package::content::{Block, Content, Item};
+    let block = |id: &str, item: bool| Block {
+        id: id.into(),
+        template: "minecraft:stone".into(),
+        item,
+        ..Block::default()
+    };
+    let item = |id: &str, remainder: Option<&str>| Item {
+        id: id.into(),
+        template: "minecraft:stick".into(),
+        crafting_remainder: remainder.map(str::to_owned),
+        ..Item::default()
+    };
+    let mut runes = Content::declared("runes");
+    runes.blocks.push(block("runes:altar", true));
+    runes.blocks.push(block("runes:crop", false));
+    runes.items.push(item("runes:stone", None));
+    runes
+        .items
+        .push(item("runes:soup", Some("runes:extra_item")));
+
+    let host_manifest = sunrise_mod_package::Manifest::parse(&format!(
+        "id='horizon_java'\nname='Horizon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content=true\n",
+        "a".repeat(40),
+    ))
+    .unwrap();
+    let runes_manifest = sunrise_mod_package::Manifest::parse(
+        "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
+    )
+    .unwrap();
+    let manifests = [&host_manifest, &runes_manifest];
+    let known = BTreeSet::new();
+
+    // Non-colliding host declarations in a served namespace succeed and coexist without clash.
+    let mut mods = vec![ContentMod {
+        id: "runes".into(),
+        content: runes,
+        jars: Vec::new(),
+    }];
+    let valid = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            blocks: vec![block("runes:extra_block", true).validate_local().unwrap()],
+            items: vec![
+                item("runes:extra_item", None).validate_local().unwrap(),
+                // Same ID as a block with `item: false` is allowed.
+                item("runes:crop", None).validate_local().unwrap(),
+            ],
+            ..Default::default()
+        },
+    )]);
+    let mut errors = Vec::new();
+    accept_declared(&mut mods, &valid, &manifests, &known, &mut errors).unwrap();
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(mods.len(), 2);
+    assert_eq!(mods[1].id, "horizon_java");
+    // Served file item whose remainder was code-declared by the host survives dangling check.
+    assert!(drop_dangling_remainders(&mut mods).is_empty());
+    assert_eq!(mods.len(), 2);
+
+    // Every collision against a served package's blocks/items refuses atomically.
+    let cases = [
+        (
+            "duplicate block",
+            DeclaredContent {
+                blocks: [block("runes:altar", true), block("runes:atomic_skip", true)]
+                    .into_iter()
+                    .map(|b| b.validate_local().unwrap())
+                    .collect(),
+                ..Default::default()
+            },
+            "runes:altar",
+        ),
+        (
+            "block colliding with served item",
+            DeclaredContent {
+                blocks: vec![block("runes:stone", false).validate_local().unwrap()],
+                ..Default::default()
+            },
+            "runes:stone",
+        ),
+        (
+            "item colliding with served block item",
+            DeclaredContent {
+                items: vec![item("runes:altar", None).validate_local().unwrap()],
+                ..Default::default()
+            },
+            "runes:altar",
+        ),
+        (
+            "duplicate item",
+            DeclaredContent {
+                items: vec![item("runes:stone", None).validate_local().unwrap()],
+                ..Default::default()
+            },
+            "runes:stone",
+        ),
+    ];
+    for (label, batch, conflicting_id) in cases {
+        let mut errors = Vec::new();
+        let batches = BTreeMap::from([("horizon_java", batch)]);
+        accept_declared(&mut mods, &batches, &manifests, &known, &mut errors).unwrap();
+        assert_eq!(errors.len(), 1, "{label}: {errors:?}");
+        assert!(
+            matches!(
+                &errors[0].error,
+                mod_api::DeclarationError::Rejected { id, reason }
+                    if id == conflicting_id && reason.contains("runes")
+            ),
+            "{label}: {:?}",
+            errors[0]
+        );
+        assert!(
+            !mods[1]
+                .content
+                .blocks
+                .iter()
+                .any(|b| b.id == "runes:atomic_skip"),
+            "{label}: batch must be refused atomically"
+        );
+    }
+}

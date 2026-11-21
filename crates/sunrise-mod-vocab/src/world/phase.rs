@@ -334,6 +334,8 @@ pub struct PackageInfo {
     /// Its `[dependencies]` rows, sorted by id.
     pub(crate) dependencies: Vec<crate::PackageDependency>,
     pub(crate) details: crate::PackageDetails,
+    /// Native runtime mod that serves code-side parts for this content package, if any.
+    pub(crate) served_by: Option<String>,
 }
 
 impl PackageInfo {
@@ -354,12 +356,22 @@ impl PackageInfo {
             namespaces,
             dependencies,
             details: crate::PackageDetails::default(),
+            served_by: None,
         }
     }
     /// The same snapshot with the manifest's descriptive fields.
     pub fn with_details(mut self, details: crate::PackageDetails) -> Self {
         self.details = details;
         self
+    }
+    /// The same snapshot with its serving native runtime mod ID, for content packages.
+    pub fn with_served_by(mut self, served_by: Option<String>) -> Self {
+        self.served_by = served_by;
+        self
+    }
+    /// The native runtime mod that serves code-side parts for this content package, if any.
+    pub fn served_by(&self) -> Option<&str> {
+        self.served_by.as_deref()
     }
     /// Package identifier.
     pub fn id(&self) -> &str {

@@ -145,6 +145,10 @@ pub struct Manifest {
     /// that are on may share one (`content::clash`).
     #[serde(default)]
     pub namespaces: Vec<String>,
+    /// Native runtime mod that serves code-side parts and registrations for
+    /// this content package's namespaces; refused on `[native]` packages.
+    #[serde(default)]
+    pub served_by: Option<String>,
     /// Other native mods whose hooks must be available before this one.
     #[serde(default)]
     pub dependencies: std::collections::BTreeMap<String, Dependency>,
@@ -292,6 +296,9 @@ pub struct Native {
     /// SDK names (see [`Native::mixins_or`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mixins: Option<String>,
+    /// Whether this native mod opts in to serving content packages that name it in `served_by`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub serves_content: bool,
     /// Source-level edits of game functions, native only: the one form that compiles game code.
     #[serde(default)]
     pub mixin: Vec<mixin::Mixin>,
@@ -519,6 +526,38 @@ impl Manifest {
                 m.id
             ));
         }
+        if let Some(host) = &m.served_by {
+            if m.native.is_some() {
+                return Err(format!(
+                    "{MANIFEST}: a [native] mod cannot declare served_by"
+                ));
+            }
+            if RESERVED_NAMESPACES.contains(&host.as_str()) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a reserved namespace, not a mod id"
+                ));
+            }
+            if RESERVED_IDS.contains(&host.as_str()) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a page of the mod site, not a mod id"
+                ));
+            }
+            if reserved_mod_id(host) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is a reserved Windows device name"
+                ));
+            }
+            if !valid_mod_id(host) {
+                return Err(format!(
+                    "{MANIFEST}: served_by {host:?} is not [a-z0-9_]{{1,64}}"
+                ));
+            }
+            if host == &m.id {
+                return Err(format!(
+                    "{MANIFEST}: served_by cannot name this package's own id {host:?}"
+                ));
+            }
+        }
         let rules = m.incompatible.iter().chain(&m.discouraged);
         for id in m
             .dependencies
@@ -739,6 +778,16 @@ impl Manifest {
     /// kind and the id: every client must have that content.
     pub fn server_only_declaration<'a>(
         &self,
+        declared: impl Iterator<Item = (&'a str, &'a str)>,
+    ) -> Option<String> {
+        let namespaces: Vec<&str> = self.owned_namespaces().collect();
+        self.server_only_declaration_in(&namespaces, declared)
+    }
+    /// [`Self::server_only_declaration`] checked against an explicit set of owned namespaces,
+    /// including any content packages served by this host.
+    pub fn server_only_declaration_in<'a>(
+        &self,
+        namespaces: &[&str],
         mut declared: impl Iterator<Item = (&'a str, &'a str)>,
     ) -> Option<String> {
         if self.side != Side::Server {
@@ -746,7 +795,7 @@ impl Manifest {
         }
         let (kind, id) = declared.find(|(_, id)| {
             let ns = id.split_once(':').map_or("", |(ns, _)| ns);
-            self.owned_namespaces().any(|owned| owned == ns)
+            namespaces.contains(&ns)
         })?;
         Some(format!(
             "{}: a side = \"server\" mod declares the {kind} {id}, which every client must have; \
@@ -1961,6 +2010,79 @@ capabilities = ["registries"]
         assert!(with("\"a\", \"a\"").unwrap_err().contains("twice"));
         assert!(with("\"Kaisyn\"").unwrap_err().contains("is not"));
         assert!(with("\"\"").unwrap_err().contains("is not"));
+    }
+
+    #[test]
+    fn checks_served_by_and_native_serves_content() {
+        let default = Manifest::parse(EXAMPLE).unwrap();
+        assert_eq!(default.served_by, None);
+
+        let served = Manifest::parse(&format!("{EXAMPLE}served_by = \"horizon_java\"\n")).unwrap();
+        assert_eq!(served.served_by.as_deref(), Some("horizon_java"));
+
+        let native_header = format!(
+            "[native]\ngame = \"26.3\"\nsunrise = \"{}\"\n",
+            "a".repeat(40)
+        );
+        let native_default = Manifest::parse(&format!("{EXAMPLE}{native_header}")).unwrap();
+        assert!(!native_default.native.as_ref().unwrap().serves_content);
+        assert!(
+            !toml::to_string(native_default.native.as_ref().unwrap())
+                .unwrap()
+                .contains("serves_content")
+        );
+
+        let native_host =
+            Manifest::parse(&format!("{EXAMPLE}{native_header}serves_content = true\n")).unwrap();
+        assert!(native_host.native.as_ref().unwrap().serves_content);
+
+        let native_served_by = Manifest::parse(&format!(
+            "{EXAMPLE}served_by = \"horizon_java\"\n{native_header}"
+        ))
+        .unwrap_err();
+        assert!(native_served_by.contains("served_by"), "{native_served_by}");
+
+        let self_ref = Manifest::parse(&format!("{EXAMPLE}served_by = \"ruby\"\n")).unwrap_err();
+        assert!(self_ref.contains("own id"), "{self_ref}");
+
+        for reserved in RESERVED_NAMESPACES {
+            let err =
+                Manifest::parse(&format!("{EXAMPLE}served_by = \"{reserved}\"\n")).unwrap_err();
+            assert!(err.contains("reserved namespace"), "{reserved}: {err}");
+        }
+        for site_id in ["account", "index"] {
+            let err =
+                Manifest::parse(&format!("{EXAMPLE}served_by = \"{site_id}\"\n")).unwrap_err();
+            assert!(err.contains("mod site"), "{site_id}: {err}");
+        }
+        for device in ["con", "com1"] {
+            let err = Manifest::parse(&format!("{EXAMPLE}served_by = \"{device}\"\n")).unwrap_err();
+            assert!(err.contains("Windows device"), "{device}: {err}");
+        }
+        for bad in ["", "Bad_Id", "has-dash"] {
+            let err = Manifest::parse(&format!("{EXAMPLE}served_by = \"{bad}\"\n")).unwrap_err();
+            assert!(err.contains("is not"), "{bad}: {err}");
+        }
+
+        let server_host = Manifest::parse(&format!("{EXAMPLE}side = \"server\"\n")).unwrap();
+        assert_eq!(
+            server_host.server_only_declaration_in(
+                &["ruby", "runes"],
+                [("block", "minecraft:stone"), ("block", "runes:altar")].into_iter(),
+            ),
+            Some(
+                "ruby: a side = \"server\" mod declares the block runes:altar, which every client \
+                 must have; declare side = \"both\""
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            server_host.server_only_declaration_in(
+                &["ruby", "runes"],
+                [("block", "other:altar")].into_iter(),
+            ),
+            None
+        );
     }
 
     #[test]

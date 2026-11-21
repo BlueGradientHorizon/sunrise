@@ -1,0 +1,3 @@
+ids = ["type:PackageInfo", "handle:PackageInfo::served_by", "handle:PackageInfo::with_served_by"]
+why = "Content packages can delegate code-side namespace ownership to an opting-in native runtime mod via top-level `served_by = \"<native_mod_id>\"` and `[native] serves_content = true`. `PackageInfo` carries `served_by: Option<String>` so `owns_namespace` grants the serving code mod authority over the served package's namespaces without changing `PackageInfo::namespaces()`."
+migrate = "No source change required for existing mods; rebuild against the updated SDK if crossing Wire with `PackageInfo`. Runtime mods that serve generated content packages opt in with `[native] serves_content = true` and inspect served packages via `PackageInfo::served_by()`."

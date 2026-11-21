@@ -774,6 +774,44 @@ fn refuse_primary_namespace_claims(
     Ok(())
 }
 
+/// Validate namespace ownership and `served_by` rules before installing the
+/// frozen `PackageInfo` inventory that registration hooks read.
+pub(super) fn validate_startup_packages(sources: &ModsState) -> sunrise_client::Result<()> {
+    let manifests: Vec<&sunrise_mod_package::Manifest> = sources
+        .native
+        .packages()
+        .iter()
+        .map(|p| &p.manifest)
+        .chain(sources.selected.iter().map(|p| &p.package.manifest))
+        .collect();
+    refuse_primary_namespace_claims(&manifests)?;
+    sunrise_mod_package::dependencies::validate_served_by(&manifests)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Maps each admitted content layer's namespaces to its owning package ID:
+/// the serving native host for `served_by` content packages, otherwise the layer itself.
+fn content_owner_pairs<'a>(
+    mods: &'a [sunrise_client::mod_content::ContentMod],
+    selected: &'a [sunrise_mod_package::selection::SelectedPackage],
+) -> Vec<(&'a str, &'a str)> {
+    mods.iter()
+        .flat_map(|layer| {
+            let owner = selected
+                .iter()
+                .find(|p| p.package.manifest.id == layer.id)
+                .and_then(|p| p.package.manifest.served_by.as_deref())
+                .unwrap_or(layer.id.as_str());
+            layer
+                .content
+                .namespaces
+                .iter()
+                .map(move |namespace| (namespace.as_str(), owner))
+        })
+        .collect()
+}
+
 /// Builds the content overlay: every enabled or dev content mod's files
 /// merged over `root`. Registration of what the mods declare is
 /// [`content_root`]'s step.
@@ -796,12 +834,17 @@ pub(super) fn content_overlay(
     )?;
     let refused = missing_jars(jar_store, &requirements)?;
     *sources.refused.lock().unwrap() = refused.clone();
-    if let Some(missing) = refused.iter().find(|missing| {
-        missing
-            .owners
-            .iter()
-            .any(|id| sources.native.built().iter().any(|built| built.id == id))
-    }) {
+    let is_fatal_owner = |id: &str| {
+        sources.native.built().iter().any(|built| built.id == id)
+            || sources
+                .selected
+                .iter()
+                .any(|p| p.package.manifest.id == id && p.package.manifest.served_by.is_some())
+    };
+    if let Some(missing) = refused
+        .iter()
+        .find(|missing| missing.owners.iter().any(|id| is_fatal_owner(id)))
+    {
         return Err(missing.clone().into());
     }
 
@@ -883,6 +926,13 @@ pub(super) fn content_overlay(
         let content = match content {
             Ok(content) => content,
             Err(e) => {
+                if m.served_by.is_some() {
+                    return Err(format!(
+                        "Sunrise: served mod {} content failed to load: {e}",
+                        m.id
+                    )
+                    .into());
+                }
                 log::warn!("Sunrise: mod {} content not loaded: {e}", m.id);
                 continue;
             }
@@ -922,6 +972,11 @@ pub(super) fn content_overlay(
                 }
             }
             Ok(_) => {}
+            Err(e) if m.served_by.is_some() => {
+                return Err(
+                    format!("Sunrise: served mod {} content failed to load: {e}", m.id).into(),
+                );
+            }
             Err(e) => log::warn!("Sunrise: mod {} content not loaded: {e}", m.id),
         }
     }
@@ -952,6 +1007,15 @@ pub(super) fn content_overlay(
     }
     for m in &manifests {
         if let Some(batch) = declared.batches.get(m.id.as_str()) {
+            let owned_namespaces: Vec<&str> = m
+                .owned_namespaces()
+                .chain(
+                    manifests
+                        .iter()
+                        .filter(|content| content.served_by.as_deref() == Some(m.id.as_str()))
+                        .flat_map(|content| content.owned_namespaces()),
+                )
+                .collect();
             let ids = batch
                 .blocks
                 .iter()
@@ -964,7 +1028,7 @@ pub(super) fn content_overlay(
                         .map(|t| ("block entity type", t.id.as_str())),
                 )
                 .chain(batch.fluids.iter().map(|f| ("fluid", f.id.as_str())));
-            if let Some(e) = m.server_only_declaration(ids) {
+            if let Some(e) = m.server_only_declaration_in(&owned_namespaces, ids) {
                 return Err(e.into());
             }
         }
@@ -1167,13 +1231,10 @@ pub(in crate::game) fn content_root(
     sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
-    mod_api::__private::install_content_owners(overlay.mods.iter().flat_map(|layer| {
-        layer
-            .content
-            .namespaces
-            .iter()
-            .map(|namespace| (namespace.as_str(), layer.id.as_str()))
-    }));
+    mod_api::__private::install_content_owners(content_owner_pairs(
+        &overlay.mods,
+        &sources.selected,
+    ));
     Ok(overlay.root)
 }
 
@@ -1563,6 +1624,10 @@ fn live_switch_of(
     }
     let id = &package.manifest.id;
     content_ids.insert(id.clone());
+    if package.manifest.served_by.is_some() {
+        log::debug!("Sunrise: mod {id} switches on a restart: served by a native mod");
+        return;
+    }
     match verdict(path, &package.manifest, dev) {
         // Jar layers can declare worldgen that Content.files does not list.
         Some(Ok(())) if package.manifest.jar.is_empty() => {
@@ -2356,6 +2421,322 @@ mod tests {
                 "mod claimant claims namespace owner, which is the primary namespace of mod owner; turn one of them off"
             );
         }
+    }
+
+    #[test]
+    fn served_by_startup_validation_owners_live_switch_and_fatal_overlay_failures() {
+        const HOST_BUILT: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_java",
+            version: "1.0.0",
+            side: mod_api::Side::Both,
+        }];
+        const SERVER_HOST_BUILT: &[BuiltMod] = &[BuiltMod {
+            id: "horizon_srv",
+            version: "1.0.0",
+            side: mod_api::Side::Server,
+        }];
+
+        let f = Fixture::new("served-by");
+        let make_native = |dir_name: &str,
+                           id: &str,
+                           side: &str,
+                           serves: bool,
+                           built: &'static [BuiltMod]| {
+            let compiled = f.0.join(dir_name);
+            let pkg = compiled.join(mod_list::NATIVE_DIR).join(id);
+            std::fs::create_dir_all(pkg.join("src")).unwrap();
+            std::fs::write(
+                pkg.join("Cargo.toml"),
+                format!("[package]\nname='{id}'\nversion='1.0.0'\n"),
+            )
+            .unwrap();
+            std::fs::write(pkg.join("src/lib.rs"), "pub fn hooks() {}").unwrap();
+            std::fs::write(
+                pkg.join("sunrise-mod.toml"),
+                format!(
+                    "id='{id}'\nname='{id}'\nversion='1.0.0'\napi='0.2'\nside='{side}'\ncapabilities=['registries']\n[native]\ngame='26.3'\nsunrise='{}'\nserves_content={serves}\n",
+                    "a".repeat(40),
+                ),
+            )
+            .unwrap();
+            Runtime::load(&compiled.join("sunrise-engine"), built).unwrap()
+        };
+        let make_content = |file_name: &str, manifest: &str, files: &[(&str, &[u8])]| {
+            let path = f.0.join(file_name);
+            std::fs::write(
+                &path,
+                sunrise_mod_package::Package::write_files(manifest, files).unwrap(),
+            )
+            .unwrap();
+            sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&path).unwrap(),
+                path,
+            }
+        };
+
+        let host_runtime = Arc::new(make_native(
+            "host-ok",
+            "horizon_java",
+            "both",
+            true,
+            HOST_BUILT,
+        ));
+        let host_unopted = Arc::new(make_native(
+            "host-no",
+            "horizon_java",
+            "both",
+            false,
+            HOST_BUILT,
+        ));
+        let runes_ok = make_content(
+            "runes.smod",
+            "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nnamespaces=['runes_extra']\nserved_by='horizon_java'\n",
+            &[("assets/runes/lang/en_us.json", b"{}")],
+        );
+        let plain_ok = make_content(
+            "plain.smod",
+            "id='plain'\nname='Plain'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n",
+            &[("assets/plain/lang/en_us.json", b"{}")],
+        );
+
+        // validate_startup_packages accepts valid served_by without clash and refuses unopted/missing hosts.
+        let both_selected: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![runes_ok, plain_ok].into();
+        let valid_state = ModsState {
+            native: host_runtime.clone(),
+            selected: both_selected.clone(),
+            ..Default::default()
+        };
+        validate_startup_packages(&valid_state).unwrap();
+
+        let runes_only: Arc<[sunrise_mod_package::selection::SelectedPackage]> =
+            vec![sunrise_mod_package::selection::SelectedPackage {
+                package: sunrise_mod_package::Package::read(&both_selected[0].path).unwrap(),
+                path: both_selected[0].path.clone(),
+            }]
+            .into();
+        let unopted_state = ModsState {
+            native: host_unopted,
+            selected: runes_only.clone(),
+            ..Default::default()
+        };
+        assert!(
+            validate_startup_packages(&unopted_state)
+                .unwrap_err()
+                .to_string()
+                .contains("serves_content")
+        );
+
+        let missing_host_state = ModsState {
+            selected: runes_only,
+            ..Default::default()
+        };
+        assert!(
+            validate_startup_packages(&missing_host_state)
+                .unwrap_err()
+                .to_string()
+                .contains("not installed")
+        );
+
+        // live_switch_of requires restart for served_by content even with assets only.
+        let (mut content_ids, mut live_ids) = Default::default();
+        live_switch_of(
+            &both_selected[0].path,
+            &both_selected[0].package,
+            false,
+            &mut content_ids,
+            &mut live_ids,
+        );
+        live_switch_of(
+            &both_selected[1].path,
+            &both_selected[1].package,
+            false,
+            &mut content_ids,
+            &mut live_ids,
+        );
+        assert!(content_ids.contains("runes") && content_ids.contains("plain"));
+        assert!(!live_ids.contains("runes"));
+        assert!(live_ids.contains("plain"));
+
+        // content_owner_pairs maps served namespaces to the host and disables with the host.
+        let mut runes_content = sunrise_mod_package::Content::declared("runes");
+        runes_content.namespaces.push("runes_extra".into());
+        let layers = vec![
+            sunrise_client::mod_content::ContentMod {
+                id: "horizon_java".into(),
+                content: sunrise_mod_package::Content::declared("horizon_java"),
+                jars: Vec::new(),
+            },
+            sunrise_client::mod_content::ContentMod {
+                id: "runes".into(),
+                content: runes_content,
+                jars: Vec::new(),
+            },
+            sunrise_client::mod_content::ContentMod {
+                id: "plain".into(),
+                content: sunrise_mod_package::Content::declared("plain"),
+                jars: Vec::new(),
+            },
+        ];
+        let owners = content_owner_pairs(&layers, &valid_state.selected);
+        assert_eq!(
+            owners,
+            [
+                ("horizon_java", "horizon_java"),
+                ("runes", "horizon_java"),
+                ("runes_extra", "horizon_java"),
+                ("plain", "plain"),
+            ]
+        );
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Quiet {}
+        mod_platform::__private::initialize().unwrap();
+        mod_platform::testing::with_dispatch(
+            vec![mod_api::ModEntry::new("horizon_java", Box::new(Quiet))].into(),
+            || {
+                assert!(mod_api::__private::set_mod_enabled("horizon_java", false));
+                mod_api::__private::install_content_owners(owners.iter().copied());
+                assert!(mod_api::__private::content_owner_disabled("runes:altar"));
+                assert!(mod_api::__private::content_owner_disabled(
+                    "runes_extra:rune"
+                ));
+                assert!(!mod_api::__private::content_owner_disabled("plain:block"));
+            },
+        );
+
+        let base = f.0.join("vanilla");
+        let store = f.0.join("jars");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("sunrise-resources.json"), "{}").unwrap();
+
+        // Missing jar on a served content package is fatal.
+        let runes_missing_jar = make_content(
+            "runes-missing-jar.smod",
+            &format!(
+                "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n[[jar]]\nid='orig'\nversion='1'\nsha512='{}'\n",
+                "9".repeat(128),
+            ),
+            &[],
+        );
+        let missing_jar_state = ModsState {
+            native: host_runtime.clone(),
+            selected: vec![runes_missing_jar].into(),
+            ..Default::default()
+        };
+        let err = content_overlay(&base, &missing_jar_state, &store)
+            .err()
+            .unwrap();
+        assert!(err.downcast_ref::<MissingJar>().is_some(), "{err}");
+
+        // Read error on a served content package is fatal.
+        let runes_bad_json = make_content(
+            "runes-bad-json.smod",
+            "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
+            &[("data/runes/sunrise/item/broken.json", b"{not json")],
+        );
+        let bad_json_state = ModsState {
+            native: host_runtime.clone(),
+            selected: vec![runes_bad_json].into(),
+            ..Default::default()
+        };
+        let err = content_overlay(&base, &bad_json_state, &store)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("served mod runes"), "{err}");
+
+        // accept_mod error (unknown component) on a served content package is fatal.
+        let runes_bad_component = make_content(
+            "runes-bad-component.smod",
+            "id='runes'\nname='Runes'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\nserved_by='horizon_java'\n",
+            &[(
+                "data/runes/sunrise/item/bad.json",
+                br#"{"template":"minecraft:stick","components":{"example:unknown_component":1}}"#,
+            )],
+        );
+        let bad_component_state = ModsState {
+            native: host_runtime,
+            selected: vec![runes_bad_component].into(),
+            ..Default::default()
+        };
+        let err = content_overlay(&base, &bad_component_state, &store)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            err.contains("served mod runes") && err.contains("unknown_component"),
+            "{err}"
+        );
+
+        // server_only_declaration catches a side="server" host declaring a block in a served namespace.
+        let server_runtime = Arc::new(make_native(
+            "host-srv",
+            "horizon_srv",
+            "server",
+            true,
+            SERVER_HOST_BUILT,
+        ));
+        let server_runes = make_content(
+            "server-runes.smod",
+            "id='srv_runes'\nname='SrvRunes'\nversion='1.0.0'\napi='0.2'\nside='server'\ncapabilities=['registries']\nserved_by='horizon_srv'\n",
+            &[],
+        );
+        struct ServerHostDeclares;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ServerHostDeclares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+                event
+                    .register(mod_api::Block::new("srv_runes:altar", "minecraft:stone"))
+                    .unwrap();
+            }
+        }
+        let server_packages = vec![
+            mod_api::PackageInfo::new(
+                "horizon_srv".into(),
+                "1.0.0".into(),
+                mod_api::PackageKind::Code,
+                mod_api::Side::Server,
+                vec!["horizon_srv".into()],
+                vec![],
+            ),
+            mod_api::PackageInfo::new(
+                "srv_runes".into(),
+                "1.0.0".into(),
+                mod_api::PackageKind::Content,
+                mod_api::Side::Server,
+                vec!["srv_runes".into()],
+                vec![],
+            )
+            .with_served_by(Some("horizon_srv".into())),
+        ];
+        let server_state = ModsState {
+            native: server_runtime,
+            selected: vec![server_runes].into(),
+            installation_side: sunrise_mod_package::manifest::Side::Server,
+            ..Default::default()
+        };
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "horizon_srv",
+                Box::new(ServerHostDeclares),
+            )]
+            .into(),
+            || {
+                mod_platform::__private::with_test_package_inventory(server_packages, || {
+                    let err = content_overlay(&base, &server_state, &store)
+                        .err()
+                        .unwrap()
+                        .to_string();
+                    assert!(
+                        err.contains("horizon_srv")
+                            && err.contains("srv_runes:altar")
+                            && err.contains("side = \"both\""),
+                        "{err}"
+                    );
+                });
+            },
+        );
     }
 
     #[test]

@@ -99,9 +99,14 @@ run before resources load. These are load-time declarations, not live registry e
 admits them with the content-file checks, atomically for each owner.
 A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
 New identifiers from code—including block entity types and other registrar
-declarations—may use any namespace owned by that mod's manifest. Bare names use
+declarations—may use any namespace owned by that mod's manifest, or any namespace
+of an installed content package that delegates to it via `served_by` (when the
+native host opts in with `[native] serves_content = true`; see
+[Manifest reference](../reference/manifest.md#sunrise-modtoml)). Bare names use
 the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
-refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or
+refuses registration with a diagnostic naming both the mod and namespace. A host
+cannot re-declare a block or item ID that its served content package already
+declares. Attaching a Part to an existing vanilla or
 foreign block or item is a reference, not a new declaration, and remains allowed.
 
 Code declarations carry component patches as `Vec<(String, Option<Tag>)>`:
@@ -142,6 +147,7 @@ homepage = "https://..."     # optional: the Mods screen's Homepage button
 issues = "https://..."       # optional: the Mods screen's Issues button
 side = "both"
 namespaces = []              # optional: more namespaces the mod's files use (below)
+served_by = "my_runtime"     # optional (content only): native runtime mod with serves_content = true
 
 [properties]                 # optional: values other mods read (reference/manifest.md)
 tier = 3
