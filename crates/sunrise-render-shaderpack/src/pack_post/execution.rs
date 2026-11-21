@@ -31,6 +31,8 @@ pub struct SkyInputs<'a> {
     pub dark_disc: bool,
     /// Camera-relative sun and moon quads, each four `sunrise_render_core::Vertex`.
     pub celestial: &'a [sunrise_render_core::EntityVertex],
+    /// What each quad of `celestial` is (`Frame::celestial_bodies`).
+    pub celestial_bodies: &'a [crate::CelestialBody],
     /// The Overworld-style sky draws this frame (`sky_visible`).
     pub visible: bool,
     /// The End's fan draws though vanilla's sky does not (`end_fog_sky`).
@@ -210,6 +212,12 @@ impl PackPost {
     /// Whether the pack has the sun and moon's program, drawing or not.
     pub fn has_celestial(&self) -> bool {
         self.hides_celestial
+    }
+
+    /// `sky`, `stars`, `sun` and `moon`: the parts of the vanilla sky the pack leaves out, which
+    /// the game's sky leaves out too when the pack has no program for them.
+    pub fn sky_switches(&self) -> sunrise_shaders::SkySwitches {
+        self.sky_switches
     }
 
     /// Whether the pack draws translucent terrain itself.
@@ -1256,12 +1264,15 @@ impl PackPost {
             dark_disc: sky.dark_disc,
             detail_distance: view.detail_distance,
             celestial: bytemuck::cast_slice(sky.celestial),
+            celestial_bodies: sky.celestial_bodies,
             end_fog_sky: sky.end_fog_sky,
         };
-        let parts =
-            sky_parts
-                .geometry
-                .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
+        let parts = sky_parts.geometry.prepare(
+            queue,
+            &sky_frame,
+            self.uniforms.shadow.sun_path_rotation,
+            self.sky_switches,
+        );
         let mut groups = [None, None];
         for (i, pass) in [&mut sky_parts.basic, &mut sky_parts.textured]
             .into_iter()

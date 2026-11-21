@@ -19,5 +19,14 @@ pub mod pack_uniforms;
 pub mod pack_weather;
 pub(crate) mod timing;
 
+/// What a celestial quad is (the client's `gfx::CelestialBody`), for the pack's sky.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CelestialBody {
+    Sun,
+    Moon,
+    /// The End's flash (`SkyRenderer.renderEndFlash`): neither the sun nor the moon.
+    EndFlash,
+}
+
 #[cfg(test)]
 pub(crate) mod test_gpu;

@@ -484,9 +484,10 @@ parent's tool reads it as the SDK's readers do (`sunrise-stage surface-read`, wh
 contract doesn't give, or a document hash that is not the one its records give) and diffs it against its own export
 of the candidate's tree: that diff, too, must be
 identical for a patch and at most additive for a minor. A minor's exporter may add records, fields and collections
-the parent's reader doesn't know (a new collection is a top-level list of JSON objects, each with an `id` free of
-whitespace and control characters and a `hash` of 32 lowercase hex digits, which join the document hash every reader
-recomputes; an id is listed once in the whole document, and a key once in any object), but every record the parent's tool exports, each member of a trait, type or hook
+the parent's reader doesn't know (a new collection is a top-level list of JSON objects, each with a non-empty `id`
+free of whitespace and control characters and a `hash` of 32 lowercase hex digits, which join the document hash that
+`surface-read` recomputes; an id is listed once in the whole document, a top-level key once, and the release gate
+also refuses a key named twice in any object of the signed file), but every record the parent's tool exports, each member of a trait, type or hook
 on its own under the same owner, must read back with every field that reader knows equal, since the diff trusts an unchanged hash and
 some fields (a called trait's references) are outside it. A patch's file must also be that export exactly, with every key it has and its lists in any order, the same
 comparison as the parent's export against the parent's signed file. A file the

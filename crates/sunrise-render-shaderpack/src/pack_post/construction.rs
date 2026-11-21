@@ -1670,6 +1670,9 @@ pub struct PackPost {
     /// program: vanilla's stays hidden even when the program writes nothing.
     pub hides_sky: bool,
     pub hides_celestial: bool,
+    /// `sky`, `stars`, `sun` and `moon`: the parts of the vanilla sky left out, by the pack's sky
+    /// programs and by the game's sky alike.
+    pub sky_switches: sunrise_shaders::SkySwitches,
     /// `colortex0ClearColor`, when the pack sets it.
     pub sky_clear: Option<[f32; 4]>,
     /// What draws rain and snow (the same program, each with its kind's sprite as `texture`),
@@ -2232,6 +2235,7 @@ impl PackPost {
         });
         let water_unpatched = unpatched_name.filter(|_| shadow_water.is_some());
         let (hides_sky, hides_celestial) = (post.sky.is_some(), post.sky_textured.is_some());
+        let sky_switches = post.sky_switches;
         let sky = (post.sky.is_some() || post.sky_textured.is_some()).then(|| {
             let geometry = PackSky::new(device);
             let basic = Geometry {
@@ -2823,6 +2827,7 @@ impl PackPost {
             hides_clouds,
             hides_sky,
             hides_celestial,
+            sky_switches,
             sky_clear,
             weather,
             weather_draw: None,

@@ -193,11 +193,23 @@ impl PackPostExt for PackPost {
         lost: &std::sync::atomic::AtomicBool,
     ) -> Result<(), String> {
         let view = frame_view(frame);
+        let celestial_bodies: Vec<_> = frame
+            .celestial_bodies
+            .iter()
+            .map(|body| match body {
+                crate::gfx::CelestialBody::Sun => sunrise_render_shaderpack::CelestialBody::Sun,
+                crate::gfx::CelestialBody::Moon => sunrise_render_shaderpack::CelestialBody::Moon,
+                crate::gfx::CelestialBody::EndFlash => {
+                    sunrise_render_shaderpack::CelestialBody::EndFlash
+                }
+            })
+            .collect();
         let sky = SkyInputs {
             sunset_color: frame.sky.sunrise_color,
             stars: frame.stars,
             dark_disc: frame.dark_disc,
             celestial: frame.celestial,
+            celestial_bodies: &celestial_bodies,
             visible: super::sky_visible(frame),
             end_fog_sky: super::end_fog_sky(frame),
         };
@@ -250,6 +262,9 @@ mod world_target_tests;
 
 #[cfg(test)]
 mod celestial_blend_tests;
+
+#[cfg(test)]
+mod sky_switch_tests;
 
 #[cfg(test)]
 mod higher_shadowcolor_tests;
