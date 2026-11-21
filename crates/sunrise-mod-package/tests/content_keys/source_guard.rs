@@ -44,7 +44,8 @@ const REVIEWED: &[(Use<'static>, &[&str])] = &[
 ];
 
 #[test]
-fn serde_blind_spots_are_reviewed() {
+pub(crate) fn serde_blind_spots_are_reviewed() {
+    crate::at_crate_root();
     let mut reviewed: BTreeMap<_, _> = REVIEWED
         .iter()
         .map(|&((file, item, feature), fixtures)| {

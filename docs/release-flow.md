@@ -510,10 +510,13 @@ change:
 - The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key
   appears in no entry: a pull request that adds a key adds its entry.
 
-The rules on `release/26.3`, enforced by review: every pull request needs an ok from umceko's side at its exact
-head; within a line no entry or golden file is removed or altered, and a patch or minor only adds entries; a
-deliberate change (a parity fix that changes how an existing declaration loads) is a reviewed edit of the golden
-file together with a line in the release's notes. The release workflow does not compare content declarations and
+Both tests also run in the daily run (`tools/ci/ignored-tests/daily-sunrise-mod-package-content.txt`), so the green
+daily a stable release needs on its exact commit includes them.
+
+The rule on `release/26.3`, enforced by review: every pull request needs an ok from umceko's side at its exact head.
+Within a line, entries and golden files are only added. The one exception is a deliberate parity fix that changes
+how an existing declaration loads: a reviewed edit of that entry's golden file, with umceko's side's ok at the
+exact head and a line in the release's notes. The release workflow does not compare content declarations and
 refuses nothing on their account.
 
 Known limits: the corpus covers what `sunrise-mod-package` reads (the manifest and the typed declarations: blocks,

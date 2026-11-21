@@ -1,6 +1,6 @@
 //! Content declarations admitted (or refused) within a stable release line.
 //! To add an entry, create its corpus folder and run this test with
-//! `SUNRISE_BLESS_CONTENT_GOLDEN=1`. Do not re-bless existing entries to fix a mismatch.
+//! `SUNRISE_BLESS_CONTENT_GOLDEN=1`: it writes the golden files that are missing and never rewrites one.
 
 use std::{collections::BTreeSet, env, fs, io, path::Path};
 use sunrise_mod_package::{Content, Package};
@@ -8,10 +8,24 @@ use sunrise_mod_package::{Content, Package};
 const CORPUS: &str = "tests/content-corpus";
 const GOLDEN: &str = "tests/content-golden";
 
+/// The dump names each entry by its path from the crate root, with literal forward slashes
+/// (Content's Source::Dir), so the tests run there wherever their executable was started.
+fn at_crate_root() {
+    env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
+}
+
+/// The same two checks for the daily run, whose green a stable release needs (`verify` runs
+/// the plain ones on every rollup and main push).
+#[test]
+#[ignore = "daily"]
+fn daily_content_golden() {
+    content_golden();
+    content_golden_is_deterministic();
+}
+
 #[test]
 fn content_golden() {
-    // Cargo runs integration tests from the crate root, even when invoked with -p
-    // from the workspace. Keep the literal forward slashes in Content's Source::Dir.
+    at_crate_root();
     let entries = entry_names(CORPUS, true);
     let goldens = entry_names(GOLDEN, false);
     let bless = env::var("SUNRISE_BLESS_CONTENT_GOLDEN").as_deref() == Ok("1");
@@ -23,7 +37,7 @@ fn content_golden() {
         let path = format!("{CORPUS}/{entry}");
         let actual = dump(Path::new(&path));
         let golden = format!("{GOLDEN}/{entry}.txt");
-        if bless {
+        if bless && !Path::new(&golden).exists() {
             fs::write(&golden, actual).unwrap_or_else(|e| panic!("{golden}: {e}"));
             continue;
         }
@@ -54,6 +68,7 @@ fn content_golden() {
 
 #[test]
 fn content_golden_is_deterministic() {
+    at_crate_root();
     for entry in entry_names(CORPUS, true) {
         let path = format!("{CORPUS}/{entry}");
         let path = Path::new(&path);

@@ -22,8 +22,23 @@ use sunrise_mod_package::{
 
 const CORPUS: &str = "tests/content-corpus";
 
+/// The corpus and the reader sources are named from the crate root.
+fn at_crate_root() {
+    std::env::set_current_dir(env!("CARGO_MANIFEST_DIR")).unwrap();
+}
+
+/// The same two checks for the daily run, whose green a stable release needs (`verify` runs
+/// the plain ones on every rollup and main push).
+#[test]
+#[ignore = "daily"]
+fn daily_content_keys() {
+    content_keys();
+    source_guard::serde_blind_spots_are_reviewed();
+}
+
 #[test]
 fn content_keys() {
+    at_crate_root();
     let coverage = RefCell::new(Coverage::default());
     let empty = Value::Object(Default::default());
     // The callbacks publish the top-level fields even when the empty object fails
