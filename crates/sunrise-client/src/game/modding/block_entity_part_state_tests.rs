@@ -136,6 +136,13 @@ fn press(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
     game.block_entity(level, [pos.0, pos.1, pos.2]).unwrap()
 }
 
+fn press_with_item_slot(game: &mut Game<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
+    // The save fixture never runs the block-entity tick that binds these declarations.
+    let containers = game.native_containers();
+    game.world.block_entities.set_mod_containers(containers);
+    press(game, pos)
+}
+
 fn stored(game: &mut Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     Press::state_existing(game, entity).unwrap()
 }
@@ -379,7 +386,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
         use super::api_values::TryIntoApi;
         use sunrise_client::items::ItemStack;
 
-        let entity = press(game, (1, 64, 1));
+        let entity = press_with_item_slot(game, (1, 64, 1));
         game.save_level(true).unwrap();
         assert!(game.world.modified.is_empty());
 
@@ -435,7 +442,7 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
         game.world
             .chunks
             .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
-        let entity = press(game, pos);
+        let entity = press_with_item_slot(game, pos);
         game.save_level(true).unwrap();
         assert!(!game.world.modified.contains(&chunk));
         game.enter_level(Dim::Overworld).unwrap();
