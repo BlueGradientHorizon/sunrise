@@ -13,8 +13,6 @@ pub enum PlayerWorldRefusal {
     Client,
     /// The player has no connection to send to (a fake player).
     NoConnection,
-    /// The player is dead; the new player a respawn makes is the one to act as.
-    Dead,
     /// `ack_block_changes` with a sequence below 0.
     NegativeSequence {
         /// The sequence given.

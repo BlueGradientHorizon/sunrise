@@ -42,8 +42,8 @@ pub trait PlayerInventoryBackendMut {
     /// tells their client (`ClientboundSetHeldSlot`), as `/clear`-style server code does. A new
     /// slot ends a main-hand use in progress, as the client's own switch does, and asks no
     /// `player_switch_hotbar_slot_pre`: that hook is for the player's own input. Returns false for
-    /// a slot past 8, a stale or unavailable player, and a dead one; true when the player already
-    /// held `slot`.
+    /// a slot past 8 or a stale or unavailable player; true when the player already held `slot`.
+    /// A dead player whose state is available can still be edited.
     #[access(WorldOnly)]
     fn player_set_selected_slot(&mut self, player: PlayerRef, slot: usize) -> bool;
     /// Side: server.
@@ -53,7 +53,7 @@ pub trait PlayerInventoryBackendMut {
     /// the item places first, which is what separates it from giving or dropping into the
     /// inventory. `thrown_by_player` names the player as the item's thrower, as the drop key
     /// does. `Ok(None)` when the stack is in the world; otherwise `Ok(Some(stack))` comes back, untouched, for
-    /// the caller to put back: an empty stack, a stale or dead player, a player in another level
+    /// the caller to put back: an empty stack, an unavailable player, a player in another level
     /// than the hook's, or a toss a mod canceled (`item_toss`), so a refused drop never loses
     /// items. Invalid API stack conversion returns
     /// `StackWriteError`, as other checked stack writes do.
@@ -73,8 +73,9 @@ pub trait PlayerInventoryBackendMut {
     /// equipment changes follow for 36 to 42. The client is sent the slot with the tick's
     /// inventory sync (`ContainerSetSlot`), as vanilla's `broadcastChanges`. Each refusal
     /// writes nothing and is named by `PlayerDataRefusal`: `Stale` (no online player behind
-    /// the handle), `Client`, `Dead`, `SlotOutOfRange` (a slot past 42, never a panic) and
-    /// `Stack` (an item the world lacks, a count or damage the item does not allow).
+    /// the handle or their state is unavailable), `Client`, `SlotOutOfRange` (a slot past 42,
+    /// never a panic), and `Stack` (an item the world lacks, a count or damage the item does
+    /// not allow). Death does not refuse this write.
     /// An open transaction journals this write; an abort restores the previous value.
     /// Equipment effects wait for the outermost commit.
     #[access(WorldOnly)]
@@ -88,7 +89,8 @@ pub trait PlayerInventoryBackendMut {
     /// `PlayerEnderChestContainer.setItem(slot, stack)`: `stack` (None empties it) in ender
     /// chest slot `slot` (0 to 26). A player looking into their ender chest is sent the slot
     /// with the open menu's sync. Refuses as `player_set_inventory_slot` does, with
-    /// `SlotOutOfRange { last: 26 }` for a slot past 26 (never a panic).
+    /// `SlotOutOfRange { last: 26 }` for a slot past 26 (never a panic). The chest remains
+    /// editable while dead and carries over on respawn.
     /// An open transaction journals this write; an abort restores the previous value.
     #[access(WorldOnly)]
     fn player_set_ender_chest_slot(
@@ -101,8 +103,9 @@ pub trait PlayerInventoryBackendMut {
     /// Gives `stack` as `/give` does, components and all: `Inventory.add` fills matching
     /// stacks, then empty slots (the selected one first); what does not fit is thrown from
     /// the player's eyes with no pickup delay and only they may pick it up; a stack that went
-    /// in whole plays the pickup sound. Refuses, with nothing given, with `Stale`, `Client`,
-    /// `Dead` or `Stack`, as `player_set_inventory_slot` does.
+    /// in whole plays the pickup sound. Refuses, with nothing given, with `Stale`, `Client`
+    /// or `Stack`, as `player_set_inventory_slot` does. This is `/give`, not item pickup:
+    /// it can target a dead online player whose state is available.
     /// For a player in another level than the hook's, what fits goes into their inventory at
     /// once and nothing lands in the world: what does not fit comes back as `Ok(Some(rest))`
     /// and no sound plays, so drop it from a hook in the player's own level if you want it

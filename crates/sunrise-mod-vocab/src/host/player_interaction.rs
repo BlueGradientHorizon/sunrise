@@ -73,7 +73,7 @@ pub trait PlayerInteractionBackendMut {
     /// hooks** with this player. Sunrise's sites all share this one answer, unlike NeoForge's
     /// break progress, which skips the block override. Nothing requires `pos` to hold `state`. On
     /// a server a connected or fake player can be asked; on a client only the local player. None
-    /// for a stale handle or player, an unknown block state, a dead server player, a level other than the one in place,
+    /// for a stale handle or player, an unknown block state, a level other than the one in place,
     /// a player the client has no state for, and a call from inside either harvest hook
     /// (`can_harvest_block`, `player_harvest_check`), even when asking about a different state.
     #[access(WorldOnly)]
@@ -102,7 +102,7 @@ pub trait PlayerInteractionBackendMut {
     /// the block. Breaking from `break_block` or `block_drops` makes them hear these breaks too:
     /// a mod keeps its own guard, and a break started from inside eight others is refused (a
     /// Sunrise safeguard that the reference does not have). True when the block was removed; false, with nothing broken, for a stale handle, a player who
-    /// isn't here, is dead or is in another level than the hook's, air, an unloaded block, a block no survival player can break
+    /// isn't here or is in another level than the hook's, air, an unloaded block, a block no survival player can break
     /// (bedrock), a canceled break, and off a server.
     #[access(WorldOnly)]
     fn player_destroy_block(
@@ -154,7 +154,7 @@ pub trait PlayerInteractionBackendMut {
     /// The block callback may produce its own effects.
     /// `setPlacedBy` is not given the player as placer. The player is only whose turn `setPlacedBy` runs in, so it is
     /// not "as player" in the sense of a use-on. The state is written as given. Refuses, writing
-    /// nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `Dead`, `StaleLevel`, `OtherLevel`
+    /// nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `StaleLevel`, `OtherLevel`
     /// (that `level` is not the level in place: both placement steps, the write
     /// and `setPlacedBy`, use the supplied level), `UnknownState`, `OutOfWorld`, `NotLoaded`,
     /// `Fenced` (the origin or a direct companion or callback write is held by a carrier transfer),

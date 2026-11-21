@@ -28,23 +28,6 @@ fn inventory_slot(slot: u32) -> Option<Slot> {
     })
 }
 
-/// The authority refusals shared by writes to a server player's own state.
-pub(super) enum PlayerWriteRefusal {
-    Stale,
-    Client,
-    Dead,
-}
-
-impl From<PlayerWriteRefusal> for PlayerDataRefusal {
-    fn from(error: PlayerWriteRefusal) -> Self {
-        match error {
-            PlayerWriteRefusal::Stale => Self::Stale,
-            PlayerWriteRefusal::Client => Self::Client,
-            PlayerWriteRefusal::Dead => Self::Dead,
-        }
-    }
-}
-
 impl Game<'_> {
     /// Lend `Inventory.getItem` over the resident slots.
     pub(super) fn player_inventory_slots(
@@ -73,19 +56,6 @@ impl Game<'_> {
         Some(())
     }
 
-    /// Why a write to this player's inventory, ender chest or hands is refused
-    /// before it starts: a client, a handle with no online player, a dead player.
-    pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerWriteRefusal> {
-        if self.remote.is_some() {
-            return Err(PlayerWriteRefusal::Client);
-        }
-        match self.player_handle_read(player) {
-            None => Err(PlayerWriteRefusal::Stale),
-            Some(PlayerRead::Guest(g)) if g.dead => Err(PlayerWriteRefusal::Dead),
-            Some(_) => Ok(()),
-        }
-    }
-
     /// `Inventory.setItem`, in the player's turn: the tick's inventory sync tells the client.
     pub(super) fn player_set_inventory_slot(
         &mut self,
@@ -93,7 +63,9 @@ impl Game<'_> {
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<(), PlayerDataRefusal> {
-        self.player_write_gate(player)?;
+        if !self.is_logical_server() {
+            return Err(PlayerDataRefusal::Client);
+        }
         let target = inventory_slot(slot).ok_or(PlayerDataRefusal::SlotOutOfRange {
             slot,
             last: SLOTS - 1,

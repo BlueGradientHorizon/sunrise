@@ -66,8 +66,8 @@ impl Game<'_> {
             item.target = owner;
         }
     }
-    /// What did not fit of a `/give` whose player died or left between taking the stack and
-    /// the root commit that throws it: it lies where it would have been thrown from, at
+    /// What did not fit of a `/give` whose player became unavailable between taking the stack
+    /// and the root commit that throws it: it lies where it would have been thrown from, at
     /// `eye` as it was when the stack was taken, still with no pickup delay and `owner` its
     /// only taker. The stack was already taken from its source, so it lands rather than
     /// being lost.

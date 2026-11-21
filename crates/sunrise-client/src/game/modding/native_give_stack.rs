@@ -16,7 +16,9 @@ impl Game<'_> {
         player: PlayerRef,
         stack: ItemStack,
     ) -> Result<Option<ItemStack>, PlayerDataRefusal> {
-        self.player_write_gate(player)?;
+        if !self.is_logical_server() {
+            return Err(PlayerDataRefusal::Client);
+        }
         let owner = Some(playerdata::uuid_ints(player.uuid()));
         let mut rest = None;
         let ran = self.native_as_player_handle(player, |game| {

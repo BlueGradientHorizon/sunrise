@@ -46,6 +46,9 @@ impl Game<'_> {
             play.equipment_heard = None;
             play.inventory_heard = None;
             play.level_up_sound = Default::default();
+            // The fresh Player creates ItemCooldowns and starts with no orb pickup delay.
+            play.cooldowns = Default::default();
+            play.xp_delay = 0;
         }
         // PlayerList.respawn: a server's player comes back in its respawn
         // point's level: the world spawn's, the Overworld for a bed,
@@ -150,6 +153,15 @@ impl Game<'_> {
                 .rules
                 .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY)
                 || g.game_mode == SPECTATOR;
+            // Death normally emptied these slots already. Any later writes to the old
+            // body are copied only when ServerPlayer.restoreFrom would copy the inventory.
+            if !keep_inventory {
+                g.inventory.fill(None);
+                g.armor.fill(None);
+                g.offhand = None;
+                g.equipment = Default::default();
+                g.selected = 0;
+            }
             xp.respawn(keep_inventory);
             g.effects = Default::default();
             (g.xp_level, g.xp_progress, g.xp_total) = (xp.level, xp.progress, xp.total);

@@ -1173,7 +1173,8 @@ pub enum RemovalReason {
 /// This is the player's identity, not a particular body: handles for the same
 /// player stay equal across respawn. Respawning does not invalidate a handle.
 /// A nested guest turn cannot re-enter a player active in an outer turn;
-/// operations requiring that player's swapped state report them unavailable.
+/// operations requiring that player's swapped state report them unavailable. Direct data
+/// setters act on the resident player even at zero health; respawn applies its usual copy rules.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct PlayerRef {

@@ -1135,9 +1135,6 @@ impl Game<'_> {
     /// updates. Returns false for a stale or unavailable player, an active
     /// outer guest, no change, or a canceled change.
     pub(super) fn player_set_game_mode(&mut self, player: PlayerRef, mode: GameMode) -> bool {
-        if self.player_handle_read(player).is_none() {
-            return false;
-        }
         let mut changed = false;
         self.native_as_player_handle(player, |game| {
             changed = game.set_game_mode(mode);
@@ -1168,9 +1165,6 @@ impl Game<'_> {
             flying_speed: abilities.fly_speed,
             walking_speed: abilities.walk_speed,
         };
-        if self.player_handle_read(player).is_none() {
-            return false;
-        }
         let mut stored_here = false;
         self.native_as_player_handle(player, |game| {
             let Some(slot) = game.acting_abilities.as_mut() else {
@@ -1203,30 +1197,17 @@ impl Game<'_> {
     /// `Inventory.setSelectedSlot` for a server write: `slot` (0 to 8) becomes the hotbar slot the
     /// player holds and a guest's client is told (`SetHeldSlot`). A new slot ends a main-hand use,
     /// as `handleSetCarriedItem` does, without `player_switch_hotbar_slot_pre`, which is for the
-    /// player's own input. False for a slot past 8, a stale or dead player.
+    /// player's own input. False for a slot past 8 or an unavailable player.
     pub(super) fn player_set_selected_slot(&mut self, player: PlayerRef, slot: usize) -> bool {
         if slot >= 9 {
             return false;
         }
-        // The connection to tell: a parked guest's, or the acting guest's, whose state is in
-        // place for their turn (`leave_guest` stores the slot back but sends nothing). The host
-        // has none.
-        let conn = match self.player_handle_read(player) {
-            Some(PlayerRead::Guest(guest)) => Some(guest.conn),
-            Some(PlayerRead::Acting { .. }) => self.lan_acting_uuid.and_then(|uuid| {
-                self.lan
-                    .as_ref()?
-                    .hub
-                    .guests
-                    .iter()
-                    .find(|guest| guest.uuid == uuid)
-                    .map(|guest| guest.conn)
-            }),
-            None => None,
-        };
-        let changed = self.player_selected_slot(player) != Some(slot);
+        // `leave_guest` stores the selected slot back but sends nothing. Tell the same
+        // connection after the turn, whether the player was parked or already acting.
+        let mut conn = None;
         if !self.native_as_player_handle(player, |game| {
-            if changed
+            conn = game.lan_acting;
+            if game.selected != slot
                 && game
                     .using
                     .is_some_and(|(held, _)| held != crate::game::shield::OFFHAND_SLOT)
@@ -1251,7 +1232,7 @@ impl Game<'_> {
     /// `item_toss` asked first. Nothing is taken from an inventory: the stack is the caller's
     /// (take it out through the item places first). `thrown_by_player` names the player as the
     /// thrower, as the drop key does. None once the item is in the world; the stack back,
-    /// untouched, for an empty stack, a stale or dead player, a player in another level than the
+    /// untouched, for an empty stack, an unavailable player, a player in another level than the
     /// one in place and a toss a mod canceled, so a refused drop never loses items.
     pub(super) fn player_drop_stack(
         &mut self,
@@ -1695,8 +1676,8 @@ impl Game<'_> {
     }
     /// `ServerPlayer.setRespawnPosition`, as `/spawnpoint` sets it (the
     /// same `set_respawn_point`): `config`, or none for None. False for a
-    /// stale, unavailable or dead player, a dimension the game doesn't
-    /// have, a yaw that isn't finite and a change a mod canceled.
+    /// stale or unavailable player, a dimension the game doesn't have, a yaw that isn't finite
+    /// and a change a mod canceled.
     pub(super) fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -2027,21 +2008,24 @@ impl Game<'_> {
         orb.age = age.unwrap_or(orb.age);
         true
     }
-    /// Runs `f` in the turn of the player a handle names, against the level in place. False
-    /// when it didn't run: stale or dead.
+    /// Runs `f` in the turn of the resident server player a handle names, against the level
+    /// in place. False when their state is unavailable. Gameplay actions check liveness at
+    /// their own entry points, not when borrowing the player.
     pub(super) fn native_as_player_handle(
         &mut self,
         player: PlayerRef,
         f: impl FnOnce(&mut Self),
     ) -> bool {
+        if !self.is_logical_server() {
+            return false;
+        }
         match self.player_handle_read(player) {
-            None => false,
             Some(PlayerRead::Acting { .. }) => self.native_as_acting(f),
-            Some(PlayerRead::Guest(g)) if !g.dead => {
+            Some(PlayerRead::Guest(g)) => {
                 let conn = g.conn;
                 self.as_guest(conn, f).is_some()
             }
-            Some(PlayerRead::Guest(_)) => false,
+            None => false,
         }
     }
 
@@ -2049,23 +2033,30 @@ impl Game<'_> {
     /// already when they are acting (a guest in their turn, or the `Game`'s own player where no
     /// guest holds them), else a guest's through `as_guest`, including within another guest's
     /// turn. What `f` writes to the player's own state holds wherever they are; what would land
-    /// in the world checks [`Self::acting_in_level_in_place`]. False when it didn't run: no such
-    /// player here, or dead.
+    /// in the world checks [`Self::acting_in_level_in_place`]. False when the player isn't
+    /// available to borrow.
     pub(super) fn native_as_player(&mut self, uuid: u128, f: impl FnOnce(&mut Self)) -> bool {
+        if !self.is_logical_server() {
+            return false;
+        }
         if self.lan_acting_uuid == Some(uuid) {
             return self.native_as_acting(f);
         }
         // With no guest's turn running, `native_acting_id` is the world's owner: on a server
         // thread that owner is a guest too, whose state is theirs, not the `Game`'s own.
-        let conn = self
-            .native_player_holder(uuid)
-            .filter(|g| !g.dead)
-            .map(|g| g.conn);
-        match conn {
-            Some(conn) => self.as_guest(conn, f).is_some(),
-            None if uuid == self.native_acting_id() => self.native_as_acting(f),
-            None => false,
+        if let Some(conn) = self.native_player_holder(uuid).map(|g| g.conn) {
+            return self.as_guest(conn, f).is_some();
         }
+        if self.lan_acting_uuid.is_none()
+            && self
+                .level
+                .player_uuid
+                .map(sunrise_client::lan::playerdata::ints_uuid)
+                == Some(uuid)
+        {
+            return self.native_as_acting(f);
+        }
+        false
     }
 
     fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
@@ -2077,7 +2068,7 @@ impl Game<'_> {
     pub(super) fn native_item_place_player(&self, uuid: u128) -> Option<PlayerRead<'_>> {
         if self.lan_acting_uuid != Some(uuid) {
             if let Some(guest) = self.native_player_holder(uuid) {
-                return (!guest.dead && !self.lan_guest_swaps.contains(&guest.conn))
+                return (!self.lan_guest_swaps.contains(&guest.conn))
                     .then_some(PlayerRead::Guest(guest));
             }
             if self.lan_acting_uuid.is_some()
@@ -2092,23 +2083,15 @@ impl Game<'_> {
         }
         Some(PlayerRead::Acting {
             mode: self.mode_id(),
-            body: Some(self.native_live_acting_body()?),
+            body: Some(self.player.as_ref()?),
             abilities: self.acting_abilities,
             last_death: self.level.last_death.as_ref(),
         })
     }
 
-    pub(super) fn native_live_acting_body(&self) -> Option<&PlayerMotion> {
-        let body = self.player.as_ref()?;
-        if body.health.health() <= 0.0 {
-            return None;
-        }
-        Some(body)
-    }
-
-    /// `f` for the acting player, whose state is in place: false when they are dead.
+    /// `f` for the acting player, whose state is already in place.
     fn native_as_acting(&mut self, f: impl FnOnce(&mut Self)) -> bool {
-        if self.native_live_acting_body().is_none() {
+        if self.player.is_none() {
             return false;
         }
         f(self);

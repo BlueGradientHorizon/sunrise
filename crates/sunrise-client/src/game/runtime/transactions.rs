@@ -1668,8 +1668,7 @@ impl Game<'_> {
                     }
                 });
                 // The stack was accepted (the command succeeded, `give_stack` returned no
-                // rest): a player who died or left since, so it was not thrown, still has it
-                // land where they were.
+                // rest): if the player is unavailable at commit, it still lands where they were.
                 if let Some(rest) = rest {
                     let back = self.enter_command_level(dim);
                     self.give_remainder_unheld(rest, owner, eye);
@@ -2117,8 +2116,7 @@ impl Game<'_> {
             }
         }
         for (uuid, kept) in level.player_health {
-            // Restoration must also reach a body tentatively set to zero health:
-            // native_as_player deliberately refuses dead bodies for public writes.
+            // Restore in the player's own level, including a body tentatively set to zero health.
             let target = if uuid == self.native_acting_id() {
                 Some(super::commands::Target::Player)
             } else {

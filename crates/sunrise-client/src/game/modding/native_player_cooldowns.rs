@@ -6,9 +6,8 @@
 //! (`minecraft:ender_pearl`, a mod's `mymod:wands`...);
 //! `item_cooldown_group` gives a stack's. Reads return None for a stale
 //! handle or a player who isn't online here; inside another player's turn
-//! they still read a resting guest. Writes return false for those, for a
-//! dead player, and for a player whose turn another player's turn is
-//! running inside.
+//! they still read a resting guest. Writes reach the current player record even
+//! at zero health, but not a record suspended by a nested turn.
 use super::Game;
 use mod_api::{ItemCooldown, PlayerRef};
 use std::sync::Arc;

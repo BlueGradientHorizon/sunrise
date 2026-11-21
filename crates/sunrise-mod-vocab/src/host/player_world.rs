@@ -72,8 +72,8 @@ pub trait PlayerWorldBackendMut {
     /// becomes `config`, or is forgotten for None (they then respawn at the world spawn). The
     /// yaw wraps to -180..180 (`RespawnData.of`) and the `player_set_spawn` hook may cancel the
     /// change, which refuses it. Kept with the player's record. False for a stale or unavailable
-    /// player, a dead one, a dimension the game doesn't have, a yaw that is not finite and a
-    /// canceled change.
+    /// player, a dimension the game doesn't have, a yaw that is not finite and a canceled change.
+    /// A dead player whose state is available can still be edited.
     #[access(WorldOnly)]
     fn player_set_respawn_config(
         &mut self,
@@ -83,7 +83,8 @@ pub trait PlayerWorldBackendMut {
     /// Side: server.
     /// `Player.setLastDeathLocation`: stores where the player died, or
     /// forgets it for None. The client hears of it with the player's next
-    /// respawn, as in vanilla. False in the cases a read gives None.
+    /// respawn, as in vanilla. A dead player whose state is available can still be edited.
+    /// False if the server player's state is unavailable.
     #[access(WorldOnly)]
     fn player_set_last_death_location(
         &mut self,

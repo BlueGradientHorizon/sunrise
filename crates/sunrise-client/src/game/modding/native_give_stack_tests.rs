@@ -1,7 +1,7 @@
 //! `player_give_stack` against a real LAN guest and `item_from_snbt` on the public host.
 
 use super::{api_values::TryIntoApi, native_guest_turn_tests::with_guests};
-use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
+use mod_api::{Host, ItemStack, prelude::*};
 use sunrise_core::nbt::parse_snbt;
 
 fn api_item(game: &super::Game<'_>, snbt: &str) -> Option<ItemStack> {
@@ -150,10 +150,10 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
     });
 }
 
-/// This API refuses a dead player with its own name and gives nothing.
+/// `/give` uses the resident player's inventory after death, not the acting player's.
 #[test]
 #[ignore = "daily"]
-fn a_dead_player_is_given_nothing() {
+fn give_stack_reaches_the_dead_players_inventory() {
     with_guests(|game| {
         let b = game.players().server_players()[1];
         let rock = api_item(game, r#"{id:"minecraft:stone",count:3}"#).unwrap();
@@ -162,13 +162,16 @@ fn a_dead_player_is_given_nothing() {
             .unwrap()
             .hub
             .guests
-            .update_connection(13, |g| g.dead = true);
+            .update_connection(13, |g| {
+                g.dead = true;
+                g.health = 0.0;
+            });
         let before = game.dropped.len();
-        assert_eq!(b.give_stack(game, rock), Err(PlayerDataRefusal::Dead));
-        assert_eq!(
-            b.with_inventory(game, |view| view.iter().next().is_none()),
-            Some(true)
-        );
+        assert_eq!(b.give_stack(game, rock), Ok(None));
+        let slot = &game.lan.as_ref().unwrap().hub.guest(13).unwrap().inventory[0];
+        let stack = slot.as_ref().unwrap();
+        assert_eq!(stack.item.as_ref(), "minecraft:stone");
+        assert_eq!(stack.count, 3);
         assert_eq!(game.dropped.len(), before);
     });
 }

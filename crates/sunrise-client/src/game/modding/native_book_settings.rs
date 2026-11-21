@@ -30,7 +30,7 @@ impl Game<'_> {
         book: &RecipeBookTypeKey,
         settings: RecipeBookSettings,
     ) -> bool {
-        if !book.is_registered() || !self.native_player_current(player) {
+        if !book.is_registered() {
             return false;
         }
         let flags = sunrise_client::recipe_book::BookFlags {

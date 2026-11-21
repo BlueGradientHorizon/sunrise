@@ -54,7 +54,9 @@ impl Game<'_> {
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<(), PlayerDataRefusal> {
-        self.player_write_gate(player)?;
+        if !self.is_logical_server() {
+            return Err(PlayerDataRefusal::Client);
+        }
         if slot as usize >= SLOTS {
             return Err(PlayerDataRefusal::SlotOutOfRange {
                 slot,

@@ -126,7 +126,7 @@ fn abort_restores_player_inventory_and_data_after_the_acting_player_dies() {
                 Err(())
             });
             assert_eq!(result, Err(()));
-            assert!(game.native_live_acting_body().is_none());
+            assert!(game.player.as_ref().unwrap().health.dead_or_dying());
             assert_player_storage(
                 game.level.player_extra.as_ref(),
                 &game.inventory,

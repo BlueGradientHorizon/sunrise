@@ -9,8 +9,8 @@ impl Game<'_> {
     /// `Player.hasCorrectToolForDrops(state, level, pos)` and `canHarvestBlock`: the player's
     /// selected slot against `state`, then the mods' `can_harvest_block` and
     /// `player_harvest_check`. A server asks a connected or fake player (their state swapped
-    /// in); a client only its local player. None for a stale handle, an unknown state, a dead player,
-    /// a level other than the one in place, or a call from inside a harvest hook
+    /// in); a client only its local player. None for a stale handle, an unknown state, a level
+    /// other than the one in place, or a call from inside a harvest hook
     /// (`can_harvest_block`, `player_harvest_check`), which would recurse.
     pub(super) fn player_has_correct_tool_for_drops(
         &mut self,

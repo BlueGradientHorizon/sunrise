@@ -313,12 +313,9 @@ impl Game<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
                 if self.lan_acting == Some(guest.conn) {
-                    self.native_live_acting_body()?;
                     self.carried.as_ref()
-                } else if !guest.dead {
-                    guest.carried.as_ref()
                 } else {
-                    None
+                    guest.carried.as_ref()
                 }
             }
             _ => None,

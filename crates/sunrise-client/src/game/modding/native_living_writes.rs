@@ -244,7 +244,7 @@ impl Game<'_> {
     /// spin of a Riptide launch for `ticks` ticks, ended by the first mob its
     /// box touches, which takes `damage`. Its motion counts it down and the
     /// players around see the spin (living flag 4). A `ticks` of 0 or less ends
-    /// the spin and clears its damage. False for the other kinds, a dead
+    /// the spin and clears its damage. False for the other kinds, an unavailable
     /// player and a non-finite `damage`.
     pub(in crate::game) fn living_set_riptiding(
         &mut self,

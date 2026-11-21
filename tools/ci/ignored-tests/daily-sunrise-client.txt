@@ -108,7 +108,6 @@ sunrise-client game::native_explosions_tests::immune_blocks_survive_and_every_ot
 sunrise-client game::native_explosions_tests::player_lit_tnt_as_the_source_credits_the_player_with_the_kill lib daily resources
 sunrise-client game::native_explosions_tests::primed_tnt_that_went_through_a_portal_spares_a_portal_unless_a_calculator_is_passed lib daily resources
 sunrise-client game::native_explosions_tests::unowned_tnt_as_the_source_credits_no_one lib daily resources
-sunrise-client game::native_give_stack_tests::a_dead_player_is_given_nothing lib daily resources
 sunrise-client game::native_give_stack_tests::a_given_stack_fills_the_inventory_then_drops_for_its_player lib daily resources
 sunrise-client game::native_give_stack_tests::an_snbt_item_goes_through_the_api_unchanged lib daily resources
 sunrise-client game::native_give_stack_tests::item_from_snbt_refuses_what_is_not_one_item_compound lib daily resources

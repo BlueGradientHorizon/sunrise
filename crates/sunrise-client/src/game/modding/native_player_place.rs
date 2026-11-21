@@ -1,5 +1,5 @@
 //! Placement-state reads, placement writes and the `Block.setPlacedBy` step.
-use super::{Game, api_values::block_state::block_listens, native_server::PlayerRead};
+use super::{Game, api_values::block_state::block_listens};
 use mod_api::{
     BlockKey, BlockUpdateFlags, HookId, LevelReadError, LevelRef, LevelWriteError, PlayerRef,
     PlayerWorldRefusal as Refusal,
@@ -35,16 +35,7 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return Err(Refusal::Client);
         }
-        let dead = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
-            PlayerRead::Acting { .. } => self
-                .player
-                .as_ref()
-                .is_none_or(|p| p.health.health() <= 0.0),
-            PlayerRead::Guest(g) => g.dead,
-        };
-        if dead {
-            return Err(Refusal::Dead);
-        }
+        self.player_handle_read(player).ok_or(Refusal::Stale)?;
         if self.pack.assets.registry.state(state).is_none() {
             return Err(Refusal::UnknownState);
         }

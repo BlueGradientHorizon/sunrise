@@ -703,8 +703,8 @@ pub trait LivingBackendMut {
     /// around see the spin. It moves the player not at all: a Riptide launch
     /// adds its own velocity. A `ticks` of 0 or less ends a spin under way
     /// and clears its damage. False for a mob, an armor stand and the dragon
-    /// (Sunrise runs no spin for them), a dead player, a non-finite `damage`,
-    /// a stale handle and a client.
+    /// (Sunrise runs no spin for them), a non-finite `damage`, an unavailable
+    /// player and a client.
     #[access(WorldOnly)]
     fn living_set_riptiding(&mut self, living: LivingRef, ticks: i32, damage: f32) -> bool;
 }

@@ -91,8 +91,9 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_ref() {
             self.audio.remove_sound_entity(r.entity_id as u32);
         }
-        // A new player, without effects (the server sends them
-        // again) and with no item in use.
+        // ClientPacketListener.handleRespawn creates a new LocalPlayer with fresh
+        // ItemCooldowns, no effects (the server sends them again), and no item in use.
+        self.cooldowns = Default::default();
         self.potions.effects.clear();
         // Every synced attachment but the player's is sent again; the viewed
         // levels go or stay with the level entered (`enter_respawn_level`).

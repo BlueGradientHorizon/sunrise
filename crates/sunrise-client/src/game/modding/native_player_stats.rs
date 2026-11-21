@@ -1,8 +1,8 @@
 //! A player's statistics and recipe book for native server mods, through a
 //! `PlayerRef` (docs/modding/src/how-to/native-mods.md): `ServerStatsCounter` and
 //! `ServerRecipeBook`. Reads return None for a stale handle or a player who
-//! isn't online here. Writes return false (or None) for those, for a dead
-//! player, and, inside another player's turn, for anyone but that player.
+//! isn't online here. Writes fail when the player's record is unavailable, not when
+//! the player is dead.
 use super::{Game, stats::Stats};
 use mod_api::{PlayerRef, StatType};
 
@@ -61,8 +61,7 @@ impl Game<'_> {
     ) -> bool {
         let ty = stat_type.path();
         let key = namespaced(key);
-        self.native_player_current(player)
-            && self.native_as_player_handle(player, |game| game.award_stat(ty, &key, amount))
+        self.native_as_player_handle(player, |game| game.award_stat(ty, &key, amount))
     }
     /// `Player.resetStat`: sets the statistic back to 0, which scoreboard
     /// criteria follow. False for a player it can't reach.
@@ -74,8 +73,7 @@ impl Game<'_> {
     ) -> bool {
         let ty = stat_type.path();
         let key = namespaced(key);
-        self.native_player_current(player)
-            && self.native_as_player_handle(player, |game| game.stats.reset(ty, &key))
+        self.native_as_player_handle(player, |game| game.stats.reset(ty, &key))
     }
 
     /// Whether the player's recipe book knows `recipe`
@@ -133,9 +131,6 @@ impl Game<'_> {
         give: bool,
         recipes: &[&str],
     ) -> Option<i32> {
-        if !self.native_player_current(player) {
-            return None;
-        }
         // `awardRecipes` takes recipes the server has: an id no recipe has
         // would otherwise go into the book.
         let index = &self.stations().recipe_index;
