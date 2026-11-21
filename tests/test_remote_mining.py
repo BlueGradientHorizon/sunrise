@@ -15,12 +15,40 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def method(source, name):
+    # A method moved out of game.rs keeps its file's visibility; the fixture pastes it private.
+    plain = f"    fn {name}("
+    start = source.index(plain) if plain in source else next(
+        source.index(f"    {vis} fn {name}(") for vis in ("pub(super)", "pub(in crate::game)")
+        if f"    {vis} fn {name}(" in source)
+    opening = source.index("{", start)
+    depth = 1
+    end = opening + 1
+    while depth:
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    body = source[start:end]
+    for vis in ("pub(super) fn", "pub(in crate::game) fn"):
+        body = body.replace(vis, "fn", 1)
+    return body
+
+
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMiningTests(unittest.TestCase):
     def test_break_timing_and_packets(self):
         source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
-        start = source.index("    pub(super) fn stop_remote_mining(")
-        end = source.index("    fn veto_mining_prediction(", start)
+        # The breaking path lives in remote/use.rs since the remote split; the stop pass stays in
+        # mod.rs and is pasted straight after it.
+        used = next(ROOT.glob('crates/sunrise-client/src/game/*/remote/use.rs')).read_text()
+        breaking = used[used.index("    pub(in crate::game) fn remote_mining("):]
+        breaking = breaking[:min((breaking.index(c) for c in (
+            "\n    /// ", "\n    // ", "\n    #[", "\n    fn ", "\n    pub(super) fn ")
+            if c in breaking), default=len(breaking))]
+        breaking = breaking.rstrip() + "\n"
+        breaking = breaking.replace("pub(in crate::game) fn", "fn", 1)
+        stop_at = source.index("    pub(super) fn stop_remote_mining(")
+        stopping = method(source[stop_at:], "stop_remote_mining") + "\n"
+        source = breaking + "\n" + stopping
         fixture = r'''
 #![allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -254,7 +282,7 @@ fn main() {
     );
     assert_eq!(game.world.broken, [[2, 64, 0], [3, 64, 0]]);
 }
-'''.replace("METHOD", source[start:end].replace("pub(super) fn", "fn"))
+'''.replace("METHOD", source)
         with tempfile.TemporaryDirectory(prefix="remote-mining-") as directory:
             path = Path(directory)
             (path / "main.rs").write_text(fixture)
