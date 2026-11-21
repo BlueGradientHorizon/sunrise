@@ -995,17 +995,11 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
-        let contain_callback_panic = matches!(name, "health_hud" | "item_bar" | "item_decorations");
+        let gui_panics = fresh_name("gui_panics", &mut used);
         let run = |expression: &str| {
-            if contain_callback_panic {
-                format!(
-                    "match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {expression}))) {{ Ok(Ok(answer)) => answer, Ok(Err(refusal)) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} Err(_unwound) => {{ {restore_statement}{clear_batch}super::runtime::record_callback_panic(HookId::{hook_id}, mod_id, \"{name}\"); {refused_value} }} }}"
-                )
-            } else {
-                format!(
-                    "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
-                )
-            }
+            format!(
+                "match super::runtime::call_listener(HookId::{hook_id}, contained, {gui_panics}, || {expression}) {{ Ok(Some(answer)) => answer, Ok(None) => {{ {restore_statement}{clear_batch}{refused_value} }} Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
+            )
         };
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, exit: &str| {
@@ -1235,17 +1229,12 @@ pub(super) fn emit<'a>(
                     // The synthetic answer occupies the owner's original place in the chain.
                     // Earlier enabled Parts still get their regular call and can answer first.
                     format!(
-                        "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
+                        "'dispatch_parts: {{ for (_, {part_item}) in super::entered_parts_with_id(HookId::{hook_id}, &{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
                         call(&part_item, "break 'dispatch_parts"),
-                    )
-                } else if contain_callback_panic {
-                    format!(
-                        "for (mod_id, {part_item}) in super::entered_parts_with_id(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
-                        call(&part_item, "break"),
                     )
                 } else {
                     format!(
-                        "for {part_item} in super::entered_parts({part_list}, \"{name}\") {{ {} }}",
+                        "for (_, {part_item}) in super::entered_parts_with_id(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
                         call(&part_item, "break"),
                     )
                 },
@@ -1272,7 +1261,11 @@ pub(super) fn emit<'a>(
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
         };
         // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
+        let early_return = if body.contains("call_listener(") {
+            format!(
+                "{early_return} let contained = super::runtime::outside_world(); let {gui_panics} = super::runtime::contain_gui_panics();"
+            )
+        } else if body.contains("refusable(") {
             format!("{early_return} let contained = super::runtime::outside_world();")
         } else {
             early_return

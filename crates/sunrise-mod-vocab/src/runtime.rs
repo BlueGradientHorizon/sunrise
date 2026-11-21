@@ -415,6 +415,52 @@ pub(crate) fn entered_subscribers(
     })
 }
 
+thread_local! {
+    static CONTAIN_GUI_PANICS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+// no wire: thread-local restoration guard for host-side GUI dispatch.
+/// Restores the callback containment setting when a GUI extraction ends.
+#[must_use]
+pub struct GuiCallbackScope(bool, std::marker::PhantomData<*mut ()>);
+
+impl Drop for GuiCallbackScope {
+    fn drop(&mut self) {
+        CONTAIN_GUI_PANICS.set(self.0);
+    }
+}
+
+pub fn contain_gui_callbacks() -> GuiCallbackScope {
+    GuiCallbackScope(CONTAIN_GUI_PANICS.replace(true), std::marker::PhantomData)
+}
+
+pub(crate) fn contain_gui_panics() -> bool {
+    CONTAIN_GUI_PANICS.get()
+}
+
+/// Call at the attributed listener boundary, not around the operation that reached the listener.
+/// A failed listener supplies no answer; a nested GUI draw must not poison the outer renderer.
+#[inline]
+pub(crate) fn call_listener<T>(
+    hook: HookId,
+    phase_gate: bool,
+    contain_panics: bool,
+    call: impl FnOnce() -> T,
+) -> Result<Option<T>, crate::world::phase_refusal::PhaseRefusal> {
+    if !contain_panics {
+        return refusable(phase_gate, call).map(Some);
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(phase_gate, call))) {
+        Ok(outcome) => outcome.map(Some),
+        Err(_) => {
+            if let Some(call) = crate::content::crash::current_native_call() {
+                record_callback_panic(hook, call.id, call.hook);
+            }
+            Ok(None)
+        }
+    }
+}
+
 /// Whether this thread is outside `World`, where a Host call can be refused: the generated
 /// dispatch reads it once and runs its listeners through [`refusable`] only then.
 #[inline]
@@ -615,6 +661,7 @@ pub(crate) fn listening_kind_owner(hook: HookId, kind: &str) -> Option<&'static 
     let &index = installed.by_id.get(namespace)?;
     if !installed.subscribers.contains(hook as usize, index)
         || installed.disabled[index].load(std::sync::atomic::Ordering::Relaxed)
+        || poisoned(hook, installed.mods[index].id)
     {
         return None;
     }

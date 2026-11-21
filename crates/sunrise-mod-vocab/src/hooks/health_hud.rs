@@ -3,14 +3,15 @@
 
 pub trait Hooks {
     /// Selects the renderer for the `minecraft:player_health` HUD layer (player hearts).
-    /// `inputs` carries the health, food, air and vehicle state after `player_heart_type`;
+    /// `inputs` carries the health, food, air and vehicle state with the vanilla heart kind;
     /// `wi` and `hi` are the logical GUI size. Return `None` to defer, or return a
     /// [`HealthHudReplacement`](crate::HealthHudReplacement); the first answer wins. The game
     /// invokes it directly on the `minecraft:player_health` layer while armor, food, vehicle
     /// health and air stay on their own layers (`minecraft:armor_level`, `minecraft:food_level`,
     /// `minecraft:vehicle_health`, `minecraft:air_level`). Returning an error reports the failure
     /// without rolling back prior draws or falling back to vanilla hearts. A successful empty
-    /// draw replaces vanilla hearts. Nothing answered draws Sunrise's own.
+    /// draw replaces vanilla hearts. No replacement reserves vanilla heart height. If no listener answers, the vanilla body
+    /// fires `player_heart_type` and draws the hearts.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_health_hud",
         receiver = "read",
@@ -19,7 +20,7 @@ pub trait Hooks {
         contract = "replace",
         out = "replacement",
         answered_by = "mod",
-        version = 2,
+        version = 3,
         neoforge = "RenderGuiLayerEvent.Pre"
     )]
     fn health_hud(

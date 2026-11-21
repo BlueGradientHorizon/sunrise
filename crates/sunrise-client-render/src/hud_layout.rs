@@ -497,7 +497,7 @@ pub fn experience_colored(
 }
 
 /// State kept between frames (`Hud.lastHealth`, `displayHealth`, ...).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct HealthHud {
     pub last_health: i32,
     pub display_health: i32,
@@ -509,6 +509,22 @@ pub struct HealthHud {
     /// The `ui.hud.bubble_pop` volume and pitch `playAirBubblePoppedSound`
     /// asked for this frame; the caller plays it and clears it.
     pub bubble_pop_sound: Option<(f32, f32)>,
+    /// `Hud.random`: retained across extractions, including frames that skip health.
+    pub random: LegacyRandom,
+}
+
+impl Default for HealthHud {
+    fn default() -> Self {
+        Self {
+            last_health: 0,
+            display_health: 0,
+            last_health_time: 0,
+            health_blink_time: 0,
+            last_bubble_pop_sound: 0,
+            bubble_pop_sound: None,
+            random: LegacyRandom::new(0),
+        }
+    }
 }
 
 /// `Hud.getVehicleMaxHearts` for a vehicle that shows its health.
@@ -624,31 +640,9 @@ fn heart(
 }
 
 impl HealthHud {
-    /// Seed for the per-tick status HUD jitter RNG (`Hud.random.setSeed(tickCount * 312871)`).
-    pub fn status_random(tick: i32) -> LegacyRandom {
-        LegacyRandom::new(i64::from(tick.wrapping_mul(312_871)))
-    }
-
-    /// Vertical space (in GUI pixels) the player's health rows occupy (`leftHeight` delta in
-    /// NeoForge's `Hud.renderHealthLevel`).
-    pub fn hearts_height(&self, i: &HealthInputs) -> i32 {
-        let current = ceil(i.health);
-        let max_health = i.max_health.max(self.display_health.max(current) as f32);
-        let absorption = ceil(i.absorption);
-        let rows = ceil((max_health + absorption as f32) / 2.0 / 10.0);
-        let row_height = (10 - (rows - 2)).max(3);
-        (rows - 1) * row_height + 10
-    }
-
     /// `Hud.extractHearts` (`minecraft:player_health`) anchored at `y_base`, returning
     /// `(draws, left_height_delta)`.
-    pub fn layout_hearts(
-        &mut self,
-        i: &HealthInputs,
-        w: i32,
-        y_base: i32,
-        random: &mut LegacyRandom,
-    ) -> (Vec<GuiDraw>, i32) {
+    pub fn layout_hearts(&mut self, i: &HealthInputs, w: i32, y_base: i32) -> (Vec<GuiDraw>, i32) {
         let mut out = Vec::new();
         let tick = i64::from(i.tick);
         let current = ceil(i.health);
@@ -665,6 +659,8 @@ impl HealthHud {
             self.last_health_time = i.millis;
         }
         self.last_health = current;
+        self.random
+            .set_seed(i64::from(i.tick.wrapping_mul(312_871)));
         let old = self.display_health;
         let x_left = w / 2 - 91;
         let max_health = i.max_health.max(old.max(current) as f32);
@@ -683,7 +679,7 @@ impl HealthHud {
             let x = x_left + column * 8;
             let mut y = y_base - row * row_height;
             if current + absorption <= 4 {
-                y += random.next_int_bound(2).unwrap_or(0);
+                y += self.random.next_int_bound(2).unwrap_or(0);
             }
             if c < containers && c == offset_index {
                 y -= 2;
@@ -753,12 +749,7 @@ impl HealthHud {
 
     /// `Hud.extractFood` (`minecraft:food_level`) anchored at `y_line`, returning
     /// `(draws, right_height_delta)`.
-    pub fn layout_food(
-        i: &HealthInputs,
-        w: i32,
-        y_line: i32,
-        random: &mut LegacyRandom,
-    ) -> (Vec<GuiDraw>, i32) {
+    pub fn layout_food(&mut self, i: &HealthInputs, w: i32, y_line: i32) -> (Vec<GuiDraw>, i32) {
         let mut out = Vec::new();
         if i.vehicle_hearts != 0 {
             return (out, 0);
@@ -776,7 +767,7 @@ impl HealthHud {
         for n in 0..10 {
             let mut y = y_line;
             if i.saturation <= 0.0 && i.tick % (i.food * 3 + 1) == 0 {
-                y += random.next_int_bound(3).unwrap_or(0) - 1;
+                y += self.random.next_int_bound(3).unwrap_or(0) - 1;
             }
             let x = x_right - n * 8 - 9;
             out.push(sprite(empty, x, y, 9, 9));
@@ -792,13 +783,7 @@ impl HealthHud {
 
     /// `Hud.extractAirBubbles` (`minecraft:air_level`) anchored at `y_line`, returning
     /// `(draws, right_height_delta)`.
-    pub fn layout_air(
-        &mut self,
-        i: &HealthInputs,
-        w: i32,
-        y_line: i32,
-        random: &mut LegacyRandom,
-    ) -> (Vec<GuiDraw>, i32) {
+    pub fn layout_air(&mut self, i: &HealthInputs, w: i32, y_line: i32) -> (Vec<GuiDraw>, i32) {
         let mut out = Vec::new();
         let max_air = i.max_air.max(1);
         let air = i.air.clamp(0, max_air);
@@ -829,7 +814,7 @@ impl HealthHud {
                 }
             } else if b > 10 - empty {
                 let wobble = if empty == 10 && i.tick % 2 == 0 {
-                    random.next_int_bound(2).unwrap_or(0)
+                    self.random.next_int_bound(2).unwrap_or(0)
                 } else {
                     0
                 };
@@ -842,20 +827,19 @@ impl HealthHud {
     /// `Hud.extractPlayerHealth` for a screen of `w` x `h` GUI pixels.
     pub fn layout(&mut self, i: &HealthInputs, w: i32, h: i32) -> Vec<GuiDraw> {
         let mut out = Vec::new();
-        let mut random = Self::status_random(i.tick);
         let y_base = h - 39;
-        let (hearts, hearts_h) = self.layout_hearts(i, w, y_base, &mut random);
+        let (hearts, hearts_h) = self.layout_hearts(i, w, y_base);
         out.extend(Self::layout_armor(i.armor, w, y_base - hearts_h).0);
         out.extend(hearts);
         let mut y_air = y_base - 10;
-        let (food, food_h) = Self::layout_food(i, w, y_base, &mut random);
+        let (food, food_h) = self.layout_food(i, w, y_base);
         if food_h > 0 {
             out.extend(food);
             y_air -= 10;
         }
         let rows = (f64::from(i.vehicle_hearts) / 10.0).ceil() as i32;
         let y_air = y_air - (rows - 1) * 10;
-        out.extend(self.layout_air(i, w, y_air, &mut random).0);
+        out.extend(self.layout_air(i, w, y_air).0);
         out
     }
 }

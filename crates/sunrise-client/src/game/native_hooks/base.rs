@@ -4376,30 +4376,6 @@ impl Game<'_> {
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
-    /// Draw a stack and its slot decorations, except the count, at `at`,
-    /// `size` GUI pixels square. False when nothing was drawn: an unknown item
-    /// or an empty stack (air, or a count of 0, as `ItemStack.isEmpty`).
-    pub(in crate::game) fn native_item_stack(
-        &self,
-        batch: &mut HudBatch,
-        stack: &ItemStack,
-        at: [f32; 2],
-        size: f32,
-    ) -> bool {
-        // GuiGraphicsExtractor.item and itemDecorations draw nothing for an
-        // empty stack.
-        if &*stack.item == "minecraft:air" || stack.count == 0 {
-            return false;
-        }
-        if self.res.items().get(&stack.item).is_none() {
-            return false;
-        }
-        let start = batch.vertices.len();
-        self.draw_item_model(batch, stack, at[0], at[1], 0);
-        self.draw_item_decorations(batch, stack, at[0], at[1], Some(String::new()));
-        batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
-        true
-    }
     /// Item `item`'s icon drawn with model `model` (`minecraft:paper` as
     /// `mymod:wheel_icon`, an `item_model` of a content mod's), as `native_item`
     /// draws one; false for an unknown item.

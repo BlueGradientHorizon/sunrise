@@ -753,7 +753,7 @@ fn walked_frames_fit(root: &ResourceSource, texture: &str) -> bool {
 /// How the GUI atlas publishes one of its ids.
 enum GuiPublished {
     /// The sprite is packed under this name, with the nine-slice scaling its file gave it.
-    Packed(String, Option<crate::ui::NineSlice>),
+    Packed(String, Option<crate::ui::GuiSpriteScaling>),
     /// The list removed it or its origin didn't finish.
     Missing,
 }
@@ -764,18 +764,18 @@ pub enum GuiSprite {
     /// generated sprite, a live texture or any sprite without that metadata: it stretches).
     Present {
         rect: Rect,
-        scaling: Option<crate::ui::NineSlice>,
+        scaling: Option<crate::ui::GuiSpriteScaling>,
     },
     /// The id is listed, and its sprite was removed or its origin didn't finish.
     Missing,
 }
 /// The nine-slice scaling a sprite file's `.png.mcmeta` gives (none: it stretches).
-fn nine_slice_of(root: &ResourceSource, file: &str) -> Option<crate::ui::NineSlice> {
+fn gui_scaling_of(root: &ResourceSource, file: &str) -> Option<crate::ui::GuiSpriteScaling> {
     let text = root.read_to_string(&format!("{file}.mcmeta")).ok()?;
     crate::packs::first_json(text.as_bytes())
         .ok()
         .as_ref()
-        .and_then(crate::ui::parse_nine_slice)
+        .and_then(crate::ui::parse_gui_scaling)
 }
 /// What [`atlas_sprites`] found.
 #[derive(Default)]
@@ -913,7 +913,7 @@ fn atlas_sprites(root: &ResourceSource, packed: &[PackedImage]) -> AtlasSprites 
                 claimed.insert(name.clone());
                 standing.insert(name.clone());
                 let scaling =
-                    nine_slice_of(root, &atlas_sources::texture_resource(&name, "textures"));
+                    gui_scaling_of(root, &atlas_sources::texture_resource(&name, "textures"));
                 gui_table.push((plain.to_owned(), GuiPublished::Packed(name, scaling)));
                 continue;
             }
@@ -930,7 +930,7 @@ fn atlas_sprites(root: &ResourceSource, packed: &[PackedImage]) -> AtlasSprites 
             let scaling = material
                 .resource
                 .as_deref()
-                .and_then(|file| nine_slice_of(root, file));
+                .and_then(|file| gui_scaling_of(root, file));
             gui_table.push((
                 plain.to_owned(),
                 GuiPublished::Packed(packed_as.clone(), scaling),
@@ -1184,7 +1184,7 @@ impl HudAtlas {
     /// texture's; else the GUI list's own (a removed or failed entry ends the search); else, where
     /// the list says nothing of the id, a registered atlas's sprite of the name, and last a packed
     /// sprite no model or GUI entry owns.
-    fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::NineSlice>)> {
+    fn gui_present(&self, id: &str) -> Option<(&Rect, Option<crate::ui::GuiSpriteScaling>)> {
         if let Some(rect) = self.live.get(id) {
             return Some((rect, None));
         }

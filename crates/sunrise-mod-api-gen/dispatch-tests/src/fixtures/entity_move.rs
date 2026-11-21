@@ -133,6 +133,18 @@ mod root {
             Ok(call())
         }
 
+        pub(super) fn contain_gui_panics() -> bool {
+            false
+        }
+        pub(super) fn call_listener<T>(
+            _: super::HookId,
+            phase: bool,
+            _: bool,
+            call: impl FnOnce() -> T,
+        ) -> Result<Option<T>, Refusal> {
+            refusable(phase, call).map(Some)
+        }
+
         pub(super) fn listening_kind_owner(
             hook: super::HookId,
             kind: &str,

@@ -55,7 +55,14 @@ Replace `draw.gui_paint(&[...])` with `draw.draw_gui(&mut |canvas| { ... })` usi
 - `GuiDraw::AtlasSprite { sprite, x, y, w, h, color }` -> `canvas.atlas_sprite(&sprite, [x as f32, y as f32, w as f32, h as f32], color)?`.
 - `GuiDraw::Blit { texture, blend, x, y, w, h, uv, src, tex, color }` -> `canvas.blit(&texture, [x as f32, y as f32, w as f32, h as f32], GuiBlitRegion { uv, src, tex }, color, blend)?`.
 
-Replace `GuiPaintError` handling with `GuiDrawError`. A refused primitive emits no vertices while keeping draws emitted before it; pose and scissor are always restored on return, `Err`, or unwind.
+Match each call's `GuiDrawError`, not an error for the whole replay buffer:
+- `Text(e)` -> `GuiDrawError::Text(e)`.
+- `ItemSlot { slot, .. }` -> no slot argument; resolve the hotbar/offhand stack first, handle an empty slot yourself and pass the stack to `item` (which can return `Stack(e)` for an invalid stack).
+- `ItemNotFinite { .. }` -> `NotFinite` from `scope` or the draw call.
+- `BlitTexture { .. }` -> `UnknownTexture`; `BlitSize { .. }` -> `BadBlitRegion` for non-positive whole texture size or `NotFinite` for invalid UVs.
+- `Sprite { .. }` -> `UnknownSprite`; `SpriteRegion { .. }` -> `BadSpriteRegion`; `SpriteBlend { .. }` -> `UnsupportedSpriteBlend`.
+- Delete buffer `index` lookups. If you need a diagnostic, attach the draw's operation name or resource ID to its `Result` at the call site. Past draws remain visible and pose/scissor are restored on return, `Err`, or unwind.
+- Remove `GuiDraw`, `GuiPaintError`, `PoseOp` and `Blend` from Wire payload structs and calls to their encode/decode methods. For data that must cross a boundary, define your own Wire-derived enum of blend choices or pose operations with numeric coordinates, and convert to `Blend`/`PoseOp` when calling the local canvas. Direct draw callbacks and engine draw errors are not payload types.
 
 Replace `draw.push_clip(rect)?; ...; draw.pop_clip()?;` with `draw.with_scissor(rect, &mut |clipped| { ... })?;`. Remove match arms for `GuiClipRefusal::NoneOpen` and `GuiClipRefusal::TooDeep`; only `GuiClipRefusal::NotFinite` remains and scissor nesting is unbounded.
 '''

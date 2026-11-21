@@ -29,6 +29,48 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
         }
     }
 
+    fn draw_stack(
+        &mut self,
+        stack: &sunrise_client::items::ItemStack,
+        at @ [x, y]: [f32; 2],
+        scale: f32,
+        count: Option<String>,
+    ) -> Result<(), GuiDrawError> {
+        let mut pose = crate::hud_layout::IDENTITY;
+        if scale != 1.0 {
+            pose = [scale, 0.0, 0.0, scale, x - x * scale, y - y * scale];
+        }
+        let size = 16.0 * scale;
+        if !pose
+            .into_iter()
+            .chain(at)
+            .chain([x + size, y + size])
+            .all(f32::is_finite)
+        {
+            return Err(GuiDrawError::NotFinite);
+        }
+        let _callback_scope = mod_api::__private::contain_gui_callbacks();
+        let start = self.surface.vertices.len();
+        self.game.draw_item_model(self.surface, stack, x, y, 0);
+        if scale != 1.0 {
+            self.surface.scale_since(start, x, y, scale, scale);
+        }
+        self.flush_clip();
+        let game = self.game;
+        let guard = AdvanceClipStart {
+            surface: &mut *self.surface,
+            clip_start: &mut self.clip_start,
+        };
+        GameGuiCanvas::new(
+            &mut *guard.surface,
+            &game.gui.atlas,
+            Some(game),
+            pose,
+            self.scissor,
+        )
+        .draw_decorations(game, stack, at, count)
+    }
+
     fn flush_clip(&mut self) {
         let end = self.surface.vertices.len();
         if let Some([x0, y0, x1, y1]) = self.scissor
@@ -99,8 +141,11 @@ impl DrawContext for GameDrawContext<'_, '_> {
         let Ok(stack) = crate::game::api_values::stack_value(stack) else {
             return false;
         };
-        self.game
-            .native_item_stack(&mut *self.surface, &stack, at, size)
+        if &*stack.item == "minecraft:air" || self.game.items().get(&stack.item).is_none() {
+            return false;
+        }
+        self.draw_stack(&stack, at, size / 16.0, Some(String::new()))
+            .is_ok()
     }
     fn draw_gui(
         &mut self,
@@ -109,7 +154,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.flush_clip();
         let scissor = self.scissor;
         let game = self.game;
-        let mut guard = AdvanceClipStart {
+        let guard = AdvanceClipStart {
             surface: &mut *self.surface,
             clip_start: &mut self.clip_start,
         };
@@ -175,7 +220,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         let scissor = crate::game::gui_clips::intersect_scissor(self.surface, rect, self.scissor)?;
         self.flush_clip();
         let game = self.game;
-        let mut guard = AdvanceClipStart {
+        let guard = AdvanceClipStart {
             surface: &mut *self.surface,
             clip_start: &mut self.clip_start,
         };
@@ -207,8 +252,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         let Ok(stack) = crate::game::api_values::stack_value(stack) else {
             return;
         };
-        self.game
-            .native_gui_draw_item_with(&mut *self.surface, &stack, at, text)
+        let _ = self.draw_stack(&stack, at, 1.0, text.map(str::to_owned));
     }
     fn widget_button(
         &mut self,

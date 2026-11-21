@@ -24,7 +24,22 @@ pub(crate) struct GameGuiCanvas<'a, 'g> {
     scissor: Option<[f32; 4]>,
 }
 
-impl GameGuiCanvas<'_, '_> {
+impl<'a, 'g> GameGuiCanvas<'a, 'g> {
+    pub(crate) fn new(
+        batch: &'a mut HudBatch,
+        atlas: &'a HudAtlas,
+        game: Option<&'a Game<'g>>,
+        pose: Pose,
+        scissor: Option<[f32; 4]>,
+    ) -> Self {
+        Self {
+            batch,
+            atlas,
+            game,
+            pose,
+            scissor,
+        }
+    }
     pub(crate) fn draw(
         batch: &mut HudBatch,
         atlas: &HudAtlas,
@@ -41,13 +56,71 @@ impl GameGuiCanvas<'_, '_> {
         scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        draw(&mut GameGuiCanvas {
-            batch,
-            atlas,
-            game,
-            pose: IDENTITY,
-            scissor,
-        })
+        let _callback_scope = mod_api::__private::contain_gui_callbacks();
+        draw(&mut GameGuiCanvas::new(
+            batch, atlas, game, IDENTITY, scissor,
+        ))
+    }
+
+    fn draw_text(
+        &mut self,
+        text: &crate::text::Text,
+        [x, y]: [f32; 2],
+        argb: u32,
+        shadow: bool,
+    ) -> Result<(), GuiDrawError> {
+        if !x.is_finite() || !y.is_finite() {
+            return Err(GuiDrawError::NotFinite);
+        }
+        let start = self.batch.vertices.len();
+        let pose = self.pose;
+        let ok =
+            self.batch
+                .try_text_styled_posed(self.atlas, text, x, y, abgr(argb), shadow, |point| {
+                    if pose == IDENTITY {
+                        point
+                    } else {
+                        pose_point(pose, point)
+                    }
+                });
+        if !ok {
+            return Err(GuiDrawError::NotFinite);
+        }
+        self.clip_emitted(start);
+        Ok(())
+    }
+
+    pub(crate) fn vanilla_decorations(
+        &mut self,
+        game: &Game<'_>,
+        stack: &EngineStack,
+        [x, y]: [f32; 2],
+        count: Option<String>,
+    ) -> Result<(), GuiDrawError> {
+        let layout = game
+            .item_decoration_state(stack, count)
+            .layout(&self.atlas.font);
+        for ([dx, dy, w, h], color) in layout.fills.into_iter().flatten() {
+            self.fill([x + dx as f32, y + dy as f32, w as f32, h as f32], color)?;
+        }
+        if let Some(([dx, dy], label)) = layout.count {
+            self.draw_text(&label, [x + dx as f32, y + dy as f32], u32::MAX, true)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn draw_decorations(
+        &mut self,
+        game: &Game<'_>,
+        stack: &EngineStack,
+        at: [f32; 2],
+        count: Option<String>,
+    ) -> Result<(), GuiDrawError> {
+        let _callback_scope = mod_api::__private::contain_gui_callbacks();
+        self.vanilla_decorations(game, stack, at, count)?;
+        // NeoForge renders custom decorations after the vanilla decorations, in the same scope.
+        game.native_item_decorations(stack, at[0], at[1], self);
+        Ok(())
     }
 
     fn check_rect_geometry(&self, rect @ [x, y, ..]: [f32; 4]) -> Result<[f32; 2], GuiDrawError> {
@@ -62,6 +135,35 @@ impl GameGuiCanvas<'_, '_> {
         } else {
             Err(GuiDrawError::NotFinite)
         }
+    }
+
+    /// Conservative sprite-local bounds for tiled parts. The emitted quads still go through
+    /// the exact screen-space scissor, including for non-axis-aligned poses.
+    fn visible_tile_bounds(&self) -> [f64; 4] {
+        let [left, top, right, bottom] = self
+            .scissor
+            .unwrap_or([0.0, 0.0, self.batch.width, self.batch.height])
+            .map(f64::from);
+        let [a, b, c, d, x, y] = self.pose.map(f64::from);
+        let det = a * d - b * c;
+        if det == 0.0 || left >= right || top >= bottom {
+            return [0.0; 4];
+        }
+        [[left, top], [left, bottom], [right, top], [right, bottom]]
+            .into_iter()
+            .fold(
+                [
+                    f64::INFINITY,
+                    f64::INFINITY,
+                    f64::NEG_INFINITY,
+                    f64::NEG_INFINITY,
+                ],
+                |[lo_x, lo_y, hi_x, hi_y], [sx, sy]| {
+                    let lx = (d * (sx - x) - c * (sy - y)) / det;
+                    let ly = (a * (sy - y) - b * (sx - x)) / det;
+                    [lo_x.min(lx), lo_y.min(ly), hi_x.max(lx), hi_y.max(ly)]
+                },
+            )
     }
 
     fn clip_emitted(&mut self, start: usize) {
@@ -180,36 +282,15 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
     fn text(
         &mut self,
         text: &Text,
-        at @ [x, y]: [f32; 2],
+        at: [f32; 2],
         argb: u32,
         shadow: bool,
     ) -> Result<(), GuiDrawError> {
-        if !at.into_iter().all(f32::is_finite) {
-            return Err(GuiDrawError::NotFinite);
+        if argb >> 24 == 0 {
+            return Ok(());
         }
         let text = text.try_into_engine(&()).map_err(GuiDrawError::Text)?;
-        let start = self.batch.vertices.len();
-        let pose = self.pose;
-        let ok = self.batch.try_text_styled_posed(
-            self.atlas,
-            &text,
-            x,
-            y,
-            abgr(argb),
-            shadow,
-            |point| {
-                if pose == IDENTITY {
-                    point
-                } else {
-                    pose_point(pose, point)
-                }
-            },
-        );
-        if !ok {
-            return Err(GuiDrawError::NotFinite);
-        }
-        self.clip_emitted(start);
-        Ok(())
+        self.draw_text(&text, at, argb, shadow)
     }
 
     fn item(&mut self, stack: &ItemStack, [x, y]: [f32; 2], seed: i32) -> Result<(), GuiDrawError> {
@@ -233,18 +314,11 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         let Some(stack) = drawable_stack(stack)? else {
             return Ok(());
         };
-        self.check_rect_geometry([x, y, 16.0, 16.0])?;
-        if let Some(label) = count {
-            let w = self.atlas.font.width(label);
-            self.check_rect_geometry([x + 17.0 - w, y + 9.0, w + 1.0, 10.0])?;
+        if !x.is_finite() || !y.is_finite() {
+            return Err(GuiDrawError::NotFinite);
         }
         let game = self.game.ok_or(GuiDrawError::Unavailable)?;
-        self.paint_emit(|batch, _| {
-            game.draw_vanilla_item_decorations(batch, &stack, x, y, count.map(str::to_owned));
-        });
-        // Custom decorators draw directly into this canvas, inheriting its pose and scissor.
-        game.native_item_decorations(&stack, x, y, self);
-        Ok(())
+        self.draw_decorations(game, &stack, [x, y], count.map(str::to_owned))
     }
 
     fn blit_sprite(
@@ -295,11 +369,10 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             });
         } else {
             let color = abgr(argb);
+            let bounds = self.visible_tile_bounds();
             self.paint_emit(|batch, atlas| {
                 let start = batch.vertices.len();
-                sunrise_client::ui::nine_slice(
-                    batch, atlas, name, dst[0], dst[1], dst[2], dst[3], color,
-                );
+                sunrise_client::ui::blit_gui_sprite(batch, atlas, name, dst, color, bounds);
                 if blend == Blend::Crosshair {
                     batch.invert_since(start);
                 }
@@ -362,6 +435,127 @@ mod tests {
     use crate::hud::{Blend as HudBlend, Rect};
     use crate::resource_source::ResourceSource;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn transparent_text_does_not_prepare_an_overflowing_glyph() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            root.scope(
+                &[PoseOp::Scale(f32::MAX / 20.0, 1.0)],
+                None,
+                &mut |canvas| {
+                    canvas.text(
+                        &Text::literal("many visible glyphs"),
+                        [0.0, 0.0],
+                        0x00FF_FFFF,
+                        true,
+                    )
+                },
+            )
+        })
+        .unwrap();
+        assert!(batch.vertices.is_empty());
+        assert!(batch.inline_profiles.is_empty());
+    }
+
+    #[test]
+    fn a_wide_nine_slice_only_visits_tiles_inside_the_scissor() {
+        use sunrise_client::ui::{GuiSpriteScaling, NineSlice};
+        let mut atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        atlas.gui.insert(
+            "test:wide".into(),
+            GuiSprite::Present {
+                rect: Rect {
+                    u0: 0.0,
+                    v0: 0.0,
+                    u1: 1.0,
+                    v1: 1.0,
+                    w: 3,
+                    h: 3,
+                },
+                scaling: Some(GuiSpriteScaling::NineSlice(NineSlice {
+                    width: 3,
+                    height: 3,
+                    border: [1; 4],
+                    stretch_inner: false,
+                })),
+            },
+        );
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            root.scope(&[], Some([10.0, 10.0, 3.0, 1.0]), &mut |canvas| {
+                canvas.blit_sprite(
+                    "test:wide",
+                    [-20_000_000.0, 9.0, 32_000_000.0, 3.0],
+                    None,
+                    u32::MAX,
+                    Blend::Textured,
+                )
+            })
+        })
+        .unwrap();
+        assert_eq!(batch.vertices.len(), 18);
+        for (i, quad) in batch.vertices.chunks_exact(6).enumerate() {
+            assert_eq!(quad[0].pos, [10.0 + i as f32, 10.0]);
+            assert_eq!(quad[0].uv, [1.0 / 3.0, 1.0 / 3.0]);
+        }
+    }
+
+    #[test]
+    fn pack_tile_scaling_repeats_full_sprites_and_scissors_partial_blits() {
+        let root = tempfile::tempdir().unwrap();
+        let textures = root.path().join("assets/test/textures/gui");
+        std::fs::create_dir_all(&textures).unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255; 4]))
+            .save(textures.join("tile.png"))
+            .unwrap();
+        std::fs::write(
+            textures.join("tile.png.mcmeta"),
+            r#"{"gui":{"scaling":{"type":"tile","width":2,"height":2}}}"#,
+        )
+        .unwrap();
+        let defs = root.path().join("assets/minecraft/atlases");
+        std::fs::create_dir_all(&defs).unwrap();
+        std::fs::write(defs.join("gui.json"), r#"{"sources":[{"type":"minecraft:single","resource":"test:gui/tile","sprite":"test:tile"}]}"#).unwrap();
+        let atlas = HudAtlas::build(&ResourceSource::directory(root.path().into())).unwrap();
+        let r = *atlas.gui_draw_rect("test:tile").unwrap();
+        for (dst, region, expected) in [
+            (
+                [10.0, 10.0, 5.0, 2.0],
+                None,
+                vec![(10.0, r.u0), (12.0, r.u0), (14.0, r.u0)],
+            ),
+            (
+                [10.0, 10.0, 3.0, 2.0],
+                Some(GuiSpriteRegion {
+                    size: [5, 2],
+                    offset: [1, 0],
+                }),
+                vec![(10.0, (r.u0 + r.u1) / 2.0), (11.0, r.u0)],
+            ),
+        ] {
+            let mut batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |canvas| {
+                canvas.blit_sprite("test:tile", dst, region, u32::MAX, Blend::Textured)
+            })
+            .unwrap();
+            assert_eq!(
+                batch
+                    .vertices
+                    .chunks_exact(6)
+                    .map(|q| (q[0].pos[0], q[0].uv[0]))
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn posed_and_scissored_scopes_clip_leaves_and_restore_pose_and_scissor_on_err_and_unwind() {
@@ -834,7 +1028,7 @@ mod tests {
             "test:panel".into(),
             GuiSprite::Present {
                 rect,
-                scaling: Some(scaling),
+                scaling: Some(sunrise_client::ui::GuiSpriteScaling::NineSlice(scaling)),
             },
         );
 

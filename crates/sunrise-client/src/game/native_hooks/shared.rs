@@ -1137,24 +1137,22 @@ impl Game<'_> {
             vanilla
         }
     }
-    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
-    /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
-    /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
-    pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
+    /// Vanilla `Hud.HeartType.forPlayer`, before the vanilla health renderer fires the hook.
+    pub(super) fn player_heart_kind(
+        &self,
+        player: &crate::motion::PlayerMotion,
+    ) -> mod_api::client::hud_layout::HeartKind {
         use mod_api::client::hud_layout::HeartKind;
-        let p = self.player.as_ref()?;
         let effects = &self.potions.effects;
-        let mut kind = if effects.get("poison").is_some() {
+        if effects.get("poison").is_some() {
             HeartKind::Poisoned
         } else if effects.get("wither").is_some() {
             HeartKind::Withered
-        } else if p.is_fully_frozen() {
+        } else if player.is_fully_frozen() {
             HeartKind::Frozen
         } else {
             HeartKind::Normal
-        };
-        self.native_player_heart_type(&mut kind);
-        Some(kind)
+        }
     }
     /// Deliver a non-repeat key press to the native panel.
     pub(super) fn native_panel_key_event(&mut self, key: KeyCode, pressed: bool, repeat: bool) {

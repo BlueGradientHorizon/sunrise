@@ -24,7 +24,7 @@ or `gui_layer_pre` cancels the layer.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The player
 health, armor, food, vehicle health, air and contextual bar anchors follow NeoForge's paint order
 (`player_health`, `armor_level`, `food_level`, `vehicle_health`, `air_level`,
-`contextual_info_bar`).
+`contextual_info_bar`), followed by the selected item name, effects and boss bars.
 
 ### Replacing or wrapping a layer
 
@@ -51,7 +51,9 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
-runs. For work that must happen even when the HUD is hidden, use the independent foreground
+runs. A skipped status body reserves no height. Only the original hearts body fires
+`player_heart_type` and reseeds the status jitter; replacing the hearts leaves armor, food,
+vehicle health and air on their own slots. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
 
 ## Registering F3 text

@@ -330,12 +330,11 @@ impl Titles {
             }
         }
     }
-    /// `Hud.extractOverlayMessage`: the action bar keeps its place however
-    /// tall the health, food, air and mount rows above the hotbar are.
+    /// NeoForge `Hud.extractOverlayMessage`: above the status stacks, at least 68 pixels up.
     pub fn overlay_message(
         &self,
-        w: i32,
-        h: i32,
+        [w, h]: [i32; 2],
+        status_height: i32,
         partial: f32,
         font: &Font,
         background: u32,
@@ -351,11 +350,9 @@ impl Titles {
         let alpha = ((t * 255.0 / 20.0) as i32).min(255);
         if alpha > 0 {
             let message = message.resolve_legacy();
-            // `Hud.extractOverlayMessage` translates to `guiHeight - 68`, a
-            // constant the bars above the hotbar never move.
             out.push(GuiDraw::Push(vec![PoseOp::Translate(
                 (w / 2) as f32,
-                (h - 68) as f32,
+                (h - (status_height + (68 - 59)).max(68)) as f32,
             )]));
             let color = if self.overlay_animated {
                 hsv_to_argb(t / 50.0, 0.7, 0.6, alpha as u32)
@@ -489,14 +486,12 @@ impl ToolHighlight {
         }
         self.last = selected;
     }
-    /// `Hud.extractSelectedItemName`; `can_hurt` is
-    /// `gameMode.canHurtPlayer()` (survival and adventure). The name sits 59
-    /// pixels above the bottom edge whatever the bars above the hotbar do,
-    /// and 14 lower when the mode cannot hurt the player.
+    /// NeoForge `Hud.extractSelectedItemName`: above the status stacks, at least 59 pixels up
+    /// (14 pixels down from that line if `gameMode.canHurtPlayer()` is false).
     pub fn draw(
         &self,
-        w: i32,
-        h: i32,
+        [w, h]: [i32; 2],
+        status_height: i32,
         can_hurt: bool,
         font: &Font,
         background: u32,
@@ -511,7 +506,7 @@ impl ToolHighlight {
         let name = self.tip.clone().unwrap_or_else(|| last.styled());
         let str_width = width(font, &name);
         let x = (w - str_width) / 2;
-        let mut y = h - 59;
+        let mut y = h - status_height.max(59);
         if !can_hurt {
             y += 14;
         }
@@ -808,28 +803,54 @@ pub fn damage_bar(damage: i32, max_damage: i32) -> Option<(i32, u32)> {
     sunrise_items::properties::damage_bar(damage, max_damage).map(|bar| (bar.width, bar.color))
 }
 
-/// `GuiGraphicsExtractor.itemDecorations` for a non-empty stack at (x, y):
-/// the durability bar, the cooldown shade and the count.
+/// Local geometry from `GuiGraphicsExtractor.itemDecorations`, shared by the live canvas
+/// and the layout probe. Rectangles use `[x, y, w, h]`; the count has a drop shadow.
+pub struct ItemDecorationLayout {
+    pub fills: [Option<([i32; 4], u32)>; 3],
+    pub count: Option<([i32; 2], Text)>,
+}
+
+impl ItemDecorations {
+    pub fn layout(&self, font: &Font) -> ItemDecorationLayout {
+        let [back, bar] = self.bar.map_or([None, None], |(width, color)| {
+            [
+                Some(([2, 13, 13, 2], 0xFF00_0000)),
+                Some(([2, 13, width, 1], color | 0xFF00_0000)),
+            ]
+        });
+        let cooldown = (self.cooldown > 0.0).then(|| {
+            let top = crate::hud_layout::floor(16.0 * (1.0 - self.cooldown));
+            let height = crate::hud_layout::ceil(16.0 * self.cooldown);
+            ([0, top, 16, height], 0x7FFF_FFFF)
+        });
+        let count = (self.count != 1 || self.count_text.is_some()).then(|| {
+            let label = self
+                .count_text
+                .clone()
+                .unwrap_or_else(|| self.count.to_string());
+            let width = font.width(&label) as i32;
+            ([17 - width, 9], Text::literal(label))
+        });
+        ItemDecorationLayout {
+            fills: [back, bar, cooldown],
+            count,
+        }
+    }
+}
+
+/// `GuiGraphicsExtractor.itemDecorations` for the vanilla layout probe.
 pub fn item_decorations(x: i32, y: i32, d: &ItemDecorations, font: &Font) -> Vec<GuiDraw> {
     let mut out = vec![GuiDraw::Push(Vec::new())];
-    if let Some((width, color)) = d.bar {
-        let (left, top) = (x + 2, y + 13);
-        out.push(fill(left, top, left + 13, top + 2, 0xFF00_0000));
-        out.push(fill(left, top, left + width, top + 1, color | 0xFF00_0000));
+    let ItemDecorationLayout { fills, count } = d.layout(font);
+    for ([dx, dy, w, h], color) in fills.into_iter().flatten() {
+        out.push(fill(x + dx, y + dy, x + dx + w, y + dy + h, color));
     }
-    if d.cooldown > 0.0 {
-        let top = y + crate::hud_layout::floor(16.0 * (1.0 - d.cooldown));
-        let bottom = top + crate::hud_layout::ceil(16.0 * d.cooldown);
-        out.push(fill(x, top, x + 16, bottom, 0x7FFF_FFFF));
-    }
-    if d.count != 1 || d.count_text.is_some() {
-        let amount = d.count_text.clone().unwrap_or_else(|| d.count.to_string());
-        let w = font.width(&amount) as i32;
+    if let Some(([dx, dy], label)) = count {
         text(
             &mut out,
-            Text::literal(amount),
-            x + 19 - 2 - w,
-            y + 6 + 3,
+            label,
+            x + dx,
+            y + dy,
             crate::hud_layout::WHITE,
             true,
         );
@@ -1483,10 +1504,7 @@ mod text_position_tests {
         })
     }
 
-    /// `Hud.extractSelectedItemName`: `guiHeight - 59`, then `+ 14` when the
-    /// game mode cannot hurt the player. The health, food, air and mount rows
-    /// above the hotbar never move it: with armor and a second row of hearts
-    /// they reach 69 pixels, and the name stays where vanilla draws it.
+    /// NeoForge keeps the 59 px baseline unless the remaining HUD rows need more space.
     #[test]
     fn the_selected_item_name_sits_fifty_nine_above_the_bottom_edge() {
         let mut highlight = ToolHighlight {
@@ -1495,15 +1513,17 @@ mod text_position_tests {
             tip: None,
         };
         let f = font();
-        let draws = highlight.draw(320, 240, true, &f, 0);
+        let draws = highlight.draw([320, 240], 49, true, &f, 0);
         assert_eq!(text_top(&draws), Some(240 - 59));
         // Creative and spectator add the fourteen pixels the experience bar
         // and the food row would have taken.
-        let draws = highlight.draw(320, 240, false, &f, 0);
+        let draws = highlight.draw([320, 240], 49, false, &f, 0);
         assert_eq!(text_top(&draws), Some(240 - 59 + 14));
+        let draws = highlight.draw([320, 240], 69, true, &f, 0);
+        assert_eq!(text_top(&draws), Some(240 - 69));
         // No timer, no name.
         highlight.timer = 0;
-        assert!(highlight.draw(320, 240, true, &f, 0).is_empty());
+        assert!(highlight.draw([320, 240], 49, true, &f, 0).is_empty());
     }
 
     /// A part's `highlight_tip` is drawn as it is in place of the styled
@@ -1539,22 +1559,25 @@ mod text_position_tests {
     }
 
     /// `Hud.extractOverlayMessage`: the action bar and its text translate to
-    /// `guiHeight - 68` and `-4`, again wherever the bars above the hotbar
+    /// The 68-pixel floor and `-4` local offset, or higher if the status stack requires it.
     /// reach.
     #[test]
     fn the_action_bar_sits_sixty_eight_above_the_bottom_edge() {
         let mut titles = Titles::default();
         titles.set_overlay(Text::literal("Action bar"), false);
         let f = font();
-        let draws = titles.overlay_message(320, 240, 0.0, &f, 0);
-        let translate = draws.iter().find_map(|d| match d {
-            GuiDraw::Push(ops) => ops.iter().find_map(|op| match op {
-                PoseOp::Translate(_, y) => Some(*y),
+        for (height, expected) in [(49, 68), (69, 78)] {
+            let draws = titles.overlay_message([320, 240], height, 0.0, &f, 0);
+            let translate = draws.iter().find_map(|d| match d {
+                GuiDraw::Push(ops) => ops.iter().find_map(|op| match op {
+                    PoseOp::Translate(_, y) => Some(*y),
+                    _ => None,
+                }),
                 _ => None,
-            }),
-            _ => None,
-        });
-        assert_eq!(translate, Some((240 - 68) as f32));
+            });
+            assert_eq!(translate, Some((240 - expected) as f32));
+        }
+        let draws = titles.overlay_message([320, 240], 69, 0.0, &f, 0);
         // The text is drawn four pixels below that origin, as vanilla's is.
         let relative = draws.iter().find_map(|d| match d {
             GuiDraw::Text { y, .. } => Some(*y),

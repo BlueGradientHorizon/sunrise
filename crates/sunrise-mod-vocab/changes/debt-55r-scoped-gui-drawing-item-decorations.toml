@@ -1,12 +1,15 @@
 ids = [
     "hook:item_decorations",
+    "method:ItemPart::item_decorations",
     "hook:item_decorations.draw",
     "type:ItemDecorationsEvent.draw",
 ]
 why = "item_decorations (hook version 1 -> 2) now lends &mut dyn GuiCanvas instead of a full &mut dyn DrawContext, matching vanilla net.minecraft.client.gui.GuiGraphicsExtractor.itemDecorations and NeoForge net.neoforged.neoforge.client.IItemDecorator.render. Custom decorators inherit the caller's decoration pose and scissor directly and can open lexical child scopes with draw.scope without needing full widget/screen DrawContext methods."
 migrate = '''
 Update `ItemPart::item_decorations` implementations to draw on `event.draw: &mut dyn GuiCanvas` instead of `&mut dyn DrawContext`:
-- `event.draw.fill(rect, argb)?`, `fill_gradient(rect, top, bottom)?`, `text(&Text::literal(...), at, argb, shadow)?`, `blit_sprite(...)`, `atlas_sprite(...)`, `blit(...)`, and `scope(ops, scissor, &mut |child| { ... })?` return `Result<(), GuiDrawError>`.
+- Draw methods return `Result<(), GuiDrawError>`. The hook itself still returns `()`. For example:
+  `if let Err(error) = event.draw.fill([event.x, event.y, 3.0, 2.0], 0xFFFF_FFFF) { eprintln!("item decoration: {error}"); }`
+  Use `?` only inside a Result-returning draw scope, then handle the scope's result in the hook.
 - `event.x` and `event.y` are the icon's top-left in the caller's local GUI pixels (outside any model-only squeeze).
 - Move any widget, scene, focus, or narration drawing to ordinary HUD or screen hooks.
 '''

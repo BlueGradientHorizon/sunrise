@@ -99,18 +99,12 @@ impl Game<'_> {
         });
         accepts
     }
-    /// `GuiGraphicsExtractor.itemDecorations` (vanilla bar, cooldown shade and count),
-    /// without custom item decorators.
-    pub(super) fn draw_vanilla_item_decorations(
+    /// The stack's vanilla bar, cooldown shade and count inputs, before custom decorators.
+    pub(super) fn item_decoration_state(
         &self,
-        batch: &mut HudBatch,
         stack: &ItemStack,
-        x: f32,
-        y: f32,
         count_text: Option<String>,
-    ) {
-        // GuiGraphicsExtractor.itemDecorations, laid out at the origin and
-        // moved to (x, y): the damage bar, the cooldown shade and the count.
+    ) -> hud_overlays::ItemDecorations {
         let info = self.items().get(&stack.item);
         // ItemStack.isBarVisible: isDamaged, which an unbreakable stack never is.
         let max_damage = if sunrise_client::stations::is_damageable(self.items(), stack) {
@@ -130,23 +124,12 @@ impl Game<'_> {
         };
         // Client-only: a mod may replace or hide the bar vanilla just chose.
         self.native_item_bar(stack, &mut bar);
-        let decorations = hud_overlays::ItemDecorations {
+        hud_overlays::ItemDecorations {
             count: stack.count,
             count_text,
             bar,
             cooldown: self.cooldowns.percent(&cooldown, partial),
-        };
-        let mut draws = vec![hud_layout::GuiDraw::Push(vec![
-            hud_layout::PoseOp::Translate(x, y),
-        ])];
-        draws.extend(hud_overlays::item_decorations(
-            0,
-            0,
-            &decorations,
-            &self.gui.atlas.font,
-        ));
-        draws.push(hud_layout::GuiDraw::Pop);
-        hud_layout::paint(batch, &self.gui.atlas, &draws);
+        }
     }
     /// `GuiGraphicsExtractor.itemDecorations`: the count (or `count_text`),
     /// damage bar, cooldown shade and custom item decorators.
@@ -158,16 +141,14 @@ impl Game<'_> {
         y: f32,
         count_text: Option<String>,
     ) {
-        self.draw_vanilla_item_decorations(batch, stack, x, y, count_text);
-        let _ = crate::game::host::draw::GameGuiCanvas::draw(
+        let mut canvas = crate::game::host::draw::GameGuiCanvas::new(
             batch,
             &self.gui.atlas,
             Some(self),
-            &mut |canvas| {
-                self.native_item_decorations(stack, x, y, canvas);
-                Ok(())
-            },
+            hud_layout::IDENTITY,
+            None,
         );
+        let _ = canvas.draw_decorations(self, stack, [x, y], count_text);
     }
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no

@@ -365,15 +365,17 @@ thread_local! {
 fn any_mod_disabled() -> bool {
     DISABLED_BLOCK_PART.get().is_some()
 }
-fn entered_parts<'a, P: ?Sized>(
+fn entered_parts_with_id<'a, P: ?Sized>(
+    _: HookId,
     parts: &'a [&'a P],
     _: &'static str,
-) -> impl Iterator<Item = &'a P> {
+) -> impl Iterator<Item = (&'static str, &'a P)> {
     let disabled = DISABLED_BLOCK_PART.get();
     parts
         .iter()
         .copied()
         .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .map(|part| ("fixture", part))
 }
 
 #[test]

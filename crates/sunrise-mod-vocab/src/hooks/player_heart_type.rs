@@ -4,8 +4,8 @@ pub trait Hooks {
     /// Which hearts the local player's health bar draws this frame (NeoForge's
     /// `PlayerHeartTypeEvent`, from `Gui.HeartType.forPlayer`): `kind` comes in as vanilla's pick
     /// (poisoned, else withered, else frozen when fully frozen, else normal); set it to draw
-    /// another kind. Asked once a frame while the HUD draws the hearts (not in creative or
-    /// spectator, not under F1), before `health_hud`, whose `inputs.kind` carries the answer.
+    /// another kind. Only the original `minecraft:player_health` body asks: cancelled layers,
+    /// replacements and wrappers that omit the previous body do not fire it.
     /// Only the heart sprites change: health, regeneration and the other rows stay vanilla's.
     /// Client-side.
     #[hook(
@@ -13,6 +13,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "PlayerHeartTypeEvent",
+        version = 2,
         cancellable = false
     )]
     fn player_heart_type(kind: &mut mod_api::client::hud_layout::HeartKind);

@@ -1,13 +1,23 @@
 ids = [
     "hook:health_hud",
+    "type:HealthInputs.kind",
+    "hook:player_heart_type",
+    "hook:register_gui_layers",
+    "hook:gui_layer_pre",
+    "hook:gui_layer_post",
+    "hook:render_gui_post",
     "method:Hooks::health_hud",
     "type:HealthHudReplacement",
     "handle:HealthHudReplacement::new",
     "handle:HealthHudReplacement::invoke",
 ]
-why = "health_hud (hook version 1 -> 2) now returns an owned HealthHudReplacement renderer callback instead of a buffered Vec<GuiDraw> command list. Follows vanilla net.minecraft.client.gui.Hud.extractPlayerHealth and NeoForge VanillaGuiLayers / GuiLayerManager.renderInner / RegisterGuiLayersEvent.replaceLayer: player_health, armor_level, food_level, vehicle_health and air_level are separate HUD layers stacked by left/right row height, and health_hud selection and rendering run inside minecraft:player_health between gui_layer_pre and gui_layer_post so cancelling or replacing minecraft:player_health affects only player hearts while armor, food, vehicle health and air stay on their own layers. Returning Ok(()) without drawing leaves the layer blank; returning an Err reports the error without rolling back prior draws, without falling back to vanilla hearts, and without latching. Panics in health_hud (selector or renderer), item_bar and item_decorations are contained at each hook boundary, disable only the offending mod's hook for the session, and show a system error toast naming the offending mod and hook."
+why = "health_hud (hook version 1 -> 3) now returns an owned HealthHudReplacement renderer callback instead of a buffered Vec<GuiDraw> command list. Follows vanilla net.minecraft.client.gui.Hud.extractPlayerHealth and NeoForge VanillaGuiLayers / GuiLayerManager.renderInner / RegisterGuiLayersEvent.replaceLayer: player_health, armor_level, food_level, vehicle_health and air_level are separate HUD layers stacked by left/right row height, and health_hud selection and rendering run inside minecraft:player_health between gui_layer_pre and gui_layer_post so cancelling or replacing minecraft:player_health affects only player hearts while armor, food, vehicle health and air stay on their own layers. Returning Ok(()) without drawing leaves the layer blank; returning an Err reports the error without rolling back prior draws, without falling back to vanilla hearts, and without latching. Panics in health_hud (selector or renderer) and nested GUI hooks, including item model callbacks, are contained at the originating callback boundary, disable only the offending mod's hook for the session, and show a system error toast naming the offending mod and hook."
 migrate = '''
 Change `Hooks::health_hud` to return `Option<HealthHudReplacement>` instead of `Option<Vec<GuiDraw>>`. Construct a renderer with `HealthHudReplacement::new(|host, inputs, canvas| { ... })` (cloning a cached handle each frame if desired) and draw directly through `&mut dyn GuiCanvas` (using `canvas.scope`, `blit_sprite`, `fill`, `text`, etc.).
+
+The old combined `minecraft:player_health` slot now means hearts only. To cancel or replace the old group, target each relevant slot by its ID: `minecraft:player_health`, `minecraft:armor_level`, `minecraft:food_level`, `minecraft:vehicle_health` and `minecraft:air_level`. To insert before the group, use `Below("minecraft:player_health".into())`; to insert after it, use `Above("minecraft:air_level".into())`. Likewise update Pre/Post ID matches so that an observer after the whole group listens to `minecraft:air_level` Post, not `minecraft:player_health` Post. Effects and boss bars run after `minecraft:selected_item_name`, following NeoForge `Hud.registerVanillaLayers`. To put an overlay below the status rows rather than in the repositioned `render_gui_post`, register it below `minecraft:player_health`. `register_gui_layers` and `gui_layer_post` are version 3; `gui_layer_pre` and `render_gui_post` are version 2.
+
+`HealthInputs.kind` is now vanilla's kind. `player_heart_type` (version 2) fires only if the original hearts body runs (`Hud.extractHearts`). A replacement needing a custom kind should apply that choice in its own renderer. Returning an empty replacement or cancelling no longer reserves vanilla heart height, and the selected item name and action bar follow the remaining rows (`Hud.maybeExtractSelectedItemName` / `extractOverlayMessage`).
 
 Do not rely on returning `Err(...)` to roll back earlier draws or fall back to vanilla health rows: `Err` is logged and leaves prior draws in the batch. Return `None` from `Hooks::health_hud` if you want to defer to later listeners or vanilla.
 '''

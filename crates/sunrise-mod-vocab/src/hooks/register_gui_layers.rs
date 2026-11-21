@@ -37,7 +37,7 @@ pass regardless of F1 uses `Hooks::gui_render_post`."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         context = "registration",
         neoforge = "RegisterGuiLayersEvent"

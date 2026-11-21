@@ -38,6 +38,12 @@ mod player_heart_type_tests {
         game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
     }
 
+    fn resolved(game: &mut super::Game<'_>) -> HeartKind {
+        let mut kind = game.player_heart_kind(game.player.as_ref().unwrap());
+        game.native_player_heart_type(&mut kind);
+        kind
+    }
+
     /// `PlayerHeartTypeEvent`: the mod gets vanilla's pick and its answer is drawn; without a
     /// listener the pick is vanilla's.
     #[test]
@@ -45,11 +51,10 @@ mod player_heart_type_tests {
     fn a_client_mod_changes_the_health_bars_hearts() {
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.execution_role = super::ExecutionRole::Client;
-            assert_eq!(game.player_heart_kind(), None, "no player, no hearts");
             add_player(game);
-            assert_eq!(game.player_heart_kind(), Some(HeartKind::Normal));
+            assert_eq!(resolved(game), HeartKind::Normal);
             game.player.as_mut().unwrap().ticks_frozen = 1000;
-            assert_eq!(game.player_heart_kind(), Some(HeartKind::Frozen));
+            assert_eq!(resolved(game), HeartKind::Frozen);
             game.player.as_mut().unwrap().ticks_frozen = 0;
         });
         let seen = Arc::default();
@@ -59,9 +64,9 @@ mod player_heart_type_tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 game.options.execution_role = super::ExecutionRole::Client;
                 add_player(game);
-                assert_eq!(game.player_heart_kind(), Some(HeartKind::Frozen));
+                assert_eq!(resolved(game), HeartKind::Frozen);
                 game.player.as_mut().unwrap().ticks_frozen = 1000;
-                assert_eq!(game.player_heart_kind(), Some(HeartKind::Withered));
+                assert_eq!(resolved(game), HeartKind::Withered);
                 assert_eq!(
                     *seen.lock().unwrap(),
                     [HeartKind::Normal, HeartKind::Frozen]

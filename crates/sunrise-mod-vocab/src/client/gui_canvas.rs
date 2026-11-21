@@ -92,8 +92,9 @@ pub trait GuiCanvas {
     /// Draw in a child scope. Apply `ops` in order to a copy of the current pose, then transform
     /// the local scissor (`[x, y, w, h]`) into screen space and intersect it with the enclosing
     /// scissor. The two ordered corners are transformed, flooring the resulting origin and
-    /// extents separately. `None` inherits the enclosing scissor unchanged. Empty, inverted or
-    /// reflected scissor axes draw nothing. The clip does not move when a descendant changes its
+    /// extents separately. `None` inherits the enclosing scissor unchanged. Only the transformed
+    /// intersection determines emptiness: reflection can make a negative local extent positive.
+    /// The clip does not move when a descendant changes its
     /// pose. Non-finite geometry refuses the scope before calling `draw`; zero scale is allowed.
     /// Pose and scissor are lexically scoped and always restored on return, `Err`, or unwind,
     /// while draws already emitted stay in the batch.
@@ -113,6 +114,7 @@ pub trait GuiCanvas {
     fn fill_gradient(&mut self, rect: [f32; 4], top: u32, bottom: u32) -> Result<(), GuiDrawError>;
 
     /// Draw styled text, including legacy formatting, with `argb` as the default colour.
+    /// Zero alpha skips the text entirely, before shaping or drawing.
     fn text(
         &mut self,
         text: &Text,
@@ -128,6 +130,7 @@ pub trait GuiCanvas {
 
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
     /// `count` replaces the normal count label; `Some("")` hides it. An empty stack draws nothing.
+    /// The posed count and its shadow must be finite; a refused label does not undo the bar or shade.
     /// Call this in the surrounding scope after drawing a squeezed model in a child
     /// [`Self::scope`], so the decorations follow the surrounding pose, not the squeeze.
     fn item_decorations(
@@ -138,7 +141,7 @@ pub trait GuiCanvas {
     ) -> Result<(), GuiDrawError>;
 
     /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, honouring its metadata scaling
-    /// (stretch or nine-slice) and optional source region. A removed sprite is refused. Accepts
+    /// (stretch, tile or nine-slice) and optional source region. A removed sprite is refused. Accepts
     /// `Blend::Textured` and `Blend::Crosshair`.
     fn blit_sprite(
         &mut self,

@@ -6,6 +6,7 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     text::Text,
 };
+#[cfg(test)]
 use sunrise_items::items::ItemStack as EngineStack;
 
 impl Game<'_> {
@@ -100,17 +101,6 @@ impl Game<'_> {
         sunrise_client::ui::tooltip(batch, &self.gui.atlas, lines, (at[0], at[1]));
     }
 
-    /// Draw an item stack with custom count/decoration text (or None) at `at` in GUI units.
-    pub(super) fn native_gui_draw_item_with(
-        &self,
-        batch: &mut HudBatch,
-        stack: &EngineStack,
-        at: [f32; 2],
-        text: Option<&str>,
-    ) {
-        self.draw_item_model(batch, stack, at[0], at[1], 0);
-        self.draw_item_decorations(batch, stack, at[0], at[1], text.map(str::to_owned));
-    }
     /// Whether a specific key is currently held down.
     /// `key` is the vanilla physical key or mouse button name (`key.keyboard.left.shift`,
     /// `key.mouse.left`, for example). Unknown names are not down. Modifier combinations use
@@ -143,9 +133,11 @@ mod tests {
 
             let stack = EngineStack::new("minecraft:diamond", 5);
             let mut automatic = HudBatch::scratch([320, 240]);
-            game.native_gui_draw_item_with(&mut automatic, &stack, [16.0, 32.0], None);
+            game.draw_item_model(&mut automatic, &stack, 16.0, 32.0, 0);
+            game.draw_item_decorations(&mut automatic, &stack, 16.0, 32.0, None);
             let mut custom = HudBatch::scratch([320, 240]);
-            game.native_gui_draw_item_with(&mut custom, &stack, [16.0, 32.0], Some("7"));
+            game.draw_item_model(&mut custom, &stack, 16.0, 32.0, 0);
+            game.draw_item_decorations(&mut custom, &stack, 16.0, 32.0, Some("7".into()));
             assert!(!automatic.vertices.is_empty());
             assert_ne!(
                 bytemuck::cast_slice::<_, u8>(&automatic.vertices),

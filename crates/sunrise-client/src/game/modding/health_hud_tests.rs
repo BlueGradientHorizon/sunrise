@@ -261,16 +261,43 @@ fn empty_ok_is_blank_and_err_keeps_prior_draws_without_vanilla_fallback_or_latch
 
     with_client_game(|game| {
         prepare_survival_hud(game);
+        let player = game.player.as_mut().unwrap();
+        let key = player.attributes.key("minecraft:armor").unwrap();
+        let armor = player.attributes.get_instance(Some(key)).unwrap().unwrap();
+        player
+            .attributes
+            .edit(&armor, |a, o| a.set_base_value(20.0, o))
+            .unwrap();
+        let check_armor = |game: &super::Game<'_>, batch: &crate::hud::HudBatch| {
+            let r = game.gui.atlas.gui_draw_rect("hud/armor_full").unwrap();
+            let top = batch.height - 39.0;
+            assert!(
+                batch
+                    .vertices
+                    .iter()
+                    .any(|v| v.uv == [r.u0, r.v0] && v.pos[1] == top)
+            );
+            assert!(
+                !batch
+                    .vertices
+                    .iter()
+                    .any(|v| v.uv == [r.u0, r.v0] && v.pos[1] == top - 10.0)
+            );
+        };
         with_mods(
             vec![ModEntry::new("cancel", Box::new(CancelPlayerHealth))].into(),
             || {
-                cancelled_len = game.hud_layers(SIZE).vertices.len();
+                let batch = game.hud_layers(SIZE);
+                check_armor(game, &batch);
+                cancelled_len = batch.vertices.len();
             },
         );
         with_mods(
             vec![ModEntry::new("blank", Box::new(BlankHud))].into(),
             || {
-                blank_len = game.hud_layers(SIZE).vertices.len();
+                let batch = game.hud_layers(SIZE);
+                check_armor(game, &batch);
+                blank_len = batch.vertices.len();
             },
         );
         with_mods(
@@ -280,7 +307,9 @@ fn empty_ok_is_blank_and_err_keeps_prior_draws_without_vanilla_fallback_or_latch
             )]
             .into(),
             || {
-                err_frame = Some(game.hud_layers(SIZE));
+                let batch = game.hud_layers(SIZE);
+                check_armor(game, &batch);
+                err_frame = Some(batch);
                 ok_frame = Some(game.hud_layers(SIZE));
             },
         );
@@ -461,12 +490,17 @@ fn panicking_health_hud_disables_only_that_hook_and_queues_error_toast() {
 #[test]
 #[ignore = "daily"]
 fn status_layers_fire_independently_in_neoforge_order_and_stack_heights() {
-    const STATUS_LAYERS: [&str; 5] = [
+    const STATUS_LAYERS: [&str; 10] = [
+        "minecraft:hotbar",
         "minecraft:player_health",
         "minecraft:armor_level",
         "minecraft:food_level",
         "minecraft:vehicle_health",
         "minecraft:air_level",
+        "minecraft:contextual_info_bar",
+        "minecraft:selected_item_name",
+        "minecraft:effects",
+        "minecraft:boss_overlay",
     ];
     let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     struct StatusObserver(Arc<Mutex<Vec<String>>>, Option<&'static str>);
@@ -500,7 +534,7 @@ fn status_layers_fire_independently_in_neoforge_order_and_stack_heights() {
         assert_eq!(
             *seen.lock().unwrap(),
             STATUS_LAYERS,
-            "all five status layers must fire in NeoForge order"
+            "the layers around the status HUD must fire in NeoForge order"
         );
 
         // Cancelling minecraft:food_level skips only the 10 food icons (20 sprites = 120 verts).
@@ -677,4 +711,158 @@ fn panicking_selector_and_item_decorator_isolated() {
             assert!(frame2.vertices.iter().all(|v| v.color != abgr(0xFFDD_2244)));
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn only_the_original_health_body_observes_heart_type_and_reseeds_food_jitter() {
+    crate::game::in_own_process(
+        "game::health_hud_tests::only_the_original_health_body_observes_heart_type_and_reseeds_food_jitter",
+        || {
+            use mod_api::{GuiLayerRegistrar, PlayerHeartTypeEvent};
+            use std::sync::atomic::AtomicBool;
+            static CALL_PREVIOUS: AtomicBool = AtomicBool::new(false);
+            static CANCEL: AtomicBool = AtomicBool::new(true);
+            static HEART_TYPE_CALLS: AtomicUsize = AtomicUsize::new(0);
+            struct Observe;
+            #[mod_api::__subscriptions]
+            impl Hooks for Observe {
+                fn gui_layer_pre(&self, _: &dyn ClientHost, e: &mut GuiLayerPreEvent<'_>) -> Flow {
+                    if e.layer == PLAYER_HEALTH && CANCEL.load(Ordering::Relaxed) {
+                        Flow::Cancel
+                    } else {
+                        Flow::Continue
+                    }
+                }
+                fn player_heart_type(&self, _: &mut dyn ClientHost, _: &mut PlayerHeartTypeEvent) {
+                    HEART_TYPE_CALLS.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            let mut layers = crate::gui_layers::GuiLayers::default();
+            assert!(layers.wrap_layer(
+                PLAYER_HEALTH,
+                Box::new(|ctx| {
+                    if CALL_PREVIOUS.load(Ordering::Relaxed) {
+                        ctx.draw_previous();
+                    }
+                })
+            ));
+            crate::gui_layers::freeze(layers);
+            with_client_game(|game| {
+                prepare_survival_hud(game);
+                game.ticks = 0;
+                game.world.game_time = 0;
+                let food = &mut game.player.as_mut().unwrap().health.food;
+                food.food = 0;
+                food.saturation = 0.0;
+                with_mods(
+                    vec![ModEntry::new("observer", Box::new(Observe))].into(),
+                    || {
+                        // java.util.Random(0).nextInt(3) - 1 for ten icons, then ten more.
+                        let first = [-1, 0, 0, 1, 1, 1, 1, -1, -1, 1];
+                        let second = [1, 1, 1, 0, 1, 1, 0, -1, 1, 1];
+                        for (cancel, previous, calls, jitter) in [
+                            (true, true, 0, first),
+                            (false, false, 0, second),
+                            (false, true, 1, first),
+                        ] {
+                            CANCEL.store(cancel, Ordering::Relaxed);
+                            CALL_PREVIOUS.store(previous, Ordering::Relaxed);
+                            let frame = game.hud_layers(SIZE);
+                            assert_eq!(HEART_TYPE_CALLS.load(Ordering::Relaxed), calls);
+                            let r = game.gui.atlas.gui_draw_rect("hud/food_empty").unwrap();
+                            let base = frame.height as i32 - 39;
+                            let right = frame.width as i32 / 2 + 91 - 9;
+                            for (slot, dy) in jitter.into_iter().enumerate() {
+                                assert!(frame.vertices.iter().any(|v| v.uv == [r.u0, r.v0]
+                                    && v.pos
+                                        == [(right - slot as i32 * 8) as f32, (base + dy) as f32]));
+                            }
+                        }
+                    },
+                );
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_item_model_hook_does_not_disable_the_health_renderer() {
+    use mod_api::{Identifier, ItemModelUpdateEvent, ItemStack};
+    struct DrawItem;
+    #[mod_api::__subscriptions]
+    impl Hooks for DrawItem {
+        fn health_hud(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut HealthHudEvent<'_>,
+        ) -> Option<HealthHudReplacement> {
+            Some(HealthHudReplacement::new(|host, _, canvas| {
+                let key = host
+                    .item_key(&Identifier::parse("minecraft:stick").unwrap())
+                    .unwrap();
+                canvas.fill([8.0, 8.0, 4.0, 4.0], 0xFF44_8800)?;
+                canvas.item(&ItemStack::of(key), [20.0, 8.0], 0)?;
+                canvas.fill([32.0, 8.0, 4.0, 4.0], 0xFF88_0044)
+            }))
+        }
+    }
+    struct BadModel(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for BadModel {
+        fn item_model_update(&self, _: &dyn ClientHost, event: &mut ItemModelUpdateEvent<'_>) {
+            assert_eq!(event.kind, "bad_model:stick");
+            self.0.fetch_add(1, Ordering::Relaxed);
+            panic!("item model failed");
+        }
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    with_mods(
+        vec![
+            ModEntry::new("hud", Box::new(DrawItem)),
+            ModEntry::new("bad_model", Box::new(BadModel(Arc::clone(&calls)))),
+        ]
+        .into(),
+        || {
+            with_client_game(|game| {
+                prepare_survival_hud(game);
+                use sunrise_assets::{item_model::ItemModelNode, resource_source::ResourceRoot};
+                let root = ResourceRoot::directory(game.options.resources.clone());
+                let mut renderer =
+                    sunrise_client::item_render::ItemRenderer::load(&root, &game.res.item_data)
+                        .unwrap();
+                renderer
+                    .models
+                    .definitions
+                    .get_mut("minecraft:stick")
+                    .unwrap()
+                    .model = ItemModelNode::Registered {
+                    kind: "bad_model:stick".into(),
+                    transformation: None,
+                    config: Arc::new(sunrise_core::nbt::Tag::Compound(Default::default())),
+                    models: Vec::new(),
+                };
+                game.pack.item_renderer = Arc::new(renderer);
+                for _ in 0..2 {
+                    let frame = game.hud_layers(SIZE);
+                    for color in [0xFF44_8800, 0xFF88_0044] {
+                        assert!(frame.vertices.iter().any(|v| v.color == abgr(color)));
+                    }
+                    assert_eq!(calls.load(Ordering::Relaxed), 1);
+                    assert_eq!(game.mod_error_toasts.len(), 1);
+                    let toast = &game.mod_error_toasts[0];
+                    assert!(toast.title.plain().contains("bad_model"));
+                    assert!(
+                        toast
+                            .message
+                            .as_ref()
+                            .unwrap()
+                            .plain()
+                            .contains("item_model_update")
+                    );
+                }
+            });
+        },
+    );
 }

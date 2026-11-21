@@ -30,6 +30,7 @@ draw.draw_gui(&mut |canvas| {
 `GuiCanvas::scope(ops, scissor, draw)` copies the current pose, applies `ops` (`PoseOp::Translate`,
 `PoseOp::Scale`, `PoseOp::Rotate`) in order, transforms `scissor` (`Some([x, y, w, h])`) into
 screen space, and intersects it with any enclosing scissor (`None` inherits the enclosing scissor).
+Only the transformed, ordered corners determine emptiness; a reflected negative extent can be visible.
 Non-finite pose or scissor geometry refuses the scope with `GuiDrawError::NotFinite` before calling
 `draw`.
 
@@ -46,7 +47,7 @@ Non-finite pose or scissor geometry refuses the scope with `GuiDrawError::NotFin
 ## Sprites and blits
 
 - `canvas.blit_sprite(name, dst, region, argb, blend)` draws a present GUI sprite by ID, honouring
-  its metadata scaling (stretch or nine-slice) and an optional `GuiSpriteRegion { size, offset }`
+  its metadata scaling (stretch, tile or nine-slice) and an optional `GuiSpriteRegion { size, offset }`
   for partial blits. Accepts `Blend::Textured` and `Blend::Crosshair`.
 - `canvas.atlas_sprite(name, dst, argb)` draws a sprite by its exact packed atlas name.
 - `canvas.blit(texture, dst, GuiBlitRegion { uv, src, tex }, argb, blend)` draws part of a raw

@@ -50,6 +50,9 @@ pub fn record_callback_panic(hook: crate::HookId, id: &'static str, hook_name: &
     crate::runtime::record_callback_panic(hook, id, hook_name);
 }
 
+// Lexical host-only scope; the generated dispatcher owns attribution and suppression.
+pub use crate::runtime::{GuiCallbackScope, contain_gui_callbacks};
+
 /// Drain `(mod_id, hook_name)` pairs queued by [`record_callback_panic`].
 pub fn take_callback_panics() -> Vec<(&'static str, &'static str)> {
     crate::runtime::take_callback_panics()

@@ -18,7 +18,7 @@ pub(crate) fn intersect_scissor(
 ///
 /// Matches vanilla's `ScreenRectangle.transformAxisAligned` and `GuiGraphicsExtractor.ScissorStack`:
 /// the two ordered corners are transformed, origin and extents are floored separately, and an
-/// empty, inverted, reflected, or disjoint result collapses to `[0.0; 4]`.
+/// empty, inverted, or disjoint transformed result collapses to `[0.0; 4]`.
 pub(crate) fn intersect_posed_scissor(
     batch: &HudBatch,
     pose: Pose,
@@ -44,7 +44,7 @@ pub(crate) fn intersect_posed_scissor(
         clip[2].min(vx1),
         clip[3].min(vy1),
     ];
-    if w <= 0.0 || h <= 0.0 || clip[2] <= clip[0] || clip[3] <= clip[1] {
+    if clip[2] <= clip[0] || clip[3] <= clip[1] {
         clip = [0.0; 4];
     }
     Ok(clip)
@@ -79,6 +79,20 @@ mod tests {
                 ]
             },
         )
+    }
+
+    #[test]
+    fn reflected_negative_extent_is_positive_after_transforming_ordered_corners() {
+        let batch = HudBatch::scratch([640, 480]);
+        assert_eq!(
+            intersect_posed_scissor(
+                &batch,
+                [-1.0, 0.0, 0.0, 1.0, 30.0, 0.0],
+                [20.0, 5.0, -10.0, 10.0],
+                None,
+            ),
+            Ok([10.0, 5.0, 20.0, 15.0])
+        );
     }
 
     #[test]

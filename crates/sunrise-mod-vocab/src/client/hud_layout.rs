@@ -55,7 +55,7 @@ pub enum HeartKind {
     Frozen,
 }
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, sunrise_mod_api_macros::Wire)]
 pub struct HealthInputs {
     /// `Hud.tickCount`.
     pub tick: i32,
@@ -67,6 +67,7 @@ pub struct HealthInputs {
     pub armor: i32,
     pub food: i32,
     pub saturation: f32,
+    /// Vanilla heart kind, before `player_heart_type` (only the original hearts body fires it).
     pub kind: HeartKind,
     pub regeneration: bool,
     pub hunger: bool,
@@ -99,7 +100,8 @@ impl HealthHudReplacement {
     /// The selected renderer runs directly on the `minecraft:player_health` layer in the
     /// answering mod's scope while armour, food, vehicle health and air remain on their own
     /// layers. Returning an error reports the failure without rolling back prior draws or falling
-    /// back to vanilla hearts; `Ok(())` replaces vanilla even if nothing was drawn.
+    /// back to vanilla hearts; `Ok(())` replaces vanilla even if nothing was drawn. Neither
+    /// case reserves height for the vanilla hearts that did not run.
     pub fn new(
         draw: impl Fn(&dyn ClientHost, &HealthInputs, &mut dyn GuiCanvas) -> Result<(), GuiDrawError>
         + Send

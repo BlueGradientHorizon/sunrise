@@ -181,9 +181,9 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
         game.hud_layer_next = Some(0);
         for (layer, paint) in [
             (VanillaGuiLayer::Hotbar, "hotbar paint"),
-            (VanillaGuiLayer::Effects, "effects paint"),
             (VanillaGuiLayer::PlayerHealth, "health paint"),
             (VanillaGuiLayer::ContextualInfoBar, "contextual paint"),
+            (VanillaGuiLayer::Effects, "effects paint"),
             (VanillaGuiLayer::Chat, "chat paint"),
         ] {
             game.gui_layer(layer, &mut batch, &mut |_, _| log(paint));
@@ -210,7 +210,6 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
                 "hotbar wrapper after",
                 "post minecraft:hotbar",
                 "pre hud_test:bar",
-                "pre minecraft:effects",
                 "pre minecraft:player_health",
                 "health paint",
                 "post minecraft:player_health",
@@ -223,6 +222,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
                 "pre minecraft:contextual_info_bar",
                 "contextual replacement",
                 "post minecraft:contextual_info_bar",
+                "pre minecraft:effects",
                 "pre minecraft:chat",
                 "chat paint",
                 "post minecraft:chat",

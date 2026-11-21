@@ -12,7 +12,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "RenderGuiLayerEvent.Post",
         cancellable = false

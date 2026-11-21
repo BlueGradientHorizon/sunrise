@@ -246,13 +246,15 @@ fn canvas_item_decorations_isolated() {
             DECORATOR_COORDS.lock().unwrap().clear();
             game.component_hover_effect(&mut combined, &style, (40.0, 30.0));
 
-            game.draw_vanilla_item_decorations(
+            crate::game::host::draw::GameGuiCanvas::new(
                 &mut vanilla_expected,
-                &engine_sword,
-                100.0,
-                50.0,
+                &game.gui.atlas,
+                Some(game),
+                crate::hud_layout::IDENTITY,
                 None,
-            );
+            )
+            .vanilla_decorations(game, &engine_sword, [100.0, 50.0], None)
+            .unwrap();
             vanilla_expected.clip_since(0, 100.0, 50.0, 114.0, 66.0);
 
             with_mods(model_only_mods, || {
@@ -511,5 +513,99 @@ fn canvas_sprites_and_blits_draw_with_blends_and_refusals_keep_prior_draws() {
             (18..24, HudBlend::Vignette),
             (24..30, HudBlend::Additive),
         ]
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn overflowing_default_count_refuses_the_glyphs_without_removing_earlier_draws() {
+    use mod_api::DrawContext as _;
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        let host: &dyn ClientHost = game;
+        let stack = ItemStack::new(
+            host.item_key(&Identifier::parse("minecraft:stick").unwrap())
+                .unwrap(),
+            u32::MAX,
+        )
+        .unwrap();
+        let mut batch = HudBatch::scratch([320, 240]);
+        crate::game::host::draw::GameDrawContext::new(game, &mut batch)
+            .draw_gui(&mut |root| {
+                root.fill([1.0, 1.0, 2.0, 2.0], 0xFF44_6622)?;
+                assert_eq!(
+                    root.scope(
+                        &[PoseOp::Scale(f32::MAX / 20.0, 1.0)],
+                        None,
+                        &mut |canvas| canvas.item_decorations(&stack, [0.0, 0.0], None)
+                    ),
+                    Err(GuiDrawError::NotFinite)
+                );
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(batch.vertices.len(), 6);
+        assert!(batch.vertices.iter().all(|v| v.color == abgr(0xFF44_6622)));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn item_stack_clips_the_sized_decorator_gradient_against_the_intersection_once() {
+    crate::game::in_own_process(
+        "game::gui_canvas_items_tests::item_stack_clips_the_sized_decorator_gradient_against_the_intersection_once",
+        || {
+            use mod_api::DrawContext as _;
+            #[derive(Clone)]
+            struct Gradient;
+            #[mod_api::sunrise_part]
+            impl ItemPart for Gradient {
+                fn item_decorations(
+                    &self,
+                    _: &dyn ClientHost,
+                    event: &mut ItemDecorationsEvent<'_>,
+                ) {
+                    event
+                        .draw
+                        .scope(&[], Some([0.0, 4.0, 10.0, 6.0]), &mut |child| {
+                            child.fill_gradient([0.0, 0.0, 10.0, 10.0], 0xFFFF_0000, 0xFFFF_0300)
+                        })
+                        .unwrap();
+                }
+            }
+            struct Painter;
+            #[mod_api::__subscriptions]
+            impl Hooks for Painter {
+                fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                    let item = r.item_key("minecraft:iron_sword");
+                    r.item_part(item, Gradient);
+                }
+            }
+            let mods: mod_api::Mods = vec![ModEntry::new("gradient", Box::new(Painter))].into();
+            with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let host: &dyn ClientHost = game;
+                    let key = host
+                        .item_key(&Identifier::parse("minecraft:iron_sword").unwrap())
+                        .unwrap();
+                    let stack = ItemStack::of(key);
+                    for scale in [1.0, 2.0] {
+                        let mut batch = HudBatch::scratch([320, 240]);
+                        crate::game::host::draw::GameDrawContext::new(game, &mut batch)
+                            .with_scissor(
+                                [0.0, 5.0 * scale, 10.0 * scale, 10.0 * scale],
+                                &mut |draw| {
+                                    assert!(draw.item_stack(&stack, [0.0, 0.0], 16.0 * scale));
+                                },
+                            )
+                            .unwrap();
+                        let gradient = &batch.vertices[batch.vertices.len() - 6..];
+                        assert_eq!(gradient[0].pos, [0.0, 5.0 * scale]);
+                        assert_eq!(gradient[0].color, abgr(0xFFFF_0200));
+                        assert_eq!(gradient[2].pos, [10.0 * scale, 10.0 * scale]);
+                    }
+                });
+            });
+        },
     );
 }

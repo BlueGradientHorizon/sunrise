@@ -7103,6 +7103,7 @@ impl Game<'_> {
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
+        let _callback_scope = mod_api::__private::contain_gui_callbacks();
         use sunrise_client::gui_layers::VanillaGuiLayer;
 
         self.input_hud_begin();
@@ -7242,6 +7243,7 @@ impl Game<'_> {
         self.hud_layer_next = show_hud.then_some(0);
         self.ui.room = self.hud_room(w, h, show_hud);
         let mut guide_from = 0;
+        let (mut left_height, mut right_height) = (39, 39);
         if show_hud {
             self.draw_spyglass(&mut batch);
             guide_from = batch.vertices.len();
@@ -7301,19 +7303,6 @@ impl Game<'_> {
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });
-            self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
-                // The PvP & HUD effects widget takes the icons' place.
-                if !g.pvp_effects_shown() {
-                    g.draw_effect_icons(batch);
-                }
-            });
-            // Hud: the action bar and titles draw over the hotbar (nextStratum).
-            self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, &mut |g, batch| {
-                g.draw_boss_bars(batch);
-            });
-            self.draw_extras(&mut batch);
-        }
-        if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
             // the locator bar above the hotbar.
             let has_experience = !self.creative && !spectator;
@@ -7332,10 +7321,9 @@ impl Game<'_> {
                 self.vehicle_max_hearts()
             };
             let status_inputs = (!self.creative && !spectator)
-                .then(|| self.player_heart_kind())
-                .flatten()
-                .and_then(|kind| {
-                    let p = self.player.as_ref()?;
+                .then(|| {
+                    let kind = self.player_heart_kind(self.player.as_ref()?);
+                    let p = self.player.as_mut()?;
                     let effects = &self.potions.effects;
                     // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
                     // the surface, not merely in the water block.
@@ -7366,10 +7354,8 @@ impl Game<'_> {
                         },
                         at,
                     ))
-                });
-            let mut left_height = 39;
-            let mut right_height = 39;
-            let mut status_random = hud_layout::HealthHud::status_random(visual_ticks as i32);
+                })
+                .flatten();
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
@@ -7381,14 +7367,11 @@ impl Game<'_> {
                     g.native_health_hud(inputs, wi, hi, &mut chosen);
                     if let Some(chosen) = chosen {
                         g.invoke_health_hud_replacement(batch, inputs, chosen);
-                        left_height += g.health_hud.hearts_height(inputs);
                     } else {
-                        let (draws, height) = g.health_hud.layout_hearts(
-                            inputs,
-                            wi,
-                            hi - left_height,
-                            &mut status_random,
-                        );
+                        let mut inputs = *inputs;
+                        g.native_player_heart_type(&mut inputs.kind);
+                        let (draws, height) =
+                            g.health_hud.layout_hearts(&inputs, wi, hi - left_height);
                         g.keep_status_rows(&draws, wi, hi);
                         hud_layout::paint(batch, &g.gui.atlas, &draws);
                         left_height += height;
@@ -7411,12 +7394,7 @@ impl Game<'_> {
                 let Some((ref inputs, _)) = status_inputs else {
                     return;
                 };
-                let (draws, height) = hud_layout::HealthHud::layout_food(
-                    inputs,
-                    wi,
-                    hi - right_height,
-                    &mut status_random,
-                );
+                let (draws, height) = g.health_hud.layout_food(inputs, wi, hi - right_height);
                 if height > 0 {
                     g.keep_status_rows(&draws, wi, hi);
                     hud_layout::paint(batch, &g.gui.atlas, &draws);
@@ -7436,9 +7414,7 @@ impl Game<'_> {
                 let Some((ref inputs, at)) = status_inputs else {
                     return;
                 };
-                let (draws, height) =
-                    g.health_hud
-                        .layout_air(inputs, wi, hi - right_height, &mut status_random);
+                let (draws, height) = g.health_hud.layout_air(inputs, wi, hi - right_height);
                 if height > 0 {
                     g.keep_status_rows(&draws, wi, hi);
                     hud_layout::paint(batch, &g.gui.atlas, &draws);
@@ -7504,10 +7480,21 @@ impl Game<'_> {
                     VanillaGuiLayer::SelectedItemName,
                     &mut batch,
                     &mut |g, batch| {
-                        g.draw_selected_name(batch, !g.creative);
+                        g.draw_selected_name(batch, !g.creative, left_height.max(right_height));
                     },
                 );
             }
+            self.gui_layer(VanillaGuiLayer::Effects, &mut batch, &mut |g, batch| {
+                // The PvP & HUD effects widget takes the icons' place.
+                if !g.pvp_effects_shown() {
+                    g.draw_effect_icons(batch);
+                }
+            });
+            // Hud: the action bar and titles draw over the hotbar (nextStratum).
+            self.gui_layer(VanillaGuiLayer::BossOverlay, &mut batch, &mut |g, batch| {
+                g.draw_boss_bars(batch);
+            });
+            self.draw_extras(&mut batch);
         }
         // Hud.extractSleepOverlay: over all health/food bars, under titles and chat.
         let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
@@ -7523,7 +7510,7 @@ impl Game<'_> {
                 VanillaGuiLayer::OverlayMessage,
                 &mut batch,
                 &mut |g, batch| {
-                    g.draw_overlay_message(batch);
+                    g.draw_overlay_message(batch, left_height.max(right_height));
                 },
             );
             self.gui_layer(VanillaGuiLayer::Title, &mut batch, &mut |g, batch| {
