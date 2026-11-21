@@ -69,6 +69,35 @@ impl Registry {
         hash
     }
 
+    fn pin_source(&self, id: &str, tag: &str) {
+        self.edit(id, |t| {
+            let repo = format!("https://github.com/author/{id}");
+            let entry: sunrise_mod_package::index::registry::Entry = toml::from_str(&t).unwrap();
+            let bytes =
+                std::fs::read(self.0.path().join("files").join(&entry.versions[0].sha256)).unwrap();
+            let pair = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+            let key = pair.pk.to_base64();
+            let signature = minisign::sign(
+                Some(&pair.pk),
+                &pair.sk,
+                bytes.as_slice(),
+                Some("registry test"),
+                None,
+            )
+            .unwrap()
+            .into_string();
+            format!(
+                "{}sunrise='{tag}'\nsignature='''{signature}'''\n",
+                t.replace(&format!("https://example.test/{id}"), &repo)
+                    .replace("[[versions]]", &format!("key='{key}'\n\n[[versions]]"))
+                    .replace(
+                        &format!("file='{id}-1.0.0.smod'"),
+                        &format!("file='{repo}/releases/download/v1.0.0/{id}-1.0.0.smod'")
+                    )
+            )
+        });
+    }
+
     fn screenshot(&self, id: &str, bytes: &[u8]) {
         let dir = self.0.path().join(format!("head/screenshots/{id}"));
         std::fs::create_dir_all(&dir).unwrap();
@@ -160,7 +189,7 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
             ("src/example.rs", ""),
         ],
     );
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     let path = r.0.path().join("releases.json");
     let flag = ["--releases", path.to_str().unwrap()];
     let write_release = |tag: &str, commit: &str| {
@@ -245,7 +274,7 @@ fn review_without_packages_checks_stable_release_declarations() {
         ])
     };
     assert_eq!(review(), Ok(())); // Legacy row without a release declaration.
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     assert!(review().is_err());
 }
 

@@ -225,6 +225,14 @@ pub enum Side {
 }
 
 impl Asset {
+    /// A runtime host name, also used by the native release archives.
+    pub fn host_name(target: &str, side: Side) -> String {
+        match side {
+            Side::Client => target.to_owned(),
+            Side::Server => format!("{target}-server"),
+        }
+    }
+
     /// The kind, codec, target and side an asset's file name states:
     /// `surface.json`, `build-data.tar.xz`, `api-source.tar.xz`, `tool-<target>.tar.xz` and
     /// `<runtime|api|engine>-<target>[-server].tar.xz`, where a target is made of `a-z`, `0-9`,
@@ -257,12 +265,8 @@ impl Asset {
 
     /// A per-target asset's file name, as [`Asset::parts_of`] reads it; `side` names only a per-side kind's.
     pub fn name(kind: Kind, target: &str, side: Side) -> String {
-        let suffix = if kind.per_side() && side == Side::Server {
-            "-server"
-        } else {
-            ""
-        };
-        format!("{}-{target}{suffix}.tar.xz", kind.name())
+        let host = Self::host_name(target, if kind.per_side() { side } else { Side::Client });
+        format!("{}-{host}.tar.xz", kind.name())
     }
 }
 

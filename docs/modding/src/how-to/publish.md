@@ -4,7 +4,8 @@ Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/su
 resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). The
 [registry submission form](https://playsunrise.net/mods/submit) uploads your package and opens a pull request for a
 person to review. To prepare a mod submission locally, follow the steps below with `cargo sunrise-mod publish`,
-then upload the package and open the pull request yourself.
+then upload the package and open the pull request yourself. Native mods for stable releases use the
+[stable source submission](#publishing-a-stable-source-version) below.
 
 ## 1. Build and write the submission
 
@@ -98,8 +99,8 @@ not written into the entry. The dependencies are read from the package itself, s
 `--registry`, the registry's CI checks both when the pull request opens; it also checks sides and what the dependencies
 themselves require.
 
-Published versions never change and are never removed: a version already in the entry is refused by name, and a file
-that must go is taken down by the registry's maintainers in `revoked.toml`.
+Published source versions never change. A file that must go is taken down by the registry's maintainers in
+`revoked.toml`. The only update `publish` makes to an existing version is an [append of signed native builds](#publishing-native-binaries).
 
 ## Signing
 
@@ -122,6 +123,80 @@ and stages the exact bytes you signed, without rebuilding. If you change the pac
 
 Generate a key pair once with `minisign -G -p my_mod.pub -s my_mod.key`. Keep the secret key (`my_mod.key`) out of
 both your repository and releases; losing it means a new key and a review.
+
+## Publishing a stable source version
+
+You can publish the signed `.smod` without binaries, including for a mod that is not eligible to ship them.
+Set `homepage` in the manifest to your project's GitHub repository. Pin the project to the stable Sunrise
+commit, build and [sign the source package](#signing), and pass a release list (`releases.json`, an array of
+`{ "tag", "commit" }` records). Use `--asset-base` for your GitHub release's download URL without the asset name:
+
+```sh
+cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
+  --sunrise 26.3-0.1.0 --releases releases.json \
+  --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+  --package target/sunrise-mod/my_mod.smod \
+  --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
+```
+
+Upload only the author-release assets listed in `PULL_REQUEST.md`: the exact `.smod` and `.smod.minisig`.
+Submit `mods/<id>.toml` to the registry with `icons/<id>.png` if an icon was staged. The `file` field already
+points to your release asset. Registry CI downloads it from there, verifies it and mirrors it after merge.
+For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
+
+## Publishing native binaries
+
+Builds are optional. They are available only to a standalone API native mod: no game patches, crates.io dependencies
+or declared mod dependencies. Keep the signed `.smod` as the source release even when players can download binaries.
+Set the manifest's `homepage` to your project's GitHub repository. Use the stable release list (`releases.json`,
+an array of `{ "tag", "commit" }` records). To publish binaries, put the verified SDK index (`sdk.json`),
+`surface.json`, and extracted `build-data/` under `sdk-data/<commit>/` for both the original source package's
+pin and the target commit. To describe the archives with `--describe-binaries`, only the target's verified
+`sdk.json` is needed under `sdk-data/`.
+
+1. Pin your checkout to the stable SDK commit. On each SDK host, build the archive with:
+
+   ```sh
+   cargo sunrise-mod build --binaries release-assets --sunrise-release 26.3-0.1.0 --releases releases.json
+   ```
+
+   Run it with `--server` as well for each dedicated-server host the SDK lists. Every run writes a `.smod` and the
+   selected host's `<id>-<version>+<release>-<host>.tar.xz`. Keep one `.smod` to sign as the source for a new version.
+2. Sign every archive with `minisign -S -s my_mod.key -m <archive>`. Gather the archives and their `.minisig` files
+   in `release-assets`, then assemble and sign the descriptor with the same key:
+
+   ```sh
+   cargo sunrise-mod build --describe-binaries release-assets --sunrise-release 26.3-0.1.0 \
+     --releases releases.json --sdk-data sdk-data
+   minisign -S -s my_mod.key -m release-assets/my_mod-0.1.0+26.3-0.1.0.binaries.json
+   ```
+
+   The descriptor embeds the archive signatures; it does not sign the archives for you.
+3. Prepare the submission. For a new listing:
+
+   ```sh
+   minisign -S -s my_mod.key -m target/sunrise-mod/my_mod.smod
+   cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
+     --sunrise 26.3-0.1.0 --releases releases.json --sdk-data sdk-data \
+     --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+     --package target/sunrise-mod/my_mod.smod \
+     --binaries release-assets --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
+   ```
+
+   For an existing listing with a new mod version, replace the page flags with `--registry <checkout>`. For a later
+   Sunrise build of an **already published** mod version, build archives from a temporary checkout of that source
+   repinned to the new commit. Use `--registry <checkout>` and pass the **original published `.smod`** to `--package`,
+   not the temporary build's package. Omit `--sunrise`, `--key`, and `--signature`: `publish` uses the source row's
+   existing stable pin, key and signature and adds one build row without touching them. Keep `--asset-base`
+   on the original author release. `publish` checks the signed assets and the registry's fit verdict before writing output.
+   Use the output only after `publish` succeeds.
+4. Upload and verify only the author-release assets listed in `PULL_REQUEST.md` on the release at `--asset-base`
+   before opening the pull request. These are the archives, the descriptor and its `.binaries.json.minisig`, and,
+   for a new mod version only, the source package and its `.smod.minisig`. The descriptor embeds the archive
+   signatures, so no separate archive signature uploads are needed. If an upload fails partway through, upload
+   the missing files from the same verified output rather than rebuilding or re-signing. The tool does not upload anything.
+   Submit `mods/<id>.toml` with `icons/<id>.png` if an icon was staged; do not commit the release assets. See the
+   [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
 ## A collection
 

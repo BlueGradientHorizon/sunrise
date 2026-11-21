@@ -175,6 +175,71 @@ fn builds_the_sample_index() {
 }
 
 #[test]
+fn stable_source_uses_an_author_url_but_the_index_uses_the_registry_mirror() {
+    let s = Scratch::new("author-source");
+    let releases = parse_releases(
+        r#"[{"tag":"26.3-0.1.0","commit":"0123456789abcdef0123456789abcdef01234567"}]"#,
+    )
+    .unwrap();
+    let inputs = Sources {
+        registry: &s.0.join("repo"),
+        files: &s.0.join("files"),
+        release: super::super::FILE_HOST,
+        site: "https://example.invalid/",
+        generated: String::new(),
+        releases: Some(&releases),
+        nightly: None,
+        binary_checks: None,
+    };
+    let mut entry: Entry = toml::from_str(&hud_entry()).unwrap();
+    entry.source.clear();
+    entry.repo = Some("author/Coords".into());
+    let mut row = entry.versions[0].clone();
+    let legacy = checked_version(&entry, &row, &inputs, &[]).unwrap();
+    assert_eq!(legacy.file.name, "coords_hud-0.1.0.smod");
+    assert!(
+        legacy
+            .file
+            .url
+            .ends_with("/coords_hud-0.1.0/coords_hud-0.1.0.smod")
+    );
+    assert!(legacy.file.url.starts_with(super::super::FILE_HOST));
+
+    row.sunrise = Some(releases[0].tag.clone());
+    assert!(
+        checked_version(&entry, &row, &inputs, &[])
+            .unwrap_err()
+            .contains("GitHub release asset URL")
+    );
+    for url in [
+        "https://github.com/other/coords/releases/download/v0.1.0/coords_hud-0.1.0.smod",
+        "https://github.com/author/coords/releases/download/v0.1.0/other-0.1.0.smod",
+        "https://github.com/author/coords/releases/download/extra/v0.1.0/coords_hud-0.1.0.smod",
+    ] {
+        row.file = url.into();
+        assert!(
+            checked_version(&entry, &row, &inputs, &[]).is_err(),
+            "{url}"
+        );
+    }
+    row.file =
+        "https://github.com/author/coords/releases/download/v0.1.0/coords_hud-0.1.0.smod".into();
+    let stable = checked_version(&entry, &row, &inputs, &[]).unwrap();
+    assert_eq!(stable.file, legacy.file);
+    entry.versions[0] = row;
+    let mut changed = entry.clone();
+    changed.versions[0].file = changed.versions[0].file.replace("/v0.1.0/", "/retagged/");
+    let review = review(&[entry], &[changed], "author");
+    assert!(
+        review
+            .errors
+            .iter()
+            .any(|e| e.contains("coords_hud 0.1.0") && e.contains("published file")),
+        "{review:?}"
+    );
+}
+
+#[test]
 fn an_entry_with_a_short_version_label_takes_the_file_that_says_it_in_full() {
     let s = Scratch::new("short");
     s.write(

@@ -131,9 +131,10 @@ newer build can tell whether the mod still fits ([SDK fit](sdk/04-fit.md)). `car
 when it can read the mod's source against the pinned SDK, and says what stops it when it cannot.
 
 `cargo sunrise-mod check <file>` refuses a native mod file with no list, or with one made for another build than the
-mod pins; `publish` and `registry release` run the same check on the file they are given. `registry check` applies
-it to files whose hash is new in the pull request. `registry build` and installs do not apply it, so files already
-listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
+mod pins. `publish` checks new source submissions; on a build append it verifies the original reviewed source
+and checks fit without requiring a new list for that source. `registry release` checks new files, and `registry check`
+applies the rule to files whose hash is new in the pull request. `registry build` and installs do not apply it,
+so files already listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
 this rule: no list can describe those rows, so its file needs none.
 
 ## Dependency checks
@@ -334,6 +335,14 @@ An entry with neither versions nor a Nightly source publishes nothing and keeps 
 still checked. A project with only a Nightly source may leave out its icon and screenshots; the ones it has are
 kept in the registry like any other project's.
 
+A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
+`https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
+GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
+`<id>-<version>.smod` asset name using the full SemVer from the package. A bare filename is refused
+on a stable row. The URL is immutable after publication, just like the source pin and digest.
+The registry checks the bytes from `--files/<sha256>`; the generated index still points to the package
+on the registry's `<id>-<version>` mirror. Rows without `sunrise` still use a bare filename.
+
 ### Stable native builds
 
 A reviewed standalone native mod can add an author-signed binary build to its `[[versions]]` row:
@@ -347,8 +356,8 @@ signature = """<descriptor .minisig text>"""
 ```
 
 The source version must be signed and pin a stable release of the same line. Its registry version label
-must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). An already published shorthand label
-stays source-only: publish a new mod version to add builds rather than renaming the old row. The package
+must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). Older rows without `sunrise` keep their
+existing filenames and labels; publish a new stable mod version to add builds rather than renaming the old row. The package
 must contain `Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
 dependencies do not produce an independent release library. Builds are optional. Each stable release
 gets at most one row, and published rows are append-only. `registry review` reports an owner's append as
@@ -369,7 +378,7 @@ bytes to the declared project, mod version and SDK host. Validation checks every
 without running or rebuilding any library. A binary for a package with a known `breaks` verdict is
 refused; a verified exact binary can supply a build whose fit verdict is `exact`.
 
-`registry list <checkout>` retains the source package staging list. For build assets, use
+`registry list <checkout>` prints `sha256 id version file`, with `file` as written in the row. For build assets, use
 `registry list <checkout> --build-assets` to list descriptors, then repeat with `--files <dir>` to list
 archives from verified descriptors. Both print JSON rows with `id`, `version`, `sunrise`, `url`, `name`,
 `sha256`, and `size` (null for a descriptor). The workflow supplies the listed files under their digests,
@@ -406,11 +415,12 @@ or execute the repository. `repo` and `path` always come from the entry.
 ### The files folder
 
 The registry's CI keeps every listed file in a folder named by hash, `files/<sha256>` (no extension), which
-`registry check` and `registry build` read with `--files`. A maintainer stages a submitted file as the asset
-`<sha256>.<extension>` of the registry's `staging` release, and the workflow fetches it from there; once merged it is
-published as the release `<id>-<version>`, asset `<file>`. `cargo sunrise-mod publish` uses the same layout for the
-new file, but its output is not a complete checkout. `registry check` needs the full checkout and all listed files
-to plan installations.
+`registry check` and `registry build` read with `--files`. For a stable source row, the workflow fetches
+from the URL in `file`. For a row with only a filename, a maintainer puts `<sha256>.<extension>` in the
+registry's `staging` release for the workflow to fetch. Either way, the merged package is published under
+`<id>-<version>` with its asset name. `cargo sunrise-mod publish` uses the same hash-named layout locally
+for the new file, but its output is not a complete checkout. `registry check` needs the full checkout and
+all listed files to plan installations.
 
 Check a package on its own with:
 

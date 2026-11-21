@@ -6,4 +6,6 @@
 
 `wrong-architecture/` signs the same source and a client archive with a real i386 shared library (`cc -m32`), while the filename and stamp still claim x86-64. Its server archive reuses the healthy archive from this directory, signed with the test's separate key. The same key signs `short-label.binaries.json`, whose archive names are canonical but whose descriptor version is abbreviated.
 
+`author-publish/` signs a source with a valid uses list for the new-source lint, plus the original archives and a descriptor, with another disposable key.
+
 These packages and tar.xz archives were assembled independently of `cargo sunrise-mod`. The `.minisig` files and embedded archive signatures were made with disposable fixture keys; only the project public key is retained.

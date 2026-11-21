@@ -9,8 +9,10 @@ use object::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, io::Read, path::Path};
 
-const MAX_DESCRIPTOR: u64 = 256 << 10;
-const MAX_SIGNATURE: usize = 16 << 10;
+/// Maximum bytes for a binary release descriptor.
+pub const MAX_DESCRIPTOR: u64 = 256 << 10;
+/// Maximum bytes for a detached minisign signature.
+pub const MAX_SIGNATURE: usize = 16 << 10;
 const MAX_IDENTITY: u64 = 16 << 10;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,15 +249,20 @@ pub fn assets<'a>(
 }
 
 pub fn sdk_index(data: &Path, commit: &str) -> Result<sdk::Index, String> {
-    let bytes = read_regular(data, &Path::new(commit).join(sdk::INDEX), MAX_DESCRIPTOR)
-        .map_err(|e| format!("{commit}/{}: {e}", sdk::INDEX))?;
+    let bytes =
+        read_regular(data, &Path::new(commit).join(sdk::INDEX), MAX_DESCRIPTOR).map_err(|e| {
+            format!(
+                "{commit}/{}: {e}; supply the build's SDK under --sdk-data <dir>/{commit}",
+                sdk::INDEX
+            )
+        })?;
     sdk::Index::read_for_fit(&bytes, commit).map_err(|e| e.to_string())
 }
 
 /// Use each runtime's SDK host name, including the dedicated server suffix where present.
 pub fn hosts(sdk: &sdk::Index) -> Result<BTreeSet<String>, String> {
     let mut hosts = BTreeSet::new();
-    for (name, asset) in &sdk.assets {
+    for asset in sdk.assets.values() {
         if asset.kind == sdk::Kind::Runtime {
             let (target, side) = asset
                 .target
@@ -264,11 +271,7 @@ pub fn hosts(sdk: &sdk::Index) -> Result<BTreeSet<String>, String> {
                 .expect("validated SDK runtime");
             sdk.route_assets("api", target, side)
                 .map_err(|e| e.to_string())?;
-            let host = name
-                .strip_prefix("runtime-")
-                .and_then(|n| n.strip_suffix(".tar.xz"))
-                .expect("validated SDK asset name");
-            hosts.insert(host.to_owned());
+            hosts.insert(sdk::Asset::host_name(target, side));
         }
     }
     if hosts.is_empty() {
@@ -338,9 +341,11 @@ pub(super) fn verify(
                 "must cover every SDK host: missing {missing:?}, unexpected {extra:?}"
             )));
         }
-        let identity = format!(
-            "{} {} {} {} unwind",
-            descriptor.build, descriptor.id, canonical, descriptor.rust
+        let identity = library_identity(
+            &descriptor.build,
+            &descriptor.id,
+            &canonical,
+            &descriptor.rust,
         );
         for archive in descriptor.archives {
             if revoked.iter().any(|r| r.covers(&entry.id, &archive.sha256)) {
@@ -381,7 +386,12 @@ fn check_archive(
         return Err("archive size or SHA-256 does not match the descriptor".into());
     }
     crate::index::verify_signature_bytes(key, &archive.signature, &bytes)?;
-    inspect_archive(bytes, &archive.target, identity)
+    verify_archive_identity(bytes, &archive.target, identity)
+}
+
+/// The five-field identity the builder stamps on the library and the registry checks.
+pub fn library_identity(build: &str, id: &str, version: &str, rust: &str) -> String {
+    format!("{build} {id} {version} {rust} unwind")
 }
 
 /// The library suffix the SDK host can load, including hosts with a `-server` suffix.
@@ -455,7 +465,9 @@ fn check_library(bytes: &[u8], host: &str, extension: &str) -> Result<(), String
     Ok(())
 }
 
-fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), String> {
+/// Check an archive's structure, encoded library and stamp without loading it. This does not
+/// authenticate the bytes; an archive submitted to the registry must also pass signature checks.
+pub fn verify_archive_identity(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), String> {
     let extension = library_extension(target)?;
     // Two files only; raw iteration does not allocate PAX/GNU extension entries. Bound both the
     // decoder dictionary and total output, including tar headers, zero padding and the trailer.
@@ -542,7 +554,8 @@ mod tests {
         let bytes = include_bytes!(
             "../../../tests/index/stable-native/release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz"
         );
-        let error = inspect_archive(bytes.to_vec(), "aarch64-unknown-linux-gnu", "").unwrap_err();
+        let error =
+            verify_archive_identity(bytes.to_vec(), "aarch64-unknown-linux-gnu", "").unwrap_err();
         assert!(
             error.contains("Aarch64") && error.contains("X86_64"),
             "{error}"
@@ -558,7 +571,7 @@ mod tests {
             ("x86_64-pc-windows-gnu", "dll"),
             ("aarch64-apple-darwin", "dylib"),
         ] {
-            let error = inspect_archive(bytes.to_vec(), host, "").unwrap_err();
+            let error = verify_archive_identity(bytes.to_vec(), host, "").unwrap_err();
             assert!(
                 error.contains(&format!("SDK host {host} requires a .{extension} library")),
                 "{error}"

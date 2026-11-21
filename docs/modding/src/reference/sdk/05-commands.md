@@ -8,6 +8,8 @@ folder.
 |---|---|
 | `new <path> --template native [--sunrise <build>]` | Makes a code mod pinned to the current Nightly's build, or the one named, and fetches its SDK. Without `--template` it makes a content mod, which has no SDK. |
 | `build` | Fetches the pinned SDK when needed, then packs the `.smod` with its [`uses.json`](04-fit.md#usesjson). For a native mod it then compiles the crate against the build's prebuilt game, as [`native-build`](08-native-build.md) does, with no launcher: see [`build` for a native mod](#build-for-a-native-mod). |
+| `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
+| `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
 | `run [--resources <folder>] [--jars <dir>] [-- <game args>]` | For a native mod, builds, stages the game with the mod in `target/sunrise-mod/run/` and starts it. |
 | `check [--uses]` | The package rules, and every render pipeline shader (`assets/*/shaders/pipeline/**/*.wgsl`) composed and validated by the game's own code, failing with `<file>: <reason>` for each refusal ([render pipelines](../../how-to/client/render-pipelines.md)); then, for a code mod, fetches the pinned SDK when needed and runs `cargo check` for this computer, then what the mod uses of its pinned build: `Greeter uses 14 items of the API (6 hooks, 5 methods, 3 types). Made for nightly-2026-11-13 (afe471c).` `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. |
 | `hooks <text> [--all]` | Searches the pinned build's hooks offline, by id, doc and their NeoForge, Fabric and Paper names; every word must match. `--all` searches every record. Matches in the id come first, then in a counterpart, then in the doc. |
@@ -27,6 +29,11 @@ A mod with crates.io dependencies and no `Cargo.lock` gets one; `build --update-
 a content mod. The compile
 is [`native-build`'s](08-native-build.md), in process, with registry crates approved (the mod's own `Cargo.toml`),
 for the `client` side. It prints `Built <library>` and the build log's path, and exits non-zero with the error on failure.
+
+In `--binaries` mode, `build` uses the same compiler but fetches only the verified `runtime` and `api` slices
+for the selected host. It refuses mod dependencies and routes other than the standalone API route. It creates a
+`Cargo.lock` if absent, or resolves it again only with `--update-lock`, then includes it in the `.smod`. See
+[Publishing native binaries](../../how-to/publish.md#publishing-native-binaries) for signing and combining the outputs.
 
 `run` additionally needs `--resources <folder>`, prepared resources made from your own Minecraft (`sunrise-prepare
 --prepare --output <folder>`). It copies the built game program, its libraries, the `native-mods.json` record naming

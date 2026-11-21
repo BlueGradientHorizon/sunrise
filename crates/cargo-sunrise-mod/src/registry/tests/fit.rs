@@ -147,7 +147,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
             (USES_FILE, &uses),
         ],
     );
-    r.edit("patched", |t| format!("{t}sunrise='{made_for}'\n"));
+    r.pin_source("patched", made_for);
     r.add("legacy", "1.0.0", "26.3", "");
     r.add_package(
         "unlisted",
@@ -162,7 +162,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
             ("src/lib.rs", ""),
         ],
     );
-    r.edit("unlisted", |t| format!("{t}sunrise='{made_for}'\n"));
+    r.pin_source("unlisted", made_for);
     let deferred = UsesTable {
         schema: 2,
         made_for: RELEASE_PIN.into(),
@@ -191,19 +191,17 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
             (USES_FILE, &deferred),
         ],
     );
-    r.edit("deferred", |t| format!("{t}sunrise='{made_for}'\n"));
+    r.pin_source("deferred", made_for);
 
     let placeholder = r.add("glow", "1.0.0", "26.3", "");
     let shader = include_bytes!("../../../../sunrise-mod-package/tests/index/glow-1.0.0.sshader");
     let hash = sha256(shader);
     fs::write(root.join("files").join(&hash), shader).unwrap();
     r.edit("glow", |t| {
-        let t = t
-            .replace("kind='mod'", "kind='shader'")
+        t.replace("kind='mod'", "kind='shader'")
             .replace("glow-1.0.0.smod", "glow-1.0.0.sshader")
             .replace("categories=['utility']", "categories=['bloom']")
-            .replace(&placeholder, &hash);
-        format!("{t}sunrise='{made_for}'\n")
+            .replace(&placeholder, &hash)
     });
 
     let index = r
@@ -291,7 +289,7 @@ fn versions_without_sunrise_do_not_need_sdk_data() {
 fn a_build_with_another_compiled_package_format_still_gets_verdicts() {
     let r = Registry::new();
     r.add("coords", "1.0.0", "26.3", "");
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     let root = r.0.path();
     let releases = root.join("releases.json");
     fs::write(
@@ -335,7 +333,7 @@ fn an_unsupported_nightly_schema_leaves_stable_verdicts_and_lists_nightly_as_unj
         let r = Registry::new();
         let root = r.0.path();
         r.add("coords", "1.0.0", "26.3", "");
-        r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+        r.pin_source("coords", RELEASE_TAG);
         let releases = root.join("releases.json");
         fs::write(
             &releases,
@@ -409,7 +407,7 @@ fn an_unsupported_nightly_schema_leaves_stable_verdicts_and_lists_nightly_as_unj
 fn missing_or_inconsistent_sdk_files_still_fail_by_build_name() {
     let r = Registry::new();
     r.add("coords", "1.0.0", "26.3", "");
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     let releases = r.0.path().join("releases.json");
     fs::write(
         &releases,

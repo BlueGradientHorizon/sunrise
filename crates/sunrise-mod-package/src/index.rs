@@ -1016,8 +1016,8 @@ fn hex64(h: &str) -> Result<(), String> {
 }
 
 /// One plain file name: no folder, no hidden file, nothing a file system
-/// reads as something else.
-fn plain_name(name: &str) -> bool {
+/// reads as something else, at most 128 ASCII bytes.
+pub fn plain_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 128
         && !name.starts_with('.')
