@@ -217,6 +217,7 @@ impl Endpoint {
                 let writer = writer.lock().unwrap();
                 writer
                     .as_ref()
+                    .filter(|writer| writer.accepts_packets())
                     .ok_or(PayloadSendError::Disconnected)?
                     .framing()
             }

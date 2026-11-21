@@ -3,3 +3,4 @@ sunrise-client game::remote::tests::play_bundle_tests::a_bundled_transfer_starts
 sunrise-client game::remote::tests::play_bundle_tests::a_parked_main_payload_does_not_retire_the_bundle_listener lib daily resources
 sunrise-client game::remote::tests::play_bundle_tests::a_second_admitted_standalone_transfer_keeps_the_first_opening lib daily resources
 sunrise-client game::remote::tests::play_bundle_tests::standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof lib daily resources
+sunrise-client game::remote::tests::play_bundle_tests::a_post_disconnect_droppable_reply_cannot_join_the_writer_drain lib daily resources

@@ -345,12 +345,25 @@ impl QueuedWriter {
     /// writes, but let the writer send replies that came before the close.
     pub(crate) fn close_after_pending(&self) {
         let mut sender = self.sender.lock().unwrap();
+        if self.seal_droppable()
+            && let Some(sender) = sender.as_ref()
+            && let Ok(marker) = sender.reserve_terminal(0)
+        {
+            // Unpublished reliable reservations can fill the channel without
+            // leaving any queued job to wake the writer and poll this lane.
+            let _ = marker.publish(WriteJob::Droppable);
+        }
         self.terminal.store(true, Ordering::Release);
         sender.take();
     }
 
+    fn seal_droppable(&self) -> bool {
+        self.droppable.get().is_some_and(|queue| queue.seal())
+    }
+
     pub(crate) fn disconnect(&self, body: Vec<u8>) {
         let mut sender = self.sender.lock().unwrap();
+        self.seal_droppable();
         self.terminal.store(true, Ordering::Release);
         let Some(queue) = sender.take() else {
             return;
