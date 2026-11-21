@@ -1405,26 +1405,28 @@ impl ParticleEngine {
                 }
                 behaviour
             });
-            let sprites: Vec<u32> = json["textures"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|t| t.as_str())
-                        .map(|t| {
-                            // A texture is `<ns>:<path>` (bare means
-                            // `minecraft:`), and the atlas names a sprite
-                            // `<ns>:particle/<path>` — `minecraft`'s own
-                            // without its namespace.
-                            let name = match t.split_once(':') {
-                                Some(("minecraft", path)) => format!("particle/{path}"),
-                                Some((ns, path)) => format!("{ns}:particle/{path}"),
-                                None => format!("particle/{t}"),
-                            };
-                            self.intern(&name)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let Some(textures) = json["textures"].as_array() else {
+                continue;
+            };
+            let sprites: Vec<u32> = if textures.is_empty() {
+                // `ParticleResources.reload`: a present empty list binds the atlas's missing sprite.
+                vec![self.intern(crate::hud::MISSING_SPRITE)]
+            } else {
+                textures
+                    .iter()
+                    .filter_map(|t| t.as_str())
+                    .map(|t| {
+                        // A texture is `<ns>:<path>` (bare means `minecraft:`), with vanilla's
+                        // namespace omitted in the atlas.
+                        let name = match t.split_once(':') {
+                            Some(("minecraft", path)) => format!("particle/{path}"),
+                            Some((ns, path)) => format!("{ns}:particle/{path}"),
+                            None => format!("particle/{t}"),
+                        };
+                        self.intern(&name)
+                    })
+                    .collect()
+            };
             if !sprites.is_empty() {
                 self.mod_sets.insert(
                     key,
@@ -1589,6 +1591,7 @@ impl ParticleEngine {
     }
 
     /// Submit a particle from a client level; typed providers can read that level at creation.
+    /// False means a retained factory failed; normal rejection does not end the packet's loop.
     pub fn add_with_world(
         &mut self,
         world: Option<&World>,
@@ -1597,21 +1600,54 @@ impl ParticleEngine {
         v: [f64; 3],
         override_limiter: bool,
         always_show: bool,
+    ) -> bool {
+        let type_override = options
+            .typed_particle
+            .as_ref()
+            .map_or_else(|| options.ty.override_limiter(), |(_, flag)| *flag);
+        self.do_add_particle(
+            world,
+            options,
+            p,
+            v,
+            override_limiter || type_override,
+            always_show,
+        )
+    }
+
+    /// `ClientLevel.addAlwaysVisibleParticle` without an override argument:
+    /// use always-show thinning but do not consult the type's limiter flag.
+    pub fn add_always_visible_with_world(
+        &mut self,
+        world: &World,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
     ) {
+        self.do_add_particle(Some(world), options, p, v, false, true);
+    }
+
+    fn do_add_particle(
+        &mut self,
+        world: Option<&World>,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+        override_limiter: bool,
+        always_show: bool,
+    ) -> bool {
         let c = self.camera;
         let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
         if let Some(requested) = &mut self.requested {
             requested.push((options.clone(), p, v));
             REQUESTED.set(REQUESTED.get() + 1);
-            return;
+            return true;
         }
         let minimal = self.calculate_particle_level(always_show) == 2;
-        let type_override = options
-            .typed_particle
-            .as_ref()
-            .map_or_else(|| options.ty.override_limiter(), |(_, flag)| *flag);
-        if override_limiter || type_override || (d2 <= 1024.0 && !minimal) {
-            self.create_with_world(world, options, p, v);
+        if override_limiter || (d2 <= 1024.0 && !minimal) {
+            self.create_with_world(world, options, p, v)
+        } else {
+            true
         }
     }
     /// `NoxiousGasCloudParticle.spawnNoxiousGasParticle`: the gas, as an

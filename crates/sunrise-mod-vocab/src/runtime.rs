@@ -302,6 +302,10 @@ pub fn subscribed_by(index: usize, hook: Option<generated::HookId>) -> bool {
     })
 }
 
+pub(crate) fn mod_index(id: &str) -> Option<usize> {
+    installed()?.mod_id_owners.get(id).copied()
+}
+
 pub(crate) fn mod_index_on(index: usize) -> bool {
     installed().is_none_or(|installed| {
         installed

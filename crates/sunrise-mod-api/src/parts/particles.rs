@@ -47,7 +47,14 @@ impl ParticlesRegistrar for PartRegistrar {
             let key = mod_vocab::__private::parts_installation::particle_key(slot);
             match self.parts.particle_types.entry(key) {
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert((override_limiter, codec));
+                    entry.insert((
+                        override_limiter,
+                        mod_vocab::__private::own_particle_codec(
+                            self.mod_id,
+                            self.mod_index,
+                            codec,
+                        ),
+                    ));
                     Ok(key)
                 }
                 std::collections::hash_map::Entry::Occupied(_) => Err(format!(
@@ -199,12 +206,11 @@ mod tests {
     #[test]
     fn duplicate_particle_type_refuses_atomic_installation() {
         let entries = [ModEntry::new("test", Box::new(Codecs { duplicate: true }))];
-        assert_eq!(
-            crate::parts::tests::install_parts_fixture(&entries),
-            Err(vec![
-                "mod test registered particle type test:left twice".into()
-            ])
-        );
+        let errors = crate::parts::tests::install_parts_fixture(&entries).unwrap_err();
+        let [error] = errors.as_slice() else {
+            panic!("expected one refusal: {errors:?}")
+        };
+        assert!(error.contains("mod test") && error.contains("test:left"));
         assert!(!mod_vocab::__private::parts_installation::parts_installed());
         assert!(mod_vocab::__private::particle_named_key("test:left").is_none());
     }

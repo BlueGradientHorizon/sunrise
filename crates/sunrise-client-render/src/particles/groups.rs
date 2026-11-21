@@ -182,7 +182,9 @@ mod tests {
     fn spawn(e: &mut ParticleEngine, world: &World, options: &ParticleOptions, x: f64) {
         let at = [x, 0.0, 0.0];
         let mut p = match &options.typed_particle {
-            Some((value, _)) => e.make_typed_particle(world, value, at, [0.0; 3], 1),
+            Some((value, _)) => e
+                .make_typed_particle(world, value, at, [0.0; 3], 1)
+                .unwrap(),
             None => e.make(options, at, [0.0; 3], 1),
         }
         .unwrap();

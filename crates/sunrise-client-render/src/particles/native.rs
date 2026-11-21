@@ -70,29 +70,44 @@ impl super::ParticleEngine {
         position: [f64; 3],
         aux: [f64; 3],
         seed: i64,
-    ) -> Option<Particle> {
-        let set = self.typed_sets.get(&value.key())?;
-        let (_, provider) = set.provider.as_ref()?;
-        let states = (self.block_state_source)()?;
+    ) -> Result<Option<Particle>, String> {
+        let Some((set, (_, provider))) = self
+            .typed_sets
+            .get(&value.key())
+            .and_then(|set| Some((set, set.provider.as_ref()?)))
+        else {
+            return Ok(None);
+        };
+        let Some(states) = (self.block_state_source)() else {
+            return Ok(None);
+        };
         let level = ProviderLevel {
             world,
             block: |x, y, z| world.block(x, y, z),
             states: (*states).as_ref(),
         };
         let mut particle = self.make_sprite_particle(set, position, aux, seed);
-        let mut view = particle.provider_view(particle.provided.as_ref()?);
-        provider.create_particle(
-            value,
-            &level,
-            position,
-            aux,
-            &mut mod_api::__private::BorrowedRandom(&mut self.random),
-            &mut view,
-        )?;
-        if let Some(frame) = particle.take(&view) {
+        let Some(provided) = &particle.provided else {
+            return Ok(None);
+        };
+        let mut view = particle.provider_view(provided);
+        if provider
+            .create_particle(
+                value,
+                &level,
+                position,
+                aux,
+                &mut mod_api::__private::BorrowedRandom(&mut self.random),
+                &mut view,
+            )?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        if let Some(frame) = particle.take(&view, false) {
             self.set_sprite_frame(&mut particle, frame);
         }
-        (!particle.removed).then_some(particle)
+        Ok((!particle.removed).then_some(particle))
     }
 }
 
@@ -292,7 +307,7 @@ impl Batch {
                 continue;
             }
             for (view, &i) in self.views.iter().zip(bucket) {
-                if let Some(frame) = particles[i].take(view) {
+                if let Some(frame) = particles[i].take(view, true) {
                     set_frame(&mut particles[i], frame);
                 }
             }
@@ -324,8 +339,8 @@ impl Particle {
             _ => ParticleFacing::Camera,
         }
     }
-    /// What a provider's tick left of the particle, validated as the renderer needs it.
-    fn take(&mut self, view: &ModParticle) -> Option<usize> {
+    /// Apply native output after validating that the renderer can use its numbers.
+    fn take(&mut self, view: &ModParticle, clamp_tick_values: bool) -> Option<usize> {
         let finite = |v: &[f64; 3]| v.iter().all(|c| c.abs() <= LIMIT);
         let facing = match view.facing {
             ParticleFacing::Fixed(q) => {
@@ -359,9 +374,15 @@ impl Particle {
         self.previous = view.previous;
         self.velocity = view.velocity;
         self.lifetime = view.lifetime;
-        // The declarative range of a mod particle's size (`sunrise:behaviour`) and of its colour.
-        self.size = view.size.clamp(0.0, 16.0);
-        self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
+        // Keep the existing tick write-back policy. Creation uses SingleQuadParticle's
+        // unclamped scale and color setters, not the declarative behaviour's ranges.
+        if clamp_tick_values {
+            self.size = view.size.clamp(0.0, 16.0);
+            self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
+        } else {
+            self.size = view.size;
+            self.rgba = view.rgba;
+        }
         self.roll = view.roll;
         provided.facing = facing;
         provided.state = view.state;
@@ -741,7 +762,8 @@ pub(super) mod tests {
                 assert_eq!(level.brightness(LightLayer::Block, [1, 64, 3]), 4);
                 self.0.lock().unwrap().push(*value);
                 let tint = rng.next_float();
-                particle.rgba = [tint, 0.0, 1.0, 1.0];
+                particle.rgba = [tint, -0.25, 2.0, 1.5];
+                particle.size = 20.0;
                 particle.frame = *value;
                 particle.state[0] = f64::from(*value);
                 particle.velocity = aux;
@@ -768,6 +790,30 @@ pub(super) mod tests {
         let mut expected_provider_rng = LegacyRandom::new(37);
         let first = expected_provider_rng.next_float();
         expected_provider_rng.next_float();
+        let value = ty.options(1);
+        let options = ParticleOptions::typed(value.typed().unwrap().clone()).unwrap();
+        e.add_always_visible_with_world(
+            &scene.world,
+            &options,
+            [1.0, 64.0, 3.0],
+            [0.125, 0.25, 0.75],
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "no-flag overload keeps the distance gate"
+        );
+        e.camera = [1.0, 64.0, 3.0];
+        e.level_random = LegacyRandom::new(1);
+        e.add_always_visible_with_world(
+            &scene.world,
+            &options,
+            [1.0, 64.0, 3.0],
+            [0.125, 0.25, 0.75],
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "no-flag overload keeps the setting gate"
+        );
         for value in [1, 2] {
             let value = ty.options(value);
             let options = ParticleOptions::typed(value.typed().unwrap().clone()).unwrap();
@@ -785,10 +831,113 @@ pub(super) mod tests {
         let particle = e.pending[0].ordinary().unwrap();
         assert_eq!(particle.age, 0);
         assert_eq!(particle.velocity, [0.125, 0.25, 0.75]);
-        assert_eq!(particle.rgba, [first, 0.0, 1.0, 1.0]);
+        assert_eq!(particle.rgba, [first, -0.25, 2.0, 1.5]);
+        assert_eq!(particle.size, 20.0);
         assert!(matches!(particle.sprite, Sprite::Index(1)));
         assert_eq!(particle.provided.as_ref().unwrap().state[0], 1.0);
         assert_eq!(e.random.next_long(), expected_provider_rng.next_long());
+    }
+
+    #[test]
+    fn packet_spread_is_independent_of_factory_rng_and_a_failed_callback_ends_only_its_packet() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use sunrise_protocol::{
+            entity_data::Particle as NetworkParticle, packets::play::LevelParticles,
+        };
+
+        struct Factory {
+            calls: Arc<AtomicUsize>,
+            panic: bool,
+        }
+        impl ParticleProvider<()> for Factory {
+            fn create_particle(
+                &self,
+                _: &(),
+                _: &dyn ParticleLevelView,
+                _: [f64; 3],
+                aux: [f64; 3],
+                rng: &mut dyn mod_api::RandomSource,
+                particle: &mut ModParticle,
+            ) -> Option<()> {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                assert!(!self.panic, "test factory failed");
+                particle.rgba[0] = rng.next_float();
+                particle.velocity = aux;
+                Some(())
+            }
+            fn tick(&self, _: &mut ParticleBatch, _: &dyn ParticleLevelView) {}
+        }
+        let [broken, healthy] = unit_types(["broken", "healthy"]);
+        let mut e = engine();
+        let broken_calls = Arc::new(AtomicUsize::new(0));
+        let healthy_calls = Arc::new(AtomicUsize::new(0));
+        for (ty, panic, calls) in [
+            (broken, true, &broken_calls),
+            (healthy, false, &healthy_calls),
+        ] {
+            e.typed_sets.insert(
+                ty.key(),
+                ModSet {
+                    set: 0,
+                    behaviour: None,
+                    provider: Some((
+                        0,
+                        bind_particle_provider(Arc::new(Factory {
+                            calls: calls.clone(),
+                            panic,
+                        })),
+                    )),
+                    group: None,
+                },
+            );
+        }
+        let scene = Scene::new();
+        let mut random = LegacyRandom::new(19);
+        let packet = LevelParticles {
+            // The loop receives the already-decoded options from the packet handler.
+            particle: NetworkParticle { id: 0, data: None },
+            override_limiter: true,
+            always_show: false,
+            pos: [1.0, 2.0, 3.0],
+            dist: [0.25, 0.5, 1.0],
+            max_speed: [0.125, 0.25, 0.5],
+            count: 3,
+            randomization: 2,
+        };
+        let options = |ty: mod_api::ParticleType<()>| {
+            ParticleOptions::typed(ty.options(()).typed().unwrap().clone()).unwrap()
+        };
+        let mut reference = LegacyRandom::new(19);
+        e.handle_level_particles(&mut random, &scene.world, &packet, &options(broken));
+        assert_eq!(broken_calls.load(Ordering::Relaxed), 1);
+        assert!(e.pending.is_empty());
+        for _ in 0..6 {
+            reference.next_double();
+        }
+        assert_eq!(
+            random.next_long(),
+            reference.next_long(),
+            "the failed packet drew only one spawn"
+        );
+        e.seed_randoms(37, 0, 0);
+        let mut provider_random = LegacyRandom::new(37);
+        e.handle_level_particles(&mut random, &scene.world, &packet, &options(healthy));
+        assert_eq!(healthy_calls.load(Ordering::Relaxed), 3);
+        assert_eq!(e.pending.len(), 3);
+        for p in &e.pending {
+            let p = p.ordinary().unwrap();
+            let at = std::array::from_fn(|i| {
+                packet.pos[i] + reference.next_double() * f64::from(packet.dist[i])
+            });
+            let velocity = packet
+                .max_speed
+                .map(|max| reference.next_double() * f64::from(max));
+            assert_eq!(
+                (p.position, p.velocity, p.rgba[0]),
+                (at, velocity, provider_random.next_float())
+            );
+        }
+        assert_eq!(random.next_long(), reference.next_long());
     }
 
     #[test]
@@ -1222,11 +1371,12 @@ pub(super) mod tests {
     }
     #[test]
     fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
-        let resources = ResourceSource::indexed(["orbit", "plain"].map(|name| (
+        let resources = ResourceSource::indexed([
+            ("orbit", br#"{"textures":[],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.as_slice()),
+            ("plain", br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.as_slice()),
+        ].map(|(name, bytes)| (
             format!("assets/mymod/particles/{name}.json"),
-            sunrise_assets::resource_source::Resource::bytes(
-                br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.to_vec(),
-            ),
+            sunrise_assets::resource_source::Resource::bytes(bytes.to_vec()),
         )).into());
         let [orbit, unmatched] = unit_types(["orbit", "unmatched"]);
         let mut e = engine();
@@ -1234,7 +1384,12 @@ pub(super) mod tests {
             e.providers
                 .insert(ty.key(), bind_particle_provider(Arc::new(Probe::default())));
         }
-        e.reload(&resources, &HashMap::new(), &HashSet::new());
+        let missing = e.rects[0].unwrap();
+        e.reload(
+            &resources,
+            &[(crate::hud::MISSING_SPRITE.to_owned(), missing)].into(),
+            &HashSet::new(),
+        );
         assert!(e.typed_sets.contains_key(&orbit.key()));
         assert!(e.mod_sets["mymod:plain"].provider.is_none());
         assert!(!e.typed_sets.contains_key(&unmatched.key()));
@@ -1242,11 +1397,17 @@ pub(super) mod tests {
         let value = orbit.options(());
         let particle = e
             .make_typed_particle(&scene.world, value.typed().unwrap(), [0.0; 3], [0.0; 3], 3)
+            .unwrap()
             .unwrap();
         // The declared spawn values seed it, and its sprite is drawn by frame from the set.
         assert!(particle.provided.is_some());
         assert_eq!((particle.lifetime, particle.size), (7, 0.3));
         assert_eq!(particle.set, Some(e.typed_sets[&orbit.key()].set));
+        let Sprite::Index(index) = particle.sprite else {
+            panic!("expected missing sprite binding")
+        };
+        assert_eq!(e.names[index as usize], crate::hud::MISSING_SPRITE);
+        assert!(e.rects[index as usize].is_some());
         let plain = e
             .make(
                 &ParticleOptions::named("mymod:plain"),

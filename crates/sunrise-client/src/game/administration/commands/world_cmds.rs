@@ -1025,23 +1025,30 @@ impl Game<'_> {
                 })
             });
         let mut local = false;
-        for &t in &reached {
+        let mut sent = 0;
+        for t in reached {
             match (t, &packet) {
-                (Target::Player, Some(p)) if self.lan_acting.is_some() => {
-                    self.guest_packets.push(p.clone());
+                (Target::Player, _) if self.lan_acting.is_none() => {
+                    local = true;
+                    sent += 1;
                 }
-                (Target::Player, _) => local = true,
+                (Target::Player, Some(p)) => {
+                    self.guest_packets.push(p.clone());
+                    sent += 1;
+                }
                 (Target::Guest(conn), Some(p)) => {
-                    if let Some(host) = self.lan.as_ref() {
+                    if let Some(host) = &self.lan {
                         host.hub.send_to(conn, p);
+                        sent += 1;
                     }
                 }
                 _ => {}
             }
         }
-        let reached = reached.len() as i32;
-        if !local {
-        } else if count <= 0 {
+        if sent == 0 {
+            return Err(err("commands.particle.failed", &[]));
+        }
+        if local && count <= 0 {
             // handleParticleEvent, count 0: one particle, the speed times
             // the delta as velocity (both sent as floats, multiplied as floats).
             self.particles.create_with_world(
@@ -1050,7 +1057,7 @@ impl Game<'_> {
                 pos,
                 delta.map(|d| f64::from(speed * d as f32)),
             );
-        } else {
+        } else if local {
             for _ in 0..count {
                 let r = self.particles.random();
                 let p = [
@@ -1063,15 +1070,19 @@ impl Game<'_> {
                     r.next_gaussian() * f64::from(speed),
                     r.next_gaussian() * f64::from(speed),
                 ];
-                self.particles
-                    .create_with_world(Some(&self.world), &options, p, v);
+                if !self
+                    .particles
+                    .create_with_world(Some(&self.world), &options, p, v)
+                {
+                    break;
+                }
             }
         }
         self.feedback(Text::translate(
             "commands.particle.success",
             &[Text::literal(name)],
         ));
-        Ok(reached)
+        Ok(sent)
     }
 
     // ---- /attribute ---------------------------------------------------------------------

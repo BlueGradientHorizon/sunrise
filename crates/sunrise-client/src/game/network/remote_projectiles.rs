@@ -281,6 +281,7 @@ impl Game<'_> {
                 radius: 3.0,
                 waiting: false,
                 particle: default_cloud_particle(),
+                random: sunrise_client::random_source::entity(),
             }),
             "minecraft:eye_of_ender" => {
                 self.end
@@ -354,7 +355,11 @@ impl Game<'_> {
                 match (index, value) {
                     (8, Value::Float(r)) => c.radius = *r,
                     (9, Value::Bool(w)) => c.waiting = *w,
-                    (10, _) => c.particle = particle.unwrap_or_else(default_cloud_particle),
+                    (10, Value::Particle(_)) => {
+                        if let Some(particle) = particle {
+                            c.particle = particle;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -757,7 +762,7 @@ impl Game<'_> {
 
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
     fn tick_remote_clouds(&mut self) {
-        for c in &self.potions.clouds {
+        for c in &mut self.potions.clouds {
             cloud_client_tick(
                 &mut self.particles,
                 &self.world,
@@ -765,6 +770,7 @@ impl Game<'_> {
                 c.radius,
                 c.waiting,
                 &c.particle,
+                &mut c.random,
             );
         }
     }
