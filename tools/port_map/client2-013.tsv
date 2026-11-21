@@ -58,8 +58,8 @@ ScreenRectangle.intersection	port	crates/sunrise-client-render/src/screen_draw.r
 ScreenRectangle.intersects	skip:other		no caller in the 26.3 client GUI code; pure geometry predicate
 ScreenRectangle.encompasses	skip:other		used by GuiRenderState for element batching bounds; Sunrise appends quads to the HUD batch without it
 ScreenRectangle.containsPoint	port	crates/sunrise-client-render/src/screen_draw.rs::inside	the same half-open point-in-rectangle test
-ScreenRectangle.transformAxisAligned	skip:other		bounds of a rectangle under a GUI pose, for the GUI scissor; Sunrise clips the quads themselves (hud.rs HudBatch::clip_since)
-ScreenRectangle.transformMaxBounds	skip:other		bounds of a rotated rectangle under a GUI pose; Sunrise clips the quads themselves (hud.rs HudBatch::clip_since)
+ScreenRectangle.transformAxisAligned	skip:other		bounds of a rectangle under a GUI pose, for the GUI scissor; Sunrise clips the quads themselves (hud/batch.rs HudBatch::clip_since)
+ScreenRectangle.transformMaxBounds	skip:other		bounds of a rotated rectangle under a GUI pose; Sunrise clips the quads themselves (hud/batch.rs HudBatch::clip_since)
 DynamicAtlasAllocator	skip:other		slot allocator for the GUI item atlas; Sunrise has no item atlas and draws items into the HUD batch (item_render/gui.rs)
 GuiItemAtlas.computeTextureSizeFor	skip:other		atlas texture sizing; Sunrise has no item atlas
 GuiItemAtlas.tryPrepareFor	skip:other		atlas space check; Sunrise has no item atlas
