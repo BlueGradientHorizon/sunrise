@@ -606,8 +606,6 @@ pub(super) struct Remote {
     backlog: VecDeque<Received>,
     backlog_since: Option<Instant>,
     /// `ClientboundTransferPacket`'s target: when the connection ends the
-    /// game connects here, the stored cookies carried over (`TransferState`).
-    transfer: Option<String>,
     /// `ClientCommonPacketListenerImpl.serverLinks`: the links "Server
     /// Links..." in the pause menu lists (only `http`/`https` URIs kept).
     pub(super) server_links: Vec<sunrise_protocol::packets::configuration::ServerLink>,

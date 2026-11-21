@@ -63,10 +63,8 @@ impl CompletedBundle {
 pub enum BundleStep {
     Event(Event),
     Payload(CustomPayload),
-    Close {
-        transfer: Option<Event>,
-        notice: Event,
-    },
+    Transfer(sunrise_protocol::packets::configuration::Transfer),
+    Close(Event),
     Continue,
 }
 
@@ -96,22 +94,10 @@ impl PlayIo {
             C::ResourcePackPush(p) => return BundleStep::Event(Event::PackPush(p)),
             C::ResourcePackPop(p) => return BundleStep::Event(Event::PackPop(p.id)),
             C::ServerLinks(p) => return BundleStep::Event(Event::ServerLinks(p.links)),
-            C::Transfer(p) => {
-                self.close_after_pending();
-                return BundleStep::Close {
-                    transfer: Some(Event::Transfer {
-                        host: p.host,
-                        port: p.port,
-                    }),
-                    notice: Reason::keyed("disconnect.transfer", &self.lang).ended(true),
-                };
-            }
+            C::Transfer(p) => return BundleStep::Transfer(p),
             C::Disconnect(p) => {
                 self.close_after_pending();
-                return BundleStep::Close {
-                    transfer: None,
-                    notice: Reason::tag(&p.reason, &self.lang).ended(true),
-                };
+                return BundleStep::Close(Reason::tag(&p.reason, &self.lang).ended(true));
             }
             C::CustomPayload(p) if p.channel == "minecraft:brand" => {
                 return brand_event(&p).map_or(BundleStep::Continue, BundleStep::Event);
