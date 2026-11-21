@@ -2361,17 +2361,32 @@ impl Hub {
         let items: Vec<Option<ItemStack>> = (0..46).map(|s| self.guests[i].menu_slot(s)).collect();
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
         let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
+        let carried_net = self.stack(&carried);
         self.guests.update(i, |g| {
             g.menu_state = (g.menu_state + 1) & 0x7FFF;
             g.send(&C::ContainerSetContent(play::ContainerSetContent {
                 container: 0,
                 state: g.menu_state,
                 items: net,
-                carried,
+                carried: carried_net,
             }));
             g.menu_sent = items;
+            g.carried_sent = carried;
         })
+    }
+
+    /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send the cursor stack when it differs
+    /// from what the remote client last received.
+    pub(in crate::lan) fn sync_carried(&mut self, i: usize) {
+        if self.guests[i].carried == self.guests[i].carried_sent {
+            return;
+        }
+        let carried = self.guests[i].carried.clone();
+        let net = self.stack(&carried);
+        self.guests.update(i, |g| {
+            g.carried_sent = carried;
+            g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
+        });
     }
 
     // ---- per tick ------------------------------------------------------
@@ -3671,6 +3686,7 @@ impl Hub {
                 g.menu_sent[slot] = now;
             });
         }
+        self.sync_carried(i);
     }
 
     /// `ServerRecipeBook.sendInitialRecipeBook`: each book's open and

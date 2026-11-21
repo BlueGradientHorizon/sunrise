@@ -1404,6 +1404,7 @@ impl Game<'_> {
                     for &s in changed.iter().filter(|&&s| s >= 10) {
                         g.menu_sent[s - 1] = menu.slot(s).cloned();
                     }
+                    g.carried_sent = g.carried.clone();
                 });
             }
         }
@@ -1759,17 +1760,20 @@ impl Game<'_> {
         items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
         let carried = g.carried.clone();
         let items = items.iter().map(|s| host.hub.stack(s)).collect();
-        let carried = host.hub.stack(&carried);
+        let carried_net = host.hub.stack(&carried);
         host.hub.send_to(
             conn,
             &C::ContainerSetContent(play::ContainerSetContent {
                 container: window,
                 state,
                 items,
-                carried,
+                carried: carried_net,
             }),
         );
-        host.hub.guests.update(gi, |g| g.inventory_told());
+        host.hub.guests.update(gi, |g| {
+            g.inventory_told();
+            g.carried_sent = carried;
+        });
     }
 
     /// `AbstractContainerMenu.removed` of a crafting menu: the closed window

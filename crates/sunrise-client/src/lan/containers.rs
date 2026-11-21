@@ -581,7 +581,7 @@ impl Hub {
         }
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
         let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
+        let carried_net = self.stack(&carried);
         self.guests.update(i, |g| {
             let Some(menu) = g.menu.as_mut() else {
                 return;
@@ -591,9 +591,10 @@ impl Hub {
                 container: menu.window,
                 state: menu.state,
                 items: net,
-                carried,
+                carried: carried_net,
             });
             menu.sent = items;
+            g.carried_sent = carried;
             let inventory_included = menu.player_slots() != 0;
             g.send(&packet);
             if inventory_included {
@@ -1159,6 +1160,7 @@ impl Hub {
             } else {
                 g.menu_sent = items;
             }
+            g.carried_sent = carried;
         });
     }
 
@@ -1270,6 +1272,7 @@ impl Hub {
                     }
                 });
             }
+            self.sync_carried(i);
             // Then the data slots, as broadcastChanges does.
             self.sync_container_data(i, world);
         }

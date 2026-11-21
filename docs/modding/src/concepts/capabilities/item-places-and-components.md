@@ -127,16 +127,17 @@ inherits its default. To remove the component even if the item has a default, us
 damage patch before staging any of it. `editor.copy_component_from(&other, id)`
 copies the source stack's own value or removal; if the source inherits, the target inherits too.
 
-For a player's slot (including armour and off hand), hand, or a mob's or armour stand's
-`ItemPlace::Equipment`, the game resolves the slot before calling the editor. An empty or
-unreadable slot (`ItemPlaceEditError::NotHeld`), an unavailable backend, or a closed transaction
-(`Unavailable`) refuses before calling the editor. After the callback, the game validates the
-changed overrides together, including the resulting stack limits. If it returns `Stack(error)`,
-none of the edits were applied. Unchanged overrides are not rewritten. The usual inventory,
-menu and equipment sync sends the change without replaying equip sounds, events or attribute
-effects. Aborting this transaction or an enclosing one restores the previous stack.
+For a player's slot (including armour and off hand), hand, open menu cursor (`PlayerCursor`),
+or a mob's or armour stand's `ItemPlace::Equipment`, the game resolves the slot before calling
+the editor. An empty or unreadable slot (`ItemPlaceEditError::NotHeld`), an unavailable backend,
+or a closed transaction (`Unavailable`) refuses before the editor runs. After the callback, the
+game validates the changed overrides together, including the resulting stack limits. If it returns
+`Stack(error)`, none of the edits were applied. Unchanged overrides are not rewritten. The usual
+inventory, menu, cursor and equipment sync sends the change without replaying equip sounds,
+events or attribute effects. Aborting this transaction or an enclosing one restores the previous
+stack.
 
-`Strict` keeps the same edit behavior. Cursors, `OneByOne` and `InfiniteMaterials` refuse with
+`Strict` keeps the same edit behavior. `OneByOne` and `InfiniteMaterials` refuse with
 `UnsupportedPlace` before the callback; other places use their ordinary exchange rules.
 To change an item or count, use the appropriate transactional slot write or transfer instead.
 

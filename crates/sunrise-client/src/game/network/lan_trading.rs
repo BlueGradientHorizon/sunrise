@@ -255,7 +255,7 @@ impl Game<'_> {
             items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
             let carried = g.carried.clone();
             let net: Vec<_> = items.iter().map(|s| host.hub.stack(s)).collect();
-            let carried = host.hub.stack(&carried);
+            let carried_net = host.hub.stack(&carried);
             gm.state = (gm.state + 1) & 0x7FFF;
             host.hub.send_to(
                 conn,
@@ -263,9 +263,10 @@ impl Game<'_> {
                     container: gm.window,
                     state: gm.state,
                     items: net,
-                    carried,
+                    carried: carried_net,
                 }),
             );
+            host.hub.guests.update(gi, |g| g.carried_sent = carried);
         }
     }
     /// Runs `op` on the guest's merchant menu (their inventory copied in and

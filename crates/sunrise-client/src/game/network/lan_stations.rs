@@ -617,6 +617,7 @@ impl Game<'_> {
                 carried: host.hub.stack(&carried),
             });
             host.hub.send_to(conn, &content);
+            let _ = host.hub.update_guest(conn, |g| g.carried_sent = carried);
             if all || page_changed {
                 host.hub.send_to(
                     conn,
@@ -1011,6 +1012,7 @@ impl Game<'_> {
                         if g.carried == carried {
                             return false;
                         }
+                        g.carried_sent = carried.clone();
                         g.carried = carried;
                         g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
                         true
@@ -1113,7 +1115,10 @@ impl Game<'_> {
             }));
         }
         host.hub.send_to(conn, &packet);
-        host.hub.guests.update(gi, |g| g.inventory_told());
+        host.hub.guests.update(gi, |g| {
+            g.inventory_told();
+            g.carried_sent = carried;
+        });
         for packet in data {
             host.hub.send_to(conn, &packet);
         }

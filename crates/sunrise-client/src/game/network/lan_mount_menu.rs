@@ -115,6 +115,7 @@ impl Game<'_> {
             carried: host.hub.stack(&carried),
         });
         host.hub.send_to(conn, &content);
+        let _ = host.hub.update_guest(conn, |g| g.carried_sent = carried);
     }
 
     /// A click on the guest's mount window; false for other windows.

@@ -480,6 +480,44 @@ impl Game<'_> {
                     );
                 }
             }
+            ItemPlace::PlayerCursor { menu } => {
+                let guest = self
+                    .native_menu_guest(menu)
+                    .ok_or(ItemPlaceEditError::NotHeld)?;
+                let player = guest.uuid;
+                let (parked, carried) = if self.lan_acting == Some(guest.conn) {
+                    (None, &self.carried)
+                } else {
+                    (
+                        Some(
+                            self.guest_index(guest.conn)
+                                .ok_or(ItemPlaceEditError::NotHeld)?,
+                        ),
+                        &guest.carried,
+                    )
+                };
+                let held = carried
+                    .as_ref()
+                    .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
+                    .ok_or(ItemPlaceEditError::NotHeld)?;
+                let Some((patch, _)) = prepare(EquipmentRead::resident(held), world_items!(self))?
+                else {
+                    return Ok(());
+                };
+                if let Some(index) = parked {
+                    self.journal_parked_player(player, index);
+                    let host = self.lan.as_mut().expect("resolved guest");
+                    host.hub.guests.update(index, |guest| {
+                        apply(
+                            guest.carried.as_mut().expect("prepared cursor stack"),
+                            patch,
+                        );
+                    });
+                } else {
+                    self.journal_player(player);
+                    apply(self.carried.as_mut().expect("prepared cursor stack"), patch);
+                }
+            }
             _ => return Err(ItemPlaceEditError::NotHeld),
         }
         self.notice_menu_place_write(place);
@@ -1550,7 +1588,7 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn virtual_wrappers_and_cursors_refuse_a_whole_stack_edit() {
+    fn virtual_wrappers_refuse_a_whole_stack_edit() {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let stick = ItemStack::new("minecraft:stick", 32);
             let cursor_stack = ItemStack::new("minecraft:paper", 1);
@@ -1571,7 +1609,6 @@ pub(super) mod tests {
                     inner: Box::new(hand.clone()),
                 })),
                 ItemPlace::OneByOne(Box::new(hand.clone())),
-                menu.cursor(),
             ] {
                 assert_eq!(
                     game.transaction(|host, tx| {
@@ -1582,15 +1619,329 @@ pub(super) mod tests {
             }
             let closed = game.transaction_open();
             game.transaction_close(&closed, true);
-            assert_eq!(
-                hand.edit(game, closed.transaction(), |_| {
-                    panic!("closed transaction ran editor")
-                }),
-                Err(ItemPlaceEditError::Unavailable)
-            );
+            for place in [&hand, &menu.cursor()] {
+                assert_eq!(
+                    place.edit(game, closed.transaction(), |_| {
+                        panic!("closed transaction ran editor")
+                    }),
+                    Err(ItemPlaceEditError::Unavailable)
+                );
+            }
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_whole_stack_edit_validates_and_rolls_back() {
+        use mod_api::{MenuReplace, StackWriteError, Tag};
+
+        with_game(|game| {
+            open_to_lan(game);
+            let mut player_guest = guest(1);
+            player_guest.carried = Some(ItemStack::new("minecraft:paper", 16));
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            let player = game.player(123).unwrap();
+            let menu = game.player_container_menu(player).unwrap();
+            let cursor = menu.cursor();
+            let strict_cursor = ItemPlace::Strict(Box::new(cursor.clone()));
+
+            // Strict preserves resolved whole-stack cursor editing without changing item or count.
+            let parked_name = Tag::String("cursor paper".into());
+            let mut expected = ItemStack::new("minecraft:paper", 16);
+            expected.data_mut().custom_name = Some(parked_name.clone());
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    strict_cursor.edit(host, tx, |stack| {
+                        assert_eq!(
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_string(),
+                            "minecraft:paper"
+                        );
+                        assert_eq!(stack.count(), 16);
+                        stack
+                            .apply_components(
+                                &[("minecraft:custom_name".into(), parked_name.clone())].into(),
+                            )
+                            .unwrap();
+                    })
+                }),
+                Ok(())
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Invalid component write refuses cleanly without applying partial edits.
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    Ok::<_, ()>(cursor.edit(host, tx, |stack| {
+                        stack
+                            .apply_components(
+                                &[
+                                    (
+                                        "minecraft:custom_name".into(),
+                                        Tag::String("refused rename".into()),
+                                    ),
+                                    ("minecraft:max_stack_size".into(), Tag::Int(1)),
+                                ]
+                                .into(),
+                            )
+                            .unwrap();
+                    }))
+                }),
+                Ok(Err(ItemPlaceEditError::Stack(
+                    StackWriteError::CountExceeded { maximum: 1 }
+                )))
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Aborting the transaction restores the parked cursor stack.
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor
+                        .edit(host, tx, |stack| {
+                            stack
+                                .apply_components(
+                                    &[(
+                                        "minecraft:custom_name".into(),
+                                        Tag::String("aborted rename".into()),
+                                    )]
+                                    .into(),
+                                )
+                                .unwrap();
+                        })
+                        .unwrap();
+                    Err::<(), ()>(())
+                }),
+                Err(())
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Acting guest cursor edit rolls back on abort and commits in place.
+            let acting_name = Tag::String("acting cursor".into());
+            let mut acting_expected = expected.clone();
+            acting_expected.data_mut().custom_name = Some(acting_name.clone());
+            game.as_guest(1, |game| {
+                assert_eq!(
+                    game.transaction(|host, tx| {
+                        cursor
+                            .edit(host, tx, |stack| {
+                                stack
+                                    .apply_components(
+                                        &[(
+                                            "minecraft:custom_name".into(),
+                                            Tag::String("acting abort".into()),
+                                        )]
+                                        .into(),
+                                    )
+                                    .unwrap();
+                            })
+                            .unwrap();
+                        Err::<(), ()>(())
+                    }),
+                    Err(())
+                );
+                assert_eq!(game.carried.as_ref(), Some(&expected));
+
+                assert_eq!(
+                    game.transaction(|host, tx| {
+                        cursor.edit(host, tx, |stack| {
+                            stack
+                                .apply_components(
+                                    &[("minecraft:custom_name".into(), acting_name.clone())].into(),
+                                )
+                                .unwrap();
+                        })
+                    }),
+                    Ok(())
+                );
+                assert_eq!(game.carried.as_ref(), Some(&acting_expected));
+            })
+            .unwrap();
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&acting_expected)
+            );
+
+            // Empty cursor refuses with NotHeld before calling the editor.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |g| g.carried = None);
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor.edit(host, tx, |_| panic!("empty cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+
+            // Stale or closed menu handles refuse with NotHeld before calling the editor.
+            let window = {
+                let host: &mut dyn ServerHost = game;
+                host.open_menu(
+                    123,
+                    1,
+                    mod_api::Text::literal("box"),
+                    Vec::new(),
+                    MenuReplace::CloseFirst,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            let open_menu = {
+                let host: &mut dyn ServerHost = game;
+                host.menu(123, window).unwrap()
+            };
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 2));
+            });
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor.edit(host, tx, |_| panic!("stale cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+            {
+                let host: &mut dyn ServerHost = game;
+                host.close_menu(123);
+            }
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 2));
+            });
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    open_menu
+                        .cursor()
+                        .edit(host, tx, |_| panic!("closed menu cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_edit_syncs_set_cursor_item_once() {
+        use mod_api::{MenuReplace, Tag};
+        use sunrise_client::lan::Out;
+        use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+
+        fn cursor_packets(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    _ => Vec::new(),
+                })
+                .filter_map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    match C::decode(id, reader.rest()).unwrap() {
+                        C::SetCursorItem(packet) => Some(packet.item),
+                        _ => None,
+                    }
+                })
+                .collect()
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            let (tx, rx) = mpsc::channel();
+            let mut player_guest = guest(1);
+            player_guest.sender = PlayerSender::new(tx, Arc::default());
+            player_guest.carried = Some(ItemStack::new("minecraft:paper", 4));
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+
+            // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
+            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            let _ = cursor_packets(&rx);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            // Parked cursor edit syncs once via sync_player_state (sync_guest_after_tick).
+            let player = game.player(123).unwrap();
+            let inv_menu = game.player_container_menu(player).unwrap();
+            let parked_name = Tag::String("synced parked cursor".into());
+            let mut parked_expected = ItemStack::new("minecraft:paper", 4);
+            parked_expected.data_mut().custom_name = Some(parked_name.clone());
+            game.transaction(|host, tx| {
+                inv_menu.cursor().edit(host, tx, |stack| {
+                    stack
+                        .apply_components(&[("minecraft:custom_name".into(), parked_name)].into())
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            let parked_net = game.lan.as_mut().unwrap().hub.stack(&Some(parked_expected));
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert_eq!(cursor_packets(&rx), vec![parked_net]);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            // Open a container menu, populate and snapshot its cursor, then edit while acting.
+            let window = {
+                let host: &mut dyn ServerHost = game;
+                host.open_menu(
+                    123,
+                    1,
+                    mod_api::Text::literal("box"),
+                    Vec::new(),
+                    MenuReplace::CloseFirst,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 4));
+            });
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .resend_menu(1, window, &game.world);
+            let _ = cursor_packets(&rx);
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            assert!(cursor_packets(&rx).is_empty());
+
+            let open_menu = {
+                let host: &mut dyn ServerHost = game;
+                host.menu(123, window).unwrap()
+            };
+            let acting_name = Tag::String("synced acting cursor".into());
+            let mut acting_expected = ItemStack::new("minecraft:paper", 4);
+            acting_expected.data_mut().custom_name = Some(acting_name.clone());
+            game.as_guest(1, |game| {
+                game.transaction(|host, tx| {
+                    open_menu.cursor().edit(host, tx, |stack| {
+                        stack
+                            .apply_components(
+                                &[("minecraft:custom_name".into(), acting_name)].into(),
+                            )
+                            .unwrap();
+                    })
+                })
+                .unwrap();
+            })
+            .unwrap();
+            let acting_net = game.lan.as_mut().unwrap().hub.stack(&Some(acting_expected));
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            assert_eq!(cursor_packets(&rx), vec![acting_net]);
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
         });
     }
 

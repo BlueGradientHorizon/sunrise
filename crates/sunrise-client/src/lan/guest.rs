@@ -402,6 +402,8 @@ pub struct Guest {
     pub equipment_cache: super::equipment_cache::EquipmentCache,
     pub selected: usize,
     pub carried: Option<ItemStack>,
+    /// What the client believes the cursor holds (`AbstractContainerMenu.remoteCarried`).
+    pub carried_sent: Option<ItemStack>,
     /// The inventory menu's crafting grid (2x2) and its result
     /// (`InventoryMenu.craftSlots`, `resultSlots`), which the game computes.
     pub craft_grid: [Option<ItemStack>; 4],
@@ -821,6 +823,7 @@ impl Guest {
             equipment_cache: Default::default(),
             selected: 0,
             carried: None,
+            carried_sent: None,
             craft_grid: Default::default(),
             craft_result: None,
             ender_items: vec![None; 27],
