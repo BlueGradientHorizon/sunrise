@@ -1149,7 +1149,9 @@ pub fn write_mob(
     // `VariantUtils.writeVariant`: only the species that store the name. A
     // mooshroom saves `Type` (below), a fox `Type`, a horse and a llama a
     // packed `Variant` int, so those report the component but save no name.
-    if crate::mobs::finalize::saves_variant_name(species)
+    // ZombieNautilus writes its variant after the TamableAnimal fields below.
+    if species != S::ZombieNautilus
+        && crate::mobs::finalize::saves_variant_name(species)
         && let Some((_, variant)) =
             crate::mobs::finalize::species_variant_component(species, m.extra.variant)
     {
