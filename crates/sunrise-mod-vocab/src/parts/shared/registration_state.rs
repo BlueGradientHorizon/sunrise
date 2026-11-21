@@ -8,7 +8,10 @@ pub(crate) struct Installed {
     pub(crate) epoch: u64,
     pub(crate) dependencies: Arc<crate::__private::EffectiveDependencies>,
     pub(crate) effect_ticks: crate::parts::effects::ResolvedEffectTicks,
+    pub(crate) menu_screen_factories:
+        HashMap<String, HashMap<usize, crate::parts::menus::MenuScreenRegistration>>,
     pub(crate) menu_recipe_books: HashMap<String, crate::parts::menus::MenuBookDeclaration>,
+    pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
     pub(crate) recipe_book_types: HashMap<String, String>,
     pub(crate) recipe_book_fields: HashMap<String, (String, String)>,
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,

@@ -944,13 +944,13 @@ impl Game<'_> {
     /// (`data/<id>/sunrise/menu/`) with as many
     /// slots, opens when the block is used (its template must open a menu, as
     /// a chest or a furnace does); another is left out. A mod menu type shows
-    /// on Sunrise clients through the mod's `native_screen` only.
+    /// on Sunrise clients through the mod's registered screen factory.
     pub(in crate::game) fn native_block_entity_container(
         &self,
         block: &str,
         container: &mut Option<ModContainer>,
     ) {
-        *container = mod_api::__private::parts_installation::block_container(block);
+        *container = mod_api::__private::parts_installation::block_container(block).cloned();
     }
     /// Block `block`'s registered fluid tanks: each tank's capacity in
     /// millibuckets, the tanks each face reaches, and the tanks a fill may
@@ -1064,32 +1064,6 @@ impl Game<'_> {
         decorations: &mut Vec<mod_api::MapDecoration>,
     ) {
         self.fire_map_decorations(map, decorations);
-    }
-    /// A menu of mod menu type `menu` opens on this client: set `screen` to
-    /// lay its screen out (`native_screen_draw` draws it), whatever opened
-    /// the menu. `block` is the mod block at the menu's position whose
-    /// container opens this menu type (`menu_opener_block`), none without
-    /// one. Only the part that owns the screen hears its hooks (on a vanilla
-    /// type, the part of the block's mod). The server asks it too, whatever
-    /// opened the menu: a slot it hides takes no shift-click there.
-    pub(in crate::game) fn native_screen(
-        &self,
-        menu: &str,
-        block: Option<&str>,
-        screen: &mut Option<mod_api::Screen>,
-    ) {
-        self.fire_screen(menu, block, screen);
-    }
-    /// Draw the screen of mod menu type `menu` (`block` as in
-    /// `native_screen`) at `origin` (its top left, GUI pixels),
-    /// over a plain panel with its slots' frames and under the items and
-    /// labels, from the menu's data slots `data`. Block-backed data is 16-bit
-    /// on the wire as in vanilla; blockless mod-menu data preserves full `i32`
-    /// values. `data` is empty until the first values arrive; read with `get`.
-    /// Draw with `native_sprite`, `native_fill` and
-    /// `native_text`.
-    pub(in crate::game) fn native_screen_draw(&self, call: mod_api::__private::ScreenDrawCall<'_>) {
-        self.fire_screen_draw(call);
     }
     /// The open screen has drawn itself and its tooltips (`Screen.render`,
     /// the point of `ScreenEvent.Render.Post`): draw over it with
@@ -1297,33 +1271,6 @@ impl Game<'_> {
         canceled: &mut bool,
     ) {
         self.fire_screen_char_typed_pre(screen, c, modifiers, field, canceled);
-    }
-    /// A left or right (`right`) press at `at` (GUI pixels from the screen's
-    /// top left, so outside it too) on the screen of mod menu type `menu`
-    /// (`block` as in `native_screen`), over no slot: set `button` to a menu
-    /// button id when it is on one of yours.
-    /// Sunrise sends it to the server (`ContainerButtonClick`,
-    /// `native_menu_button` there) and the press goes no further.
-    pub(in crate::game) fn native_screen_click(
-        &self,
-        menu: &str,
-        block: Option<&str>,
-        data: &[i32],
-        at: [f32; 2],
-        right: bool,
-        button: &mut Option<i32>,
-    ) {
-        self.fire_screen_click(menu, block, data, at, right, button);
-    }
-    /// The tooltip of mod menu type `menu`'s screen (`block` as in
-    /// `native_screen`) after item tooltip hooks, before its image and
-    /// component gathering. `slot` is the hovered menu index, or None outside
-    /// a mapped slot. The listener's final lines replace the item's lines.
-    pub(in crate::game) fn native_screen_tooltip(
-        &self,
-        call: mod_api::__private::ScreenTooltipCall<'_>,
-    ) {
-        self.fire_screen_tooltip(call);
     }
     /// A player pressed a mod menu's button (`clickMenuButton`), on the
     /// server. The block entity is out of the world during the call when the

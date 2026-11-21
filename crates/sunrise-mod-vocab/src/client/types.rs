@@ -912,13 +912,13 @@ pub enum ScreenTarget {
     DirectConnect,
 }
 
+// no wire: toggle geometry is chosen by the client screen factory.
 /// Where a mod menu's recipe-book toggle sits: `x` GUI pixels right of the menu's left edge and
 /// `y` below the line `from` names. Vanilla screens place theirs either way:
 /// `leftPos + 5, topPos + 34` is `x: 5.0, y: 34.0, from: Menu`, and
 /// `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0, from: ScreenCentre`.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct RecipeBookToggle {
     /// Pixels right of the menu's left edge.
     pub x: f32,
@@ -928,10 +928,10 @@ pub struct RecipeBookToggle {
     pub from: ToggleOrigin,
 }
 
+// no wire: the toggle's coordinate origin is used only by client layout.
 /// The line a recipe-book toggle's `y` counts from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: the two lines vanilla's screens measure from, matched without a wildcard
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum ToggleOrigin {
     /// The menu's top edge.
     #[default]
@@ -1037,21 +1037,23 @@ impl ColoredLight {
     }
 }
 
-/// A menu type's screen, a mod's (`screen`): its size, where
-/// each of the container's slots is (`Slot.x`, `Slot.y`; none hides the
-/// slot, and so do slots past the list; for a block's menu the server's menu
-/// does not have a hidden slot either, so clicks and shift-clicks skip it), and the player inventory's first
-/// row (vanilla's is 84; the hotbar is 58 below it) and left column, from
-/// its top left.
+// no wire: screen geometry is constructed and consumed in the client window.
+/// Layout for a window's [`crate::MenuScreen`]: its size, where
+/// each of the container's slots is (`Slot.x`, `Slot.y`), and the player
+/// inventory's first row (vanilla's is 84; the hotbar is 58 below it) and
+/// left column, from its top left. The screen does not decide which slots
+/// take server clicks; see [`crate::MenusRegistrar::menu_slot_exclusions`].
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct Screen {
-    /// Vanilla's container screens are 176 wide.
+pub struct MenuScreenLayout {
+    /// Positive finite width in GUI pixels. Vanilla's container screens are 176 wide.
     pub width: f32,
-    /// The screen's height in GUI pixels; vanilla's is 166.
+    /// Positive finite height in GUI pixels; vanilla's is 166.
     pub height: f32,
-    /// Each menu slot's top-left (x, y), or `None` to hide it.
+    /// Slot geometry at its original backing index. Every nonexcluded slot
+    /// needs geometry; `None` (including an omitted trailing entry) is valid
+    /// only for a registered exclusion. An excluded slot still has a physical
+    /// index; don't compact this list. There are no entries past the backing.
     pub slots: Vec<Option<ScreenSlot>>,
     /// The y of the player inventory's first row; vanilla's is 84.
     pub inventory_y: f32,
@@ -1064,15 +1066,15 @@ pub struct Screen {
     /// `None` uses `[8, height - 94]`, independently of inventory slot positions.
     /// Ignored when `own_labels` is true.
     pub inventory_label: Option<[f32; 2]>,
-    /// The mod draws the title and the "Inventory" label itself
-    /// (`screen_draw`); Sunrise leaves them out.
+    /// Sunrise leaves the title and inventory label for the screen's draw callback.
     pub own_labels: bool,
-    /// The mod draws its own background (`screen_draw`), so Sunrise
-    /// leaves out the plain panel and the slot frames.
+    /// Leave the background to the screen's draw callback, omitting the
+    /// default panel and slot frames.
     pub own_background: bool,
     /// The registered recipe book hosted beside this menu. Its declarations must
     /// target this menu; no panel is enabled until authoritative settings arrive.
-    /// Leaving this unset keeps the screen without a recipe book.
+    /// If the menu declares a book with `MenusRegistrar::menu_recipe_book`, this
+    /// field must name that book. Otherwise the book is optional and display-only.
     pub recipe_book: Option<crate::RecipeBookTypeKey>,
     /// Optional 20 × 18 recipe-book toggle position, from this menu's left and, per
     /// [`RecipeBookToggle::from`], its top or the window's centre.
@@ -1086,10 +1088,11 @@ pub struct Screen {
     pub recipe_book_big_result: bool,
 }
 
+// no wire: a slot's coordinates and empty icon are local screen presentation.
 /// One visible container slot, including vanilla's `Slot.getNoItemIcon`.
+/// Its index in [`MenuScreenLayout::slots`] is the menu's backing index.
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods declare both geometry and the optional empty-slot sprite
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct ScreenSlot {
     /// Top-left in GUI pixels relative to the screen.
     pub position: [f32; 2],

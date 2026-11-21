@@ -184,8 +184,8 @@ pub trait MenusClientBackendMut {
     /// one of its buttons does (`MultiPlayerGameMode.handleInventoryButtonClick`,
     /// `ContainerButtonClick`): the server's menu decides what it does
     /// (`clickMenuButton`, and `menu_button` for a mod's menu). For a client
-    /// mod's own input on a menu's screen where `screen_click` doesn't come,
-    /// such as a key or the wheel; no sound, that is the screen's. Refuses
+    /// mod's own input on a menu's screen other than a press, such as a key
+    /// or the wheel; no sound, that is the screen's. Refuses
     /// stale menus, non-client hosts and the inventory menu, which no server
     /// opened. True means sent, not that the menu took it.
     #[access(WorldOnly)]

@@ -310,7 +310,10 @@ impl Game<'_> {
         // inventory moves the focus and closes the container in one press).
         self.pad_clear_focus();
         self.recipe_ui.reset_screen();
-        self.mod_screen = None;
+        if self.mod_screen.take().is_some() {
+            self.clear_mod_book_placement_screen();
+            self.screen_state.build.reopened();
+        }
         if let Some(r) = self.remote.as_mut() {
             r.menu.set(None);
             r.set_menu_title(None);
@@ -394,13 +397,13 @@ impl Game<'_> {
     }
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
     pub(in crate::game) fn remote_open_screen(&mut self, p: play::OpenScreen) {
-        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() {
+        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() || self.mod_screen.is_some()
+        {
             // An in-place open has no intervening ContainerClose packet. Drop
             // the replaced menu's local state, not the screen or pointer grab.
             self.remote_close_local();
         } else {
             self.recipe_ui.reset_screen();
-            self.mod_screen = None;
         }
         let menu = self
             .remote
@@ -534,31 +537,29 @@ impl Game<'_> {
                 })
             };
             let key = target.filter(holds).unwrap_or((i32::MIN, 0, 0));
+            let backing_slots = entity.slots().len();
             self.world.block_entities.insert(key, entity);
             self.container = Some(key);
-            self.open_native_screen(key, target, p.container, &menu, extra);
-            // A mod menu type shows through its mod's screen only: without one
-            // (`MenuScreens.create` finds no screen) the window closes again.
-            if self.mod_screen.is_none() && mod_type.is_some() {
-                self.world.block_entities.remove(&key);
-                self.container = None;
-                if let Some(r) = self.remote.as_mut() {
-                    r.menu.set(None);
-                    r.set_menu_title(None);
+            if !self.open_native_screen(key, target, backing_slots, extra) {
+                if mod_type.is_some() || key.0 == i32::MIN {
+                    self.world.block_entities.remove(&key);
                 }
-                self.send(S::ContainerClose(play::ContainerClose {
-                    container: p.container,
-                }));
+                self.remote_reject_container(p.container);
                 return;
             }
         }
+        let native = self.mod_screen.is_some();
         self.set_screen(Screen::Inventory);
-        self.capture(false);
+        if !native || self.native_screen_shown() {
+            self.capture(false);
+        }
     }
     /// `ClientPacketListener.handleMountScreenOpen`: a horse's or llama's
     /// inventory; for another entity the window is closed again.
     pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) {
-        self.mod_screen = None;
+        if self.mod_screen.is_some() {
+            self.remote_close_local();
+        }
         let columns = usize::try_from(p.columns).unwrap_or(0).min(5);
         let record = |game: &mut Self| {
             if let Some(r) = game.remote.as_mut() {

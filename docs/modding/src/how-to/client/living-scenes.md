@@ -11,26 +11,31 @@ When a scene block includes a mod block entity, `block_entity_submit` draws it u
 that supplied entity data and full-bright lighting. The hook's `pos` is relative to
 the scene; it does not identify a block in the client level.
 
+For a menu screen, use the draw context from `MenuScreen::with_draw(|host, frame, draw| ...)`.
+Build a scene in the factory and capture it by value in the draw callback so its state belongs to
+one opening. Offset the scene rectangle by `frame.origin` if the scene should follow the panel.
+
 ```rust
 use mod_api::{GuiEntity, Scene, SceneClock, SceneEntity, SceneView};
 
 // Blocks alone: no clock, no state.
-event.batch.draw_scene(rect, &Scene::new(blocks.clone()), view)?;
+draw.draw_scene(rect, &Scene::new(blocks.clone()), view)?;
 
-// Build a living scene once and keep it. Change only its clock from frame to frame.
+// In the menu screen factory: build a living scene once and move it into the callback.
 let mut scene = Scene::new(blocks)
     .with_clock(SceneClock::new(1, 0, 0.0))
     .with_entities(vec![
         SceneEntity::new(GuiEntity::kind("minecraft:cow"), [1.5, 0.0, 0.5]).turned(135.0, 150.0, 0.0),
     ]);
 
-// In `screen_draw`: the page's own tick count, 20 a second, and the frame's partial tick.
+// In the draw callback: update the clock from the page's own ticks (20 per second)
+// and partial tick.
 if let Some(clock) = &mut scene.clock {
     clock.tick = page_ticks;
     clock.partial = partial;
 }
 let view = SceneView::new([1.0, 0.5, 0.5], 225.0, 30.0, 18.0);
-if let Err(why) = event.batch.draw_scene([12.0, 20.0, 140.0, 110.0], &scene, view) {
+if let Err(why) = draw.draw_scene([12.0, 20.0, 140.0, 110.0], &scene, view) {
     log::warn!("scene not drawn whole: {why:?}");
 }
 ```

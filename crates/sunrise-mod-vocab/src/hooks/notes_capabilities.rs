@@ -138,18 +138,14 @@ pub trait Notes {
   the current transaction, rolls back on abort, and uses the normal menu broadcast to viewers.
   `level.set_block` uses the level's normal update path.
 
-- Screens a mod draws for its menu types: a `MenuPart` attached to the menu type (`r.menu_part("mymod:backpack", Backpack)`) answers `screen`, which lays one out (its height, where each container slot is,
-  where the inventory starts; a slot it leaves out is skipped by the server's shift-clicks) and `screen_draw` draws it with the mod's own GUI textures (`assets/<namespace>/textures/gui`, drawn with `native_sprite`).
-  The screen goes with the menu type, as a `RegisterMenuScreensEvent` screen does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item's use, an entity or a command. Each hook names the mod block whose menu it is (`block`, `None` without one); on a vanilla type only that block's mod's part hears them.
+- Screens a mod draws for its menu types: `r.register_menu_screen(menu, factory)` registers the constructor. It returns a fresh `MenuScreen::new(layout)` for each client opening. Decode `MenuScreenOpen::extra` during this call; the bytes are not available afterwards. Draw GUI textures (`assets/<namespace>/textures/gui`) with `MenuScreen::with_draw` and read live values from `MenuScreenFrame::data`.
+  The factory goes with the menu type, as a `RegisterMenuScreensEvent` constructor does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item, an entity or a command. For a stock menu, only the verified mod opener's owner supplies a factory. `open.block` is `None` without a verified opener.
+  Slots excluded by `r.menu_slot_exclusions(menu, block, indices)` keep their physical indices. Layout holes match that mask. Only the factory's owner may move or hide slots locally, and those changes neither reach the server nor survive a replacement. A bound book needs a factory from its declaring mod: set the book in the layout and give every mapped slot geometry.
 
-- Buttons, tooltips and item icons on mod screens: `screen_click` and `screen_tooltip` (the client), `menu_button`
-  (a button press on the server, on the menu type, with an optional backing block entity) and the helpers `native_item`, `native_screen_title`, `LevelRef::block`,
-  `LevelRef::block_property` and `native_cursor`. A mod inserts items through the block's item capability,
-  `level.capability(host, &ITEMS, pos, side)`.
+- Buttons and tooltips on mod screens: install client callbacks with `MenuScreen::with_click` and `MenuScreen::with_tooltip`. A button returned by the client is a request: the server still checks its window, menu validity and the owning part's `menu_button_valid` before calling `menu_button`, with the backing block entity if present. A mod inserts items through the block's item capability, `level.capability(host, &ITEMS, pos, side)`.
 - `menu.click_button(host, button)`, on a client `MenuRef`, presses button `button` of the open menu as a click on one of its buttons does
   (`MultiPlayerGameMode.handleInventoryButtonClick`, `ServerboundContainerButtonClickPacket`); the server's menu decides what it does
-  (`clickMenuButton`, and `menu_button` for a mod's menu). It is for a client mod's own input on a menu's screen where `screen_click`
-  doesn't come, such as a key or the wheel (`screen_key_pressed_pre`, `screen_mouse_scrolled_pre`). It returns `false` for a stale
+  (`clickMenuButton`, and `menu_button` for a mod's menu). It is for a client mod's own input on a menu's screen other than a press, such as a key or the wheel (`screen_key_pressed_pre`, `screen_mouse_scrolled_pre`). It returns `false` for a stale
   handle and for the inventory menu, which no server opened.
 
 - What a server mod needs to guard land and move players. `right_click_block` hears a player's right

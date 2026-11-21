@@ -119,8 +119,8 @@ impl Game<'_> {
     /// `ServerPlayer.openMenu(provider, extraDataWriter)` for a content mod menu type and no
     /// block: the type's container slots show empty and their clicks reach the mods, as
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
-    /// `replace` is the provider's choice of the client's close, as for `open_menu`. The slots
-    /// its screen hides at open (`native_hidden_slots`) take no shift-click there.
+    /// `replace` is the provider's choice of the client's close, as for `open_menu`.
+    /// Authoritatively excluded slots cannot be picked up or quick-moved.
     pub(super) fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
@@ -180,9 +180,12 @@ impl Game<'_> {
         {
             return Err(OpenMenuError::PlayerUnavailable);
         }
-        self.close_for_open(conn, replace);
         let pos = pos.map(|[x, y, z]| (x, y, z));
-        let hidden = self.native_hidden_slots(&id, pos, kind.slots);
+        let opener = pos.and_then(|pos| self.menu_opener_block(pos, &id));
+        let Some(hidden) = Self::native_hidden_slots(&id, opener, kind.slots) else {
+            return Ok(None);
+        };
+        self.close_for_open(conn, replace);
         let gi = self
             .guest_index(conn)
             .ok_or(OpenMenuError::PlayerUnavailable)?;
@@ -200,7 +203,7 @@ impl Game<'_> {
                 )?;
                 lan.hub.guests.update(gi, |g| {
                     let open = g.menu.as_mut().expect("the window was just installed");
-                    open.hidden = hidden;
+                    open.hidden = hidden.iter().copied().map(usize::from).collect();
                     open.blockless_data = data;
                     g.send_menu_data_snapshot();
                 });
@@ -1366,28 +1369,31 @@ mod tests {
         if super::super::native_entity_refs::tests::run_fresh_cases(
             "game::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
             CASE,
-            &["close_first", "in_place"],
+            &["close_first", "in_place", "bad_mask"],
         ) {
             return;
         }
         // What the mods heard, in order.
         static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-        struct Listen;
-        #[mod_api::sunrise_part]
-        impl mod_api::MenuPart for Listen {
-            fn screen(
-                &self,
-                _: &dyn mod_api::Host,
-                _: &mut mod_api::ScreenEvent<'_>,
-            ) -> Option<mod_api::Screen> {
-                HEARD.lock().unwrap().push("layout".to_owned());
-                None
-            }
+        struct Listen {
+            bad_mask: bool,
         }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Listen {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.menu_part(MOD_MENU, Listen);
+                if self.bad_mask {
+                    r.menu_slot_exclusions(MOD_MENU, None, &[9]).unwrap();
+                }
+                r.register_menu_screen(
+                    MOD_MENU,
+                    Arc::new(
+                        |_: &dyn mod_api::ClientHost, _: mod_api::MenuScreenOpen<'_>| {
+                            HEARD.lock().unwrap().push("layout".to_owned());
+                            None
+                        },
+                    ),
+                )
+                .unwrap();
             }
             fn player_container_open(
                 &self,
@@ -1411,12 +1417,19 @@ mod tests {
             }
         }
         let heard = || std::mem::take(&mut *HEARD.lock().unwrap());
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("listen", Box::new(Listen))].into();
+        let case = std::env::var(CASE).unwrap();
+        let bad_mask = case == "bad_mask";
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "listen",
+            Box::new(Listen { bad_mask }),
+        )]
+        .into();
         mod_platform::__private::install(mods.clone());
         crate::game::api_values::install_parts(&mods).unwrap();
-        let replace = match std::env::var(CASE).unwrap().as_str() {
-            "close_first" => MenuReplace::CloseFirst,
-            _ => MenuReplace::InPlace,
+        let replace = if case == "close_first" {
+            MenuReplace::CloseFirst
+        } else {
+            MenuReplace::InPlace
         };
         with_mod_menu_game(|game| {
             let (rx, key) = mod_menu_guest(game);
@@ -1444,15 +1457,24 @@ mod tests {
                     None,
                     replace,
                 )
-                .unwrap()
                 .unwrap();
+            if bad_mask {
+                assert_eq!(window, None);
+                assert!(heard().is_empty());
+                assert!(sent(&rx).is_empty());
+                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                assert_eq!(guest.menu.as_ref().map(|menu| menu.window), Some(1));
+                assert_eq!(guest.carried, Some(stone));
+                return;
+            }
+            let window = window.unwrap();
             assert_eq!(window, 2);
-            // The old menu's close, heard once, before anything of the new one.
+            // The old menu's close, heard once before the new one opens, with
+            // no layout callback on the server.
             assert_eq!(
                 heard(),
                 [
                     "close minecraft:generic_9x3".to_owned(),
-                    "layout".to_owned(),
                     format!("open {MOD_MENU}")
                 ]
             );

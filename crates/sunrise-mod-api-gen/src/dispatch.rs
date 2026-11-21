@@ -205,9 +205,9 @@ pub(super) fn emit<'a>(
                         .collect::<String>()
                         == "Option<BlockEntityRef>"
             });
-        // A menu hook told the mod block whose menu it is reaches only the part
-        // that owns that open screen (`HookParts::menu_screen`).
-        let screen_routed = hook
+        // Menu button hooks name the opener block and reach only the active
+        // menu's owner (`HookParts::menu_for_opener`).
+        let opener_routed = hook
             .scope
             .as_ref()
             .is_some_and(|scope| scope.kind == PartKind::Menu)
@@ -269,7 +269,7 @@ pub(super) fn emit<'a>(
                     "BlockEntityTypeKey" if table == "block_entity" => format!(
                         "block_entity_kind(|| super::content::registry_keys::block_entity_type_name({key}))"
                     ),
-                    "& str" if screen_routed => format!("menu_screen({key}, block)"),
+                    "& str" if opener_routed => format!("menu_for_opener({key}, block)"),
                     "& str" => format!("{table}(|| Some({key}))"),
                     "EntityRef" if table == "entity" => {
                         let host = &host.as_ref().ok_or("entity handle needs a Host")?.0;
