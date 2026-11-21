@@ -37,7 +37,7 @@ use shapeless_matching::matches_all;
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 /// `PlacementInfo`: the ingredients to find and, per recipe slot, the index
@@ -1450,7 +1450,10 @@ pub struct ResolvedSources {
     pub recipes: Vec<ResolvedRecipe>,
     // Both tables use the items of this owning load. Parse station rules once,
     // whether the crafting projection or the station tables are built first.
-    stations: std::sync::OnceLock<Vec<Option<crate::stations::ParsedStationRecipe>>>,
+    stations: OnceLock<Vec<Option<crate::stations::ParsedStationRecipe>>>,
+    // Only custom entries get a slot, keyed by source position. An initialized
+    // None is a decoder refusal.
+    mod_recipes: OnceLock<HashMap<usize, OnceLock<Option<mod_kinds::ModRecipe>>>>,
     /// What mods added to the recipe property sets, asked once per load.
     pub property_additions: PropertyAdditions,
     /// Recipes `resolve_collecting` refused, by name and reason; the strict
@@ -1794,7 +1797,21 @@ impl Recipes {
         let mut cooking = Vec::new();
         let mut by_type: HashMap<String, Vec<crate::crafting::RecipeSnapshot>> = HashMap::new();
         let mut meta = HashMap::new();
-        for (recipe, station) in sources.recipes.iter().zip(sources.station_recipes(items)) {
+        let mod_recipes = sources.mod_recipes.get_or_init(|| {
+            sources
+                .recipes
+                .iter()
+                .enumerate()
+                .filter(|(_, recipe)| custom_type(&recipe.file).is_some())
+                .map(|(position, _)| (position, OnceLock::new()))
+                .collect()
+        });
+        for (position, (recipe, station)) in sources
+            .recipes
+            .iter()
+            .zip(sources.station_recipes(items))
+            .enumerate()
+        {
             let name = &recipe.name;
             let json = &recipe.file;
             let mut entry = None;
@@ -1818,8 +1835,8 @@ impl Recipes {
                     }
                 }
             }
-            if custom_type(json).is_some() {
-                if let Some(recipe) = mod_kinds::decode(name, json)
+            if let Some(slot) = mod_recipes.get(&position) {
+                if let Some(recipe) = slot.get_or_init(|| mod_kinds::decode(name, json)).clone()
                     && let Some(entry) = entry
                 {
                     if entry.kind == "minecraft:crafting" {
@@ -2653,7 +2670,10 @@ mod tests {
                 "{error}"
             );
             sources.recipes.remove(1);
-            sources.stations = Default::default();
+            let sources = ResolvedSources {
+                recipes: sources.recipes,
+                ..ResolvedSources::default()
+            };
             let recipes =
                 Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &sources).unwrap();
             let stations = crate::stations::StationRecipes::from_sources(&root, &items, &sources);
