@@ -151,10 +151,10 @@ impl Game<'_> {
     }
 
     /// Map a slot when the caller already knows the window's registered layout.
-    pub(in crate::game) fn inventory_screen_slot_with_type(
+    pub(in crate::game) fn inventory_screen_slot_with_type<'m>(
         menu: &str,
         slot: i32,
-        mod_type: impl FnOnce() -> Option<&'static sunrise_client::containers::ModMenuType>,
+        mod_type: impl FnOnce() -> Option<&'m sunrise_client::containers::ModMenuType>,
     ) -> Option<usize> {
         let s = usize::try_from(slot).ok()?;
         // A container of `n` slots, then the inventory and the hotbar.

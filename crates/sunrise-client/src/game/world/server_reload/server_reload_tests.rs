@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::{native_entity_refs::tests::with_game, world_loading::WorldRequest};
 use mod_api::{
-    self, AddServerReloadListenersEvent, Hooks, Host, ListenerKey, ModEntry, ReloadResourceError,
+    self, AddServerReloadListenersEvent, Hooks, ListenerKey, ModEntry, ReloadResourceError,
     ServerReloadListener,
 };
 use std::{
@@ -317,9 +317,10 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
             registrar.register_command_argument("argument", Argument(self.trace.clone()));
         }
         fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
-            event
-                .commands
-                .push(Command::new("reload_probe <value:reload_probe:argument>").executes(|_, _, _| Some(1)));
+            event.commands.push(
+                Command::new("reload_probe <value:reload_probe:argument>")
+                    .executes(|_, _, _| Some(1)),
+            );
         }
         fn add_server_reload_listeners(
             &self,

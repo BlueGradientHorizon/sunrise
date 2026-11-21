@@ -31,7 +31,7 @@
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::MapData};
-use mod_api::{Transaction, TransactionLifecycle, TransactionSeal};
+use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     effects::EffectInstance,
@@ -41,7 +41,7 @@ use sunrise_client::{
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::{BlockEntityExtras, World},
 };
-use sunrise_core::position::BlockPos;
+use sunrise_core::{position::BlockPos, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
@@ -296,6 +296,10 @@ pub(super) struct Level {
     /// Each cell's original connection group before this transaction first changed it, used for
     /// silent rollback on abort and pre-replay restoration on root commit.
     connection_groups: HashMap<(Dim, Pos), Option<u64>>,
+    /// Level.random in this frame's own dimension before its first draw.
+    level_random: Option<LegacyRandom>,
+    /// Other levels drawn from at this depth. Only those draws allocate a map entry.
+    parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -661,6 +665,24 @@ fn frame_token() -> u64 {
 }
 
 impl Level {
+    /// Keep the first snapshot for this stream. `None` names the frame's own level.
+    pub(super) fn keep_level_random(
+        &mut self,
+        owner: Option<LevelRef>,
+        before: impl FnOnce() -> LegacyRandom,
+    ) {
+        match owner {
+            Some(level) if self.dimension.map(super::Dim::key) != Some(level.dimension()) => {
+                self.parked_level_randoms
+                    .entry(level)
+                    .or_insert_with(before);
+            }
+            _ => {
+                self.level_random.get_or_insert_with(before);
+            }
+        }
+    }
+
     pub(super) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
         self.blocks
             .entry(pos)
@@ -867,9 +889,6 @@ impl Game<'_> {
             .position(|level| level.token == named)?;
         u32::try_from(at).ok()
     }
-    /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
-    /// at the root makes them final and tells the world; otherwise every storage it wrote goes
-    /// back to how it was. Nothing happens with none open.
     /// Abort any storage transactions left open above `depth` (for example when a
     /// listener panics before closing a seal it opened via `Host::transaction_open`).
     pub(in crate::game) fn abort_abandoned_transactions(&mut self, depth: usize) {
@@ -878,6 +897,9 @@ impl Game<'_> {
         }
     }
 
+    /// Closes the innermost transaction: `commit` hands its changes to the one around it, or
+    /// at the root makes them final and tells the world; otherwise every storage it wrote goes
+    /// back to how it was. Nothing happens with none open.
     fn close_storage_transaction(&mut self, commit: bool) {
         let Some(level) = self.transactions.pop() else {
             return;
@@ -929,6 +951,21 @@ impl Game<'_> {
             Some(self.dim),
             "transaction closed in a different level"
         );
+        // A nested operation can briefly put another dimension in place. Its inline snapshot
+        // belongs to that stream, not to the parent's in-place slot.
+        let child_random_owner = if commit
+            && level.level_random.is_some()
+            && self
+                .transactions
+                .last()
+                .is_some_and(|outer| outer.dimension != level.dimension)
+        {
+            self.native_lifecycle
+                .epoch()
+                .map(|epoch| self.level_ref(epoch, self.dim.key()))
+        } else {
+            None
+        };
         let lifetimes = std::mem::take(&mut level.lifetimes);
         let mut independent = None;
         if commit && let Some(outer) = self.transactions.last_mut() {
@@ -970,6 +1007,16 @@ impl Game<'_> {
                 outer.trades.merge(level.trades);
                 for (pos, was) in level.connection_groups {
                     outer.connection_groups.entry(pos).or_insert(was);
+                }
+                if let Some(before) = level.level_random {
+                    if outer.dimension == level.dimension {
+                        outer.keep_level_random(None, || before);
+                    } else if let Some(owner) = child_random_owner {
+                        outer.keep_level_random(Some(owner), || before);
+                    }
+                }
+                for (owner, before) in level.parked_level_randoms {
+                    outer.keep_level_random(Some(owner), || before);
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1717,6 +1764,29 @@ impl Game<'_> {
             replay.replay_removal = true;
         }
     }
+    pub(super) fn journal_level_random(&mut self) {
+        self.journal_active_level_random(LegacyRandom::clone);
+    }
+
+    /// Keep an engine or restricted-writer draw from the stream currently in place.
+    pub(super) fn journal_active_level_random(
+        &mut self,
+        before: impl FnOnce(&LegacyRandom) -> LegacyRandom,
+    ) {
+        let owner = match self.transactions.last() {
+            None => return,
+            Some(frame) if frame.dimension == Some(self.dim) => None,
+            Some(_) => {
+                let Some(epoch) = self.native_lifecycle.epoch() else {
+                    return;
+                };
+                Some(self.level_ref(epoch, self.dim.key()))
+            }
+        };
+        if let Some(frame) = self.transactions.last_mut() {
+            frame.keep_level_random(owner, || before(&self.world.random));
+        }
+    }
     pub(super) fn journal_orb_merge(
         &mut self,
         join: crate::join_seq::JoinSeq,
@@ -2364,6 +2434,14 @@ impl Game<'_> {
         for ((dim, (x, y, z)), group) in level.connection_groups {
             if let Some(world) = self.connection_group_world_mut(dim) {
                 world.set_connection_group_stored(x, y, z, group);
+            }
+        }
+        if let Some(random) = level.level_random {
+            *self.world.random = random;
+        }
+        for (owner, before) in level.parked_level_randoms {
+            if let Some(random) = self.level_random_mut(owner) {
+                *random = before;
             }
         }
         // The shapes are back: the neighbours that read them (a fluid beside it) are told, as

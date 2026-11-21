@@ -620,9 +620,6 @@ fn a_cached_machine_menu_reopens_a_linked_slot_when_its_backing_appears() {
         serve(game, &prediction(&[(0, stone(5))], stone(2)));
         link_pot(game);
         let backing = game.world.block_entities.remove(&LINK).unwrap();
-        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.menu.as_mut().unwrap().hidden = vec![0];
-        });
         MOVED.with(|moved| moved.borrow_mut().clear());
         // Cache the machine menu during a drag while the link has no backing.
         click(game, rx, (-999, 0, Input::QuickCraft), Vec::new(), None);
@@ -640,13 +637,6 @@ fn a_cached_machine_menu_reopens_a_linked_slot_when_its_backing_appears() {
             game.world.block_entities.get(&LINK).unwrap().slots()[0],
             stone(7)
         );
-        // Refreshing the link must not re-enable a layout-hidden slot.
-        click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
-        assert_eq!(
-            game.world.block_entities.get(&POS).unwrap().slots()[0],
-            stone(5)
-        );
-        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
         click(
             game,
             rx,

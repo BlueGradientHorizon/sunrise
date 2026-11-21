@@ -707,6 +707,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
                 inputs: Vec::new(),
                 crafting: None,
                 links: None,
+                owned_slots: None,
             }));
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.menu.as_mut().unwrap().mod_type = Some(kind);
@@ -758,7 +759,7 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
                 toast.message.as_ref().unwrap().component(),
                 serde_json::json!({
                     "translate": "sunrise.mods.hook_panic.description",
-                    "with": ["movemod", "menu_quick_move"],
+                    "with": [{"text": "movemod"}, {"text": "menu_quick_move"}],
                 })
             );
         });
@@ -969,6 +970,7 @@ fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
                 inputs: Vec::new(),
                 crafting: None,
                 links: None,
+                owned_slots: None,
             }));
             for fail_take in [false, true] {
                 let window = open_depot(game);

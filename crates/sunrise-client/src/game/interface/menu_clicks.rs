@@ -822,7 +822,7 @@ impl Game<'_> {
         slot: i32,
         button: i32,
         input: sunrise_client::menu::Input,
-    ) -> Result<(), &'static str> {
+    ) -> std::result::Result<(), &'static str> {
         use sunrise_client::menu::Env;
         menu.track_results(true);
         let mut rest = {

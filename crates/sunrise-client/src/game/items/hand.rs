@@ -3,7 +3,7 @@
 //! `continueAttack`, `MultiPlayerGameMode` block breaking), the arm swing
 //! (`LivingEntity.SwingState`) and the first-person equip heights
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
-use super::{Game, Mining, Screen, minecarts::CartKind};
+use super::{Game, Mining, minecarts::CartKind};
 use sunrise_client::{
     Result,
     attack_strength::HeldStack,

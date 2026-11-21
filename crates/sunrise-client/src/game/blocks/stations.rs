@@ -2747,7 +2747,11 @@ mod tests {
                 game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilDrag").unwrap();
-                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".to_owned()));
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .menu
+                    .set(Some((1, "minecraft:anvil".to_owned())));
                 game.station = Some(Station::new(Kind::Anvil, [0; 3]));
                 game.carried = Some(ItemStack::new("minecraft:iron_ingot", 2));
 
@@ -2799,7 +2803,11 @@ mod tests {
                 game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
                 let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(client, "AnvilTake").unwrap();
-                game.remote.as_mut().unwrap().menu = Some((1, "minecraft:anvil".into()));
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .menu
+                    .set(Some((1, "minecraft:anvil".into())));
                 let mut station = Station::new(Kind::Anvil, [0; 3]);
                 let repaired = ItemStack::new("minecraft:iron_sword", 1);
                 let mut worn = repaired.clone();

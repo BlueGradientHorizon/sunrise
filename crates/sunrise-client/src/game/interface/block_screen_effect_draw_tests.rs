@@ -657,12 +657,13 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.tick_remote().unwrap();
 
         game.screen = Screen::Dead;
-        game.player
-            .as_mut()
-            .unwrap()
-            .set_health(0.0, false)
-            .unwrap();
-        game.remote.as_mut().unwrap().health = (0.0, 20, 5.0);
+        use sunrise_protocol::packets::play::{Clientbound, SetHealth};
+        game.apply_packet(Clientbound::SetHealth(SetHealth {
+            health: 0.0,
+            food: 20,
+            saturation: 5.0,
+        }))
+        .unwrap();
         let wet = observe_overlay(Water, || {
             assert!(
                 names(&quads(game))
