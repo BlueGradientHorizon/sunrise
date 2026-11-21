@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Debug sample and debug subscription request bytes against the native Java stream codecs."""
+"""Debug sample and debug subscription request bytes against the native Java stream codecs, and what
+their decoders (and a sample's logger) refuse: an unknown or over-32 subscription set, a sample past four values or of
+another kind."""
 import json
 import os
 try:
@@ -25,8 +27,11 @@ def main():
     run([lab.cargo_target()/'debug/examples/debug_packet_probe',build/'java.jsonl',build/'rust.jsonl'],'rust')
     java=[json.loads(x) for x in (build/'java.jsonl').read_text().splitlines()]
     rust=[json.loads(x) for x in (build/'rust.jsonl').read_text().splitlines()]
-    assert len(java)==len(rust)==5
-    for a,b in zip(java,rust):assert a['wire']==b['wire'],(a,b)
+    assert len(java)==len(rust)==5+1+11+7
+    # Encodings: the bytes; the registry's size; refused and accepted decodes: ok with the values, or error.
+    for a,b in zip(java,rust):
+        key='wire' if a['packet'] in ('sample','request') else 'count' if a['packet']=='registry' else 'result'
+        assert a[key]==b[key],(a,b)
     base.ensure_sources_unchanged(sources,tested)
     lab.write_json(build/'report.json',{'pass':True,'cases':len(java),'sources_sha256':tested})
     print(f'Debug packets: {len(java)} native wire encodings match byte for byte')

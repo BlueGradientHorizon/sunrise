@@ -174,7 +174,7 @@ cargo = [
 ]
 harnesses = [
   "lan*", "server_*", "remote_*", "dedicated_*", "online_mode", "secure_chat", "wire_stream", "item_wire",
-  "stop_sound_wire", "debug_packet_codec", "protocol_*", "friends_integration", "management_protocol", "user_cache", "player_sync",
+  "stop_sound_wire", "protocol_*", "friends_integration", "management_protocol", "user_cache", "player_sync",
   "*_guest", "guest_*", "connected_guest_advancement_save", "disconnect_crafting", "entity_sound_packet",
   "synced_*", "test_pos_guest",
 ]
@@ -372,7 +372,7 @@ paths = [
   "crates/sunrise-client/src/game/network/remote*", "crates/sunrise-protocol/src/packets/*",
   "crates/sunrise-client/src/game/world/tick_script.rs", "tools/net_capture.py", "tools/wire_stream.py",
 ]
-harnesses = ["wire_stream", "protocol_*", "item_wire", "stop_sound_wire", "debug_packet_codec", "player_sync"]
+harnesses = ["wire_stream", "protocol_*", "item_wire", "stop_sound_wire", "player_sync"]
 
 [[area]]
 name = "mod-api"

@@ -88,12 +88,15 @@ def give(slot, item):
 ROUTES = {}
 
 
-def route(name, index, build=(), setup=(), during=(), opponent=None, pitch=0):
+def route(name, index, build=(), setup=(), during=(), opponent=None, pitch=0, shots=(), expect=None):
     """A route: its cell, blocks, console setup, console commands at times during it (seconds, as its input's),
-    and where the opponent stands (blocks ahead of the player), if it fights one."""
+    and where the opponent stands (blocks ahead of the player), if it fights one. `shots` are (seconds, label)
+    screenshots of the window taken while it plays; `expect(ticks, shots)` lists what the route's run did not do
+    (client_packet_diff makes each a problem of the run), `shots` being {label: png path}."""
     def wrap(fn):
         ROUTES[name] = {"index": index, "build": build, "setup": setup, "events": fn, "opponent": opponent, "pitch": pitch,
-                        "during": [(START + t, c) for t, c in during]}
+                        "during": [(START + t, c) for t, c in during], "expect": expect,
+                        "shots": [(START + t, label) for t, label in shots]}
         return fn
     return wrap
 
@@ -327,10 +330,59 @@ def terrain(e):
 
 
 # F3+2 toggles the FPS/TPS charts (the client's debug subscription); op makes the server stream the samples.
-@route("debug_fps_charts", 28, setup=[f"op {PLAYER}"])
+CHARTS_ON, CHARTS_OFF = 0.8, 2.6  # when F3+2 is pressed, seconds into the route (KEY_2 lands 0.1 s later)
+CHART_SHOTS = ((0.7, "off"), (2.4, "on"))
+TICKS_PER_SECOND = 20
+# ClientDebugSubscriber.tick's packets: the set {dedicated_server_tick_time} (id 0), then the empty set.
+SUBSCRIBE, CLEAR = "0100", "00"
+
+
+def tps_chart_region():
+    """(left, top, right, bottom) of the TPS chart in window pixels: bottom right, 60 GUI pixels high and
+    AbstractDebugChart.getWidth(screen / 2) wide."""
+    gui_width = WIDTH // GUI_SCALE
+    chart = min(242, gui_width // 2) * GUI_SCALE
+    return WIDTH - chart, HEIGHT - 60 * GUI_SCALE, WIDTH, HEIGHT
+
+
+def green_pixels(png):
+    """How many pixels of the TPS chart are tick-time green (TpsDebugChart's under-budget bar colour)."""
+    from PIL import Image
+    image = Image.open(png).convert("RGB").crop(tps_chart_region())
+    return sum(1 for pixel in image.getdata() if pixel == (0, 255, 0))
+
+
+def expect_debug_fps_charts(ticks, shots):
+    """The subscribe request then the clear in the wire stream, each a client tick or so after its key (the
+    route's keys: MARKER_SECONDS after the marker, 20 ticks a second; real-time input lands a few ticks either
+    way), and the received samples on the chart: tick-time green in its corner after, not before."""
+    requests = [(i, payload) for i, tick in enumerate(ticks) for _, name, payload in tick["raw"]
+                if name == "debug_subscription_request"]
+    if [payload for _, payload in requests] != [SUBSCRIBE, CLEAR]:
+        return [f"expected the subscribe {SUBSCRIBE} then the clear {CLEAR}, saw {requests}"]
+    problems = []
+    for (tick, payload), seconds in zip(requests, (CHARTS_ON + 0.1, CHARTS_OFF + 0.1)):
+        want = round((START + seconds) * TICKS_PER_SECOND)
+        if not want - 4 <= tick <= want + 12:
+            problems.append(f"request {payload} at tick {tick}, expected about {want}")
+    gap = requests[1][0] - requests[0][0]
+    want_gap = round((CHARTS_OFF - CHARTS_ON) * TICKS_PER_SECOND)
+    if abs(gap - want_gap) > 8:
+        problems.append(f"{gap} ticks from the subscribe to the clear, expected about {want_gap}")
+    missing = [label for label in ("off", "on") if label not in shots]
+    if missing:
+        return problems + [f"no {', '.join(missing)} screenshot"]
+    off, on = green_pixels(shots["off"]), green_pixels(shots["on"])
+    if on < off + 50:
+        problems.append(f"the tick chart shows {on} green pixels with the charts on against {off} before: "
+                        "no sample reached it")
+    return problems
+
+
+@route("debug_fps_charts", 28, setup=[f"op {PLAYER}"], shots=CHART_SHOTS, expect=expect_debug_fps_charts)
 def debug_fps_charts(e):
     e.key(0.3, "KEY_F3", 0.1)
-    for t in (0.8, 2.6):
+    for t in (CHARTS_ON, CHARTS_OFF):
         e.key(t, "KEY_F3", 0.3)
         e.key(t + 0.1, "KEY_2")
     e.key(3.3, "KEY_F3", 0.1)
@@ -396,13 +448,10 @@ def pvp_strafe(e):
     e.button(2.6)
 
 
-# Lava sets the player alight; the swim route right after it puts the fire out.
-ORDER = ["walk", "sprint", "sprint_jump", "strafe", "sneak_edge", "stairs_slabs", "ladder", "ice", "soul_sand",
-         "lava_edge", "swim", "break_block", "place_block", "eat", "bow", "shield", "hit_mob", "inventory", "drop",
-         "hotbar_scroll", "terrain", "pvp_hits", "pvp_spam", "pvp_wtap", "pvp_crit", "pvp_knockback", "pvp_shield",
-         "pvp_strafe", "debug_fps_charts"]
+# By cell index. Lava sets the player alight; the swim route right after it puts the fire out.
+ORDER = sorted(ROUTES, key=lambda name: ROUTES[name]["index"])
+assert [ROUTES[name]["index"] for name in ORDER] == list(range(len(ORDER)))
 PVP = [name for name in ORDER if name.startswith("pvp_")]
-assert sorted(ORDER) == sorted(ROUTES)
 
 
 def course_bounds():
