@@ -93,6 +93,7 @@ pub trait CraftingRecipeKind: Send + Sync + 'static {
 }
 
 // no wire: process-local registration owns a native JSON decoder.
+// exhaustive: registration owns the opaque decoder.
 /// Engine-owned registration of a recipe serializer.
 #[derive(Clone)]
 pub struct RegisteredRecipeSerializer(Arc<dyn RecipeDecoder>);
@@ -119,6 +120,7 @@ impl<K: CraftingRecipeKind> RecipeDecoder for K {
 }
 
 // no wire: a recipe and its serializer are native values; only their JSON is synced.
+// exhaustive: only decoding constructs the opaque serializer and retained value pair.
 /// Engine-owned dispatch to one loaded recipe and its owning serializer.
 #[derive(Clone)]
 pub struct LoadedCraftingRecipe(Arc<dyn RecipeDispatch>);
