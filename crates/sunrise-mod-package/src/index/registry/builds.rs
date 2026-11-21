@@ -362,7 +362,20 @@ fn check_archive(
     inspect_archive(bytes, &archive.target, &identity)
 }
 
+/// The library suffix the SDK host can load, including hosts with a `-server` suffix.
+pub fn library_extension(host: &str) -> Result<&'static str, String> {
+    host.split('-')
+        .find_map(|part| match part {
+            "darwin" => Some("dylib"),
+            "linux" => Some("so"),
+            "windows" => Some("dll"),
+            _ => None,
+        })
+        .ok_or_else(|| format!("unknown native library extension for SDK host {host}"))
+}
+
 fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), String> {
+    let extension = library_extension(target)?;
     // Two files only; raw iteration does not allocate PAX/GNU extension entries. Bound both the
     // decoder dictionary and total output, including tar headers, zero padding and the trailer.
     let limit = MAX_FILE + MAX_IDENTITY + (1 << 16);
@@ -389,13 +402,15 @@ fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), S
                 serde_json::from_reader::<_, Identity>(&mut entry)
                     .map_err(|e| format!("identity.json: {e}"))?,
             );
-        } else if library.is_none()
-            && entry.size() > 0
-            && entry.size() <= MAX_FILE
-            && name
+        } else if library.is_none() && entry.size() > 0 && entry.size() <= MAX_FILE {
+            if name
                 .rsplit_once('.')
-                .is_some_and(|(_, ext)| matches!(ext, "so" | "dll" | "dylib"))
-        {
+                .is_none_or(|(_, ext)| ext != extension)
+            {
+                return Err(format!(
+                    "SDK host {target} requires a .{extension} library, not {name:?}"
+                ));
+            }
             let mut hash = Sha256::new();
             let name = name.to_owned();
             if std::io::copy(&mut entry, &mut hash).map_err(io)? != entry.size() {
@@ -434,4 +449,30 @@ fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), S
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_archive_library_must_have_its_hosts_extension() {
+        let bytes = include_bytes!(
+            "../../../tests/index/stable-native/release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz"
+        );
+        for (host, extension) in [
+            ("x86_64-pc-windows-gnu", "dll"),
+            ("aarch64-apple-darwin", "dylib"),
+        ] {
+            let error = inspect_archive(bytes.to_vec(), host, "").unwrap_err();
+            assert!(
+                error.contains(&format!("SDK host {host} requires a .{extension} library")),
+                "{error}"
+            );
+        }
+        assert_eq!(
+            library_extension("x86_64-unknown-linux-gnu-server").unwrap(),
+            "so"
+        );
+    }
 }
