@@ -480,9 +480,12 @@ the parent's own `sunrise-stage` judges the mod API, never the candidate's: buil
 own folder and target, no inherited compiler wrapper or job token), it exports both trees, its export of the parent
 must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. The
 candidate's signed `surface.json`, which modders build against, is written by the candidate's own exporter, so the
-parent's tool reads it as the SDK's readers do and diffs it against its own export of the candidate's tree: that
-diff, too, must be identical for a patch and at most additive for a minor (a minor's exporter may add records or
-fields the parent's reader doesn't know). A patch's file must also be that export exactly, with every key it has and its lists in any order, the same
+parent's tool reads it as the SDK's readers do (`sunrise-stage surface-read`, which also refuses a stored hash its
+contract doesn't give) and diffs it against its own export of the candidate's tree: that diff, too, must be
+identical for a patch and at most additive for a minor. A minor's exporter may add records, fields and collections
+the parent's reader doesn't know, but every record the parent's tool exports, each member of a trait, type or hook
+on its own, must read back with every field that reader knows equal, since the diff trusts an unchanged hash and
+some fields (a called trait's references) are outside it. A patch's file must also be that export exactly, with every key it has and its lists in any order, the same
 comparison as the parent's export against the parent's signed file. A file the
 reader refuses, one with another schema, or one listing native internals is refused. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a

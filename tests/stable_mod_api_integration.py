@@ -47,6 +47,8 @@ class StableModApiIntegration(unittest.TestCase):
                     if args[1] == "surface":
                         shutil.copyfile(Path(args[2]) / "surface.json", args[3])
                         return subprocess.CompletedProcess(args, 0, "", "")
+                    if args[1] == "surface-read":
+                        return run_stage(args, **kwargs)  # the signed surface, as the parent's reader reads it
                     self.assertEqual(args[1], "surface-diff")
                     if Path(args[3]).name == "after.json":
                         return run_stage(args, **kwargs)  # the signed surface, read against the candidate's export
@@ -102,7 +104,8 @@ class StableModApiIntegration(unittest.TestCase):
             return run_stage(args, **kwargs)
 
         internal = {"id": "internal:x", "hash": "h", "kind": "internal", "signature": "fn x()", "signature_hash": "s"}
-        unknown_field = {**ADDITIVE, "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
+        unknown_field = {**ADDITIVE,
+                         "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
         bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
@@ -110,7 +113,15 @@ class StableModApiIntegration(unittest.TestCase):
                 ("repeated id", repeated, True), ("no hash", hashless, True),
                 ("float schema", {**ADDITIVE, "schema": 3.0}, True),
                 ("native internals", {**ADDITIVE, "engine_items": [internal]}, True),
-                ("changed record", bumped, True), ("dropped record", SURFACE, True)):
+                ("changed record", bumped, True), ("dropped record", SURFACE, True),
+                # A field outside every hash and the diff, changed under the same hash: read back, it differs.
+                ("kept hash, changed doc",
+                 {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "doc": "x"}]},
+                 True),
+                # A stored hash its contract doesn't give, and a document hash its records don't.
+                ("unsealed record", {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0],
+                                                               {**ADDITIVE["behaviours"][1], "hash": "0" * 32}]}, True),
+                ("unsealed document", {**ADDITIVE, "hash": "0" * 32}, True)):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             notes.write_text("Release notes.\n")
             with self.subTest(fixture), mock.patch.dict(os.environ, {"BREAK_GLASS": "false"}), \

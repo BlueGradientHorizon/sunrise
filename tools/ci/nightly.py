@@ -928,14 +928,40 @@ def parent_stage(sha: str, work: Path) -> str:
     return str(work / "judge-target" / "debug" / "sunrise-stage")
 
 
+def json_text(value) -> str:
+    """`value` as canonical JSON: its objects' keys sorted, its lists in order. Equal exactly when the JSON is, which
+    Python's == is not (`true == 1`)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def surface_entries(surface: dict) -> dict[str, str]:
+    """Each record of a surface.json by id (an extension tag by `extension_tag:<registry>/<id>`), as canonical JSON
+    of its own fields: a member list (a trait's methods, a type's fields and variants, a hook's argument records:
+    any list of records with ids) is left out of its owner and its records are entries of their own."""
+    entries = {}
+
+    def add(key, record):
+        own = {}
+        for name, value in record.items():
+            if isinstance(value, list) and value and all(isinstance(item, dict) and "id" in item for item in value):
+                for member in value:
+                    add(member["id"], member)
+            else:
+                own[name] = value
+        entries[key] = json_text(own)
+
+    for collection, records in surface.items():
+        for record in records if isinstance(records, list) else ():
+            tag = collection == "extension_tags"
+            add(f"extension_tag:{record['registry']}/{record['id']}" if tag else record["id"], record)
+    return entries
+
+
 def canonical_surface(surface: dict) -> dict:
     """A surface.json as compared: every top-level key kept, each value as canonical JSON (so `true` is not `1`),
     a list as its items' canonical JSON sorted (a repeated item kept), so two surfaces compare equal exactly when
     they differ at most in their lists' order."""
-    def canonical(value):
-        return json.dumps(value, sort_keys=True, separators=(",", ":"))
-
-    return {key: sorted(map(canonical, value)) if isinstance(value, list) else canonical(value)
+    return {key: sorted(map(json_text, value)) if isinstance(value, list) else json_text(value)
             for key, value in surface.items()}
 
 
@@ -979,7 +1005,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                     raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not JSON: {error}")
                 if not isinstance(published[name], dict):
                     raise SystemExit(f"::error::refused: {name}'s signed {SDK_SURFACE} is not a JSON object")
-            if break_glass and published[old_tag] != published[tag]:
+            if break_glass and json_text(published[old_tag]) != json_text(published[tag]):
                 raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
                                  "release never does")
             # No candidate code judges the candidate: the parent's own sunrise-stage, built from the parent's tree
@@ -998,7 +1024,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             if canonical_surface(exported["parent"]) != canonical_surface(published[old_tag]):
                 raise SystemExit(f"::error::refused: {old_tag}'s own sunrise-stage does not export its published "
                                  "surface.json from its tree")
-            if break_glass and exported["candidate"] != exported["parent"]:
+            if break_glass and json_text(exported["candidate"]) != json_text(exported["parent"]):
                 raise SystemExit(f"::error::refused: {old_tag}'s sunrise-stage exports a different surface from "
                                  f"{tag}'s tree; a break-glass release never changes it")
             # Both files are plain SDK surfaces: no native internals, loops, or change-note waivers.
@@ -1013,19 +1039,32 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             if old_content != new_content:
                 problems.append(f"content_api changed from {old_content!r} to {new_content!r}")
             # The signed surface.json is what modders build against, written by the candidate's own exporter. The
-            # parent's tool reads it as the SDK's readers do and diffs it against its own export of the candidate's
-            # tree: the step allows what it allows there too (a minor's exporter may add records or fields the
-            # parent's reader doesn't know). A patch's is that export exactly, whatever the order of its lists.
+            # parent's tool reads it as the SDK's readers do, refusing a stored hash its contract doesn't give
+            # (surface-read), and diffs it against its own export of the candidate's tree: the step allows what it
+            # allows there too. A minor's exporter may add records, fields and collections the parent's reader
+            # doesn't know, but every record the parent's tool exports must read back with each known field equal
+            # (the diff trusts an unchanged hash, and some fields are outside it). A patch's is that export exactly,
+            # whatever the order of its lists.
             signed, export = published[tag], exported["candidate"]
-            read = subprocess.run([stage, "surface-diff", str(work / "candidate.json"), str(after), "--json",
-                                   str(work / "signed-diff.json")], cwd=work, env=isolated_env(), capture_output=True,
-                                  text=True)
+            known = work / "signed-known.json"
+            read = subprocess.run([stage, "surface-read", str(after), str(known)], cwd=work, env=isolated_env(),
+                                  capture_output=True, text=True)
+            if not read.returncode:
+                read = subprocess.run([stage, "surface-diff", str(work / "candidate.json"), str(after), "--json",
+                                       str(work / "signed-diff.json")], cwd=work, env=isolated_env(),
+                                      capture_output=True, text=True)
             if read.returncode:
                 problems.append(f"the parent's tool cannot read the signed {SDK_SURFACE} for {tag}: "
                                 f"{read.stderr.strip()}")
-            elif (read_as := json.loads((work / "signed-diff.json").read_text())["verdict"]) not in allowed:
-                problems.append(f"the parent's tool reads the signed {SDK_SURFACE} for {tag} as {read_as} against "
-                                "its export of the candidate's tree")
+            else:
+                if (read_as := json.loads((work / "signed-diff.json").read_text())["verdict"]) not in allowed:
+                    problems.append(f"the parent's tool reads the signed {SDK_SURFACE} for {tag} as {read_as} "
+                                    "against its export of the candidate's tree")
+                entries = surface_entries(json.loads(known.read_bytes()))
+                if changed := sorted(key for key, record in surface_entries(export).items()
+                                     if entries.get(key) != record):
+                    problems.append(f"the signed {SDK_SURFACE} for {tag} changes or lacks {len(changed)} records the "
+                                    "parent's tool exports from its tree: " + ", ".join(changed[:5]))
             if signed.get("engine_items"):
                 problems.append(f"the signed {SDK_SURFACE} for {tag} lists native internals, which an SDK surface "
                                 "never holds")
