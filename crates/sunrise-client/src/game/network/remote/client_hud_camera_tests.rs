@@ -221,6 +221,7 @@ fn set_up(game: &mut Game<'_>, case: &serde_json::Value) {
     let remote = game.remote.as_mut().unwrap();
     remote.logged_in = true;
     remote.entity_id = LOCAL;
+    remote.level_load.finish();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
 
     // The viewer's own state: what the local hotbar and bars would show.
