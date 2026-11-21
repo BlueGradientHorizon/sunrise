@@ -27,6 +27,31 @@ env:
   # Test runs never reach the telemetry server: no live-count ping, no uploads (docs/telemetry.md).
   SUNRISE_TELEMETRY_URL: "off"
 jobs:
+  # Which jobs a maintainer-requested fork check needs, from the complete base/head diff
+  # (tools/ci/rust_changes.py). Every verification part uses this one decision. Missing event commits, an
+  # unavailable diff, or a failed selection keep all parts. Scheduled and manual verification stay full.
+  changes:
+    if: github.event.label.name == 'ci:verify' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      rust_required: ${{ steps.selection.outputs.rust_required }}
+      tooling_required: ${{ steps.selection.outputs.tooling_required }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fetch this commit's history for selection
+        timeout-minutes: 11
+        env:
+          FETCH_STEP: Fetch this commit's history for selection
+          # The diff reads commits and two trees, which Git fetches when it first reads them (tools/ci/history_fetch.sh).
+          HISTORY_FILTER: tree:0
+        run: bash tools/ci/history_fetch.sh
+      - name: Select the jobs this pull request needs
+        id: selection
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/ci/rust_changes.py --all "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
   # verify runs as three jobs side by side, so a run takes as long as its slowest part (the Rust tests), not the sum:
   # one job doing them in turn took 14-21 minutes on GitHub's runners (main's run 43595807302: 859 s). `verify` waits
   # for the three and passes only when each passed. It runs even in a cancelled run
@@ -34,7 +59,10 @@ jobs:
   #
   verify-tree:
     name: verify (tree and tools)
-    if: github.event_name == 'schedule' || inputs.verify || github.event.label.name == 'ci:verify'
+    needs: changes
+    if: >-
+      !cancelled() && (github.event_name == 'schedule' || inputs.verify ||
+      github.event.label.name == 'ci:verify' && (needs.changes.outputs.tooling_required != 'false' || needs.changes.outputs.rust_required != 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -62,7 +90,10 @@ jobs:
         run: python -m unittest discover -s tests -v
   verify-lint:
     name: verify (format and lint)
-    if: github.event_name == 'schedule' || inputs.verify || github.event.label.name == 'ci:verify'
+    needs: changes
+    if: >-
+      !cancelled() && (github.event_name == 'schedule' || inputs.verify ||
+      github.event.label.name == 'ci:verify' && (needs.changes.outputs.rust_required != 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -84,7 +115,6 @@ jobs:
           find crates/sunrise-mod-api/src crates/sunrise-mod-vocab/src -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --check --config skip_children=true
           find crates/sunrise-client/src/game -name '*.rs' -print0 | xargs -0 rustup run stable rustfmt --edition 2024 --config skip_children=true --check
           rustup run stable rustfmt --edition 2024 --check crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*.rs crates/sunrise-mod-api-gen/dispatch-tests/src/fixtures/*/*.rs
-          rustup run stable rustfmt --edition 2024 --check crates/sunrise-mod-wasm/wire-loopback/tests/wire_loopback/*.rs
           cargo +stable clippy --workspace --all-targets --locked -- -D warnings
           # The server build (released as sunrise-engine): the game without sound or controllers.
           cargo +stable clippy -p sunrise-client -p sunrise-game -p sunrise-mod-host --all-targets --locked --no-default-features -- -D warnings
@@ -92,7 +122,10 @@ jobs:
         run: python3 tools/ci/check_api_boundary.py
   verify-test:
     name: verify (Rust tests)
-    if: github.event_name == 'schedule' || inputs.verify || github.event.label.name == 'ci:verify'
+    needs: changes
+    if: >-
+      !cancelled() && (github.event_name == 'schedule' || inputs.verify ||
+      github.event.label.name == 'ci:verify' && (needs.changes.outputs.rust_required != 'false'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -126,7 +159,7 @@ jobs:
     needs: [verify-tree, verify-lint, verify-test]
     # Skipped with its parts on a dispatch of the by-hand jobs and on another label; otherwise it runs even in a
     # cancelled run.
-    if: always() && needs.verify-tree.result != 'skipped'
+    if: always() && (github.event_name == 'schedule' || inputs.verify || github.event.label.name == 'ci:verify')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

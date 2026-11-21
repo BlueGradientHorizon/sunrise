@@ -147,7 +147,6 @@ mod tests {
             sources: Some(&[((0, 0), 10)]),
             tracker,
             out: &mut out,
-            gone: None,
         }];
         level.tick(&entities, &Riding::default(), &mut viewer, |_| Some(1));
     }

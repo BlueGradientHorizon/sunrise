@@ -274,6 +274,10 @@ try {
     # N5. A release published before signing (no SHA256SUMS): refused now; the escape hatch is the flag above.
     $d = Join-Path $W "legacy"; New-Release $d "v1.2.3"; Set-Release $d "v1.2.3" $false
     $r = Invoke-Case $d $v; Test-Case "release without signed checksums refused" $false "has no SHA256SUMS" $r
+
+    # N6. A Dev build is refused by name: servers don't install one.
+    $d = Join-Path $W "dev"; New-Release $d "dev-2026-11-21-0c02067"
+    $r = Invoke-Case $d @{ Version = "dev-2026-11-21-0c02067" }; Test-Case "a Dev build refused by name" $false "is a Dev build" $r
 } finally {
     Remove-Item -Recurse -Force $W -ErrorAction SilentlyContinue
 }

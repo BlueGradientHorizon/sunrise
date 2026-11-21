@@ -58,9 +58,10 @@ the file you share.
 
 ## 4. Play it
 
+<!-- quickstart-test: skip, needs the reader's game and prepared resources -->
 ```sh
 cargo sunrise-mod run --game <path to sunrise-client> -- --resources <resources folder> \
-  --game-dir target/sunrise-mod/game --home target/sunrise-mod/home
+  --game-dir target/sunrise-mod/game --home target/sunrise-mod/run/home
 ```
 
 `run` builds the mod and starts that game with it always on. Everything after `--` goes to the game.
@@ -71,6 +72,8 @@ cargo sunrise-mod run --game <path to sunrise-client> -- --resources <resources 
   folder's full path: only `--game-dir`, `--home` and the mod's own path are read from the folder you start in.
 - `--game-dir` and `--home` keep the game's saves, `options.txt` and logs under the project's `target/`. Without
   them the saves and settings land in the project folder itself and the logs in your own Sunrise data folder.
+- If your mod uses [`[[jar]]` originals](../how-to/content-mods.md#java-jars-as-external-assets), `run` sets the
+  development home itself; you can omit `--home`. Use `--jars <dir>` to choose a different source folder.
 - Quote a path that has spaces.
 
 Open a world and craft the block from an amethyst block and glowstone dust. The game reads content once, at
@@ -86,7 +89,8 @@ folder is the one that holds `options.txt`; create `sunrise-mods/` if it is miss
 cargo sunrise-mod check target/sunrise-mod/glowing_blocks.smod
 ```
 
-`check` runs what the mod registry runs on a submission ([Publishing your mod](../how-to/publish.md)).
+`check` runs what the mod registry runs on a submission. Follow [Publishing your mod](../how-to/publish.md) to
+submit the `.smod` without binaries; content projects do not generate the native release workflow.
 
 ## Next
 

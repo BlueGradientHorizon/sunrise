@@ -179,8 +179,9 @@ class OwnRunnerTests(unittest.TestCase):
         ci = dict(jobs(text))
         for part in ("verify-tree", "verify-lint", "verify-test"):
             with self.subTest(part=part):
-                self.assertIn("if: github.event_name == 'schedule' || inputs.verify || "
-                              "github.event.label.name == 'ci:verify'", ci[part])
+                self.assertIn("needs: changes", ci[part])
+                self.assertIn("github.event_name == 'schedule' || inputs.verify ||", ci[part])
+                self.assertIn("github.event.label.name == 'ci:verify' &&", ci[part])
         self.assertIn("needs: [verify-tree, verify-lint, verify-test]", ci["verify"])
         # Never skipped where its parts ran: GitHub counts a skipped required check as passed.
         self.assertIn("if: always()", ci["verify"])

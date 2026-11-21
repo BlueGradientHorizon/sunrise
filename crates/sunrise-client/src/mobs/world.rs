@@ -117,22 +117,6 @@ struct RaycastBlockCache<'b> {
     section_uniform_air: bool,
 }
 
-impl<'a> MobWorld<'a> {
-    /// Creates a lightweight view for creature despawn evaluation without entity collections.
-    pub fn despawn_view(&self) -> MobWorld<'a> {
-        MobWorld {
-            others: &[],
-            others_grid: None,
-            others_index: None,
-            others_villagers: None,
-            others_solid: None,
-            player: None,
-            teams: std::sync::Arc::clone(&self.teams),
-            ..self.clone()
-        }
-    }
-}
-
 /// Single non-spectator player position helper for creature ticking despawn checks.
 pub fn single_player_pos(players: impl IntoIterator<Item = (Vec3, bool)>) -> Option<Option<Vec3>> {
     let mut non_spec = players.into_iter().filter(|(_, spec)| !*spec);
@@ -687,17 +671,44 @@ impl MobWorld<'_> {
                 creative: p.creative,
                 passenger: p.passenger,
             }),
-            Who::Mob(id) => self.seen(id).map(|s| TargetInfo {
-                position: s.position,
-                eye_y: s.eye_y,
-                bounds: s.bounds,
-                hitbox: s.hitbox,
-                alive: s.alive,
-                can_be_seen_as_enemy: !s.playing_dead,
-                is_player: false,
-                creative: false,
-                passenger: s.passenger,
-            }),
+            Who::Mob(id) => self
+                .seen(id)
+                .map(|s| TargetInfo {
+                    position: s.position,
+                    eye_y: s.eye_y,
+                    bounds: s.bounds,
+                    hitbox: s.hitbox,
+                    alive: s.alive,
+                    can_be_seen_as_enemy: !s.playing_dead,
+                    is_player: false,
+                    creative: false,
+                    passenger: s.passenger,
+                })
+                .or_else(|| {
+                    self.armor_stands.iter().find(|s| s.id == id).map(|s| {
+                        let (width, height, eye) = s.probe_dimensions();
+                        let half = width / 2.0;
+                        let bounds = Aabb::new(
+                            Vec3::new(s.position.x - half, s.position.y, s.position.z - half),
+                            Vec3::new(
+                                s.position.x + half,
+                                s.position.y + height,
+                                s.position.z + half,
+                            ),
+                        );
+                        TargetInfo {
+                            position: s.position,
+                            eye_y: s.position.y + eye,
+                            bounds,
+                            hitbox: bounds,
+                            alive: s.health > 0.0,
+                            can_be_seen_as_enemy: false,
+                            is_player: false,
+                            creative: false,
+                            passenger: false,
+                        }
+                    })
+                }),
         }
     }
     /// The other mobs whose boxes may meet `area` (callers test the boxes),
@@ -980,6 +991,7 @@ fn run_test_world(
     build(&mut world, registry);
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
+        side: sunrise_client::motion::dry_side(),
         mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         teams: Default::default(),
@@ -1002,6 +1014,7 @@ fn run_test_world(
         others,
         live_mobs: None,
         dragon: None,
+        armor_stands: &[],
         leash_boats: &[],
         who_lookup: None,
         others_grid: None,

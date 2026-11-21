@@ -62,15 +62,12 @@ After a fresh clone, run `cargo sunrise-mod check` once before opening the proje
 
 ## 4. Check that it compiles
 
-`check` compiles for wasm32 as well as for this computer, so install that target for the project's toolchain once:
-
 ```sh
-rustup target add wasm32-unknown-unknown
 cargo sunrise-mod check
 ```
 
-`check` applies the package rules, then compiles the crate with `cargo check` against the pinned SDK's API source,
-for this computer and for wasm32, and lists what the mod uses of its build. The expected end of the output (the compile runs twice, once for each target):
+`check` applies the package rules, runs `cargo check` against the pinned SDK's API source, and lists what the mod
+uses of that build. The code check targets this computer. The expected end of the output:
 
 ```text
     Checking mod-greeter v0.1.0 (…/greeter)
@@ -109,16 +106,23 @@ A mod with crates.io dependencies is compiled with them, as `cargo build` would,
 When a build stops on a package the lock doesn't pin, its error ends with that command. The
 [build log](../how-to/native-mods/05-build-log.md) shows the compiler's output when a build fails.
 
+For publishing later, the native template also writes `.github/workflows/release.yml`, `.github/workflows/rebuild.yml`
+and their shared workflow and bootstrap action. They stay off until you opt in; you can keep developing against Nightly. See
+[Tagged native releases in GitHub Actions](../how-to/publish.md#tagged-native-releases-in-github-actions) for setup.
+
 ## 6. Run it
 
+<!-- quickstart-test: skip, needs the reader's game and prepared resources -->
 ```sh
 cargo sunrise-mod run --resources <folder> -- --world Greeter --creative
 ```
 
 `run` builds, stages the game with your mod in `target/sunrise-mod/run/` and starts it, with its game folder and its
-logs inside that folder, so nothing of a player's is touched. Everything after `--` goes to the game. Join a world;
+logs inside that folder, so nothing of a player's is touched. The game's `logs/latest.log` includes native mods' and
+their dependencies' `log` records through INFO, prefixed with `[target]`. Everything after `--` goes to the game. Join a world;
 the greeting appears in chat, and the mod is listed on the game's **Mods** screen. On Linux without a display, start
-`run` under `xvfb-run`.
+`run` under `xvfb-run`. If your mod uses [`[[jar]]` originals](../how-to/content-mods.md#java-jars-as-external-assets),
+`run` stages them in its development home. Use `--jars <dir>` to choose a different source folder.
 
 ### Prepared resources
 
@@ -153,7 +157,6 @@ itself calls.
 - [Writing hooks](writing-hooks.md): the crate root, the hook factory, events and hosts.
 - [Hooks and the Host](../concepts/hooks-and-the-host.md) and [Parts](../concepts/parts.md): how a mod reaches
   the game.
-- [Your first WebAssembly mod](first-wasm-mod.md): the same code, sandboxed.
 - [Native mods: building and shipping](../how-to/native-mods.md): how a native mod reaches players, trust,
   multiplayer and servers.
 - [Using an AI agent](../for-agents.md): the same steps on one page for a coding agent.

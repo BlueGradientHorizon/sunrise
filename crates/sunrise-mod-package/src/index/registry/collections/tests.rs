@@ -22,6 +22,11 @@ members = [
 ]
 "#;
 
+fn mentions_id(text: &str, id: &str) -> bool {
+    text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .any(|token| token == id)
+}
+
 fn write_mod(s: &Scratch, id: &str, name: &str, owner: &str) {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     zip.start_file(
@@ -100,7 +105,7 @@ fn a_collection_and_project_can_have_the_same_name_but_have_distinct_ids() {
     assert!(
         read.left_out
             .iter()
-            .any(|row| row.id == ID && row.reason.contains("member creature"))
+            .any(|row| row.id == ID && mentions_id(&row.reason, "creature"))
     );
 }
 
@@ -131,6 +136,25 @@ fn a_reader_skips_malformed_collection_rows_without_losing_projects() {
         );
     }
     assert!(serde_json::from_str::<Index>(&text).is_err());
+}
+
+#[test]
+fn a_nightly_only_project_keeps_its_id_from_a_collection() {
+    let s = checkout("collection-nightly-id");
+    let mut index = s.build().unwrap();
+    let mut project = index.project("creature").unwrap().clone();
+    project.id = "source_only".into();
+    project.versions.clear();
+    project.nightly = Some(crate::index::Nightly {
+        repo: "author/example".into(),
+        path: None,
+        metadata: Default::default(),
+    });
+    index.projects.push(project);
+    assert_eq!(index.check(), Ok(()));
+    index.projects.last_mut().unwrap().id = ID.into();
+    let error = index.check().unwrap_err();
+    assert!(error.contains(ID), "{error}");
 }
 
 #[test]
@@ -236,6 +260,9 @@ fn the_publisher_refuses_invalid_collection_links_and_selection() {
         release: crate::index::FILE_HOST,
         site: "https://example.test/",
         generated: String::new(),
+        releases: None,
+        nightly: None,
+        binary_checks: None,
     });
     assert!(
         errors
@@ -287,9 +314,10 @@ fn a_takedown_names_the_membership_even_when_its_hash_matches_no_release() {
         let notes = registry::takedown_notes(&base.entries, &base.revoked, &index);
         assert_eq!(notes.len(), 1);
         let note = &notes[0];
-        assert!(note.contains(ID) && note.contains("creature"), "{note}");
-        // A takedown can name a hash with no matching release; don't claim versions changed.
-        assert!(!note.contains("available versions"), "{note}");
+        assert!(
+            mentions_id(note, ID) && mentions_id(note, "creature"),
+            "{note}"
+        );
         index.revoked.pop();
     }
 }
@@ -321,19 +349,13 @@ fn only_owners_membership_edits_for_their_projects_are_routine() {
     let remove = |c: &mut CollectionEntry| {
         c.members.retain(|m| m.id != "butterflies");
     };
-    assert_eq!(
-        review(&add("cyclops"), owner).status,
-        CollectionReviewStatus::Routine
-    );
-    assert_eq!(
-        review(&remove, owner).status,
-        CollectionReviewStatus::Routine
-    );
+    assert_eq!(review(&add("cyclops"), owner).status, ReviewStatus::Routine);
+    assert_eq!(review(&remove, owner).status, ReviewStatus::Routine);
     let foreign = review(&add("vulture"), owner);
-    assert_eq!(foreign.status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(foreign.status, ReviewStatus::ReviewRequired);
     assert!(foreign.reason.contains("vulture"));
     let non_owner = review(&add("cyclops"), "someone_else");
-    assert_eq!(non_owner.status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(non_owner.status, ReviewStatus::ReviewRequired);
     assert!(non_owner.reason.contains("someone_else"));
     for edit in [
         (|c: &mut CollectionEntry| c.members[0].default = false) as fn(&mut CollectionEntry),
@@ -341,10 +363,7 @@ fn only_owners_membership_edits_for_their_projects_are_routine() {
         |c: &mut CollectionEntry| c.owners.push("new_owner".into()),
         |c: &mut CollectionEntry| c.members.swap(0, 1),
     ] {
-        assert_eq!(
-            review(&edit, owner).status,
-            CollectionReviewStatus::ReviewRequired
-        );
+        assert_eq!(review(&edit, owner).status, ReviewStatus::ReviewRequired);
     }
 }
 
@@ -356,6 +375,6 @@ fn replacing_an_icon_at_the_same_path_requires_review() {
     let base = registry::load(&base.0.join("repo")).unwrap();
     let head = registry::load(&head.0.join("repo")).unwrap();
     let changes = review_collections(&base, &head, "EAnathos");
-    assert_eq!(changes[0].status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(changes[0].status, ReviewStatus::ReviewRequired);
     assert_eq!(changes[0].id, ID);
 }

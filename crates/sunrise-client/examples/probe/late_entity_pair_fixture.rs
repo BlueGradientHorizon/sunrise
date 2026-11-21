@@ -59,7 +59,6 @@ pub fn main() -> Result<()> {
                     sources: None,
                     tracker: &mut tracker,
                     out: &mut packets,
-                    gone: None,
                 }];
                 let riding = Riding::default();
                 level.tick(&[], &riding, &mut viewers, |_| Some(kind));

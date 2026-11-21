@@ -5,11 +5,10 @@
 //! (`sunrise-client --dedicated`) reads them, and `sunrise-server` manages
 //! them; this crate needs neither a window nor the game.
 pub mod biome_regions;
-pub mod chat_guard;
-pub mod durable;
 pub mod duration;
 pub mod eula;
 pub mod json;
+pub mod missing_mods;
 pub mod private_file;
 pub mod profiles;
 pub mod properties;

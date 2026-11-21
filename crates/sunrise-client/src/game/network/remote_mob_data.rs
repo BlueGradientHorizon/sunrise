@@ -729,7 +729,6 @@ mod tests {
                     sources: None,
                     tracker: &mut tracker,
                     out: &mut packets,
-                    gone: None,
                 }],
                 |_| Some(100),
             );
@@ -894,7 +893,6 @@ mod tests {
                     sources: None,
                     tracker: &mut tracker,
                     out: &mut packets,
-                    gone: None,
                 }],
                 |_| Some(100),
             );

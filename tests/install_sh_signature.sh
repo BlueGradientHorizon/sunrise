@@ -223,4 +223,8 @@ run "$d" --version v9.9.9; verdict "signature replayed under another tag refused
 d=$W/legacy; make_release "$d" v1.2.3; json "$d" v1.2.3 no
 run "$d" --version v1.2.3; verdict "release without signed checksums refused" 1 "has no SHA256SUMS" "$d"
 
+# N6. A Dev build is refused by name: servers don't install one.
+d=$W/dev; make_release "$d" dev-2026-11-21-0c02067
+run "$d" --version dev-2026-11-21-0c02067; verdict "a Dev build refused by name" 1 "is a Dev build" "$d"
+
 echo "$fails case(s) failed"; [ "$fails" = 0 ]

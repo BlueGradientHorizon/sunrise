@@ -82,7 +82,6 @@ impl Scene {
                 chunks: &self.chunks,
                 tracker,
                 out,
-                gone: None,
             })
             .collect();
         let riding = Riding::default();

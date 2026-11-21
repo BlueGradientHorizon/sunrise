@@ -37,7 +37,6 @@ fn late_pairing_does_not_duplicate_or_spend_the_next_arrow_update() {
         sources: None,
         tracker: &mut tracker,
         out: &mut out,
-        gone: None,
     }];
     let riding = Riding::default();
     level.tick(&[], &riding, &mut viewers, |_| Some(0));
@@ -117,7 +116,6 @@ fn late_pairing_keeps_chunk_range_and_own_entity_filters() {
             sources: None,
             tracker: &mut tracker,
             out: &mut out,
-            gone: None,
         }];
         level.tick(&[], &Riding::default(), &mut viewers, |_| Some(0));
         level.pair_after_tick(&[trident()], &Riding::default(), &mut viewers, |_| Some(0));
@@ -164,7 +162,6 @@ fn a_vehicle_uses_a_later_passengers_range_in_the_same_late_batch() {
             sources: None,
             tracker: &mut tracker,
             out: &mut out,
-            gone: None,
         }];
         let mut riding = Riding::default();
         riding.add(37, 38);

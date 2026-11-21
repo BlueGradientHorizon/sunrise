@@ -845,7 +845,7 @@ impl Game<'_> {
             let owner = r.owner;
             if let Some(conn) = r.guest.filter(|_| owner.is_some()) {
                 let ran = self
-                    .as_guest(conn, |g| g.rocket_hurt_mobs(&hits, owner, at))
+                    .as_guest(conn, |g| g.rocket_hurt_mobs(&hits, r.id, owner, at))
                     .is_some();
                 if ran
                     && let Some(host) = self.lan.as_mut()
@@ -861,10 +861,10 @@ impl Game<'_> {
                     }
                 }
                 if !ran {
-                    self.rocket_hurt_mobs(&hits, owner, at);
+                    self.rocket_hurt_mobs(&hits, r.id, owner, at);
                 }
             } else {
-                self.rocket_hurt_mobs(&hits, owner, at);
+                self.rocket_hurt_mobs(&hits, r.id, owner, at);
             }
             // The dragon is a living entity of its own, not one of `mobs`.
             let reach = r.bounds().inflate(Vec3::new(5.0, 5.0, 5.0));
@@ -899,12 +899,16 @@ impl Game<'_> {
         let ctx = self.who_context(owner, None);
         self.post_game_event("minecraft:explode", at, ctx);
     }
-    fn rocket_hurt_mobs(&mut self, hits: &[(u32, f32)], attacker: Option<Who>, at: [f64; 3]) {
-        let attack = self.attack_of(if attacker == Some(Who::Player) {
-            self.player.as_ref().map_or(0, |p| p.entity_id)
-        } else {
-            0
-        });
+    fn rocket_hurt_mobs(
+        &mut self,
+        hits: &[(u32, f32)],
+        rocket_id: u32,
+        attacker: Option<Who>,
+        at: [f64; 3],
+    ) {
+        let mut attack = self.attack_of_who(attacker);
+        attack.projectile = Some(rocket_id as i32);
+        attack.projectile_kind = sunrise_client::health::DirectEntity::Projectile;
         for &(id, amount) in hits {
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
@@ -921,6 +925,8 @@ impl Game<'_> {
                     self.remember_mob_player_credit(id);
                 }
             }
+            // Warden.hurtServer: anger and target at hurt time, refused hit or not.
+            self.settle_warden_hurt(id);
         }
     }
     /// The owner as `rocket_targets` names it: a guest by their entity id.
@@ -1055,11 +1061,16 @@ impl Game<'_> {
     }
     /// `FireworkEntityRenderer.submit`: the item (GROUND) facing the camera,
     /// lit at the rocket's light probe.
-    pub(super) fn rocket_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(super) fn rocket_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
+    ) {
         let orientation = glam::Mat4::from_quat(self.camera_orientation());
         // shouldRender: not while attached to an entity (`isAttachedToEntity`).
-        for r in self
-            .rockets
+        for r in self.rockets[run]
             .iter()
             .filter(|r| !r.attached && r.attached_to.is_none())
         {
@@ -1206,7 +1217,7 @@ mod tests {
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
         game.entity_motion.borrow_mut().clear();
         let mut out = Vec::new();
-        game.rocket_geometry(camera, 1.0, &mut out);
+        game.rocket_geometry(camera, 1.0, &mut out, 0..game.rockets.len());
         let marks = game.entity_motion.borrow().clone();
         let at = marks
             .iter()

@@ -5,7 +5,8 @@
 # installed.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version v0.5.0 -Dir D:\Sunrise
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise    (a stable release, whose line
+#   updates then follow)
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own
@@ -53,6 +54,9 @@ if ($Version -eq "latest") {
 }
 $Tag = $Release.tag_name
 $RawTag = $Tag
+if ($Tag -ceq "dev" -or $Tag.StartsWith("dev-")) {
+    throw "$Tag is a Dev build, made to test main: servers don't install it. Install the Nightly (the default) or a stable release (-Version <tag>)."
+}
 # A Nightly installs under its date and commit, as `sunrise-server update` names it:
 # "Nightly 2026-10-28 <middle dot> 0c02067" is nightly-2026-10-28-0c02067 ([char]0xB7: this file stays ASCII).
 # Its signature is checked for exactly that version, so the title must name it (as

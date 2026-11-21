@@ -3,18 +3,15 @@
 //! Each hook does nothing while its extra is off and no mod uses it.
 #[path = "extras/mouse_tweaks.rs"]
 pub(in crate::game) mod mouse_tweaks;
-#[path = "extras/reconnect.rs"]
-mod reconnect;
 #[path = "extras/sorting.rs"]
 mod sorting;
 
 use super::{Game, Screen};
 use std::time::Duration;
 use sunrise_client::{
-    extras::{Cps, FpsCounter, fov_target},
-    extras_hud::Corners,
+    extras::{Corner, Cps, FpsCounter, fov_target},
+    extras_hud::{self, Corners},
     hud::HudBatch,
-    reconnect::Tracker,
 };
 use winit::event::MouseButton;
 
@@ -23,8 +20,6 @@ pub(super) struct ExtrasState {
     fps: FpsCounter,
     /// Attack and use click rates.
     cps: [Cps; 2],
-    /// Auto-reconnect's attempts at the current server.
-    reconnect: Tracker,
     /// Captured before pre listeners; shared by the draw and post listeners.
     pub(super) frame_partial_ticks: Option<(f32, f32)>,
 }
@@ -102,6 +97,12 @@ impl Game<'_> {
         let mut corners = Corners::new(batch.width, batch.height, self.effect_rows_height());
         self.draw_pvp_hud(batch, &mut corners);
         self.native_render_gui_post(batch, &mut corners);
+        // The layers crates registered (`sunrise_hooks::hud`): none, no canvas.
+        let layers = sunrise_hooks::hud::engine::all();
+        if !layers.is_empty() {
+            let shown = Corner::ALL.map(|corner| !(self.debug && corner == Corner::TopLeft));
+            extras_hud::draw_layers(layers, batch, &self.gui.atlas, &mut corners, shown);
+        }
     }
     /// The height the status effect icons take at the top right
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).

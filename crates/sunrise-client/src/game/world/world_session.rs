@@ -225,6 +225,7 @@ impl Game<'_> {
         // A repro recording is finished and bundled before the process may go away.
         self.repro_on_exit();
         self.finish_perf();
+        self.connection_left(sunrise_hooks::connection::Left::Quit);
         if self.title.is_some() || self.saved_for_exit {
             return Ok(());
         }

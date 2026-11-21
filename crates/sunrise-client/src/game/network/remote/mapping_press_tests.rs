@@ -68,6 +68,8 @@ fn with_callback_game(
             game.title = None;
             game.screen = Screen::Playing;
             game.remote.as_mut().unwrap().loaded_sent = true;
+            // The tick's first packet, the held slot (`MultiPlayerGameMode.tick`), then its keys.
+            game.remote_send_carried();
             game.remote_handle_input();
             packets.lock().unwrap().clear();
             test(game, &packets, &triggered);
@@ -241,7 +243,7 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         assert_eq!(game.selected, 2);
         assert_eq!(sent(packets), Vec::<String>::new());
         // `MultiPlayerGameMode.tick` tells the server first thing in the next tick.
-        game.remote_handle_input();
+        game.remote_send_carried();
         assert_eq!(sent(packets), ["minecraft:set_carried_item"]);
         assert_eq!(
             ClientInputClientHost::click_mapping(game, "key.screenshot"),
@@ -333,5 +335,105 @@ fn opening_a_screen_releases_mod_holds() {
         assert!(game.mapping_state("key.sneak").unwrap().0);
         game.update_modifiers(ModifiersState::empty());
         assert!(!game.mapping_state("key.sneak").unwrap().0);
+    });
+}
+
+/// Q in creative mode: `MultiPlayerGameMode.dropItem` sends the drop and nothing else, so the
+/// end of the tick sends no creative slot edit for the stack it left (only the creative screen
+/// sends those).
+#[test]
+#[ignore = "daily"]
+fn a_creative_drop_sends_no_creative_slot() {
+    with_pressing_game(|game, packets, _| {
+        game.set_mode_id(1);
+        game.forced_hit = None;
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
+        // The setup's stack is the server's as well.
+        game.remote_synced();
+        game.key_pressed(
+            winit::keyboard::KeyCode::KeyQ,
+            winit::keyboard::KeyCode::KeyQ,
+        )
+        .unwrap();
+        game.remote_handle_input();
+        game.remote_send_state(0);
+        let sent = sent(packets);
+        assert!(
+            sent.iter().any(|p| p == "minecraft:player_action"),
+            "{sent:?}"
+        );
+        assert!(
+            !sent.iter().any(|p| p == "minecraft:set_creative_mode_slot"),
+            "{sent:?}"
+        );
+        assert_eq!(
+            game.inventory[game.selected].as_ref().map(|s| s.count),
+            Some(15)
+        );
+    });
+}
+
+/// A creative toolbar load and Q in one tick (`handleKeybinds`: the number keys' loop, then
+/// key.drop): the load sends the new stack at once (`handleCreativeModeItemAdd`), so the drop
+/// that follows drops what the server now holds, and the end of the tick sends nothing more.
+#[test]
+#[ignore = "daily"]
+fn a_toolbar_load_goes_out_before_a_drop_in_its_tick() {
+    with_pressing_game(|game, packets, _| {
+        game.set_mode_id(1);
+        game.forced_hit = None;
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 16));
+        game.remote_synced();
+        // handleHotbarLoadOrSave puts the saved stack in the slot and sends it.
+        game.inventory[game.selected] = Some(ItemStack::new("minecraft:dirt", 16));
+        game.remote_creative_slot_add(game.selected);
+        game.key_pressed(
+            winit::keyboard::KeyCode::KeyQ,
+            winit::keyboard::KeyCode::KeyQ,
+        )
+        .unwrap();
+        game.remote_handle_input();
+        game.remote_send_state(0);
+        let sent = sent(packets);
+        let at = |id: &str| sent.iter().position(|p| p == id);
+        assert_eq!(
+            sent.iter()
+                .filter(|p| *p == "minecraft:set_creative_mode_slot")
+                .count(),
+            1,
+            "{sent:?}"
+        );
+        assert!(
+            at("minecraft:set_creative_mode_slot") < at("minecraft:player_action"),
+            "{sent:?}"
+        );
+        assert_eq!(
+            game.inventory[game.selected]
+                .as_ref()
+                .map(|s| (s.item.as_ref(), s.count)),
+            Some(("minecraft:dirt", 15))
+        );
+    });
+}
+
+/// `MultiPlayerGameMode.tick` comes first in `Minecraft.tick`, before the GUI ticks its
+/// screens: a slot chosen since the last tick goes out ahead of what a screen sends as it
+/// closes in that tick (a sign editor whose sign is gone, `AbstractSignEditScreen.removed`).
+#[test]
+#[ignore = "daily"]
+fn the_held_slot_goes_out_before_a_closing_screens_packet() {
+    with_pressing_game(|game, packets, _| {
+        game.open_sign_editor((0, 64, 40), true);
+        sent(packets);
+        game.selected = (game.selected + 1) % 9;
+        game.tick_remote_level().unwrap();
+        let sent = sent(packets);
+        let at = |id: &str| sent.iter().position(|p| p == id);
+        assert!(at("minecraft:sign_update").is_some(), "{sent:?}");
+        assert!(at("minecraft:set_carried_item").is_some(), "{sent:?}");
+        assert!(
+            at("minecraft:set_carried_item") < at("minecraft:sign_update"),
+            "{sent:?}"
+        );
     });
 }

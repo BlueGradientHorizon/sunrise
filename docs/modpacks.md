@@ -191,7 +191,7 @@ A content mod (`.smod`) carries `assets/` and `data/` and no code:
 
 ```
 ruby.smod
-├── sunrise-mod.toml          id = "ruby", api = "0.2", side = "both", capabilities = ["registries"]
+├── sunrise-mod.toml          id = "ruby", side = "both" (the build adds api and capabilities)
 ├── data/ruby/sunrise/block/ruby_block.json
 ├── data/ruby/sunrise/item/ruby.json
 ├── data/ruby/recipe/ruby_block.json            (26.3 data-pack formats)

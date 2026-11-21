@@ -866,7 +866,11 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            // A pack's `core/lightmap` draws into it, and its pixels are read back for F3.
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         let lightmap_view = lightmap.create_view(&Default::default());
@@ -901,14 +905,10 @@ impl Renderer {
             &lightmap_sampler,
             &emission_stats.view,
         );
-        let terrain_model_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Native cutout model (unmipped)"),
-            lod_max_clamp: 0.0,
-            ..fluid::SAMPLER
-        });
+        let terrain_model_sampler = device.create_sampler(&terrain_model::MOVING_BLOCK_SAMPLER);
         let terrain_model_group = terrain_group(
             &device,
-            "Native cutout model resources",
+            "Native model resources",
             &bindings,
             &globals,
             &sprite_views,
@@ -2181,6 +2181,8 @@ impl Renderer {
             world_primitives::DEFAULT_CAPACITY,
             world_primitives::DEFAULT_CAPACITY,
         );
+        let core_particles =
+            core_particles::CoreParticles::new(&device, &queue, (frame_format, linear_light));
         let views = world_views::Kept::new(flipped, translucent_flipped, entity_pipeline_with);
         Ok(Self {
             display: None,
@@ -2199,7 +2201,7 @@ impl Renderer {
             },
             gpu_timer,
             gpu_times: Vec::new(),
-            lightmap_pixels: [0; 16 * 16 * 4],
+            lightmap_chart: core_lightmap::LightmapChart::new(),
             last_wait: std::time::Duration::ZERO,
             last_encode: std::time::Duration::ZERO,
             window,
@@ -2239,6 +2241,9 @@ impl Renderer {
             core_lines: None,
             core_text: None,
             core_sky: None,
+            core_particles,
+            core_lightmap: None,
+            core_clouds: None,
             debug_lines_opaque,
             debug_lines,
             debug_lines_on_top,

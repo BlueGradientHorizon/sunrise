@@ -150,7 +150,8 @@ impl SaveDir {
         );
         let pending = self.pending.clone();
         let outstanding = self.outstanding.clone();
-        let thread = std::thread::Builder::new()
+        // The writer runs chunk_data_save callbacks before handing records to compression.
+        let thread = sunrise_guest_stack::builder()
             .name("sunrise-region-writer".into())
             .spawn(move || {
                 const MAX_PASS_CHUNKS: usize = 512;
