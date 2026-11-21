@@ -168,14 +168,20 @@ spawn carries its synced entries).
 
 ## Reading the original player
 
-`player_clone` supplies `event.original: OriginalPlayerRef` alongside the replacement's
-`event.player` UUID. During that hook, `event.original.attachment(host, &COUNTER)` reads
-the old value even when `copy_on_death` is false or the type has no codec;
-`COUNTER.get(host, Holder::Player(event.player))` reads the replacement's retained value
-or fresh default. This works on death and on return from the End.
-The original's `position`, `dimension`, `level`, and `inventory_slot` methods read the
-same pre-copy player. Inventory slot numbers are 0–35 for the main inventory,
-100–103 for boots through helmet, and -106 for the off hand. Every original read expires
-when the hook returns; keeping the handle does not keep the old player alive.
-The snapshot retains shared attachment bindings, not a deep freeze of interior mutability.
-With no `player_clone` listener, no original snapshot is allocated.
+`player_clone` supplies `event.original: OriginalPlayer<'_>` alongside the replacement's
+`event.player` UUID. During that hook, `event.original.attachment(&COUNTER)` reads the old
+player's value even when `copy_on_death` is false or the type has no codec, inserting its
+default on the old player if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
+the replacement's retained value or fresh default. This works on death and on return from
+the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
+saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
+and `remove_attachment` follow normal attachment-holder semantics on the retained old player
+without touching the replacement.
+
+The same `OriginalPlayer<'_>` view exposes `uuid`, `position`, `dimension`, `level`,
+`health`, `experience`, `effects`, `persistent_data`, and `with_inventory` for the pre-copy
+player. `with_inventory` borrows an `InventoryView` using vanilla `Inventory` slot numbering:
+0–35 for the main inventory (0–8 hotbar), 36–39 for boots through helmet, 40 for the off
+hand, 41 for body, and 42 for saddle. Rust's borrow checker binds `event.original` to the
+callback lifetime, preventing the view from outliving `player_clone`. With no `player_clone`
+listener, no original player state is retained.

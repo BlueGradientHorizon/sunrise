@@ -177,12 +177,17 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   captured stack before consumption (count and components included). A fox's listener receives the full server
   host before its living movement and before the next mob ticks; writes to actors or the level survive the
   continuation. Changing the consumer's mouth item, position or eligibility refuses the captured effect.
-- **`player_clone(player, name, was_death, original)`**: after death (`was_death` true) or the
+- **`player_clone(player, name, was_death, original)` (version 2)**: after death (`was_death` true) or the
   credits-showing End return (false), after copying vanilla state and attachments and before placement.
-  `player` is the replacement's UUID; `original: OriginalPlayerRef` lends read-only old state and all
-  attachments, including non-copy-on-death and unserialized values. Inventory follows death drops
-  (retained with keep-inventory or spectator) or is intact on End return. Reads expire after the hook;
-  no subscriber means no snapshot. No state is swapped in. See `Hooks::player_clone` for full API docs.
+  `player` is the replacement's UUID; `original: OriginalPlayer<'_>` directly lends the retained pre-copy
+  player, bound to the callback lifetime at compile time (no token handle or separate original-player
+  holder variant). Attachment calls follow normal `AttachmentHolder` semantics on the old player only:
+  `attachment` inserts the default when absent, `existing_attachment` decodes and caches saved entries
+  once, and `has_attachment`, `with_decoded_attachment`, `set_attachment`, and `remove_attachment` operate
+  on the old holder without touching the replacement. It also exposes `with_inventory` (vanilla 0–42 slot
+  numbering, following death drops or intact with keep-inventory/End return), `persistent_data`, `uuid`,
+  `position`, `dimension`, `level`, `health`, `experience`, and `effects`. No subscriber means no retained
+  copy. No state is swapped in. See `Hooks::player_clone` for full API docs.
 - **`player_load_from_file(player, name, directory)`**: a joining player's saved state was read and applied
   (NeoForge's `PlayerEvent.LoadFromFile`, `PlayerList.loadPlayerData`), before they are placed in a level: once for each
   join on a server, for an integrated server's owner (loaded from the file `level.dat` names, else their own) as for
@@ -2671,7 +2676,7 @@ registration path.
 
 - A statistic about to be awarded to a server player: `player_stat_award(player, name, stat_type, stat, value, cancel)`. The canonical namespaced `stat_type` and `stat` strings and the `i32` amount `value` are writable. Unknown types or entries, noncanonical ids and negative amounts keep the entire original award, with a warning once. Registered custom stats are valid redirect targets. Set `cancel` to award nothing: the count and its scoreboard criteria stay as they were. Transaction-deferred awards fire only after the outermost successful commit.
 
-- A player's data copied to their replacement: `player_clone(player, name, was_death, original)` fires after death (`was_death` true) and the credits-showing End return (`was_death` false), after vanilla state and attachments are copied and before placement (`ServerPlayer.restoreFrom`, NeoForge's `PlayerEvent.Clone`). `player` is the replacement's UUID; `original: OriginalPlayerRef` reads all pre-copy attachments, health, experience, effects, inventory after death drops (or intact with keep-inventory and on End return), position, dimension and level only during the hook. Set/remove on the original refuse; lazy reads/defaults work. No subscriber means no snapshot. Nothing swaps a player's state in.
+- A player's data copied to their replacement: `player_clone(player, name, was_death, original)` (version 2) fires after death (`was_death` true) and the credits-showing End return (`was_death` false), after vanilla state and attachments are copied and before placement (`ServerPlayer.restoreFrom`, NeoForge's `PlayerEvent.Clone`). `player` is the replacement's UUID; `original: OriginalPlayer<'_>` directly lends the retained pre-copy player for the callback's lifetime (compile-time scoped, with no token handle or separate original-player holder variant). Its attachment methods follow normal `AttachmentHolder` semantics on the old player without touching the replacement: `attachment` inserts defaults when absent, `existing_attachment` decodes and caches saved entries once, and `has_attachment`, `with_decoded_attachment`, `set_attachment`, and `remove_attachment` act on the old holder only. It also exposes `with_inventory` (vanilla 0–42 slots, after death drops or intact with keep-inventory and on End return), `persistent_data`, `uuid`, `position`, `dimension`, `level`, `health`, `experience`, and `effects`. No subscriber means no retained copy. Nothing swaps a player's state in.
 
 - A player loaded from the world's save: `player_load_from_file(player, name, directory)` is heard once for each join (the owner of an integrated server too), after the player's `.dat` is read and applied and before they are placed in a level (NeoForge's `PlayerEvent.LoadFromFile`, `PlayerList.loadPlayerData`). `directory` is the world's player directory (`players/data`); a mod reads its own file there, named `<uuid>.<suffix>`. It cannot change or stop anything; no player's state is swapped in.
 
