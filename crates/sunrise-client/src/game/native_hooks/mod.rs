@@ -11,8 +11,8 @@ mod fire;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
-    BlockDropsCall, BlockScreenEffectDrawCall, ConnectsToCall, EntityChangeBlockPreCall,
-    ItemAfterVerticalCollisionCall, PreRemoveSideEffectsCall, UpdateShapeCall,
+    BlockDropsCall, ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall,
+    PreRemoveSideEffectsCall, UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
 
@@ -34,16 +34,16 @@ use mod_api::GameMode;
 use mod_api::GameTests;
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
 use mod_api::{
-    self, Answered, BlockPlacement, BlockTintSources, CameraDrawContext, CauldronFluidContents,
-    CauldronInteractions, ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions,
-    ClientGuiOptions, ClientInputOptions, ClientMiningPrediction, ClientModifiers,
-    ClientReloadListeners, ColorResolvers, CommandInvocation, EnchantmentDamageEffects,
-    EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, HandRender,
-    InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType,
-    LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
-    PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId,
-    ScreenOpening, ScreenTarget, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
-    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
+    ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
+    ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
+    ColorResolvers, CommandInvocation, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers,
+    EntityRef, EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt,
+    InteractionKey, ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions,
+    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
+    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
+    VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -155,7 +155,6 @@ mod block_grow_feature;
 mod block_landing;
 mod block_path_type;
 mod block_render_visibility;
-mod block_screen_effect_draw;
 mod block_sticky;
 mod block_tool_modification;
 mod block_use_item_on;
