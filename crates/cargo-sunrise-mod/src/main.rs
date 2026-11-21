@@ -236,6 +236,7 @@ fn build_command(
                 native.sunrise, release.commit
             ));
         }
+        release::AssetName::descriptor(&package.manifest.id, &version, tag)?;
         Some((release::output_dir(dir)?, tag, target, version))
     } else {
         None
@@ -250,7 +251,9 @@ fn build_command(
             dev::build(
                 root,
                 update_lock,
-                archive.as_ref().map(|(_, _, target, _)| *target),
+                archive
+                    .as_ref()
+                    .map(|(_, tag, target, version)| (*target, *tag, version.as_str())),
             )
         })
         .transpose()?;
@@ -261,11 +264,11 @@ fn build_command(
         built.as_ref().map(|built| built.mixins.as_str()),
     )?;
     println!("Built {}", path.display());
-    if let Some((dir, tag, _, version)) = archive {
-        let library = built
+    if let Some((dir, _, _, _)) = archive {
+        let (library, name) = built
             .and_then(|built| built.release)
             .ok_or("the build returned no releasable library")?;
-        let archive = library.write(&dir, &package.manifest.id, &version, tag)?;
+        let archive = library.write(&dir, name)?;
         println!(
             "Wrote {}: sign this archive with the project key",
             archive.display()

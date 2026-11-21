@@ -56,6 +56,33 @@ pub(crate) fn signature(path: &Path) -> Result<String, String> {
     Ok(text)
 }
 
+/// A generated filename that the registry accepts as one release asset name.
+pub(crate) struct AssetName(String);
+
+impl AssetName {
+    pub(crate) fn archive(
+        id: &str,
+        version: &str,
+        tag: &str,
+        target: &str,
+    ) -> Result<Self, String> {
+        Self::checked(builds::archive_name(id, version, tag, target))
+    }
+
+    pub(crate) fn descriptor(id: &str, version: &str, tag: &str) -> Result<Self, String> {
+        Self::checked(builds::descriptor_name(id, version, tag))
+    }
+
+    fn checked(name: String) -> Result<Self, String> {
+        if !index::plain_name(&name) {
+            return Err(format!(
+                "{name}: a release asset name must be plain and at most 128 bytes; shorten the mod id or version"
+            ));
+        }
+        Ok(Self(name))
+    }
+}
+
 pub(crate) struct BuiltLibrary {
     path: PathBuf,
     stamp: Identity,
@@ -100,15 +127,8 @@ impl BuiltLibrary {
         })
     }
 
-    pub(crate) fn write(
-        &self,
-        dir: &Path,
-        id: &str,
-        version: &str,
-        tag: &str,
-    ) -> Result<PathBuf, String> {
-        let name = builds::archive_name(id, version, tag, &self.stamp.target);
-        let out = dir.join(name);
+    pub(crate) fn write(&self, dir: &Path, name: AssetName) -> Result<PathBuf, String> {
+        let out = dir.join(name.0);
         let bytes = bounded::read_bytes(&self.path, MAX_FILE, Symlinks::Refuse)
             .map_err(|e| e.to_string())?;
         if bytes.is_empty() || index::sha256(&bytes) != self.stamp.sha256 {
@@ -167,6 +187,8 @@ pub(crate) fn describe(
         .native
         .as_ref()
         .ok_or("build --describe-binaries needs a native mod")?;
+    let version = version(manifest)?;
+    let name = AssetName::descriptor(&manifest.id, &version, &release.tag)?;
     let sdk = builds::sdk_index(sdk_data, &release.commit)?;
     if sdk.build.game != native.game {
         return Err(format!(
@@ -176,7 +198,7 @@ pub(crate) fn describe(
     }
     let mut descriptor = Descriptor {
         id: manifest.id.clone(),
-        version: version(manifest)?,
+        version,
         build: release.commit.clone(),
         rust: sdk.toolchain.rust.clone(),
         archives: Vec::new(),
@@ -189,7 +211,8 @@ pub(crate) fn describe(
     );
     let mut names = std::collections::BTreeSet::new();
     for target in builds::hosts(&sdk)? {
-        let name = builds::archive_name(&descriptor.id, &descriptor.version, &release.tag, &target);
+        let AssetName(name) =
+            AssetName::archive(&descriptor.id, &descriptor.version, &release.tag, &target)?;
         let path = dir.join(&name);
         let bytes =
             bounded::read_bytes(&path, MAX_FILE, Symlinks::Refuse).map_err(|e| e.to_string())?;
@@ -220,11 +243,7 @@ pub(crate) fn describe(
             ));
         }
     }
-    let path = dir.join(builds::descriptor_name(
-        &descriptor.id,
-        &descriptor.version,
-        &release.tag,
-    ));
+    let path = dir.join(name.0);
     let mut bytes = serde_json::to_vec_pretty(&descriptor).map_err(|e| e.to_string())?;
     bytes.push(b'\n');
     if bytes.len() as u64 > builds::MAX_DESCRIPTOR {
@@ -271,7 +290,12 @@ mod tests {
         let built =
             BuiltLibrary::from_event(Route::Api.name(), host.into(), &path, &record, &identity)
                 .unwrap();
-        let archive = built.write(temp.path(), id, version, "26.3-0.1.0").unwrap();
+        let archive = built
+            .write(
+                temp.path(),
+                AssetName::archive(id, version, "26.3-0.1.0", host).unwrap(),
+            )
+            .unwrap();
         assert_eq!(
             archive.file_name().unwrap(),
             "probe-1.2.0+26.3-0.1.0-x86_64-unknown-linux-gnu-server.tar.xz"
@@ -280,10 +304,40 @@ mod tests {
         fs::write(path, b"not the recorded library").unwrap();
         assert!(
             built
-                .write(temp.path(), id, version, "26.3-0.1.1")
+                .write(
+                    temp.path(),
+                    AssetName::archive(id, version, "26.3-0.1.1", host).unwrap()
+                )
                 .unwrap_err()
                 .contains("no longer matches")
         );
+    }
+
+    #[test]
+    fn overlong_release_assets_are_refused_before_compilation_or_description() {
+        let id = "m".repeat(64);
+        let version = format!("1.0.0-{}", "a".repeat(37));
+        let tag = "26.3-0.1.0";
+        assert!(index::plain_name(&format!("{id}-{version}.smod")));
+        let work = tempfile::tempdir().unwrap();
+        let manifest = Manifest::parse(&format!(
+            "id='{id}'\nname='Probe'\nversion='{version}'\n[native]\ngame='26.3'\nsunrise='{}'\n",
+            "a".repeat(40)
+        ))
+        .unwrap();
+        let release = SunriseRelease {
+            tag: tag.into(),
+            commit: "a".repeat(40),
+            line: "26.3-0".into(),
+        };
+        let out = work.path().join("assets");
+        let error = describe(&manifest, &out, &release, work.path()).unwrap_err();
+        assert!(error.contains("128 bytes"), "{error}");
+        let error = AssetName::archive(&id, &version, tag, "x86_64-unknown-linux-gnu-server")
+            .err()
+            .unwrap();
+        assert!(error.contains("128 bytes"), "{error}");
+        assert!(!out.exists());
     }
 
     #[test]

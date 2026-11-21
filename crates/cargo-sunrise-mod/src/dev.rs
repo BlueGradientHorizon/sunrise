@@ -227,7 +227,7 @@ pub(crate) struct Built {
     records: Vec<Library>,
     /// Revision for the package manifest: checked for mixins, inherited when they are unused.
     pub(crate) mixins: String,
-    pub(crate) release: Option<crate::release::BuiltLibrary>,
+    pub(crate) release: Option<(crate::release::BuiltLibrary, crate::release::AssetName)>,
 }
 
 /// Turns the build's event lines into the lines a developer reads, and keeps its result.
@@ -262,7 +262,7 @@ impl Write for Events {
 pub(crate) fn build(
     project: &Path,
     update_lock: bool,
-    release_target: Option<contract::TargetName>,
+    release_target: Option<(contract::TargetName, &str, &str)>,
 ) -> Result<Built, String> {
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
@@ -277,7 +277,7 @@ pub(crate) fn build(
     }
     let crate_name = cargo.crate_name();
     let registry = matches!(Route::of(&[cargo]), Route::Registry);
-    let target = release_target.unwrap_or(contract::TargetName::Client);
+    let target = release_target.map_or(contract::TargetName::Client, |(target, _, _)| target);
     let side = sunrise_native_build::prebuilt::side(target.into());
     let cache = cache_dir()?;
     let sdk = native_sdk(&cache, &build)?;
@@ -292,13 +292,19 @@ pub(crate) fn build(
             .unwrap_or(&sdk.index.mixins.rev)
     }
     .to_owned();
+    let release_host = release_target
+        .map(|(_, tag, version)| {
+            let host = sdk::Asset::host_name(&sdk.rust.target, side);
+            let name = crate::release::AssetName::archive(&id, version, tag, &host)?;
+            Ok::<_, String>((host, name))
+        })
+        .transpose()?;
     let package = sdk.slices(side, release)?;
-    let release_host = release.then(|| sdk::Asset::host_name(&sdk.rust.target, side));
     let rust_release = sdk.index.toolchain.rust;
     let rust = sdk.rust;
 
     let work = match &release_host {
-        Some(host) => cache.join("release-work").join(&build).join(&id).join(host),
+        Some((host, _)) => cache.join("release-work").join(&build).join(&id).join(host),
         None => cache.join("work").join(&id),
     };
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
@@ -378,7 +384,7 @@ pub(crate) fn build(
             ))
         })?;
     let release = release_host
-        .map(|host| {
+        .map(|(host, name)| {
             let identity = sunrise_mod_package::index::registry::builds::library_identity(
                 &build,
                 &id,
@@ -386,6 +392,7 @@ pub(crate) fn build(
                 &rust_release,
             );
             crate::release::BuiltLibrary::from_event(&route, host, library, record, &identity)
+                .map(|library| (library, name))
         })
         .transpose()?;
     println!("Built {}\nBuild log: {}", library.display(), log.display());
