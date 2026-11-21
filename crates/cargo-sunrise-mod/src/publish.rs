@@ -615,7 +615,6 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     let write = |path: PathBuf, bytes: &[u8]| {
         atomic_write(&path, bytes).map_err(|e| format!("{e}; choose a writable --out folder"))
     };
-    write(mods.join(format!("{id}.toml")), entry_text.as_bytes())?;
     if !append {
         write(files.join(&version.sha256), &package_bytes)?;
         write(out.join(file), &package_bytes)?;
@@ -642,6 +641,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     if let (Some(dir), Some(bytes)) = (&icons, &icon) {
         write(dir.join(format!("{id}.png")), bytes)?;
     }
+    write(mods.join(format!("{id}.toml")), entry_text.as_bytes())?;
     write(out.join("PULL_REQUEST.md"), body.as_bytes())?;
 
     let mut remaining = checklist(before.as_slice(), &entry, o.registry.as_deref());

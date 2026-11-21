@@ -165,6 +165,7 @@ for the target commit under `sdk-data/<commit>/`.
    repinned to the new commit. Use `--registry <checkout>` and pass the **original published `.smod`** to `--package`,
    not the temporary build's package. Omit `--sunrise`, `--key`, and `--signature`: `publish` uses the source row's
    existing stable pin, key and signature and adds one build row without touching them.
+   If staging fails, retry with a fresh `--out <dir>`. Use the output only after `publish` succeeds.
 4. Upload the staged archive files and descriptor to the author release at `--asset-base`. Attach the staged source
    package for a new mod version only. Use the generated `PULL_REQUEST.md` and copy the entry to your fork as above;
    do not commit the staged files. The tool verifies locally and does not upload them. See the

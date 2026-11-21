@@ -263,6 +263,21 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
 
 #[test]
 #[ignore = "daily"]
+fn an_asset_write_failure_leaves_no_registry_entry_or_pr_draft() {
+    let fixture = Assets::new("author-publish");
+    let out = fixture.path().join("blocked");
+    let archive = &fixture.descriptor.archives[0].name;
+    // Replacing a directory with a staged regular file fails after verification.
+    fs::create_dir_all(out.join(archive)).unwrap();
+    let refused = fixture.publish("blocked", None, true);
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains(archive.as_str()));
+    assert!(!out.join(ROW).exists());
+    assert!(!out.join("PULL_REQUEST.md").exists());
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_reviewed_exact_source_can_add_binaries_without_repacking() {
     // The original signed fixture has no uses list. A new source still needs one.
     let fixture = Assets::new("");
