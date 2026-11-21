@@ -523,6 +523,7 @@ impl Game<'_> {
         if let Some(mut loaded) = sunrise_client::entity_nbt::armor_stand_from_nbt(&raw, stand.id) {
             loaded.first_tick = stand.first_tick;
             loaded.yaw = stand.yaw;
+            loaded.body_yaw = stand.body_yaw;
             loaded.previous_yaw = stand.previous_yaw;
             loaded.pitch = 0.0;
             loaded.previous = loaded.position;
@@ -1028,6 +1029,7 @@ impl Game<'_> {
             let a = &mut self.armor_stands[i];
             a.previous = a.position;
             a.previous_yaw = a.yaw;
+            a.previous_head_yaw = a.head_yaw;
             // aiStep's freezing step (removeFrost) makes the speed instance.
             a.speed_instance = true;
             // LivingEntity.aiStep -> EntityEquipment.tick, before movement.
@@ -1161,6 +1163,9 @@ impl Game<'_> {
             ) {
                 dead.push((id, damage_type));
             }
+            // ArmorStand.tickHeadTurn copies the view angle to its body after aiStep.
+            let stand = &mut self.armor_stands[i];
+            stand.body_yaw = stand.yaw;
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }

@@ -394,6 +394,8 @@ pub(in crate::game) struct Dragon {
     pub(super) velocity: Vec3,
     pub yaw: f32,
     pub previous_yaw: f32,
+    /// LivingEntity.yBodyRot, distinct from the flight and part yaw.
+    pub body_yaw: f32,
     yaw_accel: f32,
     pub health: f32,
     pub hurt_time: i32,
@@ -648,6 +650,7 @@ impl Dragon {
             velocity: Vec3::ZERO,
             yaw,
             previous_yaw: yaw,
+            body_yaw: yaw,
             yaw_accel: 0.0,
             health: MAX_HEALTH,
             hurt_time: 0,
@@ -2846,6 +2849,8 @@ impl Game<'_> {
                 d.velocity.z * slide,
             );
         }
+        // EnderDragon.aiStep assigns the body's angle after flight, before placing parts.
+        d.body_yaw = d.yaw;
         self.place_dragon_parts();
         self.dragon_contacts();
         // The chunks the dragon passes through re-save their entity lists.

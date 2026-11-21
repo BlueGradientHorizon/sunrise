@@ -45,11 +45,10 @@ pub trait EntityPositionBackend {
     /// player's own, zero for the kinds without a head.
     #[access(WorldOnly)]
     fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32>;
-    /// Side: server.
-    /// The yaw of the entity's body (`LivingEntity.yBodyRot`) in degrees as
-    /// vanilla keeps it, not normalized: the direction its drawn body faces,
-    /// which its head turns against. Mobs only: None for players and every
-    /// other kind, and for a stale handle.
+    /// Side: both.
+    /// The entity's current body yaw (`LivingEntity.yBodyRot`) in degrees, without wrapping.
+    /// On a server this reads the named living entity. On a client it reads the local player.
+    /// None for a stale handle or an entity with no available living body.
     #[access(WorldOnly)]
     fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32>;
     /// Side: server.
@@ -63,6 +62,16 @@ pub trait EntityPositionBackend {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityPositionBackendMut {
+    /// Side: server.
+    /// Sets the current body yaw in degrees (`LivingEntity.setYBodyRot`). It does not
+    /// wrap the angle, teleport the entity, or force a packet. Silverfish and endermites
+    /// also turn their view; armor stands change their previous body/view yaw and their
+    /// head yaw, leaving their current body yaw alone. False for stale handles or when the
+    /// server keeps no living body for this entity. Returns `Err(LevelWriteError::Unavailable)`
+    /// when the host cannot write living state.
+    #[access(WorldOnly)]
+    fn entity_set_body_yaw(&mut self, entity: EntityRef, yaw: f32)
+    -> Result<bool, LevelWriteError>;
     /// Side: server.
     /// Moves the entity to `pos` in its level (`Entity.teleportTo`), as
     /// `/tp` does: a player is placed there and told, a rider gets off, and a

@@ -9,6 +9,12 @@ It advances once per unpaused client tick, including on the title screen, and wr
 Java's `int`. Pausing holds it; a server tick freeze does not. This is not world game time
 or the frame's animation clock.
 
+`LevelRef::tick_rate(host)` reads the displayed client level's configured ticks per second
+(`ClientLevel.tickRateManager().tickrate()`), not measured TPS or the frame interpolation rate.
+Freezing the level does not change the value. Both `render_frame_pre` and `render_frame_post` can
+read it. On the server, for a preview level or stale handle, and without a displayed level, it
+returns `Ok(None)`; a host that cannot read the level returns a typed refusal.
+
 `ClientHost::gui_scale()` reads the GUI scale in effect (`Window.getGuiScale`), at least 1,
 or `None` without a window (a server, a headless run). Vanilla's `Window.calculateScale` resolves
 it from the GUI Scale option and the window size: the option is a maximum, where 0 means automatic,

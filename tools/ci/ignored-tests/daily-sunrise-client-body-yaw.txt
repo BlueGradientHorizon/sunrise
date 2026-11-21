@@ -1,1 +1,3 @@
-sunrise-client game::native_goal_ticks::live_read_tests::body_yaw_is_the_raw_mob_yaw_and_none_for_others lib daily resources
+sunrise-client game::native_goal_ticks::live_read_tests::body_yaw_targets_live_living_owners_and_respects_overrides lib daily resources
+sunrise-client game::native_local_player_writes::tests::frame_body_yaw_writes_feed_local_living_render_state lib daily resources
+sunrise-client game::native_local_player_writes::tests::frame_tick_rate_reads_the_displayed_levels_configured_rate lib daily resources

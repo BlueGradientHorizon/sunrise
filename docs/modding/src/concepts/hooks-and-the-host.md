@@ -32,6 +32,13 @@ level upkeep and outgoing state updates still run. The server resolves whether
 the body runs before the pre hook; a listener changing the player's position
 does not change that decision for the current tick.
 
+## Frame hooks
+
+`render_frame_pre` and `render_frame_post` can read `LevelRef::tick_rate` when the client has a
+level. It is the configured simulation rate, separate from the interpolation samples in the events.
+`PlayerRef::set_body_yaw` updates the live local avatar, not any pose already extracted for drawing.
+Use a living render hook to read the pose actually being drawn.
+
 ## Entity tick hooks
 
 `entity_tick_pre` and `entity_tick_post` version 3 observe additional entity families, including

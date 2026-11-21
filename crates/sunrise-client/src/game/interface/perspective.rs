@@ -490,6 +490,18 @@ impl Game<'_> {
         };
         Some(entity)
     }
+    /// Build the avatar for a newly installed local body, before any frame can read it.
+    pub(super) fn ensure_player_model(&mut self) {
+        if self.player_model.is_none()
+            && let (Some(p), Some(kind)) = (&self.player, self.res.player_type().clone())
+        {
+            let mut model = Mob::new(0, kind, p.position, self.yaw);
+            model.head_pitch = self.pitch;
+            model.previous_head_pitch = self.pitch;
+            self.player_model = Some(model);
+        }
+    }
+
     /// Keep the player's model in step with the player (`LivingEntity.tick`
     /// body turning, `WalkAnimationState`, the swing and the pose).
     pub(super) fn tick_player_model(&mut self) {
@@ -504,18 +516,12 @@ impl Game<'_> {
                 (scale, nameplate)
             },
         );
-        let Some(p) = self.player.as_ref() else {
+        if self.player.is_none() {
             self.player_model = None;
             return;
-        };
-        if self.player_model.is_none() {
-            let Some(kind) = self.res.player_type().clone() else {
-                return;
-            };
-            let mut m = Mob::new(0, kind, p.position, self.yaw);
-            m.head_pitch = self.pitch;
-            self.player_model = Some(m);
         }
+        self.ensure_player_model();
+        let p = self.player.as_ref().unwrap();
         let pose = p.pose;
         let crouching = pose == Pose::Crouching;
         let position = p.position;
@@ -561,6 +567,7 @@ impl Game<'_> {
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
         let spectator = self.spectator();
         let ridden = self.ridden_body();
+        let blocking = ridden.is_none() && self.player_blocking_component().is_some();
         let Some(m) = self.player_model.as_mut() else {
             return;
         };
@@ -593,27 +600,14 @@ impl Game<'_> {
             }
             // A minecart's, a cushion's: the body turns as on foot.
             None => {
-                let mut target = m.body_yaw;
-                if dx * dx + dz * dz > 0.002_500_000_2 {
-                    // LivingEntity.tick: walking backwards the body faces away from
-                    // the walk direction, not along it.
-                    let walk = (dz.atan2(dx) as f32).to_degrees() - 90.0;
-                    let facing = (wrap(yaw) - walk).abs();
-                    target = if 95.0 < facing && facing < 265.0 {
-                        walk - 180.0
-                    } else {
-                        walk
-                    };
-                }
-                if swinging {
-                    target = yaw;
-                }
-                // tickHeadTurn: ease toward the target, within 50 degrees of the head.
-                m.body_yaw += wrap(target - m.body_yaw) * 0.3;
-                let diff = wrap(yaw - m.body_yaw);
-                if diff.abs() > 50.0 {
-                    m.body_yaw += diff - diff.signum() * 50.0;
-                }
+                m.body_yaw = sunrise_client::mobs::living::player_body_yaw(
+                    m.body_yaw,
+                    yaw,
+                    dx,
+                    dz,
+                    attack.1 > 0.0,
+                    blocking,
+                );
             }
         }
         if riding {

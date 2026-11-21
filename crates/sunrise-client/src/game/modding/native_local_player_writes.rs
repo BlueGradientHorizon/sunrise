@@ -36,6 +36,21 @@ impl Game<'_> {
         self.riding.is_none() && self.sleeping.is_none() && self.screen != super::Screen::Dead
     }
 
+    pub(super) fn player_set_body_yaw(
+        &mut self,
+        player: PlayerRef,
+        yaw: f32,
+    ) -> Result<bool, LevelWriteError> {
+        if self.native_local_status(player).is_none() || self.native_client_level().is_none() {
+            return Ok(false);
+        }
+        let Some(model) = self.player_model.as_mut() else {
+            return Ok(false);
+        };
+        model.body_yaw = yaw;
+        Ok(true)
+    }
+
     pub(super) fn player_reset_fall_distance(
         &mut self,
         player: PlayerRef,
@@ -72,9 +87,10 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use crate::game::Game;
-    use crate::game::native_entity_refs::tests::with_game;
-    use mod_api::HostSide;
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
+    use mod_api::{ClientHost, EntityRef, HostSide, LevelRef};
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     /// Writes a velocity and a ground flag before the local player's tick, and records what
     /// the tick left of them.
@@ -119,6 +135,205 @@ mod tests {
         game.player = Some(player);
         game.streaming
             .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn frame_body_yaw_writes_feed_local_living_render_state() {
+        if run_fresh_cases(
+            "game::native_local_player_writes::tests::frame_body_yaw_writes_feed_local_living_render_state",
+            "SUNRISE_CLIENT_BODY_YAW_CASE",
+            &["frame"],
+        ) {
+            return;
+        }
+        struct Turns(Arc<Mutex<Vec<f32>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Turns {
+            fn render_frame_pre(
+                &self,
+                host: &mut dyn ClientHost,
+                _: &mut mod_api::RenderFramePreEvent,
+            ) {
+                let player = host.local_player().unwrap();
+                let stale = mod_api::__private::game::player_ref(
+                    EntityRef::new(
+                        mod_api::WorldEpoch::new(player.entity().epoch().get() + 1),
+                        player.entity().id(),
+                    ),
+                    player.uuid(),
+                );
+                assert_eq!(stale.set_body_yaw(host, -100.0), Ok(false));
+                assert_eq!(stale.entity().body_yaw(host), None);
+                assert_eq!(player.entity().body_yaw(host), Some(15.0));
+                assert_eq!(player.set_body_yaw(host, 75.0), Ok(true));
+                assert_eq!(player.entity().body_yaw(host), Some(75.0));
+            }
+            fn render_living_pre(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut mod_api::RenderLivingPreEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.lock().unwrap().push(event.entity.body_yaw);
+                mod_api::Flow::Continue
+            }
+        }
+        let turns = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![mod_api::ModEntry::new(
+            "yaw-frame",
+            Box::new(Turns(turns.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                loaded_client(game);
+                game.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
+                game.yaw = 15.0;
+                game.tick_player_model();
+                game.native_render_frame_pre(Duration::ZERO, 0.5, 0.5);
+                game.prepare_entity_culling();
+                game.player_model_geometry(glam::DVec3::new(0.5, 64.0, -4.5), 0.5, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [45.0]);
+                let model = game.player_model.as_ref().unwrap();
+                assert_eq!(
+                    (game.yaw, model.yaw, model.head_yaw, model.previous_body_yaw),
+                    (15.0, 15.0, 15.0, 15.0)
+                );
+                let old = game.local_player().unwrap();
+                game.remove_local_player_body();
+                assert_eq!(old.entity().body_yaw(game), None);
+                assert_eq!(old.set_body_yaw(game, 90.0), Ok(false));
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn frame_tick_rate_reads_the_displayed_levels_configured_rate() {
+        use sunrise_protocol::{
+            connection::Pipe,
+            packets::play::{self, Clientbound as C},
+        };
+
+        if run_fresh_cases(
+            "game::native_local_player_writes::tests::frame_tick_rate_reads_the_displayed_levels_configured_rate",
+            "SUNRISE_CLIENT_TICK_RATE_CASE",
+            &["level"],
+        ) {
+            return;
+        }
+        type Observation = (Option<f32>, Option<f32>);
+        #[derive(Default)]
+        struct Rates {
+            original: Option<LevelRef>,
+            pre: Vec<Observation>,
+            post: Vec<Observation>,
+        }
+        impl Rates {
+            fn read(&self, host: &dyn ClientHost) -> Observation {
+                let read = |level: Option<LevelRef>| {
+                    level.and_then(|level| level.tick_rate(host).unwrap())
+                };
+                let level = host
+                    .level("minecraft:overworld")
+                    .or_else(|| host.level("minecraft:the_nether"));
+                (read(level), read(self.original))
+            }
+        }
+        struct RateFrames(Arc<Mutex<Rates>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for RateFrames {
+            fn render_frame_pre(
+                &self,
+                host: &mut dyn ClientHost,
+                _: &mut mod_api::RenderFramePreEvent,
+            ) {
+                let mut state = self.0.lock().unwrap();
+                let observation = state.read(host);
+                state.pre.push(observation);
+            }
+            fn render_frame_post(
+                &self,
+                host: &mut dyn ClientHost,
+                _: &mut mod_api::RenderFramePostEvent,
+            ) {
+                let mut state = self.0.lock().unwrap();
+                let observation = state.read(host);
+                state.post.push(observation);
+            }
+        }
+        let saw = Arc::new(Mutex::new(Rates::default()));
+        let mods = vec![mod_api::ModEntry::new(
+            "rate-frame",
+            Box::new(RateFrames(saw.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                let (client, _server) = Pipe::pair();
+                game.connect_local(client, "rate").unwrap();
+                let spawn = play::SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:overworld".into(),
+                    seed: 0,
+                    game_type: 0,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: false,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 63,
+                };
+                game.handle_packet(C::Login(play::Login {
+                    player_id: 7,
+                    hardcore: false,
+                    levels: vec!["minecraft:overworld".into(), "minecraft:the_nether".into()],
+                    max_players: 1,
+                    chunk_radius: 2,
+                    simulation_distance: 2,
+                    reduced_debug_info: false,
+                    show_death_screen: true,
+                    limited_crafting: false,
+                    spawn: spawn.clone(),
+                    online_mode: false,
+                    enforces_secure_chat: false,
+                }))
+                .unwrap();
+                saw.lock().unwrap().original = game.native_client_level();
+                let frame = |game: &mut Game<'_>| {
+                    game.native_render_frame_pre(Duration::ZERO, 0.5, 0.5);
+                    game.finish_render_frame(Duration::ZERO);
+                };
+                frame(game);
+                for (rate, frozen) in [(37.5, false), (11.25, true)] {
+                    game.handle_packet(C::TickingState(play::TickingState { rate, frozen }))
+                        .unwrap();
+                    frame(game);
+                }
+                game.handle_packet(C::Respawn(play::Respawn {
+                    spawn: play::SpawnInfo {
+                        dimension: "minecraft:the_nether".into(),
+                        ..spawn
+                    },
+                    keep: 0,
+                }))
+                .unwrap();
+                frame(game);
+                game.leave_server(None).unwrap();
+                assert!(game.title.is_some());
+                frame(game);
+            });
+        });
+        let expected = [
+            (Some(20.0), Some(20.0)),
+            (Some(37.5), Some(37.5)),
+            (Some(11.25), Some(11.25)),
+            (Some(20.0), None),
+            (None, None),
+        ];
+        let saw = saw.lock().unwrap();
+        assert_eq!(saw.pre, expected);
+        assert_eq!(saw.post, expected);
     }
 
     #[test]
