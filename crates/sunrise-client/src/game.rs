@@ -1722,6 +1722,8 @@ struct Game<'a> {
     native_shaders: native_shaders::NativeShaders,
     /// Native client mods' claimed items and unpolled events (game/modding/native_claimed_items.rs).
     native_input: native_claimed_items::ModInput,
+    /// Main-hand input captured by a client mod, independent of living-item use.
+    client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
     /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
     mod_keys: sunrise_client::keymapping::ModKeys,
     /// The native lifecycle bookkeeping.
@@ -11326,6 +11328,7 @@ impl<'a> Game<'a> {
             panel: Default::default(),
             native_shaders: Default::default(),
             native_input: Default::default(),
+            client_item_use: None,
             mod_keys: Default::default(),
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),

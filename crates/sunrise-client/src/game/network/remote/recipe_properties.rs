@@ -16,6 +16,7 @@ impl Game<'_> {
             .player
             .as_ref()
             .map(|_| (remote.entity_id, remote.profile));
+        self.end_client_item_use();
         self.native_client_player_logging_out(player.map(|p| p.0), player.map(|p| p.1));
         self.native_lifecycle.begin_close();
         self.native_lifecycle_world_closed();

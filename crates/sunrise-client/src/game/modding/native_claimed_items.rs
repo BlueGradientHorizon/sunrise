@@ -1,9 +1,9 @@
 //! A client mod's view and its own items (docs/modding/src/how-to/native-mods.md, "A client mod's view and items"): the
 //! first block along the view in the loaded chunks, and items whose
 //! right-click is the mod's alone, heard as use events the mod polls.
-use super::Game;
+use super::{Game, Screen};
 pub use mod_api::game::{HeldItemSlot, ModEvent};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 /// The farthest a ray along the view reaches, in blocks.
 pub(crate) const RAYCAST_MAX: f32 = 1024.0;
@@ -12,21 +12,21 @@ const CLAIMS_MAX: usize = 64;
 /// Events kept for a mod between two polls.
 const EVENTS_MAX: usize = 256;
 
-/// A claimed item's use under way.
-struct ModUse {
+/// Client input captured by a claimed main-hand item, not a living entity's item use.
+pub(super) struct ActiveClientItemUse {
     mod_id: String,
-    item: HeldItemSlot,
-    /// The player's `using` while it is this use: its slot and ticks.
+    original: HeldItemSlot,
+    /// Only for comparing the current stack's kind; the original snapshot never changes.
+    item_id: Arc<str>,
     slot: usize,
     ticks: u32,
 }
 
-/// The items client mods claim, their events waiting for a poll, and the use under way.
+/// The items client mods claim and their events waiting for a poll.
 #[derive(Default)]
 pub(super) struct ModInput {
     claims: BTreeMap<String, Vec<String>>,
     events: BTreeMap<String, Vec<ModEvent>>,
-    using: Option<ModUse>,
 }
 
 impl ModInput {
@@ -35,7 +35,7 @@ impl ModInput {
         self.claims.insert(mod_id.to_owned(), ids);
     }
     /// The mod that claims `item`, the first in id order.
-    pub(super) fn claimant(&self, item: &str) -> Option<&str> {
+    fn claimant(&self, item: &str) -> Option<&str> {
         self.claims
             .iter()
             .find(|(_, ids)| ids.iter().any(|i| i == item))
@@ -50,41 +50,11 @@ impl ModInput {
     fn poll(&mut self, mod_id: &str) -> Vec<ModEvent> {
         self.events.remove(mod_id).unwrap_or_default()
     }
-    /// Mod `mod_id`'s use of `item` in `slot` begins, ending any other first.
-    fn start(&mut self, mod_id: &str, item: HeldItemSlot, slot: usize) {
-        self.end();
-        self.push(mod_id, ModEvent::UseStart(item.clone(), 0));
-        self.using = Some(ModUse {
-            mod_id: mod_id.to_owned(),
-            item,
-            slot,
-            ticks: 0,
-        });
-    }
-    /// Whether the player's use (`Game.using`) is the mod use under way. A
-    /// use the game reset and another item's begun since are not.
-    fn owns(&self, using: Option<(usize, u32)>) -> bool {
-        self.using
-            .as_ref()
-            .is_some_and(|u| using == Some((u.slot, u.ticks)))
-    }
-    fn tick(&mut self) {
-        if let Some(u) = &mut self.using {
-            u.ticks += 1;
-        }
-    }
-    /// The use under way ends: its mod hears `UseStop`.
-    fn end(&mut self) {
-        if let Some(u) = self.using.take() {
-            self.push(&u.mod_id, ModEvent::UseStop(u.item, u.ticks));
-        }
-    }
 }
 
 impl Game<'_> {
     /// The stack in inventory slot `slot` as a mod's events carry it.
-    fn mod_held(&self, slot: usize) -> Option<HeldItemSlot> {
-        let stack = self.stack_in(slot)?;
+    fn mod_held(stack: &sunrise_client::items::ItemStack, slot: usize) -> Option<HeldItemSlot> {
         let extra = stack.extra.as_deref();
         Some(HeldItemSlot {
             id: mod_api::__private::item_key(&stack.item)?,
@@ -137,54 +107,79 @@ impl Game<'_> {
     pub(super) fn poll(&mut self, mod_id: &str) -> Vec<ModEvent> {
         self.native_input.poll(mod_id)
     }
-    /// `use_hand`: a right-click with an item a mod claims starts its use for
-    /// that mod and nothing else happens. True when a mod took it.
-    pub(super) fn mod_use_start(&mut self) -> bool {
-        if self.guest_use.is_some() || self.using.is_some() {
-            return false;
-        }
-        // With no use, a mod use the game reset without telling it is over.
-        self.native_input.end();
-        let slot = self.held_slot();
-        let Some(item) = self.mod_held(slot) else {
+    fn can_capture_item_use(&self) -> bool {
+        self.using.is_none()
+            && !self.spectator()
+            && self.screen != Screen::Dead
+            && self
+                .player
+                .as_ref()
+                .is_some_and(|p| p.health.health() > 0.0)
+            && self
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.logged_in && r.session.connected())
+    }
+
+    /// Give the claimed main-hand stack's owner this click instead of using a target or item.
+    pub(in crate::game) fn start_client_item_use(&mut self) -> bool {
+        let slot = self.selected;
+        let Some(stack) = self.stack_in(slot) else {
             return false;
         };
-        let Some(id) = mod_api::__private::item_key_id(item.id)
-            .and_then(|item| self.native_input.claimant(item))
-            .map(str::to_owned)
-        else {
+        let Some(mod_id) = self.native_input.claimant(&stack.item) else {
             return false;
         };
-        self.native_input.start(&id, item, slot);
-        self.using = Some((slot, 0));
-        self.use_start.item = self.held().cloned();
-        true
-    }
-    /// `tick_used_item` for a claimed item: counts the ticks held and ends
-    /// the use when the button comes up. True when the player's use is a
-    /// mod's; a mod use the game reset ends, and the player's own use goes on.
-    pub(super) fn mod_use_tick(&mut self, slot: usize, ticks: u32, released: bool) -> bool {
-        if !self.native_input.owns(Some((slot, ticks))) {
-            self.native_input.end();
+        if !self.can_capture_item_use() {
             return false;
         }
-        let still_claimed = self.native_input.using.as_ref().is_some_and(|u| {
-            self.stack_in(slot)
-                .is_some_and(|s| self.native_input.claimant(&s.item) == Some(u.mod_id.as_str()))
-        });
-        if released || !still_claimed {
-            self.native_input.end();
-            self.using = None;
-        } else {
-            self.native_input.tick();
-            self.using = Some((slot, ticks + 1));
-        }
+        let Some(original) = Self::mod_held(stack, slot) else {
+            return false;
+        };
+        let active = ActiveClientItemUse {
+            mod_id: mod_id.to_owned(),
+            original,
+            item_id: Arc::clone(&stack.item),
+            slot,
+            ticks: 0,
+        };
+        self.native_input.push(
+            &active.mod_id,
+            ModEvent::UseStart(active.original.clone(), 0),
+        );
+        self.client_item_use = Some(active);
         true
     }
-    /// The player's use was reset (a respawn, a join, the hand's item
-    /// changed): a mod use under way ends and its mod hears `UseStop`.
-    pub(super) fn end_mod_use(&mut self) {
-        self.native_input.end();
+
+    /// Reset an invalid capture or count a held tick. Only input handling releases it.
+    pub(in crate::game) fn tick_client_item_use(&mut self) {
+        let Some(active) = self.client_item_use.as_ref() else {
+            return;
+        };
+        if !self.can_capture_item_use()
+            || active.slot != self.selected
+            || !self
+                .stack_in(active.slot)
+                .is_some_and(|s| s.item == active.item_id)
+        {
+            self.end_client_item_use();
+        } else if self.right
+            && let Some(active) = self.client_item_use.as_mut()
+        {
+            active.ticks = active.ticks.saturating_add(1);
+        }
+    }
+
+    /// Retire the capture first. Both release and reset still report the legacy `UseStop`.
+    pub(in crate::game) fn end_client_item_use(&mut self) -> bool {
+        let Some(active) = self.client_item_use.take() else {
+            return false;
+        };
+        self.native_input.push(
+            &active.mod_id,
+            ModEvent::UseStop(active.original, active.ticks),
+        );
+        true
     }
 }
 
@@ -235,55 +230,5 @@ mod input_tests {
         assert_eq!(input.poll("a").len(), EVENTS_MAX);
         assert!(input.poll("a").is_empty());
         assert_eq!(input.poll("b"), vec![ModEvent::UseStop(stick(0), 3)]);
-    }
-
-    #[test]
-    fn a_claimed_use_is_the_mods_while_it_runs() {
-        keys();
-        let mut input = ModInput::default();
-        input.start("orbital", stick(2), 2);
-        assert!(input.owns(Some((2, 0))));
-        input.tick();
-        input.tick();
-        assert!(input.owns(Some((2, 2))));
-        input.end();
-        assert!(!input.owns(Some((2, 2))));
-        assert_eq!(
-            input.poll("orbital"),
-            vec![
-                ModEvent::UseStart(stick(2), 0),
-                ModEvent::UseStop(stick(2), 2),
-            ]
-        );
-    }
-
-    #[test]
-    fn an_interrupted_claimed_use_leaves_the_next_use_alone() {
-        keys();
-        // A respawn ends the use: the mod hears it stop, and a vanilla use
-        // begun next in the same slot is not taken for the mod's.
-        let mut input = ModInput::default();
-        input.start("orbital", stick(0), 0);
-        input.tick();
-        input.end();
-        assert!(!input.owns(Some((0, 0))));
-        assert_eq!(
-            input.poll("orbital").last(),
-            Some(&ModEvent::UseStop(stick(0), 1))
-        );
-        // A reset the mod use never heard of (`Game.using` cleared alone):
-        // the player's next use, from 0 ticks or in another slot, is still
-        // not the mod's, and ending it then tells the mod once.
-        input.start("orbital", stick(0), 0);
-        input.tick();
-        input.tick();
-        assert!(!input.owns(None));
-        assert!(!input.owns(Some((0, 0))), "a vanilla use from 0 ticks");
-        assert!(!input.owns(Some((1, 2))), "another slot");
-        input.end();
-        input.end();
-        let events = input.poll("orbital");
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[1], ModEvent::UseStop(stick(0), 2));
     }
 }
