@@ -6,9 +6,9 @@ vanilla generated first, with Alice an operator in survival and keep_inventory o
 of vanilla's protocol code) is given seven diamonds, picks them up onto its inventory menu's cursor (a PICKUP click)
 ten blocks from the spawn, runs /kill on itself, waits on the death screen and respawns (PERFORM_RESPAWN). Twenty
 ticks after dying vanilla removes the dead player (LivingEntity.tickDeath), and Player.remove's
-inventoryMenu.removed drops the cursor's stack where it died. Alice then asks whether an item lies around the death
-site; the reply, and the inventory slots, respawns and teleports she is sent from the death on, are compared
-exactly. Before the death sequence, the same client predicts clicks in window 0 and a crafting table,
+inventoryMenu.removed drops the cursor's stack where it died. Alice checks for exactly one diamond item entity there
+and verifies it carries seven diamonds. The replies, inventory slots, respawns and teleports from the death on are
+compared exactly. Before the death sequence, the same client predicts clicks in window 0 and a crafting table,
 including incorrect slot and cursor hashes and a patch that only restates the item prototype.
 """
 import json
@@ -20,13 +20,16 @@ except ImportError:
     import test_locator_bar_parity as locator
 
 NAME = 'cursor-death-parity'
-# server_dir and generate_world write these server.properties.
-locator.PROPERTIES = dict(locator.PROPERTIES, gamemode='survival')
+# The player dies only to the scripted /kill, not to slimes in the flat world.
+locator.PROPERTIES = dict(locator.PROPERTIES, gamemode='survival', difficulty='peaceful')
 PICKAXE = 'minecraft:diamond_pickaxe[damage=5,!tool]'
+DEATH_SITE = 'type=minecraft:item,x=10.5,y=-60,z=0.5,distance=..4'
+DIAMONDS = 'id:"minecraft:diamond"'
 PREDICTION_STEPS = ('prediction-match', 'prediction-slot', 'prediction-cursor', 'prediction-return',
                     'table-pickup', 'table-slot', 'default-pickup', 'default-return')
 SCRIPT = [
-    ('setup', ['menus on', 'cmd Alice gamerule keep_inventory false', 'cmd Alice clear @s',
+    ('setup', ['menus on', 'cmd Alice gamerule keep_inventory false', 'cmd Alice gamerule spawn_mobs false',
+               'cmd Alice clear @s',
                'cmd Alice give @s minecraft:diamond 7', 'cmd Alice tp @s 10.5 -60 0.5',
                f'cmd Alice item replace entity @s hotbar.1 with {PICKAXE}']),
     # Pick up, put back, pick up, and put back one tool in inventory menu slot 37.
@@ -46,10 +49,13 @@ SCRIPT = [
     ('prediction-cleanup', ['menus off', 'cmd Alice item replace entity @s hotbar.1 with minecraft:air',
                             'cmd Alice item replace entity @s hotbar.2 with minecraft:air']),
     # Hotbar slot 0 is the inventory menu's slot 36.
-    ('pickup', ['pickup Alice 36']),
-    ('death', ['cmd Alice kill @s']),
+    ('pickup', ['menus on', 'pickup Alice 36']),
+    ('death', ['menus off', 'cmd Alice kill @s']),
     ('respawn', ['respawn Alice']),
-    ('check', ['chat on', 'cmd Alice execute if entity @e[type=minecraft:item,x=10.5,y=-60,z=0.5,distance=..4]']),
+    # A nearby world drop is not the cursor. Count diamond entities, then check the one stack's size.
+    ('check', ['chat on',
+               f'cmd Alice execute if entity @e[{DEATH_SITE},nbt={{Item:{{{DIAMONDS}}}}}]',
+               f'cmd Alice execute if entity @e[{DEATH_SITE},nbt={{Item:{{{DIAMONDS},count:7}}}}]']),
 ]
 
 
@@ -76,6 +82,11 @@ def shown(lines):
                     # click that received the correction, including the 15-bit wraparound.
                     packet['state'] = None if before is None else (packet['state'] - before) & 0x7fff
                 out.append(f'{player} {step} {kind} {json.dumps(packet, sort_keys=True)}')
+        elif step == 'step=pickup' and kind == 'menu-wire':
+            packet = json.loads(body)
+            if packet['kind'] == 'content' and packet['window'] == 0:
+                pickup = [packet['items'][36], packet['carried']]
+                out.append(f'{player} {step} picked-up {json.dumps(pickup, sort_keys=True)}')
         elif step in ('step=death', 'step=respawn', 'step=check') and kind in (
                 'slot', 'inventory', 'respawn', 'teleport', 'chat'):
             out.append(line)
@@ -101,8 +112,15 @@ def check(vanilla, transcript):
             return 'expected the corrected slot to carry the exact successor of its echoed state'
     if inventory['item'] is None or cursor['item'] != inventory['item'] or table['item'] != inventory['item']:
         return 'expected the same tool in all corrections'
-    if not any(l.startswith('Alice step=check chat') for l in vanilla):
-        return 'vanilla answered no check command'
+    picked_up = [json.loads(line.split(' ', 3)[3]) for line in vanilla
+                 if line.startswith('Alice step=pickup picked-up ')]
+    if (len(picked_up) != 1 or picked_up[0][0] is not None
+            or (picked_up[0][1] or {}).get('snbt') != '{count:7,id:"minecraft:diamond"}'):
+        return 'expected the seven diamonds to move from slot 36 onto the cursor before death'
+    dropped = [json.loads(line.split(' ', 3)[3]) for line in vanilla if line.startswith('Alice step=check chat ')]
+    one = {'translate': 'commands.execute.conditional.pass_count', 'with': [1]}
+    if dropped != [one, one]:
+        return 'expected exactly one dropped diamond stack containing all seven diamonds'
     return None
 
 
