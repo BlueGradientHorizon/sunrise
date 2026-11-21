@@ -737,13 +737,13 @@ mod tests {
     }
 
     #[test]
-    fn rejected_source_panic_stops_a_sibling_before_eof_drain() {
-        struct PauseAtEof {
+    fn rejected_source_panic_discards_in_flight_pcm_and_prevents_eof_drain() {
+        struct PauseAtBoundary {
             waiting: Sender<()>,
             resume: Receiver<()>,
         }
 
-        impl Drop for PauseAtEof {
+        impl Drop for PauseAtBoundary {
             fn drop(&mut self) {
                 if self.waiting.send(()).is_ok() {
                     let _ = self.resume.recv_timeout(Duration::from_secs(1));
@@ -763,10 +763,14 @@ mod tests {
             }
         }
 
-        for (pause_in_read, boundary) in [(true, "EOF read"), (false, "EOF destruction")] {
+        for (result, pause_in_read, boundary) in [
+            (AudioRead::Frames(1), true, "PCM read"),
+            (AudioRead::Eof, true, "EOF read"),
+            (AudioRead::Eof, false, "EOF destruction"),
+        ] {
             let (waiting, reached) = mpsc::channel();
             let (resume, released) = mpsc::channel();
-            let mut pause = Some(PauseAtEof {
+            let mut pause = Some(PauseAtBoundary {
                 waiting,
                 resume: released,
             });
@@ -779,7 +783,10 @@ mod tests {
                 if pause_in_read {
                     drop(pause.take());
                 }
-                AudioRead::Eof
+                if let AudioRead::Frames(frames) = result {
+                    pcm[..frames * 2].fill(-8192);
+                }
+                result
             });
             // Queue two frames and ask for one more without ever running the mixer.
             request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
@@ -791,11 +798,14 @@ mod tests {
             rig.pool.state().worker.as_mut().unwrap().sender = reject;
             let mut job = rig.job.take().unwrap();
             let scratch = &mut rig.scratch;
-            thread::scope(|scope| {
-                let worker = scope.spawn(move || assert!(!job.refill(scratch)));
+            let (keep, tail) = thread::scope(|scope| {
+                let worker = scope.spawn(move || {
+                    let keep = job.refill(scratch);
+                    (keep, job.ring.producer_window().0)
+                });
                 reached
                     .recv_timeout(Duration::from_secs(1))
-                    .expect("sibling did not reach EOF");
+                    .expect("sibling did not reach the read or drop boundary");
                 let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
                 assert!(matches!(
                     rig.pool
@@ -804,8 +814,14 @@ mod tests {
                 ));
                 assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
                 resume.send(()).unwrap();
-                worker.join().unwrap();
+                worker.join().unwrap()
             });
+            // This refill must retire the job and leave only the two original stereo frames.
+            assert_eq!(
+                (keep, tail),
+                (false, 4),
+                "{boundary}: (keep job, ring tail)"
+            );
             assert_eq!(rig.stream.state(), AudioStreamState::Stopped, "{boundary}");
             assert_eq!(rig.play::<8>(), [0.0; 8], "{boundary} must not drain");
         }
