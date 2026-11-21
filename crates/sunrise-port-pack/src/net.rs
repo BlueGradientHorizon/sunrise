@@ -1,12 +1,8 @@
 //! Port-pack's download agents and redirect checks.
 
-pub use sunrise_proxy::{
-    ProxyError, direct, env_for, host_of, keep, parse, redacted, scheme_of, set_proxy,
-};
-
 /// An agent for downloading `url`: through the proxy when one is set, unless `url` is a host that
 /// must be reached directly.
-pub fn agent(url: &str) -> Result<ureq::Agent, ProxyError> {
+pub(crate) fn agent(url: &str) -> Result<ureq::Agent, sunrise_proxy::ProxyError> {
     sunrise_proxy::agent("port-pack", url, std::convert::identity)
 }
 
