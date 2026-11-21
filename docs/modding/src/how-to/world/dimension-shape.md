@@ -334,9 +334,12 @@ biomes as they read a vanilla source's, and a chunk generator of a mod's own, wh
 get its biomes cell by cell instead of one biome. The biomes are saved with the chunks, by name, as
 any other.
 
-A source in another mod's namespace, an empty name, a name that is not a folder of the world (as
-for a dimension), an id registered twice and an empty `possible_biomes` stop the game at startup
-with a message naming the mod, and so does a dimension whose `mod_biome_source` nobody registered.
+A bare name uses the registering mod's namespace; an explicit valid `namespace:path` keeps its
+namespace. An empty or malformed name, a name that is not a folder of the world (as
+for a dimension), built-in biome sources (`minecraft:fixed`, `minecraft:multi_noise`,
+`minecraft:checkerboard`, `minecraft:the_end`), an id registered twice and an empty `possible_biomes`
+stop the game at startup with a message naming the mod, and so does a dimension whose
+`mod_biome_source` nobody registered.
 The source may come from a mod that loads later. A level whose world lacks one of the possible
 biomes refuses to open, naming the source and the biome, as does a level stem naming a source that
 is gone.

@@ -223,7 +223,7 @@ items, block entity types and fluids its code declares), a listener on a client-
 a required payload the server sends to clients, or a synced attachment type it declares.
 For attachments, “carries” means **declares**: a server package may use another loaded package A's synced
 attachment, because clients compare A and decode the value through A. If A is itself a server package, A is the
-declarer refused by name. Attachment load checks declaration conflicts (including foreign namespaces) first,
+declarer refused by name. Attachment load checks declaration conflicts (duplicates and malformed ids) first,
 then undeclared uses naming the calling package and id, then server-package declarations; no content is admitted
 after a refusal. See [attachments](../concepts/attachments.md) for the declaration API.
 Assets, lang and data vanilla syncs itself (recipes, loot, tags) are allowed. Where a hook runs is still the hook's own side: the manifest says what a client must have, not where a
