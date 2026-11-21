@@ -295,9 +295,9 @@ impl ModelLibrary {
             .zip(&names)
             .position(|(m, name)| m.elements.is_some() || name == GENERATED_MODEL);
         let mut generated = top_geometry.is_some_and(|index| names[index] == GENERATED_MODEL);
-        let mut geometry = top_geometry
-            .filter(|_| !generated)
-            .map(|index| Arc::clone(&chain[index]));
+        // Block libraries keep file geometry; only the item library inserts the generated
+        // built-in (which has no elements) over a file of the same name.
+        let mut geometry = chain.iter().find(|model| model.elements.is_some()).cloned();
         let display = ItemTransforms {
             contexts: std::array::from_fn(|index| {
                 chain

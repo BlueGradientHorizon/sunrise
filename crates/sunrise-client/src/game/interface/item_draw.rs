@@ -138,12 +138,9 @@ impl ItemEnv for Env<'_, '_> {
         ctx: &sunrise_assets::item_model::Context<'_>,
         keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
     ) -> Option<usize> {
-        let Some(bound) = property
+        let bound = property
             .payload
-            .downcast_ref::<item_render::BoundSelectProperty>()
-        else {
-            return None;
-        };
+            .downcast_ref::<item_render::BoundSelectProperty>()?;
         if !bound.owner.is_enabled() {
             return None;
         }
