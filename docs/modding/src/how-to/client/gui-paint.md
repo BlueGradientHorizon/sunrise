@@ -2,12 +2,12 @@
 
 ## Drawing directly with a canvas
 
-`DrawContext::draw_gui` lends a `GuiCanvas` with an identity pose. Draw inside its callback rather
-than building a list of commands. Everything the callback draws commits in order on `Ok(())`;
-returning an error (including `GuiDrawError::Abort`) discards the group. A nested `scope` applies pose
-operations in order and optionally scissors to `[x, y, w, h]` in the resulting local coordinates.
-Its clip stays fixed in screen space even when a descendant changes pose. A refused call draws
-nothing. Propagate its error with `?` or, if you have an alternative, handle it and continue.
+`DrawContext::draw_gui` lends a `GuiCanvas` with an identity pose and the current context's
+clip. Call its methods directly inside the callback, in draw order. A nested `scope` applies
+pose operations in order to a copy of the current pose and optionally scissors to
+`[x, y, w, h]` in the resulting local coordinates. That clip stays fixed in screen space even
+when a descendant changes pose. Returning from a child scope leaves the parent pose and clip
+as they were.
 
 ```rust,ignore
 use mod_api::{GuiDrawError, Text, client::hud_layout::PoseOp};
@@ -24,8 +24,12 @@ let result: Result<(), GuiDrawError> = draw.draw_gui(&mut |canvas| {
 });
 ```
 
-A nested scope that returns an error leaves its parent unchanged. Widgets, scenes and other
-host state are not part of the transaction; use the ordinary `DrawContext` for those draws.
+A refused primitive draws nothing. Use `?` to discard the whole group on a refusal, or handle
+it to retain the other draws. Successful children commit in place, but any error returned by a
+parent still discards them. If you handle a child's error, only that child is discarded. Returning
+`Err(GuiDrawError::Abort)` or unwinding also discards the current group. Widgets, scenes and
+independent host calls are not part of the transaction; use the ordinary `DrawContext` for those
+draws, with [`with_scissor`](screen-clipping.md) if you need to clip them.
 
 ## Items
 
@@ -38,8 +42,8 @@ wait until the outer group commits.
 
 To draw from the local inventory, read it at the calling boundary rather than sending a slot
 number to the renderer. Inventory numbers `0..=8` are the hotbar and `40` is the off hand. An
-absent stack means nothing to draw. As in vanilla's hotbar, apply the pop squeeze only in the
-model's child scope, so it doesn't distort the decorations:
+absent stack means nothing to draw. Here the model and decorations both follow the panel's
+translation, but only the model gets the pop squeeze, as in vanilla's hotbar:
 
 ```rust,ignore
 use mod_api::client::hud_layout::PoseOp;
@@ -47,17 +51,19 @@ use mod_api::client::hud_layout::PoseOp;
 let slots = host.local_player().and_then(|player| player.inventory_slots(host));
 if let Some((_, stack)) = slots.into_iter().flatten().find(|(slot, _)| *slot == 0) {
     draw.draw_gui(&mut |canvas| {
-        let at = [20.0, 20.0];
-        canvas.scope(
-            &[
-                PoseOp::Translate(28.0, 32.0),
-                PoseOp::Scale(0.5, 1.5),
-                PoseOp::Translate(-28.0, -32.0),
-            ],
-            None,
-            &mut |model| model.item(&stack, at, 1),
-        )?;
-        canvas.item_decorations(&stack, at, None)
+        canvas.scope(&[PoseOp::Translate(20.0, 30.0)], None, &mut |panel| {
+            let at = [0.0, 0.0];
+            panel.scope(
+                &[
+                    PoseOp::Translate(8.0, 12.0),
+                    PoseOp::Scale(0.5, 1.5),
+                    PoseOp::Translate(-8.0, -12.0),
+                ],
+                None,
+                &mut |model| model.item(&stack, at, 1),
+            )?;
+            panel.item_decorations(&stack, at, None)
+        })
     })?;
 }
 ```
@@ -65,7 +71,9 @@ if let Some((_, stack)) = slots.into_iter().flatten().find(|(slot, _)| *slot == 
 `ItemPart::item_decorations` receives a `GuiCanvas` as `event.draw` after the standard
 bar, cooldown and count. Use the icon's local `event.x` and `event.y` for drawing. The canvas
 already has the caller's pose and scissor (identity for ordinary inventory, hotbar and tooltip
-calls). Use `event.draw.scope` to give a decorator's own draws a separate rollback boundary.
+calls). A decorator returns `()`, so use `event.draw.scope` if you want to roll back its own
+primitives together on failure. Move any widgets, focus, narration or live scenes to ordinary
+HUD or screen draw hooks.
 
 ## Replacing the player-health HUD
 

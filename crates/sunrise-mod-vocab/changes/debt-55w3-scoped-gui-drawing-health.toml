@@ -1,0 +1,15 @@
+ids = [
+    "hook:health_hud",
+    "method:Hooks::health_hud",
+    "type:HealthHudReplacement",
+    "handle:HealthHudReplacement::new",
+    "handle:HealthHudReplacement::with_status_top",
+    "handle:HealthHudReplacement::status_top",
+    "handle:HealthHudReplacement::invoke",
+]
+why = "The health HUD draws the winning native renderer at the player-health layer instead of replaying its commands. The health_hud hook version goes from 1 to 2."
+migrate = '''
+Change `Hooks::health_hud` from `&mut dyn ClientHost` and `Option<Vec<GuiDraw>>` to `&dyn ClientHost` and `Option<HealthHudReplacement>`. Its `&mut HealthHudEvent<'_>` still carries `inputs`, `wi` and `hi`; the changed answer is the method result, not an event field. Return `None` to defer. At setup construct `HealthHudReplacement::new(|host, inputs, canvas| { ... })` and retain it. Move per-frame reads to the callback or capture owned shared state at setup. Draw via the canvas with `?` instead of pushing commands and return `Some(self.renderer.clone())` to select it. Rebuild against the SDK with `health_hud` version 2.
+
+The first `Some` wins; its renderer draws between the player-health layer's Pre and Post unless Pre hides it. Use `Some(self.renderer.clone().with_status_top(y))` to reserve overlay space down to the bottom from the highest logical GUI row. Without a top the replacement reserves nothing. No selection or a refused renderer uses vanilla instead (not another listener). To preserve an intentional blank, use a renderer that returns `Ok(())` without drawing; an `Err` discards the group and restores vanilla's rows and spacing.
+'''

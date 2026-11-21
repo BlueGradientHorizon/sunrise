@@ -22,7 +22,9 @@ draw.draw_gui(&mut |canvas| {
   translated point; `Rotate` then `Translate` moves along the turned axes. GUI y grows downwards,
   so a positive angle turns clockwise on screen.
 - **Scope.** The pose applies to everything drawn through the child canvas, including its nested
-  scopes. Returning to the parent restores the earlier pose and scissor.
+  scopes. Returning to the parent restores the earlier pose and scissor. If this scope supplies
+  a scissor, it transforms the rectangle's two ordered corners at entry, not the bounding box
+  of a rotated rectangle. That screen-space clip does not turn with a later child.
 - **Exactness.** The matrix is JOML's, float for float: a quarter turn of `FRAC_PI_2` leaves the
   same tiny non-zero cosine vanilla's does.
 - **Refusal.** A NaN or infinite angle returns `GuiDrawError::NotFinite` before the callback

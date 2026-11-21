@@ -4,7 +4,8 @@ A scrolling list or a viewport into a larger page shows only the part inside a b
 `DrawContext::with_scissor(rect, &mut |clipped| { ... })` cuts draws made through `clipped` to
 `[x, y, w, h]` in GUI pixels, like vanilla's `GuiGraphics.enableScissor` and `disableScissor`
 around the callback. The full drawing context is available inside, including widgets, scenes,
-items and text.
+items and text. The callback returns `()` and the clip does not roll back drawing; handle errors
+from draw methods inside the callback.
 
 ```rust,ignore
 fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>) {

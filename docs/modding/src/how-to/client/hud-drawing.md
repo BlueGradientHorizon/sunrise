@@ -4,6 +4,8 @@ A HUD layer, a screen or a tooltip hook draws through the `DrawContext` it is ha
 is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others.
 [Draw through a canvas](gui-paint.md#drawing-directly-with-a-canvas) with `draw_gui` to group
 fills, styled text, blits and seeded items with their decorations in lexical pose and scissor scopes.
+For the player-health rows specifically, [select a replacement renderer](gui-paint.md#replacing-the-player-health-hud)
+so it draws at the original layer and can reserve space for overlays.
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
@@ -41,8 +43,9 @@ fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>
 ## Scaled text
 
 `DrawContext::text_scaled(text, at, scale, argb, shadow)` draws `text` as `text` does, scaled by `scale` about
-`at`, its top-left corner: what vanilla's HUD draws with `PoseStack.scale` around a line. A half-size line
-under a label is `scale` 0.5, starting a quarter of its unscaled width left of where it is centred.
+`at`, its top-left corner. A half-size line under a label uses `scale` 0.5, starting a quarter of its
+unscaled width left of where it is centred. This is plain text; for a styled `Text`, draw with
+`GuiCanvas::text` inside a scope that translates to `at`, scales, and translates back.
 
 ```rust,ignore
 fn gui_layer_draw(&self, _: &dyn ClientHost, event: &mut GuiLayerDrawEvent<'_>) {

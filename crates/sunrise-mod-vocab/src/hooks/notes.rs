@@ -1812,7 +1812,14 @@ still go on each event or registrar.
 
 - `get_arm_pose(entity_id, hand, stack, humanoid, pose)` (NeoForge's `IClientItemExtensions.getArmPose`) sets the pose of the arm that holds `stack` in `hand`, as a humanoid model draws it: the window's own player, remote players and humanoid mobs. `humanoid` is a borrowed `HumanoidRenderState` exposing both held stacks, the main arm, use hand, use ticks, use animation and the selected main/off-hand poses before listeners answer (including item declarations). It replaces what the item would give, whatever the use animation, a loaded crossbow or an `arm_pose` declared on the item say (a content mod's data key, see the content-mods how-to, is the answer when no mod listens or none sets one). Return one of vanilla's `ArmPose` values (`empty`, `item`, `block`, `bow_and_arrow`, `crossbow_hold`, `crossbow_charge`, `throw_trident`, `toot_horn`, `spyglass`, `spear`, `brush`); the first mod to answer wins. It is asked once a tick for each humanoid model and non-empty hand, only while a mod listens, and a two-handed pose still moves the other hand as vanilla's does. Custom poses are registered through `Registrar::register_arm_pose` and returned as `ArmPose::Custom`; `arm_pose_transform` writes their API-owned `ArmAngles` in radians. Unknown slots and non-finite angle components are ignored. Mob-specific animations run after the humanoid base pose, as in vanilla. API stack snapshots are converted only with subscribers; there is no allocation when no mod listens. Client-side, with the `ClientHost`. Diverges from upstream: new hook.
 
-- `item_decorations(stack, x, y, batch)` appends custom GUI drawing after the default bar, cooldown shade and count have been painted for an item icon. The stack is the displayed stack, x/y are its icon's top-left in GUI units, the units the batch takes (no item-local translation remains active). Existing GUI helpers can draw badges, text and overlays. The shared path covers the hotbar, carried stacks, menu slots, recipe book and item tooltip icons, and the item icons of the advancement, beacon, stats and trading screens. `item_bar` still controls the bar separately; this hook does not suppress vanilla decorations.
+- `item_decorations(stack, x, y, draw)` appends custom GUI draws after the default bar, cooldown
+  shade and count. `draw` lends a `GuiCanvas` with the caller's decoration pose and scissor;
+  `x` and `y` are the icon's top-left in that scope, not in the model-only squeeze. Use `draw.scope`
+  to group your decoration draws: returning an error discards that group. Widgets, live scenes,
+  focus and narration belong in ordinary HUD or screen hooks. The shared path covers the hotbar,
+  carried stacks, menu slots, recipe book and item tooltip icons, and the item icons of the
+  advancement, beacon, stats and trading screens. `item_bar` still controls the bar separately;
+  this hook does not suppress vanilla decorations.
 
 - Using an item over time, as vanilla's `Item.getUseDuration`, `getUseAnimation` and `finishUsingItem` and NeoForge's `LivingEntityUseItemEvent.Start` and `.Finish`. `use_duration` answers a stack's use time: a mod's own item with no use of vanilla's that answers above 0 is used over time on a right click, until it is let go or the time runs out, on single player and LAN alike. `use_animation` changes the item's vanilla use animation, including specialised item poses, each first-person frame and each local or remote player model tick; a spear override without kinetic data is refused. `can_eat` decides whether a food can be eaten now. `living_entity_use_item_start` may change a use's duration or refuse it, on the server and where the window's client predicts the use, and `living_entity_use_item_finish` may replace what the hand holds once the time ran out (consumables, potions and mods' items), on the server and on the client that predicts it. Both take the using entity, None for a player, so mobs can fire them later, and the hand in use. Change the world only where this game runs the world, not on a server's client.
 
@@ -2880,9 +2887,11 @@ registration path.
 - The player-health HUD rows through `health_hud`: the hook hears the layout's inputs
   (`HealthInputs`) and the logical GUI size. The first `HealthHudReplacement` answer draws all the
   rows (armour, hearts, food and air) on the canvas at `minecraft:player_health`, unless layer Pre
-  hides it. An error discards its draws and falls back to vanilla; a successful empty draw still
-  replaces vanilla. A replacement can declare its highest logical row to reserve room for overlays.
-  With no answer, vanilla lays out the rows even if layer Pre hides the layer.
+  hides it. An error discards its draws and falls back to vanilla, not to another listener;
+  `Ok(())` with no draws intentionally replaces vanilla with nothing. A replacement can declare
+  its highest logical row with `with_status_top` to reserve room for overlays. With no answer,
+  vanilla lays out the rows even if layer Pre hides them. See
+  [Replacing the player-health HUD](../how-to/client/gui-paint.md#replacing-the-player-health-hud).
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
   each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod

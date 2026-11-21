@@ -26,7 +26,8 @@ pub struct GuiBlitRegion {
     pub tex: [i32; 2],
 }
 
-/// A refusal from a particular GUI call or from its drawing callback.
+/// A refusal from a GUI call or its callback. A refused primitive adds no output; returning the
+/// error from the callback discards its entire drawing group.
 // no wire: errors stay with the in-process drawing callback
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -79,11 +80,12 @@ impl std::error::Error for GuiDrawError {
     }
 }
 
-/// GUI primitives borrowed for a [`crate::DrawContext::draw_gui`] group or nested [`Self::scope`].
-/// Coordinates are local GUI pixels and colours are straight-alpha ARGB (`0xAARRGGBB`). A refused
-/// draw leaves the group as it was before that call. Propagate the error with `?` to discard the
-/// whole group, or handle it and continue. Widgets, scenes and other host state are not part of
-/// the canvas.
+/// Checked GUI primitives for [`crate::DrawContext::draw_gui`], a child [`Self::scope`],
+/// or a draw callback such as an item decorator. Coordinates are local GUI pixels and colours
+/// are straight-alpha ARGB (`0xAARRGGBB`). A refused draw leaves the group as it was before that
+/// call. Propagate the error with `?` to discard the group, or handle it to keep the other draws.
+/// Widgets, scenes, focus and narration belong to a full [`crate::DrawContext`]; independent
+/// host calls are not part of a canvas group.
 pub trait GuiCanvas {
     /// The full GUI's width and height in GUI pixels, unaffected by the pose or scissor.
     fn size(&self) -> [f32; 2];
@@ -94,8 +96,8 @@ pub trait GuiCanvas {
     /// extents separately. `None` inherits the enclosing scissor unchanged. Empty, inverted or
     /// reflected scissor axes draw nothing. The clip does not move when a descendant changes its
     /// pose. Non-finite geometry refuses the scope before calling `draw`; zero scale is allowed.
-    /// On `Err` or unwind, discard the child's draws. On success they stay in order. The parent's
-    /// pose and scissor never change.
+    /// On `Err` or unwind, discard the child's draws. On success they stay in order, but are
+    /// still discarded if an enclosing group fails. The parent's pose and scissor never change.
     fn scope(
         &mut self,
         ops: &[PoseOp],
@@ -120,14 +122,16 @@ pub trait GuiCanvas {
         shadow: bool,
     ) -> Result<(), GuiDrawError>;
 
-    /// Draw the stack's 16-pixel GUI item model at `at`, with `seed` passed to its model
-    /// resolver. This does not draw decorations. An empty stack draws nothing; inventory
-    /// storage limits do not apply. New head-skin requests wait for the outer group to commit.
+    /// Draw the stack's 16-pixel GUI item model with its top-left at `at`, passing `seed` to
+    /// its model resolver. This does not draw decorations. An empty stack draws nothing;
+    /// inventory storage limits do not apply. New head-skin requests wait for the outer group
+    /// to commit.
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
     /// `count` replaces the normal count label; `Some("")` hides it. An empty stack draws nothing.
-    /// Call this in the parent scope after drawing a squeezed model in a child scope.
+    /// Call this in the surrounding scope after drawing a squeezed model in a child
+    /// [`Self::scope`], so the decorations follow the surrounding pose, not the squeeze.
     fn item_decorations(
         &mut self,
         stack: &ItemStack,

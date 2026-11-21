@@ -206,8 +206,9 @@ vanilla art).
 ## Labels: wrapped text without a widget
 
 A label is text laid out in a box: measured, wrapped and placed, and nothing else. Call
-`DrawContext::text_lines` from a drawing hook with the component, the box's width, an alignment and the
-scale the label is drawn at, and draw the lines it answers with where it says:
+`DrawContext::text_lines` with the component, the box's width, an alignment and a scale. Draw the
+returned lines in a [canvas group](gui-paint.md#drawing-directly-with-a-canvas), so a refused
+line cannot leave a partial label:
 
 ```rust
 // From screen_render_post, gui_render_post or another drawing hook.
@@ -284,8 +285,9 @@ draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40
   what the screen drew before or after it, and later drawing covers it in call order. An item's
   faces meet each other by depth, as a model's do, and its enchantment glint follows them. The
   OptiFine CIT glint layers of a stack are not drawn on this path yet
-  ([#3555](https://github.com/sunrise-org/sunrise/issues/3555)). There is no z input. `with_scissor` cuts both
-  as it cuts `fill`.
+  ([#3555](https://github.com/sunrise-org/sunrise/issues/3555)). There is no z input. Use
+  [`DrawContext::with_scissor`](screen-clipping.md) to clip either subject. The model draw stays
+  on the full context, not on a checked GUI canvas.
 - Refusals draw nothing: `Gui3dError::Unavailable` (no game, or a server), `NotFinite` (a value,
   or a corner the turn sends, that is not finite, or a size that is not positive), `UnknownItem`
   (an empty stack or unknown item) and `Model(ModelError)` (a stale or unknown handle).

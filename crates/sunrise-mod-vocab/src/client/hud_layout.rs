@@ -3,22 +3,25 @@ use crate::{ClientHost, GuiCanvas, GuiDrawError};
 use std::sync::Arc;
 
 // no wire: a pose operation is passed directly to an in-process canvas scope.
-/// A `Matrix3x2fStack` operation applied to a copy of the current pose.
+/// A `Matrix3x2fStack` operation applied in [`GuiCanvas::scope`] to a copy of the current pose.
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard
 pub enum PoseOp {
+    /// Move the origin along the current axes by the given GUI pixels.
     Translate(f32, f32),
+    /// Scale the current axes by the given factors about the current origin.
     Scale(f32, f32),
     /// `Matrix3x2fStack.rotate(angle)`: a turn by `angle` radians about the current pose's
     /// origin, applied after the ops before it, as vanilla composes them. Positive angles turn
-    /// clockwise on screen (y grows downwards). Everything drawn after it follows: fills,
-    /// sprites, blits and text. [`GuiCanvas::scope`](crate::GuiCanvas::scope) refuses a NaN or
-    /// infinite angle with [`crate::GuiDrawError::NotFinite`] before any draw in the scope.
+    /// clockwise on screen (y grows downwards). Everything drawn in the child scope follows
+    /// its pose. [`GuiCanvas::scope`] refuses a non-finite angle with [`GuiDrawError::NotFinite`]
+    /// before calling the drawing callback.
     Rotate(f32),
 }
 
 // no wire: the blend is passed directly to an in-process blit.
-/// The render pipeline of a texture blit.
+/// The render pipeline of a [`GuiCanvas::blit`]. Only `Textured` and `Crosshair` are
+/// available to [`GuiCanvas::blit_sprite`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set the game matches without a wildcard
 pub enum Blend {
@@ -93,8 +96,9 @@ pub struct HealthHudReplacement {
 
 impl HealthHudReplacement {
     /// Share a renderer that draws the health, armour, food and air rows. The selected renderer
-    /// runs only when the player-health layer is drawn. An error discards its whole canvas group
-    /// and draws vanilla instead; `Ok(())` replaces vanilla even if nothing was drawn.
+    /// runs on the player-health layer in the answering mod's scope. Returning an error discards
+    /// its canvas group and draws vanilla instead, not another mod's answer. `Ok(())` replaces
+    /// vanilla even if nothing was drawn.
     ///
     /// By default this replacement reserves no room for status rows.
     pub fn new(
