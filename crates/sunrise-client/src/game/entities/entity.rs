@@ -785,8 +785,11 @@ mod render_bounds_tests {
 /// The common retained support owned by moving bodies.
 macro_rules! stored_ground {
     () => {
+        stored_ground!(fall_distance);
+    };
+    ($fall_distance:ident) => {
         fn body_fall_distance(&self) -> f64 {
-            self.fall_distance
+            self.$fall_distance
         }
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
@@ -2447,7 +2450,7 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 }
 
 impl Entity for ArmorStand {
-    stored_ground!();
+    stored_ground!(enchantment_fall_distance);
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         let (context, subject) = ArmorStand::support_collision(self);
         (context, Some(subject))
