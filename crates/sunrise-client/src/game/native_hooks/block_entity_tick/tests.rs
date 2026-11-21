@@ -208,8 +208,7 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 .with_stack(host, |stack| stack.project())
                 .flatten()
                 .unwrap()
-                .shrink(1)
-                .unwrap();
+                .shrink(1);
             assert!(item.set_stack(host, rest).unwrap());
             assert_eq!(
                 item.with_stack(host, |stack| stack.count()),

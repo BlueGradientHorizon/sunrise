@@ -25,7 +25,7 @@ impl Game<'_> {
             attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [yaw, 0.0],
-            pickup_delay: i64::from(pickup_delay),
+            pickup_delay: pickup_delay as i32,
             random: random.own.into(),
             ..ItemEntity::new(
                 self.next_entity,

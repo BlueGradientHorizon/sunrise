@@ -20,4 +20,24 @@ impl Game<'_> {
         e.stack = stack;
         true
     }
+
+    /// `ItemEntity.setItem`: replaces item entity `id`'s stack without immediately removing
+    /// an empty stack (`ItemEntity.tick` discards an empty item on its next tick). Journals the
+    /// previous stack under an open transaction so an abort restores it.
+    pub(super) fn journal_set_item_entity_direct(&mut self, id: u32, stack: ItemStack) -> bool {
+        if self.serving.is_none() && self.options.dedicated.is_none() {
+            return false;
+        }
+        let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) else {
+            return false;
+        };
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .item_entities
+                .entry(id)
+                .or_insert_with(|| e.stack.clone());
+        }
+        e.stack = stack;
+        true
+    }
 }

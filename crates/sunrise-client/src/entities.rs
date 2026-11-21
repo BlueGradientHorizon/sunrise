@@ -242,8 +242,8 @@ pub struct ItemEntity {
     /// `fallOn` on landing ([`ItemStep::landed`]), then reset.
     pub fall_distance: f64,
     pub age: i32,
-    /// Signed NBT counter; widened to retain the legacy internal u32::MAX sentinel.
-    pub pickup_delay: i64,
+    /// `ItemEntity.pickupDelay`: signed tick counter (`32767` = never pick up).
+    pub pickup_delay: i32,
     pub bob_offset: f32,
     /// `Entity.tickCount`: ticks since the item entered the level, which
     /// paces `ItemEntity.mergeWithNeighbours`.
@@ -485,6 +485,12 @@ impl ItemEntity {
     pub const WIDTH: f64 = 0.25;
     /// `EntityTypes.ITEM` declares a float eye height, widened by `Entity.getEyeY`.
     pub const EYE_HEIGHT: f64 = 0.2125_f32 as f64;
+    /// `ItemEntity.LIFETIME`: ticks before a dropped item despawns.
+    pub const LIFETIME: i32 = 6000;
+    /// `ItemEntity.INFINITE_PICKUP_DELAY`: pickup delay that never counts down (`setNeverPickUp`).
+    pub const INFINITE_PICKUP_DELAY: i32 = i16::MAX as i32;
+    /// `ItemEntity.INFINITE_LIFETIME`: age that never increments (`setUnlimitedLifetime`).
+    pub const INFINITE_LIFETIME: i32 = i16::MIN as i32;
     /// `Entity.getLightProbePosition(partialTick)` for a dropped item: the eye
     /// position (`getEyePosition`) over the position drawn this frame
     /// (`getPosition(partialTick)`), not this tick's own.
@@ -774,14 +780,16 @@ impl ItemEntity {
         };
     }
     fn has_infinite_pickup_delay(&self) -> bool {
-        self.pickup_delay == i64::from(i16::MAX) || self.pickup_delay == i64::from(u32::MAX)
+        self.pickup_delay == Self::INFINITE_PICKUP_DELAY
     }
-    /// `ItemEntity.isMergable` at `age`: a stack below its size whose pickup
-    /// delay isn't infinite, before its lifetime ends.
+    /// `ItemEntity.isMergable` at `age`: a non-empty stack below its size whose
+    /// pickup delay isn't infinite, before its lifetime ends.
     fn mergeable(&self, age: i32, max_stack: u32) -> bool {
-        !self.has_infinite_pickup_delay()
-            && age != i16::MIN as i32
-            && age < 6000
+        self.stack.count > 0
+            && &*self.stack.item != "minecraft:air"
+            && !self.has_infinite_pickup_delay()
+            && age != Self::INFINITE_LIFETIME
+            && age < Self::LIFETIME
             && self.stack.count < max_stack
     }
 }
@@ -3249,14 +3257,18 @@ mod merge_tests {
 
     #[test]
     fn unmergeable_items_are_skipped() {
-        for delay in [i64::from(i16::MAX), i64::from(u32::MAX)] {
-            let mut items = [
-                item("minecraft:sand", 1, 0.5, 1),
-                item("minecraft:sand", 1, 0.5, 1),
-            ];
-            items[1].pickup_delay = delay;
-            assert_eq!(merge(&mut items, 0), [Some(1), Some(1)]);
-        }
+        let mut items = [
+            item("minecraft:sand", 1, 0.5, 1),
+            item("minecraft:sand", 1, 0.5, 1),
+        ];
+        items[1].pickup_delay = ItemEntity::INFINITE_PICKUP_DELAY;
+        assert_eq!(merge(&mut items, 0), [Some(1), Some(1)]);
+        // An empty item entity does not merge before its next tick discards it.
+        let mut items = [
+            item("minecraft:sand", 1, 0.5, 1),
+            item("minecraft:air", 0, 0.5, 1),
+        ];
+        assert_eq!(merge(&mut items, 0), [Some(1), Some(0)]);
         // At age 6000 the other item's lifetime is over; this one's tick
         // started at 5999, so it may still merge into a live item.
         let mut items = [

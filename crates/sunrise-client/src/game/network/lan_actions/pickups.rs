@@ -68,8 +68,8 @@ impl Game<'_> {
             } else {
                 mod_api::TriState::Default
             };
-            let d = &mut self.dropped[i];
-            if !Self::pickup_decision(&mut d.pickup_delay, d.target, uuid, answer) {
+            let d = &self.dropped[i];
+            if !Self::pickup_decision(d.pickup_delay, d.target, uuid, answer) {
                 continue;
             }
             let stack = self.dropped[i].stack.clone();

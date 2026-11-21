@@ -9,12 +9,12 @@ impl Game<'_> {
     /// checked: it is asked on every tick the two touch, even while the item
     /// can't be taken. Leave `can_pickup` at `Default` for vanilla's rule,
     /// set `True` to take it despite its delay or another player's target
-    /// (a full inventory still leaves it), or `False` to leave it there: the
-    /// fork sets a vanilla eligibility delay of at least 10 ticks. The hook
-    /// still runs on each touch, and a later `True` overrides that delay. The last mod to set it
-    /// decides. The handle reads the whole stack on the ground; for the
-    /// window's own player of a world it ticks itself, whose pickup pass
-    /// lifts the items out of the level, it reads as unavailable. Server-side.
+    /// (a full inventory still leaves it), or `False` to veto this pickup
+    /// attempt without changing the item's pickup delay (matching NeoForge
+    /// `ItemEntityPickupEvent.Pre`). The last mod to set it decides. The
+    /// handle reads the whole stack on the ground; for the window's own player
+    /// of a world it ticks itself, whose pickup pass lifts the items out of
+    /// the level, it reads as unavailable. Server-side.
     pub(in crate::game) fn native_item_picked_up(
         &mut self,
         player: u128,
@@ -49,8 +49,12 @@ impl Game<'_> {
     }
 
     /// `Inventory.add` of the ground `stack` the acting player picks up: what
-    /// did not fit. A player with infinite materials (creative) takes all of it.
+    /// did not fit. An empty stack inserts nothing (`Inventory.add(EMPTY) == false`).
+    /// A player with infinite materials (creative) takes all of a non-empty stack.
     pub(in crate::game) fn native_pickup_insert(&mut self, stack: &ItemStack) -> Option<ItemStack> {
+        if stack.count == 0 || &*stack.item == "minecraft:air" {
+            return Some(stack.clone());
+        }
         let rest = self.add_stack_to_inventory(stack.clone());
         rest.filter(|_| !self.creative)
     }
@@ -99,7 +103,7 @@ impl Game<'_> {
                 && b.min_position().z < max[2]
                 && b.max_position().z > min[2];
             // ItemEntity.playerTouch: `item_picked_up`, then vanilla's delay and target rule.
-            if !touching || !self.native_pickup_allowed(&mut items[i], own) {
+            if !touching || !self.native_pickup_allowed(&items[i], own) {
                 i += 1;
                 continue;
             }
@@ -222,27 +226,26 @@ impl Game<'_> {
     /// touch (`ItemEntity.playerTouch`).
     pub(in crate::game) fn native_pickup_allowed(
         &mut self,
-        item: &mut ItemEntity,
+        item: &ItemEntity,
         player: [i32; 4],
     ) -> bool {
         let answer = self.native_pickup_answer(item.id);
-        Self::pickup_decision(&mut item.pickup_delay, item.target, player, answer)
+        Self::pickup_decision(item.pickup_delay, item.target, player, answer)
     }
 
     /// `ItemEntity.playerTouch`'s rule for `player`: no pickup delay, and no
     /// target or `player` as the target, unless `answer` forces it either
-    /// way. A refusal sets a vanilla eligibility delay of at least 10 ticks;
-    /// later touches still dispatch the hook, and `True` overrides the delay.
+    /// way. `False` vetoes only this touch without modifying `pickup_delay`;
+    /// `True` overrides the delay and target.
     pub(in crate::game) fn pickup_decision(
-        pickup_delay: &mut i64,
+        pickup_delay: i32,
         target: Option<[i32; 4]>,
         player: [i32; 4],
         answer: TriState,
     ) -> bool {
         if answer == TriState::False {
-            *pickup_delay = (*pickup_delay).max(10);
             return false;
         }
-        answer.or(*pickup_delay == 0 && target.is_none_or(|t| t == player))
+        answer.or(pickup_delay == 0 && target.is_none_or(|t| t == player))
     }
 }
