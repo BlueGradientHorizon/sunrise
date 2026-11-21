@@ -18,7 +18,7 @@ pub trait Hooks {
         contract = "listen",
         neoforge = "LevelEvent.Load",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn level_load();
 }
