@@ -163,7 +163,5 @@ or stopping game's host; world and session lookups on a live host return
 `None` when no world or session is open. See [load callbacks](../concepts/load-phases.md)
 for the callback order and types.
 
-A panic in a mod callback disables that callback for the session and names the
-mod in the log and error toast. Ordinary returned errors are not latched.
 A native mod built with `panic = "abort"`, one with its own `#[global_allocator]`,
 or one that does not use the game's `libstd` is refused at load, by name.

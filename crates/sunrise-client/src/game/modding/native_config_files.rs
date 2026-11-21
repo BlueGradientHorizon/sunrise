@@ -517,9 +517,9 @@ mod tests {
 
     /// The service through a real game and the hooks' own dispatch: a mod
     /// saves its registered config from `config_loading` and keeps a file in
-    /// its folder, the reload poll hands the saved text back, and the same
-    /// call for another mod's file is refused. In a fresh process, run in a
-    /// scratch folder, since `config/` is beside the game's working folder.
+    /// its folder, the client frame poll hands the saved text back on the client
+    /// host, and a call for another mod's file is refused. A fresh process
+    /// gives the test its own working folder and `config/`.
     #[test]
     #[ignore = "daily"]
     fn a_mod_saves_its_config_through_the_game_and_the_reload_hears_it() {
@@ -571,13 +571,9 @@ mod tests {
                 assert_eq!(files.read(&other), Err(ConfigFileError::NotOwned));
                 assert_eq!(files.write(&other, b"x"), Err(ConfigFileError::NotOwned));
             }
-            fn config_reloading(
-                &self,
-                host: mod_api::HostSide<'_>,
-                event: &mut ConfigReloadingEvent<'_>,
-            ) {
-                let mod_api::HostSide::Server(context) = host else {
-                    panic!("expected the server polling host");
+            fn config_reloading(&self, host: HostSide<'_>, event: &mut ConfigReloadingEvent<'_>) {
+                let HostSide::Client(context) = host else {
+                    panic!("expected the client polling host");
                 };
                 assert!(
                     context
@@ -590,9 +586,9 @@ mod tests {
         }
         let mods: Mods = vec![ModEntry::new("proof", Box::new(Proof))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
                 game.native_configs_client_start();
-                game.native_configs_poll();
+                game.native_configs_tick_client();
             });
         });
         assert_eq!(*heard(), ["loading count = 0", "reloading count = 1"]);

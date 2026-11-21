@@ -231,11 +231,35 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn config_permissions_and_once_per_side_survive_two_worlds() {
-        use mod_api::{ConfigContext, Hooks, ModEntry};
+        use crate::game::native_entity_refs::tests::{
+            run_fresh_cases, with_client_game, with_game,
+        };
+        use mod_api::{
+            ConfigContext, Hooks, ModEntry, Registrar, RegistrationContext, SettingSpec,
+        };
         use std::sync::{Arc, Mutex};
+
+        if run_fresh_cases(
+            "game::native_configs::tests::config_permissions_and_once_per_side_survive_two_worlds",
+            "SUNRISE_CONFIG_LIFECYCLE_CHILD",
+            &["lifecycle"],
+        ) {
+            return;
+        }
+
         struct Probe(Arc<Mutex<Vec<(bool, mod_api::ConfigKind)>>>);
         #[mod_api::__subscriptions]
         impl Hooks for Probe {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar
+                    .register_setting(SettingSpec::toggle(
+                        "unloaded",
+                        "phase_probe.unloaded",
+                        false,
+                    ))
+                    .unwrap();
+            }
+
             fn register_configs(
                 &self,
                 context: &dyn ConfigContext,
@@ -262,22 +286,30 @@ mod tests {
                 context: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::ConfigUnloadingEvent<'_>,
             ) {
-                let _ = context.setting("phase_probe", "unused");
-                let _ = context.config_files();
+                let next = match context.setting("phase_probe", "unloaded").as_deref() {
+                    Some("true") => "false",
+                    _ => "true",
+                };
+                context.set_setting("phase_probe", "unloaded", next);
                 self.0.lock().unwrap().push((false, event.config.kind));
             }
         }
         let calls = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new("phase_probe", Box::new(Probe(calls.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
+            with_client_game(|game| {
                 game.native_configs_client_start();
                 game.native_configs_client_start();
-                game.options.execution_role =
-                    crate::game::execution_role::ExecutionRole::IntegratedServer;
-                for world in ["phase-world-one", "phase-world-two"] {
+            });
+            with_game(|game| {
+                for (world, expected) in [("phase-world-one", "true"), ("phase-world-two", "false")]
+                {
                     game.native_configs_server_start(Path::new(world), false);
                     game.native_configs_server_stop();
+                    assert_eq!(
+                        game.setting("phase_probe", "unloaded").as_deref(),
+                        Some(expected)
+                    );
                 }
             });
         });
