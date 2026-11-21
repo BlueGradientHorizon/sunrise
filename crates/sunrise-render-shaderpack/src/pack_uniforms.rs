@@ -963,10 +963,9 @@ impl FrameUniforms {
                 "rainStrength" => Value::f(&[inputs.rain]),
                 "wetness" => Value::f(&[self.wetness]),
                 "thunderStrength" => Value::f(&[inputs.thunder]),
-                "lightningBoltPosition" => Value::f(&lightning_bolt_position(
-                    frame.lightning_bolt,
-                    frame.camera,
-                )),
+                "lightningBoltPosition" => {
+                    Value::f(&lightning_bolt_position(frame.lightning_bolt, frame.camera))
+                }
                 "fogColor" => Value::f(&fog_color),
                 "skyColor" => Value::f(&frame.sky.sky_color),
                 // Iris 1.11.7, measured: programs that draw no geometry read no fog mode (0) and
@@ -2640,6 +2639,7 @@ in vec3 result; out vec4 color; void main() { color = vec4(result, 1.0); }",
             darkness: (0.0, 0.0),
             dynamic_lights: &[],
             entities: &[],
+            lightning_bolt: None,
         }
     }
 }

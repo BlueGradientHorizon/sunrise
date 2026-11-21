@@ -55,6 +55,18 @@ pub fn shadow_light(frame: &Frame<'_>, shadow: &sunrise_shaders::Shadow) -> glam
     sunrise_render_shaderpack::pack_uniforms::shadow_light(&view(frame, false), shadow)
 }
 
+/// `lightningBoltPosition` (spec 5.2) for the frame's bolts (`Frame::lightning.bolts`, the
+/// draw list): the last one, in player space, w = 1; zeros when the list is empty.
+pub fn lightning_bolt_position(
+    bolts: &[crate::gfx::lightning::Bolt],
+    camera: glam::DVec3,
+) -> [f32; 4] {
+    sunrise_render_shaderpack::pack_uniforms::lightning_bolt_position(
+        bolts.last().map(|bolt| glam::DVec3::from_array(bolt.at)),
+        camera,
+    )
+}
+
 pub fn shadow_culling(frame: &Frame<'_>, shadow: &sunrise_shaders::Shadow) -> glam::Mat4 {
     sunrise_render_shaderpack::pack_uniforms::shadow_culling(&view(frame, false), shadow)
 }

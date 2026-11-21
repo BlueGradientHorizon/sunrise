@@ -60,7 +60,7 @@ pub struct ShadowTargets {
 
 /// How the pack uses the shadowcolor buffers, a mask each (bit n: shadowcolor n).
 #[derive(Clone, Copy, Default)]
-pub(super) struct ShadowUse {
+pub struct ShadowUse {
     /// Used at all.
     pub colors: u16,
     /// Needs a B texture.
