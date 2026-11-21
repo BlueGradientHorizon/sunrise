@@ -544,6 +544,9 @@ pub(super) struct Remote {
     /// Entities with shared flag 6 (`Entity.isCurrentlyGlowing` on a client); mobs keep
     /// theirs in `Mob::glowing`.
     pub(super) glowing: std::collections::HashSet<i32>,
+    /// The other living entities' effects (`handleUpdateMobEffect`), by entity id: dropped
+    /// with the entity, when its id is added again and with the level.
+    pub(super) entity_effects: HashMap<i32, effect::EntityEffects>,
     /// The player's own shared flag 5 (`Entity.isInvisible`) as the server last set it.
     pub(super) own_invisible: bool,
     /// The player's own shared flag 0 (`Entity.isOnFire`) as the server last
@@ -2207,6 +2210,8 @@ mod interaction_event_tests;
 #[cfg(test)]
 mod native_entity_tests;
 
+#[cfg(test)]
+mod camera_view_tests;
 #[cfg(test)]
 mod effect_blend_tests;
 #[cfg(test)]

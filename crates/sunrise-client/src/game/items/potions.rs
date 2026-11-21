@@ -2800,7 +2800,7 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
 /// counts its effect down, then ticks its `BlendState`. The darkness effect's
 /// is the fade `darkness_lighting` and `darkness_fog` draw; the integrated
 /// level's `tick_sculk_entities` is not run for a server's client (#3393).
-fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
+pub(in crate::game) fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
     for e in &mut effects.list {
         e.tick_client();
     }

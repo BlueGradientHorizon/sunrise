@@ -162,6 +162,7 @@ impl Game<'_> {
             }
             self.native_tick_pre_batch(&mut round);
         }
+        self.tick_remote_entity_effects(running, driven, |id| round.canceled(id));
         // EntityFluidInteraction.update for the entities this window only displays: the
         // server never sends the fluid contact, and the renderers read it (cod, salmon and
         // tropical fish lie on their side without `in_water`, #1591).

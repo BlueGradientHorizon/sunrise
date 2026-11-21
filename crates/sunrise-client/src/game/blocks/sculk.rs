@@ -1595,8 +1595,7 @@ impl Game<'_> {
     }
     /// The darkness effect's blend factor at the partial tick.
     pub(super) fn darkness_blend(&self, partial: f32) -> f32 {
-        let (previous, current) = self.sculk.darkness;
-        previous + (current - previous) * partial
+        darkness_blend_at(self.sculk.darkness, partial)
     }
     /// The fog's view of the darkness effect, while it is on.
     pub(super) fn darkness_fog(&self) -> Option<f32> {
@@ -1608,7 +1607,7 @@ impl Game<'_> {
     /// `LightmapRenderStateExtractor`: (brightness taken off the gamma
     /// option, the pulsing light scale).
     pub(super) fn darkness_lighting(&self, partial: f32) -> (f32, f32) {
-        let scale = self.settings.file.double("darknessEffectScale") as f32;
+        let scale = self.darkness_effect_scale();
         let modifier = self.darkness_blend(partial) * scale;
         let pulse = ((self.visual_ticks() as f32 - partial) * std::f32::consts::PI * 0.025).cos()
             * 0.45
@@ -1616,17 +1615,17 @@ impl Game<'_> {
         (modifier, pulse.max(0.0) * scale)
     }
 
+    /// The Darkness Effect option (`darknessEffectScale`), 0..1.
+    pub(super) fn darkness_effect_scale(&self) -> f32 {
+        self.settings.file.double("darknessEffectScale") as f32
+    }
+
     /// `LightmapRenderStateExtractor`: the night vision effect's intensity
     /// (`GameRenderer.nightVisionScale`), or conduit power's water vision.
     pub(super) fn night_vision_intensity(&self, partial: f32) -> f32 {
         use mod_api::client::fog::FogType;
         if let Some(e) = self.potions.effects.get("night_vision") {
-            // MobEffectInstance.endsWithin(200); -1 is infinite.
-            return if e.duration < 0 || e.duration > 200 {
-                1.0
-            } else {
-                0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
-            };
+            return night_vision_scale(e, partial);
         }
         if self.potions.effects.get("conduit_power").is_some()
             && let Some(eye) = self.eye_position()
@@ -2666,6 +2665,22 @@ pub(in crate::game) fn darkness_blend_tick(
         None => 0.0,
     };
     (current, next)
+}
+
+/// The darkness effect's blend factor at the partial tick, from its (previous, current)
+/// factors.
+pub(in crate::game) fn darkness_blend_at((previous, current): (f32, f32), partial: f32) -> f32 {
+    previous + (current - previous) * partial
+}
+
+/// `GameRenderer.getNightVisionScale` of a night vision instance: 1, flickering over its last
+/// 200 ticks (`MobEffectInstance.endsWithin(200)`; -1 is infinite).
+pub(in crate::game) fn night_vision_scale(e: &EffectInstance, partial: f32) -> f32 {
+    if e.duration < 0 || e.duration > 200 {
+        1.0
+    } else {
+        0.7 + ((e.duration as f32 - partial) * std::f32::consts::PI * 0.2).sin() * 0.3
+    }
 }
 
 /// A new darkness instance's `BlendState`: from nothing, or, when the server

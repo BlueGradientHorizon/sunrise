@@ -68,6 +68,7 @@ impl Game<'_> {
             self.persist.uuids.remove(&(id as u32));
             if let Some(r) = self.remote.as_mut() {
                 r.glowing.remove(&id);
+                r.entity_effects.remove(&id);
                 r.entities.remove(&id);
                 r.passenger_vehicles.remove(&(id as u32));
                 r.lerps.remove(&id);

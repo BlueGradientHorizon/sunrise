@@ -19,6 +19,7 @@ impl Game<'_> {
             // ClientLevel.addEntity: an id it holds already is removed
             // and added again, after the player.
             r.ticked_before_player.remove(&(p.id as u32));
+            r.entity_effects.remove(&p.id);
             // A new entity looks its PlayerInfo up afresh.
             r.level_player_textures.remove(&p.id);
             if kind == "minecraft:player" {

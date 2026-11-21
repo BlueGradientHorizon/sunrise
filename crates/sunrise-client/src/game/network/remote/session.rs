@@ -369,6 +369,7 @@ impl Game<'_> {
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
+            entity_effects: HashMap::new(),
             own_invisible: false,
             own_on_fire: false,
             own_arrows: 0,
@@ -628,6 +629,7 @@ impl Game<'_> {
             level_player_names: HashMap::new(),
             level_player_textures: HashMap::new(),
             glowing: Default::default(),
+            entity_effects: HashMap::new(),
             own_invisible: false,
             own_on_fire: false,
             own_arrows: 0,
@@ -923,6 +925,7 @@ impl Game<'_> {
             self.clear_client_particles();
             if let Some(r) = self.remote.as_mut() {
                 r.entities.clear();
+                r.entity_effects.clear();
                 r.passenger_vehicles.clear();
                 r.lerps.clear();
                 r.general.clear();
