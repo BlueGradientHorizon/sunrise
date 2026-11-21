@@ -107,7 +107,7 @@ fn drawn_groups(game: &mut Game<'_>) -> Groups {
         })
         .collect();
     let mut groups = Groups::new();
-    for q in batch.vertices.chunks_exact(6) {
+    for q in batch.vertices.as_chunks::<6>().0 {
         let Some((name, _)) = rects
             .iter()
             .find(|(_, uv)| q[0].uv == [uv[0], uv[1]] && q[2].uv == [uv[2], uv[3]])
