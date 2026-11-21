@@ -44,16 +44,6 @@
     "category": "Parts lookup table",
     "reason": "Thread-local test lookup of installed Parts metadata by engine-issued slot."
   },
-  "client/client_reload.rs::first::ID": {
-    "type": "LazyLock<Identifier>",
-    "category": "immutable cache",
-    "reason": "Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations."
-  },
-  "client/client_reload.rs::last::ID": {
-    "type": "LazyLock<Identifier>",
-    "category": "immutable cache",
-    "reason": "Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations."
-  },
   "client/client_reload.rs::model_manager::ID": {
     "type": "LazyLock<Identifier>",
     "category": "immutable cache",
@@ -189,6 +179,11 @@
     "category": "immutable cache",
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
+  "runtime.rs::HOOK_DISPATCH_DEPTH": {
+    "type": "std::cell::Cell<u32>",
+    "category": "dispatch table",
+    "reason": "Thread-local depth of active hook panic-containment guards. The crash hook defers only while this call is inside a guarded native dispatch."
+  },
   "runtime.rs::LISTENER_SERIAL": {
     "type": "std::cell::Cell<(u64,u64)>",
     "category": "dispatch table",
@@ -219,17 +214,7 @@
     "category": "monotonic counter",
     "reason": "Monotonic generator for TaskId cancellation handles so scheduled task IDs are unique across worlds and never reused."
   },
-  "world/server_reload.rs::first::ID": {
-    "type": "LazyLock<Identifier>",
-    "category": "immutable cache",
-    "reason": "Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations."
-  },
-  "world/server_reload.rs::functions::ID": {
-    "type": "LazyLock<Identifier>",
-    "category": "immutable cache",
-    "reason": "Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations."
-  },
-  "world/server_reload.rs::last::ID": {
+  "world/server_reload.rs::functions_ref::ID": {
     "type": "LazyLock<Identifier>",
     "category": "immutable cache",
     "reason": "Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations."
@@ -238,6 +223,11 @@
     "type": "OnceLock<Arc<dynStartupScreen>>",
     "category": "dispatch table",
     "reason": "One engine-installed startup-screen service; registration contexts carry this same resource to mods, and retained progress handles use it after registration."
+  },
+  "world/startup_progress.rs::TEST_SCREEN": {
+    "type": "std::cell::RefCell<Option<Arc<dynStartupScreen>>>",
+    "category": "dispatch table",
+    "reason": "Thread-local startup screen override lent to registration fixtures and restored on scope exit."
   },
   "world/ticket_controller.rs::TEST_CONTROLLERS": {
     "type": "std::cell::Cell<Option<&'static[ControllerInfo]>>",

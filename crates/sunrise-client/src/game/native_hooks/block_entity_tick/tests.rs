@@ -1083,19 +1083,6 @@ fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
     });
 }
 
-struct Tick;
-#[mod_api::sunrise_part]
-impl BlockPart for Tick {}
-#[mod_api::sunrise_part]
-impl BlockEntityPart for Tick {
-    fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
-        event
-            .subject
-            .with_view(|mut view| assert!(view.set_data_slot(0, 1)))
-            .unwrap();
-    }
-}
-
 #[derive(Clone, Default)]
 struct Effects {
     notices: Arc<AtomicU32>,

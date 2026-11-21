@@ -44,8 +44,6 @@ OUT_DIR file checked by the generator before writing it.
 | `callback_owner.rs::PANIC_NOTICES` | `Mutex<VecDeque<CallbackPanicNotice>>` | crash owner | Process-wide queue of retained-callback panic notices pushed when a mod callback is disabled, drained by the client's error toast queue. |
 | `callback_owner.rs::RETAINED_CALLBACK` | `Cell<bool>` | reentrancy guard | Per-thread flag marking that a retained mod callback is currently running under CallbackOwner containment so the panic hook knows the unwind will be caught and reported. |
 | `client/arm_pose.rs::TEST_POSES` | `std::cell::Cell<Option<&'static[PoseInfo]>>` | Parts lookup table | Thread-local test lookup of installed Parts metadata by engine-issued slot. |
-| `client/client_reload.rs::first::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
-| `client/client_reload.rs::last::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
 | `client/client_reload.rs::model_manager::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
 | `client/particle_keys.rs::resolved::EMPTY` | `OnceLock<Particles>` | immutable cache | Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one. |
 | `configuration_task.rs::TASK_OWNERS` | `LazyLock<Mutex<TaskOwners>>` | dispatch table | Process-wide map from (mod id, concrete ConfigurationTask TypeId) to its session CallbackOwner so a panicking configuration task disables that mod's task type across connections. |
@@ -73,14 +71,14 @@ OUT_DIR file checked by the generator before writing it.
 | `parts/shared.rs::WORLDGEN_PARTS` | `RwLock<(u64,Option<Arc<Parts>>)>` | Parts lookup table | Part table the server published for world generation, with its generation, replaced at world open and /reload. |
 | `parts/shared.rs::WORLDGEN_TABLE` | `RefCell<Option<(u64,Option<Arc<Parts>>)>>` | Parts lookup table | Per-thread handle on the published worldgen Part table and its generation. |
 | `parts/shared.rs::requested_keys::EMPTY` | `LazyLock<sunrise_mod_runtime::registry_keys::Requests>` | immutable cache | Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one. |
+| `runtime.rs::HOOK_DISPATCH_DEPTH` | `std::cell::Cell<u32>` | dispatch table | Thread-local depth of active hook panic-containment guards. The crash hook defers only while this call is inside a guarded native dispatch. |
 | `runtime.rs::LISTENER_SERIAL` | `std::cell::Cell<(u64,u64)>` | dispatch table | Independent per-thread counts of listener entries and trapped listeners. Scoped engine leases compare the entry count; owning decide/fire/apply actions compare the trap count to decide whether to abort tentative Host writes. |
 | `runtime.rs::MODS` | `OnceLock<Installed>` | dispatch table | Dependency-ordered hook routing and its per-mod enabled bits remain engine-owned. |
 | `runtime.rs::MODS_SWITCHED` | `std::sync::atomic::AtomicU64` | dispatch table | Counts changes to the per-mod enabled bits it sits beside; read through the host's capability provider table, never by a guest's own copy. |
 | `runtime.rs::TEST_MODS` | `std::cell::Cell<Option<&'staticInstalled>>` | dispatch table | Thread-local dispatch inventory for isolated engine tests. |
 | `wire/static_strings.rs::intern::STRINGS` | `OnceLock<Mutex<HashSet<&'staticstr>>>` | immutable cache | Bounded interning for decoded static strings; entries are immutable, shared by value, and never evicted. |
 | `world/scheduler.rs::allocate::NEXT_ID` | `AtomicU64` | monotonic counter | Monotonic generator for TaskId cancellation handles so scheduled task IDs are unique across worlds and never reused. |
-| `world/server_reload.rs::first::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
-| `world/server_reload.rs::functions::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
-| `world/server_reload.rs::last::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
+| `world/server_reload.rs::functions_ref::ID` | `LazyLock<Identifier>` | immutable cache | Immutable vanilla reload-boundary identifier, allocated once and shared by anchor declarations. |
 | `world/startup_progress.rs::SCREEN` | `OnceLock<Arc<dynStartupScreen>>` | dispatch table | One engine-installed startup-screen service; registration contexts carry this same resource to mods, and retained progress handles use it after registration. |
+| `world/startup_progress.rs::TEST_SCREEN` | `std::cell::RefCell<Option<Arc<dynStartupScreen>>>` | dispatch table | Thread-local startup screen override lent to registration fixtures and restored on scope exit. |
 | `world/ticket_controller.rs::TEST_CONTROLLERS` | `std::cell::Cell<Option<&'static[ControllerInfo]>>` | Parts lookup table | Thread-local test lookup of installed Parts metadata by engine-issued slot. |
