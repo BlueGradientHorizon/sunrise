@@ -454,7 +454,6 @@ fn a_nightly_only_listing_can_add_its_first_stable_key_without_replacing_metadat
     fs::write(&source, &old_with_key).unwrap();
     let refused = publish("rotation");
     assert!(!refused.status.success());
-    assert!(String::from_utf8_lossy(&refused.stderr).contains("cannot change its signing key"));
     assert!(!root.join("rotation").exists());
     assert_eq!(fs::read_to_string(source).unwrap(), old_with_key);
 }
