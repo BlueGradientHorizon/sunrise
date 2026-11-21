@@ -2252,12 +2252,13 @@ registration path.
   the resistance scales the strength the hook leaves, so a full knockback resistance still stops the push. A value a mod
   leaves that is not a finite number is put back as it was. It fires for the players, mobs and armor stands the game
   knocks back: a hit's own push, a sprinting or Knockback hit, a sweep, a spear, a shield's push on its holder and a
-  goat's ram. It does not fire for a sulfur cube with a block that a hit with a causing entity knocks back
-  (`SulfurCube.knockback` does not call `super` there), for the pushes vanilla doesn't make with
-  `LivingEntity.knockback` (the ender dragon's wings, Punch arrows, explosions, wind charges, a mace smash's area, a
-  hoglin's throw), nor yet for the ones Sunrise makes another way: the ender dragon's. The hit is in the middle of its
-  work: the level host reads and draws random but can't write the entity or the world. It runs on the thread that ticks
-  the world (the server thread), so state a mod shares with its render thread hooks needs synchronising.
+  goat's ram. The ender dragon can also receive a default knockback when it is not sitting. The event does not fire
+  when `SulfurCube.knockback` launches a cube carrying a block and the source has a causing entity, because it does
+  not call the living implementation. Pushes that do not use `LivingEntity.knockback` also do not fire it: the
+  dragon's wing push, Punch arrows, explosions, wind charges, a mace smash's area and a hoglin's throw. The hit is in
+  the middle of its work: the level host reads and draws random but can't write the entity or the world. It runs on
+  the thread that ticks the world (the server thread), so state a mod shares with its render thread hooks needs
+  synchronising.
 
 
 - `native_edit_blocks(dimension, edit)` for server mods: runs up columns, from a height or a heightmap's, of block states and filters written as commands write them, made at once straight into the chunks of the level being ticked with what `fill ... strict` does for block entities; the chunks changed go to the players whole.

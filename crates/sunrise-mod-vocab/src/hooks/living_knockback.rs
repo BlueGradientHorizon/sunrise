@@ -18,12 +18,13 @@ pub trait Hooks {
     /// draws a random one after it, as in vanilla. A value a mod leaves that is not a finite
     /// number is put back as it was. It fires for the players, mobs and armor stands the game
     /// knocks back: a hit's own push, a sprinting or Knockback hit, a sweep, a spear, a
-    /// shield's push on its holder, a goat's ram and a mob's melee push. It does not fire for a
-    /// sulfur cube with a block that a hit with a causing entity knocks back
-    /// (`SulfurCube.knockback` does not call `super` there), for the pushes vanilla doesn't make
-    /// with `LivingEntity.knockback` (the ender dragon's wings, Punch arrows, explosions, wind
-    /// charges, a mace smash's area, a hoglin's throw), nor for the ones Sunrise makes another
-    /// way (the ender dragon's). The level is the hit's: its blocks, random and own attachments.
+    /// shield's push on its holder, a goat's ram and a mob's melee push. The ender dragon can
+    /// also receive a default knockback when it is not sitting. The event does not fire when
+    /// `SulfurCube.knockback` launches a cube carrying a block and the source has a causing
+    /// entity, because it does not call the living implementation. Pushes that do not use
+    /// `LivingEntity.knockback` also do not fire it: the dragon's wing push, Punch arrows,
+    /// explosions, wind charges, a mace smash's area and a hoglin's throw. The level is the
+    /// hit's: its blocks, random and own attachments.
     /// `kill_credit` is the pushed living entity's kill credit at this pre-motion moment:
     /// a remembered player takes precedence over its last hurting mob, even when that player
     /// cannot resolve (then 0, without falling back). `kill_credit_main` lazily borrows that

@@ -15,11 +15,17 @@ The pages in this section follow a mod from its source to a player's game and a 
 
 ## Living knockback
 
-`living_knockback` (contract version 3) fires once per knockback operation before resistance and
-motion changes, matching vanilla `LivingEntity.knockback` (whose short overload delegates directly
-to the full overload) and NeoForge's `CommonHooks.onLivingKnockBack` / `LivingKnockBackEvent`.
-Listeners run in dispatch order, each completing its `strength`, `x`, and `z` rewrites before the
-next. Cancellation leaves the pushed entity's motion unchanged.
+`living_knockback` (contract version 3) fires once when a push reaches the living knockback
+implementation, before resistance and motion changes. This matches vanilla `LivingEntity.knockback`
+(whose short overload delegates directly to the full overload) and NeoForge's
+`CommonHooks.onLivingKnockBack` / `LivingKnockBackEvent`. Listeners run in dispatch order, each
+completing its `strength`, `x`, and `z` rewrites before the next. Cancellation leaves the pushed
+entity's motion unchanged.
+
+A sulfur cube carrying a block handles its own launch when the source has a causing entity, so
+neither an ordinary push nor an effect push on that path fires the event. The ender dragon can
+receive its own default knockback when it is not sitting; its wing push on other entities does not
+fire the event.
 
 `attacker_main`, `attacker_off`, and `kill_credit_main` lazily borrow the credited stacks as
 `Option<ItemStackView<'_>>`. Reading `item()`, `count()`, `damage()`, or `damage_component()`

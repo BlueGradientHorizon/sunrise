@@ -579,6 +579,47 @@ fn short_and_full_knockback_entries_fire_one_event_with_same_semantics() {
     assert_eq!(heard.knocks.len(), 7, "one event per knockback operation");
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_loaded_sulfur_cube_launch_does_not_reach_the_living_listener() {
+    let heard = heard(|game, log| {
+        log.lock().unwrap().cancel = true;
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:sulfur_cube")
+            .unwrap()
+            .clone();
+        let hit = Damage::player([1.0, 0.0, 0.0]);
+        // A centered four-damage hit multiplies the horizontal power by sqrt(4),
+        // (1 - resistance), then 0.4F. Vanilla uses (0.4125F, -1) for TNT and
+        // (0.33F, 0) for a body item without an archetype.
+        for (body, expected_speed) in [
+            ("minecraft:tnt", 0.66_f32),
+            ("minecraft:iron_sword", 0.33_f32 * 2.0 * 0.4),
+        ] {
+            let mut mob = Mob::new(42, kind.clone(), Vec3::ZERO, 0.0);
+            mob.extra.set_body(Some(body.into()));
+            let aim = sunrise_client::mobs::Aim {
+                eye: [1.0, mob.center()[1], 0.0],
+                look: [-1.0, 0.0, 0.0],
+                feet: [1.0, 0.0, 0.0],
+            };
+            with_detached_credit(game, 42, |level| {
+                mob.attacker_aim = Some(aim);
+                mob.knockback(level, 0.4, 1.0, 0.0, &hit, 4.0);
+                assert_eq!(mob.velocity.x, -f64::from(expected_speed), "{body}");
+
+                mob.velocity = Vec3::ZERO;
+                mob.attacker_aim = Some(aim);
+                mob.knockback_full(level, 1.0, 1.0, 0.0, &hit, 4.0, true);
+                assert_eq!(mob.velocity.x, -f64::from(expected_speed) / 4.0, "{body}");
+            });
+        }
+    });
+    assert!(heard.knocks.is_empty(), "heard {:?}", heard.knocks);
+}
+
 /// Unprojectable component patches, unknown item IDs, or empty stacks on `attacker_main`,
 /// `attacker_off`, or `kill_credit_main` never skip `living_knockback`: valid metadata is lent
 /// lazily as `ItemStackView`, only unrepresentable/empty stacks become `None`, and listener

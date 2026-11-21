@@ -26,10 +26,11 @@ keeps vanilla hunger and creative-mode behavior.
 
 ## Gaps
 
-The `living_knockback` hook fires once per knockback operation, matching vanilla
-`LivingEntity.knockback` (short overload delegating directly to the full overload) and NeoForge's
-`CommonHooks.onLivingKnockBack` / `LivingKnockBackEvent`, without exposing a Java overload
-discriminator.
+The `living_knockback` hook fires once when a push reaches the living implementation,
+matching vanilla `LivingEntity.knockback` (short overload delegating directly to the full
+overload) and NeoForge's `CommonHooks.onLivingKnockBack` / `LivingKnockBackEvent`, without
+exposing a Java overload discriminator. A sulfur cube's own launch does not reach that
+implementation.
 #2767 tracks cross-target API admission. For hearing refused
 damage attempts without changing the amount, use the existing
 [invulnerability observation](../../modding/src/how-to/entities/refused-damage-attempts.md), with its explicit vanilla exclusions (#2752).
