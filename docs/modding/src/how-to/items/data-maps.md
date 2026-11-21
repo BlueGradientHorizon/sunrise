@@ -10,10 +10,11 @@ Describe the map once with `DataMap`: its id, the registry its entries are in (`
 `BlockEntityTypeKey` or `ProfessionKey`), and how a value decodes. Values arrive as the NBT form of the JSON a
 file held: a whole number is an `Int`, or a `Long` past `i32`, a fraction a `Double`, a boolean a
 `Byte`, an object a `Compound` and an array a `List`. Integer tokens must fit signed
-64-bit NBT `Long`; larger unsigned integers return `DataMapError::Undecodable`,
-never a rounded `Double`. Fractional/exponent tokens use the JSON parser's `f64`
-value (including an integral value written as `1.0`). A JSON `null` anywhere in a
-value also refuses the entire read as `Undecodable`; it is not an empty string.
+64-bit NBT `Long`; larger unsigned integers are never rounded to `Double`.
+Fractional/exponent tokens use the JSON parser's `f64`
+value (including an integral value written as `1.0`). A file containing an
+out-of-range integer or a JSON `null` anywhere in a value cannot be converted to
+NBT and is skipped atomically at load time with an error log, preserving earlier layers.
 Empty and heterogeneous arrays preserve their elements as in-memory `List` values.
 
 ```rust,ignore
@@ -76,15 +77,13 @@ copy only when needed: `data_map_value(host, registry, entry, map)?.cloned()` fo
   value, `replace` drops what earlier files set and `remove` takes entries away.
 - `Ok(None)`: the map gives this entry no value.
 - `Err(DataMapError::UnknownType)`: neither the engine nor a mod registered the map for that registry in this load.
-- `Err(DataMapError::Undecodable)`: the value cannot be represented as NBT, or a typed read's
-  `decode` refused it.
+- `Err(DataMapError::Undecodable)`: a typed read's `decode` refused the entry's NBT value.
 - `Err(DataMapError::Unavailable)`: no maps are loaded here. Data maps live on the server (the
   single player server thread included) and are not synced to clients, so a client returns
   this error, as does a server before its world's data first loads.
 
 A known empty map yields an empty slice. As with a point read, an unknown map type or an
-unavailable publication is an error. A whole-map read fails with `Undecodable` if any value
-cannot be represented as NBT.
+unavailable publication is an error.
 
 The server merges every map when its data loads: a world's first open and every `/reload`. A
 read sees the last load whole, never part of one, and a value a reload drops is gone at once.

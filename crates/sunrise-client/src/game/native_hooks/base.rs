@@ -569,12 +569,12 @@ impl Game<'_> {
     /// The server is assembling its data tables, as for
     /// `native_data_pack_files` (a world's first open and every `/reload`):
     /// push the data map types your mod registers (NeoForge's
-    /// `RegisterDataMapTypesEvent`). A type is an `id` (`mod_id:name`, not in
-    /// `minecraft`) for a `registry`, `minecraft:item` or `minecraft:block`
-    /// so far. Its values come from the world's data packs'
-    /// `data/<mod_id>/data_maps/<registry path>/<name>.json`, and from files
-    /// you push through `native_data_pack_files` under the key
-    /// `data_maps/<mod_id>:<registry path>/<name>`: `replace`, `values`
+    /// `RegisterDataMapTypesEvent`). A type is a namespaced `id`
+    /// (`namespace:path`) for a `registry`: any the game names. Its values come
+    /// from the world's data packs'
+    /// `data/<namespace>/data_maps/<registry folder>/<path>.json`, and from
+    /// files you push through `native_data_pack_files` under the key
+    /// `data_maps/<namespace>:<registry folder>/<path>`: `replace`, `values`
     /// (entry ids and `#tags` to JSON values) and `remove`, a newer value
     /// overriding an older. Push a typed map's `DataMap::ty`
     /// and read its values with `ItemKey::data` and `BlockKey::data`. Server-side,

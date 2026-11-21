@@ -5,13 +5,14 @@ pub trait Hooks {
     /// The server is assembling its data tables, as for
     /// `data_pack_files` (a world's first open and every `/reload`):
     /// push the data map types your mod registers (NeoForge's
-    /// `RegisterDataMapTypesEvent`). A type is an `id` (`mod_id:name`, not in
-    /// `minecraft`) for a `registry`: any the game names. Its values come
+    /// `RegisterDataMapTypesEvent`). A type is a namespaced `id`
+    /// (`namespace:path`) for a `registry`: any the game names. Its values come
     /// from the world's data packs'
-    /// `data/<mod_id>/data_maps/<registry folder>/<name>.json` (the registry's
-    /// path for a `minecraft` registry, `<namespace>/<path>` otherwise), and
-    /// from files you push through `native_data_pack_files` under the key
-    /// `data_maps/<mod_id>:<registry folder>/<name>`: `replace`, `values`
+    /// `data/<namespace>/data_maps/<registry folder>/<path>.json` (the
+    /// registry's path for a `minecraft` registry, `<namespace>/<path>`
+    /// otherwise), and from files you push through `native_data_pack_files`
+    /// under the key `data_maps/<namespace>:<registry folder>/<path>`:
+    /// `replace`, `values`
     /// (entry ids and `#tags` to JSON values, each optionally guarded by its
     /// own `neoforge:conditions`) and `remove`, a newer value overriding an
     /// older. Push a typed map's `DataMap::ty` and use the key's `data`

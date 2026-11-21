@@ -1,0 +1,7 @@
+ids = [
+    "type:DataMapType",
+    "fn:data_map_value",
+    "fn:data_map_entries",
+]
+why = "Decoded mod data-map JSON values to NBT in apply_file's pre-mutation pass and deleted PublishedMap.invalid so a file with an unconvertible JSON value is skipped atomically at load time rather than poisoning data_map_value and data_map_entries reads with DataMapError::Undecodable, matching NeoForge net.neoforged.neoforge.registries.DataMapLoader#readData. Also removed the minecraft namespace restriction on DataMapType IDs in favor of standard namespaced Identifier validation, matching NeoForge net.neoforged.neoforge.registries.datamaps.DataMapType and RegisterDataMapTypesEvent#register."
+migrate = "Raw `data_map_value` and `data_map_entries` reads no longer return `DataMapError::Undecodable` (which now occurs only when a typed `DataMap::decode` refuses a tag); data-map files containing unconvertible JSON values (such as `null` or unsigned integers above `i64::MAX`) are logged and skipped as whole layers at load time. Mods may now also register `minecraft:` `DataMapType` IDs."

@@ -213,8 +213,8 @@ pub struct ConfigFile {
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct DataMapType {
-    /// `mod_id:name`: not in the `minecraft` namespace. Its files are
-    /// `data/<mod_id>/data_maps/<registry folder>/<name>.json`, the
+    /// A namespaced identifier (`namespace:path`). Its files are
+    /// `data/<namespace>/data_maps/<registry folder>/<path>.json`, the
     /// registry's own path for a `minecraft` registry, `<namespace>/<path>`
     /// otherwise.
     pub id: String,
