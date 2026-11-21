@@ -32,6 +32,10 @@ pub struct Outcome {
     pub tracked: Vec<((i32, i32, i32), u32, u32)>,
 }
 
+/// The changes a Host transaction holds until its root commits.
+#[derive(Debug, Default)]
+pub struct EditJournal;
+
 /// Per state answers, worked out once each.
 struct Memo(Vec<u8>);
 impl Memo {
@@ -64,6 +68,7 @@ impl World {
     /// chunk and its neighbours are lit again whole, through `dirty_light`).
     pub fn edit_runs(
         &mut self,
+        _journal: Option<&mut EditJournal>,
         runs: &[Run],
         mut matches: impl FnMut(u16, u32) -> bool,
         mut tracked: impl FnMut(u32) -> bool,
@@ -232,7 +237,7 @@ mod tests {
             run(3, 4, 0, 80, 7, Some(0)),
             run(-1, 20, -70, 400, 9, None),
         ];
-        let out = w.edit_runs(&runs, |_, s| s == 0, |_| false);
+        let out = w.edit_runs(None, &runs, |_, s| s == 0, |_| false);
         assert_eq!(w.block(3, 9, 4).0, 1);
         assert_eq!(w.block(3, 11, 4).0, 5);
         assert_eq!(w.block(3, 13, 4).0, 7);
@@ -256,6 +261,7 @@ mod tests {
     fn unloaded_chunks_and_unchanged_blocks_are_left_out() {
         let mut w = world();
         let out = w.edit_runs(
+            None,
             &[run(100, 100, 0, 10, 0, None), run(0, 0, 0, 10, 1, None)],
             |_, _| true,
             |_| false,
@@ -269,7 +275,7 @@ mod tests {
     #[ignore = "daily"]
     fn tracked_states_are_reported() {
         let mut w = world();
-        let out = w.edit_runs(&[run(1, 1, 60, 65, 3, None)], |_, _| true, |s| s == 3);
+        let out = w.edit_runs(None, &[run(1, 1, 60, 65, 3, None)], |_, _| true, |s| s == 3);
         assert_eq!(out.tracked.len(), 6);
         assert_eq!(out.tracked[0], ((1, 60, 1), 1, 3));
         assert_eq!(out.tracked[5], ((1, 65, 1), 0, 3));
@@ -280,9 +286,9 @@ mod tests {
         let mut w = world();
         let air = |s: u32| s == 0;
         assert_eq!(w.world_surface(5, 5, |s| air(s.0)), 64);
-        w.edit_runs(&[run(5, 5, 20, 63, 0, None)], |_, _| true, |_| false);
+        w.edit_runs(None, &[run(5, 5, 20, 63, 0, None)], |_, _| true, |_| false);
         assert_eq!(w.world_surface(5, 5, |s| air(s.0)), 20);
-        w.edit_runs(&[run(5, 5, 90, 90, 2, None)], |_, _| true, |_| false);
+        w.edit_runs(None, &[run(5, 5, 90, 90, 2, None)], |_, _| true, |_| false);
         assert_eq!(w.world_surface(5, 5, |s| air(s.0)), 91);
     }
 
@@ -294,7 +300,12 @@ mod tests {
         let mut w = World::new(BlockStateId(0), 0);
         w.chunks
             .insert((0, 0), Arc::new(Chunk::with_layout(0, 0, tall)));
-        let out = w.edit_runs(&[run(2, 3, -500, 900, 4, None)], |_, _| true, |_| false);
+        let out = w.edit_runs(
+            None,
+            &[run(2, 3, -500, 900, 4, None)],
+            |_, _| true,
+            |_| false,
+        );
         assert_eq!(out.changed, 640);
         let chunk = &w.chunks[&(0, 0)];
         assert_eq!(chunk.block(2, -128, 3).0, 4);

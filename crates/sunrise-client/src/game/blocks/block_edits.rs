@@ -42,6 +42,7 @@ impl Game<'_> {
         let facts = self.res.facts();
         let watched = std::mem::take(&mut self.world.watched);
         let out = self.world.edit_runs(
+            None,
             &runs,
             |f, s| {
                 super::commands::block_input_matches(
@@ -481,6 +482,7 @@ mod tests {
         let chest = BlockEntity::for_block("minecraft:chest").expect("a chest's");
         w.block_entities.insert((1, 5, 1), chest);
         let out = w.edit_runs(
+            None,
             &[Run {
                 x: 1,
                 z: 1,
@@ -518,6 +520,7 @@ mod tests {
             .insert((1, 5, 1), BlockEntity::Mod(Box::new(press)));
         // Another block, of the same entity type or none: the entity is made again, bare.
         let out = w.edit_runs(
+            None,
             &[Run {
                 x: 1,
                 z: 1,
@@ -545,6 +548,7 @@ mod tests {
     fn a_new_block_gets_the_block_entity_made_for_it() {
         let mut w = world();
         let out = w.edit_runs(
+            None,
             &[Run {
                 x: 3,
                 z: 3,
@@ -589,6 +593,7 @@ mod tests {
         w.set(1, 5, 1, BlockStateId(2)).unwrap();
         w.block_entities.insert((1, 5, 1), sculk);
         let out = w.edit_runs(
+            None,
             &[Run {
                 x: 1,
                 z: 1,
@@ -613,6 +618,7 @@ mod tests {
         w.set(2, 5, 1, BlockStateId(2)).unwrap();
         w.block_entities.insert((2, 5, 1), chest);
         let out = w.edit_runs(
+            None,
             &[Run {
                 x: 2,
                 z: 1,
