@@ -42,6 +42,7 @@ impl MicDevice {
 /// How to select a non-default microphone input. Endpoint IDs and display labels are distinct.
 // no wire: selects a local microphone endpoint
 #[derive(Clone, Debug, PartialEq, Eq)]
+// exhaustive: the device selector is either a stable endpoint ID or a display label
 pub enum MicTarget {
     /// An opaque [`MicDevice::id`] returned by `microphone_devices()`. Never matched as a label.
     DeviceId(String),
