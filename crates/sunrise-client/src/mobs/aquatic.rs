@@ -1364,11 +1364,12 @@ mod pufferfish_sting_tests {
     fn a_puffed_pufferfish_stings_the_mobs_that_touch_it() {
         let mut test_level = crate::health::TestLevel::new(0);
         let level = &mut test_level.level();
-        let Some(half) = stings(level, 1, &[("minecraft:zombie", 0.5)]) else {
+        // A pig has no innate armor, so its health loss equals the base damage.
+        let Some(half) = stings(level, 1, &[("minecraft:pig", 0.5)]) else {
             return;
         };
         assert_eq!(half, vec![(2, 2.0)], "puff state 1 stings for 1 + 1");
-        let full = stings(level, 2, &[("minecraft:zombie", 0.5)]).unwrap();
+        let full = stings(level, 2, &[("minecraft:pig", 0.5)]).unwrap();
         assert_eq!(full, vec![(2, 3.0)], "puff state 2 stings for 1 + 2");
         assert!(
             stings(level, 0, &[("minecraft:zombie", 0.5)])
