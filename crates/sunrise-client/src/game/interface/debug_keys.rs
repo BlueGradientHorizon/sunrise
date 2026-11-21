@@ -15,7 +15,9 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_core::nbt::Tag;
-use sunrise_protocol::packets::play::{BlockEntityTagQuery, EntityTagQuery, Serverbound};
+use sunrise_protocol::packets::play::{
+    BlockEntityTagQuery, DebugSubscriptionRequest, EntityTagQuery, Serverbound,
+};
 use winit::keyboard::KeyCode;
 
 /// `ChatFormatting.YELLOW` and `RED`.
@@ -250,6 +252,13 @@ impl Game<'_> {
         if let Some([bytes, sent, received]) = received {
             self.debug_charts.log_bandwidth(bytes);
             self.debug_charts.log_packets([sent, received]);
+        }
+        if let Some(wanted) = self.debug_charts.subscription_request(self.debug) {
+            // `dedicated_server_tick_time` is registry id 0.
+            let subscriptions = if wanted { vec![0] } else { vec![] };
+            self.send(Serverbound::DebugSubscriptionRequest(
+                DebugSubscriptionRequest { subscriptions },
+            ));
         }
         if shown {
             use sunrise_protocol::packets::status::Ping;

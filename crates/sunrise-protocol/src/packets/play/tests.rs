@@ -1126,10 +1126,10 @@ fn spectator_action_is_an_optional_entity_id() {
 
 #[test]
 fn unknown_packets_keep_their_payload() {
-    let p = Clientbound::decode(crate::ids::play::clientbound::DEBUG_SAMPLE, &[1, 2, 3]).unwrap();
+    let p = Clientbound::decode(crate::ids::play::clientbound::DEBUG_EVENT, &[1, 2, 3]).unwrap();
     assert_eq!(
         p,
-        Clientbound::Unknown(crate::ids::play::clientbound::DEBUG_SAMPLE, vec![1, 2, 3])
+        Clientbound::Unknown(crate::ids::play::clientbound::DEBUG_EVENT, vec![1, 2, 3])
     );
     assert_eq!(p.encode()[1..], [1, 2, 3]);
 }
@@ -1464,4 +1464,49 @@ fn jigsaw_packets_round_trip() {
         Serverbound::encode,
         Serverbound::decode,
     );
+}
+
+// Expected bytes hand-derived from the 26.3 codecs (javap of the jar, not captured from a run):
+// `FriendlyByteBuf.writeLongArray` (VarInt length, big-endian longs) + `writeEnum` (VarInt
+// ordinal); `ByteBufCodecs.registry` ids in a VarInt-counted collection.
+#[test]
+fn debug_sample_is_a_long_array_and_a_type() {
+    let payload = [
+        &[2u8][..],
+        &50_000_000i64.to_be_bytes(),
+        &(-1i64).to_be_bytes(),
+        &[0],
+    ]
+    .concat();
+    let packet = Clientbound::DebugSample(DebugSample {
+        sample: vec![50_000_000, -1],
+        kind: 0,
+    });
+    assert_eq!(
+        Clientbound::decode(crate::ids::play::clientbound::DEBUG_SAMPLE, &payload).unwrap(),
+        packet
+    );
+    assert_eq!(packet.encode()[1..], payload);
+    round_trip(packet, Clientbound::encode, Clientbound::decode);
+}
+
+#[test]
+fn debug_subscription_request_is_a_registry_id_set() {
+    let packet = Serverbound::DebugSubscriptionRequest(DebugSubscriptionRequest {
+        subscriptions: vec![0],
+    });
+    assert_eq!(
+        Serverbound::decode(
+            crate::ids::play::serverbound::DEBUG_SUBSCRIPTION_REQUEST,
+            &[1, 0]
+        )
+        .unwrap(),
+        packet
+    );
+    assert_eq!(packet.encode()[1..], [1, 0]);
+    let empty = Serverbound::DebugSubscriptionRequest(DebugSubscriptionRequest {
+        subscriptions: vec![],
+    });
+    assert_eq!(empty.encode()[1..], [0]);
+    round_trip(packet, Serverbound::encode, Serverbound::decode);
 }

@@ -81,6 +81,9 @@ pub struct DebugCharts {
     pub packet_rates: [f32; 2],
     packet_totals: [i64; 2],
     packet_tick: u8,
+    /// `ClientDebugSubscriber.remoteSubscriptions`: whether the server was last asked for
+    /// `dedicated_server_tick_time`.
+    tick_time_requested: bool,
     previous_tick: Option<Instant>,
     bytes_seen: Option<i64>,
 }
@@ -112,6 +115,24 @@ impl DebugCharts {
             self.network = false;
         }
     }
+    /// `ClientDebugSubscriber.tick`: the request to send when the wanted subscriptions differ
+    /// from the last sent ones (`showFpsCharts` asks for the tick time).
+    pub fn subscription_request(&mut self, overlay: bool) -> Option<bool> {
+        let wanted = overlay && self.fps;
+        (wanted != std::mem::replace(&mut self.tick_time_requested, wanted)).then_some(wanted)
+    }
+    /// `ClientDebugSubscriber.clear`: a new login asks again.
+    pub fn clear_subscriptions(&mut self) {
+        self.tick_time_requested = false;
+    }
+    /// `DebugScreenOverlay.logRemoteSample`: a full tick sample from the server (the logger
+    /// holds four values; `System.arraycopy` of more would throw, so extras are dropped).
+    pub fn log_remote_sample(&mut self, sample: &[i64]) {
+        let mut full = [0; 4];
+        let n = sample.len().min(4);
+        full[..n].copy_from_slice(&sample[..n]);
+        self.tick_times.log_full(full);
+    }
     /// `reset`: leaving a world.
     pub fn reset(&mut self) {
         self.tick_times.reset();
@@ -123,6 +144,7 @@ impl DebugCharts {
         self.packet_rates = [0.0; 2];
         self.packet_totals = [0; 2];
         self.packet_tick = 0;
+        self.clear_subscriptions();
     }
     /// One integrated server tick that started at `started` and ran its
     /// tick method for `method` (`MinecraftServer.logFullTickTime` and
@@ -602,6 +624,29 @@ mod tests {
         c.log_bandwidth(1600);
         assert_eq!(c.bandwidth.len(), 1);
         assert_eq!(c.bandwidth.get(0, 0), 600);
+    }
+
+    #[test]
+    fn the_subscription_request_goes_out_on_change_and_after_a_login() {
+        let mut c = DebugCharts::default();
+        assert_eq!(c.subscription_request(true), None);
+        c.fps = true;
+        assert_eq!(c.subscription_request(false), None);
+        assert_eq!(c.subscription_request(true), Some(true));
+        assert_eq!(c.subscription_request(true), None);
+        c.clear_subscriptions();
+        assert_eq!(c.subscription_request(true), Some(true));
+        assert_eq!(c.subscription_request(false), Some(false));
+        assert_eq!(c.subscription_request(false), None);
+    }
+
+    #[test]
+    fn a_remote_sample_lands_in_the_tick_chart() {
+        let mut c = DebugCharts::default();
+        c.log_remote_sample(&[9, 8, 7]);
+        c.log_remote_sample(&[1, 2, 3, 4, 5]);
+        assert_eq!(c.tick_times.samples[0], [9, 8, 7, 0]);
+        assert_eq!(c.tick_times.samples[1], [1, 2, 3, 4]);
     }
 
     #[test]

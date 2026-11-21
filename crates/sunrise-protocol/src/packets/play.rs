@@ -2,9 +2,9 @@
 use crate::{
     Error, Result,
     buf::{
-        Bool, Byte, BytesN, ChunkPos, Codec, Double, Float, Ident, Int, List, Long, LpVec3, Nbt,
-        Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, UByte, Uuid, VarInt, VarLong,
-        VarVec3i, Vec3d, Writer,
+        Bool, Byte, BytesN, ChunkPos, Codec, Double, Float, Ident, Int, List, Long, Longs, LpVec3,
+        Nbt, Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, UByte, Uuid, VarInt,
+        VarLong, VarVec3i, Vec3d, Writer,
     },
     chunk::{ChunkData, LightData},
     entity_data::{EntityData, Particle, Value},
@@ -127,6 +127,12 @@ packet!(
     /// extra chat completions (`custom_chat_action`) and the entries.
     CustomChatCompletions { action: i32 => VarInt, entries: Vec<String> => List<Str> }
 );
+// ClientboundDebugSamplePacket: `LongArray` then the `RemoteDebugSampleType` ordinal (VarInt;
+// 0 is TICK_TIME, the only one).
+packet!(DebugSample { sample: Vec<i64> => Longs, kind: i32 => VarInt });
+// ServerboundDebugSubscriptionRequestPacket: the `debug_subscription` registry ids wanted
+// (0 is `dedicated_server_tick_time`), a VarInt-counted set.
+packet!(DebugSubscriptionRequest { subscriptions: Vec<i32> => List<VarInt> });
 /// ClientboundCustomChatCompletionsPacket.Action, by id (`ByIdMap.continuous`
 /// with `OutOfBoundsStrategy.ZERO`: an unknown id is `ADD`).
 pub mod custom_chat_action {
@@ -875,6 +881,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     Cooldown(Cooldown) = COOLDOWN,
     CustomChatCompletions(CustomChatCompletions) = CUSTOM_CHAT_COMPLETIONS,
     CustomPayload(CustomPayload) = CUSTOM_PAYLOAD => super::custom_payload::ClientboundPlayPayload,
+    DebugSample(DebugSample) = DEBUG_SAMPLE,
     Disconnect(Disconnect) = DISCONNECT,
     DeleteChat(DeleteChat) = DELETE_CHAT,
     DisguisedChat(DisguisedChat) = DISGUISED_CHAT,
@@ -1375,6 +1382,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     ClientTickEnd(Empty) = CLIENT_TICK_END,
     ConfigurationAcknowledged(Empty) = CONFIGURATION_ACKNOWLEDGED,
     ContainerButtonClick(ContainerButtonClick) = CONTAINER_BUTTON_CLICK,
+    DebugSubscriptionRequest(DebugSubscriptionRequest) = DEBUG_SUBSCRIPTION_REQUEST,
     ContainerClick(ContainerClick) = CONTAINER_CLICK,
     ContainerClose(ContainerClose) = CONTAINER_CLOSE,
     CookieResponse(CookieResponse) = COOKIE_RESPONSE,
