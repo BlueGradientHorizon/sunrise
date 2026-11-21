@@ -183,7 +183,15 @@ mod root {
             })) {
                 Ok(Ok(value)) => DispatchOutcome::Ok(value),
                 Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
-                Err(_) => {
+                Err(payload) => {
+                    // Match the shared dispatcher even when a test panic's payload panics on drop.
+                    if let Err(payload) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            drop(payload);
+                        }))
+                    {
+                        std::mem::forget(payload);
+                    }
                     poison(hook, mod_id);
                     DispatchOutcome::Panicked
                 }
@@ -198,20 +206,6 @@ mod root {
             super::listening(hook)
                 .map(|(_, entry)| entry)
                 .find(|entry| entry.id == namespace)
-        }
-
-        pub(super) fn entered_matching<'a>(
-            hook_id: super::HookId,
-            hook: &'static str,
-            mut allow: impl FnMut(&str) -> bool + 'a,
-        ) -> impl Iterator<Item = &'static dyn super::Hooks> + 'a {
-            super::listening(hook_id).filter_map(move |(_, entry)| {
-                if !allow(entry.id) {
-                    return None;
-                }
-                let ((), hooks) = super::enter_listener(entry, hook);
-                Some(hooks)
-            })
         }
 
         pub(super) struct ListenerScope;

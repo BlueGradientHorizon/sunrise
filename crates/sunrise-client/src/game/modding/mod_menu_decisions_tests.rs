@@ -394,6 +394,19 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             assert_eq!(inventory(game, 20), 2);
             game.transaction_close(&seal, false);
             assert_eq!(inventory(game, 20), 0);
+            script(Script {
+                write_dirt: true,
+                continue_after_player_write: true,
+                ..Script::default()
+            });
+            click(game);
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(
+                inventory(game, 20),
+                0,
+                "Continue cannot change its read set"
+            );
+            assert!(game.transactions.is_empty());
             // Rows 79 and 84: a write and then a panic: the write is undone and the callback
             // is not heard on a subsequent click.
             script(Script {
