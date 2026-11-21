@@ -2080,6 +2080,7 @@ impl Game<'_> {
             source.attacker_species = self.mobs.iter().find(|m| m.id == id).map(|m| m.species());
         }
         let mut killed = false;
+        let mut settle = false;
         let mut hurt = false;
         let mut infested = Vec::new();
         let catch_up = self.catch_up_countdowns(source.attacker, target);
@@ -2122,6 +2123,8 @@ impl Game<'_> {
                 aim,
             );
             hurt = hit;
+            // Squid.hurtServer can report false after its superclass accepted a lethal hit.
+            settle = t.pending_damage_post.is_some();
             if hit && catch_up && t.invulnerable > previous_invulnerable {
                 t.hurt_time = (t.hurt_time - 1).max(0);
                 t.invulnerable = (t.invulnerable - 1).max(0);
@@ -2144,6 +2147,13 @@ impl Game<'_> {
                 }
             }
         }
+        if settle && let Some(index) = target_index {
+            self.finish_mob_damage_at(index);
+            killed &= self
+                .mobs
+                .get(index)
+                .is_some_and(|m| m.id == target && !m.alive());
+        }
         for (at, velocities) in infested {
             self.spawn_infested(at, velocities);
         }
@@ -2161,13 +2171,8 @@ impl Game<'_> {
                 1.0,
             );
         }
-        if killed {
-            if let Some(index) = self.mob_index.find(&self.mobs, target) {
-                self.finish_mob_damage_at(index);
-            }
-            if let Some(Who::Mob(killer)) = source.attacker {
-                self.zombie_killed(killer, target);
-            }
+        if killed && let Some(Who::Mob(killer)) = source.attacker {
+            self.zombie_killed(killer, target);
         }
         hurt
     }

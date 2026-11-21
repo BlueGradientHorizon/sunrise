@@ -655,6 +655,39 @@ fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
 
 #[test]
 #[ignore = "daily"]
+fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut squid = mob(game, 225045, "minecraft:squid");
+            squid.health = 0.5;
+            game.mobs.push(squid);
+            assert!(!game.mob_hits_mob(225045, 1.0, Damage::of(DamageKind::Magic)));
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225045),
+                    ("pre", 225045),
+                    ("death", 225045),
+                    ("death-tail", 225045),
+                    ("post", 225045),
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn borrowed_air_damage_settles_before_the_next_mob_tick() {
     let trace = Arc::new(DeathOrder::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
