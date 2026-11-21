@@ -433,6 +433,13 @@ registry's releases or its `staging` release. Either way, the merged package is 
 for the new file, but its output is not a complete checkout. `registry check` needs the full checkout and
 all listed files to plan installations.
 
+For new or changed native mod versions, `registry review --files <dir>` compares the package's Cargo
+requirements, including those of packaged path dependencies, with `<sdk-data>/<commit>/Cargo.lock` from
+`--sdk-data <sdk-data>`. It warns when a crates.io requirement excludes every version the pinned game build
+uses but still selects from the same major line (the same minor line for `0.x`). Loosen that requirement if
+your mod does not need the other version. If the game's lock is unavailable, review notes that it skipped
+the comparison. A different pin in the mod's own lockfile does not trigger a warning.
+
 Check a package on its own with:
 
 ```sh

@@ -732,6 +732,138 @@ fn native_project_rejects_a_content_only_version() {
     );
 }
 
+const REQUIREMENT_BUILD: &str = "0123456789abcdef0123456789abcdef01234567";
+
+fn package_for_requirement_review(files: &Path, cargo: &str, helper: &str) -> Entry {
+    let manifest = format!(
+        "id='coords_hud'\nname='Coords'\nversion='0.1.0'\napi='0.2'\n[native]\ngame='26.3'\nsunrise='{REQUIREMENT_BUILD}'\n"
+    );
+    let bytes = crate::Package::write_files(
+        &manifest,
+        &[
+            ("Cargo.toml", cargo.as_bytes()),
+            ("src/lib.rs", b""),
+            ("src/helper/Cargo.toml", helper.as_bytes()),
+            (
+                "Cargo.lock",
+                b"version = 4\n[[package]]\nname='serde_json'\nversion='1.0.154'\nsource='registry+https://github.com/rust-lang/crates.io-index'\n",
+            ),
+        ],
+    )
+    .unwrap();
+    let sha256 = super::super::sha256(&bytes);
+    std::fs::write(files.join(&sha256), bytes).unwrap();
+    let mut entry: Entry = toml::from_str(&hud_entry()).unwrap();
+    entry.kind = Kind::NativeMod;
+    entry.versions[0].sha256 = sha256;
+    entry.versions[0].sunrise = Some("26.3-0.1.0".into());
+    entry
+}
+
+fn write_requirement_review_game_lock(sdk_data: &Path) {
+    let build = sdk_data.join(REQUIREMENT_BUILD);
+    std::fs::create_dir(&build).unwrap();
+    let mut lock = String::from("version = 4\n");
+    for (name, version) in [
+        ("syn", "2.0.119"),
+        ("syn", "3.0.5"),
+        ("syn", "3.0.6"),
+        ("serde_json", "1.0.151"),
+        ("log", "0.4.34"),
+    ] {
+        lock.push_str(&format!(
+            "[[package]]\nname='{name}'\nversion='{version}'\nsource='registry+https://github.com/rust-lang/crates.io-index'\n"
+        ));
+    }
+    std::fs::write(build.join("Cargo.lock"), lock).unwrap();
+}
+
+#[test]
+fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_dependencies() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    write_requirement_review_game_lock(sdk.path());
+    let old = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n\
+         [target.'cfg(unix)'.build-dependencies]\nhelper={path='src/helper'}\n",
+        "[package]\nname='helper'\nversion='0.1.0'\n[dev-dependencies]\n\
+         other_json={package='serde_json',version='=1.0.154'}\nlog='>0.4.34, <0.5'\n",
+    );
+    let base = std::slice::from_ref(&old);
+    let mut review = review(base, base, "ludovic111");
+    review.check_native_requirements(base, base, files.path(), Some(sdk.path()));
+    assert!(
+        review.warnings.is_empty() && review.notes.is_empty(),
+        "{review:?}"
+    );
+
+    let mut edited = old.clone();
+    edited.versions[0].changelog = "A note about this version.".into();
+    let head = &[edited];
+    review.check_native_requirements(base, head, files.path(), Some(sdk.path()));
+    assert!(
+        review.errors.is_empty() && review.notes.is_empty(),
+        "{review:?}"
+    );
+    assert_eq!(
+        review.warnings,
+        [
+            "coords_hud 0.1.0: \"Cargo.toml\" requires syn \"3.0.10\"; game build 0123456789ab locks 3.0.5, 3.0.6. This mod cannot build with the game's version of syn; loosen the requirement unless the other version is needed.",
+            "coords_hud 0.1.0: \"src/helper/Cargo.toml\" requires log \">0.4.34, <0.5\"; game build 0123456789ab locks 0.4.34. This mod cannot build with the game's version of log; loosen the requirement unless the other version is needed.",
+            "coords_hud 0.1.0: \"src/helper/Cargo.toml\" requires serde_json \"=1.0.154\"; game build 0123456789ab locks 1.0.151. This mod cannot build with the game's version of serde_json; loosen the requirement unless the other version is needed.",
+        ]
+    );
+}
+
+#[test]
+fn native_requirement_review_accepts_game_pins_even_if_the_mod_lock_is_ahead() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    write_requirement_review_game_lock(sdk.path());
+    let entry = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\n\
+         serde_json='1'\nsyn='>=4, <5'\nlog='0.5'\nextra='1'\n\
+         matching_syn={package='syn',version='>=2.0.119, <3.0.5'}\n\
+         upstream={package='serde_json',version='1.0.154',git='https://example.invalid/serde'}\n\
+         alternate={package='log',version='0.4.35',registry='other'}\n",
+        "[package]\nname='unused'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n",
+    );
+    let mut review = Review::default();
+    review.check_native_requirements(&[], &[entry], files.path(), Some(sdk.path()));
+    assert_eq!(review, Review::default());
+}
+
+#[test]
+fn native_requirement_review_notes_a_missing_game_lock_once_per_build() {
+    let files = tempfile::tempdir().unwrap();
+    let sdk = tempfile::tempdir().unwrap();
+    let entry = package_for_requirement_review(
+        files.path(),
+        "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n",
+        "",
+    );
+    let mut head = vec![entry];
+    let mut other = head[0].clone();
+    other.id = "other".into();
+    head.push(other);
+    for sdk_data in [None, Some(sdk.path())] {
+        let mut review = Review::default();
+        review.check_native_requirements(&[], &head, files.path(), sdk_data);
+        assert!(
+            review.warnings.is_empty() && review.errors.is_empty(),
+            "{review:?}"
+        );
+        assert_eq!(
+            review.notes,
+            [format!(
+                "build {REQUIREMENT_BUILD}: native dependency requirements were not compared (game Cargo.lock unavailable)"
+            )]
+        );
+    }
+}
+
 #[test]
 fn a_new_icon_is_a_new_address() {
     let s = Scratch::new("icon-address");

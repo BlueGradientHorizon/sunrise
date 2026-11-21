@@ -1,0 +1,247 @@
+//! Advisory check of the packaged Cargo requirements against the pinned game's crates.io versions.
+use super::{Entry, Kind, Review, hex64, read_regular};
+use crate::index::MAX_FILE;
+use semver::{Prerelease, Version, VersionReq};
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::{Cursor, Read, Seek};
+use std::path::{Component, Path, PathBuf};
+
+// Cargo's lockfile source ID for the default registry, independent of its transport.
+const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+const MAX_GAME_LOCK_BYTES: u64 = 16 << 20;
+
+#[derive(Deserialize)]
+struct Lock {
+    package: Vec<Pin>,
+}
+
+#[derive(Deserialize)]
+struct Pin {
+    name: String,
+    version: Version,
+    source: Option<String>,
+}
+
+impl Review {
+    /// Check only new or edited native version rows. Unreadable inputs don't turn this advisory
+    /// into a refusal; the registry's package checks still own validation of the listed files.
+    pub fn check_native_requirements(
+        &mut self,
+        base: &[Entry],
+        head: &[Entry],
+        files: &Path,
+        sdk_data: Option<&Path>,
+    ) {
+        let mut locks = BTreeMap::new();
+        for entry in head.iter().filter(|entry| entry.kind == Kind::NativeMod) {
+            let old = base.iter().find(|old| old.id == entry.id);
+            for row in entry.versions.iter().filter(|row| {
+                old.is_none_or(|old| !old.versions.contains(row)) && hex64(&row.sha256).is_ok()
+            }) {
+                let Ok(bytes) = read_regular(files, Path::new(&row.sha256), MAX_FILE) else {
+                    continue;
+                };
+                let Ok(mut zip) = zip::ZipArchive::new(Cursor::new(bytes)) else {
+                    continue;
+                };
+                let Ok(package) = crate::Package::read_zip(&mut zip) else {
+                    continue;
+                };
+                let Some(native) = package.manifest.native else {
+                    continue;
+                };
+                let build = native.sunrise;
+                let pins = locks.entry(build.clone()).or_insert_with(|| {
+                    let pins = sdk_data.and_then(|dir| game_pins(dir, &build));
+                    if pins.is_none() {
+                        self.notes.push(format!(
+                            "build {build}: native dependency requirements were not compared (game Cargo.lock unavailable)"
+                        ));
+                    }
+                    pins
+                });
+                let Some(pins) = pins else { continue };
+                for (manifest, package, requirement, game) in manifest_conflicts(&mut zip, pins) {
+                    self.warnings.push(format!(
+                        "{} {}: {manifest:?} requires {package} {requirement:?}; game build {} locks {game}. This mod cannot build with the game's version of {package}; loosen the requirement unless the other version is needed.",
+                        entry.id, row.version, &build[..12],
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Read only the locked crates.io names and versions. The SDK supplies this file; the mod's own
+/// lockfile has no bearing on whether its Cargo requirements admit the game's versions.
+fn game_pins(sdk_data: &Path, build: &str) -> Option<BTreeMap<String, BTreeSet<Version>>> {
+    let path = Path::new(build).join("Cargo.lock");
+    let bytes = read_regular(sdk_data, &path, MAX_GAME_LOCK_BYTES).ok()?;
+    let lock = toml::from_slice::<Lock>(&bytes).ok()?;
+    let mut pins = BTreeMap::<_, BTreeSet<_>>::new();
+    for pin in lock.package {
+        if pin.source.as_deref() == Some(CRATES_IO) {
+            pins.entry(pin.name).or_default().insert(pin.version);
+        }
+    }
+    Some(pins)
+}
+
+/// Walk only manifests reachable from the root package, including target and host dependencies.
+fn manifest_conflicts<R: Read + Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    pins: &BTreeMap<String, BTreeSet<Version>>,
+) -> BTreeSet<(String, String, String, String)> {
+    const TABLES: [&str; 5] = [
+        "dependencies",
+        "dev-dependencies",
+        "build-dependencies",
+        "dev_dependencies",
+        "build_dependencies",
+    ];
+    let mut todo = vec![PathBuf::new()];
+    let mut seen = BTreeSet::new();
+    let mut conflicts = BTreeSet::new();
+    while let Some(dir) = todo.pop() {
+        let name = dir.join("Cargo.toml").to_string_lossy().replace('\\', "/");
+        if !crate::manifest::source_file(&name) || !seen.insert(name.clone()) {
+            continue;
+        }
+        let Ok(file) = zip.by_name(&name) else {
+            continue;
+        };
+        let size = file.size(); // Package::read_zip already bounded the source entries.
+        let mut text = String::new();
+        if file.take(size + 1).read_to_string(&mut text).is_err() || text.len() as u64 != size {
+            continue;
+        }
+        let Ok(manifest) = text.parse::<toml::Table>() else {
+            continue;
+        };
+        let targets = manifest.get("target").and_then(toml::Value::as_table);
+        let sections = std::iter::once(&manifest).chain(
+            targets
+                .into_iter()
+                .flat_map(|targets| targets.values().filter_map(toml::Value::as_table)),
+        );
+        let dependencies = sections
+            .flat_map(|section| {
+                TABLES
+                    .iter()
+                    .filter_map(|key| section.get(*key).and_then(toml::Value::as_table))
+            })
+            .flatten();
+        for (key, dep) in dependencies {
+            if let Some(path) = dep.get("path") {
+                if let Some(inside) = path.as_str().and_then(|path| local_path(&dir, path)) {
+                    todo.push(inside);
+                }
+                continue;
+            }
+            if ["git", "registry-index", "workspace"]
+                .iter()
+                .any(|key| dep.get(key).is_some())
+                || dep
+                    .get("registry")
+                    .is_some_and(|registry| registry.as_str() != Some("crates-io"))
+            {
+                continue;
+            }
+            let package = dep
+                .get("package")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(key);
+            let Some(game) = pins.get(package) else {
+                continue;
+            };
+            let Some(raw) = dep
+                .as_str()
+                .or_else(|| dep.get("version").and_then(toml::Value::as_str))
+            else {
+                continue;
+            };
+            let Ok(requirement) = VersionReq::parse(raw) else {
+                continue;
+            };
+            if game.iter().any(|pin| requirement.matches(pin)) {
+                continue;
+            }
+            let compatible: Vec<_> = game
+                .iter()
+                .filter(|pin| line_has_match(&requirement, pin))
+                .map(Version::to_string)
+                .collect();
+            if !compatible.is_empty() {
+                conflicts.insert((
+                    name.clone(),
+                    package.to_owned(),
+                    raw.to_owned(),
+                    compatible.join(", "),
+                ));
+            }
+        }
+    }
+    conflicts
+}
+
+/// Resolve a dependency relative to its archive manifest, never consulting the host filesystem.
+fn local_path(dir: &Path, path: &str) -> Option<PathBuf> {
+    if path.contains(['\\', ':']) {
+        return None;
+    }
+    let mut inside = dir.to_owned();
+    for component in Path::new(path).components() {
+        match component {
+            Component::Normal(part) => inside.push(part),
+            Component::CurDir => {}
+            Component::ParentDir if inside.pop() => {}
+            _ => return None,
+        }
+    }
+    Some(inside)
+}
+
+fn line_has_match(requirement: &VersionReq, game: &Version) -> bool {
+    let matches = |version: Version| {
+        version.major == game.major
+            && (game.major != 0 || version.minor == game.minor)
+            && requirement.matches(&version)
+    };
+    let line_start = Version::new(game.major, if game.major == 0 { game.minor } else { 0 }, 0);
+    // If a requirement matches a stable version in the line, it matches either the line start,
+    // a comparator boundary, or the first version after one (partial comparators cover a whole
+    // major/minor). Use semver itself to evaluate the full requirement at those points.
+    matches(line_start)
+        || requirement.comparators.iter().any(|cmp| {
+            let (major, minor, patch) = (cmp.major, cmp.minor.unwrap_or(0), cmp.patch.unwrap_or(0));
+            if matches(Version::new(major, minor, patch)) {
+                return true;
+            }
+            let next = cmp
+                .patch
+                .and_then(|p| p.checked_add(1))
+                .map(|p| Version::new(major, minor, p))
+                .or_else(|| {
+                    cmp.minor
+                        .and_then(|m| m.checked_add(1))
+                        .map(|m| Version::new(major, m, 0))
+                })
+                .or_else(|| major.checked_add(1).map(|m| Version::new(m, 0, 0)));
+            if next.is_some_and(matches) {
+                return true;
+            }
+            // Cargo only allows prereleases at a triple explicitly named with a prerelease.
+            // Test its least prerelease, each explicit boundary, and the immediate successor.
+            !cmp.pre.is_empty()
+                && ["0".into(), cmp.pre.to_string(), format!("{}.0", cmp.pre)]
+                    .iter()
+                    .any(|pre| {
+                        Prerelease::new(pre).is_ok_and(|pre| {
+                            let mut version = Version::new(major, minor, patch);
+                            version.pre = pre;
+                            matches(version)
+                        })
+                    })
+        })
+}
