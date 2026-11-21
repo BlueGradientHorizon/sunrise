@@ -1,3 +1,0 @@
-ids = ["hook:apply_effect_tick", "hook:living_damage_post"]
-why = "A native effect's queued mob hurts now finish one at a time, before the next queued action or effect countdown. This follows vanilla LivingEntity.tickEffects and MobEffectInstance.tickServer, where WitherMobEffect and PoisonMobEffect finish each hurt inside applyEffectTick, and NeoForge's LivingDamageEvent.Post at the LivingEntity.hurtServer tail."
-migrate = "Keep apply_effect_tick, event.hurt, and living_damage_post unchanged. A queued hurt on a mob now completes its damage, including death or protection and Post, before the next queued write sees the mob. The effect Part is not called again to resume its writes."

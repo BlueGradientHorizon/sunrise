@@ -364,6 +364,7 @@ struct DeathOrder {
     cancel: std::sync::atomic::AtomicBool,
     revive: std::sync::atomic::AtomicBool,
     clear_cooldown: bool,
+    dry_out_velocity: Mutex<Option<[f64; 3]>>,
 }
 
 struct DeathProbe(Arc<DeathOrder>);
@@ -429,6 +430,11 @@ impl Hooks for DeathProbe {
     ) -> mod_api::Flow {
         let entity = i64::from(event.entity);
         self.0.heard.lock().unwrap().push(("death", entity));
+        if event.kind == "minecraft:dolphin" && event.source.damage_type == "minecraft:dry_out" {
+            *self.0.dry_out_velocity.lock().unwrap() = host
+                .entity(event.entity)
+                .and_then(|entity| entity.velocity(host));
+        }
         if self.0.cancel.load(std::sync::atomic::Ordering::Relaxed) {
             if self.0.revive.load(std::sync::atomic::Ordering::Relaxed) {
                 let entity = host.entity(event.entity).unwrap();
@@ -696,7 +702,7 @@ fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
 #[test]
 #[ignore = "daily"]
 fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
-    for hazard in ["burn", "air", "effect", "contact"] {
+    for hazard in ["burn", "air", "effect", "contact", "dolphin dry-out"] {
         let trace = Arc::new(DeathOrder::default());
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "death-order",
@@ -722,10 +728,10 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                 let mut first = mob(
                     game,
                     225043,
-                    if hazard == "air" {
-                        "minecraft:axolotl"
-                    } else {
-                        "minecraft:pig"
+                    match hazard {
+                        "air" => "minecraft:axolotl",
+                        "dolphin dry-out" => "minecraft:dolphin",
+                        _ => "minecraft:pig",
                     },
                 );
                 let mut second = mob(game, 225044, "minecraft:axolotl");
@@ -736,6 +742,22 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                     "burn" => first.fire_ticks = 20,
                     "effect" => first.add_effect("wither", 40, 0),
                     "contact" => first.no_ai = true,
+                    "dolphin dry-out" => {
+                        let stone = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("minecraft:stone")
+                            .unwrap();
+                        game.world.set(1, 79, 1, stone).unwrap();
+                        first.position = Vec3::new(1.5, 80.0, 1.5);
+                        // Travel lands on stone before dry-out, with no gravity
+                        // or AI speed to change the settled velocity again.
+                        first.velocity = Vec3::new(0.0, -0.1, 0.0);
+                        first.no_gravity = true;
+                        first.attrs.speed = 0.0;
+                        first.extra.counter = 1;
+                    }
                     _ => first.air = -19,
                 }
                 second.air = -19;
@@ -756,6 +778,13 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                     ],
                     "{hazard}"
                 );
+                if hazard == "dolphin dry-out" {
+                    assert_eq!(*trace.dry_out_velocity.lock().unwrap(), Some([0.0; 3]));
+                    let dolphin = game.mobs.iter().find(|m| m.id == 225043).unwrap();
+                    assert_eq!(dolphin.velocity.y, 0.5, "one hop after death and Post");
+                    assert!(!dolphin.on_ground);
+                    assert_eq!(dolphin.extra.counter, 0, "dry-out ran only once");
+                }
             });
         });
     }

@@ -311,8 +311,14 @@ fn grow_up(m: &mut Mob, events: &mut Vec<MobEvent>) {
         }
     }
 }
-/// Species aiStep additions.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+/// Species aiStep additions. True leaves a dry dolphin's hop to the tick tail,
+/// so the owner can settle its dry-out hurt first.
+pub(super) fn ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) -> bool {
     use Species as S;
     match m.species() {
         S::Squid => squid_ai_step(m),
@@ -368,19 +374,25 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &
                     // death message names dehydration, not drowning.
                     m.damage(level, 1.0, super::Damage::of(super::DamageKind::DryOut));
                 }
-                if m.on_ground {
-                    let (a, b) = (m.random.next_float(), m.random.next_float());
-                    m.velocity = Vec3::new(
-                        m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.2),
-                        m.velocity.y + 0.5,
-                        m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.2),
-                    );
-                    m.yaw = m.random.next_float() * 360.0;
-                    m.on_ground = false;
-                }
+                return true;
             }
         }
         _ => {}
+    }
+    false
+}
+
+/// `Dolphin.tick`: after the dry-out hurt, a grounded dolphin hops and turns.
+pub(super) fn dolphin_hop(m: &mut Mob) {
+    if m.on_ground {
+        let (a, b) = (m.random.next_float(), m.random.next_float());
+        m.velocity = Vec3::new(
+            m.velocity.x + f64::from((a * 2.0 - 1.0) * 0.2),
+            m.velocity.y + 0.5,
+            m.velocity.z + f64::from((b * 2.0 - 1.0) * 0.2),
+        );
+        m.yaw = m.random.next_float() * 360.0;
+        m.on_ground = false;
     }
 }
 

@@ -1116,6 +1116,7 @@ enum AiStage {
     PushTail(Vec<super::world::PushTarget>, bool),
     AfterPush,
     AfterWater,
+    DolphinHop,
     Finish,
 }
 
@@ -1636,6 +1637,7 @@ fn continue_ai_tail(
                     if m.species() == Species::Fox {
                         super::fox::finish_ai_step(m, w, events);
                     }
+                    AiStage::Finish
                 } else {
                     // Spider.tick: climbing while pressed against a wall.
                     if m.kind.flags.climber {
@@ -1644,8 +1646,11 @@ fn continue_ai_tail(
                     ageable_step(m, w, level, events);
                     animal_step(m, events);
                     burn_undead(m, w, events);
-                    species_ai_step(m, w, level, events);
+                    species_ai_step(m, w, level, events)
                 }
+            }
+            AiStage::DolphinHop => {
+                aquatic::dolphin_hop(m);
                 AiStage::Finish
             }
             AiStage::Finish => {
@@ -3809,9 +3814,9 @@ fn species_ai_step(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) {
-    if family(m.species()) == Family::Aquatic {
-        aquatic::ai_step(m, w, level, events);
+) -> AiStage {
+    if family(m.species()) == Family::Aquatic && aquatic::ai_step(m, w, level, events) {
+        return AiStage::DolphinHop;
     }
     match m.species() {
         Species::Enderman => super::enderman::ai_step(m, w, events),
@@ -3869,6 +3874,7 @@ fn species_ai_step(
         }
         _ => {}
     }
+    AiStage::Finish
 }
 /// `Entity.checkDespawn` alone, for a mob outside the entity-ticking
 /// chunks. Returns false when the mob is gone.

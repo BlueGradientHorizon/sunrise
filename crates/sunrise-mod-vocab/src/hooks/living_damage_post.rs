@@ -6,7 +6,9 @@ pub trait Hooks {
     /// values (health damage, the reductions, the post-attack invulnerability ticks). It fires
     /// once for every hit that passed `living_incoming_damage` and the invulnerability cooldown,
     /// at the end of `hurtServer`: after the hurt sounds and after that hit's death processing
-    /// (even if vetoed) or totem protection. `container.inflicted()` is the amount before absorption;
+    /// (even if vetoed) or totem protection. For a queued mob effect hurt this is before the next
+    /// queued action, and for a dolphin's dry-out hurt it is before the dolphin's land hop.
+    /// `container.inflicted()` is the amount before absorption;
     /// `container.health_damage()` is the amount applied to health. A hit that took no
     /// health (a shield, absorption, armor or a `living_damage_pre` listener took it all) fires
     /// it too, with `container.health_damage()` 0. `container.should_cause_side_effects()`
