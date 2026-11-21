@@ -15,6 +15,7 @@ pub trait Hooks {
     #[hook(
         dispatch = "flat",
         side = "server",
+        version = 2,
         contract = "replace",
         out = "data",
         neoforge = "IPlayerExtension.openMenu",

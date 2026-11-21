@@ -25,6 +25,7 @@ pub trait Hooks {
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_data_map_types",
         dispatch = "flat",
         side = "server",
+        version = 2,
         contract = "collect",
         out = "types",
         neoforge = "RegisterDataMapTypesEvent"

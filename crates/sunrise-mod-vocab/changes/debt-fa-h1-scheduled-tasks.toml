@@ -1,8 +1,9 @@
 ids = [
+    "type:TaskId",
+    "type:TaskId.0",
     "type:ScheduleError",
     "type:ScheduleError.NotInMod",
     "method:prelude::ModStateServerHost::schedule_task",
-    "method:prelude::ModStateServerHost::cancel_task",
 ]
-why = "Removed ScheduleError::NotInMod and the owner-identity gate on ModStateServerHost::cancel_task, stopped clamping delay_ticks == 0 to 1, added a server_tick_end drain pass with a scheduling cutoff to prevent same-drain recursion, and logged a warning naming the mod when MAX_PENDING_TASKS is hit, matching vanilla net.minecraft.server.MinecraftServer#wrapRunnable, TickTask, waitUntilNextTick/runAllTasks, and pollTask (and NeoForge NeoForgeEventHandler's 0-tick TickTask scheduling)."
-migrate = "Remove match arms on `ScheduleError::NotInMod` (calls outside an active mod callback now succeed). Treat `TaskId` as an opaque cancellation capability: `host.cancel_task(id)` cancels any waiting task for that id without requiring the same mod identity. Pass `delay_ticks = 1` instead of `0` if you relied on `0` being deferred to the next tick, because `delay_ticks = 0` now runs in the current tick (drained after `server_tick` start and end)."
+why = "Removed ScheduleError::NotInMod and the owner-identity gate on ModStateServerHost::cancel_task, made TaskId opaque with globally unique IDs that never alias across world resets, ensured cancel_task drops detached captures under the scheduling owner's attribution, kept MAX_PENDING_TASKS as a per-mod limit only (logging a warning naming the mod) without capping unattributed callers, stopped clamping delay_ticks == 0 to 1, and drained due tasks to exhaustion at both server_tick start and end, matching vanilla net.minecraft.server.MinecraftServer#wrapRunnable, TickTask, waitUntilNextTick/runAllTasks, and pollTask (and NeoForge NeoForgeEventHandler's 0-tick TickTask scheduling)."
+migrate = "Remove match arms on `ScheduleError::NotInMod` (calls outside an active mod callback now succeed without sharing a global cap). Treat `TaskId` as an opaque cancellation capability (do not construct `TaskId(n)` or read `.0`): `host.cancel_task(id)` cancels any waiting task for that id without requiring the same mod identity, drops its captures under the scheduling owner's attribution, and never aliases across world resets. Pass `delay_ticks = 1` instead of `0` if you relied on `0` being deferred to the next tick, because `delay_ticks = 0` now drains to exhaustion in the current tick after both `server_tick` start and end."
