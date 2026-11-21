@@ -12,6 +12,7 @@ folder.
 | `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
 | [`release plan`](#release-plan) | Writes a native release or rebuild plan and fetches the SDK metadata it needs, without building or publishing. |
 | [`release scripts`](#release-scripts) | Writes the workflow scripts embedded in this tool. |
+| [`release prepare-rebuild`](#release-prepare-rebuild) | Checks the exact reviewed package and prepares a disposable project or manifest. |
 | `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
 | `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [-- <game args>]` | For a native mod, builds, stages the game with the mod in `target/sunrise-mod/run/` and starts it. |
@@ -74,7 +75,7 @@ signature, then use `publish` to check fit before submitting a build.
 
 The JSON output has `schema: 1`, `tool_commit` (the planning tool's commit) and `plan`. A scheduled rebuild with no
 candidate has `plan: null` and writes no SDK data. Otherwise `plan` has the mod `id`, `version`, `author_tag`, stable
-`source` and `target` records (`tag`, `commit`, `line`), `rust` (the target SDK's exact Rust release), and `hosts`.
+`source` and `target` records (`tag`, `commit`, `line`), the target SDK's `rust` release and `mixins` revision, and `hosts`.
 Each host records its `name`, Rust `triple`, Actions `runner`, `side`, optional `archive`, and whether it is the
 `source_producer`. The plan names the `source_asset` and, when making binaries, the `descriptor`. `mode` is `initial`
 for a release with binaries, `source-only` for a release with just one client job and a `reason`, or `rebuild` for a
@@ -92,6 +93,14 @@ file unchanged.
 into a new directory under an existing parent. It never overwrites an existing directory. The generated workflows
 first authenticate the tool, then use the scripts from that same tool commit rather than checking copies into the
 mod repository.
+
+## `release prepare-rebuild`
+
+`cargo sunrise-mod release prepare-rebuild --plan <plan.json> --package <original.smod> --out <new-dir> [--build]`
+checks that a signed native package is the exact reviewed source named by the rebuild plan. It reads the same
+standalone eligibility and lock rules as the registry. With `--build` it unpacks into a new directory and repins
+that directory's manifest to the plan's target SDK. Without `--build` it writes only the original manifest so
+signing and publication can read metadata without unpacking source. Neither mode runs Cargo or modifies the input.
 
 ## `fits`
 

@@ -11,6 +11,9 @@ on:
       matrix:
         required: true
         type: string
+      rebuild:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,6 +38,8 @@ jobs:
         with:
           ref: ${{ inputs.commit }}
           persist-credentials: false
+          # Rebuilds get their source only from the verified reviewed package.
+          sparse-checkout: ${{ inputs.rebuild && '.github' || '' }}
       - uses: ./.github/actions/sunrise-release-tool
         with:
           triple: ${{ matrix.triple }}
@@ -102,7 +107,7 @@ jobs:
             host=${dir##*/sunrise-release-host-}
             mv "$dir" "$work/host-results/$host"
           done
-      - name: Sign the source, host archives and descriptor (never runs mod code)
+      - name: Sign the author assets (never runs mod code)
         if: steps.saved.outputs.id == ''
         env:
           SUNRISE_MOD_SIGNING_KEY: ${{ secrets.SUNRISE_MOD_SIGNING_KEY }}
@@ -111,8 +116,9 @@ jobs:
       - name: Preflight the exact signed files against the registry
         run: |
           work="$RUNNER_TEMP/sunrise-release"
-          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" registry --registry "$work/registry"
-          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release.py" stage --work "$work" --registry "$work/registry" --out "$work/preflight"
+          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" registry --work "$work" --registry "$work/registry"
+          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release.py" stage --work "$work" \
+            --registry "$work/registry" --published "$work/published.json" --out "$work/preflight"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.saved.outputs.id == ''
         with:
@@ -176,8 +182,9 @@ jobs:
       - name: Stage registry files from the verified uploaded batch
         run: |
           work="$RUNNER_TEMP/sunrise-release"
-          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" registry --registry "$work/registry"
-          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release.py" stage --work "$work" --registry "$work/registry" --out "$work/submission"
+          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" registry --work "$work" --registry "$work/registry"
+          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release.py" stage --work "$work" \
+            --registry "$work/registry" --published "$work/published.json" --out "$work/submission"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sunrise-registry-submission

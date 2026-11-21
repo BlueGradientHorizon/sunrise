@@ -55,6 +55,15 @@ def files(directory):
     return {file.name for file in entries}
 
 
+def read_plan(path):
+    envelope = json_read(path)
+    schema = envelope.get("schema")
+    if type(schema) is not int or schema != 1:
+        commit = envelope.get("tool_commit", "unknown")
+        raise SystemExit(f"unsupported plan.json schema {schema!r} from tool commit {commit}; expected schema 1")
+    return envelope
+
+
 class Batch:
     """The plan artifact is written by a job that never runs mod code."""
 
@@ -64,10 +73,8 @@ class Batch:
         self.sdk = self.shared / "sdk-data"
         self.releases = self.shared / "releases.json"
         path = self.shared / "plan.json"
-        envelope = json_read(path)
-        schema = envelope.get("schema")
-        self.tool_commit = envelope.get("tool_commit", "unknown")
-        require(schema == 1, f"unsupported plan.json schema {schema!r} from tool commit {self.tool_commit}; expected schema 1")
+        envelope = read_plan(path)
+        self.tool_commit = envelope["tool_commit"]
         intent = json_read(self.shared / "intent.json")
         self.plan, self.commit, self.repo = envelope["plan"], intent["commit"], intent["repo"]
         require(self.plan, "expected a release plan, not a no-op")
@@ -94,6 +101,18 @@ class Batch:
                              tool("--version", capture=True, env=env))
         require(match and match[1] == self.tool_commit, "the mod tool changed since planning; use the verified planning tool commit")
 
+    @property
+    def reviewed(self):
+        return self.shared / "reviewed" / self.source
+
+    def prepare(self, directory, *, build=False, env=None):
+        args = ["release", "prepare-rebuild", "--plan", self.shared / "plan.json",
+                "--package", self.reviewed, "--out", directory]
+        if build:
+            args.append("--build")
+        tool(*args, env=env)
+        return directory
+
     def outputs(self, host):
         return ({host["archive"]} if host["archive"] else set()) | ({self.source} if host["source_producer"] else set())
 
@@ -115,20 +134,40 @@ class Batch:
         return record["sha256"]
 
 
-def plan(work, project, commit, repo, tag, releases):
+def plan(work, project, commit, repo, tag, releases, *, registry=None, published=None, version=None, target=None):
     shared = work / "plan"
     shared.mkdir(parents=True)
     if releases:
         shutil.copyfile(releases, shared / "releases.json")
     else:
         tool("registry", "releases", "--out", shared / "releases.json")
-    tool("release", "plan", "--tag", tag, "--releases", shared / "releases.json",
-         "--sdk-data", shared / "sdk-data", "--out", shared / "plan.json", cwd=project)
+    args = ["release", "plan", "--releases", shared / "releases.json", "--sdk-data", shared / "sdk-data",
+            "--out", shared / "plan.json"]
+    if tag is not None:
+        args.extend(["--tag", tag])
+    else:
+        manifest = tomllib.loads((project / "sunrise-mod.toml").read_text(encoding="utf-8"))
+        args.extend(["--registry", registry, "--index", published, "--repo", repo, "--id", manifest["id"]])
+        if version or target:
+            require(version and target, "dispatch requires both a mod version and a stable Sunrise target")
+            args.extend(["--version", version, "--target", target])
+    tool(*args, cwd=project)
     json_write(shared / "intent.json", {"commit": commit, "repo": repo})
+    if read_plan(shared / "plan.json")["plan"] is None:
+        print("No eligible reviewed version needs a binary rebuild on its stable line's tip.")
+        return None
     batch = Batch(work)
     batch.check_tool()
+    if tag is not None:
+        plan_outputs(batch)
+    return batch
+
+
+def plan_outputs(batch):
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as file:
+            print("selected=true", file=file)
+            print(f"author_tag={batch.tag}", file=file)
             print(f"commit={batch.commit}", file=file)
             print(f"tool_commit={batch.tool_commit}", file=file)
             print("matrix=" + json.dumps({"include": batch.plan["hosts"]}, separators=(",", ":")), file=file)
@@ -147,6 +186,8 @@ def build(batch, project, name):
         rust = f"{release}-{triple}"
         call("rustup", "toolchain", "install", rust, "--profile", "minimal")
         env["RUSTUP_TOOLCHAIN"] = rust
+    if not batch.initial:
+        project = batch.prepare(batch.work / "build-project", build=True, env=env)
     lock = project / "Cargo.lock"
     reviewed = lock.read_bytes() if lock.is_file() else None
     tool("check", cwd=project, env=env)
@@ -180,6 +221,8 @@ def sign(batch, project):
         for asset in batch.outputs(host):
             require(asset not in combined, f"{asset}: produced by more than one host")
             combined[asset] = folder / asset
+    if not batch.initial:
+        project = batch.prepare(batch.work / "sign-project", env=env)
     batch.assets.mkdir(parents=True)
     for name, path in sorted(combined.items()):
         dest = batch.assets / name
@@ -197,9 +240,84 @@ def sign(batch, project):
     json_write(batch.signed / "batch.json", {"intent": batch.intent, "sha256": {name: sha(batch.assets / name) for name in expected}})
 
 
-def stage(batch, project, registry, out, *, source_only=False):
+def confirmed_rebuild(batch, registry, published, hashes):
+    """Refresh review and availability before touching a release or submitting an append."""
+    record = batch.plan["reviewed_source"]
+    source_tag, target = batch.plan["source"]["tag"], batch.plan["target"]
+    entry = registry / "mods" / f"{batch.id}.toml"
+    require(entry.is_file() and not entry.is_symlink(), "the reviewed mod entry is missing or linked")
+    current = tomllib.loads(entry.read_text(encoding="utf-8"))
+    key = os.environ.get("SUNRISE_MOD_PUBLIC_KEY", "").strip()
+    require(key == record["key"] and current.get("key", "").strip() == key,
+            "SUNRISE_MOD_PUBLIC_KEY or the reviewed key changed; replan the rebuild")
+    require(current["owners"] == record["owners"] and current.get("owner_ids", []) == record["owner_ids"],
+            "the reviewed owners changed; replan the rebuild")
+    source = [row for row in current.get("versions", []) if row["version"] == batch.plan["version"]]
+    require(len(source) == 1 and current["id"] == batch.id and current["kind"] == "native-mod",
+            "the reviewed native source row is no longer present")
+    row = source[0]
+    require(all(row.get(field) == want for field, want in [
+        ("file", record["url"]), ("sha256", record["sha256"]), ("signature", record["signature"]), ("sunrise", source_tag),
+    ]) and row.get("builds"), "the reviewed source row changed; replan the rebuild")
+    revoked = registry / "revoked.toml"
+    local_revoked = []
+    if revoked.exists():
+        require(not revoked.is_symlink(), "the registry revocation list is linked")
+        local_revoked = tomllib.loads(revoked.read_text(encoding="utf-8")).get("revoked", [])
+    index = json_read(published)
+    require(index.get("schema") == 1, "unsupported published registry index schema")
+    for item in local_revoked + index["revoked"]:
+        if item["id"] == batch.id:
+            require("sha256" in item and item["sha256"].lower() not in {record["sha256"], *hashes.values()},
+                    "the reviewed source or a build asset was taken down; stop the rebuild")
+    projects = [item for item in index["projects"] if item["id"] == batch.id]
+    require(len(projects) == 1 and projects[0].get("key") == key and projects[0]["kind"] == "native-mod",
+            "the published mod or its signing key changed; replan the rebuild")
+    versions = [item for item in projects[0]["versions"] if item["version"] == row["version"]]
+    require(len(versions) == 1, "the reviewed source version is no longer published")
+    listed = versions[0]
+    require(listed.get("sunrise") == source_tag and listed["game"] == row["game"] and listed.get("native_binaries")
+            and all(listed["file"].get(field) == want for field, want in [
+                ("name", batch.source), ("size", record["size"]), ("sha256", record["sha256"]), ("signature", record["signature"]),
+            ]), "the published source identity or binary eligibility changed; replan the rebuild")
+    commits = {release["tag"]: release["commit"] for release in index.get("releases", [])}
+    require(commits.get(source_tag) == batch.plan["source"]["commit"]
+            and commits.get(target["tag"], target["commit"]) == target["commit"],
+            "the published stable pin changed; replan the rebuild")
+    if nightly := index.get("nightly_build"):
+        commits["nightly"] = nightly["commit"]
+    require(not any(verdict["verdict"] == "breaks" and commits.get(tag) == target["commit"]
+                    for tag, verdict in listed.get("verdicts", {}).items()),
+            "the reviewed source now has a published fit break on this commit")
+    releases = {release["tag"]: release["commit"] for release in json_read(batch.releases)}
+    matches = [build for build in row["builds"] if releases.get(build["sunrise"]) == target["commit"]]
+    if matches:
+        signature = (batch.assets / f"{batch.descriptor}.minisig").read_bytes().decode()
+        require(matches == [{"sunrise": target["tag"], "sha256": hashes[batch.descriptor], "signature": signature,
+                             "binaries": f"{record['url'].rsplit('/', 1)[0]}/{batch.descriptor}"}],
+                "the registry already has a different build for this commit")
+        return True
+    require(not any(build["build"] == target["commit"] for build in listed["native_binaries"]),
+            "the published index already covers this commit; replan the rebuild")
+    return False
+
+
+def stage(batch, project, registry, out, *, source_only=False, published=None):
     batch.check_tool()
     hashes = batch.check_signed()
+    if not batch.initial:
+        if confirmed_rebuild(batch, registry, published, hashes):
+            print(f"{batch.id} {batch.plan['version']} already lists the exact rebuild")
+            out.mkdir(parents=True)
+            (out / "ALREADY_LISTED").touch()
+            return
+        project = batch.prepare(batch.work / f"{out.name}-project")
+        base = batch.plan["reviewed_source"]["url"].rsplit("/", 1)[0]
+        tool("publish", "--out", out, "--registry", registry, "--asset-base", base, "--releases", batch.releases,
+             "--package", batch.reviewed, "--binaries", batch.assets, "--sdk-data", batch.sdk, cwd=project)
+        for name, expected in hashes.items():
+            require(sha(out / name) == expected, f"{name}: publish staged different bytes")
+        return
     base = f"https://github.com/{batch.repo}/releases/download/{batch.tag}"
     key = os.environ.get("SUNRISE_MOD_PUBLIC_KEY", "").strip()
     require(key, "set SUNRISE_MOD_PUBLIC_KEY to the public half of the author signing key")
@@ -248,6 +366,7 @@ def main():
     parser.add_argument("--repo")
     parser.add_argument("--releases", type=Path)
     parser.add_argument("--registry", type=Path)
+    parser.add_argument("--published", type=Path)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
     work, project = args.work.resolve(), args.project.resolve()
@@ -260,7 +379,7 @@ def main():
         elif args.command == "sign":
             sign(batch, project)
         else:
-            stage(batch, project, args.registry.resolve(), args.out.resolve())
+            stage(batch, project, args.registry.resolve(), args.out.resolve(), published=args.published)
 
 
 if __name__ == "__main__":

@@ -527,6 +527,10 @@ fn new_native(
             include_str!("../template/native/release.yml"),
         ),
         (
+            ".github/workflows/rebuild.yml",
+            include_str!("../template/native/rebuild.yml"),
+        ),
+        (
             ".github/workflows/sunrise-release-jobs.yml",
             include_str!("../template/native/sunrise-release-jobs.yml"),
         ),
@@ -1197,6 +1201,7 @@ mod tests {
         for file in [
             "README.md",
             ".github/workflows/release.yml",
+            ".github/workflows/rebuild.yml",
             ".github/workflows/sunrise-release-jobs.yml",
             ".github/actions/sunrise-release-tool/action.yml",
         ] {
