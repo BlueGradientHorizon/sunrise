@@ -134,8 +134,9 @@ tick. The game does not cache the renderer's draw output.
   parent pose. Submit directly on the parent when no local transform is needed.
 - `submit_stack(&stack, ItemDisplayContext::Fixed)` resolves an item stack with its own models,
   display transform, tints and foil in the specified context. The current pose places its
-  centre. There is no nested stack count cap; only `(stack, display)` recursion cycles refuse
-  the enclosing layer, so delegating the same stack in another `ItemDisplayContext` succeeds.
+  centre. There is no nested stack count cap. A repeated `(stack, display)` pair or insufficient
+  native stack space to resolve the next child refuses the enclosing layer. Delegating the
+  same stack in a different `ItemDisplayContext` is not a cycle.
 
 The special node's `base` supplies its display transforms, particle and GUI light; any node
 `transformation` also applies. Geometry submitted directly uses the outer item's foil. The

@@ -199,6 +199,10 @@ impl SpecialModelRenderer for Pan {
                 });
                 collector.submit_geometry(lease, tints)
             }
+            1000.. => {
+                geometry(collector, &self.a)?;
+                stack(collector, 0, count + 1)
+            }
             _ => geometry(collector, &self.b),
         }
     }
@@ -540,6 +544,31 @@ fn nested_stacks_allow_over_64_and_key_cycles_by_stack_and_display() {
     let delegated = resolve(26, DisplayContext::Fixed);
     assert_eq!(quads(&renderer, &delegated).len(), 6);
     assert_eq!(delegated.layers[0].display, DisplayContext::Gui);
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn nonrepeating_nested_stacks_refuse_only_the_recursive_draw() {
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(|| {
+            let root = tempfile::tempdir().unwrap();
+            let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+            let env = PanEnv(FakeHost::new());
+            let resolve = |count| {
+                renderer.resolve(&stack("spt:pan", count), DisplayContext::Gui, None, None, 0, &env)
+            };
+            let failed = resolve(1000);
+            let missing = renderer.bake(MISSING_MODEL);
+            assert!(matches!(
+                failed.layers.as_slice(),
+                [layer] if matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing))
+            ));
+            assert_eq!(quads(&renderer, &resolve(1)).len(), 6);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 fn sprites() -> HashMap<String, Rect> {

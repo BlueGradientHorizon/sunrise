@@ -381,6 +381,13 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         if layer.failure.is_some() {
             return Err("the special layer was already refused".into());
         }
+        // Leave room to resolve one child and unwind its renderer. A cyclic renderer can
+        // make every key distinct, so the active path check alone cannot protect Rust's stack.
+        if stacker::remaining_stack().is_some_and(|bytes| bytes < 64 * 1024) {
+            let error = "too little native stack space to resolve a nested item model";
+            layer.failure = Some(SubmissionFailure::Fault(error.into()));
+            return Err(error.into());
+        }
         let Some((stack, display)) = layer.env.special_model_stack(stack, display) else {
             layer.failure = Some(SubmissionFailure::Nested);
             return Err("the nested special model stack or display context is unreadable".into());

@@ -294,9 +294,10 @@ impl<'a> SpecialModelCollector<'a> {
     }
 
     /// Draw another stack under the current pose, which places its centre. The nested item
-    /// uses its own display transform, tints and foil. A nested refusal (including unreadable
-    /// input or a `(stack, display)` cycle) discards the whole layer even if the returned error
-    /// is ignored.
+    /// uses its own display transform, tints and foil. There is no expansion count limit.
+    /// A nested refusal, such as unreadable input, a `(stack, display)` cycle or insufficient
+    /// native stack space to resolve another child, discards the whole layer even if the
+    /// returned error is ignored.
     pub fn submit_stack(
         &mut self,
         stack: &ItemStack,

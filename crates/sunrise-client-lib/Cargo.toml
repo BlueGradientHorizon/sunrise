@@ -85,6 +85,8 @@ sunrise-dualsense = { path = "../sunrise-dualsense", optional = true }
 ureq = { version = "2", default-features = false, features = ["tls"] }
 # `LevelStorageAccess.estimateDiskSpace`: usable disk space, without unsafe code on Windows.
 fs4 = { version = "1.1.0", default-features = false, features = ["sync"] }
+# Contain recursive native item renderers before a stack overflow can abort the process.
+stacker = "0.1.25"
 
 [target.'cfg(unix)'.dependencies]
 # The server thread's CPU time per tick (`SUNRISE_SPIKES`, spans.rs).
