@@ -1049,7 +1049,7 @@ clicks and quick-move still use the declared rules and `menu_slot_rules` (vanill
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 256), the data slots its menu syncs (`ContainerData`, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json

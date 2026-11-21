@@ -5,8 +5,8 @@ use crate::game::{
     transactions::OpenTransactions,
 };
 use mod_api::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess,
-    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost,
+    BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess, BlockEntityTickScope,
+    BlockEntityView, ResidentBlockEntity, ServerHost,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -174,21 +174,14 @@ impl ResidentBlockEntity for TickData<'_> {
         true
     }
 
-    fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
-        let limit = usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS);
-        if data.len() > limit {
-            return Err(BlockEntityDataError::TooManySlots {
-                count: data.len() as u64,
-                limit: limit as u64,
-            });
-        }
+    fn set_data_slots(&mut self, data: &[i32]) -> bool {
         if self.entity().data == data {
-            return Ok(false);
+            return false;
         }
         let dest = &mut self.edit(true).data;
         dest.clear();
         dest.extend_from_slice(data);
-        Ok(true)
+        true
     }
 
     fn nbt(&self) -> &Compound {

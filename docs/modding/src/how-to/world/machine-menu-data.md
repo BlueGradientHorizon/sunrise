@@ -26,11 +26,10 @@ vector when preparing a newly created or loaded machine. For a progress display,
 use one element initialized from the progress value in its saved payload.
 Do not reset the vector to its initial values on every tick.
 
-The method accepts at most the game's mod-menu data-slot limit (256).
-It returns `Ok(true)` when it changes the vector, `Ok(false)` for identical values,
-or `BlockEntityDataError::TooManySlots` with the submitted count and limit. It
-never silently clamps a vector. `BlockEntityDataError::Unavailable` means the
-handle cannot reach a writable mod holder in the server level in place.
+It returns `Ok(true)` when it changes the vector and `Ok(false)` for identical values;
+there is no synthetic slot-count cap (matching vanilla `ContainerData`).
+`BlockEntityDataError::Unavailable` means the handle cannot reach a writable mod
+holder in the server level in place.
 
 ## Update individual values
 

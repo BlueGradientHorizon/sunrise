@@ -202,22 +202,10 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
             assert!(game.transactions.is_empty());
             assert_eq!(entity.set_data_slots(game, vec![0; 256]), Ok(true));
             assert!(entity.set_data_slot(game, 255, 7).unwrap());
-            let before = entity.data_slots(game).unwrap();
-            let before_revision = revision(game);
-            game.world.modified.clear();
-            assert_eq!(
-                entity.set_data_slots(game, vec![0; 257]),
-                Err(BlockEntityDataError::TooManySlots {
-                    count: 257,
-                    limit: 256
-                })
-            );
-            assert_eq!(entity.data_slots(game), Some(before));
-            assert_eq!(revision(game), before_revision);
-            assert!(
-                game.world.modified.is_empty(),
-                "refusal sends no Changed notice"
-            );
+            let mut wide = vec![0; 257];
+            wide[256] = 9;
+            assert_eq!(entity.set_data_slots(game, wide.clone()), Ok(true));
+            assert_eq!(entity.data_slots(game), Some(wide));
             let saved = sunrise_client::save::block_entity_encode::encode(
                 pos,
                 game.world.block_entities.get(&pos).unwrap(),
@@ -289,7 +277,7 @@ impl BlockEntityPart for BothPaths {
         event.subject.with_view(|mut entity| {
             let mut data = entity.data_slots().to_vec();
             data.push(1);
-            entity.set_data_slots(&data).unwrap();
+            assert!(entity.set_data_slots(&data));
         });
     }
 }

@@ -984,7 +984,7 @@ pub struct MenuType {
     /// Append the 36 player inventory slots (default: true).
     #[serde(default = "yes")]
     pub player_inventory: bool,
-    /// 0 to [`MAX_MENU_SLOTS`].
+    /// Number of integer data slots synced by the menu (`ContainerData`), 0 by default.
     #[serde(default)]
     pub data_slots: u16,
     /// slots a player takes from but never puts into, each below `slots`.
@@ -1047,7 +1047,7 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
+/// the most container slots a mod menu type has, as many as a mod
 /// container (`native_block_entity_container`) may.
 pub const MAX_MENU_SLOTS: u16 = 256;
 
@@ -1708,10 +1708,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
+            if file.slots > MAX_MENU_SLOTS {
                 return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
+                    "{source}: slots ({}) is 0 to {MAX_MENU_SLOTS}",
+                    file.slots
                 ));
             }
             let mut seen = BTreeSet::new();
@@ -2860,13 +2860,18 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let wide = smod(
+            "menu-wide-data",
+            MANIFEST_TEXT,
+            &[(
+                "data/ruby/sunrise/menu/wide.json",
+                br#"{"slots": 1, "data_slots": 300}"#,
+            )],
+        )
+        .unwrap();
+        assert_eq!(wide.menu_types[0].data_slots, 300);
         for (case, file, details) in [
             ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
-            (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
-            ),
             (
                 "menu-result",
                 r#"{"slots": 0, "results": [0]}"#,

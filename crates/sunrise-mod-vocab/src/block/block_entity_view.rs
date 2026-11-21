@@ -1,7 +1,7 @@
 //! The resident server ticker's two sequential loans: its subject and the world.
 use crate::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey,
-    ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
+    BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey, ItemStack, JavaString,
+    LevelRef, ServerHost, Tag, Transaction,
 };
 
 /// The block entity this server ticker is running. Its storage stays in the level.
@@ -59,7 +59,8 @@ impl<'a> BlockEntityView<'a> {
         self.data.set_data_slot(slot, value)
     }
     /// Set and, if necessary, resize the menu data, without a block update packet.
-    pub fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
+    /// False for an equal slice.
+    pub fn set_data_slots(&mut self, data: &[i32]) -> bool {
         self.data.set_data_slots(data)
     }
 
@@ -209,7 +210,7 @@ pub trait ResidentBlockEntity {
     fn id(&self) -> &str;
     fn data_slots(&self) -> &[i32];
     fn set_data_slot(&mut self, slot: u32, value: i32) -> bool;
-    fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError>;
+    fn set_data_slots(&mut self, data: &[i32]) -> bool;
     fn nbt(&self) -> &Compound;
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool;
     fn item_slots(&self) -> usize;

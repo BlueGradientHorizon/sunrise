@@ -112,6 +112,7 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
                     assert_eq!(view.data_slots(), [23]);
                     assert!(!view.set_data_slot(0, 23));
                     assert!(!view.set_data_slot(1, 24));
+                    assert!(!view.set_data_slots(&[23]));
                 })
                 .unwrap();
             assert_eq!(game.journal_kept(), (0, 0));

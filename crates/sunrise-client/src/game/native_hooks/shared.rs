@@ -801,9 +801,6 @@ impl Game<'_> {
     }
 }
 
-// A stock menu opened by a mod block has dynamic data, capped by the block-entity API.
-const STOCK_NATIVE_DATA_CAPACITY: usize = 256;
-
 impl OpenNativeScreen {
     fn layout(&self) -> &mod_api::MenuScreenLayout {
         self.screen.layout()
@@ -845,11 +842,11 @@ impl OpenNativeScreen {
         if window != self.menu.window {
             return false;
         }
-        let count = self
+        if self
             .menu
             .mod_type
-            .map_or(STOCK_NATIVE_DATA_CAPACITY, |kind| kind.data_slots);
-        if index < count {
+            .is_none_or(|kind| index < kind.data_slots)
+        {
             if self.menu.data.len() <= index {
                 self.menu.data.resize(index + 1, 0);
             }

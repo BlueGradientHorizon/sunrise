@@ -1622,7 +1622,7 @@ mod own_block_entity_tests {
             event.subject.with_view(|mut entity| {
                 let mut data = entity.data_slots().to_vec();
                 data.push(mark(self.0));
-                entity.set_data_slots(&data).unwrap();
+                assert!(entity.set_data_slots(&data));
             });
         }
     }

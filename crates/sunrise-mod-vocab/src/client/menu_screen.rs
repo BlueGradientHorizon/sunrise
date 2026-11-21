@@ -226,8 +226,8 @@ pub struct MenuScreenOpen<'a> {
     pub backing_slots: usize,
     /// The number of appended player inventory slots, including the hotbar.
     pub player_slots: usize,
-    /// The custom menu's live data slot count, or the capacity for dynamic data
-    /// on a stock menu opened by a mod. This does not count opening bytes.
+    /// The declared live data slot count for a mod menu type, or `0` for a stock
+    /// menu whose data slots arrive dynamically. This does not count opening bytes.
     pub data_slots: usize,
     /// Permanent container backing indices left empty by the layout. Indices do not move.
     pub excluded_slots: &'a [u16],
