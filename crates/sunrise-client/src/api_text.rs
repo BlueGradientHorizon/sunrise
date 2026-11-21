@@ -11,7 +11,7 @@ use sunrise_core::{
     json_nbt,
     nbt::{self, Tag},
 };
-pub use text_style_capture::style_to_api;
+pub use text_style_capture::{style_to_api, style_to_api_inprocess};
 
 type Error = TextFormError;
 type Key = (u8, usize);
@@ -108,7 +108,7 @@ struct Node<'a> {
     hover: Option<Hover<'a>>,
     hover_fields: Option<&'a Map<String, Value>>,
     fields: Option<&'a Map<String, Value>>,
-    edges: Vec<(Source<'a>, CaptureEdge, bool)>,
+    edges: Vec<(Source<'a>, CaptureEdge)>,
     merge: bool,
 }
 
@@ -158,7 +158,7 @@ fn hover(fields: &Map<String, Value>) -> Option<Hover<'_>> {
         _ => return None,
     })
 }
-fn content(fields: &Map<String, Value>) -> Result<Content<'_>, Error> {
+fn content(fields: &Map<String, Value>, lenient: bool) -> Result<Content<'_>, Error> {
     use component::InlineObjectFields as Object;
     if let Some(object) = component::inline_object_fields(fields) {
         let fallback = fields.get("fallback").map(Source::Json);
@@ -179,6 +179,7 @@ fn content(fields: &Map<String, Value>) -> Result<Content<'_>, Error> {
         return Ok(match value {
             Value::String(s) => Content::Literal(s),
             Value::Number(_) | Value::Bool(_) | Value::Null => Content::Scalar(value),
+            _ if lenient => Content::Literal(""),
             _ => return Err(Error::Malformed),
         });
     }
@@ -242,7 +243,7 @@ fn content(fields: &Map<String, Value>) -> Result<Content<'_>, Error> {
     }
     Ok(Content::Literal(""))
 }
-fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
+fn node(source: Source<'_>, lenient: bool) -> Result<Node<'_>, Error> {
     let mut node = Node {
         source,
         content: Content::Literal(""),
@@ -258,41 +259,31 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
         Source::Engine(text) => {
             node.merge = true;
             if let Some(source) = text.source_component() {
-                node.edges
-                    .push((Source::Json(source), CaptureEdge::Child, true));
+                node.edges.push((Source::Json(source), CaptureEdge::Child));
             } else {
-                node.edges.extend(text.spans.iter().map(|span| {
-                    (
-                        Source::Span(span),
-                        CaptureEdge::Child,
-                        text.spans.len() == 1,
-                    )
-                }));
+                node.edges.extend(
+                    text.spans
+                        .iter()
+                        .map(|span| (Source::Span(span), CaptureEdge::Child)),
+                );
                 // One span is the component itself; multiple spans need a parent.
                 node.merge = text.spans.len() <= 1;
             }
         }
         Source::Json(Value::Array(values)) => {
             node.merge = true;
-            node.edges.extend(
-                values
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| (Source::Json(v), CaptureEdge::Child, i == 0)),
-            );
+            node.edges
+                .extend(values.iter().map(|v| (Source::Json(v), CaptureEdge::Child)));
         }
         Source::Json(Value::Object(fields)) => {
-            node.content = content(fields)?;
+            node.content = content(fields, lenient)?;
             node.fields = Some(fields);
             node.style = Style::Json(fields);
             node.hover_fields = component::style_event_object(fields, "hover_event", "hoverEvent");
             node.hover = node.hover_fields.and_then(hover);
             if let Some(values) = fields.get("extra").and_then(Value::as_array) {
-                node.edges.extend(
-                    values
-                        .iter()
-                        .map(|v| (Source::Json(v), CaptureEdge::Child, false)),
-                );
+                node.edges
+                    .extend(values.iter().map(|v| (Source::Json(v), CaptureEdge::Child)));
             }
         }
         Source::Json(Value::String(s)) => node.content = Content::Literal(s),
@@ -368,51 +359,42 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
         Content::Translate { arguments, .. } => node.edges.extend(
             arguments
                 .iter()
-                .map(|v| (Source::Json(v), CaptureEdge::Argument, false)),
+                .map(|v| (Source::Json(v), CaptureEdge::Argument)),
         ),
-        Content::Selector { separator, .. } | Content::Nbt { separator, .. } => node.edges.extend(
-            separator
-                .iter()
-                .map(|&v| (v, CaptureEdge::Separator, false)),
-        ),
+        Content::Selector { separator, .. } | Content::Nbt { separator, .. } => node
+            .edges
+            .extend(separator.iter().map(|&v| (v, CaptureEdge::Separator))),
         Content::Player { fallback, .. } | Content::Atlas { fallback, .. } => node
             .edges
-            .extend(fallback.iter().map(|&v| (v, CaptureEdge::Fallback, false))),
+            .extend(fallback.iter().map(|&v| (v, CaptureEdge::Fallback))),
         _ => {}
     }
     match &node.hover {
-        Some(Hover::Text(v)) => node.edges.push((*v, CaptureEdge::HoverText, false)),
+        Some(Hover::Text(v)) => node.edges.push((*v, CaptureEdge::HoverText)),
         Some(Hover::Entity { name: Some(v), .. }) => {
-            node.edges.push((*v, CaptureEdge::HoverEntityName, false))
+            node.edges.push((*v, CaptureEdge::HoverEntityName))
         }
         _ => {}
     }
     Ok(node)
 }
-// Plan borrowed topology completely before cloning any data. Array aliases and
-// a single native span stay at the same logical component depth.
-fn plan(root: Source<'_>) -> Result<Vec<Node<'_>>, Error> {
+// Plan borrowed topology iteratively before cloning any data. Depth limits belong
+// to serialization boundaries (Wire, JSON/SNBT codecs, NBT/network), not in-process text.
+fn plan(root: Source<'_>, lenient: bool) -> Result<Vec<Node<'_>>, Error> {
     enum Work<'a> {
-        Enter(Source<'a>, usize),
+        Enter(Source<'a>),
         Finish(Node<'a>),
     }
-    let mut work = vec![Work::Enter(root, 1)];
+    let mut work = vec![Work::Enter(root)];
     let mut nodes = Vec::new();
     while let Some(task) = work.pop() {
         match task {
             Work::Finish(node) => nodes.push(node),
-            Work::Enter(source, depth) => {
-                if depth > mod_api::text::MAX_TEXT_DEPTH {
-                    return Err(Error::TooDeep);
-                }
-                let node = node(source)?;
-                let children: Vec<_> = node
-                    .edges
-                    .iter()
-                    .map(|&(source, _, same)| (source, depth + usize::from(!same)))
-                    .collect();
+            Work::Enter(source) => {
+                let node = node(source, lenient)?;
+                let children: Vec<_> = node.edges.iter().map(|&(source, _)| source).collect();
                 work.push(Work::Finish(node));
-                work.extend(children.into_iter().rev().map(|(s, d)| Work::Enter(s, d)));
+                work.extend(children.into_iter().rev().map(Work::Enter));
             }
         }
     }
@@ -499,65 +481,110 @@ fn event_reserved(kind: &str, key: &str) -> bool {
             _ => false,
         }
 }
-fn profile(value: &Value, keep_metadata: bool) -> Result<TextProfile, Error> {
-    fn name(value: &str) -> Result<String, Error> {
-        if value.len() > 16 || value.bytes().any(|b| b <= 32 || b >= 127) {
+fn profile(
+    value: &Value,
+    keep_metadata: bool,
+    validate_codec: bool,
+    lenient: bool,
+) -> Result<TextProfile, Error> {
+    fn name(value: &str, validate_codec: bool) -> Result<String, Error> {
+        if validate_codec && (value.len() > 16 || value.bytes().any(|b| b <= 32 || b >= 127)) {
             return Err(Error::Malformed);
         }
         Ok(value.into())
     }
-    fn field<'a>(fields: &'a Map<String, Value>, key: &str) -> Result<Option<&'a str>, Error> {
-        fields
-            .get(key)
-            .filter(|v| !v.is_null())
-            .map(|v| v.as_str().ok_or(Error::Malformed))
-            .transpose()
+    fn field<'a>(
+        fields: &'a Map<String, Value>,
+        key: &str,
+        lenient: bool,
+    ) -> Result<Option<&'a str>, Error> {
+        match fields.get(key).filter(|v| !v.is_null()) {
+            None => Ok(None),
+            Some(v) => match v.as_str() {
+                Some(s) => Ok(Some(s)),
+                None if lenient => Ok(None),
+                None => Err(Error::Malformed),
+            },
+        }
     }
     if let Value::String(value) = value {
         let mut profile = TextProfile::default();
-        profile.name = Some(name(value)?);
+        profile.name = Some(name(value, validate_codec)?);
         return Ok(profile);
     }
-    let fields = value.as_object().ok_or(Error::Malformed)?;
-    let name = field(fields, "name")?.map(name).transpose()?;
-    let id = fields
-        .get("id")
-        .filter(|v| !v.is_null())
-        .map(|value| {
-            if !value.is_array() {
-                return Err(Error::Malformed);
-            }
-            uuid(value).ok_or(Error::Malformed)
-        })
+    let Some(fields) = value.as_object() else {
+        return if lenient {
+            Ok(TextProfile::default())
+        } else {
+            Err(Error::Malformed)
+        };
+    };
+    let name = field(fields, "name", lenient)?
+        .map(|s| name(s, validate_codec))
         .transpose()?;
+    let id = match fields.get("id").filter(|v| !v.is_null()) {
+        None => None,
+        Some(value) if value.is_array() => match uuid(value) {
+            Some(id) => Some(id),
+            None if lenient => None,
+            None => return Err(Error::Malformed),
+        },
+        Some(_) if lenient => None,
+        Some(_) => return Err(Error::Malformed),
+    };
     let mut properties = Vec::new();
     match fields.get("properties").filter(|v| !v.is_null()) {
         None => {}
         Some(Value::Object(map)) => {
-            if map.len() > 16 {
+            if validate_codec && map.len() > 16 {
                 return Err(Error::Malformed);
             }
             for (name, values) in map {
-                for value in values.as_array().ok_or(Error::Malformed)? {
+                let Some(values) = values.as_array() else {
+                    if lenient {
+                        continue;
+                    }
+                    return Err(Error::Malformed);
+                };
+                for value in values {
+                    let Some(value) = value.as_str() else {
+                        if lenient {
+                            continue;
+                        }
+                        return Err(Error::Malformed);
+                    };
                     let mut property = TextProfileProperty::default();
                     property.name = name.clone();
-                    property.value = value.as_str().ok_or(Error::Malformed)?.into();
+                    property.value = value.into();
                     properties.push(property);
                 }
             }
         }
         Some(Value::Array(records)) => {
-            if records.len() > 16 {
+            if validate_codec && records.len() > 16 {
                 return Err(Error::Malformed);
             }
             for record in records {
-                let record = record.as_object().ok_or(Error::Malformed)?;
-                let name = field(record, "name")?.ok_or(Error::Malformed)?;
-                let value = field(record, "value")?.ok_or(Error::Malformed)?;
-                let signature = field(record, "signature")?;
-                if name.encode_utf16().count() > 64
-                    || value.encode_utf16().count() > 32767
-                    || signature.is_some_and(|s| s.encode_utf16().count() > 1024)
+                let Some(record) = record.as_object() else {
+                    if lenient {
+                        continue;
+                    }
+                    return Err(Error::Malformed);
+                };
+                let (Some(name), Some(value)) = (
+                    field(record, "name", lenient)?,
+                    field(record, "value", lenient)?,
+                ) else {
+                    if lenient {
+                        continue;
+                    }
+                    return Err(Error::Malformed);
+                };
+                let signature = field(record, "signature", lenient)?;
+                if validate_codec
+                    && (name.encode_utf16().count() > 64
+                        || value.encode_utf16().count() > 32767
+                        || signature.is_some_and(|s| s.encode_utf16().count() > 1024))
                 {
                     return Err(Error::Malformed);
                 }
@@ -566,17 +593,23 @@ fn profile(value: &Value, keep_metadata: bool) -> Result<TextProfile, Error> {
                 property.value = value.into();
                 property.signature = signature.map(str::to_owned);
                 if keep_metadata {
-                    property.metadata = metadata(
+                    let meta = metadata(
                         record
                             .iter()
                             .filter(|(k, _)| !["name", "value", "signature"].contains(&k.as_str()))
                             .map(|(k, v)| (k.as_str(), v)),
                         0,
-                    )?;
+                    );
+                    property.metadata = match meta {
+                        Ok(tag) => tag,
+                        Err(_) if lenient => Tag::Compound(Default::default()),
+                        Err(err) => return Err(err),
+                    };
                 }
                 properties.push(property);
             }
         }
+        _ if lenient => {}
         _ => return Err(Error::Malformed),
     }
     let mut profile = TextProfile::default();
@@ -584,49 +617,51 @@ fn profile(value: &Value, keep_metadata: bool) -> Result<TextProfile, Error> {
     profile.id = id;
     profile.properties = properties;
     if keep_metadata {
-        profile.metadata = metadata(
+        let meta = metadata(
             fields
                 .iter()
                 .filter(|(k, _)| !["name", "id", "properties"].contains(&k.as_str()))
                 .map(|(k, v)| (k.as_str(), v)),
             0,
-        )?;
+        );
+        profile.metadata = match meta {
+            Ok(tag) => tag,
+            Err(_) if lenient => Tag::Compound(Default::default()),
+            Err(err) => return Err(err),
+        };
     }
     Ok(profile)
 }
-fn take_data(tag: std::sync::Arc<Tag>) -> Result<Tag, Error> {
-    if !nbt::within_depth(&tag, mod_api::text::MAX_TEXT_DEPTH) {
-        return Err(Error::TooDeep);
-    }
-    Ok(std::sync::Arc::try_unwrap(tag).unwrap_or_else(|tag| nbt::clone_tag(&tag)))
+fn take_data(tag: std::sync::Arc<Tag>) -> Tag {
+    std::sync::Arc::try_unwrap(tag).unwrap_or_else(|tag| nbt::clone_tag(&tag))
 }
-fn native_click(click: engine::ClickEvent) -> Result<Option<TextClick>, Error> {
+fn native_click(click: engine::ClickEvent) -> Option<TextClick> {
     use engine::ClickEvent as E;
-    Ok(Some(match click {
+    Some(match click {
         E::OpenUrl(v) => {
             if !component::untrusted_http_url(&v) {
-                return Ok(None);
+                return None;
             }
             TextClick::OpenUrl(v)
         }
         E::ChangePage(v) => {
             if v < 1 {
-                return Ok(None);
+                return None;
             }
             TextClick::ChangePage(v)
         }
         E::SuggestCommand(v) => TextClick::SuggestCommand(v),
         E::RunCommand(v) => TextClick::RunCommand(v),
         E::CopyToClipboard(v) => TextClick::CopyToClipboard(v),
-        E::ShowDialog(v) => TextClick::ShowDialog(take_data(v)?),
+        E::ShowDialog(v) => TextClick::ShowDialog(take_data(v)),
         E::Custom { id, payload } => TextClick::Custom {
             id,
-            payload: payload.map(take_data).transpose()?,
+            payload: payload.map(take_data),
         },
-        E::OpenFile(_) | E::Profiler(_) => return Ok(None),
-    }))
+        E::OpenFile(_) | E::Profiler(_) => return None,
+    })
 }
-fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
+fn captured_style(node: &Node<'_>, lenient: bool) -> Result<TextStyle, Error> {
     let mut style = TextStyle::default();
     match node.style {
         Style::Empty => {}
@@ -640,7 +675,7 @@ fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
             style.obfuscated = s.obfuscated;
             style.font = s.font.clone();
             style.insertion = s.insertion.clone();
-            style.click = s.click.clone().map(native_click).transpose()?.flatten();
+            style.click = s.click.clone().and_then(native_click);
         }
         Style::Json(fields) => {
             style.color = fields
@@ -661,14 +696,14 @@ fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
                 .get("insertion")
                 .and_then(Value::as_str)
                 .map(str::to_owned);
-            style.click = component::style_event_object(fields, "click_event", "clickEvent")
+            let parsed_click = component::style_event_object(fields, "click_event", "clickEvent")
                 .map(component::parse_click_event)
-                .transpose()
-                .map_err(error)?
-                .flatten()
-                .map(native_click)
-                .transpose()?
-                .flatten();
+                .transpose();
+            style.click = match parsed_click {
+                Ok(click) => click.flatten().and_then(native_click),
+                Err(_) if lenient => None,
+                Err(err) => return Err(error(err)),
+            };
         }
     }
     style.hover = match &node.hover {
@@ -680,10 +715,11 @@ fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
         }) => Some(TextHover::Item {
             id: (*id).into(),
             count: *count,
-            components: components
-                .map(json_nbt::json_to_tag)
-                .transpose()
-                .map_err(error)?,
+            components: match components.map(json_nbt::json_to_tag).transpose() {
+                Ok(tag) => tag,
+                Err(_) if lenient => None,
+                Err(err) => return Err(error(err)),
+            },
         }),
         Some(Hover::Entity { kind, id, .. }) => Some(TextHover::Entity {
             kind: (*kind).into(),
@@ -716,13 +752,17 @@ fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
         ("hover_event", hover_fields, hover_kind),
     ] {
         if let Some(fields) = fields {
-            let tag = metadata(
+            let tag = match metadata(
                 fields
                     .iter()
                     .filter(|(k, _)| !event_reserved(kind, k))
                     .map(|(k, v)| (k.as_str(), v)),
                 1,
-            )?;
+            ) {
+                Ok(tag) => tag,
+                Err(_) if lenient => continue,
+                Err(err) => return Err(err),
+            };
             if !matches!(&tag, Tag::Compound(v) if v.is_empty()) {
                 extra.insert(key.into(), tag);
             }
@@ -730,8 +770,8 @@ fn captured_style(node: &Node<'_>) -> Result<TextStyle, Error> {
     }
     Ok(style)
 }
-fn captured_shallow(node: &Node<'_>) -> Result<Text, Error> {
-    let meta = node
+fn captured_shallow(node: &Node<'_>, lenient: bool) -> Result<Text, Error> {
+    let meta = match node
         .fields
         .map(|fields| {
             metadata(
@@ -742,8 +782,13 @@ fn captured_shallow(node: &Node<'_>) -> Result<Text, Error> {
                 0,
             )
         })
-        .transpose()?
-        .unwrap_or_else(|| Tag::Compound(Default::default()));
+        .transpose()
+    {
+        Ok(Some(tag)) => tag,
+        Ok(None) => Tag::Compound(Default::default()),
+        Err(_) if lenient => Tag::Compound(Default::default()),
+        Err(err) => return Err(err),
+    };
     let mut text = Text::new(match &node.content {
         Content::Literal(s) => TextContent::Literal((*s).into()),
         Content::Scalar(value) => TextContent::Literal(value.to_string()),
@@ -783,7 +828,7 @@ fn captured_shallow(node: &Node<'_>) -> Result<Text, Error> {
             hat,
             ..
         } => TextContent::Object(TextObject::Player {
-            profile: profile(value, true)?,
+            profile: profile(value, true, false, lenient)?,
             hat: *hat,
             fallback: None,
         }),
@@ -795,21 +840,27 @@ fn captured_shallow(node: &Node<'_>) -> Result<Text, Error> {
     });
     text.metadata = meta;
     if let Content::Score { fields, .. } = &node.content {
-        let score = metadata(
+        let score = match metadata(
             fields
                 .iter()
                 .filter(|(k, _)| !["name", "objective"].contains(&k.as_str()))
                 .map(|(k, v)| (k.as_str(), v)),
             1,
-        )?;
-        if !matches!(&score, Tag::Compound(v) if v.is_empty()) {
+        ) {
+            Ok(tag) => Some(tag),
+            Err(_) if lenient => None,
+            Err(err) => return Err(err),
+        };
+        if let Some(score) = score
+            && !matches!(&score, Tag::Compound(v) if v.is_empty())
+        {
             let Tag::Compound(meta) = &mut text.metadata else {
                 unreachable!()
             };
             meta.insert("score".into(), score);
         }
     }
-    text.style = captured_style(node)?;
+    text.style = captured_style(node, lenient)?;
     Ok(text)
 }
 fn attach(text: &mut Text, relation: CaptureEdge, child: Text) {
@@ -838,19 +889,19 @@ fn attach(text: &mut Text, relation: CaptureEdge, child: Text) {
         },
     }
 }
-fn capture(root: Source<'_>) -> Result<Text, Error> {
-    let nodes = plan(root)?;
+fn capture_with(root: Source<'_>, lenient: bool) -> Result<Text, Error> {
+    let nodes = plan(root, lenient)?;
     let mut ready: HashMap<Key, Text> = HashMap::new();
     for node in nodes {
         let mut text = if node.merge {
             node.edges
                 .first()
-                .map(|(child, _, _)| ready.remove(&child.key()).expect("child was built"))
+                .map(|(child, _)| ready.remove(&child.key()).expect("child was built"))
                 .unwrap_or_default()
         } else {
-            captured_shallow(&node)?
+            captured_shallow(&node, lenient)?
         };
-        for &(child, relation, _) in node.edges.iter().skip(usize::from(node.merge)) {
+        for &(child, relation) in node.edges.iter().skip(usize::from(node.merge)) {
             attach(
                 &mut text,
                 relation,
@@ -860,6 +911,9 @@ fn capture(root: Source<'_>) -> Result<Text, Error> {
         ready.insert(node.source.key(), text);
     }
     Ok(ready.remove(&root.key()).expect("root was built"))
+}
+fn capture(root: Source<'_>) -> Result<Text, Error> {
+    capture_with(root, false)
 }
 pub fn captured_text(value: &Value) -> Result<Text, Error> {
     capture(Source::Json(value))
@@ -873,9 +927,14 @@ pub fn style_hover(style: &engine::Style) -> Option<TextHover> {
     let span = engine::Span::new(String::new(), style.clone());
     capture(Source::Span(&span)).ok()?.style.hover.take()
 }
-/// Capture an engine text without losing structured content or style.
+/// Capture an engine text in memory without imposing serialization depth or profile caps.
 pub fn to_api(text: &engine::Text) -> Result<Text, TextFormError> {
     capture(Source::Engine(text))
+}
+/// Capture an engine text in memory for infallible in-process text reads, dropping any
+/// unrepresentable opaque metadata rather than failing.
+pub fn to_api_inprocess(text: &engine::Text) -> Text {
+    capture_with(Source::Engine(text), true).expect("lenient capture is infallible")
 }
 
 fn api_nodes(root: &Text) -> Vec<&Text> {
@@ -897,27 +956,48 @@ struct Payloads<'a> {
     tags: HashMap<usize, json_nbt::JsonTag<'a>>,
 }
 impl<'a> Payloads<'a> {
-    fn new(nodes: &[&'a Text]) -> Result<Self, Error> {
-        let mut tags = HashMap::new();
-        let mut keep = |tag: &'a Tag| -> Result<(), Error> {
-            if matches!(tag, Tag::Compound(v) if v.is_empty())
-                || matches!(tag, Tag::List(v) if v.is_empty())
-            {
-                return Ok(());
+    fn insert_tag(
+        tags: &mut HashMap<usize, json_nbt::JsonTag<'a>>,
+        tag: &'a Tag,
+        lenient: bool,
+    ) -> Result<(), Error> {
+        if matches!(tag, Tag::Compound(v) if v.is_empty())
+            || matches!(tag, Tag::List(v) if v.is_empty())
+        {
+            return Ok(());
+        }
+        match json_nbt::JsonTag::new(tag) {
+            Ok(json_tag) => {
+                tags.insert(tag as *const _ as usize, json_tag);
+                Ok(())
             }
-            tags.insert(
-                tag as *const _ as usize,
-                json_nbt::JsonTag::new(tag).map_err(error)?,
-            );
-            Ok(())
-        };
+            Err(_) if lenient => Ok(()),
+            Err(err) => Err(error(err)),
+        }
+    }
+    fn insert_metadata(
+        tags: &mut HashMap<usize, json_nbt::JsonTag<'a>>,
+        tag: &'a Tag,
+        lenient: bool,
+    ) -> Result<(), Error> {
+        if !matches!(tag, Tag::Compound(_)) {
+            return if lenient {
+                Ok(())
+            } else {
+                Err(Error::Malformed)
+            };
+        }
+        Self::insert_tag(tags, tag, lenient)
+    }
+    fn new(nodes: &[&'a Text], lenient: bool) -> Result<Self, Error> {
+        let mut tags = HashMap::new();
         for text in nodes {
-            keep(&text.metadata)?;
-            keep(&text.style.metadata)?;
+            Self::insert_metadata(&mut tags, &text.metadata, lenient)?;
+            Self::insert_metadata(&mut tags, &text.style.metadata, lenient)?;
             if let TextContent::Object(TextObject::Player { profile, .. }) = &text.content {
-                keep(&profile.metadata)?;
+                Self::insert_metadata(&mut tags, &profile.metadata, lenient)?;
                 for p in &profile.properties {
-                    keep(&p.metadata)?;
+                    Self::insert_metadata(&mut tags, &p.metadata, lenient)?;
                 }
             }
             #[allow(clippy::single_match)] // TODO(#2273): rewrite as `if let`.
@@ -927,7 +1007,7 @@ impl<'a> Payloads<'a> {
                     | TextClick::Custom {
                         payload: Some(tag), ..
                     },
-                ) => keep(tag)?,
+                ) => Self::insert_tag(&mut tags, tag, lenient)?,
                 _ => {}
             }
             if let Some(TextHover::Item {
@@ -935,23 +1015,30 @@ impl<'a> Payloads<'a> {
                 ..
             }) = &text.style.hover
             {
-                keep(tag)?;
+                Self::insert_tag(&mut tags, tag, lenient)?;
             }
         }
         Ok(Self { tags })
     }
-    fn emit(&self, tag: &Tag) -> Value {
+    fn emit(&self, tag: &Tag) -> Option<Value> {
         match tag {
-            Tag::Compound(v) if v.is_empty() => Value::Object(Map::new()),
-            Tag::List(v) if v.is_empty() => Value::Array(Vec::new()),
-            _ => self.tags[&(tag as *const _ as usize)].to_json(),
+            Tag::Compound(v) if v.is_empty() => Some(Value::Object(Map::new())),
+            Tag::List(v) if v.is_empty() => Some(Value::Array(Vec::new())),
+            _ => self
+                .tags
+                .get(&(tag as *const _ as usize))
+                .map(json_nbt::JsonTag::to_json),
         }
     }
     fn object(&self, tag: &Tag) -> Map<String, Value> {
-        let Value::Object(map) = self.emit(tag) else {
-            unreachable!("validated metadata is a compound")
-        };
-        map
+        match self.emit(tag) {
+            Some(Value::Object(map)) => map,
+            Some(value) => {
+                component::discard_component(value);
+                Map::new()
+            }
+            None => Map::new(),
+        }
     }
 }
 fn filter_metadata(
@@ -978,10 +1065,14 @@ fn object_or_empty(value: Option<Value>) -> Map<String, Value> {
         None => Map::new(),
     }
 }
-/// A component codec drops fields outside the profile schema; engine text capture,
-/// on the other hand, round-trips that metadata.
+/// A component codec enforces `ExtraCodecs` profile/property bounds and drops fields
+/// outside the profile schema; engine text capture, on the other hand, round-trips
+/// in-memory profiles and metadata.
 pub(crate) fn decoded_profile_json(value: &Value) -> Option<Value> {
-    Some(profile_json(&profile(value, false).ok()?, None))
+    Some(profile_json(
+        &profile(value, false, true, false).ok()?,
+        None,
+    ))
 }
 
 fn profile_json(profile: &TextProfile, payloads: Option<&Payloads<'_>>) -> Value {
@@ -1085,23 +1176,36 @@ fn emitted_style<'a>(
     }
     if let Some(value) = &style.click {
         let kind = click_kind(value);
-        let mut fields = filter_metadata(click, |key| event_reserved(kind, key));
-        fields.extend(match value {
-            TextClick::OpenUrl(v) => action("open_url", "url", v.clone().into()),
-            TextClick::ChangePage(v) => action("change_page", "page", (*v).into()),
-            TextClick::SuggestCommand(v) => action("suggest_command", "command", v.clone().into()),
-            TextClick::RunCommand(v) => action("run_command", "command", v.clone().into()),
-            TextClick::CopyToClipboard(v) => action("copy_to_clipboard", "value", v.clone().into()),
-            TextClick::ShowDialog(v) => action("show_dialog", "dialog", payloads.emit(v)),
+        let emitted = match value {
+            TextClick::OpenUrl(v) => Some(action("open_url", "url", v.clone().into())),
+            TextClick::ChangePage(v) => Some(action("change_page", "page", (*v).into())),
+            TextClick::SuggestCommand(v) => {
+                Some(action("suggest_command", "command", v.clone().into()))
+            }
+            TextClick::RunCommand(v) => Some(action("run_command", "command", v.clone().into())),
+            TextClick::CopyToClipboard(v) => {
+                Some(action("copy_to_clipboard", "value", v.clone().into()))
+            }
+            TextClick::ShowDialog(v) => payloads
+                .emit(v)
+                .map(|dialog| action("show_dialog", "dialog", dialog)),
             TextClick::Custom { id, payload } => {
                 let mut fields = action("custom", "id", id.clone().into());
-                if let Some(tag) = payload {
-                    fields.insert("payload".into(), payloads.emit(tag));
+                if let Some(tag) = payload
+                    && let Some(value) = payloads.emit(tag)
+                {
+                    fields.insert("payload".into(), value);
                 }
-                fields
+                Some(fields)
             }
-        });
-        out.insert("click_event".into(), Value::Object(fields));
+        };
+        if let Some(emitted) = emitted {
+            let mut fields = filter_metadata(click, |key| event_reserved(kind, key));
+            fields.extend(emitted);
+            out.insert("click_event".into(), Value::Object(fields));
+        } else {
+            component::discard_component(Value::Object(click));
+        }
     } else {
         component::discard_component(Value::Object(click));
     }
@@ -1127,8 +1231,10 @@ fn emitted_style<'a>(
                     ("id".into(), id.clone().into()),
                     ("count".into(), (*count).into()),
                 ]);
-                if let Some(tag) = components {
-                    fields.insert("components".into(), payloads.emit(tag));
+                if let Some(tag) = components
+                    && let Some(value) = payloads.emit(tag)
+                {
+                    fields.insert("components".into(), value);
                 }
             }
             TextHover::Entity {
@@ -1276,10 +1382,9 @@ fn emitted_node<'a>(
     }
     Value::Object(out)
 }
-fn owned_text_component(text: &Text) -> Result<Value, Error> {
-    text.validate()?;
+fn owned_text_component_with(text: &Text, lenient: bool) -> Result<Value, Error> {
     let nodes = api_nodes(text);
-    let payloads = Payloads::new(&nodes)?; // Refuse all representation errors before any JSON clone.
+    let payloads = Payloads::new(&nodes, lenient)?; // Refuse all representation errors before any JSON clone.
     let mut ready = HashMap::new();
     for node in nodes {
         let value = emitted_node(node, &payloads, &mut |child| {
@@ -1293,9 +1398,26 @@ fn owned_text_component(text: &Text) -> Result<Value, Error> {
         .remove(&(text as *const _ as usize))
         .expect("root was built"))
 }
-/// Encode API text, preserving the boundary's validation and representation errors.
+#[cfg(test)]
+fn owned_text_component(text: &Text) -> Result<Value, Error> {
+    owned_text_component_with(text, false)
+}
+/// Encode API text in memory without imposing serialization depth or profile caps.
 pub fn to_engine(text: &Text) -> Result<engine::Text, TextFormError> {
-    owned_text_component(text).map(Into::into)
+    owned_text_component_with(text, false).map(Into::into)
+}
+/// Encode API text in memory for infallible in-process text reads, omitting any
+/// unrepresentable opaque metadata rather than failing.
+pub fn to_engine_inprocess(text: &Text) -> engine::Text {
+    owned_text_component_with(text, true)
+        .expect("lenient emit is infallible")
+        .into()
+}
+/// Encode API text for a serialization boundary (Wire, JSON/SNBT, NBT/network),
+/// enforcing the 512-node depth limit and `ExtraCodecs` profile/property bounds.
+pub fn to_serialized_engine(text: &Text) -> Result<engine::Text, TextFormError> {
+    text.validate()?;
+    to_engine(text)
 }
 
 #[cfg(test)]
@@ -1728,22 +1850,29 @@ mod iterative_tests {
                     source = parent;
                 }
                 let engine = sunrise_client_core::text::Text::empty().with_component(source);
-                if depth == 513 {
-                    assert!(matches!(engine.try_into_api(), Err(mod_api::text::TextFormError::TooDeep)));
-                    assert!(matches!(captured_text(&engine.component_view()), Err(mod_api::text::TextFormError::TooDeep)));
-                    std::mem::forget(engine);
-                    continue;
-                }
                 let api = engine.try_into_api().unwrap();
                 let nodes = api_nodes(&api);
-                assert_eq!(nodes.len(), 512);
+                assert_eq!(nodes.len(), depth);
                 assert!(matches!(&nodes[0].content, TextContent::Literal(s) if s == "leaf"));
+                let emitted = api.try_into_engine(&()).unwrap();
+                let restored = emitted.try_into_api().unwrap();
+                assert_eq!(api_nodes(&restored).len(), depth);
+                if depth == 513 {
+                    // Serialization boundaries enforce the 512-node depth limit.
+                    let mut wire = Writer::new();
+                    wire.put(&api);
+                    assert_eq!(wire.error(), Some(mod_api::wire::WireError::Depth));
+                    assert!(matches!(
+                        to_serialized_engine(&api),
+                        Err(mod_api::text::TextFormError::TooDeep)
+                    ));
+                    std::mem::forget((engine, api, emitted, restored));
+                    continue;
+                }
                 // Compare the full trees without calling recursive PartialEq on this small stack.
                 let mut expected = Writer::new();
                 expected.put(&api);
                 assert_eq!(expected.error(), None);
-                let emitted = api.try_into_engine(&()).unwrap();
-                let restored = emitted.try_into_api().unwrap();
                 let mut actual = Writer::new();
                 actual.put(&restored);
                 assert_eq!(actual.error(), None);
@@ -1757,7 +1886,8 @@ mod iterative_tests {
     #[test]
     fn too_deep_is_refused_before_cloning_opaque_metadata() {
         // Keep opaque metadata much deeper than the small stack could recursively clone.
-        // The component-depth refusal must win before any metadata is copied.
+        // At serialization boundaries, the component-depth refusal must win before any
+        // opaque metadata is inspected or copied.
         let mut opaque = Tag::Byte(1);
         for _ in 0..4096 {
             opaque = Tag::List(vec![opaque]);
@@ -1766,37 +1896,18 @@ mod iterative_tests {
         for _ in 1..513 {
             api = mod_api::Text::literal("parent").append(api);
         }
-        // Build the source separately without serde's recursive json! value serializer.
-        let mut component = json!({"text":"leaf"});
-        for _ in 1..513 {
-            let mut parent = serde_json::Map::new();
-            parent.insert("text".into(), "parent".into());
-            parent.insert("extra".into(), serde_json::Value::Array(vec![component]));
-            component = serde_json::Value::Object(parent);
-        }
         api.metadata = Tag::compound([("test:opaque", opaque)]);
-        // A separate opaque value avoids cloning either deep input in the test itself.
-        let mut opaque = serde_json::Value::Null;
-        for _ in 0..4096 {
-            opaque = serde_json::Value::Array(vec![opaque]);
-        }
-        component
-            .as_object_mut()
-            .unwrap()
-            .insert("test:opaque".into(), opaque);
-        let engine = sunrise_client_core::text::Text::empty().with_component(component);
         std::thread::Builder::new()
             .stack_size(256 * 1024)
             .spawn(move || {
                 assert!(matches!(
-                    api.try_into_engine(&()),
+                    to_serialized_engine(&api),
                     Err(mod_api::text::TextFormError::TooDeep)
                 ));
-                assert!(matches!(
-                    engine.try_into_api(),
-                    Err(mod_api::text::TextFormError::TooDeep)
-                ));
-                std::mem::forget((api, engine));
+                let mut wire = Writer::new();
+                wire.put(&api);
+                assert_eq!(wire.error(), Some(mod_api::wire::WireError::Depth));
+                std::mem::forget(api);
             })
             .unwrap()
             .join()
@@ -1820,11 +1931,13 @@ mod iterative_tests {
                             },
                         )]);
                     }
-                    let api = text.try_into_api();
+                    let api = text.try_into_api().unwrap();
+                    assert_eq!(api_nodes(&api).len(), depth);
                     if depth == 513 {
-                        assert!(matches!(api, Err(mod_api::text::TextFormError::TooDeep)));
-                    } else {
-                        assert_eq!(api_nodes(api.as_ref().unwrap()).len(), 512);
+                        assert!(matches!(
+                            to_serialized_engine(&api),
+                            Err(mod_api::text::TextFormError::TooDeep)
+                        ));
                     }
                     std::mem::forget((text, api));
                 }
@@ -1832,6 +1945,64 @@ mod iterative_tests {
             .unwrap()
             .join()
             .unwrap();
+    }
+
+    #[test]
+    fn inprocess_text_allows_deep_trees_and_unbounded_profiles_while_serialization_enforces_limits()
+    {
+        // Depth > 512 is valid in memory (Component.java has no depth limit in memory).
+        let mut deep = mod_api::Text::literal("leaf");
+        for _ in 0..600 {
+            deep = mod_api::Text::literal("p").append(deep);
+        }
+        let engine = to_engine(&deep).unwrap();
+        assert_eq!(engine.plain().len(), 604);
+        assert_eq!(to_engine_inprocess(&deep).plain().len(), 604);
+        let roundtrip = to_api(&engine).unwrap();
+        assert_eq!(api_nodes(&roundtrip).len(), 601);
+        assert_eq!(api_nodes(&to_api_inprocess(&engine)).len(), 601);
+        assert_eq!(to_serialized_engine(&deep), Err(TextFormError::TooDeep));
+        let mut wire = Writer::new();
+        wire.put(&deep);
+        assert_eq!(wire.error(), Some(mod_api::wire::WireError::Depth));
+
+        // Player profiles exceeding ExtraCodecs serialization limits survive in memory,
+        // while JSON codec / Wire / serialization boundaries enforce ExtraCodecs bounds.
+        let mut profile = TextProfile::default();
+        profile.name = Some("Player Name Over Sixteen".into());
+        for i in 0..17 {
+            let mut prop = TextProfileProperty::default();
+            prop.name = format!("prop_{i}");
+            prop.value = "v".into();
+            prop.signature = Some("sig".into());
+            profile.properties.push(prop);
+        }
+        let player = mod_api::Text::new(TextContent::Object(TextObject::Player {
+            profile,
+            hat: true,
+            fallback: None,
+        }));
+        let engine_player = to_engine(&player).unwrap();
+        let api_player = to_api(&engine_player).unwrap();
+        assert_eq!(api_player, player);
+        assert_eq!(to_api_inprocess(&to_engine_inprocess(&player)), player);
+        assert_eq!(to_serialized_engine(&player), Err(TextFormError::Malformed));
+        assert_eq!(
+            decoded_profile_json(&engine_player.component()["player"]),
+            None
+        );
+        let mut wire = Writer::new();
+        wire.put(&player);
+        assert!(matches!(
+            wire.error(),
+            Some(mod_api::wire::WireError::Invalid(_))
+        ));
+
+        // Non-compound metadata is refused by to_engine and safely ignored by to_engine_inprocess.
+        let mut bad_meta = mod_api::Text::literal("ok");
+        bad_meta.metadata = Tag::Int(7);
+        assert_eq!(to_engine(&bad_meta), Err(TextFormError::Malformed));
+        assert_eq!(to_engine_inprocess(&bad_meta).plain(), "ok");
     }
 
     #[test]

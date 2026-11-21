@@ -6,9 +6,9 @@ in client setup.
 
 | Method on `ClientHost` | Result |
 | --- | --- |
-| `text_width(&Text)` | `Result<i32, TextFormError>`: styled width in GUI pixels. |
-| `text_split(&Text, i32)` | `Result<Vec<Text>, TextFormError>`: wrapped, styled lines. |
-| `text_visual_order(&Text)` | `Result<Vec<VisualTextCharacter>, TextFormError>`: styled characters in display order. |
+| `text_width(&Text)` | `i32`: styled width in GUI pixels. |
+| `text_split(&Text, i32)` | `Vec<Text>`: wrapped, styled lines. |
+| `text_visual_order(&Text)` | `Vec<VisualTextCharacter>`: styled characters in display order. |
 
 Inside a drawing hook, `DrawContext::text_lines(&Text, max_width, TextAlign, scale)` wraps and
 places the same way and adds what a label needs: each line's `Text`, its `at` position inside the
@@ -18,9 +18,13 @@ with a `TextLinesRefusal`. See [Screens](screens.md#labels-wrapped-text-without-
 
 Build an owned `Text` directly with `Text::literal`, `Text::translate` or
 `Text::new(TextContent::…)`. Use `with_style` to set the style and `append` to
-add an ordered child, then pass `&text` to the host read. The host validates the
-component and returns a `TextFormError` if it cannot cross the engine boundary.
-There is no intermediate form to build or validate.
+add an ordered child, then pass `&text` to the host read. In-process text reads
+(`text_string`, `text_width`, `text_split`, `text_visual_order`, and
+`BlockEntityDrawContext::text_width`) are infallible and do not enforce the
+512-node serialization depth cap or `ExtraCodecs` profile/property bounds;
+those checks apply at serialization boundaries (Wire, JSON/SNBT codecs such as
+`text_from_json`, and NBT/network writes). There is no intermediate form to
+build or validate.
 
 To inspect the immediate nested components, use `text.visit_children(|child| …)`.
 It lends appended children first, then any translation arguments, selector or NBT
@@ -46,11 +50,11 @@ layout. The reads above measure the component you pass, without running that pre
 ## Resolved strings
 
 For vanilla `Component.getString()` behavior, use
-`host.text_string(&Text) -> Result<String, TextFormError>` on either side,
-including setup. It uses the same component conversion as
+`host.text_string(&Text) -> String` on either side,
+including setup and pack discovery. It uses the same in-process component resolution as
 measurement: translation arguments, keybinds and siblings resolve on each call.
 Styles do not add characters; literal legacy `§` formatting codes remain in the
-string. Invalid components return the same boundary errors as the other text reads.
+string.
 
 - **Client and integrated server:** both use the local player's selected language,
   active resource packs (including client mod translations) and key bindings.
@@ -66,8 +70,10 @@ string. Invalid components return the same boundary errors as the other text rea
   client resource packs nor later data-pack reloads affect the snapshot.
   Keybind components give their literal IDs.
 
-The pack-discovery host has no game text backend. `text_string` there returns
-`TextFormError::Unavailable`.
+During pack discovery and initial reload registration, before language
+resources have loaded, `text_string` still resolves literals, fallbacks and
+translation keys directly without language overrides (`text_from_json` and
+`text_from_legacy` still return `TextFormError::Unavailable` there).
 
 A missing key uses its component fallback, or the key itself without a
 fallback. On a dedicated server, a pack language file may also supply an
@@ -81,7 +87,7 @@ language. Do not cache resolved strings across language changes.
 ## Visual order
 
 For vanilla `Component.getVisualOrderText()` behavior, use
-`ClientHost::text_visual_order(&Text) -> Result<Vec<VisualTextCharacter>, TextFormError>`.
+`ClientHost::text_visual_order(&Text) -> Vec<VisualTextCharacter>`.
 Each API-owned Wire record contains a Unicode scalar (`scalar`), its full
 resolved `TextStyle`, and the sink's `source_index`. Characters are already in
 visual order, including Arabic shaping and mirrored punctuation; do not apply
@@ -93,8 +99,7 @@ directional run, not global component positions. For example, `A😀B` yields
 indices `0, 1, 3`; Hebrew `שלום` yields `3, 2, 1, 0`. A style or bidi run boundary
 restarts the index. Shaping can shorten the string, so these are not guaranteed
 to identify original input scalars. Use the records to re-layout existing tooltip
-lines without losing click, hover, font or other style information. Like the
-other reads, invalid component input returns its boundary error.
+lines without losing click, hover, font or other style information.
 
 Action keybind IDs such as `key.jump` resolve through the client's current key
 binding to their assigned physical key display name, matching vanilla's `KeybindContents`.

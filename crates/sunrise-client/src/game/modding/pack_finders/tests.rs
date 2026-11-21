@@ -171,11 +171,33 @@ fn restricted_pack_discovery_refuses_game_text_reads() {
     impl Hooks for Observe {
         fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
             let component = mod_api::Text::literal("Startup");
-            let resolved = match host {
-                HostSide::Client(host) => host.text_string(&component),
-                HostSide::Server(host) => host.text_string(&component),
+            let fallback = mod_api::Text::new(mod_api::text::TextContent::Translatable {
+                key: "test.discovery.missing".into(),
+                fallback: Some("Fallback %s".into()),
+                arguments: vec![mod_api::Text::literal("Pack")],
+            });
+            let mut deep = mod_api::Text::literal("Deep");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            let (resolved, resolved_fallback, resolved_deep, parsed) = match host {
+                HostSide::Client(host) => (
+                    host.text_string(&component),
+                    host.text_string(&fallback),
+                    host.text_string(&deep),
+                    host.text_from_json(r#""Startup""#),
+                ),
+                HostSide::Server(host) => (
+                    host.text_string(&component),
+                    host.text_string(&fallback),
+                    host.text_string(&deep),
+                    host.text_from_json(r#""Startup""#),
+                ),
             };
-            assert_eq!(resolved, Err(mod_api::text::TextFormError::Unavailable));
+            assert_eq!(resolved, "Startup");
+            assert_eq!(resolved_fallback, "Fallback Pack");
+            assert_eq!(resolved_deep, "Deep");
+            assert_eq!(parsed, Err(mod_api::text::TextFormError::Unavailable));
             self.0.lock().unwrap().push(event.packs.pack_type());
         }
     }

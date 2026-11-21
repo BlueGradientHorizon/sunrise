@@ -29,7 +29,14 @@ pub(super) struct StartupReloadContext;
 impl mod_api::prelude::BlockStatesHost for StartupReloadContext {}
 impl mod_api::prelude::KeysHost for StartupReloadContext {}
 impl mod_api::prelude::TagsHost for StartupReloadContext {}
-impl mod_api::prelude::TextHost for StartupReloadContext {}
+impl mod_api::prelude::TextHost for StartupReloadContext {
+    fn text_string(&self, text: &mod_api::Text) -> String {
+        sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
+            sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
+        })
+        .0
+    }
+}
 impl mod_api::prelude::RecipesHost for StartupReloadContext {}
 impl mod_api::prelude::RecipePropertiesHost for StartupReloadContext {}
 impl mod_api::prelude::ResourcesHost for StartupReloadContext {}

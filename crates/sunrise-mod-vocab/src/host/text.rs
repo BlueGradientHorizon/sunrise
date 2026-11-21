@@ -7,7 +7,7 @@ pub trait TextHost {
     /// Side: both.
     /// `Component.getString()`: resolve translations, arguments, keybinds and
     /// siblings to plain characters. Styles do not add characters; literal
-    /// legacy formatting codes remain. Invalid components return their boundary error.
+    /// legacy formatting codes remain.
     ///
     /// On the client and its integrated server this uses the client process's
     /// active language, resource-pack layers and key bindings, not a remote
@@ -16,9 +16,12 @@ pub trait TextHost {
     /// `server_starting`. Keybind components there return the literal ID.
     /// On a dedicated server, a component-valued translation replaces its
     /// arguments and fallback.
-    /// Available outside drawing, including setup on a game-backed host.
-    /// Pack discovery before game resources are available returns `TextFormError::Unavailable`.
-    fn text_string(&self, text: &Text) -> Result<String, TextFormError>;
+    /// Available outside drawing, including setup and pack discovery (before
+    /// language resources load, translations resolve to their fallback or key).
+    /// In-memory text reads do not enforce the 512-node serialization depth cap
+    /// or `ExtraCodecs` profile/property bounds.
+    #[forward_api_inputs]
+    fn text_string(&self, text: &Text) -> String;
     /// Side: both.
     /// Reads a text component as `/tellraw` and `ComponentSerialization.CODEC` take it: one
     /// JSON or SNBT value (`"plain"`, `{"text":"Hi","color":"gold"}`, `["a",{"text":"b"}]`,

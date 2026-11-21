@@ -1,24 +1,23 @@
 #[cfg(test)]
 #[path = "client_visual_text/tests.rs"]
 mod tests;
-use crate::game::{Game, api_values::TryIntoApi};
+use crate::game::Game;
 
 impl Game<'_> {
     pub(in crate::game) fn text_visual_order(
         &self,
-        text: &sunrise_client::text::Text,
-    ) -> Result<Vec<mod_api::VisualTextCharacter>, mod_api::TextFormError> {
-        let resolved = text.resolved();
+        text: &mod_api::Text,
+    ) -> Vec<mod_api::VisualTextCharacter> {
+        let resolved = sunrise_client_lib::api_text::to_engine_inprocess(text).resolved();
         sunrise_client::bidi::visual_characters(&resolved)
             .into_iter()
-            .map(|(scalar, style, source_index)| {
-                let style = style.try_into_api()?;
-                Ok(mod_api::VisualTextCharacter {
+            .map(
+                |(scalar, style, source_index)| mod_api::VisualTextCharacter {
                     scalar: scalar as u32,
-                    style,
+                    style: sunrise_client_lib::api_text::style_to_api_inprocess(&style),
                     source_index,
-                })
-            })
+                },
+            )
             .collect()
     }
 }

@@ -291,16 +291,20 @@ Inline player and atlas objects use `Option<Box<Text>>` for their fallback: `Non
 keeps the engine-computed default; `Some` preserves a styled or translatable component
 rather than flattening it to a string.
 
-`Text::validate()` checks tree/payload bounds and profile fields
-without cloning; `validate_depth()` is the component-only preflight. NaN/infinity and
-unpaired UTF-16 are legal Tag data but cause typed `NonFinite` or `InvalidString`
-refusals when engine emission requires JSON. Nested JSON null is refused as `NestedNull`
-when capturing opaque NBT fields; it is never silently replaced.
-Host methods accepting or returning Text return `Result<_, TextFormError>`; mixed
-item/Text writes preserve the refusal in `StackWriteError::Text`, and unspawned-mob
-reads use `UnspawnedMobError::Text`. `TooDeep` means a component path or opaque NBT
-container path exceeds 512. Unavailable backends are distinct from invalid text or
-unrepresentable payloads.
+`Text::validate()` checks serialization tree/payload bounds and `ExtraCodecs` profile
+fields without cloning; `validate_depth()` is the component-only preflight. Serialization
+boundaries (Wire, JSON/SNBT codecs such as `text_from_json`, and NBT/network writes)
+enforce the 512-node depth limit and `ExtraCodecs` profile/property bounds. In-process
+text reads (`text_string`, `text_width`, `text_split`, `text_visual_order`, and
+`BlockEntityDrawContext::text_width`) are infallible and do not impose those serialization
+caps. NaN/infinity and unpaired UTF-16 are legal Tag data but cause typed `NonFinite` or
+`InvalidString` refusals when engine emission requires JSON. Nested JSON null is refused as
+`NestedNull` when capturing opaque NBT fields; it is never silently replaced.
+Host serialization and write methods accepting or returning Text return
+`Result<_, TextFormError>`; mixed item/Text writes preserve the refusal in
+`StackWriteError::Text`, and unspawned-mob reads use `UnspawnedMobError::Text`. `TooDeep`
+means a serialized component path or opaque NBT container path exceeds 512. Unavailable
+backends are distinct from invalid text or unrepresentable payloads.
 A refused hook capture does not dispatch; a refused writeback leaves every field unchanged.
 No subscriber means no conversion or snapshot allocation.
 Mutable stack arguments are compared using value equality with the snapshot passed to

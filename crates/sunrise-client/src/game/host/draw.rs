@@ -357,9 +357,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         self.game
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
-    fn text_width(&self, text: &Text) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
-        Ok(self.game.native_draw_text_width(&*self.surface, &text))
+    fn text_width(&self, text: &Text) -> f32 {
+        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
+        self.game.native_draw_text_width(&*self.surface, &text)
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {
         self.game

@@ -583,19 +583,24 @@ pub(in crate::game) mod tests {
         );
     }
 
-    /// A component the API cannot hold is refused by name, in a number format and in a text: it
-    /// is not flattened to its plain words.
+    /// A component deeper than the serialization limit survives in-memory capture, while
+    /// writing it back across the serialization boundary is refused by name, never flattened.
     #[test]
     fn a_text_too_deep_for_the_api_is_refused_by_name() {
         let mut deep = literal("x");
         for _ in 0..600 {
             deep = serde_json::json!({"text": "", "extra": [deep]});
         }
+        let captured = api_text(&comp_text(&deep)).unwrap();
+        assert_eq!(engine_text(&captured), Err(TextFormError::TooDeep));
+        let fixed = api_number_format(&sb::NumberFormat::Fixed(deep)).unwrap();
+        assert_eq!(engine_number_format(&fixed), Err(TextFormError::TooDeep));
         assert_eq!(
-            api_number_format(&sb::NumberFormat::Fixed(deep.clone())),
-            Err(TextFormError::TooDeep)
+            api_text(&comp_text(
+                &serde_json::json!({"text": "x", "test:meta": [null]})
+            )),
+            Err(TextFormError::NestedNull)
         );
-        assert_eq!(api_text(&comp_text(&deep)), Err(TextFormError::TooDeep));
         assert!(api_text(&comp_text(&literal("x"))).is_ok());
     }
 

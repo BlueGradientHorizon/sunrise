@@ -494,8 +494,7 @@ pub trait BlockEntityDrawContext {
     }
     /// The width of `text` in font pixels, as `text` draws it, styles included
     /// (`Font.width`), to lay a line out before drawing it.
-    /// Refuses text deeper than 512 component nodes.
-    fn text_width(&self, text: &Text) -> Result<f32, TextFormError> {
+    fn text_width(&self, text: &Text) -> f32 {
         unimplemented!("BlockEntityDrawContext::draw_text_width")
     }
     /// Draws model part `part` and the parts under it under `draw`'s pose, as

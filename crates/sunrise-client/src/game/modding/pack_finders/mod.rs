@@ -108,8 +108,11 @@ struct DiscoveryHost;
 impl Host for DiscoveryHost {}
 mod_api::impl_host_areas!(DiscoveryHost, except(text));
 impl mod_api::prelude::TextHost for DiscoveryHost {
-    fn text_string(&self, _: &mod_api::Text) -> Result<String, mod_api::text::TextFormError> {
-        Err(mod_api::text::TextFormError::Unavailable)
+    fn text_string(&self, text: &mod_api::Text) -> String {
+        sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
+            sunrise_client_lib::api_text::to_engine_inprocess(text).plain()
+        })
+        .0
     }
 
     fn text_from_json(
