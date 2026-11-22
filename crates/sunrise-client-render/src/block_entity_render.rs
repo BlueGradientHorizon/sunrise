@@ -4787,11 +4787,12 @@ mod tests {
         };
         let black_sign = |_| Some(&black);
         scene.sign = &black_sign;
-        scene.sign_outline = SignOutline::None;
+        let far_camera = SignOutline::CameraEntity(scene.camera);
+        scene.sign_outline = far_camera;
         let mut unscoped = Vec::new();
         renderer.render(&scene, [(pos, 1)].iter(), &mut unscoped);
         let reads = glyph_reads.get();
-        for scope in [SignOutline::FirstPersonScope, SignOutline::None] {
+        for scope in [SignOutline::FirstPersonScope, far_camera] {
             scene.sign_outline = scope;
             vertices.clear();
             renderer.render(&scene, [(pos, 1)].iter(), &mut vertices);
