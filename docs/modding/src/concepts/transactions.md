@@ -139,7 +139,7 @@ as vanilla's `getChestVehicleItem` does.
 
 The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
 `set_persistent_data` writes use the open transaction journal. Aborting restores
-the old values; equipment and give effects wait for root commit.
+the old values; equipment effects and given-stack overflow wait for root commit.
 
 These writes reach a player in another level than the hook's: their inventory and data
 change at once, wherever they are. `give_stack`'s overflow drops, pickup visuals and sounds
