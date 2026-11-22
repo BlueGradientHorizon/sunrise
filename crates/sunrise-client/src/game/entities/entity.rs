@@ -2035,7 +2035,7 @@ impl Game<'_> {
                     .filter(|dragon| dragon.id != 0)
                     .flat_map(|dragon| {
                         (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
+                            .map(move |offset| super::dragon::dragon_part_id(dragon.id, offset))
                     }),
             )
             .chain(self.ominous_spawners.iter().map(|e| e.id))
@@ -2165,7 +2165,7 @@ impl Entity for Mob {
         self.removed
     }
     fn is_pickable(&self) -> bool {
-        !self.removed
+        !self.removed && !(&*self.kind.id == "minecraft:player" && self.extra.spectator)
     }
     fn is_living(&self) -> bool {
         true
@@ -3081,6 +3081,9 @@ impl Entity for Projectile {
     }
     fn piston_slime_bounce(&mut self, movement: Direction) {
         Projectile::piston_slime_bounce(self, movement);
+    }
+    fn is_pickable(&self) -> bool {
+        super::deflect::attackable(self)
     }
 }
 

@@ -1,113 +1,87 @@
-//! Pick Block on an entity (`Minecraft.pickBlockOrEntity`'s entity case and
-//! `ServerGamePacketListenerImpl.handlePickItemFromEntity`): the client aims,
-//! the server answers with `Entity.getPickResult`.
+//! Unified crosshair entity picking (`LocalPlayer.pick` and `ProjectileUtil.getEntityHitResult`).
+#[path = "pick_sections.rs"]
+pub(in crate::game) mod pick_sections;
+
 use super::Game;
+use super::pick_accumulator::{PickAccumulator, PickCandidate, pick_ray_segment};
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 use sunrise_client::{items::ItemStack, save::uuid_text};
+use sunrise_core::geometry::{Aabb, Vec3};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct CrosshairEntityHit {
-    id: i32,
-    distance: f64,
-    pickable: bool,
-    suggest_uuid: bool,
+#[derive(Clone, Copy)]
+pub(in crate::game) enum AttackRangePickResult {
+    Entity(PickCandidate),
+    Block(super::Hit),
+    Miss,
 }
 
-fn nearest_entity(
-    hits: [Option<CrosshairEntityHit>; 4],
-    block_distance: Option<f64>,
-) -> Option<CrosshairEntityHit> {
-    hits.into_iter().flatten().fold(None, |best, hit| {
-        if block_distance.is_none_or(|distance| hit.distance < distance)
-            && best.is_none_or(|best| hit.distance < best.distance)
-        {
-            Some(hit)
-        } else {
-            best
-        }
-    })
+#[derive(Clone, Copy)]
+pub(in crate::game) enum CrosshairDecision {
+    Entity(PickCandidate),
+    Block(super::Hit),
+    Miss,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct CrosshairEntityHit {
+    pub id: i32,
+    pub distance: f64,
+    pub point: [f64; 3],
+    pub pickable: bool,
+    pub suggest_uuid: bool,
+}
+
+pub(super) fn aabb_extents((lo, hi): ([f64; 3], [f64; 3])) -> Aabb {
+    Aabb::new(
+        Vec3::new(lo[0], lo[1], lo[2]),
+        Vec3::new(hi[0], hi[1], hi[2]),
+    )
+}
+
+pub(super) fn knot_bounds(block: [i32; 3]) -> Aabb {
+    let knot = sunrise_client::mobs::leash::knot_state(block);
+    let p = knot.position;
+    let half = knot.width / 2.0;
+    Aabb::new(
+        Vec3::new(p.x - half, p.y, p.z - half),
+        Vec3::new(p.x + half, p.y + knot.height, p.z + half),
+    )
 }
 
 impl Game<'_> {
-    fn crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
+    pub(super) fn crosshair_entity_hit(&self) -> Option<CrosshairEntityHit> {
         if let Some(hit) = self.cached_entity_pick() {
-            let (entity, distance, _) = hit?;
+            let (entity, distance, point) = hit?;
             return Some(CrosshairEntityHit {
                 id: entity.id() as i32,
                 distance,
+                point,
                 pickable: self.client_pick.entity_metadata.0,
                 suggest_uuid: self.client_pick.entity_metadata.1,
             });
         }
-        let hit = |id: u32, distance, pickable| CrosshairEntityHit {
-            id: id as i32,
-            distance,
+        let hit = self.pick_entity_hit_unified()?;
+        let is_synthetic_dragon_part =
+            (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&hit.id);
+        let id = hit.id as i32;
+        let pickable = !self.interactions.contains_key(&id)
+            && !is_synthetic_dragon_part
+            && Self::has_pick_result(self.level_entity(id));
+        let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
+        Some(CrosshairEntityHit {
+            id,
+            distance: hit.distance_sq.sqrt(),
+            point: hit.point,
             pickable,
-            suggest_uuid: true,
-        };
-        let hits = [
-            self.remote_object_hit(true).map(|object| {
-                hit(
-                    object.id as u32,
-                    object.distance,
-                    !self.interactions.contains_key(&object.id)
-                        && Self::has_pick_result(self.level_entity(object.id)),
-                )
-            }),
-            self.mob_hit()
-                .map(|(index, distance, _)| hit(self.mobs[index].id, distance, true)),
-            self.redirectable_hit().map(|(index, distance)| {
-                hit(self.creatures.projectiles[index].id, distance, false)
-            }),
-            self.dragon_hit().map(|(id, distance)| {
-                let wire_id = if (super::dragon::SPECIAL..super::dragon::SPECIAL + 8).contains(&id)
-                    && let Some(d) = self.dragon.as_ref().filter(|d| d.id != 0)
-                {
-                    super::dragon::dragon_part_wire_id(d.id, (id - super::dragon::SPECIAL) as usize)
-                } else {
-                    id as i32
-                };
-                CrosshairEntityHit {
-                    id: wire_id,
-                    distance,
-                    pickable: false,
-                    suggest_uuid: false,
-                }
-            }),
-        ];
-        if hits.iter().all(Option::is_none) {
-            return None;
-        }
-        nearest_entity(
-            hits,
-            if self.client_pick.ray.is_some() {
-                None
-            } else {
-                self.block_distance()
-            },
-        )
+            suggest_uuid,
+        })
     }
 
-    /// The stored frame decision on a window; original during dispatch.
-    /// Raw computation is private to the frame refresh and server-side readers.
-    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+    pub(in crate::game) fn crosshair_block_target(
+        &self,
+        hit: super::Hit,
+    ) -> Option<CrosshairTarget> {
         use crate::game::api_values::TryIntoApi;
-        if !self.native_window() || self.title.is_some() {
-            return None;
-        }
-        self.player.as_ref()?;
-        if self.uses_stored_pick() {
-            return self.stored_client_pick();
-        }
-        if let Some(hit) = self.crosshair_entity_hit() {
-            let (eye, direction) = self.aim()?;
-            let point = std::array::from_fn(|axis| eye[axis] + direction[axis] * hit.distance);
-            return Some(CrosshairTarget::Entity {
-                entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id as u32),
-                point,
-            });
-        }
-        let hit = self.pick()?;
         Some(CrosshairTarget::Block {
             pos: BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
             state: self
@@ -119,18 +93,40 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn pick_entity_candidate(&mut self) -> Option<CrosshairTarget> {
-        use super::pick_accumulator::PickAccumulator;
+    /// The stored frame decision on a window; original during dispatch.
+    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
+        if !self.native_window() || self.title.is_some() {
+            return None;
+        }
+        self.player.as_ref()?;
+        if self.uses_stored_pick() {
+            return self.stored_client_pick();
+        }
+        match self.compute_crosshair_decision() {
+            CrosshairDecision::Entity(hit) => Some(CrosshairTarget::Entity {
+                entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
+                point: hit.point,
+            }),
+            CrosshairDecision::Block(hit) => self.crosshair_block_target(hit),
+            CrosshairDecision::Miss => None,
+        }
+    }
+
+    pub(super) fn pick_entity_candidate_within(
+        &mut self,
+        max_distance: f64,
+        max_distance_sq: f64,
+    ) -> Option<CrosshairTarget> {
         let subscribed = mod_api::__private::has_scoped_hook(mod_api::HookId::CanRiderInteract);
         let mut pick = if subscribed {
             PickAccumulator::recording(
-                self.entity_reach,
+                max_distance_sq,
                 std::mem::take(&mut self.client_pick.rider_candidates),
             )
         } else {
-            PickAccumulator::new(self.entity_reach)
+            PickAccumulator::new(max_distance_sq)
         };
-        self.collect_pick_candidates(&mut pick);
+        self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
             self.storage_scope(|game, _| {
                 game.client_pick.rider_candidates = pick.dispatch(game);
@@ -138,26 +134,111 @@ impl Game<'_> {
             });
         }
         let hit = pick.hovered?;
-        let (eye, direction) = self.aim()?;
         Some(CrosshairTarget::Entity {
-            entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.entity_id(self)),
-            point: std::array::from_fn(|i| eye[i] + direction[i] * hit.distance),
+            entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id),
+            point: hit.point,
         })
     }
 
-    pub(super) fn collect_pick_candidates(
-        &self,
-        pick: &mut super::pick_accumulator::PickAccumulator,
-    ) {
-        self.remote_object_hit_with_pick(true, pick);
-        self.mob_hit_within_with_pick(self.entity_reach, pick);
-        self.redirectable_hit_with_pick(pick);
-        self.dragon_hit_with_pick(pick);
+    /// Runs the unified `LocalPlayer.raycastHitResult` entity result for unstored consumers.
+    pub(super) fn pick_entity_hit_unified(&self) -> Option<PickCandidate> {
+        match self.compute_crosshair_decision() {
+            CrosshairDecision::Entity(hit) => Some(hit),
+            _ => None,
+        }
     }
 
-    /// The entity the crosshair hits before any block, as `Entity.getId`; an
-    /// entity with nothing to pick (a projectile, a player, the dragon) is
-    /// `Some(None)`. `None` when the view hits a block or nothing.
+    /// Full unstored `LocalPlayer.raycastHitResult`: active `AttackRange` (keeping both entity and
+    /// in-range block results), then `LocalPlayer.pick` with nominal miss search bound and strict
+    /// `<` reach filters so an out-of-reach entity occluding a block resolves to `Miss`.
+    pub(in crate::game) fn compute_crosshair_decision(&self) -> CrosshairDecision {
+        if let Some(range) = self.active_attack_range() {
+            match self.attack_range_pick_result(&range) {
+                AttackRangePickResult::Entity(hit) => return CrosshairDecision::Entity(hit),
+                AttackRangePickResult::Block(hit) => return CrosshairDecision::Block(hit),
+                AttackRangePickResult::Miss => {}
+            }
+        }
+        let Some((eye, dir)) = self.aim() else {
+            return CrosshairDecision::Miss;
+        };
+        let from = Vec3::new(eye[0], eye[1], eye[2]);
+        let max_distance = self.block_reach.max(self.entity_reach);
+        let block_hit = if self.client_pick.ray.is_some() {
+            None
+        } else {
+            self.pick_unfiltered()
+        };
+        let (entity_max_distance, search_max_distance_sq, block_distance_sq) = match block_hit {
+            Some(block) => {
+                let d2 = from.distance_squared(Vec3::new(
+                    block.point[0],
+                    block.point[1],
+                    block.point[2],
+                ));
+                (d2.sqrt(), d2, d2)
+            }
+            None => (
+                max_distance,
+                max_distance * max_distance,
+                pick_ray_segment(eye, dir, max_distance)
+                    .1
+                    .distance_squared(from),
+            ),
+        };
+        let mut pick = PickAccumulator::new(search_max_distance_sq);
+        self.collect_pick_candidates_within(entity_max_distance, &mut pick);
+        if let Some(hit) = pick.hovered
+            && hit.distance_sq < block_distance_sq
+        {
+            return if hit.distance_sq < self.entity_reach * self.entity_reach {
+                CrosshairDecision::Entity(hit)
+            } else {
+                CrosshairDecision::Miss
+            };
+        }
+        if let Some(block) = block_hit
+            && from.distance_squared(Vec3::new(block.point[0], block.point[1], block.point[2]))
+                < self.block_reach * self.block_reach
+        {
+            CrosshairDecision::Block(block)
+        } else {
+            CrosshairDecision::Miss
+        }
+    }
+
+    /// Single pickable-entity query matching `LocalPlayer.pick` and `Level.getEntities`:
+    /// sweeps the camera entity's current bounding box, visits accessible sections in
+    /// `EntitySectionStorage` order (filtering by raw box), then appends dragon parts.
+    pub(super) fn collect_pick_candidates_within(
+        &self,
+        max_distance: f64,
+        pick: &mut PickAccumulator,
+    ) {
+        let Some((eye, dir)) = self.aim() else {
+            return;
+        };
+        let (from, to) = pick_ray_segment(eye, dir, max_distance);
+        let search_box = self
+            .pick_camera_bounds()
+            .unwrap_or_else(|| Aabb::new(from, from))
+            .expand_towards(Vec3::new(
+                dir[0] * max_distance,
+                dir[1] * max_distance,
+                dir[2] * max_distance,
+            ))
+            .inflate(Vec3::new(1.0, 1.0, 1.0));
+        self.for_each_pickable_in_bounds(search_box, |id, raw_bb, radius| {
+            let bb = if radius == 0.0 {
+                raw_bb
+            } else {
+                raw_bb.inflate(Vec3::new(radius, radius, radius))
+            };
+            pick.consider_box(self, id, from, to, bb);
+        });
+    }
+
+    /// Entity under the crosshair before any block (`Some(None)` when `getPickResult` is empty).
     pub(super) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
         self.crosshair_entity_hit()
             .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
@@ -171,9 +252,7 @@ impl Game<'_> {
         self.crosshair_entity_hit().map(|hit| hit.id)
     }
 
-    /// `ClientSuggestionProvider.getSelectedEntities`: the UUID
-    /// (`Entity.getStringUUID`) of the entity the crosshair hits before any
-    /// block (`Minecraft.hitResult` an `EntityHitResult`).
+    /// `ClientSuggestionProvider.getSelectedEntities`: UUID of the crosshair entity hit.
     pub(super) fn crosshair_entity_uuid(&self) -> Option<String> {
         self.crosshair_entity_hit()
             .filter(|hit| hit.suggest_uuid)
@@ -181,9 +260,7 @@ impl Game<'_> {
             .map(uuid_text)
     }
 
-    /// `Entity.getPickResult` of the entity `id`: a mob's spawn egg, the item
-    /// of a boat, minecart, armor stand, cushion, painting, item frame (the
-    /// framed item when it holds one) or end crystal.
+    /// `Entity.getPickResult` of the entity `id`.
     pub(super) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = u32::try_from(id).ok()?;
         let item = if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
@@ -215,8 +292,7 @@ impl Game<'_> {
         Some(ItemStack::new(&item, 1))
     }
 
-    /// `Player.isWithinEntityInteractionRange(entity, 3.0)`: the entity's box
-    /// within the interaction range plus 3 of the eyes.
+    /// `Player.isWithinEntityInteractionRange(entity, 3.0)`.
     pub(super) fn within_entity_range(&self, id: i32) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
@@ -247,61 +323,16 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CrosshairEntityHit, nearest_entity};
+    use super::Game;
+    use crate::game::commands::Target;
 
     #[test]
-    fn nearest_crosshair_entity_preserves_occlusion_ties_and_pick_metadata() {
-        let object = CrosshairEntityHit {
-            id: 17,
-            distance: 2.0,
-            pickable: true,
-            suggest_uuid: true,
-        };
-        let projectile = CrosshairEntityHit {
-            id: 23,
-            distance: 1.0,
-            pickable: false,
-            suggest_uuid: true,
-        };
-        let dragon = CrosshairEntityHit {
-            id: 29,
-            distance: 0.5,
-            pickable: false,
-            suggest_uuid: false,
-        };
-        assert_eq!(nearest_entity([None; 4], None), None);
-        assert_eq!(
-            nearest_entity([Some(object), None, None, None], None),
-            Some(object)
-        );
-        for block_distance in [1.0, 2.0] {
-            assert_eq!(
-                nearest_entity([Some(object), None, None, None], Some(block_distance)),
-                None
-            );
-        }
-        assert_eq!(
-            nearest_entity([Some(object), None, Some(projectile), None], Some(3.0)),
-            Some(projectile)
-        );
-        assert_eq!(
-            nearest_entity([Some(object), None, Some(projectile), Some(dragon)], None),
-            Some(dragon)
-        );
-        assert_eq!(
-            nearest_entity(
-                [
-                    Some(object),
-                    Some(CrosshairEntityHit {
-                        distance: 2.0,
-                        ..projectile
-                    }),
-                    None,
-                    None
-                ],
-                None
-            ),
-            Some(object)
-        );
+    fn tnt_and_falling_blocks_have_no_entity_pick_result() {
+        assert!(!Game::has_pick_result(Some(Target::Tnt(10))));
+        assert!(!Game::has_pick_result(Some(Target::Falling(20))));
+        assert!(!Game::has_pick_result(Some(Target::Projectile(30))));
+        assert!(!Game::has_pick_result(Some(Target::DragonPart(40))));
+        assert!(Game::has_pick_result(Some(Target::Boat(50))));
+        assert!(Game::has_pick_result(Some(Target::Mob(60))));
     }
 }

@@ -47,13 +47,11 @@ impl Game<'_> {
         if let Some(id) = self
             .dragon
             .as_ref()
+            .filter(|dragon| dragon.id != 0 || self.remote.is_some())
             .map(|dragon| dragon.id)
-            .filter(|id| *id != 0)
         {
-            for offset in 1..=8 {
-                if let Some(part) = id.checked_add(offset) {
-                    self.forget_entity(part);
-                }
+            for part in 0..8 {
+                self.forget_entity(dragon_part_id(id, part));
             }
             // The parent's own sidecars go with it too, its `noPhysics` write
             // included; the parts above are its separate entity ids.
@@ -66,6 +64,11 @@ impl Game<'_> {
     /// its part with that entity id, while the dragon is there, dying or
     /// not: a part is an entity for as long as its parent is.
     pub(in crate::game) fn resident_dragon_part_source(&self, id: u32) -> Option<(&Dragon, usize)> {
+        if self.remote.is_some() {
+            let dragon = self.dragon.as_ref()?;
+            let part = dragon_part_index(dragon.id, id)?;
+            return Some((dragon, part));
+        }
         use sunrise_client::join_seq::residency::{Source, table::EntityLookup};
         let EntityLookup::Found {
             location,
@@ -95,10 +98,14 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// The box of the dragon part or end crystal guests know as entity `id`
-    /// (`EnderDragonPart`s follow the dragon's id).
+    /// (`EnderDragonPart`s follow the dragon's id for its tracking lifetime).
     pub(in crate::game) fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
-        if let Some(d) = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)
-            && let Some(part) = super::dragon_part_index(d.id, id)
+        let uid = id as u32;
+        if let Some(d) = self
+            .dragon
+            .as_ref()
+            .filter(|d| d.id != 0 || self.remote.is_some())
+            && let Some(part) = dragon_part_index(d.id, uid)
         {
             return Some(d.part_box(part));
         }
