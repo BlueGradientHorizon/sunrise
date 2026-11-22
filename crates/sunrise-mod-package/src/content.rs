@@ -1095,7 +1095,6 @@ enum Source {
     Zip {
         path: PathBuf,
         archive: Arc<Mutex<zip::ZipArchive<std::fs::File>>>,
-        entries: Arc<BTreeMap<String, (u32, u64)>>,
     },
     /// No files: content a native mod declares in code.
     Code,
@@ -1185,12 +1184,10 @@ impl ContentSource {
         } else {
             let mut zip = open_zip(path)?;
             let mut out = Vec::new();
-            let mut entries = BTreeMap::new();
             for i in 0..zip.len() {
                 let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
                 let name = entry.name().map_err(|e| e.to_string())?.into_owned();
                 if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
-                    entries.insert(name.clone(), (entry.crc32(), entry.size()));
                     out.push((name, entry.size()));
                 }
             }
@@ -1198,7 +1195,6 @@ impl ContentSource {
                 Source::Zip {
                     path: path.to_owned(),
                     archive: Arc::new(Mutex::new(zip)),
-                    entries: Arc::new(entries),
                 },
                 out,
             )
@@ -1240,13 +1236,9 @@ impl ContentSource {
         Ok(AdmittedContentSource(self))
     }
 
-    /// The opened archive's content index: file names, CRCs and uncompressed sizes.
-    /// A loose folder has no archive index.
-    pub fn archive_index(&self) -> Option<&BTreeMap<String, (u32, u64)>> {
-        match &self.source {
-            Source::Zip { entries, .. } => Some(entries),
-            _ => None,
-        }
+    /// Whether the file list came from an opened archive rather than a loose folder.
+    pub fn is_archive(&self) -> bool {
+        matches!(self.source, Source::Zip { .. })
     }
 
     /// A reader of its files, which checks each path and size again as it reads.

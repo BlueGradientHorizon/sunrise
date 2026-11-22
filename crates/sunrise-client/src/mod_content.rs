@@ -3793,8 +3793,8 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
                     },
                     move |name| {
                         let mut hash = DefaultHasher::new();
-                        if let Some(entries) = content.archive_index() {
-                            entries.get(name)?.hash(&mut hash);
+                        if content.is_archive() {
+                            content.reader().read(name).ok()?.hash(&mut hash);
                         } else {
                             let path = content.reader().path(name).ok()??;
                             let meta = fs::metadata(path).ok()?;
@@ -4111,7 +4111,7 @@ fn stamp(
             .clone()?,
     };
     let mut parts = vec![
-        "sunrise mod content 9".to_owned(),
+        "sunrise mod content 10".to_owned(),
         serde_json::to_string(inventory)?,
     ];
     parts.push(exe);
@@ -4147,12 +4147,11 @@ fn stamp(
         }
         let source = m.content.source();
         let admitted = m.content.admitted_source();
-        if let Some(entries) = admitted
-            .as_ref()
-            .and_then(|content| content.archive_index())
-        {
-            for (file, (crc, size)) in entries {
-                parts.push(format!("{file} {crc} {size}"));
+        if let Some(content) = admitted.as_ref().filter(|content| content.is_archive()) {
+            let reader = content.reader();
+            for file in m.content.files.iter() {
+                let digest = Sha256::digest(reader.read(file)?);
+                parts.push(format!("{file} {digest:x}"));
             }
         } else if admitted.is_some() || source.is_dir() {
             for file in m.content.files.iter() {
