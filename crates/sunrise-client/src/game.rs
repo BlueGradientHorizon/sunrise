@@ -12222,8 +12222,7 @@ impl Game<'_> {
             }
             Screen::Inventory => {
                 self.inventory_mouse_release(!left)
-                    | self.station_release()
-                    | self.recipe_book_release()
+                    || (self.station_release() | self.recipe_book_release())
             }
             Screen::Chat if left_press => self.chat_click(),
             Screen::Creative if pressed => {
@@ -12231,8 +12230,7 @@ impl Game<'_> {
                 true
             }
             Screen::Creative => {
-                let released = left && self.creative_screen.release();
-                self.inventory_mouse_release(!left) || released
+                self.inventory_mouse_release(!left) || (left && self.creative_screen.release())
             }
             Screen::Paused if left_press && self.pause_menu => self.pause_click()?,
             Screen::WorldOptions if left_press => self.world_options_click(),
@@ -12660,7 +12658,12 @@ impl Game<'_> {
                     }
                     let mut handled = owned_release;
                     if self.screen_state.screen_instance == initial_instance {
+                        let inventory_release = !pressed
+                            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+                            && self.observed_overlay_now().is_none()
+                            && !self.remote_loading();
                         if !owned_release
+                            && !inventory_release
                             && !self.key_focus_driving()
                             && self.observed_screen_view().is_some()
                         {
@@ -12684,6 +12687,15 @@ impl Game<'_> {
                             self.key_focus_mouse_press(&event);
                             handled =
                                 self.route_screen_button(button, code, pressed, double_click)?;
+                        }
+                        if inventory_release
+                            && !handled
+                            && self.screen_state.screen_instance == initial_instance
+                            && !self.key_focus_driving()
+                            && self.observed_screen_view().is_some()
+                        {
+                            handled =
+                                self.mounted_widget_mouse_released(self.cursor(), code, modifiers);
                         }
                     }
                     if had_screen {
