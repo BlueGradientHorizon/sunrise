@@ -42,6 +42,24 @@ fn the_tick_time_snapshot_counts_joined_live_network_players_including_respawns(
 }
 
 #[test]
+fn a_closed_outbox_stops_counting_before_the_hub_sees_the_disconnect() {
+    use crate::lan::PlayerSender;
+    use crate::raw_payloads::Transport;
+
+    let mut hub = standing(false, vec![request(vec![0])]);
+    let (sender, _) = PlayerSender::payload_executor_test_sender(Transport::empty());
+    hub.guests.update(0, |g| g.sender = sender);
+    let (uuid, conn) = (hub.guests[0].uuid, hub.guests[0].conn);
+    hub.ops.insert(uuid, 4);
+    drain(&mut hub);
+    assert_eq!(hub.tick_time_subscribers(), [conn]);
+
+    hub.guests[0].sender.close();
+    assert!(!hub.guests[0].disconnect_pending);
+    assert!(hub.tick_time_subscribers().is_empty());
+}
+
+#[test]
 fn an_empty_request_unsubscribes_and_other_ids_do_not_subscribe() {
     let mut hub = standing(false, vec![request(vec![0]), request(vec![])]);
     hub.ops.insert(hub.guests[0].uuid, 4);

@@ -98,6 +98,7 @@ impl Hub {
                     && !g.disconnect_pending
                     && g.debug_subscriptions.contains(&0)
                     && self.ops.contains_key(&g.uuid)
+                    && g.sender.is_live()
             })
             .map(|g| g.conn)
             .collect()
