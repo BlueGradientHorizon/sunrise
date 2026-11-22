@@ -994,7 +994,7 @@ mod tests {
         let mut atlas = HudAtlas::boot();
         atlas.font = sunrise_client::font::Font::load(
             &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
-            &Default::default(),
+            &atlas.sprites,
             &[],
             (1024, 1024),
             (512, 512),

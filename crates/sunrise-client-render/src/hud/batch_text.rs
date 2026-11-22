@@ -256,40 +256,9 @@ impl HudBatch {
                     Some(r) => draw_glyph(batch, ox, r),
                     None if g.right > 0.0 => {
                         // SpecialGlyphs.MISSING: 5x8 outline rendered via BakedSheetGlyph.
-                        if let Some(r) = missing_rect {
-                            draw_glyph(batch, ox, r);
-                        } else {
-                            let (x0, x1, y0, y1) = (
-                                px + ox + g.left,
-                                px + ox + g.right,
-                                py + g.top,
-                                py + g.bottom,
-                            );
-                            let (qx0, qx1, qy0, qy1) =
-                                (x0 - thick, x1 + thick, y0 - thick, y1 + thick);
-                            let (st, sb) = (shear(g.top), shear(g.bottom));
-                            let pt = |u: f32, v: f32| {
-                                let s = st + (sb - st) * v;
-                                [qx0 + (qx1 - qx0) * u + s, qy0 + (qy1 - qy0) * v]
-                            };
-                            for (u0, v0, u1, v1) in [
-                                (0.0, 0.0, 1.0, 1.0 / 8.0),
-                                (0.0, 7.0 / 8.0, 1.0, 1.0),
-                                (0.0, 1.0 / 8.0, 1.0 / 5.0, 7.0 / 8.0),
-                                (4.0 / 5.0, 1.0 / 8.0, 1.0, 7.0 / 8.0),
-                            ] {
-                                batch.quad(
-                                    [pt(u0, v0), pt(u1, v0), pt(u1, v1), pt(u0, v1)],
-                                    [
-                                        [white.u0, white.v0],
-                                        [white.u1, white.v0],
-                                        [white.u1, white.v1],
-                                        [white.u0, white.v1],
-                                    ],
-                                    col,
-                                );
-                            }
-                        }
+                        let r = missing_rect
+                            .expect("missing sunrise/missing_glyph sprite in drawable HudAtlas");
+                        draw_glyph(batch, ox, r);
                     }
                     None => {}
                 };
