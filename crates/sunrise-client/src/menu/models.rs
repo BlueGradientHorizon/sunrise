@@ -82,6 +82,8 @@ pub enum StackedClickedEdit {
     Set(Option<ItemStack>),
     /// Take `u32` items from the clicked slot via `Slot.safeTake` / `Slot.onTake`.
     Take(u32),
+    /// Two successive Parts each take from the slot, with a separate `Slot.onTake` per phase.
+    TakeThenTake { first: u32, second: u32 },
     /// Take `take` items via `Slot.onTake`, then directly write `then` to the slot (when a
     /// declining carried Part took items and the clicked Part replaced the remainder).
     TakeThenSet { take: u32, then: Option<ItemStack> },
@@ -98,12 +100,17 @@ pub struct StackedOutcome {
     pub handled: bool,
     pub policy: StackedEditPolicy,
     pub resume: StackedResume,
-    /// The cursor replacement to apply before resuming (if `Some`).
+    /// The global listener's or clicked Part's cursor replacement (if `Some`).
     pub carried: Option<Option<ItemStack>>,
+    /// The carried Part's own cursor replacement, before the clicked phase.
+    pub carried_part_cursor: Option<Option<ItemStack>>,
+    /// Whether the carried Part took from the clicked slot. This also identifies the phase
+    /// of a single `Take`, when the other Part left the clicked slot alone.
+    pub carried_part_took: bool,
     /// The clicked slot edit to apply before resuming (if `Some`).
     pub clicked: Option<StackedClickedEdit>,
-    /// Set by the click when the clicked slot's own rules refuse `clicked`: the click changed
-    /// nothing and its decision is undone.
+    /// Set when the slot rules refuse an edit or a suspended edit's inputs changed.
+    /// The click and its listener writes are then undone.
     pub refused: std::cell::Cell<bool>,
 }
 
@@ -137,6 +144,10 @@ pub trait StackedSlotTarget {
     fn item_max_stack(&self, stack: &ItemStack) -> u32;
     fn set_carried(&mut self, carried: Option<ItemStack>);
     fn set_clicked(&mut self, clicked: Option<ItemStack>);
+    /// Run a compound clicked-slot edit on private state, committing only when it succeeds.
+    fn with_staged(&mut self, edit: impl FnOnce(&mut dyn StackedSlotTarget) -> bool) -> bool
+    where
+        Self: Sized;
     /// Full take from a slot (`Slot.safeTake`, including `onTake` side effects).
     fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack>;
     /// Partial take from an output/potion slot (`Slot.remove` followed by `Slot.onTake`).
@@ -161,6 +172,8 @@ pub struct SlotContext<'a> {
     pub(crate) player_slots: &'a [Option<ItemStack>],
     pub(crate) player_armor: Option<&'a [Option<ItemStack>; 4]>,
     pub(crate) player_offhand: Option<&'a Option<ItemStack>>,
+    /// A hosted rule sees the tentative slot as well as the stack being checked.
+    pub(crate) staged_slot: Option<(MenuContainer, usize, Option<&'a ItemStack>)>,
 }
 
 /// `menu_slot_rules` inside a menu click, which cannot reach the game: the game lends the menu

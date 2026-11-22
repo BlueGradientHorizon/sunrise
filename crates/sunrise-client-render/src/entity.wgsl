@@ -331,7 +331,7 @@ fn entity_color(in: Out, front: bool) -> vec4<f32> {
         // clouds.fsh: alpha fades out towards the cloud fog end.
         return vec4(color.rgb, color.a * (1.0 - linear_fog(in.fog_distance.x, 0.0, globals.fog_ends.y)));
     }
-    if color.a < 0.1 || (in.cull != 0u && !front) { discard; }
+    if color.a < 0.1 || ((in.cull != 0u || in.overlay == EXPLICIT_PARTICLE_OVERLAY) && !front) { discard; }
     // entity.fsh calculateFinalColor: the overlay (hurt red, TNT white) over the
     // lit texture, then the lightmap, then the glint and fog.
     color = vec4(mix(in.overlay_color.rgb, color.rgb, in.overlay_color.a), color.a);
@@ -381,7 +381,8 @@ fn shadow_color(in: Out) -> vec4<f32> {
     var uv = in.uv;
     if in.overlay == 6u { uv.y = in.wrap.x + fract(in.uv.y) * in.wrap.y; }
     let texel = textureSample(atlas, atlas_sampler, uv);
-    if texel.a < 0.1 { discard; }
+    let alpha = select(texel.a, texel.a * in.color.a, in.overlay == EXPLICIT_PARTICLE_OVERLAY);
+    if alpha < 0.1 { discard; }
     return vec4(0.0, 0.0, 0.0, hdr_entity_mark(in));
 }
 fn hdr_entity_mark(in: Out) -> f32 {

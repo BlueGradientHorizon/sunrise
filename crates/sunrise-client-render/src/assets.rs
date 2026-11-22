@@ -171,6 +171,22 @@ impl RenderAssets {
         self.mod_pipelines.resolve(id)
     }
 
+    /// Validate a handle for an API that only accepts registered standalone models.
+    pub fn validate_standalone_model(
+        &self,
+        model: mod_api::ModelRef,
+    ) -> std::result::Result<(), mod_api::ModelError> {
+        use mod_api::__private::game::Fields;
+        let fields = model.fields();
+        if fields.generation != self.generation {
+            return Err(mod_api::ModelError::StaleModel);
+        }
+        if !self.model_catalog.is_standalone_slot(fields.slot) {
+            return Err(mod_api::ModelError::UnknownModel);
+        }
+        Ok(())
+    }
+
     /// Validate a handle once at consumption, before appending any geometry.
     pub fn resolve_model(
         &self,

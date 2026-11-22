@@ -5,7 +5,7 @@ use sunrise_client::{
     advancements::Tree,
     crafting::ResolvedSources,
     items::Items,
-    lan::data::{FrozenDamage, PackRegistryDefinitions, SyncData},
+    lan::data::{FrozenDamage, PackRegistryDefinitions, SyncData, WorldTags},
 };
 use sunrise_world::item_defaults::ItemData;
 
@@ -207,6 +207,7 @@ pub(super) struct Synced {
 pub(in crate::game) struct SyncCache {
     pub(super) data: Option<Synced>,
     pub(super) damage: Option<FrozenDamage>,
+    pub(super) world_tags: Option<WorldTags>,
     pub(super) packed_registries: Option<Arc<PackRegistryDefinitions>>,
     pub(super) advancements: Option<Arc<Tree>>,
     pub(super) world_packs: bool,
@@ -215,6 +216,7 @@ pub(in crate::game) struct SyncCache {
 static SYNC: Mutex<SyncCache> = Mutex::new(SyncCache {
     data: None,
     damage: None,
+    world_tags: None,
     packed_registries: None,
     advancements: None,
     world_packs: false,
@@ -247,7 +249,7 @@ pub(super) fn cached_sync_data(
     {
         sync.data = None;
     }
-    let load = |packed, advancements| {
+    let load = |packed, advancements, world_tags| {
         let sources =
             server_sources(root, item_data, items, overlay).map_err(|error| error.to_string())?;
         match &sync.damage {
@@ -259,6 +261,7 @@ pub(super) fn cached_sync_data(
                 item_data.defaults(),
                 &sources,
                 advancements,
+                world_tags,
             ),
             None => SyncData::load(root, overlay, item_data.defaults(), &sources),
         }
@@ -266,7 +269,7 @@ pub(super) fn cached_sync_data(
     };
     // A late vanilla preload must not replace a packed world's lazy snapshot.
     if sync.data.is_none() && sync.world_packs && !packs {
-        return load(None, None);
+        return load(None, None, None);
     }
     let advancements = sync.advancements.as_ref();
     sync.data
@@ -274,7 +277,11 @@ pub(super) fn cached_sync_data(
             root: root.to_owned(),
             with_packs: packs,
             generation,
-            result: load(sync.packed_registries.as_ref(), advancements),
+            result: load(
+                sync.packed_registries.as_ref(),
+                advancements,
+                sync.world_tags.as_ref(),
+            ),
         })
         .result
         .clone()
@@ -285,19 +292,20 @@ pub(super) fn cached_sync_data(
 pub(in crate::game) fn prepare_world_sync_data(
     root: &std::path::Path,
     item_data: &ItemData,
-    items: &Items,
     overlay: &sunrise_world::loot::PackOverlay,
     damage: &sunrise_world::damage_source::Catalog,
+    items: Arc<Items>,
     packed_registries: Option<Arc<PackRegistryDefinitions>>,
     advancements: Arc<Tree>,
 ) -> std::result::Result<SyncCache, String> {
     let mut staged = SyncCache {
         data: SYNC.lock().unwrap_or_else(|e| e.into_inner()).data.clone(),
         packed_registries,
+        world_tags: Some(WorldTags::new(items.clone(), damage)),
         advancements: Some(advancements),
         ..Default::default()
     };
-    initialize_world_sync_data(&mut staged, root, overlay, damage, item_data, items)?;
+    initialize_world_sync_data(&mut staged, root, overlay, damage, item_data, &items)?;
     Ok(staged)
 }
 
@@ -370,6 +378,7 @@ pub(in crate::game) fn prepare_wire_reload(
     kept: &SyncData,
     sources: &ResolvedSources,
     advancements: &Arc<Tree>,
+    world_tags: &WorldTags,
 ) -> std::result::Result<Arc<SyncData>, String> {
     SyncData::reload(
         root,
@@ -378,6 +387,7 @@ pub(in crate::game) fn prepare_wire_reload(
         item_data.defaults(),
         sources,
         advancements,
+        Some(world_tags),
     )
     .map(|mut sync| {
         sync.features.clone_from(&kept.features);
@@ -391,12 +401,14 @@ pub(in crate::game) fn install_wire_reload(
     overlay: &sunrise_world::loot::PackOverlay,
     sync: Option<Arc<SyncData>>,
     advancements: Arc<Tree>,
+    world_tags: WorldTags,
 ) {
     // Kept pack dialogs count as packs: a world opened without packs after
     // a `/reload` that dropped them must read its own registries again.
     let mut cache = SYNC.lock().unwrap_or_else(|e| e.into_inner());
     cache.world_packs = !overlay.files.is_empty();
     cache.advancements = Some(advancements);
+    cache.world_tags = Some(world_tags);
     cache.data = sync.map(|sync| Synced {
         root: root.to_owned(),
         with_packs: !overlay.files.is_empty() || sync.has_pack_entries(),

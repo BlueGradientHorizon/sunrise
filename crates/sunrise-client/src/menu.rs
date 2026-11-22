@@ -1680,8 +1680,9 @@ impl Menu {
         &*stack.item == "minecraft:bucket"
     }
 
+    /// `AbstractFurnaceMenu.isFuel`: presence, not the evaluated burn duration.
     fn is_fuel(env: &Env, stack: &ItemStack) -> bool {
-        env.items.get(&stack.item).is_some_and(|i| i.fuel.is_some())
+        crate::item_data::cooking_fuel::for_stack(env.items, stack).is_some()
     }
 
     // ---- Slot ----
@@ -2167,11 +2168,10 @@ impl Menu {
     fn furnace_take(&mut self, env: &Env, carried: &ItemStack) {
         self.touch();
         let removed = std::mem::take(&mut self.state.output_removed);
-        let extracted = if removed > 0 { removed } else { carried.count };
-        if extracted > 0 {
+        if removed > 0 {
             self.state
                 .furnace_extracted
-                .push((carried.clone(), extracted));
+                .push((carried.clone(), removed));
         }
         if self.state.item_smelted_hook && env.loop_context.side() == LoopSide::Server {
             let carried = (carried.count > 0).then(|| carried.clone());
@@ -3119,14 +3119,23 @@ impl Menu {
     /// `MerchantMenu.removed` for a living player: the payment goes back to
     /// the inventory (`placeItemBackInInventory`), or is dropped.
     pub fn merchant_close(&mut self, env: &Env) {
+        self.merchant_removed(env, false);
+    }
+
+    /// MerchantMenu.removed: payment drops when the player has already been removed.
+    /// The caller handles the removed player's cursor through AbstractContainerMenu.removed.
+    pub fn merchant_removed(&mut self, env: &Env, drop_payment: bool) {
         self.touch();
-        // AbstractContainerMenu.removed: the carried stack first.
         if let Some(mut carried) = self.state.carried.take() {
             self.place_back(env, &mut carried);
         }
         for slot in [0usize, 1] {
             if let Some(mut stack) = self.state.containers[MAIN][slot].take() {
-                self.place_back(env, &mut stack);
+                if drop_payment {
+                    self.dropped.push(stack);
+                } else {
+                    self.place_back(env, &mut stack);
+                }
             }
         }
     }

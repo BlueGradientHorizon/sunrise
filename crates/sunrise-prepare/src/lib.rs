@@ -61,7 +61,7 @@ pub const SCHEMA: i64 = 7;
 /// the preparer and fails when the output is not the one output-versions.txt gives this number
 /// (`python3 tools/prepare_output.py check`). The launcher reads this line from the version
 /// folder's sources: keep it on one line, as it is.
-pub const OUTPUT_VERSION: u32 = 6;
+pub const OUTPUT_VERSION: u32 = 7;
 
 pub struct Options {
     /// The version folder (a release folder, or a checkout): research-lock.json, the exporters'

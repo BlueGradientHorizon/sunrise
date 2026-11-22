@@ -89,9 +89,9 @@ participate in resource reloads.
 ## Package contents
 
 A native package holds the manifest, an optional `icon.png`, the root `Cargo.toml`, `Cargo.lock` and `build.rs`,
-the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, root text
-files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`), and the `uses.json` table `cargo sunrise-mod build`
-writes. Source and resource size limits are checked separately.
+the `.rs` and `.toml` files under `src/`, `assets/` and `data/`, a `runtime/` folder listed in `[runtime]`, and root
+text files (`README*`, `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*`). Source and resource size limits are checked
+separately.
 
 Packing a project folder takes only these files. Any other file in it (a `module.toml`, `tools/generate.rs`,
 `.cargo/config.toml`, `rust-toolchain.toml`) is left out unread, and the native build, which works on the packed
@@ -99,6 +99,11 @@ files, never sees it. `cargo sunrise-mod check` runs Cargo in the folder itself,
 and toolchain file apply there as they do to plain `cargo`. A few old input paths still refuse a folder:
 `sunrise-native.json`, `horizon-mixin.toml`, and a root `native/` or `rust/`. In an archive, a file outside this
 layout refuses the package ([the manifest](../../reference/manifest.md)).
+
+A package may also carry `uses.json`, generated metadata that `cargo sunrise-mod build` writes from a scan of the
+same source files it packs. It is never read from the folder. The build leaves it out for a mod made for exactly one
+build, when the scan cannot determine which API items the source uses, and for a mod built inside a game
+checkout. A file I/O or manifest parse error still stops the build.
 
 `runtime/` holds the data files your code opens beside itself: each is listed in `[runtime]` with its SHA-512, any
 file type. They are not pack data and no reload touches them;
@@ -121,3 +126,34 @@ Although the archive accepts `build.rs`, a native build refuses it unless you di
 
 A native `.smod` carries both source and content: the launcher compiles the source, and the game
 loads the package's `assets/` and `data/`. All packages take their identity from `sunrise-mod.toml`.
+
+## Another package's files
+
+A mod that turns other packages' files into what it registers (a script host whose script packages carry
+`data/<namespace>/lumen/*.luau`, a runtime that serves a content package) reads them during registration with
+`cx.package_files(id)`, NeoForge's `getModFileById(id).getFile().getContents()`. It works for any enabled
+package, your own included, and gives a handle you may keep and use from any thread:
+
+```rust
+fn scripts(cx: &mod_api::RegistrationContext) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
+    let files = cx.package_files("lumen_demo")?;
+    let mut scripts = Vec::new();
+    for path in files.list("data/lumen_demo/lumen/") {
+        scripts.push(files.read(path)?);
+    }
+    Ok(scripts)
+}
+```
+
+The file list is fixed when startup admits the package. Declaration and resource loading use that same list and reader.
+Reads use the archive opened at admission, or the current bytes of a listed file in a `--dev-mod` folder.
+`list(folder)` returns sorted paths under that folder, with or without a trailing slash (`""` lists every file).
+`read` returns `PackageReadError::NotFound` for an unlisted path, including `..` and absolute paths, or when a
+listed loose file has been removed.
+
+`package_files` returns `PackageFilesError::NotEnabled` if the package isn't in `cx.mods()`, `Unreadable` when
+the package's files can't be listed, and `Unavailable` outside a mod's registration. A native mod switched off
+at startup still registers, but its package is absent from both views. Admission checks file namespaces against the manifest.
+A content-only package that fails that check is not listed. A native package that fails it still registers,
+but its files are unreadable. Declaration checks that depend on registration results run later, during
+content loading.

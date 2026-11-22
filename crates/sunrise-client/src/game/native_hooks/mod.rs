@@ -8,10 +8,11 @@
 
 /// Generated dispatch entry points, not hand-written hook implementations.
 mod fire;
+pub(in crate::game) use block_entity_tick::ResidentBlockEntityAccess;
 pub(in crate::game) use build_creative_mode_tab_contents::CreativeCache;
 pub(in crate::game) use client_pick::ClientPick;
 pub(in crate::game) use fire::{
-    BlockDropsCall, ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall,
+    ConnectsToCall, EntityChangeBlockPreCall, ItemAfterVerticalCollisionCall,
     PreRemoveSideEffectsCall, UpdateShapeCall,
 };
 use mod_api::{BlockEntityDataSource, BlockEntityRef, ClockAdjustment};
@@ -27,7 +28,10 @@ use super::{
     native_panel_recipes::RecipePage,
 };
 use mod_api::__private::game::{
-    LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
+    BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
+    JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
+    ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
+    SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
 };
 use mod_api::GameMode;
 use mod_api::GameTests;
@@ -38,16 +42,16 @@ use mod_api::{
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
     ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
     EntityRenderers, GameRuleActor, GuiLayerRegistrar, HandDrawContext, HandRender, InsideEffects,
-    InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType, LifecycleContext,
-    LivingRef, LoadConditions, NoteBlockChange, ParticleProviders, PathComputationType, Placement,
-    PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget,
-    ScreenshotImage, ServerReloadListeners, ServerTickPhase, SpecialModelRenderers,
-    TicketController, ToolUse, VillagerProfessions, WorldPhase,
+    InteractionAttempt, InteractionKey, ItemEntityRef, LifecycleContext, LivingRef, LoadConditions,
+    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
+    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
+    VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
-    FluidStack, ItemClick, ItemDrop, LevelRef, LogicalSide, NeighbourUpdate, TooltipElement,
-    TriState, UsePhase,
+    FluidStack, ItemClick, LevelRef, LogicalSide, NeighbourUpdate, TooltipElement, TriState,
+    UsePhase,
 };
 use mod_api::{
     BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
@@ -153,6 +157,8 @@ mod block_entity_type_add_blocks;
 mod block_entity_view_distance;
 mod block_grow_feature;
 mod block_landing;
+mod block_particle_effects;
+mod block_particle_effects_tests;
 mod block_path_type;
 mod block_render_visibility;
 mod block_sticky;
@@ -180,6 +186,7 @@ mod can_harvest_block;
 mod can_perform_action;
 mod can_place_item;
 mod can_player_sleep;
+mod can_start_swimming;
 mod can_sustain_plant;
 mod chat_recipient;
 mod chat_suggestion_applied;
@@ -323,14 +330,10 @@ mod item_destroyed;
 mod item_fished;
 mod item_interact_mob;
 mod item_model_property;
-mod item_model_range_property;
-mod item_model_select_property;
-mod item_model_update;
 mod item_picked_up;
 mod item_picked_up_tests;
 mod item_smelted;
 mod item_stacked_on_other;
-mod item_tint_source;
 mod item_tooltip;
 mod item_toss;
 mod key_mapping_pre;

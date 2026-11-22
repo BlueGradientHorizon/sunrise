@@ -427,7 +427,6 @@ impl ItemEntity {
             world,
             registry,
             facts,
-            no_physics,
             step,
             context,
             sunrise_client::motion::dry_side(),
@@ -581,8 +580,7 @@ impl ItemEntity {
             self.velocity.z * drag,
         );
     }
-    /// The rest of `ItemEntity.tick`, after the bubble column's push: slime,
-    /// drag, block contact, age. Returns false when the item should be
+    /// The rest of `ItemEntity.tick`, after block effects: movement drag, sync and age. Returns false when the item should be
     /// removed. The game then runs the fluid push again (`ItemEntity.tick`
     /// refreshes immersion after moving).
     pub fn tick_settle(
@@ -590,17 +588,11 @@ impl ItemEntity {
         world: &World,
         registry: &sunrise_world::registry::BlockRegistry,
         facts: &BlockFacts,
-        no_physics: bool,
         step: ItemStep,
         context: &sunrise_world::native_load_context::LoopContext,
         side: &dyn crate::motion::SideLevel,
     ) -> bool {
         if step.movement.is_some() {
-            // Entity.applyEffectsFromBlocks -> SlimeBlock.stepOn, with the
-            // vertical speed the bounce just left (before the air drag).
-            if !no_physics {
-                self.slime_step_on(world, facts);
-            }
             // `float friction = getAirDrag()` (0.98F); on the ground, times
             // the block's friction as a float, then widened for the scale.
             let mut friction = 0.98_f32;
@@ -626,29 +618,6 @@ impl ItemEntity {
             );
             if self.ground.on_ground && self.velocity.y < 0.0 {
                 self.velocity.y *= -0.5;
-            }
-        }
-        if !no_physics {
-            // Entity.applyEffectsFromBlocks: stepOn, then checkInsideBlocks.
-            // The block sweep itself runs at the batch that ticks the item
-            // (Game::sweep_item_inside), where the level host for a part's
-            // contact is: the item's own tick sees the world read-only.
-            if self.ground.on_ground {
-                let p = BlockPos::containing(self.position.add_vector(Vec3::new(
-                    0.0,
-                    -f64::from(0.2_f32),
-                    0.0,
-                )));
-                let state = world.block(p.x, p.y, p.z);
-                crate::block_contact::step_on(
-                    &facts.get(state).name,
-                    crate::block_contact::Contact {
-                        entity: self.id as i32,
-                        kind: "minecraft:item",
-                        state,
-                        position: p,
-                    },
-                );
             }
         }
         if self.velocity.subtract(step.old_velocity).length_squared() > 0.01 {
@@ -681,26 +650,6 @@ impl ItemEntity {
         });
         stuck
     }
-    /// `SlimeBlock.stepOn` for an item on the ground: slow vertical speed
-    /// drags the horizontal speed, on idle ticks too.
-    fn slime_step_on(&mut self, world: &World, facts: &BlockFacts) {
-        if !self.ground.on_ground {
-            return;
-        }
-        let p = BlockPos::containing(self.position.add_vector(Vec3::new(
-            0.0,
-            -f64::from(0.2_f32),
-            0.0,
-        )));
-        if &*facts.get(world.block(p.x, p.y, p.z)).name != "minecraft:slime_block" {
-            return;
-        }
-        if let Some(scale) = slime_step_on_scale(self.velocity.y) {
-            self.velocity.x *= scale;
-            self.velocity.z *= scale;
-        }
-    }
-
     /// `PistonMovingBlockEntity.causeBounce` for a dropped item. Vanilla then
     /// runs `Entity.move(MoverType.PISTON)`, which leaves the ground on an
     /// upward push; without that, `ItemEntity.tick` skips movement 3 of 4 ticks
@@ -883,7 +832,7 @@ pub struct OrbMove {
 pub struct OrbTickMove {
     pub step: OrbMove,
     pub movement: crate::motion::BodyMove,
-    burnt_out: bool,
+    pub burnt_out: bool,
 }
 
 /// Server-side effects of an orb's contact with lava after a move.
@@ -1092,6 +1041,15 @@ impl ExperienceOrb {
         let tick =
             self.move_before_fall(motion, player, server, next_float, border, fluids, entities);
         self.velocity = self.move_restitution(motion, tick).velocity;
+        motion.apply_block_speed(self.position, &mut self.velocity);
+        if !tick.burnt_out {
+            motion.step_on(
+                (self.id, "minecraft:experience_orb"),
+                (self.position, self.bounds()),
+                &self.ground,
+                &mut self.velocity,
+            );
+        }
         let stays = self.finish_tick(
             &mut &*world,
             (collision, facts, context, side),
@@ -3942,7 +3900,6 @@ mod slime_bounce_tests {
             &world,
             crate::test_fixtures::air_registry(),
             &facts,
-            true,
             ItemStep {
                 old_velocity: item.velocity,
                 restitution: None,

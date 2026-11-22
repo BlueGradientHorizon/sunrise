@@ -288,16 +288,15 @@ impl Game<'_> {
             let tables = self
                 .stage_world_tables(&stack, false, &resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-            let wire_items = tables
-                .tables
-                .as_ref()
-                .map_or_else(|| self.res.items(), |tables| &tables.items);
             let wire = super::lan::sync::prepare_world_sync_data(
                 &resources,
                 &self.res.core.item_data,
-                wire_items,
                 &super::pack_files(&tables.tables),
                 &tables.health.damage,
+                tables
+                    .tables
+                    .as_ref()
+                    .map_or_else(|| self.res.shared_items(), |tables| tables.items.clone()),
                 tables
                     .tables
                     .as_ref()

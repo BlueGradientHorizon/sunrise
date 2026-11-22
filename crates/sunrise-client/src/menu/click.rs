@@ -9,10 +9,16 @@ pub type SlotTake = (usize, ItemStack, Option<ItemStack>);
 pub struct ClickContinuation(ClickStep);
 
 impl ClickContinuation {
-    /// Only an already displaced swap stack is owed after the backing menu is gone.
-    /// This continuation uses player inventory and drops, not container slots.
+    /// Only a player-side write from a completed take survives the loss of its backing menu.
     pub fn after_menu_closed(self) -> Option<Self> {
-        matches!(self.0, ClickStep::SwapOverflow(_)).then_some(self)
+        match self.0 {
+            ClickStep::SwapOverflow(_) => Some(self),
+            ClickStep::PartAfterTake {
+                cursor: Some(cursor),
+                ..
+            } => Some(Self(ClickStep::PartCursorOnly(cursor))),
+            _ => None,
+        }
     }
 }
 
@@ -48,12 +54,30 @@ enum ClickStep {
         repeat: bool,
     },
     ResultNotifications,
+    PartAfterTake {
+        slot: usize,
+        primary: bool,
+        cursor: Option<PartCursorWrite>,
+        next: Option<NextPartEdit>,
+    },
+    PartCursorOnly(PartCursorWrite),
     PickAll {
         next: i32,
         step: i32,
         pass: u8,
     },
     SwapOverflow(ItemStack),
+}
+
+struct PartCursorWrite {
+    expected: Option<ItemStack>,
+    replacement: Option<ItemStack>,
+}
+
+struct NextPartEdit {
+    remainder: Option<ItemStack>,
+    clicked: Option<StackedClickedEdit>,
+    cursor: Option<PartCursorWrite>,
 }
 
 #[derive(Clone, Debug)]
@@ -99,7 +123,7 @@ fn part_set_allowed(
 }
 
 /// Apply one `ClickedStackResult::Take(amount)` on `target` for `StackedEditPolicy::Part`.
-fn part_take(target: &mut impl StackedSlotTarget, kind: StackedSlotKind, amount: u32) -> bool {
+fn part_take(target: &mut dyn StackedSlotTarget, kind: StackedSlotKind, amount: u32) -> bool {
     if kind == StackedSlotKind::Inert || amount == 0 {
         return false;
     }
@@ -129,9 +153,13 @@ pub fn apply_stacked_outcome(
     target: &mut impl StackedSlotTarget,
     outcome: &StackedOutcome,
 ) -> bool {
+    let carried = outcome
+        .carried
+        .as_ref()
+        .or(outcome.carried_part_cursor.as_ref());
     let apply_edits = match outcome.policy {
         StackedEditPolicy::Global => outcome.canceled && outcome.handled,
-        StackedEditPolicy::Part => outcome.carried.is_some() || outcome.clicked.is_some(),
+        StackedEditPolicy::Part => carried.is_some() || outcome.clicked.is_some(),
     };
     if !apply_edits {
         return true;
@@ -169,7 +197,7 @@ pub fn apply_stacked_outcome(
                     return false;
                 }
             }
-            if let Some(carried) = outcome.carried.clone() {
+            if let Some(carried) = carried.cloned() {
                 target.set_carried(carried);
             }
             if let Some(clicked) = clicked_set.cloned() {
@@ -190,6 +218,11 @@ pub fn apply_stacked_outcome(
                         }
                     }
                     StackedClickedEdit::Take(amount) => part_take(target, kind, *amount),
+                    StackedClickedEdit::TakeThenTake { first, second } => {
+                        target.with_staged(|slot| {
+                            part_take(slot, kind, *first) && part_take(slot, kind, *second)
+                        })
+                    }
                     StackedClickedEdit::TakeThenSet { take, then } => {
                         let Some(orig) = &old else {
                             outcome.refused.set(true);
@@ -219,19 +252,14 @@ pub fn apply_stacked_outcome(
                         }
                     }
                     StackedClickedEdit::SetThenTake { set, take } => {
-                        let set_opt = Some(set.clone());
-                        if *take == 0
-                            || *take > set.count
-                            || (*take < set.count && kind == StackedSlotKind::Result)
-                            || !part_set_allowed(target, kind, &old, &set_opt)
-                        {
-                            false
-                        } else {
-                            if set_opt != old {
-                                target.set_clicked(set_opt);
-                            }
-                            part_take(target, kind, *take)
-                        }
+                        let replacement = Some(set.clone());
+                        part_set_allowed(target, kind, &old, &replacement)
+                            && target.with_staged(|slot| {
+                                if replacement != old {
+                                    slot.set_clicked(replacement);
+                                }
+                                part_take(slot, kind, *take)
+                            })
                     }
                 };
                 if !applied {
@@ -239,7 +267,7 @@ pub fn apply_stacked_outcome(
                     return false;
                 }
             }
-            if let Some(carried) = outcome.carried.clone() {
+            if let Some(carried) = carried.cloned() {
                 target.set_carried(carried);
             }
         }
@@ -297,6 +325,19 @@ impl StackedSlotTarget for MenuSlotTarget<'_, '_> {
 
     fn set_clicked(&mut self, clicked: Option<ItemStack>) {
         self.menu.set_by_player(self.env, self.slot, clicked);
+    }
+
+    fn with_staged(&mut self, edit: impl FnOnce(&mut dyn StackedSlotTarget) -> bool) -> bool {
+        let mut staged = self.menu.clone();
+        if !edit(&mut MenuSlotTarget {
+            menu: &mut staged,
+            env: self.env,
+            slot: self.slot,
+        }) {
+            return false;
+        }
+        self.menu.install_state(staged);
+        true
     }
 
     fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack> {
@@ -628,7 +669,7 @@ impl Menu {
                 if !in_range(slot_index) {
                     return Err(OUT_OF_BOUNDS);
                 }
-                self.pickup(env, slot_index as usize, primary);
+                return Ok(self.pickup(env, slot_index as usize, primary));
             }
         } else if input == Input::Swap && ((0..9).contains(&button) || button == 40) {
             if !in_range(slot_index) {
@@ -696,7 +737,7 @@ impl Menu {
         self.takes = track.then_some(TakeTracker(None));
     }
 
-    /// The one take performed before the click yielded or finished.
+    /// The take performed before the click yielded or finished.
     pub fn take_notice(&mut self) -> Option<SlotTake> {
         self.takes.as_mut()?.0.take()
     }
@@ -774,20 +815,136 @@ impl Menu {
 
     /// The PICKUP branch of `doClick`: a bundle's override, else the
     /// plain click, ending with `slot.setChanged()`.
-    pub(super) fn pickup(&mut self, env: &Env, s: usize, primary: bool) {
+    fn pickup(&mut self, env: &Env, s: usize, primary: bool) -> Option<ClickContinuation> {
         self.touch();
         let mut resume = StackedResume::VanillaAll;
         if let Some(outcome) = env.stacked {
             resume = outcome.resume;
+            if self.tracks_take(s)
+                && outcome.policy == StackedEditPolicy::Part
+                && let Some(edit) = &outcome.clicked
+                && !matches!(edit, StackedClickedEdit::Set(_))
+            {
+                return self.start_tracked_part_pickup(env, s, primary, outcome, edit);
+            }
             let mut target = MenuSlotTarget {
                 menu: self,
                 env,
                 slot: s,
             };
             if !apply_stacked_outcome(&mut target, outcome) {
-                return;
+                return None;
             }
         }
+        self.finish_pickup(env, s, primary, resume);
+        None
+    }
+
+    fn start_tracked_part_pickup(
+        &mut self,
+        env: &Env,
+        slot: usize,
+        primary: bool,
+        outcome: &StackedOutcome,
+        edit: &StackedClickedEdit,
+    ) -> Option<ClickContinuation> {
+        let current = &self.state.carried;
+        let after_carried = outcome.carried_part_cursor.as_ref().unwrap_or(current);
+        let clicked_cursor = outcome.carried.as_ref().map(|replacement| PartCursorWrite {
+            expected: after_carried.clone(),
+            replacement: replacement.clone(),
+        });
+        let first_take = match edit {
+            StackedClickedEdit::TakeThenTake { first, second } => {
+                Some((*first, Some(StackedClickedEdit::Take(*second))))
+            }
+            StackedClickedEdit::TakeThenSet { take, then } => {
+                Some((*take, Some(StackedClickedEdit::Set(then.clone()))))
+            }
+            StackedClickedEdit::Take(take) if outcome.carried_part_took => Some((*take, None)),
+            _ => None,
+        };
+        let (cursor, next) = if let Some((take, clicked)) = first_take {
+            if clicked.is_some() && self.slot(slot).is_none_or(|stack| take >= stack.count) {
+                outcome.refused.set(true);
+                return None;
+            }
+            let cursor = outcome
+                .carried_part_cursor
+                .as_ref()
+                .map(|replacement| PartCursorWrite {
+                    expected: current.clone(),
+                    replacement: replacement.clone(),
+                });
+            if !self.apply_tracked_part(env, slot, Some(StackedClickedEdit::Take(take)), None) {
+                return None;
+            }
+            let next = (clicked.is_some() || clicked_cursor.is_some()).then(|| NextPartEdit {
+                remainder: self.slot(slot).cloned(),
+                clicked,
+                cursor: clicked_cursor,
+            });
+            (cursor, next)
+        } else {
+            // The carried Part did not take, so its edit is already due. The clicked
+            // Part's cursor edit is owed only after its own take notice.
+            if !self.apply_tracked_part(
+                env,
+                slot,
+                Some(edit.clone()),
+                outcome.carried_part_cursor.clone(),
+            ) {
+                return None;
+            }
+            (clicked_cursor, None)
+        };
+        Some(ClickContinuation(ClickStep::PartAfterTake {
+            slot,
+            primary,
+            cursor,
+            next,
+        }))
+    }
+
+    fn apply_tracked_part(
+        &mut self,
+        env: &Env,
+        slot: usize,
+        clicked: Option<StackedClickedEdit>,
+        carried: Option<Option<ItemStack>>,
+    ) -> bool {
+        let phase = StackedOutcome {
+            policy: StackedEditPolicy::Part,
+            clicked,
+            carried,
+            ..Default::default()
+        };
+        let mut target = MenuSlotTarget {
+            menu: self,
+            env,
+            slot,
+        };
+        if apply_stacked_outcome(&mut target, &phase) {
+            true
+        } else {
+            env.stacked
+                .expect("a tracked Part click keeps its decision")
+                .refused
+                .set(true);
+            false
+        }
+    }
+
+    fn settle_part_cursor(&mut self, outcome: &StackedOutcome, write: PartCursorWrite) -> bool {
+        if self.state.carried != write.expected {
+            outcome.refused.set(true);
+            return false;
+        }
+        self.carried = write.replacement;
+        true
+    }
+
+    fn finish_pickup(&mut self, env: &Env, s: usize, primary: bool, resume: StackedResume) {
         let handled = match resume {
             StackedResume::Done => true,
             StackedResume::Plain => false,
@@ -900,6 +1057,13 @@ impl Menu {
             (None, Some(mut taken)) => {
                 if self.may_pickup(env, target) {
                     self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
+                    if target_slot.role == Role::Output {
+                        // A swap skips FurnaceResultSlot.remove, so record the transfer without
+                        // adding to removeCount (the onTake callback still sees zero).
+                        self.state
+                            .furnace_extracted
+                            .push((taken.clone(), taken.count));
+                    }
                     self.set_by_player(env, target, None);
                     self.on_take(env, target, &mut taken);
                     if self.state.slots[target].role == Role::CraftResult {
@@ -1353,6 +1517,57 @@ impl Menu {
                     pass += 1;
                     next = start;
                 }
+            }
+            ClickStep::PartAfterTake {
+                slot,
+                primary,
+                cursor,
+                next,
+            } => {
+                let outcome = env
+                    .stacked
+                    .expect("a suspended Part click keeps its decision");
+                if let Some(write) = cursor
+                    && !self.settle_part_cursor(outcome, write)
+                {
+                    return None;
+                }
+                if let Some(next) = next {
+                    let NextPartEdit {
+                        remainder,
+                        clicked,
+                        cursor,
+                    } = next;
+                    if self.slot(slot) != remainder.as_ref()
+                        || cursor
+                            .as_ref()
+                            .is_some_and(|write| self.state.carried != write.expected)
+                    {
+                        outcome.refused.set(true);
+                        return None;
+                    }
+                    if !self.apply_tracked_part(env, slot, clicked, None) {
+                        return None;
+                    }
+                    if self.take_pending() {
+                        return Some(ClickContinuation(ClickStep::PartAfterTake {
+                            slot,
+                            primary,
+                            cursor,
+                            next: None,
+                        }));
+                    }
+                    if let Some(write) = cursor
+                        && !self.settle_part_cursor(outcome, write)
+                    {
+                        return None;
+                    }
+                }
+                self.finish_pickup(env, slot, primary, outcome.resume);
+            }
+            ClickStep::PartCursorOnly(write) => {
+                let outcome = env.stacked.expect("an owed Part cursor keeps its decision");
+                self.settle_part_cursor(outcome, write);
             }
             ClickStep::SwapOverflow(mut taken) => {
                 if !self.inventory_add(env, &mut taken) {

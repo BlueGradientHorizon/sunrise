@@ -9,9 +9,10 @@
 use crate::{BiomeColors, BlockMetadata, BlockState, Direction, FluidState, LightLayer};
 use std::sync::Arc;
 
-/// The colour calculations block tints blend over the biomes around a block (vanilla's
+/// The colour calculations the client blends over the biomes around a block (vanilla's
 /// `BiomeColors` resolvers, `ColorResolver`): vanilla's four, and the ones mods register in
-/// `register_color_resolvers`.
+/// `register_color_resolvers`. Pass one to `ClientHost::biome_tint` or
+/// [`BlockAndTintGetter::block_tint`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: the game blends every resolver, so a new one must be handled there
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -29,7 +30,8 @@ pub enum ColorResolver {
 }
 
 /// A mod's colour resolver, as the game keeps it: what [`ColorResolvers::register`] returns, to
-/// pass to [`BlockAndTintGetter::block_tint`]. Process-local; do not persist it.
+/// pass to `ClientHost::biome_tint` or [`BlockAndTintGetter::block_tint`].
+/// Process-local; do not persist it.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct ModColorResolver(pub(crate) u32);
@@ -64,8 +66,9 @@ pub struct ResolverBiome {
 
 /// A mod's colour resolver: vanilla's `ColorResolver`, which the game blends over the biomes
 /// around a block as it blends its own (`ClientLevel.calculateBlockTint`, over the biome blend
-/// radius) and caches per section while it meshes. Held by the game and asked on the meshing
-/// workers, so it keeps no mutable state and gets no `Host`.
+/// radius) and caches per section while it meshes. The client can also ask it directly through
+/// `ClientHost::biome_tint`. It can run on meshing workers, so it keeps no mutable state and gets
+/// no `Host`.
 pub trait BiomeColorResolver: Send + Sync + 'static {
     /// `getColor(biome, x, z)`: the colour of `biome` (`minecraft:plains`) at block column
     /// `(x, z)`, 0xRRGGBB.
@@ -76,8 +79,8 @@ pub trait BiomeColorResolver: Send + Sync + 'static {
 /// `RegisterColorHandlersEvent.ColorResolvers`.
 pub trait ColorResolvers {
     /// `register(resolver)`: adds `resolver` to the ones the game blends and caches, and returns
-    /// the [`ColorResolver`] a block tint source passes to
-    /// [`BlockAndTintGetter::block_tint`].
+    /// the [`ColorResolver`] to pass to `ClientHost::biome_tint`, or to
+    /// [`BlockAndTintGetter::block_tint`] inside a block tint source.
     fn register(&mut self, resolver: Arc<dyn BiomeColorResolver>) -> ColorResolver;
 }
 
