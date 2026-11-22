@@ -213,6 +213,19 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         see_through: &mut Vec<Vertex>,
     ) {
+        let mut collector = std::mem::take(&mut self.see_through_collector);
+        collector.clear();
+        self.test_instance_marker_geometry_into(camera, out, &mut collector);
+        collector.flush(see_through);
+        self.see_through_collector = collector;
+    }
+
+    pub(super) fn test_instance_marker_geometry_into(
+        &mut self,
+        camera: glam::DVec3,
+        out: &mut Vec<Vertex>,
+        see_through: &mut super::text_displays::SeeThroughCollector,
+    ) {
         use sunrise_client::gizmos as g;
         // `GameTestBlockHighlightRenderer.emitGizmos`: expired highlights go,
         // the rest are a green box with the relative position over it.
@@ -270,16 +283,21 @@ impl Game<'_> {
             }
             // `Gizmos.billboardText(..).setAlwaysOnTop()`: white, centred,
             // without a background.
+            let o = glam::DVec3::from_array(text_at) - camera;
+            let st_start = see_through.start();
             patches.extend(self.name_tag_quads(
-                glam::DVec3::from_array(text_at) - camera,
+                o,
                 &[(Text::literal(text), 0.0)],
                 0xFF,
                 false,
                 2,
                 0,
                 g::billboard_text_unit(g::ERROR_MARKER_TEXT_SCALE),
-                see_through,
+                see_through.buffer_mut(),
             ));
+            let dist_sq =
+                super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
+            see_through.finish(st_start, dist_sq);
         }
         self.map_patches.extend(patches);
     }

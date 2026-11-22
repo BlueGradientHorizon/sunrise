@@ -42,12 +42,10 @@ impl Game<'_> {
         if self.hides_as_camera(mob.id) {
             return;
         }
-        if self.remote_camera_id() != Some(mob.id)
-            && !self.entity_section_visible(
-                glam::DVec3::new(mob.position.x, mob.position.y, mob.position.z),
-                now,
-            )
-        {
+        if !self.entity_section_visible(
+            glam::DVec3::new(mob.position.x, mob.position.y, mob.position.z),
+            now,
+        ) {
             return;
         }
         let is_player = &*mob.kind.id == "minecraft:player";

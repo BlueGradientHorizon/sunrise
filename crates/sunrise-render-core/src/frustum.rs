@@ -25,11 +25,13 @@ impl Frustum {
     }
 
     /// Whether the camera-relative box `min..max` is at least partly inside.
+    /// Uses `>= 0.0` (matching JOML `FrustumIntersection.intersectAab`) so a
+    /// non-finite plane test (`0.0 * inf = NaN`) rejects rather than passing.
     pub fn intersects(&self, min: Vec3, max: Vec3) -> bool {
-        !self.planes.iter().any(|p| {
+        self.planes.iter().all(|p| {
             let sign = p.truncate().cmpge(Vec3::ZERO);
             let v = Vec3::select(sign, max, min);
-            p.truncate().dot(v) + p.w < 0.0
+            p.truncate().dot(v) + p.w >= 0.0
         })
     }
 

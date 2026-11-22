@@ -21,9 +21,6 @@ use sunrise_client::{
 pub(super) const NAME_TAG_UNIT: f32 = 0.025;
 /// Options.getBackgroundOpacity(0.25) black, as ARGB.color.
 const BACKGROUND: u32 = 0x3F00_0000;
-/// The text alpha that goes with getBackgroundOpacity(0.25):
-/// max((0.25 + 0.75) / 2, 0.5), as ARGB.color (the floor of 255 times it).
-pub(super) const FADED: u32 = 0x7F;
 
 /// Local glyph quads only: camera transforms and lighting stay per frame.
 /// Slots follow submission order; comparing the whole styled text also handles entity reorder,
@@ -575,8 +572,10 @@ impl Game<'_> {
                 });
             }
         }
-        // DisplayRenderer.submit -> EntityRenderer.shouldShowName: only once the
-        // display has a committed render state and sub-state, within 64 blocks.
+        // DisplayRenderer.submit -> EntityRenderer.shouldShowName: uses the same visibility
+        // decision and per-entity partial tick as the display itself, within 64 blocks.
+        let scale = self.view_scale();
+        let now = std::time::Instant::now();
         for (&id, display) in &self.text_displays {
             if !display.has_render_state() {
                 continue;
@@ -584,6 +583,18 @@ impl Game<'_> {
             let Some(name) = display.custom_name() else {
                 continue;
             };
+            let entity_partial = self.display_partial(id, alpha);
+            if !self.display_visible_with_frustum(
+                id,
+                display,
+                camera,
+                entity_partial as f32,
+                scale,
+                now,
+                frustum,
+            ) {
+                continue;
+            }
             let pos = display.position();
             if pos.distance_squared(camera) >= 64.0 * 64.0 {
                 continue;
@@ -603,25 +614,7 @@ impl Game<'_> {
             if !visible {
                 continue;
             }
-            let at = display.render_position(alpha);
-            if let Some(frustum) = frustum
-                && !sunrise_client::text_display::no_culling(
-                    display.data.width,
-                    display.data.height,
-                )
-            {
-                let (lo, hi) = sunrise_client::text_display::culling_box(
-                    at,
-                    display.data.width,
-                    display.data.height,
-                );
-                if !frustum.intersects(
-                    (lo - camera - glam::DVec3::splat(0.5)).as_vec3(),
-                    (hi - camera + glam::DVec3::splat(0.5)).as_vec3(),
-                ) {
-                    continue;
-                }
-            }
+            let at = display.render_position(entity_partial);
             let team = self.mob_team(id as u32);
             let shown = match team {
                 Some(t) => t.formatted_name(name.clone()),
@@ -631,17 +624,13 @@ impl Game<'_> {
             let shown = text
                 .map(|text| Text::untrusted(text).resolve_legacy())
                 .unwrap_or(shown);
-            let light = self.world.light(
-                at.x.floor() as i32,
-                at.y.floor() as i32,
-                at.z.floor() as i32,
-            );
+            let light = display.packed_light(&self.world, at);
             // Display is sized (0, 0): NAME_TAG attachment is (0, 0, 0), lifted 0.5 by submitNameTag.
             tags.push(NameTag {
                 at: glam::DVec3::new(at.x, at.y + 0.5, at.z),
                 lines: vec![(shown, 0.0)],
                 light,
-                discrete: false,
+                discrete: display.is_discrete(),
             });
         }
         tags
@@ -656,9 +645,24 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         see_through: &mut Vec<Vertex>,
     ) {
+        let mut collector = std::mem::take(&mut self.see_through_collector);
+        collector.clear();
+        self.name_tag_geometry_into(camera, alpha, out, &mut collector);
+        collector.flush(see_through);
+        self.see_through_collector = collector;
+    }
+    pub(super) fn name_tag_geometry_into(
+        &mut self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        see_through: &mut super::text_displays::SeeThroughCollector,
+    ) {
         let mut patches = Vec::new();
         let mut layouts = std::mem::take(&mut self.name_tag_layouts);
         layouts.begin_frame(&self.gui.atlas);
+        let background = self.settings.text_background(0.25);
+        let faded = self.settings.faded_text_alpha(0.25);
         for tag in self.collect_name_tags(
             camera,
             alpha,
@@ -674,8 +678,8 @@ impl Game<'_> {
                 patches.extend(self.styled_name_tag_quads(
                     o,
                     &tag.lines,
-                    FADED,
-                    BACKGROUND,
+                    faded,
+                    background,
                     0,
                     light,
                     NAME_TAG_UNIT,
@@ -699,18 +703,23 @@ impl Game<'_> {
                 out,
                 Some(&mut layouts),
             ));
-            // RenderPipelines.TEXT_SEE_THROUGH: no depth test, no lightmap.
+            // RenderPipelines.TEXT_SEE_THROUGH: no depth test, no lightmap; sorted with all
+            // see-through text submits by camera-relative pose distance.
+            let st_start = see_through.start();
             patches.extend(self.styled_name_tag_quads(
                 o,
                 &tag.lines,
-                FADED,
-                BACKGROUND,
+                faded,
+                background,
                 2,
                 0,
                 NAME_TAG_UNIT,
-                see_through,
+                see_through.buffer_mut(),
                 Some(&mut layouts),
             ));
+            let dist_sq =
+                super::text_displays::submit_distance_sq(o.x as f32, o.y as f32, o.z as f32);
+            see_through.finish(st_start, dist_sq);
         }
         layouts.end_frame();
         self.name_tag_layouts = layouts;

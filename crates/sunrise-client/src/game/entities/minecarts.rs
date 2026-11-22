@@ -2468,24 +2468,78 @@ impl Game<'_> {
     /// The seed vanilla picks a block state model's weighted alternatives with outside the
     /// world (`BlockModelResolver.MODEL_SEED`).
     pub(super) const BLOCK_MODEL_SEED: i64 = 42;
+    /// `BlockModelResolver.update` + `BlockModelRenderState.submit`: combines external light
+    /// with the block state's own light component-wise (`emissiveRendering` gives full sky+block
+    /// light `(15, 15)`, otherwise `(0, state.getLightEmission())`).
+    pub(super) fn block_display_light(&self, state: BlockStateId, external_light: u32) -> u32 {
+        let emissive = self.pack.assets.registry.state(state).is_some_and(|st| {
+            let name = st.name.strip_prefix("minecraft:").unwrap_or(&st.name);
+            name == "magma_block"
+                || (matches!(name, "sculk_sensor" | "calibrated_sculk_sensor")
+                    && st.properties.get("sculk_sensor_phase").map(String::as_str)
+                        == Some("active"))
+        });
+        let (block_sky, block_em) = if emissive {
+            (15 * 16, 15 * 16)
+        } else {
+            (0, u32::from(self.res.facts().get(state).emission) * 16)
+        };
+        let sky = (external_light & 0xFF).max(block_sky);
+        let block = ((external_light >> 8) & 0xFF).max(block_em);
+        sky | (block << 8)
+    }
     /// `BlockModelRenderState` / `BlockDisplayRenderer`: baked block-state faces with back-face
-    /// culling (`SHADED_CULL_W`), translucent sheet routing (`TRANSLUCENT_ITEM_OVERLAY`), and
-    /// block-state light emission (`BlockState.getLightEmission`).
+    /// culling (`SHADED_CULL_W`), one resolved sheet (`translucentBlockItemSheet` if any face is
+    /// translucent, else `cutoutBlockItemSheet`), component-wise light max, JOML vertex transform,
+    /// and reusable slot scratch. Returns whether the model routed to the translucent sheet.
     pub(super) fn block_display_model_vertices(
         &self,
         state: BlockStateId,
         seed: i64,
-        m: glam::Mat4,
+        pose: sunrise_client::camera::joml::Mat4,
         light: u32,
+        slots: &mut Vec<u32>,
         out: &mut Vec<Vertex>,
-    ) {
-        let Ok(models) = self.pack.render.model_catalog.collect_seeded(state, seed) else {
-            return;
+    ) -> bool {
+        if self
+            .pack
+            .render
+            .model_catalog
+            .slots_seeded(state, seed, slots)
+            .is_err()
+        {
+            return false;
+        }
+        let effective_light = self.block_display_light(state, light);
+        let has_translucency = slots.iter().any(|&slot| {
+            self.pack
+                .render
+                .model_catalog
+                .baked_model(slot)
+                .faces
+                .iter()
+                .any(|face| {
+                    let Some(name) = self.pack.layer_names.get(&face.layer) else {
+                        return false;
+                    };
+                    if !self.gui.atlas.sprites.contains_key(name) {
+                        return false;
+                    }
+                    face.translucent
+                        || self.gui.atlas.translucent.contains(name)
+                        || face.quad.render_type
+                            == Some(sunrise_assets::bake::RenderType::Translucent)
+                })
+        });
+        let layer = if has_translucency {
+            sunrise_client::gfx::TRANSLUCENT_ITEM_OVERLAY
+        } else {
+            0
         };
-        let state_emission = u32::from(self.res.facts().get(state).emission) * 16;
         let tint = self.default_block_tint(state);
-        let mut normals = sunrise_client::item_render::FaceNormals::new(m);
-        for (_, model) in models {
+        let mut normals = sunrise_client::item_render::FaceNormals::new(pose.to_glam());
+        for &slot in slots.iter() {
+            let model = self.pack.render.model_catalog.baked_model(slot);
             for face in &model.faces {
                 let Some(name) = self.pack.layer_names.get(&face.layer) else {
                     continue;
@@ -2506,22 +2560,12 @@ impl Game<'_> {
                     .to_array()
                     .map(|v| (v.clamp(-1.0, 1.0) * 127.0) as i8);
                 let normal = [n[0], n[1], n[2], sunrise_client::mesher::SHADED_CULL_W];
-                let emission = state_emission.max(u32::from(quad.light_emission) * 16);
-                let quad_light = (light & 0xFF) | (light >> 8 & 0xFF).max(emission) << 8;
-                let translucent = face.translucent
-                    || self.gui.atlas.translucent.contains(name)
-                    || face.quad.render_type == Some(sunrise_assets::bake::RenderType::Translucent);
-                let layer = if translucent {
-                    sunrise_client::gfx::TRANSLUCENT_ITEM_OVERLAY
-                } else {
-                    0
-                };
+                let quad_light = (effective_light & 0xFF)
+                    | ((effective_light >> 8) & 0xFF).max(u32::from(quad.light_emission) * 16) << 8;
                 for k in 0..4 {
                     out.push(Vertex {
                         normal,
-                        pos: m
-                            .transform_point3(glam::Vec3::from_array(quad.positions[k]))
-                            .to_array(),
+                        pos: pose.transform_position(quad.positions[k]),
                         uv: quad.uv[k],
                         layer,
                         color,
@@ -2531,6 +2575,7 @@ impl Game<'_> {
                 }
             }
         }
+        has_translucency
     }
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
     pub(super) fn block_model_vertices(

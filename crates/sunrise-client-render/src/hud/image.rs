@@ -337,6 +337,11 @@ pub(super) fn first_frame(
 /// `image` inside a one-texel border copied from its opposite edges, the
 /// texels repeat addressing reads past each edge.
 pub(super) fn wrap_border((name, w, h, data): &PackedImage) -> PackedImage {
+    (name.clone(), w + 2, h + 2, wrap_border_pixels(data, *w, *h))
+}
+
+/// Raw RGBA8 `w x h` image padded by a 1-texel wrap border copied from opposite edges.
+pub(super) fn wrap_border_pixels(data: &[u8], w: u32, h: u32) -> Vec<u8> {
     let (bw, bh) = (w + 2, h + 2);
     let mut out = Vec::with_capacity((bw * bh * 4) as usize);
     for y in 0..bh {
@@ -346,7 +351,7 @@ pub(super) fn wrap_border((name, w, h, data): &PackedImage) -> PackedImage {
             out.extend_from_slice(&data[at..at + 4]);
         }
     }
-    (name.clone(), bw, bh, out)
+    out
 }
 
 /// `image` inside a one-texel border clamped from its own edge texels, matching

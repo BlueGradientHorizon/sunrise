@@ -77,9 +77,10 @@ fn joml_slerp(from: [f32; 4], to: [f32; 4], alpha: f32) -> [f32; 4] {
     let cosom = from[0] * to[0] + (from[1] * to[1] + (from[2] * to[2] + from[3] * to[3]));
     let abs_cosom = cosom.abs();
     let (scale0, mut scale1) = if 1.0 - abs_cosom > 1.0e-6 {
-        let sin_sqr = 1.0 - abs_cosom * abs_cosom;
+        let sin_sqr = (-abs_cosom) * abs_cosom + 1.0;
         let sinom = 1.0 / (f64::from(sin_sqr).sqrt() as f32);
-        let omega = f64::from(sin_sqr * sinom).atan2(f64::from(abs_cosom)) as f32;
+        let omega =
+            sunrise_core::jmath::atan2(f64::from(sin_sqr * sinom), f64::from(abs_cosom)) as f32;
         (
             crate::camera::joml::sin((1.0 - alpha) * omega) * sinom,
             crate::camera::joml::sin(alpha * omega) * sinom,
@@ -91,27 +92,6 @@ fn joml_slerp(from: [f32; 4], to: [f32; 4], alpha: f32) -> [f32; 4] {
         scale1 = -scale1;
     }
     std::array::from_fn(|i| scale0 * from[i] + scale1 * to[i])
-}
-
-/// `org.joml.Matrix4f.mulAffine(Matrix4fc, Matrix4f)` in JOML's unfused order.
-fn joml_mul_affine(
-    a: &crate::camera::joml::Mat4,
-    b: &crate::camera::joml::Mat4,
-) -> crate::camera::joml::Mat4 {
-    let g = |m: &crate::camera::joml::Mat4, c: usize, r: usize| m.m[c * 4 + r];
-    let mut out = [0.0f32; 16];
-    for col in 0..3 {
-        for row in 0..3 {
-            out[col * 4 + row] = g(a, 0, row) * g(b, col, 0)
-                + (g(a, 1, row) * g(b, col, 1) + g(a, 2, row) * g(b, col, 2));
-        }
-    }
-    for row in 0..3 {
-        out[12 + row] = g(a, 0, row) * g(b, 3, 0)
-            + (g(a, 1, row) * g(b, 3, 1) + (g(a, 2, row) * g(b, 3, 2) + g(a, 3, row)));
-    }
-    out[15] = 1.0;
-    crate::camera::joml::Mat4::affine(glam::Mat4::from_cols_array(&out))
 }
 
 impl TextDisplayData {
@@ -149,7 +129,7 @@ impl TextDisplayData {
         tx.rotate(quat(self.left_rotation));
         tx.scale(self.scale[0], self.scale[1], self.scale[2]);
         tx.rotate(quat(self.right_rotation));
-        joml_mul_affine(&pose, &tx)
+        pose.mul_affine(&tx)
     }
 
     /// DisplayRenderer's billboard orientation followed by Transformation's T*L*S*R.
@@ -159,21 +139,16 @@ impl TextDisplayData {
 
     pub fn blend(&self, from: &Self, t: f32) -> Self {
         let mut out = self.clone();
-        for i in 0..3 {
-            out.translation[i] =
-                from.translation[i] + t * (self.translation[i] - from.translation[i]);
-            out.scale[i] = from.scale[i] + t * (self.scale[i] - from.scale[i]);
+        // Display$TransformationInterpolator.get: returns the target transform verbatim at t >= 1.
+        if t < 1.0 {
+            for i in 0..3 {
+                out.translation[i] =
+                    from.translation[i] + t * (self.translation[i] - from.translation[i]);
+                out.scale[i] = from.scale[i] + t * (self.scale[i] - from.scale[i]);
+            }
+            out.left_rotation = joml_slerp(from.left_rotation, self.left_rotation, t);
+            out.right_rotation = joml_slerp(from.right_rotation, self.right_rotation, t);
         }
-        out.left_rotation = if t >= 1.0 {
-            self.left_rotation
-        } else {
-            joml_slerp(from.left_rotation, self.left_rotation, t)
-        };
-        out.right_rotation = if t >= 1.0 {
-            self.right_rotation
-        } else {
-            joml_slerp(from.right_rotation, self.right_rotation, t)
-        };
         // Display$LinearFloatInterpolator: Mth.lerp(t, previous, current).
         out.shadow_radius = from.shadow_radius + t * (self.shadow_radius - from.shadow_radius);
         out.shadow_strength =
@@ -191,6 +166,32 @@ impl TextDisplayData {
     }
 }
 
+/// `java.lang.Math.min(double, double)`: NaN propagates and `-0.0 < +0.0`.
+fn java_min_f64(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a == 0.0 && b == 0.0 {
+        f64::from_bits(a.to_bits() | b.to_bits())
+    } else if a <= b {
+        a
+    } else {
+        b
+    }
+}
+
+/// `java.lang.Math.max(double, double)`: NaN propagates and `+0.0 > -0.0`.
+fn java_max_f64(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a == 0.0 && b == 0.0 {
+        f64::from_bits(a.to_bits() & b.to_bits())
+    } else if a >= b {
+        a
+    } else {
+        b
+    }
+}
+
 /// `Display.updateCulling`: either edge at 0 sets `noCulling`, so the renderer
 /// skips the frustum box (`DisplayRenderer.affectedByCulling`).
 pub fn no_culling(width: f32, height: f32) -> bool {
@@ -201,14 +202,22 @@ pub fn no_culling(width: f32, height: f32) -> bool {
 /// origin: the AABB from `(x − width/2, y, z − width/2)` to
 /// `(x + width/2, y + height, z + width/2)`, normalized like `new AABB(...)`.
 pub fn culling_box(origin: glam::DVec3, width: f32, height: f32) -> (glam::DVec3, glam::DVec3) {
-    let half = f64::from(width) * 0.5;
+    let half = f64::from(width / 2.0);
     let tall = f64::from(height);
     let (x0, x1) = (origin.x - half, origin.x + half);
     let (y0, y1) = (origin.y, origin.y + tall);
     let (z0, z1) = (origin.z - half, origin.z + half);
     (
-        glam::DVec3::new(x0.min(x1), y0.min(y1), z0.min(z1)),
-        glam::DVec3::new(x0.max(x1), y0.max(y1), z0.max(z1)),
+        glam::DVec3::new(
+            java_min_f64(x0, x1),
+            java_min_f64(y0, y1),
+            java_min_f64(z0, z1),
+        ),
+        glam::DVec3::new(
+            java_max_f64(x0, x1),
+            java_max_f64(y0, y1),
+            java_max_f64(z0, z1),
+        ),
     )
 }
 
@@ -487,11 +496,15 @@ impl Lines {
 }
 
 /// Local geometry, independent of the display's interpolated world pose.
+/// Line wrapping (`lines`) depends only on text, line width, font epoch and bidi,
+/// while quad paint (`batch`) refreshes in place when color/flags/atlas/skins change.
 pub struct CachedQuads {
-    key: (Arc<Text>, i32, i32, i8, u8, u32, u64, u64, bool),
-    /// Drawn differently every frame: obfuscated (`§k`) glyphs, legacy codes
-    /// included, or an inline object (a head whose skin arrives later).
-    animated: bool,
+    layout_key: (Arc<Text>, i32, u64, bool),
+    paint_key: (i32, i8, u8, u32, u64, u64),
+    /// True when the text contains obfuscated (`§k`) glyphs that randomize every frame.
+    obfuscated: bool,
+    /// True when the text contains an inline object (head/sprite) sensitive to `object_skins_revision`.
+    has_inline_object: bool,
     pub lines: Lines,
     pub batch: crate::hud::HudBatch,
     /// Prefix vertex count in `batch.vertices` belonging to `StandaloneBackground` (0 or 6).
@@ -500,19 +513,49 @@ pub struct CachedQuads {
 }
 
 impl CachedQuads {
+    fn layout_matches(&self, d: &TextDisplayData, epoch: u64) -> bool {
+        self.layout_key
+            == (
+                d.text.clone(),
+                d.line_width,
+                epoch,
+                crate::lang::bidirectional(),
+            )
+    }
+
     pub fn matches(&self, d: &TextDisplayData, background: u32, epoch: u64, revision: u64) -> bool {
-        !self.animated
-            && self.key
+        !self.obfuscated
+            && self.layout_matches(d, epoch)
+            && (
+                self.paint_key.0,
+                self.paint_key.1,
+                self.paint_key.2,
+                self.paint_key.3,
+                self.paint_key.4,
+            ) == (d.background, d.opacity, d.flags, background, revision)
+    }
+
+    pub fn matches_atlas(
+        &self,
+        atlas: &crate::hud::HudAtlas,
+        d: &TextDisplayData,
+        background: u32,
+    ) -> bool {
+        let skins = if self.has_inline_object {
+            atlas.object_skins_revision
+        } else {
+            self.paint_key.5
+        };
+        !self.obfuscated
+            && self.layout_matches(d, atlas.font.epoch())
+            && self.paint_key
                 == (
-                    d.text.clone(),
-                    d.line_width,
                     d.background,
                     d.opacity,
                     d.flags,
                     background,
-                    epoch,
-                    revision,
-                    crate::lang::bidirectional(),
+                    atlas.revision,
+                    skins,
                 )
     }
 
@@ -520,42 +563,101 @@ impl CachedQuads {
         let lines = Lines::split(&atlas.font, &d.text, d.line_width);
         let mut batch = crate::hud::HudBatch::scratch([1, 1]);
         let bg_vertices = draw_inner(&mut batch, atlas, d, &lines, background);
-        let mut lo = glam::Vec3::splat(f32::INFINITY);
-        let mut hi = glam::Vec3::splat(f32::NEG_INFINITY);
-        for v in &batch.vertices {
-            let p = glam::Vec3::new(v.pos[0], v.pos[1], v.depth);
-            lo = lo.min(p);
-            hi = hi.max(p);
-        }
-        let animated = d
-            .text
-            .resolved()
-            .spans
-            .iter()
-            .any(|s| s.style.obfuscated == Some(true) || s.style.inline_object.is_some());
+        let bounds = batch_bounds(&batch.vertices);
+        let (obfuscated, has_inline_object) = scan_dynamic(&d.text);
         Self {
-            key: (
+            layout_key: (
                 d.text.clone(),
                 d.line_width,
+                atlas.font.epoch(),
+                crate::lang::bidirectional(),
+            ),
+            paint_key: (
                 d.background,
                 d.opacity,
                 d.flags,
                 background,
-                atlas.font.epoch(),
                 atlas.revision,
-                crate::lang::bidirectional(),
+                atlas.object_skins_revision,
             ),
-            animated,
+            obfuscated,
+            has_inline_object,
             lines,
             batch,
             bg_vertices,
-            bounds: (lo, hi),
+            bounds,
+        }
+    }
+
+    /// Refresh only what changed: rewrap `lines` only on layout changes, and rebuild
+    /// `batch` in place (reusing its vertex buffer) on paint, atlas, skin or obfuscation changes.
+    pub fn update(&mut self, atlas: &crate::hud::HudAtlas, d: &TextDisplayData, background: u32) {
+        let epoch = atlas.font.epoch();
+        let layout_changed = !self.layout_matches(d, epoch);
+        if layout_changed {
+            self.lines = Lines::split(&atlas.font, &d.text, d.line_width);
+            let (obfuscated, has_inline_object) = scan_dynamic(&d.text);
+            self.obfuscated = obfuscated;
+            self.has_inline_object = has_inline_object;
+            self.layout_key = (
+                d.text.clone(),
+                d.line_width,
+                epoch,
+                crate::lang::bidirectional(),
+            );
+        }
+        let skins = if self.has_inline_object {
+            atlas.object_skins_revision
+        } else {
+            self.paint_key.5
+        };
+        let next_paint = (
+            d.background,
+            d.opacity,
+            d.flags,
+            background,
+            atlas.revision,
+            skins,
+        );
+        if layout_changed || self.obfuscated || self.paint_key != next_paint {
+            self.batch.vertices.clear();
+            self.batch.patches.clear();
+            self.batch.inline_profiles.clear();
+            self.bg_vertices = draw_inner(&mut self.batch, atlas, d, &self.lines, background);
+            self.bounds = batch_bounds(&self.batch.vertices);
+            self.paint_key = next_paint;
         }
     }
 
     pub fn transformed_bounds(&self, matrix: glam::Mat4) -> (glam::Vec3, glam::Vec3) {
         transformed_bounds(self.bounds, matrix)
     }
+}
+
+fn scan_dynamic(text: &Text) -> (bool, bool) {
+    let resolved = text.resolved();
+    let mut obfuscated = false;
+    let mut has_inline_object = false;
+    for span in &resolved.spans {
+        if span.style.obfuscated == Some(true) {
+            obfuscated = true;
+        }
+        if span.style.inline_object.is_some() {
+            has_inline_object = true;
+        }
+    }
+    (obfuscated, has_inline_object)
+}
+
+fn batch_bounds(vertices: &[crate::hud::HudVertex]) -> (glam::Vec3, glam::Vec3) {
+    let mut lo = glam::Vec3::splat(f32::INFINITY);
+    let mut hi = glam::Vec3::splat(f32::NEG_INFINITY);
+    for v in vertices {
+        let p = glam::Vec3::new(v.pos[0], v.pos[1], v.depth);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    (lo, hi)
 }
 
 fn transformed_bounds(

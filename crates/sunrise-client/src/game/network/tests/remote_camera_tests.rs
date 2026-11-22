@@ -68,12 +68,14 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
     boat.previous_yaw = 45.0;
     let frame = frame(11, [2, 64, -5], 3);
     let tnt = tnt(13);
+    let displays = indexmap::IndexMap::new();
     let entities = CameraEntities {
         mobs: &[],
         stands: &[],
         boats: std::slice::from_ref(&boat),
         frames: std::slice::from_ref(&frame),
         tnts: std::slice::from_ref(&tnt),
+        displays: &displays,
     };
 
     let view = entities.view(9).expect("a boat is a camera");
@@ -105,12 +107,14 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
 fn a_frame_camera_turns_with_its_facing() {
     let view = |facing| {
         let frame = frame(1, [0; 3], facing);
+        let displays = indexmap::IndexMap::new();
         let entities = CameraEntities {
             mobs: &[],
             stands: &[],
             boats: &[],
             frames: std::slice::from_ref(&frame),
             tnts: &[],
+            displays: &displays,
         };
         let view = entities.view(1).unwrap();
         (view.y_rot, view.x_rot)

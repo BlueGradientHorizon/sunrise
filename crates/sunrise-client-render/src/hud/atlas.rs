@@ -1,5 +1,26 @@
 use super::*;
 
+/// Border padding policy recorded for a packed sprite at atlas build time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AtlasBorder {
+    /// No border padding allocated around the sprite; uploads must stay inside `(x, y, w, h)`.
+    None,
+    /// 1-texel clamp-to-edge padding (`TextureAtlas` / `SpriteContents.AnimationState.drawToAtlas`).
+    Clamp,
+    /// 1-texel wrap-edge padding for repeating blurred sprites.
+    Wrap,
+}
+
+/// Exact integer placement and border policy of an animated sprite inside `HudAtlas`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AnimatedPlacement {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    pub border: AtlasBorder,
+}
+
 pub struct HudAtlas {
     pub(super) pictures: std::sync::Mutex<pictures::Cache>,
     /// Identity of this packed atlas, used to invalidate cached model UV data
@@ -42,6 +63,8 @@ pub struct HudAtlas {
     /// and the mcmeta-driven frame list, re-uploaded into the rect as the
     /// frames turn (vanilla's stitched atlas animates all of these).
     pub sprite_animations: Vec<(Rect, crate::sprites::SpriteAnimation)>,
+    /// Exact integer placement and border policy for each entry in `sprite_animations`.
+    pub sprite_animation_placements: Vec<AnimatedPlacement>,
     /// The default font (bitmap sheets in this atlas, unifont rasterized on demand).
     pub font: crate::font::Font,
     /// `misc/enchanted_glint_item` as its own image: vanilla's `GlintSampler`
@@ -225,6 +248,20 @@ pub fn dump_atlas(
 }
 
 impl HudAtlas {
+    /// Builds the `HudRenderer::sprite_animations` entries from packed animations and placements.
+    pub fn renderer_animations(
+        &self,
+    ) -> Vec<(
+        AnimatedPlacement,
+        crate::sprites::SpriteAnimation,
+        (usize, usize, u32),
+    )> {
+        self.sprite_animation_placements
+            .iter()
+            .zip(&self.sprite_animations)
+            .map(|(&placement, (_, animation))| (placement, animation.clone(), (usize::MAX, 0, 0)))
+            .collect()
+    }
     /// `TextureAtlas.dumpContents` for this atlas: `dir` is `screenshots/debug`,
     /// the folder `TextureUtil.getDebugTexturePath` names.
     pub fn dump_contents(&self, dir: &Path, name: &str) -> std::io::Result<PathBuf> {
@@ -517,6 +554,7 @@ impl HudAtlas {
             translucent: HashSet::new(),
             flags: HashMap::new(),
             sprite_animations: Vec::new(),
+            sprite_animation_placements: Vec::new(),
             font: crate::font::Font::metrics(root),
             glint: (Vec::new(), 1, 1),
             glint_armor: (Vec::new(), 1, 1),
@@ -609,6 +647,7 @@ impl HudAtlas {
             object_skins: HashMap::new(),
             object_skins_revision: Self::next_revision(),
             sprite_animations: Vec::new(),
+            sprite_animation_placements: Vec::new(),
             glint: (vec![0; 4], 1, 1),
             glint_armor: (vec![0; 4], 1, 1),
             white,
