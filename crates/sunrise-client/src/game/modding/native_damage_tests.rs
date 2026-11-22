@@ -872,7 +872,7 @@ fn a_death_listener_without_post_runs_before_the_next_hurt() {
         fn living_death(
             &self,
             _: &mut dyn mod_api::ServerHost,
-            event: &mut LivingDeathEvent<'_>,
+            event: &mut mod_api::LivingDeathEvent<'_>,
         ) -> mod_api::Flow {
             self.0
                 .lock()
@@ -959,7 +959,7 @@ fn a_falling_block_finishes_each_hit_before_the_next_victim() {
                 portal: Default::default(),
                 drop_item: true,
                 fall_distance: 2.0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 fire_ticks: 0,
                 sync_velocity: false,
                 stuck: Vec3::ZERO,

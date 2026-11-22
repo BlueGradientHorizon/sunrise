@@ -1354,7 +1354,9 @@ mod pufferfish_sting_tests {
             .map(|m| m.seen(None, &crate::items::Items::empty()))
             .collect();
         let mut events = Vec::new();
-        with_test_world(&seen, |w, _| ai_step(&mut fish, w, level, &mut events));
+        with_test_world(&seen, |w, _| {
+            ai_step(&mut fish, w, level, &mut events);
+        });
         let expected_health: Vec<_> = targets.iter().map(|mob| mob.health).collect();
         let mut mobs: JoinList<_> = std::iter::once(fish).chain(targets).collect();
         apply_brain_events(&mut mobs, level, &mut events, 0, &Default::default());

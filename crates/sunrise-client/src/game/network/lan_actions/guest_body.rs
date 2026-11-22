@@ -269,6 +269,7 @@ impl Game<'_> {
             return;
         };
         let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+        let id = g.entity_id as u32;
         if g.spectator() {
             // ServerPlayer.doTick runs the player's whole tick for a spectator
             // too, unless its box touches an unloaded chunk

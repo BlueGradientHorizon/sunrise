@@ -2802,6 +2802,7 @@ fn continue_base_tick(
                         if matches!(m.species(), Species::Evoker | Species::Illusioner) {
                             super::illager::cast_particles(m, events);
                         }
+                        level.tick_player_memory(m);
                         super::hurt_by::base_tick(m, w);
                         EffectPass::new(m)
                     }
