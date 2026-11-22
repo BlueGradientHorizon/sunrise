@@ -176,34 +176,40 @@ The game then maps no display to a slot and answers a recipe click through your
 `MenuPart`'s `recipe_book_place` hook. Before the hook runs the game checks what vanilla checks: the
 player is not a spectator, the window is the open menu of this type, the menu is still valid, the
 player's book holds the recipe, and its `PlacementInfo` is not `NOT_PLACEABLE`. Every recipe of a
-`Mod` menu supplies a `PlacementInfo`; its ingredients are what `place_recipe_in_grid` moves.
+`Mod` menu supplies a `PlacementInfo`; its ingredients are what `RecipeBookPlacement::Grid` moves.
 
 ```rust,ignore
 fn recipe_book_place(
     &self,
-    host: &mut dyn mod_api::ServerHost,
+    _host: &mut dyn mod_api::ServerHost,
     event: &mut mod_api::RecipeBookPlaceEvent<'_>,
 ) {
     // The first five slots take ingredients, as a 3 by 2 grid with a slot to spare.
-    let grid: Vec<u16> = (0..5).collect();
-    let clear: Vec<u16> = (0..6).collect();
-    if let Ok(missing) =
-        host.place_recipe_in_grid(event.recipe, 3, 2, grid, clear, event.use_max_items)
-    {
-        event.ghost = missing;
-    }
+    *event.placement = mod_api::RecipeBookPlacement::Grid {
+        width: 3,
+        height: 2,
+        slots: (0..5).collect(),
+        clear: (0..6).collect(),
+    };
 }
 ```
 
-`place_recipe_in_grid` is vanilla's `ServerPlaceRecipe.placeRecipe`: the grid's width and height, the
-menu slot of each cell, the slots to clear first (the grid's slots are cleared too) and whether to
-place the maximum. It returns whether items were missing: the grid is cleared and `ghost` asks the client
-for the recipe's ghosts. A refusal (outside the hook, another recipe, a slot the menu lacks or
-hides, a repeated slot, a recipe with more cells than slots, a slot whose pickup a part refuses, no
-room for the cleared items) changes nothing and says why. A recipe never reaches a cell past the last slot
-given. The whole answer is one action: a write the part makes to the player's inventory, cursor or the
-menu's storage through the `Host`, or a change to a block behind the menu, refuses it and undoes the
-placement. A menu with no part that listens refuses every click.
+`event.placement` arrives as `RecipeBookPlacement::Nothing` and chooses one of three answers:
+
+- `RecipeBookPlacement::Nothing`: handle placement yourself through normal `Host` operations or do nothing.
+- `RecipeBookPlacement::Ghost`: a manual menu reports missing ingredients, so the server asks the client
+  to draw the recipe's ghosts (`recipe_book_ghost`).
+- `RecipeBookPlacement::Grid { width, height, slots, clear }`: run vanilla's canonical placer
+  (`ServerPlaceRecipe.placeRecipe`) once on the menu's current state using the click's current Shift
+  (`use_max_items`) and creative flags, clearing `clear` (and the grid's own slots) first, and letting
+  the placer decide whether to send ghosts. A recipe never reaches a cell past the last slot given.
+
+After a mutating callback returns, the engine resolves the menu only to verify the same opening and uses
+its current state. Refused `Grid` inputs (a slot the menu lacks, hides or cannot store, a repeated slot,
+an empty grid, a recipe larger than the slots given, a slot whose pickup a part refuses, or no room for
+the cleared items) are logged on each attempt without applying the grid. A panicking callback rolls back
+its nested transaction, discards its `placement`, names the mod in logs and error toasts, and disables
+only that callback for the session. A menu with no part that listens refuses every click.
 
 ## Drawing the ghosts yourself
 

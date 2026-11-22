@@ -482,6 +482,45 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
         })
 }
 
+/// Run each attached part for an isolated mutable-output server callback through the shared
+/// callback panic boundary (`callback_owner::call`), keeping a per-part candidate output and a
+/// nested `Host` transaction so a panicking or refused callback disables only itself, rolls back
+/// its partial `Host` writes, and never publishes its candidate output.
+pub(crate) fn run_isolated_part_output<P: ?Sized, H: crate::ServerHost + ?Sized, O: Clone>(
+    parts: &[Attached<P>],
+    host: &mut H,
+    output: &mut O,
+    kind: &'static str,
+    operation: &'static str,
+    mut invoke: impl FnMut(&P, &mut H, &mut O),
+) {
+    for attached in parts {
+        let mut candidate = output.clone();
+        let ran = crate::callback_owner::call(
+            attached.mod_id,
+            attached.mod_index,
+            &attached.panicked,
+            kind,
+            operation,
+            || {
+                let _part_guard =
+                    crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
+                        id: attached.mod_id,
+                        hook: operation,
+                        part: Some(attached.type_name),
+                    });
+                let _ = crate::run_transaction(&mut *host, |host, _| {
+                    invoke(&*attached.part, host, &mut candidate);
+                    Ok::<(), ()>(())
+                });
+            },
+        );
+        if ran.is_ok() {
+            *output = candidate;
+        }
+    }
+}
+
 pub(crate) struct Entered<'a> {
     pub(crate) mods: std::slice::Iter<'a, ModEntry>,
     pub(crate) hook: &'static str,

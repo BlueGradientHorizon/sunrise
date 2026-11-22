@@ -1023,7 +1023,6 @@ recipes::panel_recipes
 recipes::panel_search
 recipes::panel_style
 recipes::place_recipe
-recipes::place_recipe_in_grid
 recipes::recipe_book_category
 recipes::recipe_book_ids
 recipes::recipe_ingredient

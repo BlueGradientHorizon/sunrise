@@ -319,10 +319,6 @@ impl Backings {
             }
         })
     }
-    /// Whether `slot` is stored in a block, so a placement there can be published.
-    pub fn stores(&self, slot: usize) -> bool {
-        self.main_keys.get(slot).is_some_and(Option::is_some)
-    }
     pub fn limits(&self) -> Vec<Option<u32>> {
         self.main_keys
             .iter()

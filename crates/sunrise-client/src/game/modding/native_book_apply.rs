@@ -1,10 +1,9 @@
 //! Authoritative placement: detached calculation, journaled writes, then publication.
 use super::api_values::TryIntoApi;
-use super::{
-    Game, native_book_backings::Backings, native_book_grid::Session,
-    native_book_scope::MenuSnapshot,
+use super::{Game, native_book_backings::Backings, native_book_scope::MenuSnapshot};
+use mod_api::{
+    HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, RecipeBookPlacement, ServerHost,
 };
-use mod_api::{HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, ServerHost};
 use sunrise_client::{
     lan::menu::ModCraft,
     menu::{
@@ -111,11 +110,98 @@ impl Game<'_> {
                     authority.epoch == catalog.epoch && authority.contains(catalog.book.as_str())
                 })
     }
+    fn mod_book_same_opening(
+        &mut self,
+        before: &MenuSnapshot,
+        catalog: &sync::CatalogIdentity,
+    ) -> Result<MenuSnapshot, sync::Refusal> {
+        use sync::Refusal as R;
+        if self.transactions.len() != 1
+            || !self
+                .native_net
+                .placement
+                .servers
+                .get(&before.conn)
+                .is_some_and(|server| server.peer.owns(catalog))
+            || !self
+                .native_net
+                .book_connections
+                .get(&before.conn)
+                .and_then(|connection| connection.authority.as_ref())
+                .is_some_and(|authority| {
+                    authority.epoch == catalog.epoch && authority.contains(catalog.book.as_str())
+                })
+        {
+            return Err(R::Changed);
+        }
+        let current = self
+            .mod_book_menu_snapshot(before.conn, before.window, before.kind.id)
+            .map_err(|_| R::Changed)?;
+        if current.uuid != before.uuid
+            || current.entity_id != before.entity_id
+            || current.placed_at != before.placed_at
+            || current.dimension != before.dimension
+            || current.instance != before.instance
+            || current.kind != before.kind
+        {
+            return Err(R::Changed);
+        }
+        Ok(current)
+    }
     fn stage_mod_book_place(
         &mut self,
         before: &MenuSnapshot,
         catalog: &sync::CatalogIdentity,
         display: &sync::DisplayId,
+        plan: &MenuPlacement,
+        use_max: bool,
+    ) -> Result<PostPlace, sync::Refusal> {
+        use sync::Refusal as R;
+        if plan.awaits_grid() {
+            if !self.mod_book_placement_context(before, catalog)
+                || !self.mod_book_native_unchanged(before)
+            {
+                return Err(R::Changed);
+            }
+            let answer = self.ask_mod_book_place(before, display.recipe.as_str(), use_max)?;
+            let current = self.mod_book_same_opening(before, catalog)?;
+            return match answer {
+                RecipeBookPlacement::Nothing => Ok(PostPlace::Nothing),
+                RecipeBookPlacement::Ghost => Ok(PostPlace::Ghost),
+                RecipeBookPlacement::Grid {
+                    width,
+                    height,
+                    slots,
+                    clear,
+                } => {
+                    let grid_plan = self.resolve_mod_book_grid(
+                        &current,
+                        display.recipe.as_str(),
+                        plan,
+                        width,
+                        height,
+                        &slots,
+                        &clear,
+                    )?;
+                    self.stage_resolved_mod_book_place(&current, catalog, &grid_plan, use_max)
+                        .inspect_err(|reason| {
+                            if matches!(reason, R::Invalid | R::Unavailable) {
+                                log::warn!(
+                                    "[recipe book] refused Grid placement for menu {} recipe {}: {reason:?}",
+                                    current.kind.id,
+                                    display.recipe.as_str()
+                                );
+                            }
+                        })
+                }
+            };
+        }
+        self.stage_resolved_mod_book_place(before, catalog, plan, use_max)
+    }
+    fn stage_resolved_mod_book_place(
+        &mut self,
+        before: &MenuSnapshot,
+        catalog: &sync::CatalogIdentity,
         plan: &MenuPlacement,
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
@@ -163,37 +249,21 @@ impl Game<'_> {
         let known = guest.recipe_book.clone();
         let limited = host.hub.limited_crafting;
         let name = guest.name.clone();
-        let post = if plan.awaits_grid() {
-            let session = Session {
-                recipe: display.recipe.as_str().to_owned(),
-                plan: plan.clone(),
-                menu,
-                graph,
-                before: before.clone(),
-                known,
-                limited,
-                use_max,
-                placed: false,
-            };
-            let (session, post) = self.ask_mod_book_place(session)?;
-            (menu, graph) = (session.menu, session.graph);
-            post
-        } else {
-            let env = Env {
-                player: Some(before.uuid),
-                player_entity_id: Some(before.entity_id),
-                can_equip: None,
-                known_recipes: Some(&known),
-                slot_rules: None,
-                stacked: None,
-                limited_crafting: limited,
-                ..self.menu_env()
-            };
-            menu.place_custom_recipe(&env, plan, use_max, before.game_mode == 1, || {
+        let env = Env {
+            player: Some(before.uuid),
+            player_entity_id: Some(before.entity_id),
+            can_equip: None,
+            known_recipes: Some(&known),
+            slot_rules: None,
+            stacked: None,
+            limited_crafting: limited,
+            ..self.menu_env()
+        };
+        let post = menu
+            .place_custom_recipe(&env, plan, use_max, before.game_mode == 1, || {
                 self.mod_book_placement_context(before, catalog) && graph.unchanged_blocks(self)
             })
-            .map_err(refusal)?
-        };
+            .map_err(refusal)?;
         if let Some(crafting) = menu.mod_crafting() {
             let mut result = menu.slot(crafting.result).cloned();
             self.native_prepare_item_craft(

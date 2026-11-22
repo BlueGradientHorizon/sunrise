@@ -332,8 +332,9 @@ the other registrations; `RecipeBookLayout` derives `Wire`.
 - `Furnace { input, fuel, result }` supports cooking displays.
 - `Stonecutter { input, result }` supports stonecutting displays.
 - `Smithing { template, base, addition, result }` supports smithing displays.
-- `Mod` declares no roles: the menu's `MenuPart` answers a click with `recipe_book_place` and places with
-  `ServerHost::place_recipe_in_grid`, vanilla's `ServerPlaceRecipe.placeRecipe` with the mod's own grid.
+- `Mod` declares no roles: the menu's `MenuPart` answers a click with `recipe_book_place` by writing
+  `RecipeBookPlacement` (`Nothing`, `Ghost`, or `Grid { width, height, slots, clear }` to run vanilla's
+  `ServerPlaceRecipe.placeRecipe` on the mod's grid).
 
 These are container slots, not the appended player inventory. Overlapping roles,
 invalid dimensions and indices outside the 256-slot menu bound refuse registration.

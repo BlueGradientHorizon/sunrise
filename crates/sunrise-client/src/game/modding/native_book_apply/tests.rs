@@ -18,9 +18,21 @@ fn open_mod_menu(
     sync::CatalogIdentity,
     sync::DisplayId,
 ) {
+    open_mod_menu_named(game, "review:menu")
+}
+
+fn open_mod_menu_named(
+    game: &mut Game<'_>,
+    menu_id: &'static str,
+) -> (
+    (i32, i32, i32),
+    MenuSnapshot,
+    sync::CatalogIdentity,
+    sync::DisplayId,
+) {
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
-        id: "review:menu",
+        id: menu_id,
         owner: "review",
         slots: 3,
         player_inventory: true,
@@ -57,7 +69,7 @@ fn open_mod_menu(
         g.menu = Some(Open {
             window: 1,
             kind: 0,
-            registry_id: "review:menu".into(),
+            registry_id: menu_id.into(),
             pos: Some(pos),
             slots: Slots::Block(pos),
             size: 3,
@@ -75,7 +87,7 @@ fn open_mod_menu(
             opening_item: None,
         });
     });
-    let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
+    let before = game.mod_book_menu_snapshot(12, 1, menu_id).unwrap();
     let catalog = sync::CatalogIdentity {
         epoch: 1,
         number: 1,
@@ -83,7 +95,7 @@ fn open_mod_menu(
         nonce: 1,
         instance: 1,
         generation: 1,
-        menu: "review:menu".to_owned().try_into().unwrap(),
+        menu: menu_id.to_owned().try_into().unwrap(),
         book: "review:book".to_owned().try_into().unwrap(),
     };
     let display = sync::DisplayId {
@@ -183,50 +195,225 @@ fn a_mod_layout_without_a_listening_part_refuses_and_changes_nothing() {
         game.transaction_close(&root, false);
     });
 }
+struct CountingPlacer(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for CountingPlacer {
+    fn recipe_book_place(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::RecipeBookPlaceEvent<'_>,
+    ) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *event.placement = mod_api::RecipeBookPlacement::Grid {
+            width: 1,
+            height: 1,
+            slots: vec![0],
+            clear: vec![0],
+        };
+    }
+}
+
+struct PanickingPlacer(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for PanickingPlacer {
+    fn recipe_book_place(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::RecipeBookPlaceEvent<'_>,
+    ) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        *event.placement = mod_api::RecipeBookPlacement::Grid {
+            width: 1,
+            height: 1,
+            slots: vec![0],
+            clear: vec![0],
+        };
+        panic!("menu placer exploded");
+    }
+}
+
 #[test]
 #[ignore = "daily"]
-fn place_recipe_in_grid_places_once_per_click() {
-    super::super::native_guest_turn_tests::with_guests(|game| {
-        let (_, before, _, display) = open_mod_menu(game);
-        let plan = MenuPlacement::for_mod(
-            "review:menu".into(),
-            Placement::of(
-                vec![Some(Ingredient::of(vec!["minecraft:iron_ore".into()]))],
-                None,
-            ),
-        )
-        .unwrap();
-        let known = game
-            .lan
-            .as_ref()
-            .unwrap()
-            .hub
-            .guest(12)
-            .unwrap()
-            .recipe_book
-            .clone();
-        game.native_net.placement.session = Some(Session {
-            recipe: display.recipe.as_str().to_owned(),
-            graph: Backings::capture(game, &before, &plan).unwrap(),
-            menu: Box::new(Menu::new(Kind::Mod(before.kind))),
-            plan,
-            before,
-            known,
-            limited: false,
-            use_max: false,
-            placed: false,
+fn observed_mod_click_supplies_grid_once_and_second_click_acts_on_changed_grid() {
+    struct CountingMod(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for CountingMod {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("review:menu", CountingPlacer(self.0.clone()));
+        }
+    }
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "review",
+        Box::new(CountingMod(calls.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            let (pos, _, catalog, display) = open_mod_menu(game);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                    "minecraft:iron_ore",
+                    3,
+                ));
+            });
+            let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
+            let plan = MenuPlacement::for_mod(
+                "review:menu".into(),
+                Placement::of(
+                    vec![Some(Ingredient::of(vec!["minecraft:iron_ore".into()]))],
+                    None,
+                ),
+            )
+            .unwrap();
+            let root = game.transaction_open();
+            assert_eq!(
+                game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
+                Ok(PostPlace::Nothing)
+            );
+            game.transaction_close(&root, true);
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            let first = game.world.block_entities.get(&pos).unwrap().slots()[0]
+                .as_ref()
+                .unwrap();
+            assert_eq!(first.item.as_ref(), "minecraft:iron_ore");
+            assert_eq!(first.count, 1);
+
+            let after_first = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
+            let root = game.transaction_open();
+            assert_eq!(
+                game.stage_mod_book_place(&after_first, &catalog, &display, &plan, false),
+                Ok(PostPlace::Nothing)
+            );
+            game.transaction_close(&root, true);
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+            let second = game.world.block_entities.get(&pos).unwrap().slots()[0]
+                .as_ref()
+                .unwrap();
+            assert_eq!(second.item.as_ref(), "minecraft:iron_ore");
+            assert_eq!(second.count, 2);
+            let left = game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+                .as_ref()
+                .unwrap()
+                .count;
+            assert_eq!(left, 1);
         });
-        let recipe = "review:recipe";
-        let first = game.place_recipe_in_grid(recipe, 1, 1, vec![0], vec![0], false);
-        assert_eq!(
-            first,
-            Ok(true),
-            "no iron ore anywhere: the grid is cleared and ghosted"
-        );
-        assert_eq!(
-            game.place_recipe_in_grid(recipe, 1, 1, vec![0], vec![0], false),
-            Err("place_recipe_in_grid was already called for this click".to_owned())
-        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_keeps_other_menus_running()
+ {
+    struct TwoMenuMod {
+        panic_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        other_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for TwoMenuMod {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part("review:menu", PanickingPlacer(self.panic_calls.clone()));
+            r.menu_part("review:other", CountingPlacer(self.other_calls.clone()));
+        }
+    }
+    let panic_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let other_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "review",
+        Box::new(TwoMenuMod {
+            panic_calls: panic_calls.clone(),
+            other_calls: other_calls.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            let _ = mod_api::__private::game::take_callback_panic_notices();
+            let (pos, _, catalog, display) = open_mod_menu_named(game, "review:menu");
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                    "minecraft:iron_ore",
+                    3,
+                ));
+            });
+            let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
+            let plan = MenuPlacement::for_mod(
+                "review:menu".into(),
+                Placement::of(
+                    vec![Some(Ingredient::of(vec!["minecraft:iron_ore".into()]))],
+                    None,
+                ),
+            )
+            .unwrap();
+
+            let root = game.transaction_open();
+            assert_eq!(
+                game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
+                Ok(PostPlace::Nothing)
+            );
+            game.transaction_close(&root, true);
+            assert_eq!(panic_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            let untouched = game.world.block_entities.get(&pos).unwrap().slots()[0]
+                .as_ref()
+                .unwrap();
+            assert_eq!(untouched.item.as_ref(), "minecraft:dirt");
+            assert_eq!(untouched.count, 1);
+            let notices = mod_api::__private::game::take_callback_panic_notices();
+            assert!(
+                notices
+                    .iter()
+                    .any(|n| n.mod_id == "review" && n.operation == "recipe_book_place"),
+                "expected panic notice naming mod review and recipe_book_place, got {notices:?}"
+            );
+
+            let before2 = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();
+            let root = game.transaction_open();
+            assert_eq!(
+                game.stage_mod_book_place(&before2, &catalog, &display, &plan, false),
+                Ok(PostPlace::Nothing)
+            );
+            game.transaction_close(&root, true);
+            assert_eq!(
+                panic_calls.load(std::sync::atomic::Ordering::SeqCst),
+                1,
+                "disabled callback must not run again in the session"
+            );
+            assert!(
+                !mod_api::__private::game::take_callback_panic_notices()
+                    .iter()
+                    .any(|n| n.mod_id == "review" && n.operation == "recipe_book_place")
+            );
+
+            let (other_pos, _, other_catalog, other_display) =
+                open_mod_menu_named(game, "review:other");
+            let other_before = game.mod_book_menu_snapshot(12, 1, "review:other").unwrap();
+            let other_plan = MenuPlacement::for_mod(
+                "review:other".into(),
+                Placement::of(
+                    vec![Some(Ingredient::of(vec!["minecraft:iron_ore".into()]))],
+                    None,
+                ),
+            )
+            .unwrap();
+            let root = game.transaction_open();
+            assert_eq!(
+                game.stage_mod_book_place(
+                    &other_before,
+                    &other_catalog,
+                    &other_display,
+                    &other_plan,
+                    false
+                ),
+                Ok(PostPlace::Nothing)
+            );
+            game.transaction_close(&root, true);
+            assert_eq!(other_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+            let placed = game.world.block_entities.get(&other_pos).unwrap().slots()[0]
+                .as_ref()
+                .unwrap();
+            assert_eq!(placed.item.as_ref(), "minecraft:iron_ore");
+            assert_eq!(placed.count, 1);
+        });
     });
 }
 
@@ -245,12 +432,15 @@ struct Placer;
 impl mod_api::MenuPart for Placer {
     fn recipe_book_place(
         &self,
-        host: &mut dyn mod_api::ServerHost,
+        _: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::RecipeBookPlaceEvent<'_>,
     ) {
-        event.ghost = host
-            .place_recipe_in_grid(event.recipe, 1, 1, vec![0], vec![0], event.use_max_items)
-            .unwrap();
+        *event.placement = mod_api::RecipeBookPlacement::Grid {
+            width: 1,
+            height: 1,
+            slots: vec![0],
+            clear: vec![0],
+        };
     }
 }
 struct PlacerMod;
@@ -268,7 +458,6 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
         mod_api::ModEntry::new("review", Box::new(PlacerMod)),
     ]
     .into();
-    crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let (_, opened, catalog, display) = open_mod_menu(game);

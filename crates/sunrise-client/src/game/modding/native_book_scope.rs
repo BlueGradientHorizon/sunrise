@@ -238,6 +238,38 @@ impl Game<'_> {
         }
     }
 
+    pub(super) fn mod_book_native_unchanged(&mut self, before: &MenuSnapshot) -> bool {
+        let Some(native) = &before.native else {
+            return true;
+        };
+        let Some(menu) = self.menu(before.uuid, before.window) else {
+            return false;
+        };
+        let player = menu.fields().player;
+        let host: &mut dyn ServerHost = self;
+        native.iter().enumerate().all(|(slot, before_slot)| {
+            if before.hidden.contains(&slot) {
+                return true;
+            }
+            match before_slot {
+                Some(before_slot) => {
+                    before_slot.place.resolves(host, player)
+                        && menu.slot_backing(host, slot)
+                            == Some(MenuSlotBacking::Place(before_slot.place))
+                        && ItemPlace::MenuSlot { menu, slot }
+                            .with_stack(host, |stack| stack.project())
+                            .flatten()
+                            .as_ref()
+                            == before_slot.stack.as_ref()
+                }
+                None => matches!(
+                    menu.slot_backing(host, slot),
+                    Some(MenuSlotBacking::Native(_))
+                ),
+            }
+        })
+    }
+
     fn mod_book_native_slots(
         &mut self,
         conn: u32,
