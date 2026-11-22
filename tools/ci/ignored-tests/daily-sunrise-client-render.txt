@@ -49,6 +49,7 @@ sunrise-client-render gfx::frame_gen::motion::tests::new_runs_write_w_only_when_
 sunrise-client-render gfx::frame_gen::motion::tests::tracks_each_entity_by_id lib daily gpu
 sunrise-client-render gfx::frame_gen::motion::tests::translucent_items_need_the_atlas lib daily gpu
 sunrise-client-render gfx::frame_gen::motion::tests::without_new_runs_only_matched_entities_are_staged lib daily gpu
+sunrise-client-render gfx::frame_gen::optical_flow::tests::finds_a_shift_and_a_scene_change lib daily gpu
 sunrise-client-render gfx::frame_gen::optical_flow::tests::repeated_cuts_and_stable_frames_update_the_history lib daily gpu
 sunrise-client-render gfx::gpu_culling::tests::detail_times_both_phases_and_leaves_the_draws_alone lib daily gpu
 sunrise-client-render gfx::gpu_culling::tests::the_count_draws_draw_each_kept_section_with_its_origin lib daily gpu
