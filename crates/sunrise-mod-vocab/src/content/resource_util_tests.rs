@@ -46,6 +46,11 @@ impl ResourceHandler<Chemical> for Tanks {
         chemical: &Chemical,
         amount: u32,
     ) -> u32 {
+        let chemical = if *chemical == HYDROGEN_ALIAS {
+            &HYDROGEN
+        } else {
+            chemical
+        };
         let mut tanks = self.0.borrow_mut();
         let Some(tank) = tanks.get_mut(index) else {
             return 0;
@@ -83,6 +88,7 @@ impl ResourceHandler<Chemical> for Tanks {
 }
 
 const HYDROGEN: Chemical = Chemical("test:hydrogen");
+const HYDROGEN_ALIAS: Chemical = Chemical("test:h");
 
 #[test]
 fn a_combined_handler_numbers_both_and_fills_the_second_when_the_first_is_full() {
@@ -150,12 +156,12 @@ fn an_empty_index_is_full_only_when_it_cannot_hold_anything() {
 }
 
 #[test]
-fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
+fn insert_stacking_tries_occupied_indices_even_when_the_resource_is_an_alias() {
     let tanks = Tanks::new(vec![None, Some((HYDROGEN, 10))]);
     let handler: &dyn ResourceHandler<Chemical> = &tanks;
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
-    let went = insert_stacking(host, handler, &HYDROGEN, 95, None);
+    let went = insert_stacking(host, handler, &HYDROGEN_ALIAS, 95, None);
     assert_eq!(went, Ok(95));
     // The default `insert` would have filled index 0 first.
     assert_eq!(

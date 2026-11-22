@@ -483,12 +483,13 @@ pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHan
     (fill * 14.0).floor() as u8 + u8::from(fill > 0.0)
 }
 
-/// Inserts up to `amount` of `resource`, topping up matching indices before empty ones.
+/// Inserts up to `amount` of `resource`, trying occupied indices before empty ones.
+/// The handler decides whether each index accepts the offered resource.
 /// An overanswer rolls back the insertion and returns `TransactionError::Aborted(Overanswered)`.
 /// A refused scope returns `TransactionError::Unavailable`. Pass `Some(tx)` for
 /// the innermost open transaction or `None` to open a root. Panics if `tx` does not match the
 /// host's innermost open transaction (including passing `None` while a transaction is open).
-pub fn insert_stacking<R: PartialEq>(
+pub fn insert_stacking<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
     resource: &R,
@@ -503,7 +504,7 @@ pub fn insert_stacking<R: PartialEq>(
         .map_err(TransactionError::flatten)
 }
 
-fn try_insert_stacking<R: PartialEq>(
+fn try_insert_stacking<R>(
     host: &mut dyn ServerHost,
     endpoint: &Attributed<'_, R>,
     resource: &R,
@@ -521,13 +522,7 @@ fn try_insert_stacking<R: PartialEq>(
         amount,
         indices,
         |host, tx, &(holding, index), left| {
-            let matches = if holding {
-                handler.amount(host, index) > 0
-                    && handler.resource(host, index).as_ref() == Some(resource)
-            } else {
-                handler.amount(host, index) == 0
-            };
-            Ok(if matches {
+            Ok(if handler.resource(host, index).is_some() == holding {
                 handler.insert_at(host, tx, index, resource, left)
             } else {
                 0
@@ -694,8 +689,8 @@ pub fn move_resources<'a, R: 'a>(
     })
 }
 
-/// As [`move_resources`], topping up matching destination indices before filling empty ones.
-pub fn move_resources_stacking<'a, R: PartialEq + 'a>(
+/// As [`move_resources`], trying occupied destination indices before empty ones.
+pub fn move_resources_stacking<'a, R: 'a>(
     host: &mut dyn ServerHost,
     from: impl Into<Attributed<'a, R>>,
     to: impl Into<Attributed<'a, R>>,
@@ -760,7 +755,7 @@ pub fn move_first<'a, R: PartialEq + 'a>(
     })
 }
 
-/// As [`move_first`], topping up matching destination indices before filling empty ones.
+/// As [`move_first`], trying occupied destination indices before empty ones.
 pub fn move_first_stacking<'a, R: PartialEq + 'a>(
     host: &mut dyn ServerHost,
     from: impl Into<Attributed<'a, R>>,
