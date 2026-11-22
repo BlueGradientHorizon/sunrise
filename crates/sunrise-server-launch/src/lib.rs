@@ -129,12 +129,8 @@ pub struct Engine {
 
 /// Describe the engine the supervisor at `supervisor` would run in `dir`.
 /// Uses the same config, install/current, PATH, resources and command builder as the supervisor.
-/// Does not launch the engine, run a preflight query, write properties, or download anything.
-pub fn engine_command(supervisor: &Path, dir: &Path) -> Result<Command, EngineCommandError> {
-    engine(supervisor, dir).map(|engine| engine.command)
-}
-
-/// [`engine_command`], with the resources folder it found.
+/// If `resources_pending` is true, the command describes the selected folder but cannot be run
+/// until the supervisor prepares it. This function starts nothing, writes nothing and downloads nothing.
 pub fn engine(supervisor: &Path, dir: &Path) -> Result<Engine, EngineCommandError> {
     // Not `fs::canonicalize`: its `\\?\` prefix on Windows would reach the game's program and resources
     // paths, where a later `/` in a string no longer means a separator.
@@ -299,7 +295,9 @@ mod tests {
         config.engine.resources = root.to_str().unwrap().into();
         config.engine.low_memory = true;
         std::fs::write(server.join("server.toml"), crate::config::render(&config)).unwrap();
-        let command = crate::engine_command(&supervisor, &server).unwrap();
+        let described = engine(&supervisor, &server).unwrap();
+        assert!(!described.resources_pending);
+        let command = described.command;
         assert_eq!(command.get_program(), game);
         assert_eq!(command.get_current_dir(), Some(server.as_path()));
         let args: Vec<_> = command.get_args().map(std::ffi::OsStr::to_owned).collect();
@@ -327,21 +325,21 @@ mod tests {
         std::fs::write(&external, "not executable either").unwrap();
         config.engine.path = "../external-engine".into();
         std::fs::write(server.join("server.toml"), crate::config::render(&config)).unwrap();
+        let described = engine(&supervisor, &server).unwrap();
+        assert!(!described.resources_pending);
         assert_eq!(
-            crate::engine_command(&supervisor, &server)
-                .unwrap()
-                .get_program(),
+            described.command.get_program(),
             server.join("../external-engine")
         );
         config.backups.every = "6 hours".into();
         std::fs::write(server.join("server.toml"), crate::config::render(&config)).unwrap();
         assert!(matches!(
-            crate::engine_command(&supervisor, &server),
+            engine(&supervisor, &server),
             Err(EngineCommandError::Configuration(_))
         ));
         std::fs::write(server.join("server.toml"), "not TOML").unwrap();
         assert!(matches!(
-            crate::engine_command(&supervisor, &server),
+            engine(&supervisor, &server),
             Err(EngineCommandError::Configuration(_))
         ));
         std::fs::remove_dir_all(root).unwrap();
@@ -371,7 +369,9 @@ mod tests {
         std::os::unix::fs::symlink(&current, root.join("current")).unwrap();
         std::fs::write(server.join("server.toml"), "").unwrap();
         prepared_server(&server.join("resources"));
-        let command = engine_command(&supervisor, &server).unwrap();
+        let described = engine(&supervisor, &server).unwrap();
+        assert!(!described.resources_pending);
+        let command = described.command;
         assert_eq!(command.get_program(), root.join("current/sunrise-engine"));
         assert_eq!(command.get_current_dir(), Some(server.as_path()));
         std::fs::remove_dir_all(root).unwrap();
