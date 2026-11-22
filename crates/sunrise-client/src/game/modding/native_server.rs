@@ -2914,7 +2914,7 @@ mod tests {
         let mut guest = player_guest();
         guest.abilities.flying_speed = 0.08;
         let read = PlayerRead::Guest(&guest);
-        assert_eq!(read.mode(), 0);
+        assert_eq!(read.mode(), Some(0));
         assert_eq!(
             read.food(),
             None,
@@ -2938,7 +2938,7 @@ mod tests {
         guest.abilities.update_for_mode(1);
         guest.abilities.flying = true;
         let read = PlayerRead::Guest(&guest);
-        assert_eq!(read.mode(), 1);
+        assert_eq!(read.mode(), Some(1));
         assert_eq!(
             read.abilities(),
             Some(mod_api::PlayerAbilities::from(
