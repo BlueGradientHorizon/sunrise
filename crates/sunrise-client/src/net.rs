@@ -1014,19 +1014,80 @@ fn connect_tcp(
 /// `disconnect.timeout`, any other failure with `disconnect.genericReason`
 /// ("Internal Exception: ..."); a stream the server closed ends with
 /// `disconnect.endOfStream` (`Connection.channelInactive`).
-fn connection_lost(e: sunrise_protocol::Error, lang: &Language) -> String {
+fn connection_lost(e: sunrise_protocol::Error, lang: &Language) -> Reason {
     if e.is_timed_out() {
-        tr(lang, "disconnect.timeout")
+        Reason::keyed("disconnect.timeout", lang)
     } else if e.is_end_of_stream() {
-        tr(lang, "disconnect.endOfStream")
+        Reason::keyed("disconnect.endOfStream", lang)
     } else {
-        plain(
-            &translatable(
-                "disconnect.genericReason",
-                &[&format!("Internal Exception: {e}")],
+        Reason::generic_exception(e, lang)
+    }
+}
+
+/// Vanilla `IdDispatchCodec` / `PacketDecoder` exception message wrapped by Netty's
+/// `ByteToMessageDecoder` and reported via `Connection.exceptionCaught`.
+fn packet_decode_reason(
+    state: sunrise_protocol::State,
+    id: i32,
+    err: &sunrise_protocol::Error,
+    lang: &Language,
+) -> Reason {
+    if err.is_unknown_packet_id() {
+        return Reason::generic_exception(
+            format!("io.netty.handler.codec.DecoderException: Received unknown packet id {id}"),
+            lang,
+        );
+    }
+    let name = sunrise_protocol::ids::name(state, sunrise_protocol::Direction::Clientbound, id)
+        .unwrap_or("?");
+    if let Some(extra) = err.extra_packet_bytes() {
+        let protocol = match state {
+            sunrise_protocol::State::Handshake => "handshake",
+            sunrise_protocol::State::Status => "status",
+            sunrise_protocol::State::Login => "login",
+            sunrise_protocol::State::Configuration => "configuration",
+            sunrise_protocol::State::Play => "play",
+        };
+        let class_name = vanilla_clientbound_class_name(name);
+        return Reason::generic_exception(
+            format!(
+                "io.netty.handler.codec.DecoderException: java.io.IOException: Packet {protocol}/clientbound/minecraft:{name} ({class_name}) was larger than I expected, found {extra} bytes extra whilst reading packet clientbound/minecraft:{name}"
             ),
             lang,
-        )
+        );
+    }
+    Reason::generic_exception(
+        format!(
+            "io.netty.handler.codec.DecoderException: Failed to decode packet 'clientbound/minecraft:{name}'"
+        ),
+        lang,
+    )
+}
+
+/// Simple Java class name for vanilla clientbound packet types (used by `PacketDecoder` on extra bytes).
+fn vanilla_clientbound_class_name(name: &str) -> String {
+    match name {
+        "bundle_delimiter" => "ClientboundBundleDelimiterPacket".to_owned(),
+        "post_effects" => "ClientboundPostEffectsPacket".to_owned(),
+        "set_entity_data" => "ClientboundSetEntityDataPacket".to_owned(),
+        "add_entity" => "ClientboundAddEntityPacket".to_owned(),
+        "ping" => "ClientboundPingPacket".to_owned(),
+        "keep_alive" => "ClientboundKeepAlivePacket".to_owned(),
+        "disconnect" => "ClientboundDisconnectPacket".to_owned(),
+        "start_configuration" => "ClientboundStartConfigurationPacket".to_owned(),
+        "finish_configuration" => "ClientboundFinishConfigurationPacket".to_owned(),
+        other => {
+            let mut out = String::from("Clientbound");
+            for part in other.split('_') {
+                let mut chars = part.chars();
+                if let Some(first) = chars.next() {
+                    out.extend(first.to_uppercase());
+                    out.push_str(chars.as_str());
+                }
+            }
+            out.push_str("Packet");
+            out
+        }
     }
 }
 
@@ -1085,7 +1146,7 @@ fn run(
         (host, port, c)
     };
     *shared_counters.lock().unwrap() = Some(c.reader.counters.clone());
-    let e = |e: sunrise_protocol::Error| Reason::plain(connection_lost(e, lang));
+    let e = |e: sunrise_protocol::Error| connection_lost(e, lang);
     // ConnectScreen constructs ClientHandshakePacketListenerImpl only once
     // the socket connects. Its cookie map snapshots the old listener here.
     let transferred = transfer_from.is_some();
@@ -1544,9 +1605,7 @@ fn receive_play(
     let mut io = new_listener();
     let mut bundle = PlayBundle::default();
     loop {
-        let (id, payload) = reader
-            .recv()
-            .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+        let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
         let packet = match play::Clientbound::decode_reader(
             id,
             Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&*registries),
@@ -1559,20 +1618,13 @@ fn receive_play(
                     id,
                 )
                 .unwrap_or("?");
-                if id == sunrise_protocol::ids::play::clientbound::SET_ENTITY_DATA
-                    || bundle.assembling()
-                {
-                    log::warn!("Sunrise: play packet decode failed ({name}): {err}");
-                    return Err(Reason::generic_exception(
-                        format!("Failed to decode packet 'clientbound/minecraft:{name}': {err}"),
-                        lang,
-                    ));
-                }
-                if id == sunrise_protocol::ids::play::clientbound::CUSTOM_PAYLOAD {
-                    return Err(Reason::plain(format!("custom play payload refused: {err}")));
-                }
-                let _ = send.send_wait(Event::DecodeError(format!("{name}: {err}")));
-                continue;
+                log::warn!("Sunrise: play packet decode failed ({name}, id={id}): {err}");
+                return Err(packet_decode_reason(
+                    sunrise_protocol::State::Play,
+                    id,
+                    &err,
+                    lang,
+                ));
             }
         };
         if let Some(rec) = recorder.lock().unwrap().as_ref()
@@ -1658,7 +1710,7 @@ fn receive_play(
                 ready
                     .recv()
                     .map_err(|_| Reason::plain("Disconnected"))?
-                    .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
+                    .map_err(|error| connection_lost(error, lang))?;
                 let snapshot = configure(
                     reader,
                     shared_writer,
@@ -1772,7 +1824,7 @@ fn configure(
             Some(w) => p
                 .try_encode_with_payload_codecs(&payloads.local.codecs)
                 .and_then(|body| w.send(&body))
-                .map_err(|e| Reason::plain(connection_lost(e, lang))),
+                .map_err(|e| connection_lost(e, lang)),
             None => Err(Reason::plain("Disconnected")),
         }
     };
@@ -1780,12 +1832,21 @@ fn configure(
     // named itself Sunrise by brand: a vanilla server is sent what vanilla's client sends,
     // whatever mods are installed.
     loop {
-        let (id, payload) = reader
-            .recv()
-            .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+        let (id, payload) = reader.recv().map_err(|e| connection_lost(e, lang))?;
         let packet =
             cfg::Clientbound::decode_with_payload_codecs(id, &payload, &payloads.local.codecs)
-                .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
+                .map_err(|err| {
+                    let name = sunrise_protocol::ids::name(
+                        sunrise_protocol::State::Configuration,
+                        sunrise_protocol::Direction::Clientbound,
+                        id,
+                    )
+                    .unwrap_or("?");
+                    log::warn!(
+                        "Sunrise: configuration packet decode failed ({name}, id={id}): {err}"
+                    );
+                    packet_decode_reason(sunrise_protocol::State::Configuration, id, &err, lang)
+                })?;
         if !io.accepts_packets() {
             continue;
         }
@@ -2994,15 +3055,30 @@ mod tests {
     #[test]
     fn lost_connections_read_like_vanillas_disconnect_reasons() {
         let lang = disconnect_language();
-        let lost = |e| connection_lost(e, &lang);
-        assert_eq!(lost(sunrise_protocol::Error::timed_out()), "Timed out");
+        let lost = |e| {
+            let reason = connection_lost(e, &lang);
+            (reason.key, reason.text)
+        };
+        assert_eq!(
+            lost(sunrise_protocol::Error::timed_out()),
+            (
+                Some("disconnect.timeout".to_owned()),
+                "Timed out".to_owned()
+            )
+        );
         assert_eq!(
             lost(sunrise_protocol::Error::end_of_stream()),
-            "End of stream"
+            (
+                Some("disconnect.endOfStream".to_owned()),
+                "End of stream".to_owned(),
+            )
         );
         assert_eq!(
             lost(sunrise_protocol::Error::new("Bad VarInt")),
-            "Internal Exception: Bad VarInt"
+            (
+                Some("disconnect.genericReason".to_owned()),
+                "Internal Exception: Bad VarInt".to_owned(),
+            )
         );
     }
 
@@ -4980,10 +5056,48 @@ mod tests {
                 reason.key.as_deref(),
                 witness["terminal_packet"]["inside_disconnect_key"].as_str()
             );
-            assert!(
-                reason.text.contains("Terminal message received in bundle"),
-                "unexpected terminal bundle disconnect text: {}",
-                reason.text
+            assert_eq!(
+                Some(reason.text.as_str()),
+                witness["terminal_packet"]["inside_disconnect_text"].as_str(),
+                "terminal bundle disconnect text"
+            );
+        }
+
+        // Terminal packet as the 4,097th member hits the terminal check before the size limit.
+        {
+            let limit = witness["bundle_size_limit"].as_u64().unwrap() as usize;
+            let (_dir, mut server, events, shared_writer, done_rx, thread) =
+                spawn_play_harness("bundle-terminal-4097", generic_lang());
+            let _ = server.send(&play::Clientbound::BundleDelimiter(Empty).encode());
+            for i in 0..limit {
+                if server
+                    .send(&play::Clientbound::Ping(cfg::Ping { id: i as i32 }).encode())
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            let _ = server.send(&play::Clientbound::StartConfiguration(Empty).encode());
+            let ended = done_rx.recv_timeout(Duration::from_secs(2));
+            drop(server);
+            drop(events);
+            drop(shared_writer);
+            let _ = thread.join();
+            let reason = match ended {
+                Ok(Err(reason)) => reason,
+                other => panic!(
+                    "expected terminal disconnect on 4097th member, got {:?}",
+                    other.map(|r| r.map(|ok| ok.text).map_err(|e| e.text))
+                ),
+            };
+            assert_eq!(
+                reason.key.as_deref(),
+                witness["terminal_packet"]["inside_disconnect_key"].as_str()
+            );
+            assert_eq!(
+                Some(reason.text.as_str()),
+                witness["terminal_packet"]["inside_disconnect_text"].as_str(),
+                "terminal packet at 4097th member must fail as terminal before size limit"
             );
         }
 
@@ -5052,10 +5166,10 @@ mod tests {
                 reason.key.as_deref(),
                 witness["size_limit"]["limit_4097_disconnect_key"].as_str()
             );
-            assert!(
-                reason.text.contains("Too many packets in a bundle"),
-                "unexpected oversize bundle disconnect text: {}",
-                reason.text
+            assert_eq!(
+                Some(reason.text.as_str()),
+                witness["size_limit"]["limit_4097_disconnect_text"].as_str(),
+                "oversize bundle disconnect text"
             );
         }
     }
@@ -5143,10 +5257,10 @@ mod tests {
                 ),
             };
             assert_eq!(reason.key.as_deref(), Some(expected_key), "{name}");
-            assert!(
-                reason.text.starts_with("Internal Exception:"),
-                "{name}: unexpected disconnect text: {}",
-                reason.text
+            assert_eq!(
+                Some(reason.text.as_str()),
+                row["connection_disconnect_text"].as_str(),
+                "{name}: full disconnect text"
             );
         }
     }

@@ -325,3 +325,81 @@ fn assert_memory_snapshot_fits(element_opcode: u8, fill: u8) {
     writer.lock().unwrap().take().unwrap().shutdown();
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn malformed_play_packets_fail_decode_before_bundling() {
+    let lang = Arc::new(
+        [("disconnect.genericReason".to_owned(), "%s".to_owned())]
+            .into_iter()
+            .collect::<Language>(),
+    );
+    let mut delim_extra = Writer::new();
+    delim_extra.varint(sunrise_protocol::ids::play::clientbound::BUNDLE_DELIMITER);
+    delim_extra.u8(0x01);
+    let mut trunc_post = Writer::new();
+    trunc_post.varint(sunrise_protocol::ids::play::clientbound::POST_EFFECTS);
+    trunc_post.varint(1);
+    let mut unknown_id = Writer::new();
+    unknown_id.varint(999);
+    let cases = [
+        (
+            "bundle_delimiter_extra_bytes",
+            delim_extra.data,
+            "Internal Exception: io.netty.handler.codec.DecoderException: java.io.IOException: Packet play/clientbound/minecraft:bundle_delimiter (ClientboundBundleDelimiterPacket) was larger than I expected, found 1 bytes extra whilst reading packet clientbound/minecraft:bundle_delimiter",
+        ),
+        (
+            "truncated_post_effects",
+            trunc_post.data,
+            "Internal Exception: io.netty.handler.codec.DecoderException: Failed to decode packet 'clientbound/minecraft:post_effects'",
+        ),
+        (
+            "unregistered_packet_id",
+            unknown_id.data,
+            "Internal Exception: io.netty.handler.codec.DecoderException: Received unknown packet id 999",
+        ),
+    ];
+    for (name, raw, expected_text) in cases {
+        let (root, data) = empty_item_data(name);
+        let (client, server) = Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (send, events) = event_channel();
+        let mut server = Connection::local(server);
+        server.send(&raw).unwrap();
+        drop(server);
+        let lang = lang.clone();
+        let writer_for_thread = writer.clone();
+        let error = std::thread::spawn(move || {
+            receive_play(
+                &mut reader,
+                Arc::default(),
+                &writer_for_thread,
+                &Arc::new(AtomicBool::new(false)),
+                &lang,
+                &send,
+                &Cookies::default(),
+                &Arc::default(),
+                &data,
+                &Arc::new(Mutex::new(None)),
+                &Transport::empty(),
+                &Arc::default(),
+                &Arc::default(),
+            )
+        })
+        .join()
+        .unwrap()
+        .unwrap_err();
+        assert_eq!(
+            error.key.as_deref(),
+            Some("disconnect.genericReason"),
+            "{name}"
+        );
+        assert_eq!(error.text, expected_text, "{name}");
+        assert!(
+            events.try_recv_owned().is_err(),
+            "{name}: no event may escape"
+        );
+        writer.lock().unwrap().take().unwrap().shutdown();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
