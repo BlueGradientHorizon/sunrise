@@ -15,7 +15,7 @@ or a cross-release compatibility range.
 Hooks are declared in Rust now, not in JSON: a hook author adds a `#[hook(...)]`
 declaration, with its `///` doc, to a file under `crates/sunrise-mod-vocab/src/hooks/` (a new file for a new area, named
 for it). A host method is not declared there: it goes in the area trait of
-`crates/sunrise-mod-vocab/src/host/<area>.rs`, with `#[access(WorldOnly)]`, `#[access(Metadata)]`, `#[access(ClientSetup)]` or `#[access(PublishedResources)]` on each method. The inherent `Game` method has the same name. The generator writes the access check and full-path call into Cargo's build output; do not write a game-side forwarder. The `#[sunrise_mod_api_macros::host_area]` attribute generates panicking defaults for test doubles. The generator discovers area files without a shared module list. `native-hooks.json` and
+`crates/sunrise-mod-vocab/src/host/<area>.rs`, with `#[access(WorldOnly)]`, `#[access(Metadata)]`, `#[access(ClientSetup)]` or `#[access(PublishedResources)]` on each method. The inherent `Game` method has the same name. The generator writes the access check and full-path call into Cargo's build output; do not write a game-side forwarder. The `#[sunrise_mod_api_macros::host_area]` attribute generates panicking defaults for test doubles; a metadata read with `#[published(path)]` takes `path(args)` as its default instead, so every host (a scoped or startup host included) answers it from what the game published. The generator discovers area files without a shared module list. `native-hooks.json` and
 `tools/native-hook-fragments/` are retired, and a file there fails the build. Collection updates
 the catalog, not a global API number, source comments or documentation histories.
 

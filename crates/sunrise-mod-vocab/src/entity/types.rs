@@ -1281,12 +1281,12 @@ impl From<crate::text::TextFormError> for OpenMenuError {
     }
 }
 
-/// Why an entity type's default could not be read ([`LivingHost::entity_type_default_attribute`]).
+/// Why an entity type's default could not be read ([`ItemsHost::entity_type_default_attribute`]).
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub enum EntityTypeReadError {
-    /// Called outside a running world (setup, a reload, config loading) or with no game: the
-    /// types' attribute suppliers, mods' rows included, are known once a world is open.
+    /// Read where metadata may not be (registration, config loading) or before the game built
+    /// its attribute catalog, mods' rows included.
     Unavailable,
 }
 

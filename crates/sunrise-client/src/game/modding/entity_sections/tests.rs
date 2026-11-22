@@ -831,3 +831,57 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
         })
     });
 }
+
+/// #3944: the entity-type default read is metadata every host answers from the published
+/// suppliers. The section host, which has no game behind it, refuses or answers but never
+/// unwinds, whether or not a catalog has been published.
+#[test]
+fn section_host_reads_entity_type_defaults_without_unwinding() {
+    let host = LiveSectionHost(None);
+    let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        mod_api::prelude::ItemsHost::entity_type_default_attribute(
+            &host,
+            "minecraft:zombie",
+            "minecraft:max_health",
+        )
+    }));
+    assert!(
+        matches!(
+            read,
+            Ok(Err(mod_api::EntityTypeReadError::Unavailable) | Ok(_))
+        ),
+        "the section host unwound: {read:?}"
+    );
+}
+
+/// #3944 on a running game: the section host and the game answer from the same published
+/// suppliers, vanilla's Zombie's 20 health and 3 attack damage among them, and neither answers
+/// for `minecraft:item` (no supplier) or a type no one registered.
+#[test]
+#[ignore = "daily"]
+fn section_host_and_game_read_the_same_entity_type_defaults() {
+    with_game(|game| {
+        let host = LiveSectionHost(None);
+        for (entity_type, attribute, expected) in [
+            ("minecraft:zombie", "minecraft:max_health", Some(20.0)),
+            ("zombie", "attack_damage", Some(3.0)),
+            (":zombie", ":armor", Some(2.0)),
+            ("minecraft:item", "minecraft:max_health", None),
+            ("ruby:no_such_type", "minecraft:max_health", None),
+            ("minecraft:zombie", "minecraft:no_such", None),
+        ] {
+            let scoped = mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                &host,
+                entity_type,
+                attribute,
+            );
+            let live = mod_api::prelude::ItemsHost::entity_type_default_attribute(
+                &*game,
+                entity_type,
+                attribute,
+            );
+            assert_eq!(scoped, Ok(expected), "{entity_type} {attribute}");
+            assert_eq!(live, scoped, "{entity_type} {attribute}");
+        }
+    });
+}

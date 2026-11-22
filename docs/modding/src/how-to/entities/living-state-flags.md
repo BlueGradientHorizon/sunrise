@@ -213,7 +213,9 @@ underwater or activator ejection.
 
 `host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type starts with, with no
 entity spawned: `DefaultAttributes.getSupplier(type).getBaseValue(attribute)`. It works for vanilla's types and mods'
-(a mod type's declared row, with the attributes other mods added to it), on both sides, from any world-phase hook.
+registered ones (a mod type's declared row, with the attributes other mods added to it), on both sides. It is metadata,
+like `entity_type_in_tag`: any host answers it in setup, a reload or a world once the game has built its attribute
+catalog.
 
 ```rust,ignore
 // The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
@@ -221,6 +223,7 @@ let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:m
 let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor")?;
 ```
 
-`Ok(None)` means the type has no attribute supplier (it isn't a living type), doesn't have that attribute, or a
-name is unknown. A bare name is `minecraft:`'s. Outside a running world (setup, a reload) it refuses with
-`EntityTypeReadError::Unavailable`.
+`Ok(None)` means the type is no registered entity type, has no attribute supplier (it isn't a living type, such as
+`minecraft:item`), doesn't have that attribute, or the attribute is unknown. Names are read as `Identifier.parse` reads
+them: `zombie` and `:zombie` are `minecraft:zombie`. Before the catalog is built (registration, config loading) it
+refuses with `EntityTypeReadError::Unavailable`.

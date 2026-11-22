@@ -299,6 +299,27 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
             Ok(level) => level,
             Err(error) => return error.to_compile_error().into(),
         };
+        // `#[published(path)]`: a metadata read every host answers from what the game
+        // published, so a scoped or startup host's default refuses or answers, never panics.
+        let published = match method
+            .attrs
+            .iter()
+            .position(|attr| attr.path().is_ident("published"))
+            .map(|index| method.attrs.remove(index).parse_args::<syn::Path>())
+        {
+            None => None,
+            Some(Ok(path)) => Some(path),
+            Some(Err(error)) => return error.to_compile_error().into(),
+        };
+        if let Some(path) = published {
+            let args = method.sig.inputs.iter().filter_map(|arg| match arg {
+                syn::FnArg::Typed(arg) => Some(arg.pat.clone()),
+                syn::FnArg::Receiver(_) => None,
+            });
+            method.default = Some(syn::parse_quote!({ #path(#(#args),*) }));
+            method.semi_token = None;
+            continue;
+        }
         method.attrs.retain(|attr| {
             !attr.path().is_ident("static_call")
                 && !attr.path().is_ident("service")

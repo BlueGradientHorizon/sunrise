@@ -13,22 +13,6 @@ pub trait LivingHost {
     /// equipment, effects and health only as far as it draws them. API 382.
     #[access(WorldOnly)]
     fn living(&self, entity: EntityRef) -> Option<LivingRef>;
-    /// Side: both.
-    /// An entity type's default value of an attribute, with no entity spawned
-    /// (`DefaultAttributes.getSupplier(type).getBaseValue(attribute)`): the base
-    /// a new entity of `entity_type` (`minecraft:zombie`) starts with for
-    /// `attribute` (`minecraft:max_health`; a bare `max_health` is
-    /// `minecraft:`'s), for vanilla's types and mods' (a mod type's declared row,
-    /// NeoForge's `EntityAttributeCreationEvent` and `EntityAttributeModificationEvent`
-    /// included). `Ok(None)` for a type with no attribute supplier (not a living
-    /// type), an attribute the type does not have, or a name the game does not know.
-    /// The same on both sides: the client holds the same suppliers.
-    #[access(WorldOnly)]
-    fn entity_type_default_attribute(
-        &self,
-        entity_type: &str,
-        attribute: &str,
-    ) -> Result<Option<f64>, EntityTypeReadError>;
 }
 /// The handles' reads of the `living` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
