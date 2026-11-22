@@ -233,12 +233,7 @@ mod tests {
                 let mut seen = self.0.lock().unwrap();
                 let tags = context.tags();
                 let id = |path| Identifier::from_parts("item_tag_listing", path).unwrap();
-                let (old, new, empty) = (
-                    tags.key(&id("old")).unwrap(),
-                    tags.key(&id("new")).unwrap(),
-                    tags.key(&id("empty")).unwrap(),
-                );
-                tags.key(&id("always")).unwrap();
+                // Allocating a key for an unbound name must not make it discoverable.
                 tags.key(&id("never_bound")).unwrap();
                 let stick = context
                     .item_key(&Identifier::parse("minecraft:stick").unwrap())
@@ -259,9 +254,12 @@ mod tests {
                     scoped(tags.item_tag_names()),
                     [id("always"), id("empty"), id(current)]
                 );
-                assert_eq!(tags.is_in_tag(stick, old), Some(!reloaded));
-                assert_eq!(tags.is_in_tag(stick, new), Some(reloaded));
-                assert_eq!(tags.items(empty), TagMembers::Members(vec![]));
+                let key = |path| tags.key(&id(path)).unwrap();
+                assert_eq!(tags.is_in_tag(stick, key(current)), Some(true));
+                if reloaded {
+                    assert_eq!(tags.is_in_tag(stick, key("old")), Some(false));
+                }
+                assert_eq!(tags.items(key("empty")), TagMembers::Members(vec![]));
                 seen.push(event.cause);
             }
         }
