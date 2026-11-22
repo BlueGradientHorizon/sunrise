@@ -278,7 +278,7 @@ mod tests {
     /// A hook's answer, built from the engine's own strings, and another page.
     const GET: GetTheGame = GetTheGame {
         address: "https://example.org/download-the-launcher",
-        title: "sunrise.no_resources.title",
+        title: "sunrise.missing_mods.title",
         paragraphs: &[
             "sunrise.no_resources.prepare",
             "sunrise.plain.official",
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn a_hook_gives_the_text_and_the_page() {
         let screen = screen(Some(GET));
-        assert_eq!(screen.title, "No prepared game files");
+        assert_eq!(screen.title, "Mods are missing");
         assert_eq!(
             screen.paragraphs[1],
             "Official Sunrise with launcher, mods and updates: playsunrise.net"

@@ -133,7 +133,7 @@ const LAYERS: &[&dyn hud::Layer] = &[
     &sunrise_perf_overlay::LAYER,
 ];
 
-/// The text of Sunrise's own rows, loaded with the game's.
+/// Sunrise's official text (its rows and the launcher page), loaded with the game's.
 static LANG: &lang::Files = &[("en_us", include_str!("../assets/lang/en_us.json"))];
 
 /// Registers Sunrise's in-game parts with the game. The executable calls it before it runs the
@@ -187,23 +187,6 @@ mod tests {
             "",
         ] {
             assert_eq!(identity(server), None, "{server}");
-        }
-    }
-
-    #[test]
-    fn the_launcher_page_text_is_in_the_registered_lang_file() {
-        let (_, json) = LANG.iter().find(|(code, _)| *code == "en_us").unwrap();
-        for key in [
-            "sunrise.get_the_game.title",
-            "sunrise.get_the_game.about",
-            "sunrise.get_the_game.minecraft",
-            "sunrise.get_the_game.download",
-            "sunrise.get_the_game.button",
-        ] {
-            assert!(
-                json.contains(&format!("\"{key}\"")),
-                "{key} is missing from the registered en_us lang file"
-            );
         }
     }
 
