@@ -4,7 +4,7 @@ use crate::{
     AttachmentCodec, AttachmentError, AttachmentPolicy, AttachmentStoreWrite, Compound, Holder,
     Identifier, LevelRandomHost,
 };
-use std::fmt;
+use std::{fmt, sync::atomic::AtomicBool};
 use sunrise_mod_runtime::attachments::{
     AttachmentSyncInput, AttachmentType, CheckedAttachmentType,
 };
@@ -105,7 +105,8 @@ type BuildAttachmentRecord = Box<
 type ProjectAttachmentSync = fn(
     &(dyn Any + Send + Sync),
     AttachmentSyncInput<'_>,
-) -> Result<Option<Compound>, AttachmentError>;
+    &AtomicBool,
+) -> Result<Option<Compound>, String>;
 
 type MatchAttachmentWrite = fn(&(dyn Any + Send + Sync), &AttachmentStoreWrite<'_>) -> bool;
 
@@ -127,11 +128,38 @@ impl<T: Send + Sync + 'static> From<AttachmentDescriptor<T>> for ErasedAttachmen
         fn project_sync<T: Send + Sync + 'static>(
             record: &(dyn Any + Send + Sync),
             input: AttachmentSyncInput<'_>,
-        ) -> Result<Option<Compound>, AttachmentError> {
+            poisoned: &AtomicBool,
+        ) -> Result<Option<Compound>, String> {
             let registration = record
                 .downcast_ref::<AttachmentRegistration<T>>()
-                .ok_or(AttachmentError::TypeMismatch)?;
-            registration.checked.as_type().project_sync(input)
+                .expect("sync projection supplied by this descriptor");
+            let mut decoded_owner = None;
+            let result = crate::runtime::invoke_registered_codec(
+                registration.owner,
+                "attachment_sync",
+                poisoned,
+                || {
+                    registration
+                        .checked
+                        .as_type()
+                        .project_sync(input, &mut decoded_owner)
+                        .map_err(|error| format!("{error:?}"))
+                },
+            );
+            // A saved value is owned outside the encoder's unwind. Release it even when
+            // encoding already disabled the codec, without a second unwind crossing that fence.
+            if let Some(value) = decoded_owner {
+                crate::runtime::finish_registered_codec(
+                    registration.owner,
+                    "attachment_sync",
+                    poisoned,
+                    || {
+                        drop(value);
+                        Ok(())
+                    },
+                )?;
+            }
+            result
         }
 
         fn match_write<T: Send + Sync + 'static>(
@@ -245,7 +273,7 @@ pub struct RegisteredAttachment {
     record: Arc<dyn Any + Send + Sync>,
     project_sync: ProjectAttachmentSync,
     match_write: MatchAttachmentWrite,
-    sync_panicked: Arc<std::sync::atomic::AtomicBool>,
+    sync_panicked: Arc<AtomicBool>,
 }
 
 impl RegisteredAttachment {
@@ -300,8 +328,8 @@ impl RegisteredAttachment {
     pub(crate) fn project_sync(
         &self,
         input: AttachmentSyncInput<'_>,
-    ) -> Result<Option<Compound>, AttachmentError> {
-        (self.project_sync)(self.record.as_ref(), input)
+    ) -> Result<Option<Compound>, String> {
+        (self.project_sync)(self.record.as_ref(), input, &self.sync_panicked)
     }
 }
 
@@ -651,16 +679,7 @@ pub fn attachment_sync_projection()
         else {
             return Ok(None);
         };
-        crate::runtime::invoke_registered_codec(
-            record.owner(),
-            "attachment_sync",
-            &record.sync_panicked,
-            || {
-                record
-                    .project_sync(input)
-                    .map_err(|error| format!("{error:?}"))
-            },
-        )
+        record.project_sync(input)
     }
 }
 
@@ -692,6 +711,23 @@ pub fn validate_attachment_use(
         name,
         sync,
     )
+}
+
+/// Resolve removal policy at the authoritative store, not in an adapter supplying the call.
+#[doc(hidden)]
+pub fn attachment_removal_sync(
+    namespace: &str,
+    name: &str,
+    runtime_sync: bool,
+) -> Result<bool, AttachmentError> {
+    if let Some(record) = installed()
+        .and_then(|parts| parts.attachment_types.get(namespace))
+        .and_then(|types| types.get(name))
+    {
+        return Ok(record.is_synced());
+    }
+    validate_attachment_use(namespace, name, runtime_sync)?;
+    Ok(runtime_sync)
 }
 
 /// Require a write prepared by this installation's exact typed descriptor.

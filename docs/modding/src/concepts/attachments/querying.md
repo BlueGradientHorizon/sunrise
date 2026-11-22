@@ -30,7 +30,7 @@ fn register_counter(registrar: &mut dyn Registrar) -> Result<AttachmentKey<u32>,
 }
 
 fn total(host: &dyn Host, key: &AttachmentKey<u32>) -> Result<u32, AttachmentRowError> {
-    let query = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
+    let query = host.query(key).map_err(AttachmentRowError::Value)?;
     let scope = host.attachment_read_scope()?;
     let mut rows = query.iter();
     let mut total = 0;
@@ -44,7 +44,7 @@ fn total(host: &dyn Host, key: &AttachmentKey<u32>) -> Result<u32, AttachmentRow
 | Rule | Behaviour |
 |---|---|
 | Value bounds | Iteration requires `T: Send + Sync + 'static`, not `Clone`. |
-| Key liveness | `host.query(&key)` and `AttachmentBatch::query(&key)` reject keys from an earlier installation with `AttachmentError::StaleKey`. |
+| Key liveness | `host.query(&key)` and `AttachmentBatch::query(&key)` reject keys from an earlier installation with `AttachmentError::StaleKey`. After reinstall, an already-bound query, cursor or row refuses reads with `AttachmentRowError::Value(AttachmentError::StaleKey)`. A nonempty batch cannot be bound to a key for a different bucket. |
 | Snapshot | Membership and stored value bindings are captured at query creation. Create a fresh query to see later sets, removals, loads or unloads. |
 | Borrowing | Rows borrow from the batch. Reading a captured value borrows the original host through its read scope, so you can mutate the host between reads, but not during a read loan. |
 | Defaults | Queries never initialize defaults, dirty holders or queue synchronization. An absent key produces an empty batch. |
@@ -63,13 +63,13 @@ its captured value even after a live replacement or removal.
 
 ## Write explicitly on the server
 
-Call `host.query_mut(&TYPE)` on `&mut dyn ServerHost`. Values require
+Call `host.query_mut(&key)` on `&mut dyn ServerHost`. Values require
 `T: Clone + Send + Sync + 'static`. Each row provides `holder()`, `with_value(...)`,
 `set(host, replacement)` and `remove(host)`; it does not provide `&mut T`.
 
 ```rust,ignore
-fn increment(host: &mut dyn ServerHost) -> Result<(), AttachmentRowError> {
-    let query = host.query_mut(&VALUE).map_err(AttachmentRowError::Value)?;
+fn increment(host: &mut dyn ServerHost, key: &AttachmentKey<u32>) -> Result<(), AttachmentRowError> {
+    let query = host.query_mut(key).map_err(AttachmentRowError::Value)?;
     let mut rows = query.iter();
     while let Some(row) = rows.try_next()? {
         let replacement = row.with_value(host.attachment_read_scope()?, |value| *value + 1)?;

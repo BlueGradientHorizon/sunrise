@@ -37,21 +37,25 @@ impl From<runtime::AttachmentBatch<AttachmentHolder>> for AttachmentBatch {
 impl AttachmentBatch {
     /// Bind an issued attachment key without eagerly decoding or cloning any value.
     /// This view borrows only the key, never the host.
-    /// Refuses keys from an earlier installation with [`AttachmentError::StaleKey`].
+    /// Refuses keys from an earlier installation with [`AttachmentError::StaleKey`], or a key
+    /// for a different captured bucket with [`AttachmentError::TypeMismatch`].
     pub fn query<'key, T: Send + Sync + 'static>(
         self,
         key: &'key AttachmentKey<T>,
     ) -> Result<AttachmentQuery<'key, T>, AttachmentError> {
         let (checked, epoch) = key.live_with_epoch()?;
-        Ok(self.query_checked(checked, epoch))
+        self.query_checked(checked, epoch)
     }
 
     pub(crate) fn query_checked<'key, T: Send + Sync + 'static>(
         self,
         checked: &'key runtime::CheckedAttachmentType<T>,
         epoch: u64,
-    ) -> AttachmentQuery<'key, T> {
-        AttachmentQuery(self.0.query_checked(checked, epoch))
+    ) -> Result<AttachmentQuery<'key, T>, AttachmentError> {
+        Ok(AttachmentQuery(
+            self.0.query_checked(checked, epoch)?,
+            epoch,
+        ))
     }
 }
 
@@ -61,22 +65,34 @@ impl AttachmentBatch {
 /// `None` does not mean the holder is alive: absent and not-live holders alike
 /// return `Ok(None)` when absent from the snapshot, without a host liveness check.
 /// Only scoped residency probes report `StaleHolder`. `get` and iteration report
-/// [`AttachmentRowError::OutsideTransaction`] if the capture's frame is not current.
+/// [`AttachmentRowError::OutsideTransaction`] if the capture's frame is not current, or
+/// [`AttachmentError::StaleKey`] as a value error after the installation changes.
 // no wire: binds a borrowed key to an in-process snapshot.
 #[non_exhaustive]
-pub struct AttachmentQuery<'key, T: 'static>(runtime::AttachmentQuery<'key, AttachmentHolder, T>);
+pub struct AttachmentQuery<'key, T: 'static>(
+    runtime::AttachmentQuery<'key, AttachmentHolder, T>,
+    u64,
+);
+
+fn check_epoch(epoch: u64) -> Result<(), AttachmentRowError> {
+    if crate::parts::installed().is_some_and(|installed| installed.epoch == epoch) {
+        Ok(())
+    } else {
+        Err(AttachmentRowError::Value(AttachmentError::StaleKey))
+    }
+}
 
 impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
     /// Create a fallible cursor in captured order, decoding values only as rows are visited.
     pub fn iter(&self) -> AttachmentIter<'_, T> {
-        AttachmentIter(self.0.iter())
+        AttachmentIter(self.0.iter(), self.1)
     }
 }
 
 /// A fallible cursor borrowing the snapshot of an [`AttachmentQuery`].
 // no wire: borrows a live snapshot and tracks a local cursor position.
 #[non_exhaustive]
-pub struct AttachmentIter<'q, T: 'static>(runtime::AttachmentIter<'q, AttachmentHolder, T>);
+pub struct AttachmentIter<'q, T: 'static>(runtime::AttachmentIter<'q, AttachmentHolder, T>, u64);
 
 impl<'q, T: Send + Sync + 'static> AttachmentIter<'q, T> {
     /// Return the next row, or `Ok(None)` at the end while in scope.
@@ -84,9 +100,11 @@ impl<'q, T: Send + Sync + 'static> AttachmentIter<'q, T> {
     /// the next call can resume once the capturing frame is current again.
     /// A value error consumes only its own row.
     pub fn try_next(&mut self) -> Result<Option<AttachmentRow<'q, T>>, AttachmentRowError> {
+        check_epoch(self.1)?;
         Ok(self.0.try_next()?.map(|binding| AttachmentRow {
             holder: binding.holder,
             binding,
+            epoch: self.1,
         }))
     }
 }
@@ -99,6 +117,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentQuery<'_, T> {
         scope: AttachmentReadScope<'_>,
         holder: AttachmentHolder,
     ) -> Result<Option<T>, AttachmentRowError> {
+        check_epoch(self.1)?;
         self.0.get(scope.0, holder)
     }
 }
@@ -108,6 +127,7 @@ impl<T: Clone + Send + Sync + 'static> AttachmentQuery<'_, T> {
 #[non_exhaustive]
 pub struct AttachmentRow<'q, T: 'static> {
     binding: runtime::AttachmentRowRef<'q, AttachmentHolder, T>,
+    epoch: u64,
     /// The captured holder's identity.
     pub holder: AttachmentHolder,
 }
@@ -133,6 +153,7 @@ impl<T: 'static> AttachmentRow<'_, T> {
         scope: AttachmentReadScope<'_>,
         f: impl FnOnce(&T) -> R,
     ) -> Result<R, AttachmentRowError> {
+        check_epoch(self.epoch)?;
         self.binding.with_value(scope.0, f)
     }
 

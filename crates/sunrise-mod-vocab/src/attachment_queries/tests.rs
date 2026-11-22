@@ -10,6 +10,7 @@ use sunrise_mod_runtime::attachments::{self as runtime, index::AttachmentIndex};
 struct Store {
     index: Arc<Mutex<AttachmentIndex<AttachmentHolder>>>,
     maps: HashMap<Holder, Attachments>,
+    read_from: Option<Holder>,
 }
 impl Host for Store {}
 crate::impl_host_areas!(Store, except(mod_state));
@@ -57,8 +58,13 @@ impl AttachmentHost for Store {
     fn attachments(
         &mut self,
         holder: Holder,
-        _: AttachmentAccess,
+        access: AttachmentAccess,
     ) -> Result<&mut Attachments, AttachmentError> {
+        let holder = if access == AttachmentAccess::Existing {
+            self.read_from.unwrap_or(holder)
+        } else {
+            holder
+        };
         self.maps
             .get_mut(&holder)
             .ok_or(AttachmentError::MissingHolder)
@@ -182,7 +188,7 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
 }
 
 #[test]
-fn stale_key_is_refused_by_query_query_mut_and_retained_row_writes() {
+fn stale_key_is_refused_by_queries_and_retained_row_reads_and_writes() {
     let epoch = WorldEpoch::new(19);
     let level = LevelRef::new(epoch, DimensionKey::OVERWORLD);
     let scoped = AttachmentHolder::Level(level);
@@ -208,6 +214,10 @@ fn stale_key_is_refused_by_query_query_mut_and_retained_row_writes() {
     let second = crate::parts::install_attachment_fixture(
         "mapping",
         crate::AttachmentDescriptor::new("mapping:stale", || 0u32),
+    );
+    assert_eq!(
+        row.with_value(Default::default(), |value| *value),
+        Err(AttachmentRowError::Value(AttachmentError::StaleKey))
     );
     assert_eq!(host.query(&first).err(), Some(AttachmentError::StaleKey));
     assert_eq!(
@@ -256,14 +266,8 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
     });
     map.bind_index(&host.index, scoped);
     let retained = host.attachment_query("mapping", "raw").unwrap();
-    assert_eq!(
-        retained
-            .clone()
-            .query(&first)
-            .unwrap()
-            .get(Default::default(), scoped),
-        Ok(Some(17))
-    );
+    let stale = retained.clone().query(&first).unwrap();
+    let mut cursor = stale.iter();
 
     let second = crate::parts::install_attachment_fixture(
         "mapping",
@@ -271,6 +275,14 @@ fn retained_raw_query_uses_the_current_installations_decoder() {
             decode: |_| Ok(38),
             ..first_codec
         }),
+    );
+    assert_eq!(
+        stale.get(Default::default(), scoped),
+        Err(AttachmentRowError::Value(AttachmentError::StaleKey))
+    );
+    assert_eq!(
+        cursor.try_next().err(),
+        Some(AttachmentRowError::Value(AttachmentError::StaleKey))
     );
     assert_eq!(
         host.query(&second).unwrap().get(Default::default(), scoped),
@@ -339,4 +351,104 @@ fn public_store_only_writes_the_issued_descriptor_type_and_policy() {
         changes[0].value,
         Some([("projection".into(), Tag::Int(109))].into())
     );
+}
+
+#[test]
+fn a_captured_bucket_refuses_another_live_key_of_the_same_type() {
+    let codec = AttachmentCodec {
+        encode: |_| Err(AttachmentError::Encode),
+        decode: |_| Ok(17u32),
+    };
+    let (fuel, fuel_key) = crate::parts::registered_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:fuel", || 0u32).sync(codec),
+    );
+    let (charge, charge_key) = crate::parts::registered_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:charge", || 0u32).sync(AttachmentCodec {
+            decode: |_| Ok(99),
+            ..codec
+        }),
+    );
+    crate::parts::install_input(crate::parts::installation::InstalledInput {
+        attachment_types: HashMap::from([(
+            "mapping",
+            HashMap::from([("fuel", fuel), ("charge", charge)]),
+        )]),
+        ..Default::default()
+    });
+    let holder =
+        AttachmentHolder::Level(LevelRef::new(WorldEpoch::new(19), DimensionKey::OVERWORLD));
+    let host = Store::default();
+    let mut values = Attachments::default();
+    values.apply_sync(runtime::AttachmentSync {
+        namespace: "mapping".into(),
+        name: "fuel".into(),
+        value: Some(Compound::new()),
+    });
+    values.bind_index(&host.index, holder);
+    let batch = host.attachment_query("mapping", "fuel").unwrap();
+    assert_eq!(
+        batch.query(&charge_key).err(),
+        Some(AttachmentError::TypeMismatch)
+    );
+    assert_eq!(
+        host.query(&fuel_key)
+            .unwrap()
+            .get(Default::default(), holder),
+        Ok(Some(17))
+    );
+}
+
+#[test]
+fn an_issued_promotion_cannot_retarget_a_binding_or_write_into_a_malformed_namespace() {
+    let payload = |n| [("value".into(), Tag::Int(n))].into();
+    let disk = |n| {
+        Attachments::from_nbt(
+            [(
+                "mapping".into(),
+                Tag::Compound(
+                    [(
+                        "counter".into(),
+                        Tag::Compound([("value".into(), Tag::Compound(payload(n)))].into()),
+                    )]
+                    .into(),
+                ),
+            )]
+            .into(),
+        )
+    };
+    let key = crate::parts::install_attachment_fixture(
+        "mapping",
+        AttachmentDescriptor::new("mapping:counter", || 0i32).serialize(AttachmentCodec {
+            encode: |n| Ok([("value".into(), Tag::Int(*n))].into()),
+            decode: |data| match data.get(&"value".into()) {
+                Some(Tag::Int(n)) => Ok(*n),
+                _ => Err(AttachmentError::Decode),
+            },
+        }),
+    );
+    let (from, to) = (Holder::Entity(1), Holder::Entity(2));
+    let mut host = Store {
+        maps: HashMap::from([(from, disk(99)), (to, disk(1))]),
+        read_from: Some(from),
+        ..Default::default()
+    };
+    assert_eq!(
+        key.get_existing(&mut host, to),
+        Err(AttachmentError::Decode)
+    );
+    assert_eq!(host.maps[&to].to_nbt(), disk(1).to_nbt());
+    host.read_from = None;
+    assert_eq!(key.get_existing(&mut host, to), Ok(Some(1)));
+
+    let malformed: Compound = [("mapping".into(), Tag::Int(3))].into();
+    host.maps
+        .insert(to, Attachments::from_nbt(malformed.clone()));
+    host.read_from = Some(from);
+    assert_eq!(
+        key.set(&mut host, to, 42),
+        Err(AttachmentError::InvalidNamespace)
+    );
+    assert_eq!(host.maps[&to].to_nbt(), malformed);
 }

@@ -4,7 +4,8 @@ pub use crate::parts::{
 };
 mod __private {
     pub use crate::parts::{
-        attachment_sync_projection, check_attachment_descriptor, registered_copy_on_death,
-        validate_attachment_use, validate_attachment_write, validate_declared_attachment,
+        attachment_removal_sync, attachment_sync_projection, check_attachment_descriptor,
+        registered_copy_on_death, validate_attachment_use, validate_attachment_write,
+        validate_declared_attachment,
     };
 }

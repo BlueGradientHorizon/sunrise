@@ -98,6 +98,7 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
         level
             .block_entity_part_snapshot(entity, checked.namespace(), checked.name())?
             .query_checked(checked, epoch)
+            .map_err(|error| attachment(key, error))?
             .get(
                 level.attachment_read_scope(),
                 AttachmentHolder::BlockEntity(entity),
@@ -425,7 +426,8 @@ pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
     let query = host
         .attachment_query(checked.namespace(), checked.name())
         .map_err(|error| attachment(key, error))?
-        .query_checked(checked, epoch);
+        .query_checked(checked, epoch)
+        .map_err(|error| attachment(key, error))?;
     let scope = host.attachment_read_scope();
     scope
         .and_then(|scope| query.get(scope, entity.attachment_holder()))

@@ -147,6 +147,17 @@ impl<H> AttachmentBatch<H> {
         self
     }
 
+    fn check_key<T>(&self, key: &AttachmentType<T>) -> Result<(), AttachmentError> {
+        if !self
+            .rows
+            .as_ref()
+            .is_none_or(|rows| rows.matches(key.namespace, key.name))
+        {
+            return Err(AttachmentError::TypeMismatch);
+        }
+        Ok(())
+    }
+
     /// Bind the key once, checking its policy before any row is read.
     /// The query borrows only the key, never the index or host.
     pub fn query<T: Send + Sync + 'static>(
@@ -154,6 +165,7 @@ impl<H> AttachmentBatch<H> {
         key: &AttachmentType<T>,
     ) -> Result<AttachmentQuery<'_, H, T>, AttachmentError> {
         key.validate_policy()?;
+        self.check_key(key)?;
         Ok(AttachmentQuery {
             batch: self,
             key,
@@ -167,12 +179,14 @@ impl<H> AttachmentBatch<H> {
         self,
         key: &'key CheckedAttachmentType<T>,
         epoch: u64,
-    ) -> AttachmentQuery<'key, H, T> {
-        AttachmentQuery {
+    ) -> Result<AttachmentQuery<'key, H, T>, AttachmentError> {
+        let key = key.as_type();
+        self.check_key(key)?;
+        Ok(AttachmentQuery {
             batch: self,
-            key: key.as_type(),
+            key,
             epoch: Some(epoch),
-        }
+        })
     }
 }
 

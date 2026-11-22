@@ -508,7 +508,10 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
             )),
             Ok(true)
         );
-        assert!(!game.world.modified.contains(&chunk), "not yet committed");
+        assert!(
+            game.world.modified.contains(&chunk),
+            "the Nether transaction commits independently of the Overworld frame"
+        );
         game.enter_level(Dim::Overworld).unwrap();
         game.transaction_close(&root, true);
         assert!(!game.world.modified.contains(&chunk));

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
-use sunrise_mod_runtime::attachments::AttachmentStoreWrite;
+use sunrise_mod_runtime::attachments::{AttachmentStoreWrite, RawAttachment};
 
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
@@ -114,25 +114,15 @@ impl AttachmentStore for RetainedOriginalAttachments {
         AttachmentStore::decoded(&mut slot.map, holder, namespace, name)
     }
 
-    fn saved(
+    fn raw(
         &mut self,
         holder: Holder,
         namespace: &str,
         name: &str,
-    ) -> Result<Option<Compound>, AttachmentError> {
+    ) -> Result<Option<RawAttachment>, AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, false)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::saved(&mut slot.map, holder, namespace, name)
-    }
-
-    fn synced_raw(
-        &mut self,
-        holder: Holder,
-        namespace: &str,
-        name: &str,
-    ) -> Result<Option<Compound>, AttachmentError> {
-        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        AttachmentStore::synced_raw(&mut slot.map, holder, namespace, name)
+        AttachmentStore::raw(&mut slot.map, holder, namespace, name)
     }
 
     fn store(
@@ -153,7 +143,7 @@ impl AttachmentStore for RetainedOriginalAttachments {
         name: &str,
         sync: bool,
     ) -> Result<(), AttachmentError> {
-        mod_api::__private::validate_attachment_use(namespace, name, sync)?;
+        let sync = mod_api::__private::attachment_removal_sync(namespace, name, sync)?;
         let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
         slot.journal_current();
         AttachmentStore::discard(&mut slot.map, holder, namespace, name, sync)
@@ -825,7 +815,7 @@ mod tests {
                 issued(&SAVED)
                     .set(host, Holder::Player(event.player), 66)
                     .unwrap();
-                RETAINED
+                issued(&RETAINED)
                     .set(host, Holder::Player(event.player), 77)
                     .unwrap();
                 *self.closed.lock().unwrap() += 1;

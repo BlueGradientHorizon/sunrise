@@ -3635,18 +3635,19 @@ mod tests {
                 })
                 .collect()
         };
-        let mut small_map = Attachments::default();
+        let mut store = mod_api::testing::FakeHost::default();
         let fuel = AttachmentSync {
             namespace: "test".into(),
             name: "fuel".into(),
             value: Some([("n".into(), Tag::Int(42))].into()),
         };
-        small_map.apply_sync(fuel.clone());
-        small_map.apply_sync(AttachmentSync {
-            namespace: "test".into(),
-            name: "refused".into(),
-            value: Some([("bad".into(), Tag::End)].into()),
-        });
+        mod_api::testing::attachment_key("test", "fuel")
+            .set(&mut store, Holder::Level, fuel.value.clone().unwrap())
+            .unwrap();
+        mod_api::testing::attachment_key::<mod_api::Compound>("test", "refused")
+            .set(&mut store, Holder::Level, [("bad".into(), Tag::End)].into())
+            .unwrap();
+        let small_map = store.attachments;
         let expected_entity_payload = attachment_sync::encode(&attachment_sync::Message {
             holder: Holder::Entity(7),
             replace: true,

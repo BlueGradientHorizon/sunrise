@@ -255,11 +255,8 @@ macro_rules! host_attachment_store {
             fn decoded(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<AttachmentValue>> {
                 self.attachments().decoded(holder, namespace, name)
             }
-            fn saved(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<Compound>> {
-                self.attachments().saved(holder, namespace, name)
-            }
-            fn synced_raw(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<Compound>> {
-                self.attachments().synced_raw(holder, namespace, name)
+            fn raw(&mut self, holder: Holder, namespace: &str, name: &str) -> AttachmentResult<Option<RawAttachment>> {
+                self.attachments().raw(holder, namespace, name)
             }
             fn store(&mut self, holder: Holder, write: AttachmentStoreWrite<'_>) -> AttachmentResult<()> {
                 self.attachments().store(holder, write)

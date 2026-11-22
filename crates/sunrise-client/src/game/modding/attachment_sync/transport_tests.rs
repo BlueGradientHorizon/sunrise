@@ -2,8 +2,13 @@
 //! connection and LAN TCP: who is sent values, in which order, what a rollback and a stale
 //! epoch send, and what an oversized message does to the connection.
 use super::super::Game;
-use mod_api::{AttachmentCodec, AttachmentKey, Host};
-use std::time::{Duration, Instant};
+use mod_api::{
+    AttachmentAccess, AttachmentCodec, AttachmentKey, AttachmentStore, Attachments, Host,
+};
+use std::{
+    sync::atomic::{AtomicUsize, Ordering},
+    time::{Duration, Instant},
+};
 use sunrise_core::nbt::Tag;
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::{
@@ -34,6 +39,20 @@ const BLOB_CODEC: AttachmentCodec<Vec<u8>> = AttachmentCodec {
 };
 pub(super) fn value_key() -> AttachmentKey<i32> {
     mod_api::testing::attachment_key("sync_route", "value")
+}
+
+// This is installed only by the fresh-process route fixtures. The disk decoder creates the
+// throwing owner, not the setup write. The encoder unwinds with another throwing destructor.
+static PANICKING_DROPS: AtomicUsize = AtomicUsize::new(0);
+#[derive(Clone)]
+struct PanickingValue(bool);
+impl Drop for PanickingValue {
+    fn drop(&mut self) {
+        if self.0 {
+            PANICKING_DROPS.fetch_add(1, Ordering::Relaxed);
+            panic!("disk-decoded attachment destructor");
+        }
+    }
 }
 
 /// A mod with no hooks: with a mod loaded, the server sends joining players snapshots.
@@ -69,6 +88,19 @@ impl mod_api::Hooks for Route {
                         decode: |_| Ok(()),
                     },
                 ),
+            )
+            .unwrap();
+        registrar
+            .register_attachment_type(
+                mod_api::AttachmentDescriptor::new("sync_route:panic", || PanickingValue(false))
+                    .serialize(AttachmentCodec {
+                        encode: |_| Ok(Default::default()),
+                        decode: |_| Ok(PanickingValue(true)),
+                    })
+                    .sync(AttachmentCodec {
+                        encode: |_| std::panic::panic_any(PanickingValue(true)),
+                        decode: |_| unreachable!("the panicking encoder produced no payload"),
+                    }),
             )
             .unwrap();
     }
@@ -116,11 +148,11 @@ pub(super) fn wait_server_ticks(game: &Game<'_>, n: u64) {
     }
 }
 
-fn wait_window(game: &mut Game<'_>, key: &mod_api::AttachmentKey<i32>, value: i32) {
+fn wait_window(game: &mut Game<'_>, key: &mod_api::AttachmentKey<i32>, value: Option<i32>) {
     let deadline = Instant::now() + Duration::from_secs(30);
-    while window_value(game, key) != Some(value) {
+    while window_value(game, key) != value {
         game.poll_remote().unwrap();
-        assert!(Instant::now() < deadline, "window never saw {value}");
+        assert!(Instant::now() < deadline, "window never saw {value:?}");
         std::thread::yield_now();
     }
 }
@@ -363,10 +395,27 @@ fn attachment_sync_follows_the_negotiated_route() {
             };
             // Integrated memory connection: a commit reaches the window, a rollback does not.
             set_level(game, 7, true);
-            wait_window(game, &value_key, 7);
+            wait_window(game, &value_key, Some(7));
             set_level(game, 9, false);
             set_pair(game, 10);
-            wait_window(game, &value_key, 10);
+            wait_window(game, &value_key, Some(10));
+
+            // Leave a decoded-on-send, saved attachment on the authoritative level before the
+            // TCP peer pairs. A temporary owner and the encoder's panic payload both unwind.
+            let panicking = mod_api::testing::attachment_key("sync_route", "panic");
+            game.integrated
+                .as_ref()
+                .unwrap()
+                .call(move |server| {
+                    panicking
+                        .set(server, Holder::Level, PanickingValue(false))
+                        .unwrap();
+                    let map = server
+                        .attachment_map_quiet(Holder::Level, AttachmentAccess::Existing)
+                        .unwrap();
+                    map.replace_contents(Attachments::from_nbt(map.to_nbt()));
+                })
+                .unwrap();
 
             let port = game
                 .integrated
@@ -387,6 +436,11 @@ fn attachment_sync_follows_the_negotiated_route() {
             // order; a refused projection on that same holder does not suppress the join
             // snapshot or a later commit. A rolled-back edit sends nothing.
             assert_eq!(values_until(&mut sunrise, Holder::Level, 10), [10]);
+            assert_eq!(
+                PANICKING_DROPS.load(Ordering::Relaxed),
+                2,
+                "the failed encoder's panic payload and temporary disk-decoded owner were fenced independently"
+            );
             set_level(game, 11, false);
             set_pair(game, 12);
             assert_eq!(values_until(&mut sunrise, Holder::Level, 12), [12]);
@@ -401,6 +455,75 @@ fn attachment_sync_follows_the_negotiated_route() {
             assert_eq!(authority, Ok(12));
             // A vanilla peer is sent nothing, before or after.
             assert_eq!(sync_packets_within(&mut vanilla, Duration::from_secs(2)), 0);
+
+            let discard = |game: &Game<'_>, commit| {
+                game.integrated
+                    .as_ref()
+                    .unwrap()
+                    .call(move |server| {
+                        let seal = server.transaction_open();
+                        AttachmentStore::discard(
+                            server,
+                            Holder::Level,
+                            "sync_route",
+                            "value",
+                            false,
+                        )
+                        .unwrap();
+                        server.transaction_close(&seal, commit);
+                    })
+                    .unwrap();
+            };
+            wait_window(game, &value_key, Some(12));
+            discard(game, false);
+            wait_server_ticks(game, 2);
+            game.poll_remote().unwrap();
+            assert_eq!(window_value(game, &value_key), Some(12));
+            assert_eq!(sync_packets_within(&mut sunrise, Duration::from_secs(1)), 0);
+            discard(game, true);
+            wait_window(game, &value_key, None);
+
+            let holder = game
+                .integrated
+                .as_ref()
+                .unwrap()
+                .call(|server| {
+                    use super::super::creatures::{SpawnReason, SpawnSite};
+                    let pos = server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .iter()
+                        .find(|guest| guest.name == "SyncSunrise")
+                        .unwrap()
+                        .position;
+                    let id = server
+                        .spawn_mob(
+                            "minecraft:cow",
+                            pos,
+                            true,
+                            SpawnSite::Finalizing(SpawnReason::Command),
+                        )
+                        .unwrap();
+                    Holder::Entity(id)
+                })
+                .unwrap();
+            wait_server_ticks(game, 2);
+            let good = value_key.clone();
+            let bad = mod_api::testing::attachment_key("sync_route", "bad_nbt");
+            game.integrated
+                .as_ref()
+                .unwrap()
+                .call(move |server| {
+                    let seal = server.transaction_open();
+                    bad.set(server, holder, ()).unwrap();
+                    good.set(server, holder, 23).unwrap();
+                    server.transaction_close(&seal, true);
+                })
+                .unwrap();
+            assert_eq!(values_until(&mut sunrise, holder, 23), [23]);
 
             // Past the network frame limits: refused by name, the peer stays joined and is
             // sent the next value. The memory connection has no frame limit.
