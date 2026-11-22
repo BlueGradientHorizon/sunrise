@@ -566,7 +566,7 @@ fn guest_public_command_selectors_change_display_not_the_signed_body() {
                 assert!(game.guest_message_command(
                     12,
                     "say hello @s",
-                    Some(&[("message".into(), signed_message.clone())])
+                    Some(&vec![("message".into(), signed_message.clone())])
                 ));
                 for receiver in [&first, &second] {
                     let C::PlayerChat(chat) = packets(receiver)

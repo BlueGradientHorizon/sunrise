@@ -916,10 +916,7 @@ mod tests {
             assert_eq!(game.enter_command_level(Dim::Nether), Some(Dim::Overworld));
             let inner = game.transaction_open();
             let host: &mut dyn ServerHost = game;
-            assert_eq!(
-                host.edit_blocks("minecraft:the_nether", &single_replace(pos, stone)),
-                Ok(1)
-            );
+            assert_eq!(nether.edit_blocks(host, &single_replace(pos, stone)), Ok(1));
             game.transaction_close(&inner, true);
             assert_eq!(nether.block_state(game, pos), Some(stone));
             assert_eq!(nether.connection_group(game, pos), Ok(None));
@@ -1014,7 +1011,7 @@ mod tests {
                             ),
                             Ok(true)
                         );
-                        assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
+                        assert_eq!(level.edit_blocks(host, &edit), Ok(1));
                         Ok(())
                     });
                     assert_eq!(res, Ok(()));
