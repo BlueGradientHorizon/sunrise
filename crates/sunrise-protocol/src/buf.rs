@@ -6,7 +6,7 @@
 //! and `varint_size` from [`sunrise_core::vanilla_bytes`].
 use crate::{Error, Result};
 use std::marker::PhantomData;
-use sunrise_core::{nbt, nbt::Tag, vanilla_bytes::Writer};
+use sunrise_core::{identifier, nbt, nbt::Tag, vanilla_bytes::Writer};
 
 /// Vanilla's default NBT quota for network tags (NbtAccounter.defaultQuota).
 pub const NBT_QUOTA: usize = nbt::Limits::network().max_bytes;
@@ -317,28 +317,8 @@ impl<const N: usize> Codec<String> for StrN<N> {
 pub struct Ident;
 impl Codec<String> for Ident {
     fn read(r: &mut Reader) -> Result<String> {
-        let value = r.string(32767)?;
-        // A namespaced identifier (what vanilla writes) goes back as read.
-        let qualified = value.find(':').is_some_and(|i| i > 0);
-        let (namespace, path) = value.split_once(':').unwrap_or(("", &value));
-        let namespace = if namespace.is_empty() {
-            "minecraft"
-        } else {
-            namespace
-        };
-        if !namespace
-            .bytes()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c))
-            || !path
-                .bytes()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || b"/_.-".contains(&c))
-        {
-            return Err(Error::new("invalid resource identifier"));
-        }
-        if qualified {
-            return Ok(value);
-        }
-        Ok(format!("{namespace}:{path}"))
+        identifier::canonicalize(r.string(32767)?)
+            .map_err(|_| Error::new("invalid resource identifier"))
     }
     fn write(v: &String, w: &mut Writer) {
         w.string(v)

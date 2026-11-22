@@ -7,8 +7,13 @@ use crate::{
     Error, Result,
     packets::configuration::{RegistryData, UpdateTags},
 };
-use std::{collections::HashMap, path::Path};
-use sunrise_core::identifier::Identifier;
+use serde::{Deserialize, Deserializer, de};
+use std::{
+    collections::{BTreeMap, HashMap, btree_map::Entry},
+    fmt,
+    path::Path,
+};
+use sunrise_core::identifier::{self, Identifier};
 use sunrise_core::nbt::{JavaString, Tag};
 
 /// One registry: names by network id and the reverse lookup.
@@ -101,6 +106,51 @@ fn names(text: &str, id: &Identifier) -> bool {
     text.split_once(':') == Some((id.namespace(), id.path()))
 }
 
+#[derive(Deserialize)]
+struct ReportRegistry {
+    entries: Option<ReportEntries>,
+}
+
+/// Read keys directly from the JSON object, before a map can overwrite a duplicate.
+struct ReportEntries(BTreeMap<String, serde_json::Value>);
+
+impl<'de> Deserialize<'de> for ReportEntries {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = ReportEntries;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a registry entries object with unique keys")
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> std::result::Result<Self::Value, A::Error> {
+                let mut entries = BTreeMap::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    match entries.entry(key) {
+                        Entry::Vacant(entry) => {
+                            entry.insert(map.next_value()?);
+                        }
+                        Entry::Occupied(entry) => {
+                            return Err(de::Error::custom(format!(
+                                "duplicate report key {}",
+                                entry.key()
+                            )));
+                        }
+                    }
+                }
+                Ok(ReportEntries(entries))
+            }
+        }
+
+        deserializer.deserialize_map(Visitor)
+    }
+}
+
 impl Builtin {
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
@@ -108,17 +158,15 @@ impl Builtin {
         Self::parse(&text)
     }
     pub fn parse(text: &str) -> Result<Self> {
-        let json: serde_json::Value = serde_json::from_str(text)
+        let report: BTreeMap<String, ReportRegistry> = serde_json::from_str(text)
             .map_err(|e| Error::new(format!("registries report: {e}")))?;
         let mut registries = HashMap::new();
-        for (name, registry) in json
-            .as_object()
-            .ok_or_else(|| Error::new("registries report is not an object"))?
-        {
-            let Some(entries) = registry["entries"].as_object() else {
+        for (name, registry) in report {
+            let Some(ReportEntries(entries)) = registry.entries else {
                 continue;
             };
             let mut slots = vec![None; entries.len()];
+            let mut ids = HashMap::with_capacity(entries.len());
             for (entry, value) in entries {
                 let id = value["protocol_id"]
                     .as_u64()
@@ -138,16 +186,14 @@ impl Builtin {
                 if slots[id].is_some() {
                     return Err(Error::new(format!("{entry}: duplicate protocol_id {id}")));
                 }
-                slots[id] = (!entry.is_empty()).then_some(entry.as_str());
+                slots[id] = (!entry.is_empty()).then_some(entry);
             }
             // Publish canonical IDs in numeric slot order. Invalid IDs leave gaps;
             // like MappedRegistry.register, reject repeated identifier keys.
             let mut names = Vec::with_capacity(slots.len());
-            let mut ids = HashMap::with_capacity(entries.len());
             for (slot, entry) in slots.into_iter().enumerate() {
                 let key = entry
-                    .and_then(|entry| Identifier::parse(entry).ok())
-                    .map(|id| id.to_string())
+                    .and_then(|entry| identifier::canonicalize(entry).ok())
                     .unwrap_or_default();
                 if let Some(previous) = ids.insert(key.clone(), slot as i32)
                     && !key.is_empty()
@@ -158,7 +204,7 @@ impl Builtin {
                 }
                 names.push(key);
             }
-            registries.insert(name.clone(), Ids { names, ids });
+            registries.insert(name, Ids { names, ids });
         }
         Ok(Self { registries })
     }
@@ -589,11 +635,16 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_canonical_report_keys() {
-        let report = r#"{"minecraft:item":{"entries":{
-            "stick":{"protocol_id":1},
-            "minecraft:stick":{"protocol_id":5}
-        }}}"#;
-        assert!(Builtin::parse(report).is_err());
+        for first_key in ["stick", "minecraft:stick"] {
+            let report = format!(
+                r#"{{"minecraft:item":{{"entries":{{
+                    "{first_key}":{{"protocol_id":1}},
+                    "minecraft:stick":{{"protocol_id":5}}
+                }}}}}}"#
+            );
+            let error = Builtin::parse(&report).unwrap_err();
+            assert!(error.0.contains("duplicate"), "{error}");
+        }
     }
 
     #[test]
