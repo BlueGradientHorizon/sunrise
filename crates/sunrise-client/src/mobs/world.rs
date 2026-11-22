@@ -983,6 +983,33 @@ impl TestResources {
             .as_ref()
     }
 }
+/// A built test world with the generic damage key installed for its mocked contact Part.
+#[cfg(test)]
+pub(crate) fn with_built_contact_test_world(
+    build: impl FnOnce(&mut crate::world::World, &sunrise_world::registry::BlockRegistry),
+    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes, mod_api::DamageTypeKey),
+) -> bool {
+    struct Contact(std::sync::Arc<std::sync::OnceLock<mod_api::DamageTypeKey>>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Contact {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            self.0.set(r.damage_type_key("minecraft:generic")).unwrap();
+        }
+    }
+    let key = std::sync::Arc::new(std::sync::OnceLock::new());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "contact",
+        Box::new(Contact(key.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        with_built_test_world(&[], build, |world, types| {
+            f(world, types, *key.get().unwrap())
+        })
+    })
+}
+
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
 #[cfg(test)]
 fn run_test_world(
@@ -1010,7 +1037,7 @@ fn run_test_world(
     build(&mut world, registry);
     let lid_openers = std::collections::HashMap::new();
     let w = MobWorld {
-        side: sunrise_client::motion::dry_side(),
+        side: &crate::motion::surface::DrySide(&motion.health.damage),
         mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
         goal_host: None,
         teams: Default::default(),

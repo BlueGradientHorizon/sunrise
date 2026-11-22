@@ -749,13 +749,19 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
 }
 
 #[derive(Clone, Default)]
-struct StepWrites(Arc<Mutex<Vec<[[f64; 3]; 2]>>>);
+struct StepWrites(
+    Arc<Mutex<Vec<[[f64; 3]; 2]>>>,
+    Option<mod_api::DamageTypeKey>,
+);
 
 #[mod_api::sunrise_part]
 impl BlockPart for StepWrites {
     fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
         self.0.lock().unwrap().push(event.bounds);
-        let hurt = mod_api::EntityWrite::Hurt { amount: 0.5 };
+        let hurt = mod_api::EntityWrite::Hurt {
+            damage_type: self.1.unwrap(),
+            amount: 0.5,
+        };
         match level {
             mod_api::LevelRandomSide::Server(level) => {
                 let state = level.block_state_id("minecraft:glass").unwrap();
@@ -774,7 +780,8 @@ impl BlockPart for StepWrites {
 impl Hooks for StepWrites {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let stone = r.block_key("minecraft:stone");
-        r.block_part(stone, self.clone());
+        let generic = r.damage_type_key("minecraft:generic");
+        r.block_part(stone, Self(self.0.clone(), Some(generic)));
     }
 }
 
@@ -902,7 +909,7 @@ const REJECT: u8 = 1;
 const ACCEPT_AFTER: u8 = 2;
 
 #[derive(Clone, Copy)]
-struct StepAnswer<const ORDER: u8>;
+struct StepAnswer<const ORDER: u8>(Option<mod_api::DamageTypeKey>);
 
 #[mod_api::sunrise_part]
 impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
@@ -923,7 +930,10 @@ impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
             REJECT => {
                 assert_eq!(event.movement[0], 0.25);
                 event.movement[0] = 3.0;
-                event.write_entity(EntityWrite::Hurt { amount: 10.0 });
+                event.write_entity(EntityWrite::Hurt {
+                    damage_type: self.0.unwrap(),
+                    amount: 10.0,
+                });
                 event.request(LandingWrite::DestroyBlock { drop: false });
                 match event.pos.x {
                     4 => {
@@ -960,7 +970,8 @@ impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
 impl<const ORDER: u8> Hooks for StepAnswer<ORDER> {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let stone = r.block_key("minecraft:stone");
-        r.block_part(stone, *self);
+        let generic = r.damage_type_key("minecraft:generic");
+        r.block_part(stone, Self(Some(generic)));
     }
 }
 
@@ -971,9 +982,9 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
         "game::item_contact_tests::step_on_refuses_only_the_invalid_part_outputs",
         || {
             let mods: mod_api::Mods = vec![
-                mod_api::ModEntry::new("a_before", Box::new(StepAnswer::<ACCEPT_BEFORE>)),
-                mod_api::ModEntry::new("b_invalid", Box::new(StepAnswer::<REJECT>)),
-                mod_api::ModEntry::new("c_after", Box::new(StepAnswer::<ACCEPT_AFTER>)),
+                mod_api::ModEntry::new("a_before", Box::new(StepAnswer::<ACCEPT_BEFORE>(None))),
+                mod_api::ModEntry::new("b_invalid", Box::new(StepAnswer::<REJECT>(None))),
+                mod_api::ModEntry::new("c_after", Box::new(StepAnswer::<ACCEPT_AFTER>(None))),
             ]
             .into();
             mod_platform::testing::with_mods(mods.clone(), || {
@@ -1019,6 +1030,110 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                         game.drain_entity_inside();
                         assert_eq!(game.world.block(x, 63, 4), glass);
                     }
+                });
+            });
+        },
+    );
+}
+
+struct ContactHeat(mod_api::DamageTypeKey);
+
+#[mod_api::sunrise_part]
+impl BlockPart for ContactHeat {
+    fn step_on(&self, _: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        event.write_entity(mod_api::EntityWrite::Hurt {
+            damage_type: self.0,
+            amount: 40.0,
+        });
+    }
+}
+
+struct HeatedBlocks;
+
+#[mod_api::__subscriptions]
+impl Hooks for HeatedBlocks {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        for (block, damage_type) in [
+            ("minecraft:stone", "minecraft:hot_floor"),
+            ("minecraft:glass", "test:stove_burn"),
+        ] {
+            let block = r.block_key(block);
+            let damage_type = r.damage_type_key(damage_type);
+            r.block_part(block, ContactHeat(damage_type));
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::contact_hurt_uses_the_world_damage_type_tags_and_death_message",
+        || {
+            use crate::game::native_entity_refs::tests::{fixture_root, with_game};
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("heat", Box::new(HeatedBlocks))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                with_game(|game| {
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    for (id, x, kind, block) in [
+                        (71, 4, "minecraft:blaze", "minecraft:stone"),
+                        (72, 7, "minecraft:pig", "minecraft:stone"),
+                        (73, 10, "minecraft:pig", "minecraft:glass"),
+                    ] {
+                        let support = game.pack.assets.registry.default_state(block).unwrap();
+                        game.world.set(x, 63, 4, support).unwrap();
+                        let mut mob = sunrise_client::mobs::Mob::new(
+                            id,
+                            game.res.mob_types().get(kind).unwrap().clone(),
+                            Vec3::new(f64::from(x) + 0.5, 64.0, 4.5),
+                            0.0,
+                        );
+                        mob.no_ai = true;
+                        mob.on_ground = true;
+                        mob.velocity.y = -0.08;
+                        game.mobs.push(mob);
+                    }
+                    let health = |game: &Game<'_>, id| {
+                        game.mobs.iter().find(|mob| mob.id == id).unwrap().health
+                    };
+                    let blaze_before = health(game, 71);
+                    let custom_before = health(game, 73);
+                    game.tick_mobs().unwrap();
+                    assert_eq!(health(game, 71), blaze_before, "hot floor is fire damage");
+                    assert_eq!(health(game, 72), 0.0, "the same hit kills a non-immune pig");
+                    assert_eq!(
+                        health(game, 73),
+                        custom_before,
+                        "no generic fallback for a missing type"
+                    );
+
+                    let files = [(
+                        "damage_type/test:stove_burn".into(),
+                        vec![
+                            br#"{"message_id":"stove_burn","scaling":"never","exhaustion":0.0}"#
+                                .to_vec(),
+                        ],
+                    )];
+                    game.health_resources = game
+                        .health_resources
+                        .with_packs(
+                            &fixture_root(),
+                            &sunrise_world::loot::PackOverlay::new(&files),
+                            false,
+                        )
+                        .unwrap();
+                    game.tick_mobs().unwrap();
+                    let dead = game.mobs.iter().find(|mob| mob.id == 73).unwrap().clone();
+                    assert_eq!(dead.health, 0.0);
+                    assert_eq!(
+                        game.mob_death_message(&dead, None).component()["translate"],
+                        "death.attack.stove_burn"
+                    );
                 });
             });
         },

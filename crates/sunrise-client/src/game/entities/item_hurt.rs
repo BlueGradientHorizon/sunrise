@@ -50,10 +50,15 @@ impl Game<'_> {
         true
     }
 
-    /// Generic block contact damage during the tick, while the item belongs to its mover.
-    pub(super) fn hurt_moving_item(&mut self, item: &mut ItemEntity, amount: f32) {
+    /// Block contact damage during the tick, while the item belongs to its mover.
+    pub(super) fn hurt_moving_item(
+        &mut self,
+        item: &mut ItemEntity,
+        damage_type: &str,
+        amount: f32,
+    ) {
         let source = HurtSource {
-            damage_type: "minecraft:generic",
+            damage_type,
             causing: 0,
             direct: 0,
             position: None,

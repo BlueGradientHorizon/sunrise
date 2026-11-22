@@ -24,7 +24,7 @@ pub trait Hooks {
     /// Keep movement answers consistent between the two sides and on replay.
     #[hook(
         side = "both",
-        version = 2,
+        version = 3,
         contract = "collect",
         out = "movement",
         scope = "block",

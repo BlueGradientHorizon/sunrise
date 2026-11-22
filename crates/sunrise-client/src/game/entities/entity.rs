@@ -958,8 +958,15 @@ impl Game<'_> {
                 item.stuck = triple(v);
                 item.fall_distance = 0.0;
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.hurt_moving_item(item, amount);
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    self.hurt_moving_item(item, name, amount);
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,

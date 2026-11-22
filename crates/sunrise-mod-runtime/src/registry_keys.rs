@@ -10,6 +10,7 @@ pub struct Requests {
     pub declared_fluids: HashMap<String, &'static str>,
     pub items: Names,
     pub effects: Names,
+    pub damage_types: Names,
     pub particles: Names,
     pub block_entity_types: Names,
     pub entity_types: Names,

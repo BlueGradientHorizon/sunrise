@@ -78,6 +78,7 @@ macro_rules! game_side {
                     &remote.features
                 }),
             items: $s.res.items(),
+            damage_types: &$s.health_resources.damage,
             tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {

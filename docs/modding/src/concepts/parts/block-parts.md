@@ -211,8 +211,11 @@ preserves the requested resource-drop flag.
 
 `BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
 Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. `EntityWrite::Hurt { amount }` deals generic damage to the swept
-entity, without a causing or direct entity.
+`InsideEffect`. Both `entity_inside` and `step_on` accept
+`EntityWrite::Hurt { damage_type, amount }`. Request the key once in `register`,
+for example `r.damage_type_key("minecraft:hot_floor")`. The level supplies the
+registered damage type, including data-pack types and tags, without a causing
+or direct entity. If the type is absent in that world, the hurt does not apply.
 
 ## Storage changes
 

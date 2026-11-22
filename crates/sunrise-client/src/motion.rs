@@ -1738,8 +1738,16 @@ impl MotionWorld<'_, '_, '_> {
             mod_api::EntityWrite::StuckIn(v) => {
                 self.make_stuck_in_block(triple(v));
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.environment_hurt("minecraft:generic", amount)?;
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(kind) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                        .and_then(|name| self.health.damage.id(name))
+                {
+                    self.environment_hurt_type(kind, amount)?;
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,

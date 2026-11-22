@@ -127,6 +127,7 @@ mod sweep_tests {
         wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         kill_after: Option<usize>,
+        generic: std::sync::Arc<std::sync::Mutex<Option<mod_api::DamageTypeKey>>>,
         panic_after: Option<usize>,
     }
     #[mod_api::sunrise_part]
@@ -148,7 +149,10 @@ mod sweep_tests {
             if self.kill_after.is_some_and(|after| seen > after) {
                 event.run_after(
                     mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt { amount: 1000.0 },
+                    mod_api::EntityWrite::Hurt {
+                        damage_type: self.generic.lock().unwrap().unwrap(),
+                        amount: 1000.0,
+                    },
                 );
             }
             event.run_after(
@@ -181,6 +185,7 @@ mod sweep_tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for InsideMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            *self.0.generic.lock().unwrap() = Some(r.damage_type_key("minecraft:generic"));
             *self.0.wither.lock().unwrap() = Some(r.effect_key("minecraft:wither"));
             *self.0.speed.lock().unwrap() = Some(r.effect_key("minecraft:speed"));
             let stone = r.block_key("minecraft:stone");

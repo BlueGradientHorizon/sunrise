@@ -312,9 +312,22 @@ impl Game<'_> {
                         let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
                         for write in writes {
                             match write {
-                                mod_api::EntityWrite::Hurt { amount } => {
+                                mod_api::EntityWrite::Hurt {
+                                    damage_type,
+                                    amount,
+                                } => {
+                                    let Some(name) =
+                                        mod_api::__private::parts_installation::damage_type_name(
+                                            damage_type,
+                                        )
+                                    else {
+                                        continue;
+                                    };
+                                    if self.health_resources.damage.id(name).is_none() {
+                                        continue;
+                                    }
                                     let source = sunrise_client::health::HurtSource {
-                                        damage_type: "minecraft:generic",
+                                        damage_type: name,
                                         causing: 0,
                                         direct: 0,
                                         position: None,
