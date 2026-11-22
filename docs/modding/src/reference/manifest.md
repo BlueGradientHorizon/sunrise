@@ -31,9 +31,9 @@ my_mod.smod
 - **Runtime files:** a native package may carry a `runtime/` folder of data its code opens beside
   itself, listed in a top-level `[runtime]` table (below). A content mod has none.
 - Inconsistent code declarations or executable files in the archive refuse the package.
-- Packing a project folder takes the files above and leaves every other file in the folder out (build tooling,
-  `.cargo/config.toml`, `rust-toolchain.toml`, a `.rs` file outside `src/`); the build never sees them. An archive
-  entry outside this layout refuses the package.
+- The full native layout is in [Package contents](../how-to/native-mods/03-data-files.md#package-contents). Packing
+  a project folder takes those files and leaves every other file out; in an archive, a file outside the layout
+  refuses the package.
 
 There is no mod-id directory level inside the archive. `sunrise-mod.toml` is the only manifest and the only
 source of the mod's id and version; Cargo's package name and version are not mod identity. IDs are plain
