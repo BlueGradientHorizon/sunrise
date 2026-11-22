@@ -64,4 +64,28 @@ pub trait LevelChunksBackendMut {
     /// Ok with nothing sent when no player is in the level. Each refusal queues nothing and is
     /// named by `ChunkRefusal`: `Stale`, `Client`, `NotInPlace` and `NotLoaded`.
     fn chunk_resend(&mut self, chunk: ChunkRef) -> Result<(), ChunkRefusal>;
+    /// Side: server.
+    /// Load chunk `pos` (`[x, z]`, in chunks) of the level from its save, or generate it, to
+    /// FULL, as vanilla's `Level.getChunk(x, z)` does (`ServerChunkCache.getChunk(x, z,
+    /// ChunkStatus.FULL, true)`), then read or write it with the level's other calls. True once
+    /// the chunk is full; a chunk already loaded answers true at once.
+    ///
+    /// **The call blocks the server tick until the chunk is loaded or generated**, as
+    /// vanilla's does: a chunk that has never been generated can take a long while, so load the
+    /// chunks a mod needs ahead of time rather than many in one tick. There is no timeout, as in
+    /// vanilla; the call only gives up, false, if the level closes meanwhile.
+    ///
+    /// Like vanilla, the call places an `UNKNOWN` ticket at FULL's level on the chunk: it keeps
+    /// the chunk loaded, not ticking, through the next tick and expires at the one after
+    /// (`TicketType.UNKNOWN`'s one-tick timeout), after which the chunk unloads as any other
+    /// with no ticket. Nothing is forced or saved: to keep a chunk, use `ChunkRef::set_forced`
+    /// or a `TicketController`'s ticket.
+    ///
+    /// Works in any open level, not only the one in place. The chunk's `chunk_load` listeners
+    /// run at its level's next chunk update, not during this call. False for a stale handle,
+    /// on a client, for a level the server has not opened, for a chunk past `ChunkPos.isValid`
+    /// (beyond `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on x or z, where vanilla's block
+    /// reads and writes stop, `Level.isInValidBounds`), and while the level's generation is
+    /// paused or stopped.
+    fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> bool;
 }

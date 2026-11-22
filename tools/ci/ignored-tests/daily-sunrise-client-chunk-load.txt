@@ -1,0 +1,2 @@
+# Level.getChunk for mods (LevelRef::load_chunk, #4550): generate to FULL, then the one-tick UNKNOWN ticket expires and the chunk unloads.
+sunrise-client game::native_level_refs::tests::load_chunk_generates_to_full_under_a_ticket_that_expires_after_a_tick lib daily resources

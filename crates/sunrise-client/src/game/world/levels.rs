@@ -704,6 +704,23 @@ impl Levels {
             .map(|(_, level)| &mut level.streaming)
     }
 
+    /// `TicketStorage.purgeStaleTickets` for the `UNKNOWN` tickets of the parked levels that
+    /// `purge` names.
+    pub(super) fn purge_unknown_tickets(&mut self, purge: impl Fn(Dim) -> bool) {
+        for (&dim, level) in &mut self.parked {
+            if purge(dim) {
+                level.streaming.purge_unknown_tickets();
+            }
+        }
+    }
+
+    /// `Level.getChunk(x, z)` in an already open level without changing the acting player's
+    /// level: the same ticket and wait serve the active level.
+    pub(super) fn load_parked_column(&mut self, dimension: &str, x: i32, z: i32) -> Option<bool> {
+        let level = self.parked_mut_of(dimension)?;
+        Some(level.streaming.load_full_column(&mut level.world, (x, z)))
+    }
+
     /// `ServerLevel.setChunkForced`: force a column in an already open level without changing the acting
     /// player's level; the same queue and load barrier serve the active level.
     pub(super) fn force_parked_chunk(
@@ -1480,6 +1497,10 @@ impl Game<'_> {
             if observe_level && let Some(level) = self.level(dim.id()) {
                 self.native_level_tick_pre(level);
             }
+            // ServerChunkCache.tick's purge, before the update that may unload the columns.
+            if running == Some(true) {
+                self.streaming.purge_unknown_tickets();
+            }
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
@@ -1553,6 +1574,12 @@ impl Game<'_> {
                     self.enter_level(dim)?;
                 }
             }
+        }
+        // Vanilla ticks the chunk source of every level, ticked here or not: the levels left
+        // parked purge their tickets too.
+        if running == Some(true) {
+            self.levels
+                .purge_unknown_tickets(|dim| !order.contains(&dim));
         }
         // The levels only `Loaded` areas name: streamed and sent, never ticked.
         if result.is_ok() {

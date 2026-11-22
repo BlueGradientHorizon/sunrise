@@ -370,6 +370,23 @@ impl Game<'_> {
         self.native_level_world(level)?;
         chunk_in_world(pos).then_some(ChunkRef::new(level, pos))
     }
+    /// `Level.getChunk(x, z)`: load or generate chunk `pos` to FULL, blocking the server tick
+    /// until it is there, under a one-tick `UNKNOWN` ticket (`Streaming::load_full_column`).
+    /// False for a stale handle, on a client, for a chunk past `ChunkPos.isValid`, and when
+    /// the level's generation is paused or stopped.
+    pub(super) fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> bool {
+        if self.native_level_streaming(level).is_none() {
+            return false;
+        }
+        let [x, z] = pos;
+        if level.dimension() == self.dim.key() {
+            self.streaming.load_full_column(&mut self.world, (x, z))
+        } else {
+            self.levels
+                .load_parked_column(level.dimension_id(), x, z)
+                .unwrap_or(false)
+        }
+    }
     /// The streaming of the level a handle names now, or None for a stale or
     /// foreign one.
     fn native_level_streaming(&self, level: LevelRef) -> Option<&Streaming> {
@@ -2739,6 +2756,52 @@ mod tests {
                 query_result(game, "forceload remove 128 -64 144 -64"),
                 Some(2)
             );
+        });
+    }
+
+    /// `Level.getChunk(x, z)` (#4550): a chunk never generated is FULL when the call returns,
+    /// with nothing forced. Its `UNKNOWN` ticket keeps it through the next tick's unload sweep
+    /// and expires at the one after (a timeout of 1, removed below zero), whose sweep unloads it
+    /// as any chunk with no ticket. A parked level loads in place, without switching levels.
+    #[test]
+    #[ignore = "daily"]
+    fn load_chunk_generates_to_full_under_a_ticket_that_expires_after_a_tick() {
+        with_chunk_streaming(|game| {
+            let level = game.level(game.dim.id()).unwrap();
+            let far = game.level_chunk_ref(level, [40, -7]).unwrap();
+            assert!(!game.chunk_loaded(far));
+            assert!(game.level_load_chunk(level, [40, -7]));
+            assert_eq!(game.chunk_status(far), Some(mod_api::ChunkStatus::Full));
+            assert_eq!(game.chunk_forced(far), Some(false));
+            assert!(!game.streaming.forced.contains(&(40, -7)));
+            assert!(game.level_load_chunk(level, [40, -7]), "already full");
+            // A changed loaded area sweeps at once: the next tick's sweep keeps the chunk.
+            game.streaming.radius = 1;
+            game.tick_server(false).unwrap();
+            assert!(
+                game.chunk_loaded(far),
+                "the ticket holds through the next tick"
+            );
+            game.streaming.radius = 0;
+            game.tick_server(false).unwrap();
+            assert!(!game.chunk_loaded(far), "unloaded once the ticket expired");
+            // The first chunks past `ChunkPos.isValid`, on x and on z.
+            assert!(!game.level_load_chunk(level, [2_097_062, 0]));
+            assert!(!game.level_load_chunk(level, [0, -2_097_062]));
+            // A level the server has not opened, then the same level opened and parked.
+            let other = if game.dim == Dim::Nether {
+                Dim::End
+            } else {
+                Dim::Nether
+            };
+            let parked = mod_api::LevelRef::new(level.epoch(), other.key());
+            assert!(!game.level_load_chunk(parked, [3, 3]));
+            let back = game.dim;
+            game.enter_level(other).unwrap();
+            game.enter_level(back).unwrap();
+            assert!(game.level_load_chunk(parked, [3, 3]));
+            assert!(game.chunk_loaded(ChunkRef::new(parked, [3, 3])));
+            assert_eq!(game.dim, back, "loading must not switch the acting level");
         });
     }
 

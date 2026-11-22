@@ -715,6 +715,10 @@ pub struct Streaming {
     /// chunks finish out to `radius + 1` (Chebyshev) and generation reaches
     /// past that as around the player. They are generated and kept but not meshed.
     pub extra: Vec<((i32, i32), i32)>,
+    /// `TicketType.UNKNOWN` tickets at FULL's level (`ServerChunkCache.getChunkFutureMainThread`),
+    /// each with its ticks left: `load_full_column` places them, `purge_unknown_tickets` expires
+    /// them, and `hold_unknown_tickets` keeps their columns through an owner update.
+    unknown: Vec<((i32, i32), i8)>,
     /// `extra`'s squares as a grid, made again when `extra` changes.
     cover: Option<ExtraCover>,
     /// Set while `update` runs, after it refreshed `cover`: nothing else can
@@ -1333,6 +1337,7 @@ impl Streaming {
             remote: false,
             relight_resent: false,
             extra: Vec::new(),
+            unknown: Vec::new(),
             cover: None,
             cover_current: false,
             forced_cover: None,
@@ -3054,19 +3059,59 @@ impl Streaming {
         true
     }
 
-    /// `Level.getChunk` for a block read: obtain the full column, without leaving a
-    /// forced chunk ticket behind or waiting for the column to become entity-ticking.
+    /// `Level.getChunk(x, z)`, that is `ServerChunkCache.getChunk(x, z, FULL, true)`: place an
+    /// `UNKNOWN` ticket at FULL's level on the column, then wait until it is loaded or
+    /// generated to FULL, blocking the caller as vanilla's `managedBlock` does. The wait has no
+    /// timeout, as vanilla's has none; it ends early, false, only when generation is aborted
+    /// (the level is closing). The ticket outlives the call: it keeps the column, and nothing
+    /// around it, until `purge_unknown_tickets` expires it. No forced chunk is left behind, and
+    /// the column is not made entity-ticking. False for a chunk past `ChunkPos.isValid`, and
+    /// for a missing column while streaming is paused or its generation stopped; a remote
+    /// streamer only answers for a column it holds, with no ticket.
     pub fn load_full_column(&mut self, world: &mut World, chunk: (i32, i32)) -> bool {
-        if world.chunks.contains_key(&chunk) {
-            return true;
-        }
-        if self.paused || self.remote || self.shared.aborted.load(Ordering::Relaxed) {
+        if !chunk_pos_is_valid(chunk) {
             return false;
         }
-        self.extra.push((chunk, 0));
+        let loaded = world.chunks.contains_key(&chunk);
+        if self.remote {
+            return loaded;
+        }
+        if !loaded && (self.paused || self.shared.aborted.load(Ordering::Relaxed)) {
+            return false;
+        }
+        // TicketStorage.addTicket: the same type and level again resets the ticks left.
+        match self.unknown.iter_mut().find(|(c, _)| *c == chunk) {
+            Some((_, left)) => *left = UNKNOWN_TICKET_TIMEOUT,
+            None => self.unknown.push((chunk, UNKNOWN_TICKET_TIMEOUT)),
+        }
+        if loaded {
+            return true;
+        }
+        // The ticket's square for the wait: the column alone finishes (FULL's level, 33).
+        self.extra.push((chunk, -1));
+        self.rank_full_task(chunk.0, chunk.1);
         let loaded = self.wait_for_column(world, |world| world.chunks.contains_key(&chunk));
         self.extra.pop();
         loaded
+    }
+
+    /// `TicketStorage.purgeStaleTickets` for the `UNKNOWN` tickets: each one's ticks left go
+    /// down by one, and it is removed once they fall below zero. With `TicketType.UNKNOWN`'s
+    /// timeout of 1, a ticket survives the first purge after it was placed and goes at the
+    /// second. Called once per server tick that runs normally, at the level's chunk tick.
+    pub fn purge_unknown_tickets(&mut self) {
+        self.unknown.retain_mut(|(_, left)| {
+            *left -= 1;
+            *left >= 0
+        });
+    }
+
+    /// Add the `UNKNOWN` tickets to `extra` for one owner update, each as the square of its
+    /// column alone, so the update neither unloads their columns nor finishes more around
+    /// them. The caller truncates `extra` afterwards, as for its other per-update areas.
+    pub fn hold_unknown_tickets(&mut self) {
+        self.extra
+            .extend(self.unknown.iter().map(|&(chunk, _)| (chunk, -1)));
     }
 
     fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) -> bool {
@@ -3301,6 +3346,18 @@ impl ViewArrival {
             .is_some_and(|since| now.saturating_duration_since(since) < VIEW_WAIT)
     }
 }
+/// `TicketType.UNKNOWN`'s timeout, in ticks.
+const UNKNOWN_TICKET_TIMEOUT: i8 = 1;
+
+/// `ChunkPos.isValid`: the chunk lies within `ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE` on both
+/// axes, the packed `BlockPos`'s 26-bit horizontal bound in chunks less its safety margin (the
+/// view distance and FULL's 12 accumulated dependency rings, plus one, twice). Vanilla's block
+/// reads and writes refuse a position past it (`Level.isInValidBounds`) before `getChunk`.
+pub fn chunk_pos_is_valid((x, z): (i32, i32)) -> bool {
+    const MAX_CHUNK_COORDINATE_VALUE: u32 = (((1 << 25) - 1) >> 4) - (32 + 12 + 1) * 2;
+    x.unsigned_abs().max(z.unsigned_abs()) <= MAX_CHUNK_COORDINATE_VALUE
+}
+
 /// The rings around a `/forceload`ed chunk, in chunks. Vanilla's FORCED
 /// ticket is level 31 (`ChunkMap.FORCED_TICKET_LEVEL`), the level rises one
 /// per ring (`ChunkTracker.computeLevelFromNeighbor`), and the level picks
