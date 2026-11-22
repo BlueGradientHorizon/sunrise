@@ -5286,6 +5286,10 @@ mod tests {
                 host.hub.guests.push(guest);
                 host.states_next_entity = Some(game.next_entity);
             }
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let display_id = game.next_entity + 1;
             game.next_entity = display_id;
             game.others.push(OtherEntity {

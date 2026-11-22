@@ -79,6 +79,10 @@ fn nested_consume_effects_follow_call_order_even_for_the_same_kind() {
             }
             game.server_items = Some(Arc::new(items));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             game.mobs
                 .push(Mob::new(21, kind, Vec3::new(0.0, 64.0, 0.0), 0.0));
             let living = game.living(game.entity(21).unwrap()).unwrap();
@@ -566,6 +570,10 @@ fn a_foxs_later_custom_effect_keeps_the_original_user_and_stack_after_discard() 
             let decision =
                 sunrise_client::mobs::fox::decide_consumption(&fox, &game.mob_world_base(&[]))
                     .unwrap();
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             game.mobs.push(fox);
             let user = game.entity(21).unwrap();
             assert!(!game.apply_fox_consumption(&decision));

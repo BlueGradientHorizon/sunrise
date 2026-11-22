@@ -585,6 +585,12 @@ fn pre_pickup_edits_and_removals_match_on_host_and_guest() {
             game.level.player_uuid = Some(sunrise_client::lan::playerdata::uuid_ints(7));
             game.lan_acting_uuid = Some(7);
             game.lan_acting_name = Some("pickup_post".into());
+            // The guest fixture reserves network IDs below the pickup entities.
+            game.next_entity = game.next_entity.max(100);
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
 
             let replacement =
                 crate::game::api_values::test_snapshot(&ItemStack::new("minecraft:emerald", 5));

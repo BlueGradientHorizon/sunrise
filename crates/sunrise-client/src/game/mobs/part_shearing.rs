@@ -245,6 +245,10 @@ mod tests {
             // The mobs below take ids 1 and 2 by hand: reserve them in the game's allocator, or the
             // first drop is given id 1 too.
             game.next_entity = game.next_entity.max(2);
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let mut add = |id: u32, kind: &str, x: i32| {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
                 let at = Vec3::new(f64::from(x) + 0.5, 64.0, 0.5);

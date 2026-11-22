@@ -440,6 +440,10 @@ mod tests {
             raider_mob(game, 42, raid.id(), 2, 7.5);
             raider_mob(game, 43, raid.id() + 1, 1, 9.0);
             assert_eq!(game.raid_living_health(raid), Some(20.0));
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let first = game.entity(41).unwrap();
             let second = game.entity(42).unwrap();
             assert_eq!(
@@ -501,6 +505,10 @@ mod tests {
             raider_mob(game, 42, raid.id(), 2, 12.0);
             raider_mob(game, 43, raid.id(), 1, 0.0);
             raider_mob(game, 44, raid.id() + 7, 2, 18.0);
+            crate::game::native_entity_refs::tests::fixture_resident_column(
+                &mut game.world,
+                (0, 0),
+            );
             let member = game.entity(42).unwrap();
             let total = raid.total_health(game);
             let groups = raid.num_groups(game);

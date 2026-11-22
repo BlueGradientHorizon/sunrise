@@ -4048,6 +4048,10 @@ pub(super) mod tests {
                     game.mobs.push(Mob::new(22, spider, Vec3::ZERO, 0.0));
                     game.mobs.push(Mob::new(23, wither, Vec3::ZERO, 0.0));
 
+                    crate::game::native_entity_refs::tests::fixture_resident_column(
+                        &mut game.world,
+                        (0, 0),
+                    );
                     let player_source = game.entity(20);
                     let cow_source = game.entity(21);
 
