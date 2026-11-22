@@ -39,7 +39,7 @@ pub(super) fn build_renderer(
     shader_pack: shader_packs::PickedPack,
     display: sunrise_client::gfx::DisplayReading,
     filtering: (i32, i32),
-) -> Result<Renderer> {
+) -> Result<(Renderer, std::result::Result<(), String>)> {
     let assets = &pack.render;
     let atlas = &gui.atlas;
     // The new renderer's atlas texture starts from `HudAtlas.pixels`, which
@@ -114,7 +114,7 @@ pub(super) fn build_renderer(
         atlas.lightmap_shader.as_deref(),
         &atlas.lightmap_expressions,
     );
-    renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
+    let clouds = renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
     renderer.set_custom_sky(&*pack.custom_sky);
     renderer.set_shared_material_maps(&atlas.material_maps);
     let cit_glints = pack.item_renderer.cit.as_ref().map(|c| &c.glint_textures);
@@ -127,7 +127,7 @@ pub(super) fn build_renderer(
         let r = atlas.sprites.get(name)?;
         Some([r.u0, r.v0, r.u1, r.v1])
     })?;
-    Ok(renderer)
+    Ok((renderer, clouds))
 }
 
 /// The loading screen's renderer: one atlas (the boot screen's until the

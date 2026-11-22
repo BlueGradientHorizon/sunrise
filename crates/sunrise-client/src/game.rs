@@ -10031,7 +10031,7 @@ impl Game<'_> {
         let (screenshot, screenshot_result) = (old.screenshot.take(), old.screenshot_result.take());
         let display = old.display_reading();
         drop(old);
-        let mut renderer = build_renderer(
+        let (mut renderer, clouds) = build_renderer(
             window,
             self.options.offscreen,
             &self.pack,
@@ -10049,6 +10049,7 @@ impl Game<'_> {
                 self.settings.file.int("maxAnisotropyBit"),
             ),
         )?;
+        clouds?;
         (renderer.screenshot, renderer.screenshot_result) = (screenshot, screenshot_result);
         self.adopt_renderer(renderer);
         log::info!("Sunrise: graphics device recovered; rebuilding world meshes");
