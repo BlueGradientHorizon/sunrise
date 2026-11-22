@@ -17,7 +17,7 @@ use sunrise_client::{
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
-    fn display_index(&self, display: DisplayRef) -> Option<usize> {
+    fn resident_display_index(&self, display: DisplayRef) -> Option<usize> {
         let (Target::Other(_), Some(location)) =
             self.native_entity_target_with_location(display.entity())?
         else {
@@ -26,12 +26,14 @@ impl Game<'_> {
         self.others.locate(location.join)
     }
 
-    fn display_state(&self, display: DisplayRef) -> Option<&DisplayState> {
-        self.others[self.display_index(display)?].display.as_deref()
+    fn resident_display_state(&self, display: DisplayRef) -> Option<&DisplayState> {
+        self.others[self.resident_display_index(display)?]
+            .display
+            .as_deref()
     }
 
     fn display_text_state(&self, display: DisplayRef) -> Option<&DisplayText> {
-        match &self.display_state(display)?.contents {
+        match &self.resident_display_state(display)?.contents {
             DisplayContents::Text(text) => Some(text),
             _ => None,
         }
@@ -42,7 +44,7 @@ impl Game<'_> {
         display: DisplayRef,
         edit: impl FnOnce(&mut DisplayState) -> bool,
     ) -> bool {
-        let Some(index) = self.display_index(display) else {
+        let Some(index) = self.resident_display_index(display) else {
             return false;
         };
         self.others.update(index, |entity| {
@@ -69,12 +71,12 @@ impl Game<'_> {
 
     pub(super) fn display(&self, entity: EntityRef) -> Option<DisplayRef> {
         let display = DisplayRef::new(entity);
-        self.display_state(display)?;
+        self.resident_display_state(display)?;
         Some(display)
     }
 
     pub(super) fn display_kind(&self, display: DisplayRef) -> Option<DisplayKind> {
-        Some(match self.display_state(display)?.contents {
+        Some(match self.resident_display_state(display)?.contents {
             DisplayContents::Block(_) => DisplayKind::Block,
             DisplayContents::Item { .. } => DisplayKind::Item,
             DisplayContents::Text(_) => DisplayKind::Text,
@@ -82,7 +84,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_transformation(&self, display: DisplayRef) -> Option<Transformation> {
-        Some(self.display_state(display)?.transformation)
+        Some(self.resident_display_state(display)?.transformation)
     }
 
     pub(super) fn display_set_transformation(
@@ -97,7 +99,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_billboard(&self, display: DisplayRef) -> Option<Billboard> {
-        Some(self.display_state(display)?.billboard)
+        Some(self.resident_display_state(display)?.billboard)
     }
 
     pub(super) fn display_set_billboard(&mut self, display: DisplayRef, value: Billboard) -> bool {
@@ -108,7 +110,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_brightness(&self, display: DisplayRef) -> Option<(u8, u8)> {
-        self.display_state(display)?.brightness
+        self.resident_display_state(display)?.brightness
     }
 
     pub(super) fn display_set_brightness(
@@ -127,7 +129,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_view_range(&self, display: DisplayRef) -> Option<f32> {
-        Some(self.display_state(display)?.view_range)
+        Some(self.resident_display_state(display)?.view_range)
     }
 
     pub(super) fn display_set_view_range(&mut self, display: DisplayRef, value: f32) -> bool {
@@ -138,7 +140,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_shadow_radius(&self, display: DisplayRef) -> Option<f32> {
-        Some(self.display_state(display)?.shadow_radius)
+        Some(self.resident_display_state(display)?.shadow_radius)
     }
 
     pub(super) fn display_set_shadow_radius(&mut self, display: DisplayRef, value: f32) -> bool {
@@ -149,7 +151,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_shadow_strength(&self, display: DisplayRef) -> Option<f32> {
-        Some(self.display_state(display)?.shadow_strength)
+        Some(self.resident_display_state(display)?.shadow_strength)
     }
 
     pub(super) fn display_set_shadow_strength(&mut self, display: DisplayRef, value: f32) -> bool {
@@ -160,7 +162,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_width(&self, display: DisplayRef) -> Option<f32> {
-        Some(self.display_state(display)?.width)
+        Some(self.resident_display_state(display)?.width)
     }
 
     pub(super) fn display_set_width(&mut self, display: DisplayRef, value: f32) -> bool {
@@ -171,7 +173,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_height(&self, display: DisplayRef) -> Option<f32> {
-        Some(self.display_state(display)?.height)
+        Some(self.resident_display_state(display)?.height)
     }
 
     pub(super) fn display_set_height(&mut self, display: DisplayRef, value: f32) -> bool {
@@ -182,7 +184,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_glow_color_override(&self, display: DisplayRef) -> Option<i32> {
-        Some(self.display_state(display)?.glow_color_override)
+        Some(self.resident_display_state(display)?.glow_color_override)
     }
 
     pub(super) fn display_set_glow_color_override(
@@ -197,7 +199,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_interpolation_duration(&self, display: DisplayRef) -> Option<i32> {
-        Some(self.display_state(display)?.interpolation_duration)
+        Some(self.resident_display_state(display)?.interpolation_duration)
     }
 
     pub(super) fn display_set_interpolation_duration(
@@ -212,7 +214,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_start_interpolation(&self, display: DisplayRef) -> Option<i32> {
-        Some(self.display_state(display)?.start_interpolation)
+        Some(self.resident_display_state(display)?.start_interpolation)
     }
 
     pub(super) fn display_set_start_interpolation(
@@ -232,7 +234,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_teleport_duration(&self, display: DisplayRef) -> Option<i32> {
-        Some(self.display_state(display)?.teleport_duration)
+        Some(self.resident_display_state(display)?.teleport_duration)
     }
 
     pub(super) fn display_set_teleport_duration(
@@ -322,7 +324,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_block_state(&self, display: DisplayRef) -> Option<BlockStateId> {
-        match self.display_state(display)?.contents {
+        match self.resident_display_state(display)?.contents {
             DisplayContents::Block(state) => Some(state),
             _ => None,
         }
@@ -349,7 +351,7 @@ impl Game<'_> {
     ) -> Option<()> {
         let DisplayContents::Item {
             stack: Some(stack), ..
-        } = &self.display_state(display)?.contents
+        } = &self.resident_display_state(display)?.contents
         else {
             return None;
         };
@@ -376,7 +378,7 @@ impl Game<'_> {
     }
 
     pub(super) fn display_item_context(&self, display: DisplayRef) -> Option<ItemDisplayContext> {
-        match self.display_state(display)?.contents {
+        match self.resident_display_state(display)?.contents {
             DisplayContents::Item { context, .. } => Some(context),
             _ => None,
         }
