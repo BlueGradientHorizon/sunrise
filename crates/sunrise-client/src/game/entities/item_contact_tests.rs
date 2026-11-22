@@ -557,10 +557,9 @@ impl BlockPart for StepProbe {
         event: &mut mod_api::EntityInsideEvent<'_>,
     ) {
         // A later inside write wins over the step; settle then drags this movement.
-        event.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::SetMovement([0.5, 0.0, 0.0]),
-        );
+        event.run_after(mod_api::InsideEffect::Freeze, |view| {
+            view.set_velocity([0.5, 0.0, 0.0]);
+        });
     }
 
     fn item_after_vertical_collision(
