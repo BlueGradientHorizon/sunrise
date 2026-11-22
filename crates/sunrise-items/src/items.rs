@@ -164,10 +164,11 @@ pub fn parse_consume_effect(effect: &Tag) -> Option<ConsumeEffect> {
                 Some(Tag::List(list)) => list.iter().filter_map(consume_effect_spec).collect(),
                 _ => Vec::new(),
             },
-            probability: effect
-                .get("probability")
-                .and_then(component_float)
-                .unwrap_or(1.0),
+            // `ApplyStatusEffectsConsumeEffect.CODEC`: floatRange(0, 1).
+            probability: match effect.get("probability") {
+                Some(value) => component_float(value).filter(|p| (0.0..=1.0).contains(p))?,
+                None => 1.0,
+            },
         }),
         "clear_all_effects" => Some(ConsumeEffect::ClearAllEffects),
         "remove_effects" => Some(ConsumeEffect::RemoveEffects(match effect.get("effects") {
@@ -183,10 +184,11 @@ pub fn parse_consume_effect(effect: &Tag) -> Option<ConsumeEffect> {
         })),
         "teleport_randomly" => Some(ConsumeEffect::TeleportRandomly(
             sunrise_world::teleport_consume::TeleportConsume {
-                diameter: effect
-                    .get("diameter")
-                    .and_then(component_float)
-                    .unwrap_or(16.0),
+                // `TeleportRandomlyConsumeEffect.CODEC`: ExtraCodecs.POSITIVE_FLOAT.
+                diameter: match effect.get("diameter") {
+                    Some(value) => component_float(value).filter(|d| *d > 0.0 && d.is_finite())?,
+                    None => 16.0,
+                },
                 directional_particles: effect
                     .get("directional_particles")
                     .and_then(component_bool)
@@ -3588,6 +3590,21 @@ mod consume_effect_tests {
         let plain = Tag::compound([("id", Tag::String("minecraft:regeneration".into()))]);
         let plain = consume_effect_spec(&plain).unwrap();
         assert!(!plain.ambient && plain.show_particles && plain.show_icon);
+    }
+
+    #[test]
+    fn saved_consume_effects_reject_out_of_range_parameters() {
+        for (kind, field, invalid) in [
+            ("apply_effects", "probability", 1.5_f32),
+            ("teleport_randomly", "diameter", 0.0),
+            ("teleport_randomly", "diameter", f32::NAN),
+        ] {
+            let tag = Tag::compound([
+                ("type", Tag::String(kind.into())),
+                (field, Tag::Float(invalid.to_bits())),
+            ]);
+            assert!(parse_consume_effect(&tag).is_none());
+        }
     }
 
     #[test]
