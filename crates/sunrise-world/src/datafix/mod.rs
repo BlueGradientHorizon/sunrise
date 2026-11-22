@@ -220,6 +220,12 @@ fn fixes() -> Vec<(Key, FixFn)> {
     out
 }
 
+/// `DataFixerUpper.getLowestSchemaSameVersion`: a version before the first
+/// schema reads with that schema. `DataFixers.addFixers` starts at V99.
+fn source_schema_key(version: i32) -> Key {
+    key(version.max(99) as u32, 0)
+}
+
 /// `DataFixer.update(type, data, from, to)` for a root value.
 pub fn update(root: Ty, data: &mut Tag, from: i32, to: i32) {
     tables::required(try_update(root, data, from, to));
@@ -229,7 +235,7 @@ fn try_update(root: Ty, data: &mut Tag, from: i32, to: i32) -> tables::Result {
     if from >= to {
         return Ok(());
     }
-    let from_key = key(from.max(0) as u32, 0);
+    let from_key = source_schema_key(from);
     let to_version = to as u32;
     // The data is read once with the schema of its version (its read hooks)...
     walk(root, data, from_key, Ty::BlockEntity, mark_read)?;
