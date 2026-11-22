@@ -9,7 +9,8 @@ pub trait Hooks {
     /// `EquipmentSlot` (`mainhand`, `offhand`, `feet`, `legs`, `chest`, `head`,
     /// `body`, `saddle`), `from` what the slot held when this was last heard
     /// (none for empty) and `to` what it holds now. Once for each slot that
-    /// changed, in that order, after the mobs' tick, so a mob that joins the
+    /// changed, in that order, during the entity's tick (before `aiStep` and
+    /// `entity_tick_post`, never for a canceled tick), so a mob that joins the
     /// level wearing something counts from empty on its first tick. It only
     /// hears: change the entity with its own helpers.
     ///

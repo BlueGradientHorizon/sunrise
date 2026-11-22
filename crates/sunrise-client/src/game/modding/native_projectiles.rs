@@ -304,6 +304,10 @@ impl Game<'_> {
         let dimension = self.dim.id();
         let mut canceled = Vec::with_capacity(impacts.len());
         for impact in impacts {
+            if !self.native_hears_impacts() {
+                canceled.push(false);
+                continue;
+            }
             let p = &impact.before;
             let (entity, entity_kind, block, face, at) = match impact.hit {
                 Hit::Block { pos, at, face } => (None, String::new(), pos, face, at),

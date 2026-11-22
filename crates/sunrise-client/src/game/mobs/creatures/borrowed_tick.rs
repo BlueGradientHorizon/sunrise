@@ -1,5 +1,10 @@
 //! Resumable borrowed mob-tick region; the caller owns final restoration.
 use super::*;
+
+#[cfg(test)]
+thread_local! {
+    static BORROWED_MOB_YIELDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 /// Route each player event to the player selected when it was emitted.
 /// Untagged events retain the previous per-tick guest binding.
 fn route_player_events(
@@ -176,6 +181,9 @@ impl Game<'_> {
         // The slot of the mob whose own Pre was just told (a type a mod named): it resumes there
         // with its checks done.
         let mut told_at: Option<usize> = None;
+        // The slot of the mob whose equipment changes were just told: it resumes there with its
+        // Pre and equipment-update steps done.
+        let mut equipment_at = None;
         // Whether a mob still in the lifted list has left the pass (`keep` false) since the list
         // was last given back: a told-alone yield then takes it out before the call.
         let mut gone_rows = false;
@@ -188,6 +196,7 @@ impl Game<'_> {
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
                 None;
+            let mut tell_equipment = None;
             let mut tell_post: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>)> = None;
             // A mob's list is lifted while its world view is borrowed.  Once a
             // position write was captured, stop after this mob, restore the
@@ -241,6 +250,13 @@ impl Game<'_> {
                                 resume_selection = None;
                                 resume_sampled = None;
                                 cursor += 1;
+                                if let Some((at, id, kind)) = &equipment_at
+                                    && *at == slot
+                                    && round.alone_mob_post(kind)
+                                {
+                                    tell_post = Some((*id, std::sync::Arc::clone(kind)));
+                                    break;
+                                }
                                 continue;
                             };
                             i
@@ -248,9 +264,11 @@ impl Game<'_> {
                     };
                     let m = &mut mobs[i];
                     let retried = retried_rider.take() == Some(m.id);
-                    // Its checks ran before its Pre was told: they don't run again.
+                    // Its checks ran before its Pre or equipment update was told: they don't run again.
                     let resuming = resume.is_some();
-                    let checked = resuming || told_at == Some(slot);
+                    let equipment_done =
+                        equipment_at.as_ref().is_some_and(|(at, _, _)| *at == slot);
+                    let checked = resuming || told_at == Some(slot) || equipment_done;
                     if m.removed && !resuming {
                         keep[slot] = false;
                         gone_rows = true;
@@ -259,6 +277,10 @@ impl Game<'_> {
                         // that is still in the level keeps resolving (#795).
                         snapshot[slot].removed = true;
                         cursor += 1;
+                        if equipment_done && round.alone_mob_post(&m.kind) {
+                            tell_post = Some((m.id, std::sync::Arc::clone(&m.kind)));
+                            break;
+                        }
                         continue;
                     }
                     if blocked.contains(&m.id) {
@@ -420,7 +442,7 @@ impl Game<'_> {
                         })
                         .flatten();
                     // A mob of a type a mod named: its own Pre, right before its tick.
-                    if !checked && round.alone_mob(&m.kind) {
+                    if !checked && round.alone_mob_pre(&m.kind) {
                         tell_pre = Some((m.id, std::sync::Arc::clone(&m.kind), i));
                         break;
                     }
@@ -432,12 +454,46 @@ impl Game<'_> {
                     }
                     if !resuming
                         && !retried
+                        && !equipment_done
                         && m.extra.mount.is_some_and(|vehicle| {
                             self.persist.removed_vehicles.contains_key(&vehicle)
                         })
                     {
                         retry_rider = Some(m.id);
                         break;
+                    }
+                    // LivingEntity.tick -> detectEquipmentUpdates -> collectEquipmentChanges:
+                    // compare each slot against the previous stacks once this tick is running
+                    // (never for a canceled tick) and dispatch before aiStep and entity_tick_post.
+                    if !resuming
+                        && !equipment_done
+                        && self.remote.is_none()
+                        && !self.options.execution_role.is_client()
+                        && mod_api::__private::enabled_listened(
+                            mod_api::HookId::LivingEquipmentChange,
+                        )
+                    {
+                        let now = m.equipment_stacks();
+                        let changed = match m.extra.equipment_heard.as_deref() {
+                            None => !now.is_empty(),
+                            Some(heard) => *heard != now,
+                        };
+                        if changed {
+                            let heard =
+                                m.extra.equipment_heard.get_or_insert_with(Default::default);
+                            let mut changes = Vec::new();
+                            for (idx, name) in
+                                sunrise_items::equipment::SLOT_NAMES.into_iter().enumerate()
+                            {
+                                if now[idx] != heard[idx] {
+                                    let from = heard[idx].take();
+                                    changes.push((name, from, now[idx].clone()));
+                                }
+                            }
+                            **heard = now;
+                            tell_equipment = Some((m.id, std::sync::Arc::clone(&m.kind), changes));
+                            break;
+                        }
                     }
                     // getCurrentDifficultyAt(blockPosition()): the mob's own chunk,
                     // not the local player's (a server thread has no player).
@@ -756,7 +812,7 @@ impl Game<'_> {
                     keep[slot] = kept;
                     gone_rows |= !kept;
                     // Its own Post, right after its tick, also when it died or went in it.
-                    if round.alone_mob(&m.kind) {
+                    if round.alone_mob_post(&m.kind) {
                         tell_post = Some((m.id, std::sync::Arc::clone(&m.kind)));
                     }
                     // ServerLevel ticks entities one after another: the ones
@@ -792,10 +848,13 @@ impl Game<'_> {
                 && removing_vehicle.is_none()
                 && !section_yield
                 && tell_pre.is_none()
+                && tell_equipment.is_none()
                 && tell_post.is_none()
             {
                 break;
             }
+            #[cfg(test)]
+            BORROWED_MOB_YIELDS.with(|count| count.set(count.get() + 1));
             // No MobWorld, DamageLevel or navigation loan crosses this boundary.
             // The callback sees the real owning rows and level RNG/attachments,
             // and its writes are the state the continuation will resume from.
@@ -896,6 +955,17 @@ impl Game<'_> {
                         self.mobs.remove(index);
                     }
                 }
+                if let Some((id, kind, changes)) = &tell_equipment {
+                    for (slot, from, to) in changes {
+                        self.native_living_equipment_change(
+                            *id,
+                            &kind.id,
+                            *slot,
+                            from.as_ref(),
+                            to.as_ref(),
+                        );
+                    }
+                }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
@@ -919,6 +989,9 @@ impl Game<'_> {
             let unchanged = same_rows && self.mobs.stamp() == restored;
             if tell_pre.is_some() {
                 told_at = Some(cursor);
+            }
+            if let Some((id, kind, _)) = tell_equipment {
+                equipment_at = Some((cursor, id, kind));
             }
             if retry_rider.is_some() || removing_vehicle.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());

@@ -151,6 +151,14 @@ impl Told {
         };
         Self { pre, post, alone }
     }
+    /// Whether an enabled mod subscribes to `entity_tick_pre`.
+    pub(super) fn pre(&self) -> bool {
+        self.pre
+    }
+    /// Whether an enabled mod subscribes to `entity_tick_post`.
+    pub(super) fn post(&self) -> bool {
+        self.post
+    }
     /// Whether either tick hook is listened to on this side.
     pub(super) fn listening(&self) -> bool {
         self.pre || self.post
@@ -215,6 +223,14 @@ impl TickRound {
     pub(super) fn sections(&self) -> bool {
         self.sections
     }
+    /// Whether `entity_tick_pre` is subscribed on this side.
+    pub(super) fn pre(&self) -> bool {
+        self.told.pre()
+    }
+    /// Whether `entity_tick_post` is subscribed on this side.
+    pub(super) fn post(&self) -> bool {
+        self.told.post()
+    }
     /// Whether either entity tick hook (`entity_tick_pre` or `entity_tick_post`) is subscribed.
     pub(super) fn told_listening(&self) -> bool {
         self.told.listening()
@@ -227,9 +243,25 @@ impl TickRound {
     pub(super) fn alone_mob(&self, kind: &MobType) -> bool {
         self.told.alone_mob(kind)
     }
+    /// Whether a mob of type `kind` is told its Pre alone, right before its own tick.
+    pub(super) fn alone_mob_pre(&self, kind: &MobType) -> bool {
+        self.told.pre() && self.told.alone_mob(kind)
+    }
+    /// Whether a mob of type `kind` is told its Post alone, right after its own tick.
+    pub(super) fn alone_mob_post(&self, kind: &MobType) -> bool {
+        self.told.post() && self.told.alone_mob(kind)
+    }
     /// Whether the entities of type `kind` are told alone ([`Told::alone_kind`]).
     pub(super) fn alone_kind(&self, kind: &str) -> bool {
         self.told.alone_kind(kind)
+    }
+    /// Whether the entities of type `kind` are told their Pre alone.
+    pub(super) fn alone_kind_pre(&self, kind: &str) -> bool {
+        self.told.pre() && self.told.alone_kind(kind)
+    }
+    /// Whether the entities of type `kind` are told their Post alone.
+    pub(super) fn alone_kind_post(&self, kind: &str) -> bool {
+        self.told.post() && self.told.alone_kind(kind)
     }
     /// The entity `id` of `kind` is about to tick with its family, which hears its Pre and its
     /// Posts together (`native_tick_pre_batch`).
@@ -455,16 +487,18 @@ impl Game<'_> {
             return round;
         };
         if round.alone_kind(PLAYER) {
-            // Taken one by one by index: a Pre's listener may change the guests.
-            for gi in 0..host.hub.guests.len() {
-                let Some((conn, id)) = self.lan.as_ref().and_then(|host| {
-                    let g = host.hub.guests.get(gi).filter(|g| host.hub.here(g))?;
-                    Some((g.conn, g.entity_id as u32))
-                }) else {
-                    continue;
-                };
-                if !self.native_tick_pre_one(&mut round, id, PLAYER) {
-                    self.creatures.canceled_players.push(conn);
+            if round.pre() {
+                // Taken one by one by index: a Pre's listener may change the guests.
+                for gi in 0..host.hub.guests.len() {
+                    let Some((conn, id)) = self.lan.as_ref().and_then(|host| {
+                        let g = host.hub.guests.get(gi).filter(|g| host.hub.here(g))?;
+                        Some((g.conn, g.entity_id as u32))
+                    }) else {
+                        continue;
+                    };
+                    if !self.native_tick_pre_one(&mut round, id, PLAYER) {
+                        self.creatures.canceled_players.push(conn);
+                    }
                 }
             }
         } else {
@@ -587,8 +621,13 @@ mod tests {
         assert!(!r.alone_kind("minecraft:item"));
         r.told.alone = Alone::All;
         assert!(r.alone_kind("minecraft:item"));
+        assert!(r.alone_kind_pre("minecraft:item") && r.alone_kind_post("minecraft:item"));
         r.told.pre = false;
+        assert!(!r.alone_kind_pre("minecraft:item") && r.alone_kind_post("minecraft:item"));
+        r.told.pre = true;
         r.told.post = false;
+        assert!(r.alone_kind_pre("minecraft:item") && !r.alone_kind_post("minecraft:item"));
+        r.told.pre = false;
         assert!(!r.alone_kind("minecraft:item"));
     }
 

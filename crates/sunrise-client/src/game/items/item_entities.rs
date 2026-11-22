@@ -66,6 +66,8 @@ impl Game<'_> {
         // their Post right after it, each alone, with the list given back for the call; their
         // part (`on_entity_item_update`) follows their Pre.
         let alone = round.alone_kind(native_ticks::ITEM);
+        let alone_pre = round.alone_kind_pre(native_ticks::ITEM);
+        let alone_post = round.alone_kind_post(native_ticks::ITEM);
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
         // Whether an item left the pass (`removed`) since the list was last given back.
@@ -91,11 +93,13 @@ impl Game<'_> {
             ) {
                 continue;
             }
-            if alone {
+            if alone_pre || (alone && update_hook) {
                 let id = items[i].id;
                 let given =
                     self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
-                        if game.native_tick_pre_one(round, id, native_ticks::ITEM)
+                        let ticks =
+                            !alone_pre || game.native_tick_pre_one(round, id, native_ticks::ITEM);
+                        if ticks
                             && update_hook
                             && let Some(k) =
                                 native_ticks::place(&game.dropped, i, |item| item.id == id)
@@ -315,7 +319,7 @@ impl Game<'_> {
                     }
                 }
             }
-            if alone {
+            if alone_post {
                 let id = items[i].id;
                 let given =
                     self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
