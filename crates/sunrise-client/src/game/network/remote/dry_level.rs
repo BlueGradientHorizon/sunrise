@@ -72,7 +72,7 @@ impl crate::game::Game<'_> {
         &mut self,
         block: BlockId,
         context: &PlacementContext,
-    ) -> Result<Option<BlockStateId>, sunrise_world::level::DirectionalRefusal> {
+    ) -> std::result::Result<Option<BlockStateId>, sunrise_world::level::DirectionalRefusal> {
         self.with_placement_preview_level(|behaviours, level, ticks| {
             let mut dry = DryLevel::new(level);
             dry.random = (*level.world.random).clone();
