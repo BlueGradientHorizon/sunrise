@@ -224,8 +224,7 @@ pub(super) fn travel(
         }
     })
 }
-/// `Guardian.aiStep`'s `clientSideTailAnimation` and
-/// `clientSideSpikesAnimation` (the server's and a client's).
+/// `Guardian.aiStep`'s client-only tail and spikes animation update.
 pub fn tail_and_spikes(m: &mut Mob) {
     let moving = m.extra.flag2;
     let in_water = m.fluids.in_water;
@@ -252,14 +251,13 @@ pub fn tail_and_spikes(m: &mut Mob) {
         a.v[SPIKES] += (1.0 - a.v[SPIKES]) * 0.06;
     }
 }
-/// `Guardian.aiStep`: the client animations, air, flopping on land and the
-/// beam's clock. The spikes are in [`hurt_server`].
+/// `Guardian.aiStep`: air, flopping on land and the beam's clock. The
+/// client alone draws random spike animation; defensive spikes are in [`hurt_server`].
 pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if !m.alive() {
         return;
     }
     let in_water = m.fluids.in_water;
-    tail_and_spikes(m);
     client_tick(m);
     if in_water {
         m.air = 300;
@@ -620,54 +618,36 @@ mod tests {
         assert_eq!(kick.z.to_bits(), (-0.20000000298023224f64).to_bits());
     }
 
-    /// The flop a seeded guardian lands (`Guardian.aiStep`): the mob's own
-    /// random is reseeded right before the step, so its draws are vanilla's
-    /// order — the client spikes draw, then the two kick draws and the yaw's.
-    /// A standing guardian's velocity starts at 0, so the flop is its whole
-    /// motion: the kicks `(f * 2 - 1) * 0.4F` in float and only then widened
-    /// to double, `0.5` up, and the yaw draw widened times `360.0F`.
+    /// `Guardian.aiStep` on the server draws x, z and yaw, without the
+    /// client-only spike animation draw.
     #[test]
     #[ignore = "daily"]
     fn a_seeded_flop_pins_the_motion() {
-        let mut motion = None;
-        let ran = with_test_world(&[], |w, types| {
-            let mut mob = Mob::new(
-                1,
-                Arc::new(types.types["minecraft:guardian"].clone()),
-                Vec3::new(0.5, 64.0, 0.5),
-                0.0,
-            );
-            register(&mut mob);
-            mob.random.set_seed(42);
-            mob.ground.on_ground = true;
-            mob.fluids.in_water = false;
-            mob.silent = true;
-            let mut events = Vec::new();
-            ai_step(&mut mob, w, &mut events);
-            motion = Some(mob);
-        });
-        if !ran {
-            return;
-        }
-        let mob = motion.unwrap();
-        let kick = |f: f32| f64::from((f * 2.0 - 1.0) * 0.4_f32);
-        let x = f32::from_bits(0x3d5f_e8a0);
-        let z = f32::from_bits(0x3f2e_e7bb);
-        assert_eq!(
-            mob.velocity.x.to_bits(),
-            kick(x).to_bits(),
-            "the x kick, in float and widened"
-        );
-        assert_eq!(mob.velocity.y, 0.5, "the flop's height");
-        assert_eq!(
-            mob.velocity.z.to_bits(),
-            kick(z).to_bits(),
-            "the z kick, in float and widened"
-        );
-        assert_eq!(
-            mob.yaw.to_bits(),
-            0x418a_10b0,
-            "the yaw draw widened times 360.0F"
+        assert!(
+            with_test_world(&[], |w, types| {
+                let mut mob = Mob::new(
+                    1,
+                    Arc::new(types.types["minecraft:guardian"].clone()),
+                    Vec3::new(0.5, 64.0, 0.5),
+                    0.0,
+                );
+                register(&mut mob);
+                mob.random.set_seed(42);
+                mob.ground.on_ground = true;
+                mob.fluids.in_water = false;
+                mob.silent = true;
+                ai_step(&mut mob, w, &mut Vec::new());
+                assert_eq!(
+                    [mob.velocity.x, mob.velocity.y, mob.velocity.z].map(f64::to_bits),
+                    [
+                        0x3fc7_4d72_0000_0000,
+                        0x3fe0_0000_0000_0000,
+                        0xbfd6_cd17_a000_0000
+                    ]
+                );
+                assert_eq!(mob.yaw.to_bits(), 0x4375_f5df);
+            }),
+            "vanilla data is missing"
         );
     }
     use std::sync::Arc;

@@ -1183,6 +1183,13 @@ fn an_orb_saves_its_live_fire_and_air_over_the_loaded_ones() {
 #[test]
 #[ignore = "daily"]
 fn an_orb_saves_its_live_portal_cooldown() {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::persist::tests::an_orb_saves_its_live_portal_cooldown",
+        "SUNRISE_ORB_PERSISTENCE_CHILD",
+        &["orb"],
+    ) {
+        return;
+    }
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.world
             .chunks
@@ -1239,13 +1246,13 @@ fn an_orb_saves_its_live_portal_cooldown() {
         game.set_allow_commands(true);
         let sel = "00000009-0000-0000-0000-000000000001";
         assert!(
-            game.run_command_quietly(&format!("data merge entity {sel} {{Fire:40s,Air:299s}}")),
+            game.run_command_quietly(&format!("data merge entity {sel} {{Fire:40s,Air:275s}}")),
             "the merge runs"
         );
         let orb = &game.orbs[0];
         assert_eq!(
             (orb.fire_ticks, orb.air),
-            (40, 299),
+            (40, 275),
             "the merge reached the live orb"
         );
         assert!(
@@ -1255,7 +1262,7 @@ fn an_orb_saves_its_live_portal_cooldown() {
         let orb = &game.orbs[0];
         assert_eq!(
             (orb.fire_ticks, orb.air),
-            (40, 299),
+            (40, 275),
             "an unrelated edit preserves the live fire and air"
         );
         let read = game
@@ -1263,6 +1270,6 @@ fn an_orb_saves_its_live_portal_cooldown() {
             .unwrap();
         assert_eq!(read.get("Invulnerable"), Some(&Tag::Byte(1)));
         assert_eq!(read.get("Fire"), Some(&Tag::Short(40)));
-        assert_eq!(read.get("Air"), Some(&Tag::Short(299)));
+        assert_eq!(read.get("Air"), Some(&Tag::Short(275)));
     });
 }
