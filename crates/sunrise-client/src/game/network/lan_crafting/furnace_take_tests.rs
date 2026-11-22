@@ -62,32 +62,28 @@ impl mod_api::Hooks for FurnaceProbe {
                         core::ops::ControlFlow::Continue(())
                     })
                     .unwrap();
-                let projected = event.stack.project().map(|stack| {
-                    (
-                        host.item_key_id(stack.item()).map(str::to_owned),
-                        stack.count(),
-                    )
-                });
+                let projected = event
+                    .stack
+                    .project()
+                    .map(|stack| (stack.item().id(host).map(str::to_owned), stack.count()));
                 (
                     false,
                     xp_seen,
                     event.player.name(host).map(str::to_owned),
-                    host.item_key_id(event.stack.item()).map(str::to_owned),
+                    event.stack.item().id(host).map(str::to_owned),
                     projected,
                 )
             }
             mod_api::HostSide::Client(host) => {
-                let projected = event.stack.project().map(|stack| {
-                    (
-                        host.item_key_id(stack.item()).map(str::to_owned),
-                        stack.count(),
-                    )
-                });
+                let projected = event
+                    .stack
+                    .project()
+                    .map(|stack| (stack.item().id(host).map(str::to_owned), stack.count()));
                 (
                     true,
                     0,
                     None,
-                    host.item_key_id(event.stack.item()).map(str::to_owned),
+                    event.stack.item().id(host).map(str::to_owned),
                     projected,
                 )
             }
