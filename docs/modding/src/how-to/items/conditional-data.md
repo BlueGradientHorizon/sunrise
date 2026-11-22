@@ -39,18 +39,21 @@ Within a supplied view, a registry absent from it has no entries or tags: `regis
 
 ## Errors by loader
 
-The loader resolves every type ID in a conditions list before testing any of
-it, including all children of `not`, `and` and `or`. An unknown ID is a decode
-error no matter its namespace, whether a mod of that name is installed, or
-whether a sibling would decide the result.
+The loader decodes the entire conditions array before testing any of it,
+including all children of `not`, `and` and `or`. If the key is present, its
+value must be an array. An unknown ID or malformed node is a decode error
+even if a sibling would decide the result. A namespace or installed mod does
+not make an unregistered condition ID valid. Once decoded, the top-level list
+and `and` stop at the first false result; `or` stops at the first true result.
+Handlers in an untested branch do not run.
 
-| Loader | Unknown condition type or handler error |
+| Loader | Condition decode or handler error |
 | --- | --- |
 | World and mod-declared data-pack registries that read conditions | Report the failing entries and refuse the world open. |
 | Reloadable registries (loot tables and their pools, predicates, item modifiers, advancements, recipes) | Report the failing entries and keep the previous data generation. At world open, refuse the open. |
 | Simple JSON reload listeners, including global loot modifiers | Log the condition ID and file path and skip only that file. |
 | Data maps | Log the condition ID, file path, map type and registry. Skip the entire file, so its values, removals and `replace` flag have no effect. |
 
-A file without the conditions array loads normally. Successful reloads publish
-changed enabled IDs together with the data generation; retained readers keep
-their old snapshot.
+A file without the conditions key, or with an empty array, loads normally.
+Successful reloads publish changed enabled IDs together with the data
+generation; retained readers keep their old snapshot.

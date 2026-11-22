@@ -2,6 +2,8 @@
 use super::Game;
 use mod_api::__private::game::RegistrationContextNew;
 use std::{collections::BTreeMap, sync::Arc};
+use sunrise_world::conditions::ConditionContextRead;
+
 pub(super) type ConditionTable =
     Arc<BTreeMap<mod_api::Identifier, (String, Arc<dyn mod_api::LoadCondition>)>>;
 impl Game<'_> {
@@ -190,14 +192,23 @@ fn candidate_registries<'a>(
             let Ok(file) = serde_json::from_slice::<serde_json::Value>(bytes) else {
                 return true;
             };
-            let payload = file.get("neoforge:conditions").map(ToString::to_string);
-            payload.is_none_or(|payload| {
-                payload.contains("\"neoforge:registered\"")
-                    || payload.contains("\"neoforge:tag_empty\"")
-                    // An admission probe is not the entry's loader. A codec
-                    // error omits it here; the owning loader will report it.
-                    || admission.allows_file_isolated(&file, &file_path).unwrap_or(false)
-            })
+            // An admission probe is not the entry's loader. A codec error
+            // omits it here; the owning loader will report it.
+            let Ok(conditions) = admission.decode_file_conditions(&file) else {
+                return false;
+            };
+            let mut reads_candidate = false;
+            conditions.visit_context_reads(|read| {
+                reads_candidate |= matches!(
+                    read,
+                    ConditionContextRead::Registered { .. } | ConditionContextRead::TagEmpty { .. }
+                );
+            });
+            // This pass does not have the candidate's registry and tag views yet.
+            reads_candidate
+                || conditions
+                    .allows_file_isolated(admission, &file_path)
+                    .unwrap_or(false)
         });
         if !admitted {
             continue;

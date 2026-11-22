@@ -507,12 +507,20 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         ]})
     };
     let dunes = registered("minecraft:worldgen/biome", "test:dunes");
-    let admission = sunrise_world::conditions::LoadConditions::new([]);
+    let admission = sunrise_world::conditions::LoadConditions::new([])
+        .with_lookup([("test:flag", |args: &Value| {
+            Ok(args["value"] != "neoforge:registered")
+        })]);
     let mut files = pack(&["worldgen/biome/test:dunes", "recipe/test:a/b"]);
-    // An entry its own conditions turn off is not in the registry.
+    // The winning file tests false; the string argument is not a registry read,
+    // and the lower pack's unconditional entry must not be used instead.
     files.push((
         "worldgen/biome/test:off".into(),
-        vec![br#"{"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec()],
+        vec![
+            b"{}".to_vec(),
+            br#"{"neoforge:conditions":[{"type":"test:flag","value":"neoforge:registered"}]}"#
+                .to_vec(),
+        ],
     ));
     let first = super::candidate_registries(root.path(), &files, &admission);
     let first = sunrise_world::conditions::LoadConditions::new([]).with_registries(

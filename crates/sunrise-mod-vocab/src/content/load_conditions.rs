@@ -38,15 +38,16 @@ impl From<(Identifier, String)> for ConditionError {
 /// A handler that reads the condition's JSON from a borrowed raw value.
 /// Arguments are the JSON object without `type`; validate their shape and
 /// return `ConditionError` for invalid mod input, never panic while decoding it.
-/// Called before publication, after all IDs in the list (including children of
-/// `not`, `and` and `or`) have been resolved. Namespace and mod presence do not
-/// change the handling of an unknown ID. Return false to omit this entry or
-/// value without an error. An unknown ID, a returned error, or a native panic
-/// refuses registry-backed data before it is installed. A simple JSON listener
-/// or data map instead logs the error and skips the entire offending file.
-/// Handlers must not mutate published data.
+/// Called before publication, after the entire condition list (including children of
+/// `not`, `and` and `or`) has been decoded. Namespace and mod presence do not
+/// change the handling of an unknown ID. An unknown ID, malformed condition
+/// list, returned error, or native panic refuses registry-backed data before it
+/// is installed. A simple JSON listener or data map instead logs the error and
+/// skips the entire offending file. Handlers must not mutate published data.
 pub trait LoadCondition: Send + Sync + 'static {
-    /// Read and validate the raw JSON arguments for one entry.
+    /// Read and validate the raw JSON arguments when testing reaches this condition.
+    /// Return false when the condition does not hold. Testing stops as soon as
+    /// the enclosing list, `and`, or `or` is decided.
     fn test(&self, args: &serde_json::Value) -> Result<bool, ConditionError>;
 }
 
