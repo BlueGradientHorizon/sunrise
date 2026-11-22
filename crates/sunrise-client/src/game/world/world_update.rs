@@ -159,6 +159,13 @@ impl Game<'_> {
             return;
         }
         let areas = self.streaming.extra.len();
+        // The configuration connection is not a guest and owns no player area.
+        // `extra` finishes chunks through radius + 1, even with no players.
+        self.streaming.extra.extend(
+            self.tickets
+                .spawn_areas()
+                .map(|(center, radius)| (center, radius - 1)),
+        );
         let dim = self.dim;
         self.streaming.extra.extend(
             self.server_trips

@@ -5759,6 +5759,7 @@ impl Game<'_> {
                 forced: self.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 // EnderDragonFight.tick: while a player watches the fight, the arena holds a
                 // `DRAGON` ticket of radius 9 at (0, 0), so its island ticks out to 7 chunks
                 // whatever the watcher's simulation distance. The fight is where the type has one.
@@ -14438,7 +14439,7 @@ pub(crate) fn run_with(
 }
 
 /// The right and left arms of a player model layer (`PlayerModel.rightArm`
-/// and `leftArm`, with their sleeves).
+/// and `leftArm`, with their sleeves), each keeping the layer.
 fn player_arms(
     root: &std::path::Path,
     key: &str,
@@ -14448,11 +14449,7 @@ fn player_arms(
         Some(document) => document.model(key),
         None => sunrise_client::mobs::load_model(root, key),
     };
-    ["right_arm", "left_arm"].map(|name| {
-        model
-            .as_ref()
-            .and_then(|m| m.children.iter().find(|c| c.name == name).cloned())
-    })
+    ["right_arm", "left_arm"].map(|name| model.as_ref().and_then(|m| m.detached_child(name)))
 }
 
 /// The most `Player.sleepCounter` reaches: 100 asleep, then up to here over the

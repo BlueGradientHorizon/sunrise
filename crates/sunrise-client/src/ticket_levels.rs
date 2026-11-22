@@ -55,6 +55,39 @@ const PORTAL_TIMEOUT: i64 = 300;
 /// minus it.
 const PORTAL_RADIUS: i32 = 3;
 const PORTAL_LEVEL: i32 = FULL as i32 - PORTAL_RADIUS;
+/// `PrepareSpawnTask.Preparing.tick`: FULL out to three chunks from the spawn.
+pub const PLAYER_SPAWN_RADIUS: i32 = 3;
+
+/// Loading-only tickets used by `PlayerSpawnFinder` and `PrepareSpawnTask`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnTicketKind {
+    Search,
+    Player,
+}
+impl SpawnTicketKind {
+    fn radius(self) -> i32 {
+        match self {
+            Self::Search => 0,
+            Self::Player => PLAYER_SPAWN_RADIUS,
+        }
+    }
+
+    /// `TicketType.SPAWN_SEARCH` and `TicketType.PLAYER_SPAWN`.
+    fn timeout(self) -> i64 {
+        match self {
+            Self::Search => 1,
+            Self::Player => 20,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SpawnTicket {
+    chunk: (i32, i32),
+    kind: SpawnTicketKind,
+    ticks_left: i64,
+}
+
 /// `EnderDragonFight.tick`'s radius on the arena it holds a ticket on:
 /// `addTicketWithRadius(TicketType.DRAGON, new ChunkPos(0, 0), 9)`, whose level
 /// is `FULL` (33) minus the radius.
@@ -70,6 +103,8 @@ pub struct Sources {
     pub forced: Vec<(i32, i32)>,
     /// Each `PORTAL` ticket's chunk and level.
     pub portal: Vec<((i32, i32), i32)>,
+    /// Loading-only spawn tickets, as `(center, radius)`.
+    pub spawn: Vec<((i32, i32), i32)>,
     /// The arena the dragon fight holds a `TicketType.DRAGON` ticket on while
     /// its boss bar has a watcher (`EnderDragonFight.tick`), `None` once none
     /// has (its `removeTicketWithRadius`).
@@ -275,6 +310,15 @@ impl Tiled {
         for &(p, level) in &s.portal {
             map.add(p, ticket_radius(level, recording), level, 0, level);
         }
+        for &(center, radius) in &s.spawn {
+            map.add(
+                center,
+                radius,
+                i32::from(FULL) - radius,
+                0,
+                i32::from(UNLOADED),
+            );
+        }
         if let Some(arena) = s.dragon {
             map.add(
                 arena,
@@ -395,6 +439,7 @@ pub struct ChunkTickets {
     sources: Option<Sources>,
     levels: Levels,
     portal: Vec<PortalTicket>,
+    spawn: Vec<SpawnTicket>,
     /// Whether [`Self::update`] keeps the level changes it makes.
     recording: bool,
     /// The level changes since the game last took them, in the order the
@@ -420,6 +465,7 @@ impl ChunkTickets {
             && next.dragon == old.dragon
             && next.viewed == old.viewed
             && self.portal_matches(old)
+            && self.spawn_areas().eq(old.spawn.iter().copied())
         {
             return;
         }
@@ -430,6 +476,7 @@ impl ChunkTickets {
             s.viewed.sort_unstable();
             s.portal = self.portal.iter().map(|t| (t.chunk, t.level)).collect();
             s.portal.sort_unstable();
+            s.spawn = self.spawn_areas().collect();
         }
         if sources == self.sources {
             return;
@@ -533,6 +580,37 @@ impl ChunkTickets {
             t.ticks_left >= 0
         });
     }
+    /// `TicketStorage.addTicketWithRadius`: re-adding the same ticket refreshes its timeout.
+    pub fn add_spawn(&mut self, chunk: (i32, i32), kind: SpawnTicketKind) {
+        if let Some(ticket) = self
+            .spawn
+            .iter_mut()
+            .find(|t| t.chunk == chunk && t.kind == kind)
+        {
+            ticket.ticks_left = kind.timeout();
+        } else {
+            self.spawn.push(SpawnTicket {
+                chunk,
+                kind,
+                ticks_left: kind.timeout(),
+            });
+        }
+    }
+
+    /// `TicketStorage.canTicketExpire`: these types cannot expire before the holder is ready.
+    pub fn tick_spawn(&mut self, mut can_expire: impl FnMut((i32, i32), i32) -> bool) {
+        self.spawn.retain_mut(|ticket| {
+            if can_expire(ticket.chunk, ticket.kind.radius()) {
+                ticket.ticks_left -= 1;
+            }
+            ticket.ticks_left >= 0
+        });
+    }
+
+    pub fn spawn_areas(&self) -> impl Iterator<Item = ((i32, i32), i32)> + '_ {
+        self.spawn.iter().map(|t| (t.chunk, t.kind.radius()))
+    }
+
     /// While one is held, it keeps its level active (`shouldKeepDimensionActive`).
     pub fn portal_tickets(&self) -> &[PortalTicket] {
         &self.portal
@@ -603,6 +681,7 @@ fn compute(s: &Sources, recording: bool) -> Map {
                 .iter()
                 .map(|&(p, level)| (p, ticket_radius(level, recording))),
         )
+        .chain(s.spawn.iter().copied())
         .chain(s.dragon.map(|arena| (arena, ARENA_RADIUS)))
         .chain(s.viewed.iter().map(|t| (t.center, t.reach(recording))));
     let Some((x0, z0, x1, z1)) = boxes.fold(None, |b, ((x, z), r)| {
@@ -658,6 +737,14 @@ fn compute(s: &Sources, recording: bool) -> Map {
             for dx in -r..=r {
                 let level = base + dx.abs().max(dz.abs());
                 lower(cx + dx, cz + dz, level, level);
+            }
+        }
+    }
+    for &((cx, cz), radius) in &s.spawn {
+        for dz in -radius..=radius {
+            for dx in -radius..=radius {
+                let level = i32::from(FULL) - radius + dx.abs().max(dz.abs());
+                lower(cx + dx, cz + dz, level, i32::from(UNLOADED));
             }
         }
     }
@@ -724,6 +811,14 @@ fn compute_sparse(s: &Sources) -> FxHashMap<(i32, i32), (u8, u8)> {
             for dx in -r..=r {
                 let level = base + dx.abs().max(dz.abs());
                 lower((cx + dx, cz + dz), level, level);
+            }
+        }
+    }
+    for &((cx, cz), radius) in &s.spawn {
+        for dz in -radius..=radius {
+            for dx in -radius..=radius {
+                let level = i32::from(FULL) - radius + dx.abs().max(dz.abs());
+                lower((cx + dx, cz + dz), level, i32::from(UNLOADED));
             }
         }
     }
@@ -848,6 +943,7 @@ mod tests {
                         } else {
                             vec![]
                         },
+                        spawn: vec![((30, -30), 3)],
                         dragon: (combo >= 3).then_some((50, 50)),
                         viewed: Vec::new(),
                         view_distance: view,
@@ -885,6 +981,7 @@ mod tests {
             players: players.to_vec(),
             forced: forced.to_vec(),
             portal: Vec::new(),
+            spawn: Vec::new(),
             dragon: None,
             viewed: Vec::new(),
             view_distance: view,
@@ -986,6 +1083,38 @@ mod tests {
         assert!(everywhere.random_ticking(1000, -1000));
     }
 
+    #[test]
+    fn player_spawn_loads_a_square_without_simulation_and_expires_after_loading() {
+        let mut tickets = ChunkTickets::default();
+        tickets.add_spawn((32, -17), SpawnTicketKind::Player);
+        for _ in 0..40 {
+            tickets.tick_spawn(|_, _| false);
+        }
+        tickets.update(Some(Sources::default()));
+        let levels = tickets.levels();
+        let (x, z) = (32, -17);
+        let map = levels.0.as_ref().unwrap();
+        assert_eq!(map.get(x, z), (30, UNLOADED));
+        assert_eq!(map.get(x + 3, z - 3), (FULL, UNLOADED));
+        assert_eq!(map.get(x + 4, z - 3), (UNLOADED, UNLOADED));
+        assert!(!levels.block_ticking(x, z));
+        for _ in 0..20 {
+            tickets.tick_spawn(|_, _| true);
+        }
+        assert_eq!(tickets.spawn_areas().count(), 1);
+        tickets.add_spawn((32, -17), SpawnTicketKind::Player);
+        for _ in 0..20 {
+            tickets.tick_spawn(|_, _| true);
+        }
+        assert_eq!(tickets.spawn_areas().count(), 1);
+        tickets.tick_spawn(|_, _| true);
+        tickets.update(Some(Sources::default()));
+        assert_eq!(
+            tickets.levels().0.as_ref().unwrap().get(x, z),
+            (UNLOADED, UNLOADED)
+        );
+    }
+
     /// `EnderDragonFight.tick` holds the arena's `TicketType.DRAGON` ticket
     /// (radius 9, level 24) for as long as a player watches the fight, so the
     /// island ticks with its watcher far outside their simulation distance,
@@ -1000,6 +1129,7 @@ mod tests {
                 players: vec![(12, 0)],
                 forced: Vec::new(),
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 dragon,
                 viewed: Vec::new(),
                 view_distance: 12,
@@ -1033,6 +1163,7 @@ mod tests {
                 players,
                 forced: Vec::new(),
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 dragon: None,
                 viewed: Vec::new(),
                 view_distance: 2,
@@ -1075,6 +1206,7 @@ mod tests {
                 players,
                 forced,
                 portal: Vec::new(),
+                spawn: vec![((15, -16), 3)],
                 // Tiled maps hold the arena too.
                 dragon: (case % 3 == 0).then(|| (next(spread), next(spread))),
                 viewed: Vec::new(),
@@ -1126,6 +1258,7 @@ mod tests {
                 players: vec![(60, 40), (80, 80)],
                 forced: vec![(-30, 17)],
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 dragon: Some((0, 0)),
                 viewed: Vec::new(),
                 view_distance: 4,
@@ -1175,6 +1308,7 @@ mod tests {
             players: vec![chunk],
             forced: Vec::new(),
             portal: Vec::new(),
+            spawn: Vec::new(),
             dragon: None,
             viewed: Vec::new(),
             view_distance: view,
@@ -1294,6 +1428,7 @@ mod tests {
             players: Vec::new(),
             forced: vec![(10, 10)],
             portal: Vec::new(),
+            spawn: Vec::new(),
             dragon: None,
             viewed: Vec::new(),
             view_distance: 2,
@@ -1337,6 +1472,7 @@ mod tests {
                 portal: (0..case % 2)
                     .map(|_| ((next(spread), next(spread)), PORTAL_LEVEL))
                     .collect(),
+                spawn: vec![((15, -16), 3)],
                 dragon: (case % 4 == 0).then(|| (next(spread), next(spread))),
                 viewed: Vec::new(),
                 view_distance: 2 + next(8).abs(),
@@ -1395,6 +1531,7 @@ mod tests {
                 players: at.clone(),
                 forced: Vec::new(),
                 portal: Vec::new(),
+                spawn: Vec::new(),
                 dragon: None,
                 viewed: Vec::new(),
                 view_distance: distance,
@@ -1483,6 +1620,7 @@ mod tiled_tests {
                     .map(|i| ((next(100), next(100)), [30, 12, 31, 32, 40][i]))
                     .chain([((16, -16), PORTAL_LEVEL)])
                     .collect(),
+                spawn: vec![((15, -16), 3)],
                 dragon: (case % 4 == 0).then(|| (next(100), next(100))),
                 viewed: Vec::new(),
                 view_distance: [0, 2, 10, 32][case % 4],
