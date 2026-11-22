@@ -804,33 +804,46 @@ mod tests {
             }
         }
 
-        let drops = Arc::new(AtomicUsize::new(0));
-        let owner = CallbackOwner::for_mod("test_payload_drop_owner");
-        let component = TooltipComponent {
-            repr: Repr::Custom {
-                type_id: TypeId::of::<PanicDrop>(),
-                type_name: std::any::type_name::<PanicDrop>(),
-                data: Arc::new(OwnedTooltipData {
-                    data: Some(Box::new(PanicDrop(drops.clone()))),
-                    owner: Some(owner.clone()),
-                }),
-            },
-        };
-        let clone = component.clone();
-        drop(clone);
-        assert_eq!(drops.load(Ordering::Relaxed), 0);
-        assert!(owner.is_enabled());
+        struct QuietMod;
+        impl crate::Hooks for QuietMod {}
 
-        // Last Arc release runs OwnedTooltipData::drop through CallbackOwner::dispose.
-        drop(component);
-        assert_eq!(drops.load(Ordering::Relaxed), 1);
-        assert!(!owner.is_enabled());
-        let notices = crate::callback_owner::take_callback_panic_notices();
-        assert!(
-            notices.iter().any(|n| n.mod_id == "test_payload_drop_owner"
-                && n.kind == "tooltip_component"
-                && n.operation == "data_drop"),
-            "panicking payload drop must be attributed to its producer"
+        let drops = Arc::new(AtomicUsize::new(0));
+        crate::testing::with_dispatch(
+            vec![crate::ModEntry::new(
+                "test_payload_drop_owner",
+                Box::new(QuietMod),
+            )]
+            .into(),
+            || {
+                let _ = crate::__private::take_hook_panics();
+                let owner = CallbackOwner::for_mod("test_payload_drop_owner");
+                let component = TooltipComponent {
+                    repr: Repr::Custom {
+                        type_id: TypeId::of::<PanicDrop>(),
+                        type_name: std::any::type_name::<PanicDrop>(),
+                        data: Arc::new(OwnedTooltipData {
+                            data: Some(Box::new(PanicDrop(drops.clone()))),
+                            owner: Some(owner.clone()),
+                        }),
+                    },
+                };
+                let clone = component.clone();
+                drop(clone);
+                assert_eq!(drops.load(Ordering::Relaxed), 0);
+                assert!(owner.is_enabled());
+
+                // Last Arc release runs OwnedTooltipData::drop through CallbackOwner::dispose.
+                drop(component);
+                assert_eq!(drops.load(Ordering::Relaxed), 1);
+                assert!(!owner.is_enabled());
+                let notices = crate::__private::take_hook_panics();
+                assert!(
+                    notices
+                        .iter()
+                        .any(|n| n.mod_id == "test_payload_drop_owner" && n.hook == "data_drop"),
+                    "panicking payload drop must be attributed to its producer; got {notices:?}"
+                );
+            },
         );
     }
 }

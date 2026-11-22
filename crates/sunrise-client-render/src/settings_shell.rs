@@ -1521,6 +1521,8 @@ pub(crate) trait Hosted {
         right: bool,
         shift: bool,
     ) -> (Vec<Output>, bool);
+    /// Drags an active slider or scrollbar; returns whether the shell took the drag and its outputs.
+    fn drag(&mut self, s: &mut Settings, at: (f32, f32), size: (f32, f32)) -> (bool, Vec<Output>);
     /// Events a release produced, for widget tests.
     #[cfg(test)]
     fn release(&mut self) -> Option<Vec<Output>> {

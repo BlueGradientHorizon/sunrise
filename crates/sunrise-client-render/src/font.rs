@@ -2099,8 +2099,8 @@ mod tests {
             ..Style::default()
         };
         let mixed = Text::from_spans(vec![
-            Span::styled("a", Style::default()),
-            Span::styled("b", explicit_default),
+            Span::new("a", Style::default()),
+            Span::new("b", explicit_default),
         ]);
         // `a` from wide (8) + `b` from explicit minecraft:default (4) = 12.
         assert_eq!(font.width_text_with_font(&mixed, "minecraft:wide"), 12.0);

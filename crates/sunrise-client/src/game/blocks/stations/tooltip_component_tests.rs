@@ -1954,7 +1954,7 @@ fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() 
     .into();
 
     with_mod_factories(mods, |game| {
-        let _ = mod_api::__private::game::take_callback_panic_notices();
+        let _ = mod_api::__private::take_hook_panics();
         let stick = ItemStack::new("minecraft:stick", 1);
         let lines = vec![(sunrise_client::text::Text::literal("Item"), u32::MAX)];
 
@@ -1981,12 +1981,12 @@ fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() 
         assert_eq!(kept.len(), 1);
         assert_eq!(drops.load(Ordering::Relaxed), 3);
 
-        let notices = mod_api::__private::game::take_callback_panic_notices();
+        let notices = mod_api::__private::take_hook_panics();
         assert!(
-            notices.iter().any(|n| n.mod_id == "drop_producer"
-                && n.kind == "tooltip_component"
-                && n.operation == "data_drop"),
-            "panicking payload drop must be attributed to drop_producer"
+            notices
+                .iter()
+                .any(|n| n.mod_id == "drop_producer" && n.hook == "data_drop"),
+            "panicking payload drop must be attributed to drop_producer; got {notices:?}"
         );
 
         // Sibling mod and next tooltip remain completely healthy.
