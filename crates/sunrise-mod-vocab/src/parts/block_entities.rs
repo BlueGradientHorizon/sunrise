@@ -46,7 +46,9 @@ pub type BlockProvider<T> = dyn BlockCapabilityProvider<T>;
 // no wire: native callback and process-local enablement.
 #[derive(Clone)]
 pub struct RegisteredBlockEntityTransform {
+    /// The mod that registered this transform and its quarantine state.
     pub owner: crate::callback_owner::CallbackOwner,
+    /// The placement-local block entity transform.
     pub step: Arc<dyn crate::BlockEntityTransform>,
 }
 
