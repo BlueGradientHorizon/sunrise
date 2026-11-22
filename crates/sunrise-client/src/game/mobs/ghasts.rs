@@ -21,7 +21,7 @@ impl Game<'_> {
             return false;
         }
         let at = m.center();
-        let sneaking = self.keys.held(Action::Sneak);
+        let sneaking = self.held_mapping(Action::Sneak);
         let harnessed = m.extra.body_id().is_some();
         // Equippable.equipOnInteract: a harness goes on a bare adult.
         if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {

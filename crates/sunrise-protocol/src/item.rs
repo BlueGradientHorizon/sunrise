@@ -3,12 +3,14 @@
 //! client sends back in container clicks (HashedStack).
 use crate::{
     Result,
-    buf::{Codec, Reader, Writer, pack_block_pos, unpack_block_pos},
+    buf::{Codec, Reader, pack_block_pos, unpack_block_pos},
 };
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+use sunrise_core::vanilla_bytes::Writer;
 
 #[doc(hidden)]
+pub mod consume_effects;
 pub mod custom;
 mod hash;
 pub mod persistent;
@@ -799,14 +801,28 @@ impl WirePatch {
     /// The components and removals a patch in this form holds, read as
     /// [`DelimitedSlot`] does.
     pub fn decode(patch: &[u8]) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
-        let mut r = Reader::new(patch);
+        Self::decode_reader(Reader::new(patch))
+    }
+
+    pub fn decode_reader(r: Reader<'_>) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
+        Self::select(r, |_| true)
+    }
+
+    /// Read selected components of a patch whose values were already framed.
+    pub fn select(
+        mut r: Reader<'_>,
+        include: impl Fn(i32) -> bool,
+    ) -> Result<(Vec<(i32, Component)>, Vec<i32>)> {
         let positive = r.count(65536)?;
         let negative = r.count(65536)?;
         let mut added = Vec::with_capacity(positive.min(64));
         for _ in 0..positive {
             let kind = r.varint()?;
             let len = r.count(r.remaining())?;
-            let mut value = Reader::new(r.bytes(len)?);
+            let mut value = r.subreader(len)?;
+            if !include(kind) {
+                continue;
+            }
             let (component, _) = read_added(kind, &mut value)?;
             if value.remaining() != 0 {
                 return Err(crate::Error::new("trailing retained component data"));
@@ -928,7 +944,7 @@ fn read_stack(r: &mut Reader, delimited: bool) -> Result<Option<Stack>> {
         let kind = r.varint()?;
         let (component, value) = if delimited {
             let len = r.count(r.remaining())?;
-            let mut component_reader = Reader::new(r.bytes(len)?);
+            let mut component_reader = r.subreader(len)?;
             let read = read_added(kind, &mut component_reader)?;
             if custom::contains(kind) && component_reader.remaining() != 0 {
                 return Err(crate::Error::new("trailing custom component data"));

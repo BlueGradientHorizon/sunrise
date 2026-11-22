@@ -290,6 +290,9 @@ struct MeshSettings {
     leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
+    /// The colours mods' tint sources gave the section's extra models, asked when the job was
+    /// scheduled (`Mesher::prepare_attached_tints`), with the resources used to prepare them.
+    attached_tints: Option<(Arc<WorkerContext>, Arc<crate::mesher::AttachedTints>)>,
 }
 enum Job {
     Generate(i32, i32),
@@ -652,6 +655,7 @@ pub struct Streaming {
     pub upload_backlog: usize,
     /// Sections waiting for the mods' `section_visibility` answers, and the answers kept.
     pub section_visibility: section_visibility::SectionPreparation,
+    attached_tint_preparation: mesh_job::TintPreparation,
     /// Dimension flags: sky light, Nether face shading.
     pub sky_light: bool,
     pub nether_shading: bool,
@@ -1141,10 +1145,13 @@ impl<G: ChunkGenerator> Jobs<G> {
                 Done::Lit(x, z, light_chunk(&borrow(&region), light, sky), seq)
             }
             Job::Mesh(x, sy, z, region, seq, settings) => {
-                let context = settings.visibility.as_ref().map_or_else(
-                    || shared.context.read().unwrap().clone(),
-                    |prepared| prepared.context.clone(),
-                );
+                let context = if let Some(prepared) = &settings.visibility {
+                    prepared.context.clone()
+                } else if let Some((context, _)) = &settings.attached_tints {
+                    context.clone()
+                } else {
+                    shared.context.read().unwrap().clone()
+                };
                 let recycled = shared.meshes.lock().unwrap().take();
                 let mesh = mesh_section(
                     &context,
@@ -1293,6 +1300,7 @@ impl Streaming {
             paused: false,
             upload_backlog: 0,
             section_visibility: Default::default(),
+            attached_tint_preparation: Default::default(),
             sky_light: true,
             nether_shading: false,
             shader_pack_lighting: false,
@@ -1331,6 +1339,7 @@ impl Streaming {
     /// were made with the old resources; their results are dropped.
     pub fn reload_resources(&mut self, world: &mut World, context: Arc<WorkerContext>) {
         *self.shared.context.write().unwrap() = context;
+        self.attached_tint_preparation = Default::default();
         self.reload_sections(world);
     }
     /// `LevelExtractor.allChanged`: discard mesh work made before the reload and
@@ -1385,12 +1394,13 @@ impl Streaming {
     /// from before its relight, then the new light; another server's is already
     /// right, which matters where the neighbours this light needs aren't all
     /// here).
-    pub fn replace_remote(&mut self, world: &mut World, chunk: Chunk) {
+    pub fn replace_remote(&mut self, world: &mut World, mut chunk: Chunk) {
         let key = (chunk.x, chunk.z);
         let Some(old) = world.chunks.get(&key).cloned() else {
             return self.insert_remote(world, chunk);
         };
         if !self.lit.contains(&key) {
+            keep_resent_extra_models(&old, &mut chunk);
             return self.insert_remote(world, chunk);
         }
         take_resent_column(world, &old, chunk, self.relight_resent);
@@ -3029,7 +3039,30 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        while !world.chunks.is_ticking_ready((x, z)) {
+        self.wait_for_column(world, |world| world.chunks.is_ticking_ready((x, z)));
+        true
+    }
+
+    /// `Level.getChunk` for a block read: obtain the full column, without leaving a
+    /// forced chunk ticket behind or waiting for the column to become entity-ticking.
+    pub fn load_full_column(&mut self, world: &mut World, chunk: (i32, i32)) -> bool {
+        if world.chunks.contains_key(&chunk) {
+            return true;
+        }
+        if self.paused || self.remote || self.shared.aborted.load(Ordering::Relaxed) {
+            return false;
+        }
+        self.extra.push((chunk, 0));
+        let loaded = self.wait_for_column(world, |world| world.chunks.contains_key(&chunk));
+        self.extra.pop();
+        loaded
+    }
+
+    fn wait_for_column(&mut self, world: &mut World, ready: impl Fn(&World) -> bool) -> bool {
+        while !ready(world) {
+            if self.shared.aborted.load(Ordering::Relaxed) {
+                return false;
+            }
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -3038,7 +3071,7 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !world.chunks.is_ticking_ready((x, z)) {
+            if !ready(world) {
                 self.wait(std::time::Duration::from_millis(5));
             }
         }
@@ -3752,6 +3785,19 @@ fn keep_unchanged_sections(
     }
     out
 }
+/// A resend keeps the client-owned models of cells that still hold the same block.
+fn keep_resent_extra_models(old: &Chunk, chunk: &mut Chunk) {
+    for (&old_cell, models) in &old.extra_models {
+        let (x, y, z) = old.dynamic_cell_coords(old_cell);
+        let (x, z) = (i32::from(x), i32::from(z));
+        if let Some(cell) = chunk.dynamic_cell(x, y, z)
+            && old.get(x, y, z) == chunk.get(x, y, z)
+        {
+            chunk.extra_models.insert(cell, models.clone());
+        }
+    }
+}
+
 /// Takes the server's new `chunk` over the resident column `old`: the sections
 /// whose blocks did not change keep `old`'s (with `chunk`'s biomes and light),
 /// and the sections whose blocks changed remesh. `relight` says the packet's
@@ -3780,6 +3826,7 @@ pub fn take_resent_column(world: &mut World, old: &Chunk, mut chunk: Chunk, reli
             }
         }
     }
+    keep_resent_extra_models(old, &mut chunk);
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
@@ -5549,6 +5596,43 @@ mod tests {
         chunk.lit = true;
         world.chunks.insert((2, -3), Arc::new(chunk.clone()));
         chunk
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_resend_keeps_models_at_unchanged_resident_cells() {
+        if !crate::test_process::isolated(concat!(
+            "streaming::tests::",
+            stringify!(a_resend_keeps_models_at_unchanged_resident_cells)
+        )) {
+            return;
+        }
+        for lit in [false, true] {
+            let (mut world, mut streaming, stone) = fixture();
+            let resend = |first| {
+                let mut chunk = Chunk::empty(2, -3);
+                chunk.set(1, 10, 1, first);
+                chunk.set(2, 10, 1, stone);
+                chunk
+            };
+            let first = mod_api::__private::built::model_ref(1, 7);
+            let second = mod_api::__private::built::model_ref(1, 8);
+            let (x, y, z) = (33, 10, -47);
+            streaming.insert_remote(&mut world, resend(stone));
+            world.set_extra_models(x, y, z, &[first]).unwrap();
+            world.set_extra_models(x + 1, y, z, &[second]).unwrap();
+            for (state, expected) in [(stone, &[first][..]), (0, &[][..])] {
+                if !lit {
+                    streaming.lit.remove(&(2, -3));
+                }
+                streaming.replace_remote(&mut world, resend(state));
+                assert_eq!(world.extra_models(x, y, z), expected, "lit={lit}");
+                assert_eq!(world.extra_models(x + 1, y, z), [second], "lit={lit}");
+            }
+            world.unload_chunk((2, -3));
+            streaming.replace_remote(&mut world, resend(stone));
+            assert!(world.extra_models(x + 1, y, z).is_empty());
+        }
     }
 
     #[test]

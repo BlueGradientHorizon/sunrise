@@ -4,10 +4,11 @@
 //! them are kept.
 use crate::{
     Result,
-    buf::{Codec, Reader, Writer},
+    buf::{Codec, Reader},
     item::{Slot, Stack, Template},
+    packets::login::PropertyCodec,
 };
-use sunrise_core::nbt::Tag;
+use sunrise_core::{nbt::Tag, profile::AccountProperty, vanilla_bytes::Writer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -46,7 +47,7 @@ pub struct Profile {
     pub name: Option<String>,
     pub uuid: Option<u128>,
     /// `PropertyMap`: its `textures` property carries the skin.
-    pub properties: Vec<crate::packets::login::Property>,
+    pub properties: Vec<AccountProperty>,
     /// `PlayerSkin.Patch`: texture asset ids overriding the profile's.
     pub body: Option<String>,
     pub cape: Option<String>,
@@ -55,18 +56,13 @@ pub struct Profile {
     pub slim: Option<bool>,
 }
 /// `ByteBufCodecs.GAME_PROFILE_PROPERTIES`.
-fn read_properties(r: &mut Reader) -> Result<Vec<crate::packets::login::Property>> {
-    use crate::buf::Codec;
+fn read_properties(r: &mut Reader) -> Result<Vec<AccountProperty>> {
     let n = r.count(16)?;
-    (0..n)
-        .map(|_| crate::packets::login::Property::read(r))
-        .collect()
+    (0..n).map(|_| PropertyCodec::read(r)).collect()
 }
-fn write_properties(p: &[crate::packets::login::Property], w: &mut Writer) {
-    use crate::buf::Codec;
+fn write_properties(p: &[AccountProperty], w: &mut Writer) {
     w.varint(p.len() as i32);
-    p.iter()
-        .for_each(|p| crate::packets::login::Property::write(p, w));
+    p.iter().for_each(|p| PropertyCodec::write(p, w));
 }
 fn read_profile(r: &mut Reader) -> Result<Profile> {
     let mut p = Profile::default();
@@ -161,9 +157,9 @@ pub enum ParticleData {
     GeyserBase(i32, f32),
     /// Vibration: where it travels to, then its arrival time in ticks.
     Vibration { source: PositionSource, ticks: i32 },
-    /// Sunrise extension: a native mod's own particle type, by its namespaced
-    /// name (`mymod:spark`). Vanilla has no id for it; see `MOD_PARTICLE_ID`.
-    Mod(String),
+    /// Sunrise extension: a custom particle's namespaced ID and length-delimited
+    /// stream options. Asset-only and unit types have an empty body.
+    Mod { name: String, options: Vec<u8> },
 }
 /// Sunrise extension for a native mod's particle type. Vanilla's
 /// `minecraft:particle_type` ids are registry ids and never negative, so this
@@ -177,19 +173,22 @@ pub enum PositionSource {
     Entity { id: i32, y_offset: f32 },
 }
 impl Particle {
-    /// A native mod's particle travels as `MOD_PARTICLE_ID` (-1) plus its name.
+    /// A mod's particle travels as `MOD_PARTICLE_ID` (-1), its name and its options.
     /// Vanilla reads the id with `IdMap.byIdOrThrow`, which throws on -1 and
     /// drops the connection, so such a particle may only go to Sunrise clients.
     pub fn sunrise_only(&self) -> bool {
-        matches!(self.data, Some(ParticleData::Mod(_)))
+        self.id == MOD_PARTICLE_ID
     }
     pub fn read(r: &mut Reader) -> Result<Particle> {
         let id = r.varint()?;
-        // A native mod's type: the namespaced name follows the sentinel id.
         if id == MOD_PARTICLE_ID {
             return Ok(Particle {
                 id,
-                data: Some(ParticleData::Mod(r.string(32767)?)),
+                data: Some(ParticleData::Mod {
+                    // Identifier.STREAM_CODEC, followed by options bounded by the play frame.
+                    name: r.string(32767)?,
+                    options: r.byte_array(crate::frame::MAX_UNCOMPRESSED)?,
+                }),
             });
         }
         // `minecraft:particle_type` registry order as of 26.3.
@@ -268,7 +267,10 @@ impl Particle {
                 w.varint(*d);
             }
             ParticleData::Item(s) => Template::write(s, w),
-            ParticleData::Mod(name) => w.string(name),
+            ParticleData::Mod { name, options } => {
+                w.string(name);
+                w.byte_array(options);
+            }
             ParticleData::Vibration { source, ticks } => {
                 match source {
                     PositionSource::Block(pos) => {
@@ -588,9 +590,9 @@ impl crate::retained::OwnedHeap for ParticleData {
             Self::Vibration { source, ticks } => 0usize
                 .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(source))
                 .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(ticks)),
-            Self::Mod(field_0) => {
-                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
-            }
+            Self::Mod { name, options } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(options)),
         }
     }
 }
@@ -717,7 +719,10 @@ mod tests {
             // A native mod's type: the sentinel id, then the namespaced name.
             (
                 MOD_PARTICLE_ID,
-                Some(ParticleData::Mod("mymod:spark".to_owned())),
+                Some(ParticleData::Mod {
+                    name: "mymod:spark".into(),
+                    options: vec![1, 3, 7],
+                }),
             ),
             (
                 58,
@@ -768,11 +773,10 @@ mod tests {
     /// contents round-trip, and an entry after it still decodes.
     #[test]
     fn resolvable_profile_round_trips() {
-        use crate::packets::login::Property;
         let full = Profile {
             name: Some("Gommunity".into()),
             uuid: Some(0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF),
-            properties: vec![Property {
+            properties: vec![AccountProperty {
                 name: "textures".into(),
                 value: "e30=".into(),
                 signature: Some("sig".into()),

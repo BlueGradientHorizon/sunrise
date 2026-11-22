@@ -81,7 +81,13 @@ impl Hooks for Probe {
             event.weapon,
         ));
         let entity = host.entity(event.entity).expect("dying mob still resolves");
-        let kind = entity.kind(host).expect("dying entity has a type").id(host);
+        let kind = entity
+            .kind(host)
+            .expect("dying entity has a type")
+            .id(host)
+            .expect("dying entity type is registered")
+            .as_str()
+            .to_owned();
         self.seen
             .lock()
             .unwrap()
@@ -157,7 +163,7 @@ fn mob(game: &mut Game<'_>, id: u32, name: &str, position: Vec3) {
     let mut mob = Mob::new(id, kind, position, 0.0);
     mob.persistent = true;
     mob.no_ai = true;
-    mob.on_ground = true;
+    mob.ground.on_ground = true;
     game.mobs.push(mob);
 }
 

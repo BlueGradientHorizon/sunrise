@@ -110,9 +110,9 @@ impl Game<'_> {
         let taken = self.transactions.first_mut()?.scratch.remove(id)?;
         Some((taken.stack, taken.overflow))
     }
-    /// The stack scratch stack `id` holds.
-    pub(in crate::game) fn scratch_held(&self, id: u64) -> Option<ItemStack> {
-        self.transactions.first()?.scratch.get(&id)?.stack.clone()
+    /// The first slot of scratch stack `id`.
+    pub(in crate::game) fn scratch_held(&self, id: u64) -> Option<&ItemStack> {
+        self.transactions.first()?.scratch.get(&id)?.stack.as_ref()
     }
     /// Puts what of `offer` fits into scratch stack `id`: its own item only, empty or with the
     /// same components, up to the item's stack size; a two-slot copy takes any item into its
@@ -151,29 +151,34 @@ impl Game<'_> {
         }
         put
     }
-    /// Takes up to `want.count` of `want`'s item and components out of scratch stack `id`. How
-    /// many came.
-    pub(in crate::game) fn scratch_extract(&mut self, id: u64, want: &ItemStack) -> u32 {
-        let Some(held) = self
-            .scratch_held(id)
-            .filter(|held| held.same_item_same_components(want))
-        else {
+    /// Takes up to `amount` of `resource`'s item and components out of scratch stack `id`.
+    pub(in crate::game) fn scratch_extract(
+        &mut self,
+        id: u64,
+        resource: &ItemStack,
+        amount: u32,
+    ) -> u32 {
+        let Some(held) = self.scratch_held(id).filter(|held| {
+            held.same_item_same_components_with_prototype(resource, self.res.items())
+        }) else {
             return 0;
         };
-        let took = want.count.min(held.count);
+        let took = amount.min(held.count);
         if took == 0 {
             return 0;
         }
+        let remaining = held.count - took;
         self.keep_scratch(id);
         if let Some(scratch) = self
             .transactions
             .first_mut()
             .and_then(|root| root.scratch.get_mut(&id))
         {
-            scratch.stack = (held.count > took).then(|| ItemStack {
-                count: held.count - took,
-                ..held
-            });
+            if remaining == 0 {
+                scratch.stack = None;
+            } else if let Some(held) = &mut scratch.stack {
+                held.count = remaining;
+            }
         }
         took
     }

@@ -311,7 +311,7 @@ pub fn export_with(root: &Path, options: ExportOptions) -> Result<Export, String
 
 fn export_here(root: &Path, options: ExportOptions) -> Result<Export, String> {
     let catalog = Catalog::load(root).map_err(|e| e.to_string())?;
-    let generated = crate::sources(root, crate::FillMode::Require)?;
+    let generated = crate::sources(root)?;
     let included = [
         (crate::host::AREAS_OUTPUT, generated.areas.as_str()),
         ("mod_api_generated.rs", generated.hooks.as_str()),
@@ -1540,6 +1540,12 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                         catalog::PhaseContext::Loop => "loop",
                         catalog::PhaseContext::Worldgen => "worldgen",
                         catalog::PhaseContext::ChunkDisk => "chunk_disk",
+                        catalog::PhaseContext::Config => "config",
+                        catalog::PhaseContext::Reload => "reload",
+                        catalog::PhaseContext::ClientReload => "client_reload",
+                        catalog::PhaseContext::ClientReloadListener => "client_reload_listener",
+                        catalog::PhaseContext::ClientSetup => "client_setup",
+                        catalog::PhaseContext::PackDiscovery => "pack_discovery",
                     }
                     .to_owned()
                 }),
@@ -1564,6 +1570,7 @@ fn hook_records(hooks: &[catalog::Hook], types: &[Type], notes: &mut Vec<String>
                     match host {
                         catalog::HostAccess::Read => "read",
                         catalog::HostAccess::Level => "level",
+                        catalog::HostAccess::LevelRandomSide => "level_random_side",
                         catalog::HostAccess::Hit => "hit",
                     }
                     .to_owned()

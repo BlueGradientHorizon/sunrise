@@ -5,7 +5,8 @@ automatic releases that follow. Releases are automatic and frequent so the lates
 Since 2026-10-28 Sunrise ships the **Nightly** instead of `vX.Y.Z` releases (Ludovic's decision; the Team proposed
 it): the batch train builds a Nightly, it is published once its smoke test passed and no `release-blocker` is open,
 and launchers and Nightly servers update to it ([The Nightly and stable releases](#the-nightly-and-stable-releases)). Stable releases (`26.3-<semver>`) are
-cut from a Nightly, and a server installed on one updates within its line ([Release branches](#release-branches)).
+published from the approved head of `release/26.3`, which is cut from a green daily's commit and takes later fixes by
+pull request, and a server installed on one updates within its line ([Release branches](#release-branches)).
 
 ## Pull request checks
 
@@ -275,6 +276,16 @@ exist, verifies Windows PE architectures, checks the `--help` and `--version` en
 `cargo run -p xtask -- package` and archives it. The
 legs are fresh machines. The game's run of a new world (1500 offscreen frames, `smoke-test.json`, which the Nightly
 publishes) is `linux-smoke`'s, on Dyna's runner with the prepared files, from the hosted Linux archive.
+
+On Windows, the binaries built by `sunrise-game` and `sunrise-official`, and the SDK's `sunrise_native_game`,
+reserve 8 MiB for the main thread (`/STACK:8388608` with MSVC, `-Wl,--stack,8388608` with GNU). This gives
+startup's by-value `Game` construction more room than the Windows default. The by-hand Windows ARM64 job in
+`checks` (`gh workflow run checks --ref <ref>`) checks `SizeOfStackReserve` in both Cargo game executables built
+from that same ref. The packaging workflow checks the PE architecture, not the stack size, because snapshots can
+package older revisions with a different reservation. Other shipped executables and platforms use their default
+main stack. The SDK sets the flag when it links the executable; `sunrise-prebuilt.json` does not carry `link_args`.
+Gameplay workers request their own 8 MiB stack; the integrated server honors a larger `RUST_MIN_STACK`. The Linux
+smoke run starts it without that override.
 
 The musl archive is an optional manual download for musl-based Linux desktops; see
 [installation and updates](native-client.md#musl-linux-manual-installation). The launcher still selects the
@@ -985,7 +996,3 @@ Releases ship often, so nothing they leave behind may grow without bound.
   fetches, collects a `.git` over 5 GB (`MAX_GIT_MB`) with `git gc --prune=now` and folds more than 40 packs
   (`MAX_PACKS`) into few. Update the copies after changing the scripts (git-slim.sh goes beside runner-gc.sh):
   `ssh macmini 'cd ~/.actions-runners && for f in runner-gc.sh git-slim.sh; do curl -fsSL https://raw.githubusercontent.com/horizon-rust/horizon/main/tools/ci/$f -o $f; done'`.
-
-Guest-stack release note (#3232): game and server executables reserve 136 MiB
-for their main stack through MSVC `/STACK` or Apple `-stack_size` linker arguments;
-Linux raises RLIMIT_STACK and re-execs before initialization.

@@ -23,9 +23,11 @@
 //! Which states tick is a table by state id, built by the game from the block
 //! registry; whether a slot is made is decided when the slot is promoted at
 //! the start of the next tick, from the block state then.
-use crate::chunk::block_entity::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks};
+use crate::chunk::block_entity::{
+    BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks,
+};
 use crate::fast_hash::{FxHashMap, FxHashSet};
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::hash_map::Entry;
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -76,9 +78,16 @@ pub enum Ticking {
     Idle,
 }
 
+struct LiveTicker {
+    slot: u32,
+    /// `BoundTickingBlockEntity.loggedInvalidBlockState`, scoped to the current
+    /// occupant because a replacement can reuse the slot. Not an eligibility flag.
+    warned_generation: Option<u64>,
+}
+
 #[derive(Default)]
 pub struct BlockEntities {
-    map: HashMap<Pos, BlockEntity>,
+    map: FxHashMap<Pos, BlockEntity>,
     /// Runtime contents subscriptions, retired with their observer identity.
     pub contents_watches: ContentsWatches,
     generations: FxHashMap<Pos, u64>,
@@ -96,7 +105,7 @@ pub struct BlockEntities {
     /// `Level.blockEntityTickers`: positions and the slot each was given.
     tickers: Arc<Vec<(Pos, u32)>>,
     /// `LevelChunk.tickersInLevel`: the live slot of each ticking position.
-    live: FxHashMap<Pos, u32>,
+    live: FxHashMap<Pos, LiveTicker>,
     /// Positions that may need a slot, in the order vanilla would have made
     /// it (`pendingBlockEntityTickers`), each with a token; decided at the
     /// next promotion from the block state then.
@@ -145,24 +154,24 @@ pub struct BlockEntities {
     /// set), so the level's tick checks those alone instead of every sign.
     sign_editors: FxHashSet<Pos>,
     asleep: FxHashSet<Pos>,
+    /// The sleeping positions that are hoppers, a subset of `asleep`: the item and
+    /// vehicle scans look at these alone, never at another kind's sleep.
+    sleeping_hoppers: FxHashSet<Pos>,
     /// The block entities moving pistons carry, by destination column and position:
     /// out of the live map until they land.
     carried: FxHashMap<(i32, i32), FxHashMap<Pos, carry::Carried>>,
     column_unload_entries: u64,
-    /// The block entity a player's break just removed, kept readable while that break's
-    /// `block_drops` listeners run (`hold_broken`), and dropped after (`release_broken`).
-    broken: Option<Broken>,
     /// The API snapshots a client's mod block entities are ticked with
     /// (`take_client_snapshots`), by position.
     client_snapshots: FxHashMap<Pos, ClientSnapshot>,
 }
 
-/// A removed block entity held for the `block_drops` event of its break: its position, the
-/// identity it had and its saved data, read before the removal took its `CustomName` away.
-pub struct Broken {
-    pub pos: Pos,
-    pub generation: u64,
-    pub data: sunrise_core::nbt::Compound,
+/// Split borrows used by a resident editor and its lazy before-image.
+pub struct BlockEntityLoan<'a> {
+    pub entity: &'a mut ModBlockEntity,
+    pub identity: BlockEntityIdentity,
+    pub attachments: Option<&'a Attachments>,
+    pub contents_watches: &'a ContentsWatches,
 }
 
 /// A client copy of a mod block entity as its client tick shows it to mods: made once for each
@@ -239,7 +248,7 @@ fn unlist(by_chunk: &mut FxHashMap<(i32, i32), FxHashSet<Pos>>, pos: Pos) {
 }
 
 impl std::ops::Deref for BlockEntities {
-    type Target = HashMap<Pos, BlockEntity>;
+    type Target = FxHashMap<Pos, BlockEntity>;
     fn deref(&self) -> &Self::Target {
         &self.map
     }
@@ -478,7 +487,7 @@ impl BlockEntities {
     }
     /// `removeBlockEntityTicker`: no slot, made or pending.
     fn cancel(&mut self, pos: &Pos) {
-        self.asleep.remove(pos);
+        self.wake_at(pos);
         self.freed |= self.live.remove(pos).is_some();
         self.pending.remove(pos);
     }
@@ -739,28 +748,89 @@ impl BlockEntities {
         pos: &Pos,
         accepts: impl FnOnce(&BlockEntity) -> bool,
     ) -> Option<&mut BlockEntity> {
-        let entity = self.map.get_mut(pos)?;
-        if !accepts(entity) {
+        if !accepts(self.map.get(pos)?) {
             return None;
         }
-        self.asleep.remove(pos);
-        Some(entity)
+        self.wake_at(pos);
+        self.wake_below(pos);
+        self.map.get_mut(pos)
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Pos, &mut BlockEntity)> {
-        self.asleep.clear();
+        self.clear_asleep();
         self.map.iter_mut()
     }
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut BlockEntity> {
-        self.asleep.clear();
+        self.clear_asleep();
         self.map.values_mut()
     }
+    /// Lends the resident instance and the indexes needed for a journal before-image.
+    /// Unlike a mutable simulation lookup, a read-only loan does not wake the row.
+    pub fn loan_mod_entity(&mut self, pos: Pos, generation: u64) -> Option<BlockEntityLoan<'_>> {
+        let identity = self.identity(pos)?;
+        if identity.generation != generation {
+            return None;
+        }
+        let BlockEntity::Mod(entity) = self.map.get_mut(&pos)? else {
+            return None;
+        };
+        Some(BlockEntityLoan {
+            entity,
+            identity,
+            attachments: self.attachments.get(&pos),
+            contents_watches: &self.contents_watches,
+        })
+    }
+
     pub fn sleep(&mut self, pos: Pos) {
         if self.map.contains_key(&pos) {
             self.asleep.insert(pos);
         }
     }
+    /// Sleeps the hopper at `pos`: the scans that wake it only look at hoppers,
+    /// so a furnace's or campfire's sleep costs them nothing.
+    pub fn sleep_hopper(&mut self, pos: Pos) {
+        if self.map.contains_key(&pos) {
+            self.asleep.insert(pos);
+            self.sleeping_hoppers.insert(pos);
+        }
+    }
     pub fn is_asleep(&self, pos: &Pos) -> bool {
         self.asleep.contains(pos)
+    }
+    pub fn is_hopper_asleep(&self, pos: &Pos) -> bool {
+        self.sleeping_hoppers.contains(pos)
+    }
+    /// Whether any block entity sleeps.
+    pub fn any_asleep(&self) -> bool {
+        !self.asleep.is_empty()
+    }
+    /// Whether any hopper sleeps (the gate for the item and vehicle scans).
+    pub fn any_hopper_asleep(&self) -> bool {
+        !self.sleeping_hoppers.is_empty()
+    }
+    /// Wakes the block entity at `pos`, if it sleeps.
+    pub fn wake(&mut self, pos: &Pos) {
+        self.wake_at(pos);
+    }
+    /// Wakes the hopper at `pos` only if it sleeps: a scan walking item or
+    /// vehicle boxes leaves another kind's sleeping block entity alone.
+    pub fn wake_hopper(&mut self, pos: &Pos) {
+        if self.sleeping_hoppers.remove(pos) {
+            self.asleep.remove(pos);
+        }
+    }
+    /// Wakes the block entity directly below `pos`: a hopper sleeping there
+    /// reads the container above it, so a change up here is a change for it.
+    pub fn wake_below(&mut self, pos: &Pos) {
+        self.wake_at(&(pos.0, pos.1 - 1, pos.2));
+    }
+    fn wake_at(&mut self, pos: &Pos) {
+        self.asleep.remove(pos);
+        self.sleeping_hoppers.remove(pos);
+    }
+    fn clear_asleep(&mut self) {
+        self.asleep.clear();
+        self.sleeping_hoppers.clear();
     }
     fn replace_taken(&mut self, pos: Pos) {
         if self.out.remove(&pos).is_some() {
@@ -799,7 +869,8 @@ impl BlockEntities {
         self.replace_taken(pos);
         let new_box = shows_box(&entity);
         self.note_sign_editor(pos, &entity);
-        self.asleep.remove(&pos);
+        self.wake_at(&pos);
+        self.wake_below(&pos);
         let old = self.map.insert(pos, entity);
         list(&mut self.columns, pos);
         if self.on_load_enabled && new_identity && new_is_mod {
@@ -836,7 +907,7 @@ impl BlockEntities {
             self.boxes.remove(&pos);
             self.add(pos);
         }
-        self.asleep.remove(&pos);
+        self.wake_at(&pos);
         let entity = self.map.entry(pos).or_insert_with(make);
         if absent && matches!(entity, BlockEntity::Mod(_)) {
             if self.on_load_enabled {
@@ -849,43 +920,12 @@ impl BlockEntities {
         }
         entity
     }
-    /// Keep `data`, the saved data (with its `CustomName`) of the block entity just removed from
-    /// `pos`, where it had `generation`, readable through [`Self::broken`] until
-    /// [`Self::release_broken`]. The map and the generations do not know it: a handle to it
-    /// answers reads, and nothing else. One slot: a second hold replaces the first. Listeners of
-    /// the event it serves read through a shared host and cannot start another break, so the two
-    /// do not nest today; a hook that could would hold per break instead.
-    pub fn hold_broken(&mut self, pos: Pos, generation: u64, data: sunrise_core::nbt::Compound) {
-        self.broken = Some(Broken {
-            pos,
-            generation,
-            data,
-        });
-    }
-    /// The data [`Self::hold_broken`] holds, if it is that of the block entity at `pos` with
-    /// `generation`.
-    pub fn broken(&self, pos: &Pos, generation: u64) -> Option<&Broken> {
-        self.broken
-            .as_ref()
-            .filter(|held| held.pos == *pos && held.generation == generation)
-    }
-    /// The generation of the block entity held at `pos`, if any.
-    pub fn broken_generation(&self, pos: &Pos) -> Option<u64> {
-        self.broken
-            .as_ref()
-            .filter(|held| held.pos == *pos)
-            .map(|held| held.generation)
-    }
-    /// Drop the held data: every handle to it is stale from now on.
-    pub fn release_broken(&mut self) {
-        self.broken = None;
-    }
     /// `LevelChunk.removeBlockEntity`: the block entity and its slot.
     pub fn remove(&mut self, pos: &Pos) -> Option<BlockEntity> {
         self.out.remove(pos);
         self.retire(*pos);
         self.generations.remove(pos);
-        self.asleep.remove(pos);
+        self.wake_at(pos);
         self.cancel(pos);
         let removed = self.map.remove(pos);
         unlist(&mut self.mods, *pos);
@@ -897,7 +937,7 @@ impl BlockEntities {
     /// The block entity at `pos`, out of the map for a while: its slot stays
     /// for `put` to bring it back (a tick working on it).
     pub fn take(&mut self, pos: &Pos) -> Option<(BlockEntityLease, BlockEntity)> {
-        self.asleep.remove(pos);
+        self.wake_at(pos);
         let entity = self.map.remove(pos)?;
         let token = next_token();
         self.out.insert(*pos, token);
@@ -933,7 +973,7 @@ impl BlockEntities {
             return false;
         }
         self.out.remove(&pos);
-        self.asleep.remove(&pos);
+        self.wake_at(&pos);
         if matches!(entity, BlockEntity::Mod(_)) {
             list(&mut self.mods, pos);
         }
@@ -968,11 +1008,14 @@ impl BlockEntities {
             !payloads.is_empty()
         });
         let asleep = std::mem::take(&mut self.asleep);
+        let hoppers = std::mem::take(&mut self.sleeping_hoppers);
         self.retain(|p, _| !gone(p));
         self.retire_taken(gone);
         self.asleep = asleep;
+        self.sleeping_hoppers = hoppers;
         let map = &self.map;
         self.asleep.retain(|p| map.contains_key(p));
+        self.sleeping_hoppers.retain(|p| map.contains_key(p));
     }
     /// [`Self::unload`] of chunk `chunk`'s block entities: a column that goes, or comes again.
     pub fn unload_column(&mut self, chunk: (i32, i32)) {
@@ -1013,7 +1056,7 @@ impl BlockEntities {
     /// Removes the block entities `keep` refuses, and their slots
     /// (`clearAllBlockEntities` of unloaded chunks).
     pub fn retain(&mut self, mut keep: impl FnMut(&Pos, &mut BlockEntity) -> bool) {
-        self.asleep.clear();
+        self.clear_asleep();
         let mut gone = Vec::new();
         self.map.retain(|p, e| {
             let kept = keep(p, e);
@@ -1039,7 +1082,7 @@ impl BlockEntities {
         self.generations.remove(&pos);
         self.freed |= self.live.remove(&pos).is_some();
         self.pending.remove(&pos);
-        self.asleep.remove(&pos);
+        self.wake_at(&pos);
         unlist(&mut self.mods, pos);
         unlist(&mut self.columns, pos);
         self.boxes.remove(&pos);
@@ -1057,7 +1100,7 @@ impl BlockEntities {
         self.columns.clear();
         self.boxes.clear();
         self.sign_editors.clear();
-        self.asleep.clear();
+        self.clear_asleep();
         self.tickers = Arc::default();
         self.live.clear();
         self.added.clear();
@@ -1091,7 +1134,7 @@ impl BlockEntities {
                 &p,
             );
             self.new_generation(p);
-            self.asleep.remove(&p);
+            self.wake_at(&p);
             let new_is_mod = matches!(e, BlockEntity::Mod(_));
             self.note_box(p, Some(&e));
             self.note_sign_editor(p, &e);
@@ -1119,7 +1162,8 @@ impl BlockEntities {
     /// `LevelChunk.setBlockState` on a block entity's position, from state
     /// `old` to `new`: a ticker made, kept or dropped.
     pub fn state_changed(&mut self, pos: Pos, old: u32, new: u32) {
-        self.asleep.remove(&pos);
+        self.wake_at(&pos);
+        self.wake_below(&pos);
         if self.states.is_empty() || !self.map.contains_key(&pos) {
             return;
         }
@@ -1152,7 +1196,13 @@ impl BlockEntities {
                 continue;
             }
             let slot = self.next();
-            self.live.insert(pos, slot);
+            self.live.insert(
+                pos,
+                LiveTicker {
+                    slot,
+                    warned_generation: None,
+                },
+            );
             Arc::make_mut(&mut self.tickers).push((pos, slot));
         }
         for pos in std::mem::take(&mut self.replaced) {
@@ -1167,7 +1217,7 @@ impl BlockEntities {
         self.freed = false;
         let (live, map) = (&mut self.live, &self.map);
         Arc::make_mut(&mut self.tickers).retain(|(p, slot)| {
-            let mine = live.get(p) == Some(slot);
+            let mine = live.get(p).is_some_and(|ticker| ticker.slot == *slot);
             if mine && !map.contains_key(p) {
                 live.remove(p);
             }
@@ -1181,7 +1231,30 @@ impl BlockEntities {
     }
     /// Whether a slot from `tickers` still ticks.
     pub fn is_live(&self, (pos, slot): (Pos, u32)) -> bool {
-        self.live.get(&pos) == Some(&slot) && self.map.contains_key(&pos)
+        self.live
+            .get(&pos)
+            .is_some_and(|ticker| ticker.slot == slot)
+            && self.map.contains_key(&pos)
+    }
+    /// Record an invalid visit of the bound mod ticker. Returns the type name on
+    /// the first such visit so the caller can log the incompatible block state.
+    pub fn record_invalid_mod_tick(&mut self, pos: Pos, generation: u64) -> Option<&str> {
+        let ticker = self.live.get_mut(&pos)?;
+        if ticker.warned_generation.replace(generation) == Some(generation) {
+            return None;
+        }
+        match self.map.get(&pos)? {
+            BlockEntity::Mod(entity) => Some(entity.id()),
+            _ => None,
+        }
+    }
+    /// A valid tick completed; don't clear a warning made by a replacement instance.
+    pub fn clear_ticker_warning(&mut self, pos: Pos, generation: u64) {
+        if let Some(ticker) = self.live.get_mut(&pos)
+            && ticker.warned_generation == Some(generation)
+        {
+            ticker.warned_generation = None;
+        }
     }
     /// Frees the slot at `pos` (the block entity stays).
     pub fn forget(&mut self, pos: &Pos) {
@@ -1198,6 +1271,7 @@ mod lease_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     fn hopper() -> BlockEntity {
         BlockEntity::Chest(vec![None; 5])
@@ -1262,18 +1336,27 @@ mod tests {
     /// sleep alone; `retain`, which may change what it keeps, wakes them all.
     #[test]
     fn unloading_a_chunk_keeps_the_others_asleep() {
-        let mut b = level();
         let (kept, gone) = ((1, 64, 1), (17, 64, 1));
-        b.insert(kept, hopper());
-        b.insert(gone, hopper());
-        b.sleep(kept);
-        b.sleep(gone);
-        b.unload(|p| p.0 >> 4 == 1);
-        assert!(b.get(&gone).is_none());
-        assert!(!b.is_asleep(&gone));
-        assert!(b.is_asleep(&kept));
-        b.retain(|_, _| true);
-        assert!(!b.is_asleep(&kept));
+        for indexed in [false, true] {
+            let mut b = level();
+            b.insert(kept, hopper());
+            b.insert(gone, hopper());
+            b.sleep_hopper(kept);
+            b.sleep_hopper(gone);
+            if indexed {
+                b.unload_column((1, 0));
+            } else {
+                b.unload(|p| p.0 >> 4 == 1);
+            }
+            assert!(b.get(&gone).is_none());
+            assert!(!b.is_asleep(&gone));
+            assert!(!b.is_hopper_asleep(&gone));
+            assert!(b.is_asleep(&kept));
+            assert!(b.is_hopper_asleep(&kept));
+            b.retain(|_, _| true);
+            assert!(!b.any_asleep());
+            assert!(!b.any_hopper_asleep());
+        }
     }
 
     /// Column unloads (`unload_column`, `unload_column_where`) leave exactly what the full-scan
@@ -1435,6 +1518,41 @@ mod tests {
         b.sleep(p);
         b.clear();
         assert!(!b.is_asleep(&p));
+    }
+    /// A hopper reads the container above it, so a write or state change up
+    /// there wakes the hopper sleeping below before its next tick.
+    #[test]
+    fn a_sleeping_block_entity_wakes_when_the_block_above_changes() {
+        let p = (1, 64, 1);
+        let above = (p.0, p.1 + 1, p.2);
+        let mut b = level();
+        b.insert(p, hopper());
+        assert!(!b.any_asleep());
+        b.sleep_hopper(p);
+        assert!(b.any_asleep() && b.any_hopper_asleep());
+        b.insert(above, BlockEntity::Chest(vec![None; 27]));
+        assert!(!b.is_asleep(&p), "a container placed above wakes it");
+        b.sleep_hopper(p);
+        b.get_mut(&above);
+        assert!(!b.is_asleep(&p), "a slot write above wakes it");
+        b.sleep_hopper(p);
+        b.wake(&above);
+        assert!(b.is_asleep(&p), "waking another position leaves it asleep");
+        b.state_changed(above, 1, 1);
+        assert!(!b.is_asleep(&p), "a state change above wakes it");
+        b.sleep_hopper(p);
+        b.wake_below(&above);
+        assert!(!b.is_asleep(&p));
+        assert!(!b.any_asleep() && !b.any_hopper_asleep());
+        // A furnace's sleep is not a hopper's: the hopper scans skip it.
+        b.sleep(above);
+        assert!(b.any_asleep());
+        assert!(!b.any_hopper_asleep());
+        b.wake_hopper(&above);
+        assert!(
+            b.is_asleep(&above),
+            "a hopper scan leaves another kind asleep"
+        );
     }
     #[test]
     fn mod_block_entities_are_listed_by_chunk_until_they_go() {

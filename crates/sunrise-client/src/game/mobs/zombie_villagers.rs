@@ -277,7 +277,7 @@ fn carry_over(from: &Mob, to: &mut Mob) {
     to.previous_head_pitch = from.head_pitch;
     to.fall_distance = from.fall_distance;
     to.hurt_time = from.hurt_time;
-    to.on_ground = from.on_ground;
+    to.ground.on_ground = from.ground.on_ground;
     to.fire_ticks = from.fire_ticks;
     to.persistent = from.persistent;
     to.custom_name = from.custom_name.clone();

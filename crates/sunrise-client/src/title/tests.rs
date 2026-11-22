@@ -18,10 +18,9 @@ impl Fixture {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir_all(root.join("saves")).unwrap();
-        Self {
-            title: Title::new(root.join("saves"), &root, ""),
-            root,
-        }
+        let mut title = Title::new(root.join("saves"), &root, "");
+        title.set_preset_editor_factories(PresetEditorFactories::default());
+        Self { title, root }
     }
     pub(super) fn world(&self, folder: &str, name: &str) {
         let generated = self.root.join("generated").join(folder);
@@ -813,7 +812,10 @@ fn only_the_vertical_wheel_cycles_a_create_world_button() {
             size.1,
             *creative,
             options,
-            f.title.preset_data.is_some(),
+            f.title
+                .preset_data
+                .is_some()
+                .then_some(f.title.preset_editors.as_ref()),
         )
     };
     let button = labels(&f)
