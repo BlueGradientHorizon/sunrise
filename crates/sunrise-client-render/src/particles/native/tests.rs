@@ -1014,9 +1014,10 @@ fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
     impl ParticleProvider for Drift {
         fn create_particle(
             &self,
-            _: &mut ParticleSpawn<'_>,
-            _: &mut dyn ParticleTickView,
+            spawn: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
         ) -> Option<Box<dyn CustomParticle>> {
+            assert!(particle.set_sprite_index(spawn.velocity[0] as usize));
             Some(Box::new(Self(self.0)))
         }
     }
@@ -1092,7 +1093,25 @@ fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
                 ),
             ]))
         };
-        let atlas = HashMap::new();
+        let sprite = Rect {
+            u0: 0.0,
+            u1: 0.25,
+            v0: 0.0,
+            v1: 0.25,
+            w: 16,
+            h: 16,
+        };
+        let atlas = HashMap::from([
+            ("mymod:particle/one".into(), sprite),
+            (
+                MISSING_SPRITE.into(),
+                Rect {
+                    u0: 0.5,
+                    u1: 0.75,
+                    ..sprite
+                },
+            ),
+        ]);
         let translucent = HashSet::new();
         let mut e = ParticleEngine::with_factories(
             &root(&["mymod:one", "mymod:two"]),
@@ -1107,19 +1126,31 @@ fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
         let scene = Scene::new();
         let level = scene.level();
         let options = fixture_options();
-        let spawn = |e: &mut ParticleEngine, name: &str| {
+        let spawn = |e: &mut ParticleEngine, name: &str, frame: u8| {
             e.make(
                 &ParticleOptions::named(name),
                 [0.0; 3],
-                [0.0; 3],
+                [f64::from(frame), 0.0, 0.0],
                 3,
-                SpawnScope {
-                    level: Some(&level),
-                    mod_options: Some(&options),
-                },
+                SpawnScope::with_level(&level, Some(&options)),
             )
         };
-        let mut orbit = spawn(&mut e, "mymod:orbit").unwrap();
+        let assert_sprite = |e: &mut ParticleEngine, frame, u0, u1| {
+            let p = spawn(e, "mymod:orbit", frame).unwrap();
+            e.push(p);
+            e.tick(&level);
+            let mut vertices = Vec::new();
+            e.render(DVec3::ZERO, Quat::IDENTITY, 0.0, &|_| 15, &mut vertices);
+            assert_eq!(vertices.len(), 4);
+            assert!(vertices.iter().all(|v| (u0..=u1).contains(&v.uv[0])));
+            assert!(vertices.iter().any(|v| v.uv[0] == u0));
+            assert!(vertices.iter().any(|v| v.uv[0] == u1));
+            e.clear();
+        };
+        assert_sprite(&mut e, 0, 0.0, 0.25);
+        assert_sprite(&mut e, 1, 0.5, 0.75); // unresolved frame stays in its declared slot
+
+        let mut orbit = spawn(&mut e, "mymod:orbit", 0).unwrap();
         assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
         e.tick_particle(&mut orbit, &level);
         assert_eq!(orbit.position[0], 2.0);
@@ -1135,20 +1166,77 @@ fn the_last_factory_binds_once_per_load_and_other_types_stay_declarative() {
         );
         assert!(e.pending.is_empty());
         assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3)]);
-        assert!(spawn(&mut e, "mymod:orbit").is_none()); // refused; no declarative fallback
-        let plain = spawn(&mut e, "mymod:plain").unwrap();
+        assert!(spawn(&mut e, "mymod:orbit", 0).is_none()); // refused; no declarative fallback
+        let plain = spawn(&mut e, "mymod:plain", 0).unwrap();
         assert_eq!(plain.lifetime, 4);
         assert!(plain.provided.is_none() && matches!(plain.behaviour, Behaviour::Mod { .. }));
 
         e.reload(&root(&["mymod:one"]), &atlas, &translucent);
         assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1)]);
-        assert!(spawn(&mut e, "mymod:orbit").unwrap().provided.is_some());
+        assert!(spawn(&mut e, "mymod:orbit", 0).unwrap().provided.is_some());
 
         e.reload(&root(&[]), &atlas, &translucent);
-        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1)]);
-        assert!(spawn(&mut e, "mymod:orbit").is_none()); // missing set; binder not called
+        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1), (2, 1)]);
+        assert_sprite(&mut e, 0, 0.5, 0.75); // valid empty description uses one missing sprite
+
+        e.reload(
+            &ResourceSource::indexed(Default::default()),
+            &atlas,
+            &translucent,
+        );
+        assert_eq!(*binds.lock().unwrap(), [(2, 2), (2, 3), (2, 1), (2, 1)]);
+        assert!(spawn(&mut e, "mymod:orbit", 0).is_none()); // no description, no bind
     });
 }
+
+#[test]
+fn a_polytone_definition_overrides_a_bound_native_provider() {
+    struct Probe;
+    impl ParticleProvider for Probe {
+        fn create_particle(
+            &self,
+            _: &mut ParticleSpawn<'_>,
+            particle: &mut dyn ParticleTickView,
+        ) -> Option<Box<dyn CustomParticle>> {
+            particle.set_lifetime(7);
+            Some(Box::new(Self))
+        }
+    }
+    impl CustomParticle for Probe {}
+
+    let mut engine = fixture_engine(provider_factories([("example:orbit", Arc::new(Probe))]));
+    let scene = Scene::new();
+    let level = scene.level();
+    let options = fixture_options();
+    let spawn = |e: &mut ParticleEngine| {
+        e.add_with(
+            &ParticleOptions::named("example:orbit"),
+            [0.0; 3],
+            [0.0; 3],
+            ParticleSpawnFlags::default(),
+            SpawnScope::with_level(&level, Some(&options)),
+        );
+        e.tick(&level);
+        e.live().next().unwrap().lifetime
+    };
+    assert_eq!(spawn(&mut engine), 7, "native provider bound successfully");
+    engine.clear();
+
+    let pack = ResourceSource::indexed(
+        [(
+            "assets/example/polytone/custom_particles/orbit.json".into(),
+            Resource::bytes(br#"{"has_physics":false,"initializer":{"lifetime":"17"}}"#.to_vec()),
+        )]
+        .into(),
+    );
+    engine.set_polytone(Some(Arc::new(polytone::Registry::read(
+        &pack,
+        Default::default(),
+        scene.collision.registry(),
+    ))));
+    assert_eq!(spawn(&mut engine), 17, "the selected pack type wins");
+}
+
 #[test]
 fn controlled_spawn_respects_distance_settings_and_declared_sprite_sets() {
     let mut e = engine();

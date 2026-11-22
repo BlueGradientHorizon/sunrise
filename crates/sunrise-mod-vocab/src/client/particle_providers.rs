@@ -217,7 +217,8 @@ pub struct ParticleSpriteSet {
 }
 
 impl ParticleSpriteSet {
-    /// The number of frames in the bound set. Frame indices start at zero.
+    /// The number of frames in the bound set. Frame indices start at zero. Missing textures
+    /// keep their slot with the atlas missing sprite; an empty description has one such frame.
     pub fn frame_count(&self) -> usize {
         self.frame_count
     }
@@ -232,8 +233,10 @@ impl RegisterParticleProvidersEvent<'_> {
     /// Stage a factory for a particle type's `assets/<namespace>/particles/<path>.json` sprite set
     /// (NeoForge's `registerSpriteSet`). Use the ID passed to `Registrar::particle_key`.
     /// A phase-refused listener's entries are discarded. For each ID, only the last accepted
-    /// factory runs, once per load with that load's nonempty set. A missing set or failed bind
-    /// is reported and no particles of the type are spawned, rather than using declarative motion.
+    /// factory runs, once per sprite load on the logical client. Unresolved textures use the
+    /// atlas missing sprite in their declared slots; an empty description uses one missing sprite.
+    /// Without a description or a successful bind, a native spawn is reported and refused rather
+    /// than using declarative motion. A pack's Polytone definition can still override the type.
     pub fn register_sprite_set<P: ParticleProvider>(
         &mut self,
         id: Identifier,

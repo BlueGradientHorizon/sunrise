@@ -9,8 +9,10 @@ pub trait Hooks {
 
 Use `event.register_sprite_set(id, factory)` at client startup with the ID registered through
 `Registrar::particle_key` and the matching `assets/<namespace>/particles/<path>.json`.
-The last accepted factory for an ID binds once per sprite load with that load's nonempty
-`ParticleSpriteSet`. A missing set or failed bind is reported and the type does not spawn.
+The last accepted factory for an ID binds once per sprite load on the logical client. The
+`ParticleSpriteSet` uses the atlas missing sprite in each unresolved frame, or in one frame if
+the description is empty. A missing description or failed bind is reported and refuses native
+spawns. A pack's Polytone definition still takes precedence when it overrides the type.
 See the modding book's “Particle providers” for a worked example.
 
 Once the applicable distance and Particles-setting checks pass, `ParticleProvider::create_particle`

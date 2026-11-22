@@ -124,17 +124,21 @@ impl Hooks for SparkMod {
 ```
 
 The listener runs at client startup. The last accepted factory for an ID runs once per sprite
-load, including reloads. It captures owned `Send + Sync + 'static` data and returns a concrete
-`ParticleProvider`. `ParticleSpriteSet::frame_count()` is nonzero; the descriptor exposes no
-atlas or engine handles. A missing set or failed bind is reported for the ID and its mod; that
-type does not spawn. Types without a registration still use declarative motion.
+load, including reloads, on the logical client. It captures owned `Send + Sync + 'static` data
+and returns a concrete `ParticleProvider`. `ParticleSpriteSet::frame_count()` is nonzero: an
+unresolved texture uses the atlas missing sprite in its declared frame, and an empty description
+uses one missing sprite. The descriptor exposes no atlas or engine handles. A missing description
+or failed bind is reported for the ID and its mod and refuses native spawns without falling back
+to declarative motion. A resource pack's Polytone definition still takes precedence when it
+overrides the type. Types without a registration can still use declarative motion.
 
 After the applicable distance and Particles-setting checks, `create_particle` runs synchronously
 on the owning thread. `ParticleSpawn` lends the typed options, raw position and velocity slots,
-loaded level and the engine's live provider RNG. `ParticleTickView` starts with the declaration's
-spawn defaults. Return `None` to decline just this spawn without an error, or return `Some` with
-an owned instance whose ordinary Rust fields hold its state. It joins the normal pending FIFO;
-its render group can still refuse admission. Keep owned data, not loans from the callback.
+loaded level and the engine's live provider RNG. Drawing from it does not change the position
+or velocity spread of later particles in the same packet. `ParticleTickView` starts with the
+declaration's spawn defaults. Return `None` to decline just this spawn without an error, or
+return `Some` with an instance whose Rust fields hold its state. It joins the normal pending
+queue; its render group can still refuse admission. Keep owned data, not loans from the callback.
 
 The default `CustomParticle::tick` calls `tick_base` for vanilla's lifetime check, movement and
 friction. An override can call `tick_base` or use `advance_age` to record the previous position

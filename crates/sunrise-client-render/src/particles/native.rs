@@ -133,7 +133,9 @@ impl Factory {
             Ok(()) => Binding::Bound(binding),
             Err(error) => {
                 log::warn!("Particle provider {}: {error}", registration.id);
-                Binding::Unavailable
+                Binding::Unavailable {
+                    mod_id: self.mod_id(),
+                }
             }
         }
     }
@@ -155,7 +157,7 @@ impl Drop for Factory {
 
 pub(super) enum Binding {
     Declarative,
-    Unavailable,
+    Unavailable { mod_id: &'static str },
     Bound(BoundProvider),
 }
 
@@ -610,11 +612,24 @@ impl ParticleEngine {
         seed: i64,
         scope: SpawnScope<'_, '_>,
     ) -> Option<Particle> {
-        let entry = self.mod_sets.get(name)?;
+        let Some(entry) = self.mod_sets.get(name) else {
+            if let Some(factory) = self.provider_factories.get(name) {
+                log::warn!(
+                    "Particle provider {name} from mod {}: spawn has no sprite set",
+                    factory.mod_id()
+                );
+            }
+            return None;
+        };
         let (set, behaviour, group) = (entry.set, entry.behaviour, entry.group);
         let provider = match &entry.provider {
             Binding::Declarative => None,
-            Binding::Unavailable => return None,
+            Binding::Unavailable { mod_id } => {
+                log::warn!(
+                    "Particle provider {name} from mod {mod_id}: spawn refused because the provider did not bind"
+                );
+                return None;
+            }
             Binding::Bound(provider) => Some(provider),
         };
         let mut r = LegacyRandom::new(seed);

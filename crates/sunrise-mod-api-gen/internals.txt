@@ -18,6 +18,7 @@ sunrise_client_render::hud::batch::HudBatch::rect_uv
 sunrise_client_render::menu_blur::MenuBlur::apply
 sunrise_client_render::mesher::Mesher<'_>::face
 sunrise_client_render::mesher::Mesher<'_>::mesh
+# The ClientLevel admission target takes flags and a spawn scope for both built-in and mod requests.
 sunrise_client_render::particles::ParticleEngine::add_with
 sunrise_client_render::particles::ParticleEngine::push
 sunrise_client_render::screen_effects::ScreenEffects::build

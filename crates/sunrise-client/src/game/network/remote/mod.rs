@@ -73,7 +73,10 @@ use sunrise_client::{
     tab_list::SPECTATOR,
     text::Text,
 };
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_core::{
+    geometry::Vec3,
+    random::{LegacyRandom, RandomSource},
+};
 use sunrise_protocol::{
     entity_data::{ITEM_ENTITY_ITEM, Value},
     item::{Hashed, Stack},
@@ -297,6 +300,8 @@ pub(in crate::game) enum RemoteDimensionEntry {
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
+    /// `ClientPacketListener.random`: packet spread never draws from the particle engine.
+    pub(in crate::game) particle_random: LegacyRandom,
     /// Display-only address computed at connection setup. Never holds the raw friend invite.
     pub(super) display_address: Option<String>,
     pub brand: String,

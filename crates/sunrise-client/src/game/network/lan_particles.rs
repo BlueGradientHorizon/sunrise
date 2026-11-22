@@ -526,8 +526,11 @@ impl Game<'_> {
             );
             return;
         }
+        let Some(remote) = self.remote.as_mut() else {
+            return;
+        };
         for _ in 0..p.count {
-            let (at, v) = spread(self.particles.random(), p.randomization, p.pos, d, s);
+            let (at, v) = spread(&mut remote.particle_random, p.randomization, p.pos, d, s);
             add(&mut self.particles, at, v);
         }
     }

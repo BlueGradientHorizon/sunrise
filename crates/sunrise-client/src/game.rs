@@ -2399,7 +2399,7 @@ use sunrise_client::{
     models,
     motion::{MotionResources, PlayerMotion},
     mouse::{LookOptions, MouseLook},
-    particles::{Particle, ParticleSpawnFlags, SpawnScope},
+    particles::{Particle, ParticleEngine, ParticleSpawnFlags, SpawnScope},
     save::{Level, Persistent, SaveDir},
     settings::Settings,
     spans,
@@ -13229,12 +13229,15 @@ impl<'a> Game<'a> {
         let slow_frame_ms = options
             .spikes
             .unwrap_or(sunrise_client::client_perf::SLOW_FRAME_MS);
-        let mut particles = sunrise_client::particles::ParticleEngine::new(
-            &pack.source,
-            &gui.atlas.sprites,
-            &gui.atlas.translucent,
-        );
-        native_client_particles::configure_particle_inputs(&mut particles);
+        let particles = if options.execution_role.is_client() {
+            let mut engine =
+                ParticleEngine::new(&pack.source, &gui.atlas.sprites, &gui.atlas.translucent);
+            native_client_particles::configure_particle_inputs(&mut engine);
+            engine
+        } else {
+            // The integrated server shares the process, not its client callbacks.
+            ParticleEngine::new_server(&pack.source, &gui.atlas.sprites, &gui.atlas.translucent)
+        };
         let resource_source = pack.source.clone();
         let mut game = Game {
             structure_spawns: sunrise_client::mobs::spawn_selection::StructureSpawns::load(

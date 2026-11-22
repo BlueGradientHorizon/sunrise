@@ -7,7 +7,7 @@
 //! follow the vanilla classes; sprite sets come from `particles/*.json`.
 use crate::{
     blocks::{BlockFacts, Fluid},
-    hud::Rect,
+    hud::{MISSING_SPRITE, Rect},
     mesher::Vertex,
     world::World,
 };
@@ -24,7 +24,7 @@ use mod_api::{__private::game::particle_sprite_set, ParticleBlend};
 pub use options::ParticleOptions;
 use std::{
     array,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -1272,6 +1272,7 @@ fn below_half_pixel(radius: f64, distance_squared: f64, pixel_focal_length: f32)
 }
 
 impl ParticleEngine {
+    /// Build the logical client's engine and bind the factories registered at client startup.
     pub fn new(
         root: &ResourceSource,
         atlas: &HashMap<String, Rect>,
@@ -1284,6 +1285,15 @@ impl ParticleEngine {
             groups::registered(),
             native::registered(),
         )
+    }
+
+    /// Server-side particle storage never sees the logical client's native factory tables.
+    pub fn new_server(
+        root: &ResourceSource,
+        atlas: &HashMap<String, Rect>,
+        translucent: &HashSet<String>,
+    ) -> Self {
+        Self::with_factories(root, atlas, translucent, &[], Arc::default())
     }
 
     /// Build a fixture engine from its own staged registrations, without reading or freezing
@@ -1398,7 +1408,7 @@ impl ParticleEngine {
                 set.provider = factory.bind(sprites);
             } else {
                 log::warn!(
-                    "Particle provider {name} from mod {} has no nonempty particles/<path>.json sprite set",
+                    "Particle provider {name} from mod {} has no valid particles/<path>.json description",
                     factory.mod_id(),
                 );
             }
@@ -1427,10 +1437,14 @@ impl ParticleEngine {
     /// The sprite sets of every `particles/*.json` under `root`: vanilla's own
     /// and a native mod's (`assets/<namespace>/particles/<name>.json`).
     fn load_sprites(&mut self, root: &ResourceSource) {
+        let mut missing = BTreeSet::new();
         for ns in root.namespaces("assets") {
             if ns != "minecraft" {
-                self.load_mod_sprites(root, &ns);
+                self.load_mod_sprites(root, &ns, &mut missing);
             }
+        }
+        if !missing.is_empty() {
+            log::warn!("Missing particle sprites: {missing:?}");
         }
         for &ty in ParticleType::ALL {
             let Ok(bytes) = root.read(&format!("assets/minecraft/particles/{}.json", ty.name()))
@@ -1458,8 +1472,14 @@ impl ParticleEngine {
         }
     }
     /// A namespace's particle JSONs that vanilla has no type for: each becomes
-    /// one sprite set under `<ns>:<file name>`.
-    fn load_mod_sprites(&mut self, root: &ResourceSource, ns: &str) {
+    /// one sprite set under `<ns>:<file name>`. `ParticleResources.reload` uses the atlas's
+    /// missing sprite when a frame cannot be resolved or a present description lists no frames.
+    fn load_mod_sprites(
+        &mut self,
+        root: &ResourceSource,
+        ns: &str,
+        missing: &mut BTreeSet<String>,
+    ) {
         let prefix = format!("assets/{ns}/particles/");
         for path in root.list(&prefix) {
             let Some(stem) = path
@@ -1475,48 +1495,57 @@ impl ParticleEngine {
             let Ok(bytes) = root.read(&path) else {
                 continue;
             };
-            let Ok(json) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            let Ok(mut json) =
+                serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(&bytes)
+            else {
+                continue;
+            };
+            let Ok(textures) = json
+                .remove("textures")
+                .map(serde_json::from_value::<Vec<String>>)
+                .transpose()
+            else {
+                log::warn!("Invalid particle textures in {path}");
                 continue;
             };
             let behaviour = json.get("sunrise:behaviour").and_then(|value| {
                 let behaviour = ModBehaviour::parse(value);
                 if behaviour.is_none() {
-                    log::warn!("Invalid particle behaviour in {}", path);
+                    log::warn!("Invalid particle behaviour in {path}");
                 }
                 behaviour
             });
-            let sprites: Vec<u32> = json["textures"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|t| t.as_str())
-                        .map(|t| {
-                            // A texture is `<ns>:<path>` (bare means
-                            // `minecraft:`), and the atlas names a sprite
-                            // `<ns>:particle/<path>` — `minecraft`'s own
-                            // without its namespace.
-                            let name = match t.split_once(':') {
-                                Some(("minecraft", path)) => format!("particle/{path}"),
-                                Some((ns, path)) => format!("{ns}:particle/{path}"),
-                                None => format!("particle/{t}"),
-                            };
-                            self.intern(&name)
-                        })
-                        .collect()
+            let mut sprites: Vec<u32> = textures
+                .unwrap_or_default()
+                .into_iter()
+                .map(|texture| {
+                    // The atlas keys vanilla sprites without their namespace.
+                    let name = match texture.split_once(':') {
+                        Some(("" | "minecraft", path)) => format!("particle/{path}"),
+                        Some((ns, path)) => format!("{ns}:particle/{path}"),
+                        None => format!("particle/{texture}"),
+                    };
+                    if self.atlas.contains_key(&name) {
+                        self.intern(&name)
+                    } else {
+                        missing.insert(texture);
+                        self.intern(MISSING_SPRITE)
+                    }
                 })
-                .unwrap_or_default();
-            if !sprites.is_empty() {
-                self.mod_sets.insert(
-                    key,
-                    ModSet {
-                        set: self.set_sprites.len() as u32,
-                        behaviour,
-                        provider: native::Binding::Declarative,
-                        group: None,
-                    },
-                );
-                self.set_sprites.push(sprites);
+                .collect();
+            if sprites.is_empty() {
+                sprites.push(self.intern(MISSING_SPRITE));
             }
+            self.mod_sets.insert(
+                key,
+                ModSet {
+                    set: self.set_sprites.len() as u32,
+                    behaviour,
+                    provider: native::Binding::Declarative,
+                    group: None,
+                },
+            );
+            self.set_sprites.push(sprites);
         }
     }
     fn intern(&mut self, name: &str) -> u32 {
@@ -1987,8 +2016,6 @@ impl ParticleEngine {
         if let Some(name) = custom
             && let Some(registry) = &self.polytone
             && let Some(def) = registry.get(name)
-            // A registered native type does not become a pack-defined particle when unbound.
-            && (o.mod_particle.is_none() || !self.provider_factories.contains_key(name))
         {
             let (registry, def, name) = (registry.clone(), def.clone(), name.to_owned());
             let (particle, custom) = polytone::make(self, &registry, &name, &def, o, p, v, seed)?;
