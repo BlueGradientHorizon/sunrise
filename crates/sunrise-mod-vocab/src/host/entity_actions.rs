@@ -68,6 +68,11 @@ pub trait EntityActionsBackendMut {
     /// silent mob plays nothing, as vanilla's check is `isSilent`; a player
     /// (`Player.playSound`) doesn't hear it themself, their own client plays
     /// it. Registered events go by ID and other valid keys by name. True means queued, not heard.
+    /// Inside an open transaction in the active level, `play_level_sound_at_position` runs
+    /// synchronously at the call. The resolved sound waits for the owning level's outermost
+    /// commit, in journal order, and is discarded on abort. Outside a transaction, a queued sound
+    /// draws its seed at the call even if a later hook cancels it. Inside one, it draws a seed only
+    /// when the resolved sound is published.
     fn entity_play_sound(
         &mut self,
         entity: EntityRef,
@@ -81,7 +86,7 @@ pub trait EntityActionsBackendMut {
     /// sensors, shriekers, wardens and allays in range hear. A player or mob
     /// is the event's source entity; other entities retain their own id.
     /// False for an event vanilla doesn't have, a dead guest and a guest while
-    /// another one acts.
+    /// another one acts. An accepted game event is posted at the call even in a transaction.
     fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool;
     /// Side: server.
     /// `Level.broadcastEntityEvent(entity, id)`: sends entity event `id` (the
@@ -89,6 +94,8 @@ pub trait EntityActionsBackendMut {
     /// death, `35` a totem...) to the players tracking the entity and to the
     /// entity itself. True means queued; false for an entity outside the
     /// level in place.
+    /// Inside an open transaction, delivery waits for the outermost commit for the owning level
+    /// (the level active at the call), in journal order, and is discarded on abort.
     fn entity_broadcast_event(&mut self, entity: EntityRef, id: u8) -> bool;
     /// Side: server.
     /// `Level.playSound(null, entity, sound, source, volume, pitch)`: plays
@@ -97,6 +104,11 @@ pub trait EntityActionsBackendMut {
     /// where it is now, the entity's own player too. True means queued, not
     /// heard; false for an unavailable entity or malformed sound key. Registered events go by ID
     /// and other valid keys by name, with volume and pitch as supplied.
+    /// Inside an open transaction in the active level, `play_level_sound_at_entity` runs
+    /// synchronously at the call. The resolved sound waits for the owning level's outermost
+    /// commit, in journal order, and is discarded on abort. Outside a transaction, a queued sound
+    /// draws its seed at the call even if a later hook cancels it. Inside one, it draws a seed only
+    /// when the resolved sound is published.
     fn entity_play_bound_sound(
         &mut self,
         entity: EntityRef,

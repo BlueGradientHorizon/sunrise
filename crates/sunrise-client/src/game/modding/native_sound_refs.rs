@@ -5,13 +5,16 @@
 //! sends a `ClientboundSoundEntityPacket` to the players in range. They
 //! return false for an unavailable target or malformed event key. Recipients resolve
 //! the event in their sound resources; packet delivery does not imply playback.
-use super::{Game, commands::Target, native_hooks::sound_id};
+use super::{
+    Game, commands::Target, journal_level_write::PendingWrite, native_hooks::sound_id,
+    transactions::After,
+};
 use mod_api::{EntityRef, PlayerRef, SoundSource};
 use sunrise_core::random::RandomSource;
 
 impl Game<'_> {
     /// Where `player` is reached now: the window's own player or a guest.
-    fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
+    pub(super) fn native_player_sound_target(&self, player: PlayerRef) -> Option<Target> {
         if self.player(player.uuid()) != Some(player) {
             return None;
         }
@@ -22,7 +25,7 @@ impl Game<'_> {
     }
     /// `StopSoundCommand` for one player: their client stops the playing
     /// sounds that match `sound` (an event id) and `source`; `None` matches
-    /// any. True means sent.
+    /// any. True means accepted, not delivered.
     pub(super) fn player_stop_sound(
         &mut self,
         player: PlayerRef,
@@ -35,13 +38,23 @@ impl Game<'_> {
         if sound.is_some_and(|s| !sound_id(s)) {
             return false;
         }
-        self.stop_sound_for(&[target], sound, source.map(SoundSource::index));
+        let source = source.map(SoundSource::index);
+        if !self.has_level_transaction() {
+            self.stop_sound_for(&[target], sound, source);
+        } else {
+            self.after_commit(After::LevelWrite(Box::new(PendingWrite::PlayerStopSound {
+                level: self.dim,
+                player,
+                sound: sound.map(str::to_owned),
+                source,
+            })));
+        }
         true
     }
     /// `PlaySoundCommand` for one player: plays sound event `sound` at the
     /// player, for them only, under `source`'s volume slider. The seed is the
-    /// level random's `nextLong`, drawn once per call. True means sent, not
-    /// heard.
+    /// level random's `nextLong`, drawn when the sound publishes. True means
+    /// accepted, not delivered.
     pub(super) fn player_play_sound(
         &mut self,
         player: PlayerRef,
@@ -59,8 +72,20 @@ impl Game<'_> {
         if !sound_id(sound) {
             return false;
         }
-        let seed = self.world.random.next_long();
-        self.play_sound_to(target, sound, at, volume, pitch, source.index(), seed);
+        if !self.has_level_transaction() {
+            let seed = self.world.random.next_long();
+            self.play_sound_to(target, sound, at, volume, pitch, source.index(), seed);
+        } else {
+            self.after_commit(After::LevelWrite(Box::new(PendingWrite::PlayerSound {
+                level: self.dim,
+                player,
+                sound: sound.to_owned(),
+                at,
+                source: source.index(),
+                volume,
+                pitch,
+            })));
+        }
         true
     }
     /// `Level.playSound(null, entity, sound, source, volume, pitch)`: plays
@@ -86,9 +111,17 @@ impl Game<'_> {
         ) else {
             return false;
         };
-        self.native_queue_sound(level, sound, at, source, volume, pitch, None)
-            .map(|queued| queued.entity = Some(id))
-            .is_some()
+        self.native_queue_sound(super::native_level_effects::NativeSoundRequest {
+            level,
+            sound,
+            at,
+            source,
+            volume,
+            pitch,
+            except: None,
+            entity: Some(id),
+            inline_range: None,
+        })
     }
 }
 
@@ -320,18 +353,19 @@ pub(super) mod tests {
             let before = game.lan.as_ref().unwrap().hub.next_sound_seed();
             let mut level_random = game.world.random.clone();
             for _ in 0..2 {
-                assert!(
-                    game.native_queue_sound(
+                assert!(game.native_queue_sound(
+                    super::super::native_level_effects::NativeSoundRequest {
                         level,
                         sound,
-                        [0.5, 64.0, 0.0],
-                        SoundSource::Neutral,
-                        1.0,
-                        1.0,
-                        None,
-                    )
-                    .is_some()
-                );
+                        at: [0.5, 64.0, 0.0],
+                        source: SoundSource::Neutral,
+                        volume: 1.0,
+                        pitch: 1.0,
+                        except: None,
+                        entity: None,
+                        inline_range: None,
+                    },
+                ));
             }
             // The gameplay random is exactly where it was: a mod's sound
             // moves no level draw.
@@ -364,29 +398,39 @@ pub(super) mod tests {
                 "a player exactly at the range edge hears nothing"
             );
 
-            // A direct holder is not looked up in the registry, and its range is used
-            // instead of the variable one (which would reach both players this time).
+            // Commit preserves direct holders even if the key is registered or has no
+            // registry ID. The fixed range, not the variable range, excludes the far player.
             use sunrise_client::items::ConsumeSound;
             use sunrise_core::position::BlockPos;
-            let id = "minecraft:test.inline";
-            assert!(
-                game.queue_consume_sound(
-                    &ConsumeSound::Direct {
-                        id: id.into(),
-                        range: Some(0.75)
-                    },
-                    BlockPos::new(0, 64, 0),
-                    SoundSource::Neutral,
-                )
-                .is_some()
-            );
-            game.flush_native_sounds();
+            let ids = [sound, "minecraft:test.inline"];
+            mod_api::run_transaction(game, |game, _| {
+                for id in ids {
+                    assert!(
+                        game.queue_consume_sound(
+                            &ConsumeSound::Direct {
+                                id: id.into(),
+                                range: Some(0.75),
+                            },
+                            BlockPos::new(0, 64, 0),
+                            SoundSource::Neutral,
+                        )
+                        .is_some()
+                    );
+                }
+                game.flush_native_sounds();
+                assert!(packets(&rx_near).is_empty());
+                Ok::<_, ()>(())
+            })
+            .unwrap();
             let got = packets(&rx_near);
-            let [Clientbound::Sound(packet)] = got.as_slice() else {
-                panic!("the near player must receive the direct sound")
-            };
-            assert_eq!(packet.sound, (-1, Some((id.into(), Some(0.75)))));
-            assert_eq!((packet.x, packet.y, packet.z), (4, 516, 4));
+            assert_eq!(got.len(), ids.len());
+            for (packet, id) in got.iter().zip(ids) {
+                let Clientbound::Sound(packet) = packet else {
+                    panic!("the near player must receive the direct sound")
+                };
+                assert_eq!(packet.sound, (-1, Some((id.into(), Some(0.75)))));
+                assert_eq!((packet.x, packet.y, packet.z), (4, 516, 4));
+            }
             assert!(packets(&rx_edge).is_empty());
         });
     }

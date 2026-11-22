@@ -38,7 +38,7 @@ impl Game<'_> {
         let Some(index) = self.dropped.iter().position(|item| item.id == id) else {
             return false;
         };
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = self.transactions.level_frame(self.dim) else {
             return self.native_set_item_entity(index, stack);
         };
         if stack.count == 0 {
@@ -67,7 +67,7 @@ impl Game<'_> {
         item.stack_revision = item.stack_revision.wrapping_add(1);
     }
 
-    /// Lend a validated item slot and its first-write journal, if a transaction is open.
+    /// Lend an item in the active level and the first-write journal of its innermost open frame.
     pub(super) fn journal_item_fields(
         &mut self,
         index: usize,
@@ -78,7 +78,7 @@ impl Game<'_> {
         let item = &mut self.dropped[index];
         let kept = self
             .transactions
-            .last_mut()
+            .level_frame(self.dim)
             .map(|level| level.item_entities.entry(item.join).or_default());
         (item, kept)
     }

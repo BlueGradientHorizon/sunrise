@@ -124,7 +124,7 @@ impl Game<'_> {
     /// The dispenser level events: 1000 click, 1001 fail, 1002 launch, 1004
     /// firework shoot, 1018 blaze shoot and 2000 smoke shot out of the front.
     pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
-        if !self.transactions.is_empty() {
+        if self.has_level_transaction() {
             self.after_commit(super::transactions::After::DispenseEvent(id, pos, data));
             return;
         }

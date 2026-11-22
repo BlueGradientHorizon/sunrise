@@ -793,9 +793,18 @@ impl Game<'_> {
         };
         let at = [pos.x, pos.y, pos.z].map(|v| f64::from(v) + 0.5);
         let level = self.level(self.dim.id())?;
-        self.native_queue_sound(level, id, at, source, 1.0, 1.0, None)?
-            .inline_range = inline_range;
-        Some(())
+        self.native_queue_sound(super::native_level_effects::NativeSoundRequest {
+            level,
+            sound: id,
+            at,
+            source,
+            volume: 1.0,
+            pitch: 1.0,
+            except: None,
+            entity: None,
+            inline_range,
+        })
+        .then_some(())
     }
 
     /// BowItem.releaseUsing: power from charge time, arrows at power * 3, as
