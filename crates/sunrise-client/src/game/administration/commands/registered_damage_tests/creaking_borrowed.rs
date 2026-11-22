@@ -6,11 +6,13 @@ use crate::game::{
     sculk::TEST_POSTED_EVENT_ORDER,
 };
 use mod_api::{
-    ActiveEffect, BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, ServerHost,
-    VanillaGameEventEvent,
+    ActiveEffect, ApplyEffectTickEvent, BlockState, BlockUpdateFlags, Flow, Hooks, Host,
+    HostBlockStates, MobEffectExpiredEvent, MobEffectPart, Registrar, RegistrationContext,
+    ServerHost, ShouldApplyEffectTickThisTickEvent, VanillaGameEventEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
+    brewing,
     containers::BlockEntity,
     mobs::{Who, creaking},
 };
@@ -21,6 +23,7 @@ use sunrise_core::{
 
 const HOME: [i32; 3] = [8, 64, 8];
 const FISH_AFTER_HURT: [f64; 3] = [12.5, 64.0, 4.5];
+const FINAL_HURT: &str = "watch:final_hurt";
 
 #[derive(Clone, Copy)]
 struct Reaction {
@@ -34,6 +37,7 @@ struct Heard {
     peer: Option<u32>,
     sting_fish: Option<u32>,
     reactions: Vec<Reaction>,
+    expired_amplifiers: Vec<i32>,
 }
 
 struct Watch {
@@ -47,10 +51,45 @@ enum EffectEdit {
     RemoveEarlier,
     ReplaceCurrent,
     InsertAndRemove,
+    ReplaceRegistered,
+}
+
+struct FinalHurt;
+#[mod_api::sunrise_part]
+impl MobEffectPart for FinalHurt {
+    fn should_apply_effect_tick_this_tick(
+        &self,
+        _: &dyn Host,
+        event: &mut ShouldApplyEffectTickThisTickEvent,
+    ) {
+        event.apply = event.tick_count == 1;
+    }
+
+    fn apply_effect_tick(&self, _: &dyn Host, event: &mut ApplyEffectTickEvent<'_>) {
+        event.hurt("minecraft:magic", 1.0);
+    }
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for Watch {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        if matches!(self.effect_edit, Some(EffectEdit::ReplaceRegistered)) {
+            let key = r.effect_key(FINAL_HURT);
+            r.mob_effect_part(&key, FinalHurt).unwrap();
+        }
+    }
+
+    fn mob_effect_expired(&self, host: &dyn Host, event: &mut MobEffectExpiredEvent) -> Flow {
+        let mut heard = self.heard.lock().unwrap();
+        if event.entity.entity().id() == heard.mob
+            && host.effect_key(FINAL_HURT) == Some(event.effect)
+        {
+            assert_eq!(heard.reactions.len(), 1, "expiry follows the accepted hurt");
+            heard.expired_amplifiers.push(event.amplifier);
+        }
+        Flow::Continue
+    }
+
     fn vanilla_game_event(
         &self,
         host: &mut dyn ServerHost,
@@ -79,6 +118,7 @@ impl Hooks for Watch {
                 EffectEdit::RemoveEarlier => "minecraft:speed",
                 EffectEdit::ReplaceCurrent => "minecraft:instant_damage",
                 EffectEdit::InsertAndRemove => "minecraft:glowing",
+                EffectEdit::ReplaceRegistered => FINAL_HURT,
             };
             let effect = host.effect_key(id).unwrap();
             let added = ActiveEffect::new(effect, 40, 0, false, true, true);
@@ -86,7 +126,10 @@ impl Hooks for Watch {
                 assert!(living.add_effect(host, &added));
             }
             assert!(living.remove_effect(host, effect));
-            if matches!(edit, EffectEdit::ReplaceCurrent) {
+            if matches!(
+                edit,
+                EffectEdit::ReplaceCurrent | EffectEdit::ReplaceRegistered
+            ) {
                 assert!(living.add_effect(host, &added));
             }
         }
@@ -141,6 +184,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             "effect_shift",
             "effect_replaced",
             "effect_transient",
+            "registered_effect_replaced",
             "sting",
         ],
     ) {
@@ -151,6 +195,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
         "effect_shift" => Some(EffectEdit::RemoveEarlier),
         "effect_replaced" => Some(EffectEdit::ReplaceCurrent),
         "effect_transient" => Some(EffectEdit::InsertAndRemove),
+        "registered_effect_replaced" => Some(EffectEdit::ReplaceRegistered),
         _ => None,
     };
     let heard = Arc::new(Mutex::new(Heard::default()));
@@ -164,6 +209,15 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
+        if matches!(effect_edit, Some(EffectEdit::ReplaceRegistered)) {
+            assert!(brewing::register_mod_effects([(
+                FINAL_HURT.into(),
+                0,
+                brewing::Category::Harmful,
+                None,
+                "watch".into(),
+            )]));
+        }
         with_game(|game| {
             if case == "sting" {
                 crate::game::native_living_flags::tests::guest_server(game, true, false);
@@ -255,10 +309,14 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 creaking.ai.ai_paused = true;
                 creaking.velocity = Vec3::new(0.8, 0.0, 0.0);
                 Some(peer)
-            } else if effect_edit.is_some() {
+            } else if let Some(edit) = effect_edit {
                 let creaking = game.mob_object_mut(mob).unwrap();
                 creaking.add_effect("minecraft:speed", 40, 0);
-                creaking.add_effect("minecraft:instant_damage", 1, 0);
+                if matches!(edit, EffectEdit::ReplaceRegistered) {
+                    creaking.add_effect(FINAL_HURT, 1, 3);
+                } else {
+                    creaking.add_effect("minecraft:instant_damage", 1, 0);
+                }
                 creaking.add_effect("minecraft:fire_resistance", 40, 0);
                 None
             } else if case == "sting" {
@@ -368,10 +426,21 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                     EffectEdit::RemoveEarlier => (None, Some(0)),
                     EffectEdit::ReplaceCurrent => (Some(39), Some(40)),
                     EffectEdit::InsertAndRemove => (Some(39), Some(0)),
+                    EffectEdit::ReplaceRegistered => (Some(39), None),
                 };
                 assert_eq!(duration("minecraft:speed"), speed);
                 assert_eq!(duration("minecraft:instant_damage"), damage);
                 assert_eq!(duration("minecraft:glowing"), None);
+                if matches!(edit, EffectEdit::ReplaceRegistered) {
+                    assert_eq!(heard.lock().unwrap().expired_amplifiers, [3]);
+                    let replacement = creaking
+                        .extra
+                        .effects
+                        .iter()
+                        .find(|e| e.id == FINAL_HURT)
+                        .unwrap();
+                    assert_eq!((replacement.duration, replacement.amplifier), (40, 0));
+                }
                 assert_eq!(
                     duration("minecraft:fire_resistance"),
                     Some(40),
@@ -476,6 +545,9 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             game.tick_creature_entities().unwrap();
             assert_eq!(live_reaction(game), (reacted, swayed));
             assert_eq!(heard.lock().unwrap().reactions.len(), reacted);
+            if matches!(effect_edit, Some(EffectEdit::ReplaceRegistered)) {
+                assert_eq!(heard.lock().unwrap().expired_amplifiers, [3]);
+            }
             if let Some(path) = parity_output {
                 let trace = [start.unwrap(), after_hurt.unwrap(), snapshot(game)];
                 std::fs::write(path, serde_json::to_vec(&trace).unwrap()).unwrap();

@@ -4582,8 +4582,25 @@ impl EffectPass {
         }
     }
 
-    fn suspend(mut self, m: &mut Mob, i: usize, end: usize, tick: EffectTick) -> Self {
+    fn suspend(mut self, m: &mut Mob, i: usize, end: usize, mut tick: EffectTick) -> Self {
         let effects = &mut m.extra.effects;
+        // Removing the active effect does not stop its in-flight tickServer.
+        // Keep the expiry inputs in case there is no longer a live row to finish.
+        if let Some(active) = effects.get(i).filter(|e| e.id == tick.effect) {
+            tick.detached_expiry = active.registry_index.and_then(|index| {
+                if tick.expired {
+                    return Some((index, active.amplifier));
+                }
+                if active.duration != 1 {
+                    return None;
+                }
+                match m.extra.effect_chains.iter().find(|e| e.id == active.id) {
+                    Some(hidden) if hidden.duration == -1 || hidden.duration > 1 => None,
+                    Some(hidden) => Some((index, hidden.amplifier)),
+                    None => Some((index, active.amplifier)),
+                }
+            });
+        }
         // A stamp belongs to the instance, not the index where the vector stores it.
         for (index, effect) in effects.iter_mut().enumerate() {
             effect.pass_slot = index + 1;
@@ -4613,6 +4630,7 @@ struct EffectTick {
     effect: &'static str,
     expired: bool,
     changes: std::vec::IntoIter<super::MobEffectChange>,
+    detached_expiry: Option<(usize, i32)>,
 }
 /// `LivingEntity.tickEffects`: each active effect's `MobEffectInstance.tickServer`.
 /// `after_effect` runs after each effect's tick, before its countdown, so a
@@ -4635,25 +4653,19 @@ fn tick_effects_until_hurt(
     let mut first = pass.end;
     // Finish expiry before the next callback reads the holder. A cancelled expiry
     // keeps even a zero-duration instance; hidden promotion happens before this.
-    let expire = |m: &mut Mob, i: usize, refused: bool, iterator_valid: bool| {
-        let e = &m.extra.effects[i];
-        if !refused && (e.duration > 0 || e.duration == -1) {
-            return false;
-        }
+    let finish_expiry = |m: &mut Mob, registered: Option<(usize, i32)>, remove: Option<&str>| {
         let mut cancel = false;
-        if let Some(mods) = mods
-            && let Some(index) = e.registry_index
-        {
-            mods.effect_expired(m.id, index, e.amplifier, &mut cancel);
+        if let (Some(mods), Some((index, amplifier))) = (mods, registered) {
+            mods.effect_expired(m.id, index, amplifier, &mut cancel);
         }
-        // NeoForge's Expired event precedes iterator.remove(). If the
-        // callback invalidated the iterator, the removal still cannot run.
-        if cancel || !iterator_valid {
-            return false;
+        // NeoForge posts Expired before iterator.remove(), even if removal
+        // will fail because a callback already invalidated the iterator.
+        if let Some(id) = remove.filter(|_| !cancel) {
+            m.retain_effects(|effect| effect.id != id);
+            true
+        } else {
+            false
         }
-        let id = e.id;
-        m.retain_effects(|effect| effect.id != id);
-        true
     };
     let mut i = pass.index;
     while pass.interrupted.is_some() || (i < m.extra.effects.len() && i < first) {
@@ -4686,7 +4698,8 @@ fn tick_effects_until_hurt(
             // MobEffectInstance.tickServer: without remaining duration the instance
             // ticks nothing; resolve its expiry before the next instance.
             if !infinite && m.extra.effects[i].duration <= 0 {
-                if expire(m, i, false, true) {
+                let registered = m.extra.effects[i].registry_index.map(|index| (index, amp));
+                if finish_expiry(m, registered, Some(effect)) {
                     first -= 1;
                 } else {
                     i += 1;
@@ -4752,6 +4765,7 @@ fn tick_effects_until_hurt(
                 effect,
                 expired,
                 changes: changes.into_iter(),
+                detached_expiry: None,
             };
             if pause_hurt && super::creaking::has_pending_hurt(m) {
                 return Some(pass.suspend(m, i, first, tick));
@@ -4762,6 +4776,7 @@ fn tick_effects_until_hurt(
             effect,
             expired,
             mut changes,
+            detached_expiry,
         } = tick;
         while let Some(change) = changes.next() {
             match change {
@@ -4778,6 +4793,7 @@ fn tick_effects_until_hurt(
                                 effect,
                                 expired,
                                 changes,
+                                detached_expiry,
                             },
                         ));
                     }
@@ -4821,17 +4837,19 @@ fn tick_effects_until_hurt(
                 m.effects_dirty = true;
             }
         }
-        // LivingEntity.tickEffects refreshes a surviving effect every 600 ticks.
-        if m.extra
-            .effects
-            .get(i)
-            .is_some_and(|e| e.id == effect && e.duration > 0 && e.duration % 600 == 0)
-        {
-            m.effects_dirty = true;
-        }
-        if m.extra.effects.get(i).is_some_and(|e| e.id == effect)
-            && expire(m, i, expired, !pass.stop_after_current)
-        {
+        let removed = if let Some(active) = m.extra.effects.get(i).filter(|e| e.id == effect) {
+            if expired || (active.duration <= 0 && active.duration != -1) {
+                let registered = active.registry_index.map(|index| (index, active.amplifier));
+                finish_expiry(m, registered, (!pass.stop_after_current).then_some(effect))
+            } else {
+                // LivingEntity.tickEffects refreshes a surviving effect every 600 ticks.
+                m.effects_dirty |= active.duration > 0 && active.duration % 600 == 0;
+                false
+            }
+        } else {
+            finish_expiry(m, detached_expiry, None)
+        };
+        if removed {
             // Removal shifts the next original effect into this slot. Shrink the
             // original-pass boundary too, so newly appended effects still wait.
             first -= 1;
