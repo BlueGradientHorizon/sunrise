@@ -312,7 +312,9 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
     })
 }
 
-/// Reads `dir`: every `.rs` file outside the mod's `target/` and hidden folders, and
+/// Reads `dir`: the `.rs` files a package carries (a root `build.rs` and those under `src/`,
+/// outside hidden folders and `src/target/`, leaving out a name a package path cannot hold: not
+/// UTF-8 or with a `\\` in it), and
 /// `sunrise-mod.toml` when there is one, but not the files `skip` names (relative and
 /// `/`-separated), which are not the mod's own source. A `#[path]` or `include!` of a file the
 /// scan does not read, a skipped one included, is refused, and so is a `mod` declaration that
@@ -331,14 +333,20 @@ pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
             let entry = entry.map_err(io(&folder))?;
             let path = entry.path();
             let name = entry.file_name();
-            let name = name.to_string_lossy();
+            // What packing leaves out is not read: a name no package path can hold, and at the
+            // top anything but `src/` and `build.rs`.
+            let Some(name) = name.to_str().filter(|name| !name.contains('\\')) else {
+                continue;
+            };
+            if folder == dir && name != "src" && name != "build.rs" {
+                continue;
+            }
             let kind = entry.file_type().map_err(io(&path))?;
             if kind.is_symlink() {
                 return Err(ReadError::Symlink(path));
             }
             if kind.is_dir() {
-                let build_output = folder == dir && name == "target";
-                if !name.starts_with('.') && !build_output {
+                if !name.starts_with('.') && name != "target" {
                     pending.push(path);
                 }
             } else if kind.is_file() && name.ends_with(".rs") {
@@ -428,14 +436,15 @@ mod tests {
     }
 
     #[test]
-    fn reads_sources_outside_target_and_hidden_folders_and_the_manifest_names() {
+    fn reads_the_packaged_sources_and_the_manifest_names() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
         write(root, "src/deep/b.rs", "b");
         write(root, "build.rs", "c");
         write(root, "target/debug/build/x.rs", "no");
-        write(root, "src/target/aim.rs", "d");
+        write(root, "src/target/aim.rs", "no");
+        write(root, "tools/generate.rs", "no");
         write(root, ".sunrise/sdk/api/lib.rs", "no");
         write(root, "src/notes.txt", "no");
         write(
@@ -454,8 +463,7 @@ mod tests {
             [
                 ("build.rs", "c"),
                 ("src/deep/b.rs", "b"),
-                ("src/lib.rs", "a"),
-                ("src/target/aim.rs", "d")
+                ("src/lib.rs", "a")
             ]
         );
         assert_eq!(input.manifest_names, ["registries"]);
@@ -642,10 +650,34 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, "src/lib.rs", "a");
-        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(root.join("src"), root.join("src/linked")).unwrap();
         assert_eq!(
             read(root, &[]).unwrap_err(),
-            ReadError::Symlink(root.join("linked"))
+            ReadError::Symlink(root.join("src/linked"))
         );
+    }
+
+    /// A file packing leaves out is not read, so its contents cannot stop the scan.
+    #[cfg(unix)]
+    #[test]
+    fn files_packing_leaves_out_are_not_read() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "a");
+        let not_text = [0xff_u8, 0xfe];
+        for name in [
+            &b"src/a\\b.rs"[..],
+            b"src/\xff.rs",
+            b"node_modules/x.rs",
+            b"gen.rs",
+        ] {
+            let path = root.join(std::ffi::OsStr::from_bytes(name));
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, not_text).unwrap();
+        }
+        std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
+        let input = read(root, &[]).unwrap();
+        assert_eq!(input.sources, [("src/lib.rs".to_owned(), "a".to_owned())]);
     }
 }
