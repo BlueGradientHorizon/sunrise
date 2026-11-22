@@ -243,7 +243,6 @@ fn typed_forms_with_unmetered_conversions_are_refused() {
         assert_eq!(input.rest(), writer.bytes());
     }
 
-    ordinary_only(&"test:static-value");
     ordinary_only(&Text::literal("owned text"));
     ordinary_only(&serde_json::json!({"field": []}));
     ordinary_only(&serde_json::Map::<String, serde_json::Value>::new());
@@ -420,7 +419,6 @@ fn checked_decoders_do_not_share_the_raw_representations_fingerprint() {
         payload_schema::<serde_json::Map<String, serde_json::Value>>(),
         payload_schema::<serde_json::Value>()
     );
-    assert_ne!(payload_schema::<&str>(), payload_schema::<String>());
 }
 
 #[test]

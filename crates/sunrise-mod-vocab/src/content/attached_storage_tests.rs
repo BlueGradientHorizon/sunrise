@@ -307,7 +307,7 @@ fn stale_keys_refuse_attached_storage_reads_and_writes() {
         let dirt = item("minecraft:dirt");
         let slots = AttachedItems::new(&items, CHUNK, 4, 64, |_| true).unwrap();
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 0, &dirt, 10))),
+            host.transaction(|host, tx| slots.insert_at(host, tx, 0, &dirt, 10)),
             Ok(10)
         );
         assert_eq!(slots.amount(&mut host, 0), 10);
@@ -318,11 +318,11 @@ fn stale_keys_refuse_attached_storage_reads_and_writes() {
         assert_eq!(slots.amount(&mut host, 0), 0);
         assert_eq!(slots.resource(&mut host, 0), None);
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 0, &dirt, 5))),
+            host.transaction(|host, tx| slots.insert_at(host, tx, 0, &dirt, 5)),
             Ok(0)
         );
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 0, &dirt, 5))),
+            host.transaction(|host, tx| slots.extract_at(host, tx, 0, &dirt, 5)),
             Ok(0)
         );
         let fresh_slots = AttachedItems::new(&fresh_items, CHUNK, 4, 64, |_| true).unwrap();
@@ -332,7 +332,7 @@ fn stale_keys_refuse_attached_storage_reads_and_writes() {
         let mut host = FakeHost::new();
         let battery = AttachedEnergy::new(&energy, CHUNK, 100, 100, 100);
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(battery.insert(host, tx, 40))),
+            host.transaction(|host, tx| battery.insert(host, tx, 40)),
             Ok(40)
         );
         assert_eq!(battery.amount(&mut host), 40);
@@ -340,11 +340,11 @@ fn stale_keys_refuse_attached_storage_reads_and_writes() {
         let fresh_energy = install_energy();
         assert_eq!(battery.amount(&mut host), 0);
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(battery.insert(host, tx, 10))),
+            host.transaction(|host, tx| battery.insert(host, tx, 10)),
             Ok(0)
         );
         assert_eq!(
-            host.transaction(|host, tx| Ok::<_, ()>(battery.extract(host, tx, 10))),
+            host.transaction(|host, tx| battery.extract(host, tx, 10)),
             Ok(0)
         );
         let fresh_battery = AttachedEnergy::new(&fresh_energy, CHUNK, 100, 100, 100);

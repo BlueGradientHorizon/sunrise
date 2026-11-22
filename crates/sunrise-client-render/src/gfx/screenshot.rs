@@ -1,5 +1,5 @@
 //! Read-back screenshots waiting for the game's client hook, then PNG encoding.
-use super::{Frame, GpuChecks, Renderer, Result, hdr_icc};
+use super::{Frame, GpuChecks, Renderer, Result, hdr_icc, world_primitives};
 use std::path::{Path, PathBuf};
 
 /// CPU-side frame returned to the game before any screenshot file is written.

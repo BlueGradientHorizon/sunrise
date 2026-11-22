@@ -37,7 +37,7 @@ impl Hooks for Mod {
 
 // ANCHOR: count
 fn count(host: &mut dyn ServerHost, counter: &AttachmentKey<i32>) -> Result<(), AttachmentError> {
-    let old = counter.get(host, Holder::Level)?;
+    let old = counter.get(host, Holder::Level, |n| *n)?;
     counter.set(host, Holder::Level, old + 1)
 }
 // ANCHOR_END: count

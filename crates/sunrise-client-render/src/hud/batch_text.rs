@@ -87,7 +87,17 @@ impl HudBatch {
         color: u32,
         shadow: bool,
     ) -> f32 {
-        self.paint_visual_text(atlas, text, x, y, color, shadow, false, None)
+        self.paint_visual_text(
+            atlas,
+            text,
+            x,
+            y,
+            color,
+            shadow,
+            false,
+            None,
+            crate::font::DEFAULT,
+        )
     }
     /// `text_styled` for text drawn in the world (`TextRenderable.render`
     /// with `flat` false): each quad's `depth` is its z in text units, the
@@ -182,7 +192,17 @@ impl HudBatch {
         let text = text.resolved();
         // Language.getVisualOrder: shaped and reordered for right-to-left text.
         let text = crate::bidi::visual(&text);
-        self.paint_visual_text(atlas, &text, x, y, color, shadow, world, outline)
+        self.paint_visual_text(
+            atlas,
+            &text,
+            x,
+            y,
+            color,
+            shadow,
+            world,
+            outline,
+            default_font,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -196,6 +216,7 @@ impl HudBatch {
         shadow: bool,
         world: bool,
         outline: Option<(u32, [f32; 2])>,
+        default_font: &str,
     ) -> f32 {
         let font = &atlas.font;
         let alpha = (color >> 24) as u8;
