@@ -121,8 +121,8 @@ pub fn block_providers<T: ?Sized + 'static>(
 /// A position's providers of one capability ([`block_providers`]).
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct BlockProviders<T: ?Sized + 'static> {
-    entity: &'static [CapabilityPart<BlockProviderOf>],
-    block: &'static [CapabilityPart<BlockProviderOf>],
+    entity: &'static [CapabilityPart<NativeCapabilityProvider>],
+    block: &'static [CapabilityPart<NativeCapabilityProvider>],
     site: BlockCapabilitySite,
     handler: PhantomData<fn() -> Box<T>>,
 }
@@ -208,27 +208,18 @@ impl<T: ?Sized + 'static> BlockProviders<T> {
         after_game: bool,
         mut call: impl FnMut(&dyn BlockCapabilityProvider<T>) -> Option<R>,
     ) -> Answer<R> {
-        let mut cursor = [self.entity, self.block];
-        if after_game {
-            for slice in &mut cursor {
-                *slice = &slice[slice.partition_point(|part| part.before_game)..];
+        let [entity, block] = [self.entity, self.block].map(|slice| {
+            if after_game {
+                &slice[slice.partition_point(|part| part.before_game)..]
+            } else {
+                slice
             }
-        }
+        });
         ask_providers(
             &mut (),
-            || next_merged(&mut cursor),
-            |part, _| {
-                let provider = part.provider.get::<T>()?;
-                crate::callback_owner::call_for_lookup(
-                    part.mod_id,
-                    part.mod_index,
-                    &part.poisoned,
-                    "block capability provider",
-                    "block_capability",
-                    || call(provider.as_ref()),
-                )
-                .flatten()
-            },
+            MergedProviders::new(entity, block),
+            ("block capability provider", "block_capability"),
+            |provider, _| call(provider.get::<Arc<BlockProvider<T>>>()?.as_ref()),
             |_| game,
         )
     }
@@ -334,14 +325,15 @@ fn entity_provider<T: ?Sized + 'static>(
     ) + Send
     + Sync
     + 'static,
-) -> BlockProviderOf {
-    BlockProviderOf::of(Arc::new(
+) -> NativeCapabilityProvider {
+    let provider: Arc<BlockProvider<T>> = Arc::new(
         move |level: &dyn LevelHost, at, state, entity, offer: &mut BlockCapabilityOffer<'_, T>| {
             if let Some(entity) = entity {
                 provider(level, at, state, entity, offer);
             }
         },
-    ))
+    );
+    NativeCapabilityProvider::of::<T, _>(provider)
 }
 
 /// Registrar operations for block entities.
@@ -388,6 +380,6 @@ pub trait BlockEntitiesRegistrar {
         name: &'static str,
         kind: &crate::BlockEntityTypeKey,
         before_game: bool,
-        provider: BlockProviderOf,
+        provider: NativeCapabilityProvider,
     );
 }
