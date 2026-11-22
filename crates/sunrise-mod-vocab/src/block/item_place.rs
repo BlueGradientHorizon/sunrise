@@ -573,8 +573,8 @@ impl ItemPlace {
         self.moved(host, tx, resource, amount, true)
     }
 
-    /// Takes up to `amount` of `resource` from here, in transaction `tx`: how much came
-    /// (`ItemAccess.extract`). A creative player's hand gives without losing any.
+    /// Takes up to `amount` from here, in transaction `tx`, when the item and components
+    /// match `resource` (`ItemAccess.extract`). A creative player's hand gives without losing any.
     pub fn extract(
         &self,
         host: &mut dyn ServerHost,

@@ -32,7 +32,7 @@ Keep the contents in the stack and use these methods to access it:
 | `place.resource(host)` | Its resource without a count, or `None` |
 | `place.amount(host)` | Its count, or 0 |
 | `place.insert(host, tx, &resource, amount)` | How much was inserted |
-| `place.extract(host, tx, &resource, amount)` | How much was extracted |
+| `place.extract(host, tx, &resource, amount)` | How much was taken from a stack matching the resource's item and components |
 | `place.exchange(host, tx, &resource, amount)` | How much was exchanged, or 0 if the exchange fails |
 
 Each write runs in its own transaction nested in `tx`. Aborting restores changes at every

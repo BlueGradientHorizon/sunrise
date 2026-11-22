@@ -1803,6 +1803,41 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn player_slot_extract_matches_resident_damage_without_max_damage() {
+        crate::game::in_own_process(
+            "game::native_item_places::tests::player_slot_extract_matches_resident_damage_without_max_damage",
+            || {
+                with_game(|game| {
+                    open_to_lan(game);
+                    let mut player = guest(1);
+                    let mut paper = ItemStack::new("minecraft:paper", 2);
+                    paper.damage = 40;
+                    player.inventory[3] = Some(paper.clone());
+                    game.lan.as_mut().unwrap().hub.guests.push(player);
+                    let slot = ItemPlace::PlayerSlot {
+                        player: 123,
+                        slot: 3,
+                    };
+                    let resource = slot.resource(game).unwrap();
+                    assert_eq!(resource.as_stack().damage_component(), Some(40));
+                    assert_eq!(
+                        game.transaction(|host, tx| {
+                            Ok::<_, ()>(slot.extract(host, tx, &resource, 1))
+                        }),
+                        Ok(1)
+                    );
+                    paper.count = 1;
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.guests[0].inventory[3],
+                        Some(paper)
+                    );
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_creative_players_selected_stack_takes_what_fits_and_keeps_it() {
         with_game(|game| {
             open_to_lan(game);
