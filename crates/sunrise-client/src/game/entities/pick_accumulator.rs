@@ -179,51 +179,54 @@ impl Game<'_> {
         id == camera || self.wire_entity_id(id) == Some(camera as i32)
     }
 
-    fn pick_vehicle_root(&self, id: u32) -> Option<u32> {
-        let mut root = self.wire_entity_id(id).map_or(id, |wire| wire as u32);
-        let limit = self.remote.as_ref().map_or_else(
-            || {
-                self.mobs.len()
-                    + self.armor_stands.len()
-                    + self.interactions.len()
-                    + self.text_displays.len()
-                    + self.resident_entities.general.rows.len()
-                    + 1
-            },
-            |r| r.passenger_vehicles.len(),
-        );
-        for _ in 0..=limit + 1 {
-            let vehicle =
-                if self.pick_camera_id() == Some(root) && self.remote_camera_id().is_none() {
-                    self.riding
-                        .or_else(|| self.remote.as_ref().and_then(|r| r.passenger_vehicle(root)))
-                } else if let Some(remote) = &self.remote {
-                    remote.passenger_vehicle(root)
-                } else {
-                    self.vehicle_of_any(root)
-                        .or_else(|| {
-                            self.armor_stands
-                                .iter()
-                                .find(|a| a.id == root)
-                                .and_then(|a| a.vehicle)
-                        })
-                        .or_else(|| {
-                            i32::try_from(root)
-                                .ok()
-                                .and_then(|k| self.interactions.get(&k).and_then(|i| i.vehicle))
-                        })
-                        .or_else(|| {
-                            i32::try_from(root)
-                                .ok()
-                                .and_then(|k| self.text_displays.get(&k).and_then(|d| d.vehicle))
-                        })
-                };
-            let Some(vehicle) = vehicle else {
-                return Some(root);
-            };
-            root = vehicle;
+    fn pick_vehicle_step(&self, entity: u32) -> Option<u32> {
+        if self.pick_camera_id() == Some(entity) && self.remote_camera_id().is_none() {
+            return self.riding.or_else(|| {
+                self.remote
+                    .as_ref()
+                    .and_then(|r| r.passenger_vehicle(entity))
+            });
         }
-        None
+        if let Some(remote) = &self.remote {
+            return remote.passenger_vehicle(entity);
+        }
+        self.vehicle_of_any(entity)
+            .or_else(|| {
+                self.armor_stands
+                    .iter()
+                    .find(|a| a.id == entity)
+                    .and_then(|a| a.vehicle)
+            })
+            .or_else(|| {
+                self.interactions
+                    .get(&(entity as i32))
+                    .and_then(|i| i.vehicle)
+            })
+            .or_else(|| {
+                self.text_displays
+                    .get(&(entity as i32))
+                    .and_then(|d| d.vehicle)
+            })
+    }
+
+    /// Walks the full vehicle chain (including retained off-level entities) with cycle detection.
+    fn pick_vehicle_root(&self, id: u32) -> Option<u32> {
+        let start = self.wire_entity_id(id).map_or(id, |wire| wire as u32);
+        let mut slow = start;
+        let mut fast = start;
+        loop {
+            let Some(next) = self.pick_vehicle_step(fast) else {
+                return Some(fast);
+            };
+            let Some(next2) = self.pick_vehicle_step(next) else {
+                return Some(next);
+            };
+            fast = next2;
+            slow = self.pick_vehicle_step(slow)?;
+            if slow == fast {
+                return None;
+            }
+        }
     }
 
     pub(super) fn pick_shares_vehicle(&self, id: u32) -> bool {

@@ -543,8 +543,8 @@ impl Game<'_> {
             }
             while self.consume_mapping_click("key.pickItem") {
                 if !using {
-                    if let Some(entity) = self.pick_entity_hit() {
-                        if let Some(stack) = entity.and_then(|id| self.entity_pick_result(id)) {
+                    if let Some(hit) = self.crosshair_entity_hit() {
+                        if let Some(stack) = self.entity_pick_result(hit.id) {
                             self.pick_into_inventory(&stack, self.creative);
                         }
                     } else if let Some(hit) = self.pick() {
