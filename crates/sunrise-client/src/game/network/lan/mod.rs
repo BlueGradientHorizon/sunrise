@@ -2302,7 +2302,9 @@ impl Game<'_> {
                         let mut host = self.lan.take()?;
                         self.cleanup_fake_player(&mut host, &guest);
                         self.lan = Some(host);
-                        self.native_guest_left(&guest);
+                        if self.announce_guest_left(&guest) {
+                            self.native_player_logged_out(guest.uuid, &guest.name);
+                        }
                         continue;
                     }
                     // The menu they had open closes, in the level they were in
@@ -2313,16 +2315,23 @@ impl Game<'_> {
                         if self.enter_level(theirs).is_ok() {
                             let conn = guest.conn;
                             let host = self.lan.as_mut()?;
-                            let at = host.hub.guests.len();
                             let carrier = guest.entity_id as u32;
+                            let asleep = guest.bed.is_some();
                             host.hub.guests.push(*guest);
                             // A player logging out carries no mob a mod seated on it.
                             self.eject_player_riders(Some(carrier));
+                            // ServerPlayer.disconnect: stopSleepInBed(true, false).
+                            if asleep && let Some(gi) = self.guest_index(conn) {
+                                self.wake_guest(gi, true, false);
+                            }
                             self.guest_disconnected(conn);
                             let Some(host) = self.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
                             };
-                            assert_eq!(host.hub.guests[at].conn, conn);
+                            let at =
+                                host.hub.guests.connection_index(conn).expect(
+                                    "a leaving player stays listed while their menu closes",
+                                );
                             *guest = host.hub.guests.remove(at);
                         }
                         if let Err(e) = self.enter_level(back) {
@@ -2330,6 +2339,9 @@ impl Game<'_> {
                         }
                     }
                     self.lan_crafting_left(&mut guest);
+                    // PlayerList.remove: the mods hear the leave first, then the
+                    // statistic, the vehicle and the save follow.
+                    let mut guest = self.native_guest_left(guest);
                     if guest.joined() {
                         self.award_leave_game(guest.conn, guest.uuid, &guest.name);
                     }
@@ -2340,7 +2352,6 @@ impl Game<'_> {
                     host.play.remove(&guest.conn);
                     host.forget_menus(guest.conn);
                     self.clear_guest_book_connection(guest.conn);
-                    self.native_guest_left(&guest);
                     // PlayerList.remove after the logout: what it tracked stops (removePairing).
                     for e in guest.tracker.take_events() {
                         self.tell_tracking(guest.uuid, &guest.name, &e);

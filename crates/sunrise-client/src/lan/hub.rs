@@ -339,6 +339,10 @@ pub struct Hub {
     pub chunk_watches: ChunkWatchLog,
     /// Kicks waiting for the game thread to notify native mods.
     pending_kicks: Vec<HostEvent>,
+    /// The player who left whose logout the mods are hearing (`player_logged_out`), by
+    /// connection: listed again with the online players though no longer in a level, as one
+    /// who quit from the End credits is.
+    pub departing: Option<u32>,
     /// A native mod listens to `player_move`: a changed report waits for the game ([`pending_move`]).
     pub moves_listened: bool,
     /// This hub's game owns the movement effects that need an acting player and a live level.
@@ -816,6 +820,7 @@ impl Hub {
             chunk_watches: ChunkWatchLog::default(),
             packet_drain: None,
             pending_kicks: Vec::new(),
+            departing: None,
             moves_listened: false,
             dispatch_move_effects: false,
             transfers: None,
@@ -993,7 +998,7 @@ impl Hub {
     pub fn holder_guest(&self, uuid: u128, dimension: &str) -> Option<&Guest> {
         self.guests
             .iter()
-            .find(|g| g.placed && g.uuid == uuid && g.participates_online())
+            .find(|g| self.online(g) && g.uuid == uuid)
             .or_else(|| {
                 self.guests.iter().find(|g| {
                     g.placed
@@ -1006,9 +1011,11 @@ impl Hub {
 
     /// Placed network players in join order.
     pub fn online_players(&self) -> impl Iterator<Item = &Guest> {
-        self.guests
-            .simulation_iter()
-            .filter(|g| g.placed && g.participates_online())
+        self.guests.simulation_iter().filter(|g| self.online(g))
+    }
+    /// Whether `g` is a placed network player, or the one whose logout the mods are hearing.
+    pub fn online(&self, g: &Guest) -> bool {
+        (g.placed || self.departing == Some(g.conn)) && g.participates_online()
     }
     /// The number of network guests, including those still joining.
     pub fn online_count(&self) -> usize {
@@ -2752,7 +2759,9 @@ impl Hub {
     }
 
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
+        let behind = self.guests.iter().take(i).map(|g| g.conn).collect();
         let mut g = self.guests.remove(i);
+        g.listed_behind = behind;
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
         let closed = g
             .menu
