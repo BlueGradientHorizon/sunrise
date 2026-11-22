@@ -4,7 +4,9 @@
 use super::ChatTypeBound;
 use crate::{
     Result,
-    buf::{Byte, BytesN, Codec, List, Long, Opt, Reader, Str, StrN, TrustedNbt, Uuid, VarInt},
+    buf::{
+        Byte, BytesN, Codec, List, Long, Opt, Reader, Str, StrN, TrustedComponent, Uuid, VarInt,
+    },
     packet,
     packets::login::PropertyCodec,
 };
@@ -68,7 +70,7 @@ packet!(PlayerChat {
     timestamp: i64 => Long,
     salt: i64 => Long,
     last_seen: Vec<(i32, Option<Vec<u8>>)> => List<PackedSignature>,
-    unsigned_content: Option<Tag> => Opt<TrustedNbt>,
+    unsigned_content: Option<Tag> => Opt<TrustedComponent>,
     filter: (i32, Vec<i64>) => FilterMask,
     chat_type: ChatTypeBound => ChatTypeBound,
 });
@@ -132,7 +134,7 @@ impl Codec<PlayerInfoUpdate> for PlayerInfoUpdate {
                 e.latency = Some(r.varint()?);
             }
             if actions & 32 != 0 {
-                e.display_name = Some(<Opt<TrustedNbt>>::read(r)?);
+                e.display_name = Some(Opt::<TrustedComponent>::read(r)?);
             }
             if actions & 64 != 0 {
                 e.list_order = Some(r.varint()?);

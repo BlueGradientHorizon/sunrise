@@ -4,8 +4,8 @@ use crate::{
     Error, Result,
     buf::{
         Bool, Byte, BytesN, ChunkPos, Codec, Double, Float, Ident, Int, List, Long, Longs, LpVec3,
-        Nbt, Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, TrustedNbt, UByte, Uuid,
-        VarInt, VarLong, VarVec3i, Vec3d,
+        Nbt, Opt, OptVarInt, Pos, Reader, SectionPos, Short, Str, StrN, TrustedComponent,
+        TrustedNbt, UByte, Uuid, VarInt, VarLong, VarVec3i, Vec3d,
     },
     chunk::{ChunkData, LightData},
     entity_data::{EntityData, Particle, Value},
@@ -211,7 +211,7 @@ pub enum DialogHolder {
 impl Codec<DialogHolder> for DialogHolder {
     fn read(r: &mut Reader) -> Result<Self> {
         Ok(match r.varint()? {
-            0 => Self::Direct(r.trusted_nbt()?),
+            0 => Self::Direct(TrustedNbt::read(r)?),
             id => Self::Registry(id - 1),
         })
     }
@@ -231,9 +231,9 @@ packet!(
 );
 packet!(
     /// ChatType.Bound.
-    ChatTypeBound { chat_type: i32 => HolderId, name: Tag => TrustedNbt, target: Option<Tag> => Opt<TrustedNbt> }
+    ChatTypeBound { chat_type: i32 => HolderId, name: Tag => TrustedComponent, target: Option<Tag> => Opt<TrustedComponent> }
 );
-packet!(DisguisedChat { message: Tag => TrustedNbt, chat_type: ChatTypeBound => ChatTypeBound });
+packet!(DisguisedChat { message: Tag => TrustedComponent, chat_type: ChatTypeBound => ChatTypeBound });
 packet!(EntityEvent { id: i32 => Int, event: i8 => Byte });
 /// PositionPath: Linear(end position) or Stepped(list of (position, tick offset)).
 #[derive(Clone, Debug, PartialEq)]
@@ -484,7 +484,7 @@ macro_rules! move_entity {
 move_entity!(MoveEntityPos, pos: true, rot: false);
 move_entity!(MoveEntityPosRot, pos: true, rot: true);
 move_entity!(MoveEntityRot, pos: false, rot: true);
-packet!(OpenScreen { container: i32 => VarInt, menu: i32 => VarInt, title: Tag => TrustedNbt });
+packet!(OpenScreen { container: i32 => VarInt, menu: i32 => VarInt, title: Tag => TrustedComponent });
 // ClientboundMountScreenOpenPacket: a horse's or llama's inventory, with its
 // chest's columns (`getInventoryColumns`).
 packet!(MountScreenOpen { container: i32 => VarInt, columns: i32 => VarInt, entity: i32 => Int });
@@ -498,7 +498,7 @@ packet!(
     OpenBook { hand: i32 => VarInt }
 );
 packet!(PlayerAbilities { flags: i8 => Byte, flying_speed: f32 => Float, walking_speed: f32 => Float });
-packet!(PlayerCombatKill { id: i32 => VarInt, message: Tag => TrustedNbt });
+packet!(PlayerCombatKill { id: i32 => VarInt, message: Tag => TrustedComponent });
 packet!(PlayerPosition {
     teleport: i32 => VarInt,
     position: [f64; 3] => Vec3d,
@@ -533,7 +533,7 @@ packet!(
     /// Each change is `state << 12 | x << 8 | z << 4 | y` within the section.
     SectionBlocksUpdate { section: [i32; 3] => SectionPos, changes: Vec<i64> => List<VarLong> }
 );
-packet!(Text { text: Tag => TrustedNbt });
+packet!(Text { text: Tag => TrustedComponent });
 packet!(SetChunkCacheCenter { x: i32 => VarInt, z: i32 => VarInt });
 packet!(
     /// ClientboundTickingStatePacket: the tick rate and whether the level is frozen.
@@ -655,7 +655,7 @@ packet!(Sound {
     pitch: f32 => Float,
     seed: i64 => Long,
 });
-packet!(SystemChat { content: Tag => TrustedNbt, overlay: bool => Bool });
+packet!(SystemChat { content: Tag => TrustedComponent, overlay: bool => Bool });
 packet!(
     /// ClientboundTagQueryPacket: the answer to a debug NBT query (F3+I), with
     /// the transaction it answers; `Tag::End` when there was no block entity.
@@ -686,7 +686,7 @@ packet!(
         warning_time: i32 => VarInt,
     }
 );
-packet!(TabList { header: Tag => TrustedNbt, footer: Tag => TrustedNbt });
+packet!(TabList { header: Tag => TrustedComponent, footer: Tag => TrustedComponent });
 packet!(
     /// ClientboundSetBorderCenterPacket.
     SetBorderCenter { x: f64 => Double, z: f64 => Double }
@@ -818,7 +818,7 @@ impl Codec<Explode> for Explode {
         w.bool(v.play_sound);
     }
 }
-packet!(ServerData { motd: Tag => TrustedNbt, icon: Option<Vec<u8>> => Opt<crate::buf::Bytes> });
+packet!(ServerData { motd: Tag => TrustedComponent, icon: Option<Vec<u8>> => Opt<crate::buf::Bytes> });
 packet!(
     /// ClientboundUpdateMobEffectPacket; flags: 1 ambient, 2 visible, 4 icon, 8 blend.
     UpdateMobEffect { id: i32 => VarInt, effect: i32 => VarInt, amplifier: i32 => VarInt, duration: i32 => VarInt, flags: i8 => Byte }

@@ -2,7 +2,7 @@
 //! scoreboard's objectives and scores, and the teams.
 use crate::{
     Error, Result,
-    buf::{Codec, List, Opt, Reader, Str, TrustedNbt, VarInt},
+    buf::{Codec, List, Opt, Reader, Str, TrustedComponent, TrustedNbt, VarInt},
     packet,
 };
 use sunrise_core::nbt::Tag;
@@ -56,7 +56,7 @@ impl Codec<BossEvent> for BossEvent {
         let id = r.uuid()?;
         let action = match r.varint()? {
             0 => {
-                let name = r.trusted_nbt()?;
+                let name = TrustedComponent::read(r)?;
                 let progress = r.f32()?;
                 let color = r.varint()?;
                 let overlay = r.varint()?;
@@ -74,7 +74,7 @@ impl Codec<BossEvent> for BossEvent {
             1 => BossAction::Remove,
             2 => BossAction::UpdateProgress { progress: r.f32()? },
             3 => BossAction::UpdateName {
-                name: r.trusted_nbt()?,
+                name: TrustedComponent::read(r)?,
             },
             4 => BossAction::UpdateStyle {
                 color: r.varint()?,
@@ -152,8 +152,8 @@ impl Codec<NumberFormat> for NumberFormat {
     fn read(r: &mut Reader) -> Result<Self> {
         Ok(match r.varint()? {
             0 => NumberFormat::Blank,
-            1 => NumberFormat::Styled(r.trusted_nbt()?),
-            2 => NumberFormat::Fixed(r.trusted_nbt()?),
+            1 => NumberFormat::Styled(TrustedNbt::read(r)?),
+            2 => NumberFormat::Fixed(TrustedComponent::read(r)?),
             other => return Err(crate::Error::new(format!("unknown number format {other}"))),
         })
     }
@@ -177,7 +177,7 @@ packet!(
         owner: String => Str,
         objective: String => Str,
         score: i32 => VarInt,
-        display: Option<Tag> => Opt<TrustedNbt>,
+        display: Option<Tag> => Opt<TrustedComponent>,
         number_format: Option<NumberFormat> => Opt<NumberFormat>,
     }
 );
@@ -195,7 +195,11 @@ impl Codec<SetObjective> for SetObjective {
         let name = r.string(32767)?;
         let method = r.i8()?;
         let display = if method == 0 || method == 2 {
-            Some((r.trusted_nbt()?, r.varint()?, <Opt<NumberFormat>>::read(r)?))
+            Some((
+                TrustedComponent::read(r)?,
+                r.varint()?,
+                <Opt<NumberFormat>>::read(r)?,
+            ))
         } else {
             None
         };
@@ -247,9 +251,9 @@ impl Codec<SetPlayerTeam> for SetPlayerTeam {
         let method = r.i8()?;
         let parameters = if method == 0 || method == 2 {
             Some(TeamParameters {
-                display_name: r.trusted_nbt()?,
-                prefix: r.trusted_nbt()?,
-                suffix: r.trusted_nbt()?,
+                display_name: TrustedComponent::read(r)?,
+                prefix: TrustedComponent::read(r)?,
+                suffix: TrustedComponent::read(r)?,
                 name_tag_visibility: r.varint()?,
                 collision_rule: r.varint()?,
                 color: <Opt<VarInt>>::read(r)?,

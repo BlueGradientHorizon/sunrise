@@ -245,10 +245,6 @@ impl<'a> Reader<'a> {
     pub fn nbt(&mut self) -> Result<Tag> {
         self.nbt_within(nbt::Limits::network())
     }
-    /// A network NBT tag using vanilla's trusted depth limit without a size or node quota.
-    pub fn trusted_nbt(&mut self) -> Result<Tag> {
-        self.nbt_within(nbt::Limits::unlimited_heap())
-    }
     /// [`Self::nbt`] within `limits`, for a codec whose writer uses the same ones.
     pub fn nbt_within(&mut self, limits: nbt::Limits) -> Result<Tag> {
         let (tag, used) = nbt::read_network(&self.data[self.pos..], limits)
@@ -473,10 +469,38 @@ impl Codec<Tag> for Nbt {
 pub struct TrustedNbt;
 impl Codec<Tag> for TrustedNbt {
     fn read(r: &mut Reader) -> Result<Tag> {
-        r.trusted_nbt()
+        r.nbt_within(nbt::Limits::unlimited_heap())
     }
     fn write(v: &Tag, w: &mut Writer) {
         Nbt::write(v, w)
+    }
+}
+/// `ComponentSerialization.TRUSTED_STREAM_CODEC` and `TRUSTED_CONTEXT_FREE_STREAM_CODEC`:
+/// read unlimited-heap NBT, then decode it as a component.
+pub struct TrustedComponent;
+impl TrustedComponent {
+    /// Check a component already read as part of a synchronized registry entry.
+    pub(crate) fn validate_tag(tag: &Tag, r: &Reader) -> Result<()> {
+        if *tag == Tag::End {
+            return Err(Error::new("Expected non-null compound tag"));
+        }
+        sunrise_world::component_value::source::from_component_tag_with_items(
+            "minecraft:custom_name",
+            tag,
+            &|item| r.contains_registry_entry("minecraft:item", item),
+        )
+        .map_err(|e| Error::new(format!("Failed to decode: {e}")))?;
+        Ok(())
+    }
+}
+impl Codec<Tag> for TrustedComponent {
+    fn read(r: &mut Reader) -> Result<Tag> {
+        let tag = TrustedNbt::read(r)?;
+        Self::validate_tag(&tag, r)?;
+        Ok(tag)
+    }
+    fn write(v: &Tag, w: &mut Writer) {
+        TrustedNbt::write(v, w)
     }
 }
 /// ByteBufCodecs.LONG_ARRAY.

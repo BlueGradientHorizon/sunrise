@@ -61,6 +61,16 @@ fn title_subtitle_and_action_bar_use_the_shared_trusted_text_codec() {
 }
 
 #[test]
+fn title_packet_rejects_nbt_that_is_not_a_component() {
+    let packet = Clientbound::SetTitleText(Text { text: Tag::Int(7) });
+    let bytes = packet.encode();
+    let mut r = Reader::new(&bytes);
+    let id = r.varint().unwrap();
+    let err = Clientbound::decode(id, r.rest()).unwrap_err();
+    assert!(err.to_string().starts_with("Failed to decode:"), "{err}");
+}
+
+#[test]
 fn tab_list_uses_trusted_nbt() {
     assert_trusted_limits(|header| TabList {
         header,
