@@ -228,11 +228,11 @@ def untimed(result: dict) -> list[str]:
 FAILED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. FAILED(?: <\d+(?:\.\d+)?s>)?$")
 # The line `report_missing` writes when a test returns early for want of prepared data. It is searched for, not
 # anchored: libtest's own `test a::b ... ` may be on the same line, since both write to one file.
+DATA_SKIP = re.compile(r"skipped: no vanilla data; test=([^;\n]+); skipped tests=\d+")
 # libtest's warning for a test running past TEST_WARN_TIMEOUT_S, printed only with more than one test thread.
 HUNG = re.compile(r"^test (\S+) has been running for over \d+ seconds$", re.M)
 # libtest's TEST_WARN_TIMEOUT_S (library/test/src/time.rs): the bound for a single-test rerun, which gets no warning.
 HANG_SECONDS = 60
-DATA_SKIP = re.compile(r"skipped: no vanilla data; test=([^;\n]+); skipped tests=\d+")
 
 
 def report(result: dict) -> list[str]:
