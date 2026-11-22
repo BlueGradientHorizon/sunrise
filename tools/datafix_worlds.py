@@ -407,6 +407,18 @@ def build(name, force=False):
     shutil.rmtree(work, ignore_errors=True)
     port = lab.free_port()
     server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
+    if props and props.get('level-type') == 'debug_all_block_states':
+        # The debug world's grid (DebugLevelSource.getBlockStateFor: every block state at odd x and z from 1 to
+        # 2 * GRID_WIDTH + 1, 187 for 1.13.2's 8,599 states) holds the twelve moving_piston states. Their block has a
+        # block entity it cannot make on its own, so 1.13.2 keeps each of those positions with no data and fails to
+        # save its chunk (ChunkSerializer adds a null TileEntities entry), and a debug world refuses every block
+        # change, so the grid cannot be cleared. The world is wanted for its level.dat alone: its spawn moves far from
+        # the grid, the chunks of this first start are dropped, and the world is made again from there, so its saved
+        # chunks never hold the grid.
+        server.run('setworldspawn -4000 70 -4000')
+        server.stop()
+        shutil.rmtree(work / 'world' / 'region')
+        server = Server(work, jar, port, scene.experiments(data_version), java(version), props)
     problems = []
 
     def run(command):
