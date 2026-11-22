@@ -791,49 +791,55 @@ fn a_carried_body_stops_at_a_wall_and_the_collider_goes_on() {
 #[test]
 #[ignore = "daily"]
 fn a_collider_on_a_collider_passes_the_displacement_on() {
-    with_world(|game| {
-        let (c1, c1_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
-        c1_ref.set_collider(game, Some(deck())).unwrap();
-        // The second collider's holder rests on the first deck, with a small deck above it.
-        let c2 = drop_item(game, [8.5, 70.0, 8.0]);
-        game.entity(c2)
-            .unwrap()
-            .set_collider(
-                game,
-                Some(Collider {
-                    boxes: vec![ColliderBox {
-                        min: [-0.5, 0.0, -0.5],
-                        max: [0.5, 0.2, 0.5],
-                    }],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
-                }),
-            )
-            .unwrap();
-        // And a body on that.
-        let rider = drop_dirt(game, [8.5, 70.2, 8.0]);
-        settle(game);
-        let (from_c2, from) = (item_at(game, c2), item_at(game, rider));
-        assert!(
-            from.y > 70.1,
-            "the rider stands on the small deck: {from:?}"
-        );
-        for _ in 0..10 {
-            tick_level_moving(game, |g| shift_stand(g, c1, Vec3::new(0.1, 0.0, 0.0)));
-        }
-        let (to_c2, to) = (item_at(game, c2), item_at(game, rider));
-        assert!(
-            near(
-                to_c2,
-                Vec3::new(from_c2.x + 1.0, from_c2.y, from_c2.z),
-                0.05
-            ),
-            "{to_c2:?}"
-        );
-        assert!(
-            near(to, Vec3::new(from.x + 1.0, from.y, from.z), 0.05),
-            "{from:?} -> {to:?}"
-        );
-    });
+    crate::game::in_own_process(
+        "game::native_colliders_tests::a_collider_on_a_collider_passes_the_displacement_on",
+        || {
+            with_world(|game| {
+                let (c1, c1_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
+                c1_ref.set_collider(game, Some(deck())).unwrap();
+                // The second collider's holder rests on the first deck, with a small deck above it.
+                // Its descent clears the pig that holds the first deck, so this tests carry only.
+                let c2 = drop_item(game, [9.0, 70.0, 8.0]);
+                game.entity(c2)
+                    .unwrap()
+                    .set_collider(
+                        game,
+                        Some(Collider {
+                            boxes: vec![ColliderBox {
+                                min: [-0.5, 0.0, -0.5],
+                                max: [0.5, 0.2, 0.5],
+                            }],
+                            rotation: [0.0, 0.0, 0.0, 1.0],
+                        }),
+                    )
+                    .unwrap();
+                // And a body on that.
+                let rider = drop_dirt(game, [9.0, 70.2, 8.0]);
+                settle(game);
+                let (from_c2, from) = (item_at(game, c2), item_at(game, rider));
+                assert!(
+                    from.y > 70.1,
+                    "the rider stands on the small deck: {from:?}"
+                );
+                for _ in 0..10 {
+                    tick_level_moving(game, |g| shift_stand(g, c1, Vec3::new(0.1, 0.0, 0.0)));
+                }
+                let (to_c2, to) = (item_at(game, c2), item_at(game, rider));
+                assert!(
+                    near(
+                        to_c2,
+                        Vec3::new(from_c2.x + 1.0, from_c2.y, from_c2.z),
+                        0.05
+                    ),
+                    "{to_c2:?}"
+                );
+                assert!(
+                    near(to, Vec3::new(from.x + 1.0, from.y, from.z), 0.05),
+                    "{from:?} -> {to:?}"
+                );
+            })
+        },
+    );
 }
 
 /// A carry is an `entity_move` with the cause `Carried`: a listener hears it with the contact
