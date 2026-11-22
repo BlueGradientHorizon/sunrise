@@ -665,9 +665,7 @@ impl Game<'_> {
         if !self.container_menu_valid(g) {
             return false;
         }
-        let Some(p) = host.play.get(&conn) else {
-            return true;
-        };
+        let p = host.play.get(&conn);
         let menus = host.menus.get(&conn);
         menus
             .and_then(|m| m.crafting.table.as_ref())
@@ -675,15 +673,13 @@ impl Game<'_> {
             && menus
                 .and_then(|m| m.station.as_ref())
                 .is_none_or(|s| self.lan_station_valid(g, s))
-            && p.lectern
-                .as_ref()
+            && p.and_then(|p| p.lectern.as_ref())
                 .is_none_or(|l| self.lan_lectern_valid(g, l.key))
-            && p.merchant
-                .as_ref()
+            && menus
+                .and_then(|m| m.merchant.as_ref())
                 .and_then(|m| m.merchant.mob)
                 .is_none_or(|id| self.lan_merchant_valid(g, id))
-            && p.mount_window
-                .as_ref()
+            && p.and_then(|p| p.mount_window.as_ref())
                 .is_none_or(|m| self.lan_mount_valid(g, m.mob))
     }
 
@@ -721,10 +717,10 @@ impl Game<'_> {
         if let Some(menus) = host.menus.get(&conn) {
             windows.extend(menus.crafting.table.as_ref().map(|t| t.0));
             windows.extend(menus.station.as_ref().map(|s| s.window));
+            windows.extend(menus.merchant.as_ref().map(|m| m.window));
         }
         if let Some(p) = host.play.get(&conn) {
             windows.extend(p.lectern.as_ref().map(|l| l.window));
-            windows.extend(p.merchant.as_ref().map(|m| m.window));
             windows.extend(p.mount_window.as_ref().map(|m| m.window));
         }
         if let Some(host) = self.lan.as_mut() {
