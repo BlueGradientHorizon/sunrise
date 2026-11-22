@@ -129,6 +129,10 @@ def scene():
     command('summon villager 8.5 100 8.5 {UUID:[I;203,0,0,64],NoAI:1b,NoGravity:1b}', 'wake/summon', True)
     command(f'damage {villager} 4 minecraft:generic at 10.5 100 8.5', 'wake/seed_hit', True)
     command(f'data merge entity {villager} {{sleeping_pos:[I;8,100,8]}}', 'wake/sleep', True)
+    command('time set 14000')
+    # LAST_WOKEN is stamped with the current game time. The two servers may
+    # have spent a different number of ticks loading chunks before the scene.
+    command('time query gametime', 'wake/clock', True)
     ops.append({'op': 'mob_damage_state', 'uuid': villager, 'no_action_time': 611, 'label': 'wake/before'})
     fields.append(('wake/before', 'wake/before', None))
     command(f'damage {villager} 1 minecraft:generic at 10.5 100 8.5', 'wake/weak_hit', False)
@@ -172,6 +176,11 @@ def observed(path, fields):
         if path.name == 'vanilla.jsonl' and result[0] != expected_success:
             raise ValueError(f'Vanilla fixture prerequisite failed: {field}')
         observations[field] = value
+    clock_ok, clock = observations.pop('wake/clock')
+    if not clock_ok:
+        raise ValueError('Wake fixture did not observe the current game time')
+    if observations['wake/last_woken'][0]:
+        observations['wake/last_woken'][1] -= clock
     return observations
 
 
@@ -204,7 +213,8 @@ def main():
     if not (expected['wake/before/sleeping'] and not expected['wake/after/sleeping']
             and expected['wake/before/cooldown'] == expected['wake/after/cooldown']
             and expected['wake/before/health'] == expected['wake/after/health']
-            and expected['wake/before/no_action_time'] == 611 and expected['wake/after/no_action_time'] == 0):
+            and expected['wake/before/no_action_time'] == 611 and expected['wake/after/no_action_time'] == 0
+            and expected['wake/last_woken'] == [True, 0]):
         raise ValueError('Vanilla wake fixture did not reject a weak hit while waking the mob')
     if args.reference_only:
         print(f'{RECORDING}: Minecraft {lock["minecraft"]["version"]} reference captured')
