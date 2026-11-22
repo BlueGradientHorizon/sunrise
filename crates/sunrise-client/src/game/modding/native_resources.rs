@@ -39,7 +39,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::prelude::Host;
+    use mod_api::Host;
     use std::collections::BTreeMap;
     use sunrise_assets::resource_source::{Resource, ResourceSource};
 
