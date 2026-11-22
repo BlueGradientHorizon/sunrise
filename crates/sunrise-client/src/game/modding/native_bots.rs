@@ -482,6 +482,12 @@ mod tests {
             || {
                 with_game(|game| {
                     open_to_lan(game);
+                    // The fixture hasn't opened a world to bind its item predicates to the
+                    // level's damage types yet.
+                    let mut items = world_items!(game).clone();
+                    std::sync::Arc::make_mut(&mut items.enchantments)
+                        .bind_damage_catalog(&game.health_resources.damage);
+                    game.server_items = Some(std::sync::Arc::new(items));
                     game.streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     let magma = game
@@ -521,7 +527,7 @@ mod tests {
                         .as_mut()
                         .unwrap()
                         .hub
-                        .update_guest(1, |guest| guest.armor[0] = Some(boots))
+                        .update_guest(1, |guest| guest.armor[3] = Some(boots))
                         .unwrap();
                     assert_eq!(game.lan_acting, None);
                     assert_eq!(
