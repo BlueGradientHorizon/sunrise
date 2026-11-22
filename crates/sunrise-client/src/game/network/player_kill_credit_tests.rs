@@ -481,11 +481,13 @@ fn surviving_mob_hit_awards_resistance_before_pre_and_post() {
         let mut resources = None;
         let mut game = game(&mut resources);
         assert!(game.run_command("summon pig 7.5 100 6.5 {NoAI:1b,NoGravity:1b}"));
+        assert!(
+            game.run_command(
+                "effect give @e[type=pig,limit=1] minecraft:resistance infinite 0 true"
+            )
+        );
         let pig = game.mobs.last().unwrap().id;
         for command in [false, true] {
-            assert!(game.run_command(
-                "effect give @e[type=pig,limit=1] minecraft:resistance infinite 0 true"
-            ));
             let index = game.mob_index.find(&game.mobs, pig).unwrap();
             game.mobs[index].invulnerable = 0;
             game.as_guest(CONN, |game| {
