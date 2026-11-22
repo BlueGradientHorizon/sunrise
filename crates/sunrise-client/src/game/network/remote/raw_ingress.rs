@@ -238,6 +238,7 @@ impl Game<'_> {
                     reason,
                     key,
                     from_server,
+                    after_login,
                 } => {
                     self.reset_book_view();
                     log::info!("Sunrise: disconnected: {reason}");
@@ -262,7 +263,14 @@ impl Game<'_> {
                         sunrise_hooks::connection::By::Connection
                     };
                     self.connection_ended(&reason, key.as_deref(), by);
-                    self.leave_server(Some(Text::literal(reason)))?;
+                    // ClientCommonPacketListenerImpl.onDisconnect calls Minecraft.disconnect
+                    // (configuration or play); ConnectScreen and ClientHandshakePacketListenerImpl
+                    // only replace the screen without firing logout again.
+                    if after_login {
+                        self.leave_server(Some(Text::literal(reason)))?;
+                    } else {
+                        self.finish_leave_server(Some(Text::literal(reason)))?;
+                    }
                     return Ok(());
                 }
                 Event::RawPayload(incoming) => {

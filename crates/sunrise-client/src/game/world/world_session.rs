@@ -226,12 +226,15 @@ impl Game<'_> {
         self.repro_on_exit();
         self.finish_perf();
         self.connection_left(sunrise_hooks::connection::Left::Quit);
-        if self.title.is_some() || self.saved_for_exit {
+        if self.saved_for_exit {
             return Ok(());
         }
-        // exitWorldAndClose disconnects the client from its world.
-        if self.integrated.is_some() || self.remote.is_some() {
-            self.client_logging_out();
+        // Minecraft.exitWorldAndClose calls disconnectWithProgressScreen even
+        // when no level is open (including quitting from the title screen).
+        self.client_logging_out();
+        if self.title.is_some() {
+            self.saved_for_exit = true;
+            return Ok(());
         }
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.

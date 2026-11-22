@@ -1,17 +1,26 @@
+use crate::game::event_loop::EventLoopCtl;
 use crate::game::native_entity_refs::tests::with_client_game;
 use crate::game::native_lifecycle::NativeLifecycle;
 use crate::game::remote::RemoteDimensionEntry;
 use mod_api::{
-    ClientHost, ClientLevelUnloadEvent, ClientPlayerLoggingOutEvent, GameMode, Hooks, ModEntry,
-    PlayerRef,
+    ClientHost, ClientLevelUnloadEvent, ClientPlayerLoggingOutEvent, ClientStoppingEvent, GameMode,
+    Hooks, ModEntry, PlayerRef,
 };
 use mod_platform::testing::with_mods;
+use std::cell::Cell;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use sunrise_client::level_loading::Reason;
+use sunrise_client::title::Action;
+use sunrise_core::nbt::Tag;
 use sunrise_protocol::{
-    connection::Pipe,
-    packets::play::{self, Clientbound as C, SpawnInfo},
+    connection::{Connection, Pipe},
+    packets::{
+        Empty, configuration as cfg, login,
+        play::{self, Clientbound as C, SpawnInfo},
+    },
 };
+use winit::event_loop::ControlFlow;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Observed {
@@ -23,6 +32,29 @@ enum Observed {
         level_live: bool,
     },
     LevelUnload(String),
+    Stopping,
+}
+
+fn empty_logout() -> Observed {
+    Observed::Logout {
+        player: None,
+        game_mode: None,
+        local_player: None,
+        host_game_mode: None,
+        level_live: false,
+    }
+}
+
+struct TestLoop {
+    exited: Cell<bool>,
+}
+
+impl EventLoopCtl for TestLoop {
+    fn exit(&self) {
+        self.exited.set(true);
+    }
+
+    fn set_control_flow(&self, _flow: ControlFlow) {}
 }
 
 struct Probe {
@@ -60,6 +92,10 @@ impl Hooks for Probe {
             .unwrap()
             .push(Observed::LevelUnload(event.dimension.to_owned()));
     }
+
+    fn client_stopping(&self, _host: &mut dyn ClientHost, _event: &mut ClientStoppingEvent) {
+        self.events.lock().unwrap().push(Observed::Stopping);
+    }
 }
 
 fn spawn_info(dimension: &str, game_type: i32) -> SpawnInfo {
@@ -77,6 +113,51 @@ fn spawn_info(dimension: &str, game_type: i32) -> SpawnInfo {
     }
 }
 
+fn poll_until(
+    game: &mut crate::game::Game<'_>,
+    predicate: impl Fn(&crate::game::Game<'_>) -> bool,
+    what: &str,
+) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !predicate(game) {
+        assert!(Instant::now() < deadline, "timed out waiting for {what}");
+        game.poll_remote_events(false).unwrap();
+        if !predicate(game) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+}
+
+fn local_server(pipe: Pipe) -> Connection {
+    let mut server = Connection::local(pipe);
+    server
+        .reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    server
+}
+
+fn accept_into_configuration(server: &mut Connection, uuid: u128, name: &str) {
+    server.recv().unwrap(); // Intention
+    server.recv().unwrap(); // Hello
+    server
+        .send(
+            &login::Clientbound::LoginFinished(login::LoginFinished {
+                profile: login::GameProfile {
+                    uuid,
+                    name: name.into(),
+                    properties: vec![],
+                },
+                session: 1,
+            })
+            .encode(),
+        )
+        .unwrap();
+    server.recv().unwrap(); // LoginAcknowledged
+    server.recv().unwrap(); // Brand
+    server.recv().unwrap(); // ClientInformation
+}
+
 #[test]
 #[ignore = "daily"]
 fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_transitions() {
@@ -90,38 +171,90 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
     with_mods(mods, || {
         with_client_game(|game| {
             let take = || std::mem::take(&mut *events.lock().unwrap());
+            let saves = tempfile::tempdir().unwrap();
 
-            // 1. No-player disconnect transition with no remote session
-            // (Minecraft.disconnect from title / doWorldLoad / ConnectScreen.startConnecting).
-            assert!(game.remote.is_none());
-            game.client_logging_out();
+            // 1. ConnectScreen.startConnecting emits one no-player logout; a failed
+            // address/socket attempt does not emit a second logout when torn down.
+            let title = game.new_title(saves.path().to_path_buf());
+            game.show_title(title);
+            take();
+            game.connect_server_with_options("[invalid]", "BadAddr", None, false, false)
+                .unwrap();
             assert_eq!(
                 take(),
-                vec![Observed::Logout {
-                    player: None,
-                    game_mode: None,
-                    local_player: None,
-                    host_game_mode: None,
-                    level_live: false,
-                }]
+                vec![empty_logout()],
+                "ConnectScreen.startConnecting notifies once before starting the attempt"
+            );
+            poll_until(game, |g| g.remote.is_none(), "failed connect attempt");
+            assert_eq!(
+                take(),
+                vec![],
+                "failed address/socket attempt does not fire client_player_logging_out again"
             );
 
-            // 2. Pre-login disconnect: remote exists, but no player or level yet.
+            // 2. ConnectScreen Cancel aborts the pending connection without emitting logout.
             let (client, _server) = Pipe::pair();
-            game.connect_local(client, "PreLogin").unwrap();
-            game.leave_server(None).unwrap();
+            game.connect_local(client, "CancelAttempt").unwrap();
+            take();
+            let (x, y) = game
+                .connect_cancel(game.gui_size())
+                .expect("ConnectScreen Cancel button");
+            game.cursor = (x + 1.0, y + 1.0);
+            game.connect_screen_click().unwrap();
+            assert!(game.remote.is_none());
             assert_eq!(
                 take(),
-                vec![Observed::Logout {
-                    player: None,
-                    game_mode: None,
-                    local_player: None,
-                    host_game_mode: None,
-                    level_live: false,
-                }]
+                vec![],
+                "ConnectScreen Cancel does not fire client_player_logging_out"
             );
 
-            // 3. Logged-in disconnect via leave_server: fires once before teardown
+            // 3. Login-handshake failure (ClientHandshakePacketListenerImpl.onDisconnect)
+            // only changes the screen without calling Minecraft.disconnect.
+            let (client, server_pipe) = Pipe::pair();
+            game.connect_local(client, "LoginReject").unwrap();
+            take();
+            let mut server = local_server(server_pipe);
+            server.recv().unwrap(); // Intention
+            server.recv().unwrap(); // Hello
+            server
+                .send(
+                    &login::Clientbound::Disconnect(login::Disconnect {
+                        reason_json: r#"{"text":"Refused during login"}"#.into(),
+                    })
+                    .encode(),
+                )
+                .unwrap();
+            poll_until(game, |g| g.remote.is_none(), "login-handshake disconnect");
+            assert_eq!(
+                take(),
+                vec![],
+                "login-handshake failure does not fire client_player_logging_out"
+            );
+
+            // 4. Configuration disconnect (ClientConfigurationPacketListenerImpl.onDisconnect
+            // -> ClientCommonPacketListenerImpl.onDisconnect -> Minecraft.disconnect) emits
+            // one no-player logout.
+            let (client, server_pipe) = Pipe::pair();
+            game.connect_local(client, "ConfigDisconnect").unwrap();
+            take();
+            let mut server = local_server(server_pipe);
+            accept_into_configuration(&mut server, 0x1111_2222, "ConfigDisconnect");
+            server
+                .send(
+                    &cfg::Clientbound::Disconnect(cfg::Disconnect {
+                        reason: Tag::String("Disconnected in configuration".into()),
+                    })
+                    .encode(),
+                )
+                .unwrap();
+            poll_until(game, |g| g.remote.is_none(), "configuration disconnect");
+            assert_eq!(
+                take(),
+                vec![empty_logout()],
+                "configuration disconnect fires one no-player logout"
+            );
+
+            // 5. Logged-in disconnect via leave_server: fires once before teardown
             // with live PlayerRef and GameMode; dimension change (Respawn) does not fire it.
             game.native_lifecycle = NativeLifecycle::default();
             let (client, _server) = Pipe::pair();
@@ -171,7 +304,7 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
             assert!(game.local_player().is_none());
             assert_eq!(live_player.game_mode(game), None);
 
-            // 4. Duplicate logout calls on the same connection fire only once.
+            // 6. Duplicate logout calls on the same connection fire only once.
             game.native_lifecycle = NativeLifecycle::default();
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "Deduplicated").unwrap();
@@ -207,10 +340,11 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 ]
             );
 
-            // 5. Disconnect while reconfiguring (clearClientLevel already cleared the player).
+            // 7a. Reconfiguration disconnect via ServerReconfigScreen's Disconnect button
+            // emits one no-player logout.
             game.native_lifecycle = NativeLifecycle::default();
             let (client, _server) = Pipe::pair();
-            game.connect_local(client, "Reconfiguring").unwrap();
+            game.connect_local(client, "ReconfigButton").unwrap();
             game.enter_remote_dimension(
                 &spawn_info("minecraft:overworld", GameMode::Survival.id()),
                 RemoteDimensionEntry::Login,
@@ -221,22 +355,118 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 remote.logged_in = true;
                 remote.entity_id = 88;
                 remote.profile = 0x1234_5678;
-                remote.reconfiguring = Some(1);
+                remote.reconfiguring = Some(0);
                 remote.heard_level = None;
             }
             game.native_lifecycle.begin_close();
+            game.ticks = 600;
             take();
 
-            game.leave_server(None).unwrap();
+            let (_, (rx, ry)) = game.reconfigure_layout(game.gui_size());
+            game.cursor = (rx + 1.0, ry + 1.0);
+            game.connect_screen_click().unwrap();
+            assert!(game.remote.is_none());
             assert_eq!(
                 take(),
-                vec![Observed::Logout {
-                    player: None,
-                    game_mode: None,
-                    local_player: None,
-                    host_game_mode: None,
-                    level_live: false,
-                }]
+                vec![empty_logout()],
+                "ServerReconfigScreen Disconnect fires one no-player logout"
+            );
+
+            // 7b. Server-driven reconfiguration followed by a configuration disconnect
+            // unloads the level on StartConfiguration and emits one no-player logout on
+            // the disconnect.
+            game.native_lifecycle = NativeLifecycle::default();
+            let (client, server_pipe) = Pipe::pair();
+            game.connect_local(client, "ReconfigDrop").unwrap();
+            let mut server = local_server(server_pipe);
+            accept_into_configuration(&mut server, 0x3333_4444, "ReconfigDrop");
+            server
+                .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
+                .unwrap();
+            server.recv().unwrap(); // FinishConfiguration
+            poll_until(
+                game,
+                |g| g.remote.as_ref().is_some_and(|r| r.joined),
+                "play join",
+            );
+            game.enter_remote_dimension(
+                &spawn_info("minecraft:overworld", GameMode::Survival.id()),
+                RemoteDimensionEntry::Login,
+                Reason::Other,
+            );
+            {
+                let remote = game.remote.as_mut().unwrap();
+                remote.logged_in = true;
+                remote.entity_id = 89;
+                remote.profile = 0x3333_4444;
+            }
+            take();
+
+            server
+                .send(&play::Clientbound::StartConfiguration(Empty).encode())
+                .unwrap();
+            server.recv().unwrap(); // ConfigurationAcknowledged
+            server
+                .send(
+                    &cfg::Clientbound::Disconnect(cfg::Disconnect {
+                        reason: Tag::String("Disconnected while reconfiguring".into()),
+                    })
+                    .encode(),
+                )
+                .unwrap();
+            poll_until(game, |g| g.remote.is_none(), "reconfiguration disconnect");
+            drop(server);
+            assert_eq!(
+                take(),
+                vec![
+                    Observed::LevelUnload("minecraft:overworld".to_owned()),
+                    empty_logout(),
+                ],
+                "reconfiguration unloads the level without logout, then its disconnect notifies once"
+            );
+
+            // 8. Direct Quit from the title screen exits the loop and emits one no-player
+            // logout in shut_down/save_for_exit before client_stopping.
+            let title = game.new_title(saves.path().to_path_buf());
+            game.show_title(title);
+            game.saved_for_exit = false;
+            take();
+
+            let ctl = TestLoop {
+                exited: Cell::new(false),
+            };
+            game.title_action(&ctl, Action::Quit).unwrap();
+            assert!(ctl.exited.get(), "title Quit asks the event loop to exit");
+            game.shut_down();
+            assert_eq!(
+                take(),
+                vec![empty_logout(), Observed::Stopping],
+                "direct title Quit emits one no-player logout before client_stopping"
+            );
+            game.save_for_exit().unwrap();
+            assert_eq!(
+                take(),
+                vec![],
+                "repeat save_for_exit after title Quit does not emit again"
+            );
+
+            // 9. Window close / async quit from the title screen emits one no-player
+            // logout and does not emit again when shut_down runs afterwards.
+            let title = game.new_title(saves.path().to_path_buf());
+            game.show_title(title);
+            game.saved_for_exit = false;
+            take();
+
+            game.begin_closing_save(true).unwrap();
+            assert!(
+                game.poll_closing_save().unwrap(),
+                "title closing save finishes immediately"
+            );
+            game.shut_down();
+            assert_eq!(
+                take(),
+                vec![empty_logout(), Observed::Stopping],
+                "async title quit emits one no-player logout and does not duplicate on shut_down"
             );
         });
     });

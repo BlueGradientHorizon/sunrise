@@ -343,7 +343,9 @@ impl Game<'_> {
         };
         if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
             self.audio.play_button_click();
-            self.leave_server(None)?;
+            // ConnectScreen Cancel aborts the pending connection and returns to
+            // its parent screen without calling Minecraft.disconnect.
+            self.finish_leave_server(None)?;
         }
         Ok(())
     }

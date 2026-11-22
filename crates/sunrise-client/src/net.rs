@@ -139,12 +139,16 @@ pub enum Event {
     ServerLinks(Vec<cfg::ServerLink>),
     /// The connection ended. `from_server`: the server gave the reason (or
     /// the connection was refused for good), rather than the connection
-    /// failing.
+    /// failing. `after_login`: the protocol already left handshake/login for
+    /// configuration or play (`ClientCommonPacketListenerImpl.onDisconnect`,
+    /// which calls `Minecraft.disconnect`), rather than failing in
+    /// `ConnectScreen` or `ClientHandshakePacketListenerImpl`.
     Disconnected {
         reason: String,
         /// The reason's translation key, when it had one.
         key: Option<String>,
         from_server: bool,
+        after_login: bool,
     },
 }
 
@@ -196,6 +200,7 @@ impl Event {
                 reason,
                 key,
                 from_server: _,
+                after_login: _,
             } => reason.capacity().saturating_add(key.owned_heap_bytes()),
         };
         // Layout-derived allowance for a frozen receiving vector, actor backlog,
@@ -375,6 +380,7 @@ impl Session {
             .name("sunrise-net".into())
             .spawn(move || {
                 sunrise_threads::favour_current();
+                let mut after_login = false;
                 let result = captured_payloads.map_err(Reason::plain).and_then(|_| {
                     run(
                         local,
@@ -394,6 +400,7 @@ impl Session {
                         lan,
                         &thread_recorder,
                         &thread_payloads,
+                        &mut after_login,
                     )
                 });
                 thread_payloads.close();
@@ -412,6 +419,7 @@ impl Session {
                     reason: why.text,
                     key: why.key,
                     from_server,
+                    after_login,
                 });
             })
             .inspect_err(|error| {
@@ -420,6 +428,7 @@ impl Session {
                     reason: format!("network thread: {error}"),
                     key: None,
                     from_server: false,
+                    after_login: false,
                 });
             })
             .ok();
@@ -914,6 +923,7 @@ fn run(
     lan: bool,
     recorder: &RecorderSlot,
     payloads: &Arc<crate::raw_payloads::Transport>,
+    after_login: &mut bool,
 ) -> Result<Reason, Reason> {
     let singleplayer = local.is_some();
     let (host, port, mut c) = if let Some(pipe) = local {
@@ -976,6 +986,10 @@ fn run(
         match login::Clientbound::decode(id, &payload).map_err(e)? {
             login::Clientbound::Compression(p) => c.set_compression(p.threshold),
             login::Clientbound::LoginFinished(p) => {
+                // ClientHandshakePacketListenerImpl.handleLoginFinished installs
+                // ClientConfigurationPacketListenerImpl (a ClientCommonPacketListenerImpl)
+                // before sending LoginAcknowledged.
+                *after_login = true;
                 c.send(&login::Serverbound::LoginAcknowledged(Empty).encode())
                     .map_err(e)?;
                 break p.profile;

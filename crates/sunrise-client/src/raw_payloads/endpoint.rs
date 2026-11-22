@@ -251,6 +251,7 @@ impl Endpoint {
                     reason: reason.plain(),
                     key: None,
                     from_server: false,
+                    after_login: true,
                 });
                 if let Some(writer) = writer.lock().unwrap().as_ref() {
                     writer.shutdown();

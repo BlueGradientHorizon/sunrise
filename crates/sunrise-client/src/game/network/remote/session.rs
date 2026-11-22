@@ -604,7 +604,11 @@ impl Game<'_> {
         self.finish_leave_server(reason)
     }
 
-    /// Tear down the client's server session after `client_logging_out` has already run.
+    /// Tear down the client's server session without firing `client_logging_out`:
+    /// used after `client_logging_out` has already run (`leave_server`, integrated
+    /// server close), and for aborted or failed `ConnectScreen` / login-handshake
+    /// attempts that never reached `ClientCommonPacketListenerImpl` or
+    /// `Minecraft.disconnect`.
     pub(in crate::game) fn finish_leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         self.finish_perf();
         // The one boundary every network session passes when it closes here: the player leaving,
