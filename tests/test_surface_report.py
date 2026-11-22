@@ -359,6 +359,16 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(out.endswith("a\n… cut here; 1 more line in the step log\n```\n"))
 
 
+class ScopedOs:
+    """`os` for the module under test, with its own environment."""
+
+    def __init__(self, environ: dict[str, str]):
+        self.environ = environ
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+
 class MainTests(unittest.TestCase):
     """main(): the base it fetches, what it prints, what it writes to the job summary."""
 
@@ -367,8 +377,9 @@ class MainTests(unittest.TestCase):
             summary_file = Path(directory) / "summary.md"
             env = {"SUNRISE_STAGE_TOOL": tool, "EVENT": event, "PR": pr,
                    "GITHUB_STEP_SUMMARY": str(summary_file), "RUNNER_TEMP": directory}
-            with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as out, \
-                    contextlib.ExitStack() as stack:
+            # The module reads its own environment: the fixture never writes the process's.
+            with mock.patch.object(surface_report, "os", ScopedOs({**os.environ, **env})), \
+                    contextlib.redirect_stdout(io.StringIO()) as out, contextlib.ExitStack() as stack:
                 for name, value in patches.items():
                     stack.enter_context(mock.patch.object(surface_report, name, value))
                 code = surface_report.main(argv)

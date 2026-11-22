@@ -28,7 +28,7 @@ on:
         type: boolean
         default: false
       pr:
-        description: Run the heavy checks on this pull request's head (a fork's too) and post them on it
+        description: Run the heavy checks on this pull request's test merge with its base (a fork's too) and post them on its head
         type: string
         default: ''
 defaults:
@@ -990,6 +990,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.changes.outputs.pr_sha }}
+          MERGE: ${{ needs.changes.outputs.pr_merge }}
           RESULTS: ${{ toJSON(needs) }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -999,7 +1000,7 @@ jobs:
           for job in ("lint", "verify", "verify-static"):
               result = json.loads(os.environ["RESULTS"])[job]["result"]
               body = {"state": states.get(result, "error"), "context": f"dispatched/{job}",
-                      "description": f"dyna-checks dispatched on this head: {result}", "target_url": os.environ["RUN"]}
+                      "description": f"{result} on test merge {os.environ['MERGE']}", "target_url": os.environ["RUN"]}
               request = urllib.request.Request(
                   f"{os.environ['GITHUB_API_URL']}/repos/{os.environ['GITHUB_REPOSITORY']}/statuses/{os.environ['SHA']}",
                   data=json.dumps(body).encode(), method="POST",

@@ -17,7 +17,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 
 
 def integration(labels, head_ref: str) -> bool:
@@ -53,23 +52,19 @@ def outputs(event: str, same_repository: bool, pr: str, read_pr, *, labels: tupl
     return {"heavy": "true" if heavy else "false", "pr_sha": "", "pr_merge": "", "trusted": ""}
 
 
-def read_pr(number: str, reads: int = 10, pause: float = 3.0) -> dict:
+def read_pr(number: str) -> dict:
     """The pull request's head commit, its test merge with its base, its branch and labels, and whether its branch lives
     in this repository.
 
     GitHub computes the test merge in the background after the base or head moves: until then `mergeable` is null,
-    and GitHub's REST documentation ("Get a pull request") says to read the pull request again after a moment.
+    and outputs() refuses the dispatch so it is sent again.
     """
     repository = os.environ["GITHUB_REPOSITORY"]
-    for read in range(reads):
-        answer = json.loads(subprocess.run(
-            ["gh", "api", f"repos/{repository}/pulls/{number}",
-             "--jq", "{sha: .head.sha, ref: .head.ref, repo: .head.repo.full_name, labels: [.labels[].name], "
-                     "state: .state, mergeable: .mergeable, merge: .merge_commit_sha}"],
-            check=True, capture_output=True, text=True).stdout)
-        if answer["mergeable"] is not None or read == reads - 1:
-            break
-        time.sleep(pause)
+    answer = json.loads(subprocess.run(
+        ["gh", "api", f"repos/{repository}/pulls/{number}",
+         "--jq", "{sha: .head.sha, ref: .head.ref, repo: .head.repo.full_name, labels: [.labels[].name], "
+                 "state: .state, mergeable: .mergeable, merge: .merge_commit_sha}"],
+        check=True, capture_output=True, text=True).stdout)
     if answer["state"] != "open":
         raise SystemExit(f"pull request #{number} is {answer['state']}")
     if not re.fullmatch(r"[0-9a-f]{40}", answer["sha"]):
