@@ -66,9 +66,9 @@ pub fn mover_of(cause: MoveCause) -> Option<MoverType> {
 /// here — in this one function — on the authoritative side, and only when a
 /// listener subscribes; with none, or on a client's own prediction, the
 /// movement is recorded unchanged and the tick cost is the subscriber branch.
-/// A listener that cancels skips the invocation; a replacement outside ±64
-/// blocks per axis, or not a finite number, is refused whole — the movement
-/// keeps the preceding accepted delta. If a listener unwinds, the dispatch
+/// A listener that cancels skips the invocation; a non-finite replacement is
+/// refused whole — the movement keeps the preceding accepted delta. If a
+/// listener unwinds, dispatch
 /// drops only its edits and disables that callback for this hook. Earlier
 /// results stand and later eligible listeners still get the move.
 ///
@@ -114,10 +114,14 @@ pub fn arm_with<'k>(
     }
 }
 
-#[cfg(test)]
+/// The pre-existing finite, per-axis range on direct `move_by` requests from mods.
+/// It is not a limit on `Entity.move` or `entity_move` listener proposals.
+pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
+    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
+}
+
 #[test]
 fn mod_move_deltas_use_an_inclusive_finite_bound_on_every_axis() {
-    use mod_api::__private::valid_mod_move_delta;
     assert!(valid_mod_move_delta([-64.0, 0.0, 64.0]));
     for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -64.5, 64.5] {
         for axis in 0..3 {

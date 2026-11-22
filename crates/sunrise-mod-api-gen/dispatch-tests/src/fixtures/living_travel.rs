@@ -155,7 +155,9 @@ mod crate_root {
                 accepted: &[f64; 3],
                 delta: &[f64; 3],
             ) -> Result<(), &'static str> {
-                if accepted[0].to_bits() != delta[0].to_bits() && !delta[0].is_finite() {
+                if accepted.map(f64::to_bits) != delta.map(f64::to_bits)
+                    && delta.iter().any(|v| !v.is_finite())
+                {
                     Err("delta")
                 } else {
                     Ok(())

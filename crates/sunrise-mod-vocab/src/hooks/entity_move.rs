@@ -12,10 +12,10 @@ pub trait Hooks {
     /// family cannot move around it. Change `delta` to replace the movement
     /// (still through every ordinary restriction) or set `event.cancelled` or
     /// return `Flow::Cancel` to skip it: no position, velocity, collision-flag or fall change,
-    /// and no displacement notice. A replacement component that is not a
-    /// finite number, or lies outside ±64 blocks, rejects that listener's delta
-    /// and veto together. The log names the mod and delta on each refusal. An
-    /// unchanged game delta is not subject to this replacement budget. An earlier
+    /// and no displacement notice. Replacement components must be finite; there
+    /// is no additional per-axis limit. A non-finite replacement rejects that
+    /// listener's delta and veto together and logs the mod and field. An
+    /// unchanged game delta is not revalidated. An earlier
     /// accepted veto cannot be cleared. If a listener panics or incurs a
     /// phase refusal, its edits and cancel flag are discarded; earlier results
     /// stand and later eligible listeners still run. Only a panic disables
@@ -30,7 +30,7 @@ pub trait Hooks {
     /// listener written for version 1 hears moves it never heard. `MoveCause` is
     /// `#[non_exhaustive]`: match it with a wildcard arm.
     #[hook(
-        version = 3,
+        version = 4,
         side = "server",
         contract = "cancel",
         out = "canceled",
