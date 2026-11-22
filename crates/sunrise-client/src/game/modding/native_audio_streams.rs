@@ -1,7 +1,10 @@
 //! The game opens client mods' audio streams on the mixer's separate pool and
 //! places the entity-following ones each frame. Also exposes client microphone capture.
 use super::Game;
-use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, MicDevice, MicRef, MicRefusal, MicSpec, StreamPlacement, StreamSpec};
+use mod_api::{
+    AudioRefusal, AudioStream, AudioStreamRef, MicDevice, MicRef, MicRefusal, MicSpec,
+    StreamPlacement, StreamSpec,
+};
 
 /// The mod whose call this is: the host marks it when it enters the native callback.
 /// A call from no mod opens nothing.
