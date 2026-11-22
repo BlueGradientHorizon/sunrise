@@ -224,7 +224,7 @@ fn spawn_entity_obstruction() {
                         Species::Pig,
                         &level,
                         bounds,
-                        Some(&[]),
+                        true,
                         8,
                         64,
                         z as i32,

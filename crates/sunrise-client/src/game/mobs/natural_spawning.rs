@@ -22,7 +22,7 @@ use sunrise_client::{
     },
 };
 use sunrise_core::{
-    geometry::{Aabb, COLLISION_EPSILON, ShapeOp, Vec3, VoxelShape},
+    geometry::{Aabb, COLLISION_EPSILON, Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
@@ -439,16 +439,33 @@ impl GameLevel<'_, '_> {
     }
     /// Vanilla adds the mob before checking another position, even when our
     /// pass defers insertion. Keep its current box and collision predicate.
-    pub(super) fn record_pending(&self, mob: &Mob) -> Aabb {
-        let bounds = mob.bounds();
+    pub(super) fn record_pending(&self, mob: &Mob) {
         if !mob.removed {
             self.pending.borrow_mut().push(PendingMob {
                 kind: mob.kind.clone(),
-                bounds,
+                bounds: mob.bounds(),
                 collidable: mob_collidable_for_spawn(mob),
             });
         }
-        bounds
+    }
+    /// `EntityType.loadPassengersRecursive`: each mob riding the accepted
+    /// NBT tree is visible to the next attempt, including indirect riders.
+    /// The geometry-only copy does not run construction hooks or consume the
+    /// level's random; the actual passenger is constructed on insertion.
+    pub(super) fn record_pending_mob_passengers(&self, vehicle: &Tag) {
+        if let Some(Tag::List(passengers)) = vehicle.get("Passengers") {
+            for tag in passengers {
+                if let Some(mob) = sunrise_client::entity_nbt::mob_from_nbt_remote(
+                    tag,
+                    self.game.res.mob_types(),
+                    0,
+                    Some(self.game.pack.assets.registry),
+                ) {
+                    self.record_pending(&mob);
+                    self.record_pending_mob_passengers(tag);
+                }
+            }
+        }
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
         Some(world_biomes!(self.game).get(self.game.world.noise_biome(x, y, z)?))
@@ -530,10 +547,9 @@ impl GameLevel<'_, '_> {
         let cluster_size = self
             .game
             .spawn_cluster_size(&mut mob, r.reason, None, vanilla);
-        let bounds = self.record_pending(&mob);
+        self.record_pending(&mob);
         pending.push(mob);
         Some(Spawned {
-            bounds,
             school: true,
             cluster_size,
         })
@@ -881,14 +897,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         let Some(query) = shape.bounds() else {
             return true;
         };
-        let obstructs = |b: Aabb| {
-            b.intersects(query)
-                && VoxelShape::from_box(b).is_ok_and(|other| {
-                    shape
-                        .join_is_not_empty(&other, ShapeOp::AND)
-                        .unwrap_or(false)
-                })
-        };
+        let obstructs = |bounds| spawn_selection::blocks_spawn_shape(&shape, query, bounds);
         let entities = crate::game::entity::entity_lists_of!(self.game);
         !self
             .players
@@ -900,6 +909,8 @@ impl NaturalLevel for GameLevel<'_, '_> {
                 .iter()
                 .any(|mob| obstructs(mob.bounds))
             && !self.mobs_near(query).any(|(_, b, _)| obstructs(b))
+            // The parent is a LivingEntity; its separate parts do not block building.
+            && !self.game.dragon.as_ref().is_some_and(|dragon| obstructs(dragon.body_bounds()))
             && !entities
                 .non_mob_building_blocker_boxes(
                     entities

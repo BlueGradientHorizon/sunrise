@@ -10,16 +10,8 @@ impl Game<'_> {
             ids.extend(self.dragon.parts_table().iter().filter(|&id| {
                 bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1)
             }));
-        } else {
-            // EntityType.ENDER_DRAGON dimensions: 16 wide, 8 high.
-            let p = dragon.position;
-            let body = Aabb::new(
-                Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
-                Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
-            );
-            if bounds.intersects(body) {
-                ids.push(dragon.id);
-            }
+        } else if bounds.intersects(dragon.body_bounds()) {
+            ids.push(dragon.id);
         }
     }
 }

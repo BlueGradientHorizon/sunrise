@@ -230,7 +230,7 @@ impl Game<'_> {
         ids
     }
     /// The spawner's `loadEntityRecursive` and `tryAddFreshEntityWithPassengers`:
-    /// the mob it will add (created after the tick) and its box.
+    /// make the accepted mobs visible to the next attempt before the tick inserts them.
     pub(super) fn plan_spawner_mob(
         &self,
         l: &super::natural_spawning::GameLevel,
@@ -242,7 +242,7 @@ impl Game<'_> {
         let kind = self.res.mob_types().get(r.id)?.clone();
         let [x, y, z] = r.position;
         let at = Vec3::new(x, y, z);
-        let (bounds, key) = if r.finalize {
+        let key = if r.finalize {
             // The mob a listened position check created, else a new one.
             let mut mob = l
                 .take_checked(r.id, r.position, r.yaw)
@@ -284,10 +284,10 @@ impl Game<'_> {
                 mob.head_yaw = 0.0;
                 mob.previous_head_yaw = 0.0;
             }
-            let bounds = l.record_pending(&mob);
+            l.record_pending(&mob);
             let key = mob.id;
             planned.push(Planned::Finalized(mob, r.equipment.cloned()));
-            (bounds, key)
+            key
         } else {
             // A UUID already in the level is refused.
             let mut tag = r.entity.clone();
@@ -321,16 +321,13 @@ impl Game<'_> {
                 0,
                 Some(self.pack.assets.registry),
             )?;
-            let bounds = l.record_pending(&mob);
+            l.record_pending(&mob);
+            l.record_pending_mob_passengers(&tag);
             let key = l.provisional_id();
             planned.push(Planned::Loaded(tag, r.equipment.cloned(), key));
-            (bounds, key)
+            key
         };
-        Some(SpawnerAdded {
-            id: key,
-            bounds,
-            mob: true,
-        })
+        Some(SpawnerAdded { id: key, mob: true })
     }
     /// What a spawner's tick or a spawn egg did, shown and sent.
     fn apply_spawner_events(
