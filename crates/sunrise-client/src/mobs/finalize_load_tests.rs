@@ -217,15 +217,15 @@ fn a_wolf_with_a_health_modifier_keeps_its_taming_base() {
     }
 }
 
-/// Loaded `Health` matches the recorded vanilla 26.3 witness (`tools/witness/26.3/mob_loaded_health.tsv`, #2360).
+/// Loaded `Health` matches the vanilla 26.3 witness `tools/test_mob_attribute_nbt_parity.py` records (#2360).
 #[test]
+#[ignore = "run by tools/test_mob_attribute_nbt_parity.py"]
 fn a_loaded_health_is_clamped_to_the_loaded_max_health() {
-    const WITNESS: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tools/witness/26.3/mob_loaded_health.tsv"
-    ));
+    let path = std::env::var("SUNRISE_MOB_LOADED_HEALTH_WITNESS")
+        .expect("run through tools/test_mob_attribute_nbt_parity.py, which records the witness");
+    let witness = std::fs::read_to_string(&path).unwrap();
     let mut rows = 0usize;
-    for line in WITNESS.lines() {
+    for line in witness.lines() {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
