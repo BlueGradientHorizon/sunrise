@@ -109,10 +109,9 @@ pub struct EntityState {
     /// player has at least this permission level track it.
     pub hidden: Option<u8>,
     /// A native mod's live general row (`lan_general_states`): introduced on
-    /// `sunrise:general_entity` at its declaration's range and interval. Set by
-    /// that producer alone, never from the key: a quarantined record keeps its
-    /// type's key and is no row.
-    pub general: bool,
+    /// `sunrise:general_entity` using the settings of its resolved type slot.
+    /// A quarantined record keeps its type's key but is not a general row.
+    pub general: Option<tracking::General>,
 }
 
 impl EntityState {
@@ -148,7 +147,7 @@ impl EntityState {
         self.spectator = false;
         self.watching = false;
         self.hidden = None;
-        self.general = false;
+        self.general = None;
     }
 }
 
@@ -398,18 +397,29 @@ fn full_precision_required(e: &EntityState, delta: [i64; 3]) -> bool {
 }
 
 impl ServerEntity {
-    /// `new ServerEntity`: the entity as it is when it joins the level.
-    fn new(e: &EntityState, kind: Option<i32>, riding: &Riding) -> Self {
+    /// The tracker as the entity joins the level. A zero base range has no tracker.
+    fn new(
+        e: &EntityState,
+        kind: &mut impl FnMut(&str) -> Option<i32>,
+        riding: &Riding,
+    ) -> Option<Self> {
         // A live general row takes its declaration's settings, which may reach past a
         // vanilla type's byte; any other entity its type's, whatever its key.
-        let ((range, interval, track_deltas), kind) = if e.general {
-            let declared = tracking::general(&e.kind).unwrap_or((5, 3, true));
-            (declared, Some(Kind::General))
+        let (range, interval, track_deltas) = if let Some(general) = e.general {
+            (general.range, general.interval, true)
         } else {
             let (range, interval, deltas) = tracking::settings(&e.kind);
-            ((i32::from(range), interval, deltas), kind.map(Kind::Type))
+            (i32::from(range), interval, deltas)
         };
-        Self {
+        if range == 0 {
+            return None;
+        }
+        let kind = if e.general.is_some() {
+            Some(Kind::General)
+        } else {
+            kind(&e.kind).map(Kind::Type)
+        };
+        Some(Self {
             tracked: Arc::new(Tracked {
                 uuid: e.uuid,
                 kind: Arc::from(e.kind.as_str()),
@@ -443,7 +453,7 @@ impl ServerEntity {
             spectator: e.spectator,
             watching: e.watching,
             hidden: e.hidden,
-        }
+        })
     }
 
     /// ServerEntity.sendPairingData: the packets that introduce the entity
@@ -1020,6 +1030,8 @@ struct Probe {
     id: i32,
     range: i32,
     chunk: u32,
+    /// Index in the level's input, which also contains untracked entities.
+    input: u32,
     spectator: bool,
     watching: bool,
     hidden: Option<u8>,
@@ -1214,7 +1226,9 @@ impl Entities {
             if self.states.contains_key(&e.id) {
                 continue;
             }
-            let mut s = ServerEntity::new(e, kind(&e.kind), riding);
+            let Some(mut s) = ServerEntity::new(e, &mut kind, riding) else {
+                continue;
+            };
             s.seen = self.tick;
             // Pairing has already happened by the time the next pass runs.
             s.added = false;
@@ -1234,10 +1248,11 @@ impl Entities {
                 id: e.id,
                 range: scaled_range(range, self.range_percent),
                 chunk: 0,
+                input: 0,
                 spectator: e.spectator,
                 watching: e.watching,
                 hidden: e.hidden,
-                general: e.general,
+                general: e.general.is_some(),
             };
             let chunks = [(
                 (e.position[0].floor() as i32) >> 4,
@@ -1363,13 +1378,12 @@ impl Entities {
         }
         self.moved.clear();
         self.is_moved.clear();
-        self.is_moved.resize(entities.len(), false);
         self.quiet.clear();
-        self.quiet.resize(entities.len(), false);
         // The states stamped this tick: when that is all of them, none left.
         let mut stamped = 0;
         self.states.begin();
-        for (index, e) in entities.iter().enumerate() {
+        for (input, e) in entities.iter().enumerate() {
+            let index = self.probes.len();
             let mut added = false;
             let s = match self.states.meet(e.id) {
                 Some((slot, by_id)) => {
@@ -1384,9 +1398,10 @@ impl Entities {
                 }
                 None => {
                     added = true;
-                    let slot = self
-                        .states
-                        .insert(e.id, ServerEntity::new(e, kind(&e.kind), riding));
+                    let Some(state) = ServerEntity::new(e, &mut kind, riding) else {
+                        continue;
+                    };
+                    let slot = self.states.insert(e.id, state);
                     self.states.met_new(e.id, slot);
                     self.states.at_mut(slot)
                 }
@@ -1401,21 +1416,21 @@ impl Entities {
             // catches at the player's next move, a second later at most):
             // updatePlayers.
             let section = section_of(e.position);
-            if added
+            let moved = added
                 || section != s.section
                 || e.spectator != s.spectator
                 || e.watching != s.watching
-                || e.hidden != s.hidden
-            {
+                || e.hidden != s.hidden;
+            if moved {
                 s.section = section;
                 s.spectator = e.spectator;
                 s.watching = e.watching;
                 s.hidden = e.hidden;
                 self.moved.push(index);
-                self.is_moved[index] = true;
             }
-            self.quiet[index] =
-                !self.is_moved[index] && !s.added && e.idle && !e.needs_sync && e.leash == s.leash;
+            self.is_moved.push(moved);
+            self.quiet
+                .push(!moved && !s.added && e.idle && !e.needs_sync && e.leash == s.leash);
             let at = (
                 (e.position[0].floor() as i32) >> 4,
                 (e.position[2].floor() as i32) >> 4,
@@ -1435,10 +1450,11 @@ impl Entities {
                 id: e.id,
                 range: scaled_range(s.range, self.range_percent),
                 chunk,
+                input: input as u32,
                 spectator: e.spectator,
                 watching: e.watching,
                 hidden: e.hidden,
-                general: e.general,
+                general: e.general.is_some(),
             });
         }
         self.states.end();
@@ -1459,7 +1475,7 @@ impl Entities {
             self.probes[index].range = scaled_range(range, self.range_percent);
         }
         self.pairs.clear();
-        self.pairs.resize(entities.len(), false);
+        self.pairs.resize(self.probes.len(), false);
         // The per-player sweep runs shared out (#8158): every player's flags,
         // tracker and packets are its own, and the entities' state is only
         // read, so one player's sweep never depends on another's. What the
@@ -1628,7 +1644,7 @@ impl Entities {
         }
         // The entities with something to send or someone to pair with: an unchanged leash
         // is all the pass below would do with the rest, which is nothing.
-        let active: Vec<usize> = (0..entities.len())
+        let active: Vec<usize> = (0..self.probes.len())
             .filter(|&index| !self.quiet[index] || self.pairs[index])
             .collect();
         if self.send_apart(viewers.len(), active.len()) {
@@ -1662,7 +1678,7 @@ impl Entities {
         active: &[usize],
     ) {
         for &index in active {
-            let e = entities[index];
+            let e = entities[self.probes[index].input as usize];
             let s = self.states.at_mut(self.states.slot_of_index(index));
             self.packets.clear();
             // Paired as it joined, then its first changes go to everyone
@@ -1766,6 +1782,7 @@ impl Entities {
             is_moved,
             synced: synced_ranges,
             flags,
+            probes,
             ..
         } = self;
         let mut made: Vec<Made> = states
@@ -1784,7 +1801,7 @@ impl Entities {
         sunrise_threads::par_chunks_mut(&mut made, 64, |part| {
             let mut packets = Vec::new();
             for m in part {
-                let (s, e) = (&mut *m.state, entities[m.index]);
+                let (s, e) = (&mut *m.state, entities[probes[m.index].input as usize]);
                 packets.clear();
                 // As in `send_in_order`: paired as it joined, its first changes go out with
                 // the pairing; an idle one sends only its leash.
@@ -1834,7 +1851,7 @@ impl Entities {
                         if m.synced {
                             v.out.extend(m.changes.to(v).iter().cloned());
                         }
-                        let id = entities[m.index].id;
+                        let id = probes[m.index].id;
                         if v.tracker
                             .seen
                             .insert(id, Arc::clone(&m.state.tracked))
@@ -1905,7 +1922,7 @@ mod tests {
             spectator: false,
             watching: false,
             hidden: None,
-            general: false,
+            general: None,
         }
     }
 
@@ -2065,7 +2082,7 @@ mod tests {
 
     /// The entity as added this tick, then its updates (one a tick).
     fn added(e: &EntityState) -> ServerEntity {
-        ServerEntity::new(e, Some(100), &Riding::default())
+        ServerEntity::new(e, &mut |_| Some(100), &Riding::default()).unwrap()
     }
     fn changes(s: &mut ServerEntity, e: &EntityState) -> Vec<play::Clientbound> {
         let mut out = Vec::new();
@@ -2650,6 +2667,99 @@ mod tests {
 
     fn body(p: play::Clientbound) -> Vec<u8> {
         p.encode()
+    }
+
+    #[test]
+    fn a_range_zero_entity_never_enters_the_tracker() {
+        let marker = EntityState {
+            id: 7,
+            kind: "minecraft:marker".into(),
+            ..state(0.0)
+        };
+        let declared = mod_api::__private::GeneralEntityTypeDeclaration {
+            id: "test:zero_range".into(),
+            tracking_chunks: 0,
+            ..Default::default()
+        };
+        let general = EntityState {
+            id: 9,
+            general: Some((&declared).into()),
+            kind: declared.id,
+            ..state(0.0)
+        };
+        let next = EntityState {
+            id: 8,
+            ..state(0.0)
+        };
+        let riding = Riding::default();
+        let chunks = [(0, 0)].into_iter().collect();
+        for (late, threaded) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut tracker = Tracker::default();
+            let mut out = Vec::new();
+            let mut viewer = [Viewer {
+                entity_id: 1,
+                spectator: false,
+                permission: 0,
+                sunrise: true,
+                general_entity: true,
+                moved: false,
+                position: marker.position,
+                view_distance: 10,
+                chunks: &chunks,
+                sources: None,
+                tracker: &mut tracker,
+                out: &mut out,
+            }];
+            let mut level = Entities {
+                send_apart_always: Some(threaded),
+                ..Default::default()
+            };
+            if late {
+                level.pair_after_tick(
+                    &[marker.clone(), general.clone(), next.clone()],
+                    &riding,
+                    &mut viewer,
+                    |_| Some(100),
+                );
+                assert!(!level.tracks(marker.id));
+                assert!(!level.tracks(general.id));
+                assert!(level.tracks(next.id));
+            }
+            let states = [&marker, &general, &next];
+            level.tick(&states, &riding, &mut viewer, |_| Some(100));
+            assert!(!level.tracks(marker.id));
+            assert!(!level.tracks(general.id));
+            assert!(level.tracks(next.id));
+            let tracker = &mut viewer[0].tracker;
+            assert!(!tracker.is_tracking(marker.id));
+            assert!(!tracker.is_tracking(general.id));
+            assert!(tracker.is_tracking(next.id));
+            let events = tracker.take_events();
+            assert_eq!(events.len(), 1);
+            assert!(events[0].start);
+            assert_eq!(events[0].entity, next.id);
+            level.tick(&states, &riding, &mut viewer, |_| Some(100));
+            assert!(viewer[0].tracker.take_events().is_empty());
+            let added: Vec<_> = viewer[0]
+                .out
+                .iter()
+                .filter_map(|body| {
+                    let mut reader = sunrise_protocol::buf::Reader::new(body);
+                    match play::Clientbound::decode(reader.varint().unwrap(), reader.rest())
+                        .unwrap()
+                    {
+                        play::Clientbound::AddEntity(packet) => Some(packet.id),
+                        play::Clientbound::CustomPayload(packet)
+                            if packet.channel == general_entity::CHANNEL =>
+                        {
+                            panic!("zero-range general row was sent to a client")
+                        }
+                        _ => None,
+                    }
+                })
+                .collect();
+            assert_eq!(added, [next.id]);
+        }
     }
 
     /// ChunkMap checks a pair again only when one side moves: a zombie
