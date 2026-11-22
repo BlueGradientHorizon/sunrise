@@ -245,6 +245,15 @@ mod tests {
                 uuids(|visit| pig.visit_trackers(game, visit)),
                 Ok(vec![12, 13])
             );
+            let mut first = Vec::new();
+            assert_eq!(
+                pig.visit_trackers(game, &mut |player| {
+                    first.push(player.uuid());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [12]);
             assert_eq!(
                 uuids(|visit| own.visit_trackers(game, visit)),
                 Ok(vec![13]),
@@ -265,10 +274,22 @@ mod tests {
                 game.tick_lan(false);
             }
             assert_eq!(uuids(|visit| pig.visit_trackers(game, visit)), Ok(vec![12]));
+            let host = game.lan.as_mut().unwrap();
+            let last = host.hub.guests.connection_index(12).unwrap();
+            host.hub
+                .guests
+                .update(last, |g| g.position = [900.0, 64.0, 0.0]);
+            for _ in 0..10 {
+                game.tick_lan(false);
+            }
+            assert_eq!(
+                pig.visit_trackers(game, &mut |_| panic!("no tracker should be visited")),
+                Ok(ControlFlow::Continue(()))
+            );
 
             let stale = mod_api::EntityRef::new(WorldEpoch::new(pig.epoch().get() + 1), pig.id());
             assert_eq!(
-                uuids(|visit| stale.visit_trackers(game, visit)),
+                stale.visit_trackers(game, &mut |_| panic!("stale tracker visit")),
                 Err(EntityReadError::Stale)
             );
 
@@ -280,7 +301,7 @@ mod tests {
             });
             let parked = game.player(13).unwrap().entity();
             assert_eq!(
-                uuids(|visit| parked.visit_trackers(game, visit)),
+                parked.visit_trackers(game, &mut |_| panic!("parked tracker visit")),
                 Err(EntityReadError::Unavailable)
             );
         });
@@ -313,6 +334,15 @@ mod tests {
                 uuids(|visit| chunk.visit_watchers(game, visit)),
                 Ok(vec![12, 13])
             );
+            let mut first = Vec::new();
+            assert_eq!(
+                chunk.visit_watchers(game, &mut |player| {
+                    first.push(player.uuid());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [12]);
             game.as_guest(12, |game| {
                 assert_eq!(
                     uuids(|visit| chunk.visit_watchers(game, visit)),
@@ -362,7 +392,7 @@ mod tests {
                 [0, 0],
             );
             assert_eq!(
-                uuids(|visit| stale.visit_watchers(game, visit)),
+                stale.visit_watchers(game, &mut |_| panic!("stale watcher visit")),
                 Err(LevelReadError::Stale)
             );
             assert_eq!(

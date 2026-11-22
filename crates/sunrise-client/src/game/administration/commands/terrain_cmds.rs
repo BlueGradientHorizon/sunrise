@@ -101,13 +101,14 @@ impl Game<'_> {
         let dim = Text::literal(self.dim.id());
         match id {
             "forceload.query" if ctx.get("pos").is_none() => {
-                let forced = self.streaming.commanded_in_order();
-                let count = forced.len();
+                let count = self.streaming.commanded().len();
                 if count == 0 {
                     self.command_failure(Text::translate("commands.forceload.added.none", &[dim]));
                     return Ok(0);
                 }
-                let list = forced
+                let list = self
+                    .streaming
+                    .commanded_in_order()
                     .map(|(x, z)| format!("[{x}, {z}]"))
                     .collect::<Vec<_>>()
                     .join(", ");

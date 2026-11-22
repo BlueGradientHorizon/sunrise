@@ -757,16 +757,22 @@ fn level_queries_take_their_hosts(
     chunk: ChunkRef,
     shooter: EntityRef,
     tool: &ItemStack,
+    controller: TicketController,
 ) {
-    let _: Result<core::ops::ControlFlow<()>, LevelReadError> =
-        level.visit_online_players(read, &mut |_: PlayerRef| core::ops::ControlFlow::Break(()));
     use core::ops::ControlFlow;
+    let _: Result<ControlFlow<()>, LevelReadError> =
+        level.visit_online_players(read, &mut |_: PlayerRef| ControlFlow::Break(()));
     let _: Result<ControlFlow<()>, LevelReadError> =
         chunk.visit_watchers(read, &mut |_: PlayerRef| ControlFlow::Break(()));
     let _: Result<ControlFlow<()>, LevelReadError> =
         level.visit_loaded_chunks(read, &mut |_: ChunkRef| ControlFlow::Break(()));
     let _: Result<ControlFlow<()>, LevelReadError> =
         level.visit_forced_chunks(read, &mut |_: [i32; 2]| ControlFlow::Break(()));
+    let _: Result<ControlFlow<()>, LevelReadError> = level.visit_mod_forced_chunks(
+        read,
+        controller,
+        &mut |_: TicketOwner, _: [i32; 2], _: bool| ControlFlow::Break(()),
+    );
     let _: Result<ControlFlow<()>, LevelReadError> = level.visit_game_rules(
         read,
         &mut |_: &str, _: GameRuleValue| ControlFlow::Break(()),

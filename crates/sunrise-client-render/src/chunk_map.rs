@@ -599,7 +599,7 @@ mod tests {
         map.insert((0, 0), chunk.clone());
         let inserted = map.membership_revision();
         assert_ne!(empty, inserted);
-        map.insert((0, 0), chunk.clone());
+        map.insert((0, 0), chunk);
         Arc::make_mut(map.get_mut(&(0, 0)).unwrap()).lit = true;
         for column in map.values_mut() {
             Arc::make_mut(column).light_loaded = true;
@@ -613,15 +613,20 @@ mod tests {
             &mut crate::light::LightChanges::default(),
         );
         assert_eq!(inserted, map.membership_revision());
+        assert!(map.ordered_keys().eq([(0, 0)]), "replacement keeps one key");
         map.remove(&(0, 0));
-        map.insert((1, 0), chunk);
-        assert_eq!(map.len(), 1);
+        for (x, z) in [(1, -3), (-2, 4), (-2, -1)] {
+            map.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        assert!(map.ordered_keys().eq([(-2, -1), (-2, 4), (1, -3)]));
         assert_ne!(inserted, map.membership_revision());
         let replaced = map.membership_revision();
         map.clear();
+        assert!(map.ordered_keys().next().is_none());
         assert_ne!(replaced, map.membership_revision());
         let cleared = map.membership_revision();
         map = ChunkMap::default();
+        assert!(map.ordered_keys().next().is_none());
         assert_ne!(cleared, map.membership_revision());
     }
 

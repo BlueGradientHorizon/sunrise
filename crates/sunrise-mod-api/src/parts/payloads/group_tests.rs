@@ -89,9 +89,12 @@ impl crate::prelude::LevelEntitiesBackend for Double {
 impl crate::prelude::LevelChunksBackend for Double {
     fn chunk_visit_watchers(
         &self,
-        _: ChunkRef,
+        chunk: ChunkRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
+        if !self.levels.contains_key(&chunk.level()) {
+            return Err(LevelReadError::Stale);
+        }
         Ok(self.watchers.iter().copied().try_for_each(visit))
     }
 }
@@ -239,6 +242,10 @@ fn a_stale_level_has_no_recipients() {
     let value = Counter { counter: 1 };
     assert_eq!(down.send_in_level(&mut host, stale, &value), Ok(0));
     assert_eq!(
+        down.send_tracking_chunk(&mut host, ChunkRef::new(stale, [0, 0]), &value),
+        Ok(0)
+    );
+    assert_eq!(
         down.send_near(&mut host, stale, [0.0, 64.0, 0.0], 100.0, None, &value),
         Ok(0)
     );
@@ -329,6 +336,13 @@ fn tracking_an_entity_reaches_its_trackers_and_itself_once_when_asked() {
         Ok(3)
     );
     assert_eq!(recipients(&host), [1, 3, 2]);
+    host.sent.clear();
+    // Player 4 has no tracking rows but is still included if requested.
+    assert_eq!(
+        down.send_tracking_entity(&mut host, entity(4), true, &value),
+        Ok(1)
+    );
+    assert_eq!(recipients(&host), [4]);
     host.sent.clear();
     // A stale entity has no trackers.
     assert_eq!(

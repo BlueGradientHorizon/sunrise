@@ -65,6 +65,23 @@ mod tests {
             );
             assert_eq!(times.len(), 100);
             assert_eq!(times[..4], [40_000_000, 51_000_000, 62_000_000, 0]);
+            times.clear();
+            assert_eq!(
+                host.visit_tick_times(&mut |took| {
+                    times.push(took);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(times, [40_000_000]);
+            {
+                let _scope =
+                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+                assert_eq!(
+                    host.visit_tick_times(&mut |_| panic!("refused tick-times visit")),
+                    Err(mod_api::ServerReadError::Unavailable)
+                );
+            }
             assert_eq!(game.server_view_distance(), Some(2));
             assert_eq!(game.server_simulation_distance(), Some(2));
             assert!(!game.server_set_view_distance(6), "an integrated server");

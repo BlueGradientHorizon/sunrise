@@ -1489,11 +1489,20 @@ mod tests {
                 "ordered"
             );
             assert!(positions.contains(&[0, -3]) && positions.contains(&[2, -1]));
+            let mut first = Vec::new();
+            assert_eq!(
+                level.visit_loaded_chunks(game, &mut |chunk| {
+                    first.push(chunk.pos());
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, positions[..1]);
+            assert_eq!(game.world.chunks.len(), before + 3);
             let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
             assert_eq!(
-                collect_chunks(|visit| nether.visit_loaded_chunks(game, visit)),
-                Err(LevelReadError::Stale),
-                "not opened yet"
+                nether.visit_loaded_chunks(game, &mut |_| panic!("unopened level was visited")),
+                Err(LevelReadError::Stale)
             );
         });
     }
@@ -1884,8 +1893,17 @@ mod tests {
             // The command's own set and order.
             assert!(game.streaming.forced.contains(&(40, -7)));
             let listed = collect_chunks(|visit| level.visit_forced_chunks(game, visit)).unwrap();
-            // Signed packed positions: z first, then x.
+            // Signed packed positions: signed z first, then unsigned low bits (x).
             assert_eq!(listed, vec![[40, -7], [-3, 2]]);
+            let mut first = Vec::new();
+            assert_eq!(
+                level.visit_forced_chunks(game, &mut |pos| {
+                    first.push(pos);
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [[40, -7]]);
             assert!(game.chunk_set_forced(far, false));
             assert!(!game.chunk_set_forced(far, false), "already clear");
             assert_eq!(
@@ -1992,9 +2010,28 @@ mod tests {
             let chunk = game.level_chunk_ref(level, [5, 6]).unwrap();
             assert!(game.chunk_set_forced(chunk, true));
             assert!(game.levels_to_tick().contains(&game.dim));
+            for (x, z) in [(-1, -3), (4, -3)] {
+                assert!(game.streaming.set_forced(x, z, true));
+            }
             game.save_chunk_tickets().unwrap();
-            assert!(game.save.load_forced_chunks().contains(&(5, 6)));
+            let saved = game.save.load_forced_chunks();
+            assert_eq!(
+                saved,
+                std::collections::HashSet::from([(5, 6), (-1, -3), (4, -3)])
+            );
+            game.streaming.clear_forced();
+            assert_eq!(
+                level.visit_forced_chunks(game, &mut |_| panic!("cleared ticket was visited")),
+                Ok(ControlFlow::Continue(()))
+            );
+            game.streaming.load_forced(saved, Vec::new());
+            game.streaming.load_forced([(4, -3)].into(), Vec::new());
+            assert_eq!(
+                collect_chunks(|visit| level.visit_forced_chunks(game, visit)),
+                Ok(vec![[4, -3], [-1, -3], [5, 6]])
+            );
             assert!(game.chunk_set_forced(chunk, false));
+            game.streaming.clear_forced();
             game.save_chunk_tickets().unwrap();
             assert!(game.save.load_forced_chunks().is_empty());
         });
@@ -2011,7 +2048,7 @@ mod tests {
             assert_eq!(game.chunk_forced(stale), None);
             assert!(!game.chunk_set_forced(stale, true));
             assert_eq!(
-                collect_chunks(|visit| stale_level.visit_forced_chunks(game, visit)),
+                stale_level.visit_forced_chunks(game, &mut |_| panic!("stale ticket visit")),
                 Err(LevelReadError::Stale)
             );
             assert!(game.level_chunk_ref(stale_level, [0, 0]).is_none());
@@ -2812,6 +2849,15 @@ mod tests {
                 collect_mod_tickets(game, level, quarry()),
                 Ok(vec![(owner, [11, 12], false), (owner, [13, 12], true)])
             );
+            let mut first = Vec::new();
+            assert_eq!(
+                level.visit_mod_forced_chunks(game, quarry(), &mut |owner, pos, natural| {
+                    first.push((owner, pos, natural));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(first, [(owner, [11, 12], false)]);
             // One owner holds both kinds on one chunk apart.
             assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, true));
             assert!(game.chunk_set_mod_forced(plain, quarry(), owner, false, true));

@@ -872,6 +872,7 @@ mod tests {
             let mut tick_speed = None;
             assert_eq!(
                 level.visit_game_rules(game, &mut |id, value| {
+                    assert_ne!(id, "minecraft:max_minecart_speed");
                     if id == "minecraft:random_tick_speed" {
                         tick_speed = Some(value);
                     }
@@ -880,6 +881,41 @@ mod tests {
                 Ok(ControlFlow::Continue(()))
             );
             assert_eq!(tick_speed, Some(GameRuleValue::Int(7)));
+
+            game.ui.rules = game
+                .ui
+                .rules
+                .copy_with_features(&[gamerules::MINECART_IMPROVEMENTS.to_owned()]);
+            let mut first = Vec::new();
+            assert_eq!(
+                level.visit_game_rules(game, &mut |id, value| {
+                    first.push((id.to_owned(), value));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(
+                first,
+                [(
+                    "minecraft:advance_time".to_owned(),
+                    GameRuleValue::Bool(true)
+                )]
+            );
+
+            let server: &dyn ServerHost = game;
+            let mut minecart_speed = None;
+            assert_eq!(
+                server.visit_game_rules(&mut |id, value| {
+                    if id == "minecraft:max_minecart_speed" {
+                        minecart_speed = Some(value);
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(minecart_speed, Some(GameRuleValue::Int(8)));
             let stale =
                 mod_api::LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
             let gone = mod_api::LevelRef::new(
@@ -907,6 +943,10 @@ mod tests {
                 assert_eq!(
                     level.visit_game_rules(game, &mut |_, _| panic!("refused rule visit")),
                     Err(LevelReadError::Unavailable)
+                );
+                assert_eq!(
+                    server.visit_game_rules(&mut |_, _| panic!("refused server rules visit")),
+                    Err(mod_api::ServerReadError::Unavailable)
                 );
             }
             game.options.execution_role = ExecutionRole::Client;

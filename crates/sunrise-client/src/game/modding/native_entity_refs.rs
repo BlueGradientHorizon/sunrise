@@ -4466,6 +4466,14 @@ pub(super) mod tests {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        {
+            let host: &dyn mod_api::ServerHost = &game;
+            assert_eq!(
+                host.levels()
+                    .visit_levels(&mut |_| panic!("level before world open")),
+                Ok(ControlFlow::Continue(()))
+            );
+        }
         game.native_lifecycle
             .begin_open(Authority::IntegratedServer);
 
@@ -4484,21 +4492,39 @@ pub(super) mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(0, 64, 0, stone).unwrap();
-        assert!(
-            game.enter_command_level(super::super::Dim::Overworld)
-                .is_some()
-        );
         let nether = game.level("minecraft:the_nether").unwrap();
         let host: &dyn mod_api::ServerHost = &game;
+        let levels = host.levels();
         let mut visited = Vec::new();
         assert_eq!(
-            host.levels().visit_levels(&mut |level| {
+            levels.visit_levels(&mut |level| {
                 visited.push(level);
                 ControlFlow::Continue(())
             }),
             Ok(ControlFlow::Continue(()))
         );
+        // The parked Overworld precedes the active Nether.
         assert_eq!(visited, [level, nether]);
+        visited.clear();
+        assert_eq!(
+            levels.visit_levels(&mut |level| {
+                visited.push(level);
+                ControlFlow::Break(())
+            }),
+            Ok(ControlFlow::Break(()))
+        );
+        assert_eq!(visited, [level]);
+        {
+            let _scope = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+            assert_eq!(
+                levels.visit_levels(&mut |_| panic!("refused level visit")),
+                Err(mod_api::ServerReadError::Unavailable)
+            );
+        }
+        assert!(
+            game.enter_command_level(super::super::Dim::Overworld)
+                .is_some()
+        );
         let cube = vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]];
         assert_eq!(
             game.level_block_shape(nether, stone, [0, 64, 0], BlockShapeKind::Outline),
