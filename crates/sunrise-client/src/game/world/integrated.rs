@@ -1648,7 +1648,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn owner_distances_follow_the_server_tick() {
-        use mod_api::{Hooks, ModEntry, ServerTickEvent, ServerTickPhase};
+        use mod_api::{Hooks, ModEntry, ServerHost, ServerTickEvent, ServerTickPhase};
 
         type Read = (i32, i32);
         struct Retune(Arc<Mutex<Vec<Read>>>);
@@ -1674,9 +1674,6 @@ pub(super) mod tests {
                 let mods = vec![ModEntry::new("retune", Box::new(Retune(seen.clone())))];
                 mod_platform::testing::with_mods(mods.into(), || {
                     crate::game::native_guest_turn_tests::with_guests(|game| {
-                        let _phase = mod_api::__private::PhaseOwner::scope(
-                            mod_api::__private::ModPhase::World,
-                        );
                         let serving = Serving::fixture(0);
                         let window = Integrated::fixture_for(&serving);
                         game.serving = Some(serving);

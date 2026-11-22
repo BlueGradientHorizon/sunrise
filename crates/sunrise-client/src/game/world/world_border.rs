@@ -1,6 +1,5 @@
 //! The world border's server setters, guest synchronization, tick, collision and damage.
-use super::{Dim, Game};
-use anyhow::{Context, Result, ensure};
+use super::{Dim, Game, Result};
 use mod_api::LevelRef;
 use sunrise_client::{lan::hub::Hub, worldborder::WorldBorder};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -36,8 +35,12 @@ impl Game<'_> {
         let (dimension, border) = match target {
             BorderTarget::InPlace => (self.dim.id(), &mut self.border),
             BorderTarget::Handle(level) => {
-                ensure!(self.is_logical_server(), "not on the logical server");
-                ensure!(self.level_handle_current(level), "stale level handle");
+                if !self.is_logical_server() {
+                    return Err("not on the logical server".into());
+                }
+                if !self.level_handle_current(level) {
+                    return Err("stale level handle".into());
+                }
                 let dimension = level.dimension_id();
                 let border = if dimension == self.dim.id() {
                     &mut self.border
@@ -45,7 +48,7 @@ impl Game<'_> {
                     &mut self
                         .levels
                         .parked_mut_of(dimension)
-                        .context("level is not resident")?
+                        .ok_or("level is not resident")?
                         .border
                 };
                 (dimension, border)

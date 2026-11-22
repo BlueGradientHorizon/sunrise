@@ -1,10 +1,9 @@
 //! Native server writes to the resident border named by a `LevelRef`.
-use super::Game;
+use super::{Game, Result};
 use crate::game::world_border::BorderTarget;
-use anyhow::ensure;
 use mod_api::LevelRef;
 
-fn report_border_write(level: LevelRef, operation: &str, result: anyhow::Result<()>) -> bool {
+fn report_border_write(level: LevelRef, operation: &str, result: Result<()>) -> bool {
     if let Err(error) = result {
         let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");
         let dimension = level.dimension_id();
@@ -43,10 +42,9 @@ impl Game<'_> {
         let result = self
             .border_mut(BorderTarget::Handle(level))
             .and_then(|mut border| {
-                ensure!(
-                    per_block.is_finite() && safe_zone.is_finite(),
-                    "non-finite damage or safe zone"
-                );
+                if !per_block.is_finite() || !safe_zone.is_finite() {
+                    return Err("non-finite damage or safe zone".into());
+                }
                 Self::set_border_damage_per_block(&mut border, per_block);
                 Self::set_border_safe_zone(&mut border, safe_zone);
                 Ok(())
