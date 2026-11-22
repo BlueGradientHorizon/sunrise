@@ -408,6 +408,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn without_new_runs_only_matched_entities_are_staged() {
+        let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;
         };
@@ -439,6 +440,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn translucent_items_need_the_atlas() {
+        let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;
         };
@@ -502,6 +504,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn new_runs_write_w_only_when_asked() {
+        let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = super::super::optical_flow::tests::device() else {
             return;
         };

@@ -982,6 +982,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_pack_s_solid_corners_are_the_engine_s() {
+        let _gpu = crate::gfx::test_gpu::lock();
         use crate::mesher::{TerrainVertex, packed};
         use wgpu::util::DeviceExt;
         // Records of every orientation, UV corner choice, light, grey level, tint and alpha

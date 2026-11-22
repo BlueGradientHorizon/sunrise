@@ -759,6 +759,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_pick_takes_the_quads_in_view_on_every_backend() {
+        let _gpu = crate::gfx::test_gpu::lock();
         for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
             let Some((device, queue)) =
                 crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())
@@ -809,6 +810,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn compact_sections_give_the_grid_the_words_of_their_vertices_on_every_backend() {
+        let _gpu = crate::gfx::test_gpu::lock();
         use crate::mesher::{TerrainVertex, packed};
         // Whole faces of blocks on the grid, each its own layer, grey level and light: records.
         let face = |i: u32| {

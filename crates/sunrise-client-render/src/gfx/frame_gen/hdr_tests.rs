@@ -188,6 +188,7 @@ impl Run {
 #[test]
 #[ignore = "daily"]
 fn a_made_frame_of_the_float_frame_keeps_its_light_and_lands_halfway() {
+    let _gpu = crate::gfx::test_gpu::lock();
     let Some(mut run) = Run::new() else {
         return;
     };
@@ -248,6 +249,7 @@ fn a_made_frame_of_the_float_frame_keeps_its_light_and_lands_halfway() {
 #[test]
 #[ignore = "daily"]
 fn hdr_output_shows_a_made_frame_as_the_real_one() {
+    let _gpu = crate::gfx::test_gpu::lock();
     let Some(mut run) = Run::new() else {
         return;
     };
