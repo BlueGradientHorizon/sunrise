@@ -336,6 +336,8 @@ impl Game<'_> {
             text_width: &text_width,
         };
         let mut calls = screen::draw(&layout);
+        // The tab sprites, and the category arrows painted beside them (none under an overlay).
+        let mut tab_arrow_ids = Vec::new();
         if ui.overlay.is_none() {
             for (_, [x, y, w, h], name, key) in tab_arrows(ui, xo, yo) {
                 let hover = inside(self.cursor, x, y, w, h);
@@ -343,6 +345,7 @@ impl Game<'_> {
                     "recipe_book/{name}{}",
                     if hover { "_highlighted" } else { "" }
                 );
+                tab_arrow_ids.push(id.clone());
                 calls.push(Drawn {
                     call: Call::Sprite {
                         id,
@@ -360,6 +363,14 @@ impl Game<'_> {
                     });
                 }
             }
+        }
+        // The tabs and arrows as painted are the region `ScreenView::regions` reports.
+        if self.screen_view_listened() {
+            self.screen_state
+                .drawn_book_tabs
+                .set(screen::sprite_bounds(&calls, |id| {
+                    screen::is_tab_sprite(id) || tab_arrow_ids.iter().any(|arrow| arrow == id)
+                }));
         }
         self.paint_book(batch, &calls)
     }
