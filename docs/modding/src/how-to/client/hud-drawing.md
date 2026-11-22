@@ -104,9 +104,11 @@ cancelled or replaced. The status slots still run their layer hooks and installe
 in creative or spectator mode, and off a mount. The original bodies check HUD visibility and the
 conditions for the row: survival or adventure for the player's rows, a mount with hearts for vehicle
 health. To hide your own paint under F1, check `host.hud_mode() == mod_api::HudMode::AllVisible`.
-A `Flow::Cancel` from `render_gui_pre` skips the whole walk, including Post, even under F1. To replace all
-rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
-and `air_level`; `vehicle_health` is separate.
+A `Flow::Cancel` from `render_gui_pre` skips the whole walk, including Post, even under F1.
+It does not suppress toasts, which draw after the active screen or overlay. F1 hides ordinary
+toasts and audio stream failure notices, but not other callback error toasts.
+To replace all rows formerly drawn by `health_hud`, replace or wrap `player_health`,
+`armor_level`, `food_level` and `air_level`; `vehicle_health` is separate.
 Use [`draw.draw_gui`](gui-paint.md#drawing-directly-with-a-canvas) in the installed body to group
 fallible draws with a scoped pose or scissor.
 Sunrise's radial overlay keeps clear of the actual paint from installed status-layer bodies,
@@ -116,6 +118,29 @@ Adding a taller status bar does not move the selected item name or the action ba
 59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
 pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
 `minecraft:selected_item_name` or `minecraft:overlay_message`.
+
+## Showing an action-bar line
+
+A client mod puts a line over the hotbar with `host.set_overlay_message(line, animate_color)`, as
+`Hud.setOverlayMessage` does in Java. No player handle or connection is needed: it is this window's
+HUD. Each call replaces the current line (empty text too) and restarts the stock timer and fade;
+`animate_color` cycles the colour like a jukebox's "Now Playing" line. The game's own lines use the
+same slot, so a server's action-bar packet or a jukebox message replaces a mod's line, and the other
+way round. Nothing is added to chat, narrated or sent. Text the boundary refuses returns
+`Err(TextFormError)` and the previous line stays. A server mod sends a player's action bar with
+`player_action_bar` instead.
+
+```rust
+use mod_api::prelude::*;
+use mod_api::Text;
+
+fn tool_mode_changed(host: &mut dyn ClientHost, mode: &str) {
+    let line = Text::translate("message.example.tool_mode", vec![Text::literal(mode)]);
+    if let Err(error) = host.set_overlay_message(line, false) {
+        log::debug!("action bar refused: {error:?}");
+    }
+}
+```
 
 ## Registering F3 text
 

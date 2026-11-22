@@ -8,6 +8,8 @@ mod difficulty;
 mod display_names;
 pub(super) use data::{place_summoned, strip_finalize_tree};
 mod effects;
+#[cfg(test)]
+mod enchant_tests;
 pub(super) mod execute;
 pub(super) mod extra;
 mod give;

@@ -42,6 +42,11 @@ impl Game<'_> {
             // their `register_goals` ran on the authoritative side (#1077).
             let mut mob = Mob::new_remote(id as u32, t, at, head);
             super::super::remote_mob_data::client_defaults(&mut mob);
+            if kind == "minecraft:player"
+                && let Some(r) = self.remote.as_ref()
+            {
+                mob.extra.spectator = r.remote_player_info_game_mode(id) == Some(SPECTATOR);
+            }
             (mob.yaw, mob.previous_yaw) = (yaw, yaw);
             (mob.head_pitch, mob.previous_head_pitch) = (pitch, pitch);
             mob.persistent = true;
@@ -52,6 +57,7 @@ impl Game<'_> {
             // A new entity has a new interpolation handler (a mob's or an
             // armor stand's), even under an id the server used before.
             r.stepped.remove(&id);
+            r.synced_attributes.remove(&id);
             if r.entities
                 .get(&id)
                 .is_some_and(|old| old.kind == "minecraft:item")
@@ -69,11 +75,22 @@ impl Game<'_> {
                     },
                 );
             }
+            let tracked_yaw = if yaw.is_finite() { yaw } else { 0.0 };
+            let tracked_pitch = if pitch.is_finite() {
+                (pitch % 360.0).clamp(-90.0, 90.0)
+            } else {
+                0.0
+            };
             r.entities.insert(
                 id,
                 Tracked {
                     kind: kind.to_owned(),
                     position,
+                    previous: position,
+                    yaw: tracked_yaw,
+                    pitch: tracked_pitch,
+                    previous_yaw: tracked_yaw,
+                    previous_pitch: tracked_pitch,
                     codec_base: position,
                     on_fire: false,
                     mod_fire_immune: false,

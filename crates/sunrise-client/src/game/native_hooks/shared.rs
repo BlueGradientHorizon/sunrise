@@ -1256,7 +1256,7 @@ pub(super) enum ScreenMousePre {
 impl Game<'_> {
     /// Admission for ordinary toasts. Only an accepted candidate enters its
     /// queue; mandatory callback-panic diagnostics bypass mod admission.
-    pub(super) fn add_toast(
+    pub(super) fn admit_toast(
         &self,
         kind: mod_api::ToastKind,
         title: &mut Text,
@@ -1272,19 +1272,8 @@ impl Game<'_> {
         !cancel
     }
 
-    pub(super) fn add_system_toast(
-        &self,
-        mut toast: sunrise_client::toasts::SystemToast,
-    ) -> Option<sunrise_client::toasts::SystemToast> {
-        self.add_toast(
-            mod_api::ToastKind::System,
-            &mut toast.title,
-            &mut toast.message,
-        )
-        .then_some(toast)
-    }
-
     pub(super) fn settle_title_toasts(&mut self) {
+        use super::toast_manager::SystemToastId;
         let pending = self
             .title
             .as_mut()
@@ -1295,10 +1284,15 @@ impl Game<'_> {
             .or_else(|| {
                 // The launcher's "Playing offline" can sit behind this window: say it here too, once
                 // the toast slot is free.
-                let reason = self
-                    .options
-                    .offline_reason
-                    .take_if(|_| self.title.as_ref().is_some_and(|title| !title.has_toast()))?;
+                if self.title.is_none()
+                    || self
+                        .toast_manager
+                        .system_mut(SystemToastId::Title)
+                        .is_some()
+                {
+                    return None;
+                }
+                let reason = self.options.offline_reason.take()?;
                 Some(
                     sunrise_client::toasts::SystemToast::new(
                         sunrise_client::text::Text::tr("sunrise.title.playing_offline", &[]),
@@ -1307,10 +1301,8 @@ impl Game<'_> {
                     .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME),
                 )
             });
-        if let Some(toast) = pending.and_then(|toast| self.add_system_toast(toast))
-            && let Some(title) = self.title.as_mut()
-        {
-            title.apply_toast(toast);
+        if let Some(toast) = pending {
+            self.add_system_toast(Some(SystemToastId::Title), toast);
         }
     }
     /// The milliseconds a client tick lasts at this frame's clock advance
@@ -2998,7 +2990,6 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
-                    c.slots = sunrise_client::containers::mod_container_slot_count(&c);
                     let n = c.slots;
                     for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
                         list.retain(|&s| s < n);

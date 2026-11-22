@@ -1,49 +1,56 @@
 //! The hotbar's `GuiGraphicsExtractor.extractSlot`: the item model followed by decorations.
 use super::Game;
 use sunrise_client::hud::HudBatch;
-use sunrise_client::hud_layout::GuiItems;
+use sunrise_client::hud_layout::{GuiItems, HotbarInputs, hotbar, paint_items};
 use sunrise_client::items::ItemStack;
+use sunrise_items::equipment::OFFHAND;
+
+/// Whose hotbar the slots come from: the local player, a live remote player, or a detached camera player.
+#[derive(Clone, Copy)]
+pub(crate) enum HotbarSource {
+    Own,
+    Mob(usize),
+    DetachedCamera,
+}
 
 impl Game<'_> {
     pub(super) fn draw_item_hotbar(
         &self,
         batch: &mut HudBatch,
         [w, h]: [i32; 2],
-        attack: Option<f32>,
+        inputs: &HotbarInputs,
+        source: HotbarSource,
     ) {
-        use sunrise_client::hud_layout::{HotbarInputs, hotbar, paint_items};
-        let partial = self.clock.fraction() as f32;
-        let inputs = HotbarInputs {
-            selected: self.selected as i32,
-            right_handed: !self.settings.main_hand_left,
-            offhand: self.offhand.is_some(),
-            slots: std::array::from_fn(|i| {
-                self.inventory[i]
-                    .as_ref()
-                    .map(|_| (f32::from(self.hotbar_pop[i]) - partial).max(0.0))
-            }),
-            offhand_pop: (f32::from(self.hotbar_pop[9]) - partial).max(0.0),
-            attack,
-        };
-        let draws = hotbar(w, h, &inputs);
+        let draws = hotbar(w, h, inputs);
         paint_items(
             batch,
             &self.gui.atlas,
             &draws,
-            &mut HotbarItems { game: self },
+            &mut HotbarItems { game: self, source },
         );
     }
 }
 
-/// The local player's hotbar slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
+/// A hotbar's slots (0-8) and off hand (40), drawn for `GuiDraw::Item`.
 struct HotbarItems<'a, 'g> {
     game: &'a Game<'g>,
+    source: HotbarSource,
 }
 impl HotbarItems<'_, '_> {
     fn stack(&self, slot: u32) -> Option<&ItemStack> {
-        match slot {
-            40 => self.game.offhand.as_ref(),
-            0..=8 => self.game.inventory.get(slot as usize)?.as_ref(),
+        match (self.source, slot) {
+            (HotbarSource::Own, 40) => self.game.offhand.as_ref(),
+            (HotbarSource::Own, 0..=8) => self.game.inventory.get(slot as usize)?.as_ref(),
+            (HotbarSource::Mob(i), 40) => self.game.mobs[i].extra.slot_stack(OFFHAND),
+            (HotbarSource::Mob(i), 0) => self.game.mobs[i].extra.main_hand_stack(),
+            (HotbarSource::DetachedCamera, 40) => self
+                .game
+                .detached_camera_hud()
+                .and_then(|hud| hud.offhand.as_ref()),
+            (HotbarSource::DetachedCamera, 0) => self
+                .game
+                .detached_camera_hud()
+                .and_then(|hud| hud.main_hand.as_ref()),
             _ => None,
         }
     }

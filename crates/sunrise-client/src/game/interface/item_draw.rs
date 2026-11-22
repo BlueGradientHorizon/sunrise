@@ -690,7 +690,36 @@ impl Game<'_> {
         head_skins: Option<&HeadSkinJournal>,
     ) {
         let owner = self.player_owner(Some(stack));
-        let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), seed);
+        self.draw_item_model_with_owner_and_skins(
+            batch,
+            stack,
+            [x, y],
+            seed,
+            Some(&owner),
+            head_skins,
+        );
+    }
+    /// `GuiGraphicsExtractor.item`: `fakeItem` uses the same model draw with no owner.
+    pub(super) fn draw_item_model_with_owner(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        owner: Option<&OwnerState>,
+    ) {
+        self.draw_item_model_with_owner_and_skins(batch, stack, [x, y], 0, owner, None);
+    }
+    fn draw_item_model_with_owner_and_skins(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        [x, y]: [f32; 2],
+        seed: i32,
+        owner: Option<&OwnerState>,
+        head_skins: Option<&HeadSkinJournal>,
+    ) {
+        let state = self.resolve_item(stack, DisplayContext::Gui, owner, seed);
         let host = Host {
             head_skins,
             ..self.item_host()
@@ -906,20 +935,23 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
         run: std::ops::Range<usize>,
     ) {
-        let live = self.dropped[run].iter().map(|item| {
-            let (p, q) = (item.previous, item.position);
-            let at = [
-                p.x + (q.x - p.x) * alpha,
-                p.y + (q.y - p.y) * alpha,
-                p.z + (q.z - p.z) * alpha,
-            ];
-            ItemEntityDraw {
-                item,
-                at,
-                partial: alpha as f32,
-                entity: true,
-            }
-        });
+        let live = self.dropped[run]
+            .iter()
+            .filter(|item| !self.hides_as_camera(item.id))
+            .map(|item| {
+                let (p, q) = (item.previous, item.position);
+                let at = [
+                    p.x + (q.x - p.x) * alpha,
+                    p.y + (q.y - p.y) * alpha,
+                    p.z + (q.z - p.z) * alpha,
+                ];
+                ItemEntityDraw {
+                    item,
+                    at,
+                    partial: alpha as f32,
+                    entity: true,
+                }
+            });
         self.item_entity_geometry(camera, live, out);
     }
 

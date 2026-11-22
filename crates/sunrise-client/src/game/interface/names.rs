@@ -185,6 +185,7 @@ impl Game<'_> {
     /// camera entity (`LivingEntityRenderer.shouldShowName`).
     fn own_name_tag(&self) -> Option<(&Mob, String)> {
         if !self.settings.extras.own_name_tag
+            || !self.controls_camera()
             || self.camera_type.is_first_person()
             || self.sleeping.is_some()
             || self.spectator()
@@ -317,7 +318,7 @@ impl Game<'_> {
                 distance_sqr,
                 invisible_to_viewer: invisible,
                 hud_hidden: self.ui.hide_gui,
-                is_camera: false,
+                is_camera: self.live_remote_camera_id() == Some(m.id),
                 is_vehicle: ridden.contains(&m.id),
             };
             // MobRenderer.shouldShowName: a visible name, or the mob under the
@@ -423,6 +424,9 @@ impl Game<'_> {
         // Armor stands name themselves: an invisible one with a visible name
         // is a hologram (its model is skipped, its name tag is not).
         for a in &self.armor_stands {
+            if self.hides_as_camera(a.id) {
+                continue;
+            }
             if !hooks {
                 let Some(_) = &a.custom_name else {
                     continue;

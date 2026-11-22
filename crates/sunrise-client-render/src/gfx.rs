@@ -121,7 +121,7 @@ use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_v
 #[doc(hidden)]
 pub use section_upload::section_in_eye_view;
 pub use sunrise_render_core::SectionKey;
-pub use view::{View, ViewSet};
+pub use view::{View, ViewSet, cull_fov, cull_frustum};
 
 /// Whether Translucent Batching is offered (`graphics::offer_translucent_batching`): where
 /// indirect multi-draws (`multi_draw`) take its batches, but not OpenGL's, which loop over

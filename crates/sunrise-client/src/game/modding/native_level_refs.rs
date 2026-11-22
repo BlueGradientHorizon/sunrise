@@ -372,6 +372,17 @@ impl Game<'_> {
         self.native_level_world(level)?;
         chunk_in_world(pos).then_some(ChunkRef::new(level, pos))
     }
+    /// `Level.getChunk(x, z)`: load or generate chunk `pos` to FULL, blocking the server tick
+    /// until it is there, under a one-tick `UNKNOWN` ticket (`Game::load_full_chunk`).
+    /// False for a stale handle, on a client, for a chunk past `ChunkPos.isValid`, and when
+    /// the level's generation is paused or stopped.
+    pub(super) fn level_load_chunk(&mut self, level: LevelRef, pos: [i32; 2]) -> bool {
+        if self.native_level_streaming(level).is_none() {
+            return false;
+        }
+        let parked = (level.dimension() != self.dim.key()).then_some(level);
+        self.load_full_chunk(parked, (pos[0], pos[1]))
+    }
     /// The streaming of the level a handle names now, or None for a stale or
     /// foreign one.
     fn native_level_streaming(&self, level: LevelRef) -> Option<&Streaming> {
@@ -2744,6 +2755,115 @@ mod tests {
                 query_result(game, "forceload remove 128 -64 144 -64"),
                 Some(2)
             );
+        });
+    }
+
+    /// Hears `chunk_load`, noting whether the chunk was resident when it heard it.
+    struct Loads;
+    #[mod_api::__subscriptions]
+    impl Hooks for Loads {
+        fn chunk_load(&self, host: &mut dyn ServerHost, event: &mut mod_api::ChunkLoadEvent<'_>) {
+            let resident = host
+                .level(event.dimension)
+                .and_then(|level| host.chunk(level, event.chunk))
+                .is_some();
+            HEARD.with_borrow_mut(|heard| {
+                heard.push((event.dimension.to_owned(), event.chunk, event.new, resident))
+            });
+        }
+    }
+    thread_local! {
+        /// Each `chunk_load` `Loads` heard: dimension, chunk, new, resident.
+        static HEARD: std::cell::RefCell<Vec<(String, [i32; 2], bool, bool)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    /// `Level.getChunk(x, z)` through `LevelRef::load_chunk` (#4550): a chunk never generated is
+    /// FULL when the call returns, lit (its open sky reads 15), with nothing forced, and the
+    /// mods heard `chunk_load` for it while it was resident, before the call returned. Its
+    /// `UNKNOWN` ticket keeps it through the next tick's unload sweep and expires at the one
+    /// after (a timeout of 1, removed below zero), whose sweep unloads it as any chunk with no
+    /// ticket. A parked level loads the same way, without switching levels.
+    #[test]
+    #[ignore = "daily"]
+    fn load_chunk_brings_a_lit_full_chunk_under_a_ticket_that_expires_after_a_tick() {
+        // The game fixture publishes process-wide worldgen tables, and `Loads` is installed
+        // as the process's mods: a child process of its own.
+        if run_fresh_cases(
+            concat!(
+                "game::native_level_refs::tests::",
+                "load_chunk_brings_a_lit_full_chunk_under_a_ticket_that_expires_after_a_tick"
+            ),
+            "SUNRISE_LOAD_CHUNK_CHILD",
+            &["load_chunk"],
+        ) {
+            return;
+        }
+        let mods: mod_api::Mods = vec![ModEntry::new("loads", Box::new(Loads))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_chunk_streaming(|game| {
+                let level = game.level(game.dim.id()).unwrap();
+                let far = ChunkRef::new(level, [40, -7]);
+                assert!(!game.chunk_loaded(far));
+                let host: &mut dyn ServerHost = game;
+                assert!(level.load_chunk(host, [40, -7]));
+                // Lit when the call returns: open sky at the top of the world, none in the
+                // deepslate under it.
+                let sky = |host: &dyn ServerHost, y| {
+                    level.brightness(host, LightLayer::Sky, [645, y, -105])
+                };
+                assert_eq!(sky(&*host, 318), Some(15), "open sky");
+                assert_eq!(sky(&*host, -60), Some(0), "no sky light underground");
+                let heard = HEARD.with_borrow_mut(std::mem::take);
+                assert!(
+                    heard.contains(&(level.dimension_id().to_owned(), [40, -7], true, true)),
+                    "chunk_load heard while resident, before the call returned: {heard:?}"
+                );
+                assert_eq!(game.chunk_forced(far), Some(false));
+                assert!(!game.streaming.forced.contains(&(40, -7)));
+                let host: &mut dyn ServerHost = game;
+                assert!(level.load_chunk(host, [40, -7]), "already full");
+                // A changed loaded area sweeps at once: the next tick's sweep keeps the chunk.
+                game.streaming.radius = 1;
+                game.tick_server(false).unwrap();
+                assert!(
+                    game.chunk_loaded(far),
+                    "the ticket holds through the next tick"
+                );
+                game.streaming.radius = 0;
+                game.tick_server(false).unwrap();
+                assert!(!game.chunk_loaded(far), "unloaded once the ticket expired");
+                // The first chunks past `ChunkPos.isValid`, on x and on z.
+                let host: &mut dyn ServerHost = game;
+                assert!(!level.load_chunk(&mut *host, [2_097_062, 0]));
+                assert!(!level.load_chunk(&mut *host, [0, -2_097_062]));
+                // A level the server has not opened, then the same level opened and parked.
+                let other = if game.dim == Dim::Nether {
+                    Dim::End
+                } else {
+                    Dim::Nether
+                };
+                let parked = mod_api::LevelRef::new(level.epoch(), other.key());
+                let host: &mut dyn ServerHost = game;
+                assert!(!parked.load_chunk(host, [3, 3]));
+                let back = game.dim;
+                game.enter_level(other).unwrap();
+                game.enter_level(back).unwrap();
+                HEARD.with_borrow_mut(Vec::clear);
+                let host: &mut dyn ServerHost = game;
+                assert!(parked.load_chunk(host, [3, 3]));
+                assert_eq!(game.dim, back, "loading must not switch the acting level");
+                let parked_chunk =
+                    &game.levels.parked_world_of(other.id()).unwrap().chunks[&(3, 3)];
+                assert!(parked_chunk.lit, "the parked level's chunk is lit too");
+                let heard = HEARD.with_borrow_mut(std::mem::take);
+                assert!(
+                    heard.iter().any(|(d, chunk, _, resident)| d == other.id()
+                        && *chunk == [3, 3]
+                        && *resident),
+                    "the parked level's chunk_load came before the call returned: {heard:?}"
+                );
+            });
         });
     }
 

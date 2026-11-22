@@ -126,7 +126,7 @@ impl Game<'_> {
             && self.creatures.projectiles[i].id != 0
         {
             self.remote_attack_entity(self.creatures.projectiles[i].id as i32, distance);
-        } else if let Some(hit) = self.remote_object_hit(true)
+        } else if let Some(hit) = self.remote_object_hit()
             && self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
             && self.before_block(hit.distance)
         {
@@ -249,7 +249,7 @@ impl Game<'_> {
     pub(super) fn hud_disconnected(&mut self) {
         self.tab_list.reset();
         self.boss_overlay.reset();
-        self.adv.toasts.clear();
+        self.toast_manager = Default::default();
         self.debug_charts.reset();
         self.titles.clear();
         self.titles.reset_times();

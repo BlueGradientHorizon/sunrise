@@ -421,7 +421,7 @@ mod tests {
                     assert!(!stock.vertices.is_empty());
                     game.title = Some(title);
                     game.screen = Screen::Playing;
-                    let frame = game.hud_layers(size);
+                    let frame = game.hud(size);
                     let (prefix, later) = frame.vertices.split_at(stock.vertices.len());
                     assert!(
                         prefix
@@ -438,7 +438,17 @@ mod tests {
                         "Render.Post did not paint outside the failed editor's clip"
                     );
                     // The title frame drains the report queue into the mandatory toast path.
-                    let [(Some(toast), false)] = game.server_packs.hook_panics.as_slice() else {
+                    let [
+                        crate::game::toast_manager::VisibleToast {
+                            toast:
+                                crate::game::toast_manager::Toast::Diagnostic {
+                                    toast,
+                                    hide_with_f1: false,
+                                },
+                            ..
+                        },
+                    ] = game.toast_manager.visible.as_slice()
+                    else {
                         panic!("the preset editor failure should produce one mandatory toast");
                     };
                     assert_eq!(

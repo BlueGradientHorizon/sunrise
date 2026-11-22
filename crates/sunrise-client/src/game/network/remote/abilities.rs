@@ -69,17 +69,25 @@ impl Game<'_> {
         player.flying_speed = a.flying_speed;
     }
 
-    /// Sync `PlayerInfo` (`player.spectator`) and `MultiPlayerGameMode` (`player.local_spectator`) onto the body.
+    /// Sync local and remote player spectator modes from `PlayerInfo` and `MultiPlayerGameMode`.
     pub(in crate::game) fn sync_remote_player_game_mode(&mut self) {
         debug_assert!(self.remote.is_some());
-        if self.player.is_none() {
-            return;
+        if self.player.is_some() {
+            let info_spectator = self.own_player_is_spectator();
+            let local_spectator = self.spectator();
+            if let Some(player) = self.player.as_mut() {
+                player.spectator = info_spectator;
+                player.local_spectator = local_spectator;
+            }
         }
-        let info_spectator = self.own_player_is_spectator();
-        let local_spectator = self.spectator();
-        if let Some(player) = self.player.as_mut() {
-            player.spectator = info_spectator;
-            player.local_spectator = local_spectator;
+        if let Some(r) = self.remote.as_ref() {
+            for i in 0..self.mobs.len() {
+                let id = self.mobs[i].id as i32;
+                if r.level_players.contains_key(&id) {
+                    let spectator = r.remote_player_info_game_mode(id) == Some(SPECTATOR);
+                    self.mobs.update(i, |m| m.extra.spectator = spectator);
+                }
+            }
         }
     }
 

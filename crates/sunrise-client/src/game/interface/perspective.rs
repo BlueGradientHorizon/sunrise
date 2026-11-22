@@ -323,29 +323,17 @@ impl Game<'_> {
                 self.studio.freecam.pitch,
             ));
         }
-        // Minecraft.cameraEntity: a server's spectator camera on a mob or
-        // another player.
-        let (entity, descending, entity_kind) = match self.spectated_camera_snapshot() {
-            Some(e) => (
-                e,
-                false,
-                sunrise_world::collision_context::EntityContextKind::Living,
-            ),
-            None => {
-                let mut entity = self.player_camera_entity()?;
-                if let Some(position) = self.remote_minecart_rider_position(partial) {
-                    // Already evaluated at partial: do not linearly interpolate
-                    // between tick endpoints across a corner a second time.
-                    entity.position = position;
-                    entity.previous = position;
-                }
-                (
-                    entity,
-                    self.player.as_ref()?.shift_key_down,
-                    sunrise_world::collision_context::EntityContextKind::Player,
-                )
-            }
-        };
+        let subject = self.camera_subject()?;
+        let mut entity = subject.camera;
+        if let Some(position) = self.remote_minecart_camera_position(&subject, partial) {
+            // Already evaluated at partial: do not linearly interpolate
+            // between tick endpoints across a corner a second time.
+            entity.position = position;
+            entity.previous = position;
+        }
+        let descending =
+            subject.is_local_player && self.player.as_ref().is_some_and(|p| p.shift_key_down);
+        let entity_kind = subject.collision_kind;
         let mut view = self.view;
         let kind = self.camera_type;
 
@@ -437,20 +425,10 @@ impl Game<'_> {
                 _ => None,
             })
         });
-        // Camera.setup: the living mount's scale and camera distance
-        // attributes (the happy ghast's is 8, the default 4).
         let mount = self
             .riding
             .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-            .map(|m| {
-                let attribute = |name: &str, default: f64| {
-                    m.kind.attributes.get(name).copied().unwrap_or(default)
-                };
-                (
-                    attribute("minecraft:scale", 1.0) as f32,
-                    attribute("minecraft:camera_distance", 4.0),
-                )
-            });
+            .map(Mob::camera_scale_and_distance);
         // AbstractBoat.positionRider turns a passenger by the boat's
         // deltaRotation after its yRotO was saved, and LocalPlayer.getViewYRot
         // interpolates a passenger's yaw: the boat's turn is spread over the
