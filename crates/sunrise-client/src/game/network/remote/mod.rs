@@ -1307,7 +1307,10 @@ impl Game<'_> {
             C::RecipeBookSettings(p) => self.remote_recipe_book_settings(p),
             C::PlaceGhostRecipe(p) => self.remote_ghost_recipe(p),
             C::MerchantOffers(p) => self.remote_merchant_offers(p),
-            C::ContainerClose(_) => self.close_screen_to_level()?,
+            C::ContainerClose(_) => {
+                let show_death = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
+                self.close_screen_to_level(show_death)?;
+            }
             C::TagQuery(p) => self.answer_tag_query(p.transaction, p.tag),
             C::Unknown(id, data)
                 if id == sunrise_protocol::ids::play::clientbound::COMMAND_SUGGESTIONS =>

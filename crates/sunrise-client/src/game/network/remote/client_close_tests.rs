@@ -246,7 +246,6 @@ fn server_close_notifies_the_outgoing_receiver_and_only_opens_real_screens() {
                     game.player
                         .as_mut()
                         .unwrap()
-                        .health
                         .set_health(0.0, false)
                         .unwrap();
                     game.remote.as_mut().unwrap().show_death_screen = true;

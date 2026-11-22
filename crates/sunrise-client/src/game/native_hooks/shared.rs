@@ -162,7 +162,7 @@ impl Game<'_> {
     /// `LocalPlayer.clientSideCloseContainer`: restore the logical inventory
     /// menu, then `Gui.setScreen(null)`. Keep the old screen and its view for
     /// `ScreenEvent.Closing` before running its removal, not its user close.
-    pub(super) fn close_screen_to_level(&mut self) -> anyhow::Result<()> {
+    pub(super) fn close_screen_to_level(&mut self, show_death_screen: bool) -> super::Result<()> {
         let overlay = self.observed_overlay_now();
         let inventory_screen = overlay.is_none()
             && self.screen == Screen::Inventory
@@ -182,10 +182,7 @@ impl Game<'_> {
             })
             .flatten();
         self.remote_set_menu(None, None);
-        let (has_level, show_death_screen) = self
-            .remote
-            .as_ref()
-            .map_or((false, false), |r| (r.has_level(), r.show_death_screen));
+        let has_level = self.remote.as_ref().is_some_and(|r| r.has_level());
         let dead = self
             .player
             .as_ref()
