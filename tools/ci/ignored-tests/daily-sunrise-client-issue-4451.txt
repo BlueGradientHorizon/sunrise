@@ -1426,7 +1426,6 @@ sunrise-client game::native_hooks::base::screen_open_tests::replacing_opening_op
 sunrise-client game::native_hooks::base::screen_open_tests::the_creative_screen_excludes_its_two_tab_rows lib daily resources
 sunrise-client game::native_hooks::base::screen_open_tests::the_same_screen_again_fires_nothing lib daily resources
 sunrise-client game::native_hooks::base::screen_open_tests::the_title_appears_and_goes_through_screen_opening lib daily resources
-sunrise-client game::native_hooks::base::screen_widgets_tests::mounted_widgets_draw_as_the_games_own lib daily child-process
 sunrise-client game::native_hooks::base::text_tests::text_takes_argb_and_skips_transparent_text lib daily resources
 sunrise-client game::native_hooks::block_entity_client_tick_tests::a_clients_frames_tick_its_declared_copies_until_they_go lib daily resources
 sunrise-client game::native_hooks::block_entity_client_tick_tests::a_server_never_ticks_a_client_ticker lib daily resources

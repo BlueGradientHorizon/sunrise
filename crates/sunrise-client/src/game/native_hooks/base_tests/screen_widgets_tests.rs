@@ -925,6 +925,14 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                 assert!(
                     matches!(&narration.items[2].what, What::Button { message, active: true } if message == "iii")
                 );
+                assert_eq!(narration.items[2].hovered, Some(true));
+                assert!(
+                    narration
+                        .items
+                        .iter()
+                        .enumerate()
+                        .all(|(i, item)| item.hovered == Some(i == 2))
+                );
                 assert_eq!(narration.items[2].rect, bounds(2));
                 assert!(game.mounted_widget_key_pressed(KeyCode::Enter, false, 0));
                 assert!(game.mounted_widget_key_pressed(KeyCode::Space, false, 0));
@@ -970,6 +978,12 @@ fn mounted_widgets_draw_as_the_games_own() {
             with_client_game(|game| {
                 game.set_screen(Screen::Paused);
                 game.cursor = (11.0, 11.0);
+                game.with_mounted_widget(1, |_, entry| {
+                    let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
+                        panic!("expected the initialized text field")
+                    };
+                    edit_box.reset_blink();
+                });
                 let mut ours = HudBatch::scratch([320, 240]);
                 game.draw_mounted_screen_widgets(&mut ours);
                 let mut stock = HudBatch::scratch([320, 240]);
@@ -985,35 +999,72 @@ fn mounted_widgets_draw_as_the_games_own() {
                     true,
                 );
                 let n = stock.vertices.len();
-                assert!(n > 0 && ours.vertices.len() > n);
+                assert!(n > 0);
                 assert_eq!(
                     bytemuck::cast_slice::<_, u8>(&ours.vertices[..n]),
                     bytemuck::cast_slice::<_, u8>(&stock.vertices)
                 );
 
-                let first = game
-                    .with_mounted_widget(1, |game, entry| {
-                        let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
-                            panic!("expected the initialized text field")
-                        };
-                        edit_box.view_state(&game.gui.atlas).0
-                    })
-                    .unwrap();
-                assert!(first > 0);
-                let shown = &LONG[first..]; // ASCII fixture: edit indices are byte boundaries.
-                let font = &game.gui.atlas.font;
-                assert_eq!(font.fit(shown, 52.0), shown.len());
-                let edges: Vec<_> = (0..=shown.len())
-                    .map(|i| 14.0 + font.width(&shown[..i]))
-                    .collect();
-                assert_eq!(edges[0], 14.0);
-                assert!(edges.windows(2).all(|w| w[0] < w[1]));
-                assert!(*edges.last().unwrap() <= 66.0);
-                assert!(game.mounted_widget_mouse_clicked([edges[1].ceil(), 50.0], 0, 0, false));
+                let mut stock_field = sunrise_client::ui::EditBox::new(10.0, 40.0, 60.0, 20.0);
+                stock_field.max_length = 64;
+                stock_field.set_value(LONG);
+                stock_field.focused = true;
+                stock_field.reset_blink();
+                stock_field.draw(&mut stock, &game.gui.atlas, None);
                 assert_eq!(
-                    game.mounted_focused_text_edit(None).unwrap().cursor,
-                    first + 1
+                    bytemuck::cast_slice::<_, u8>(&ours.vertices),
+                    bytemuck::cast_slice::<_, u8>(&stock.vertices)
                 );
+
+                // Independent literal foreground glyph origins for "ixty pixels" + "_" caret in
+                // vanilla 26.3's ascii.png inside [10, 40, 60, 20] (inner width 52, text_x = 14,
+                // text_y = 46): widths i=2, x=6, t=4, y=6, space=4, p=6, i=2, x=6, e=6, l=3, s=6
+                // (total 51 <= 52, scrolled to index 34), caret "_" at 14 + 51 + 1 = 66.
+                const EXPECTED_FOREGROUND_ORIGINS: [[f32; 2]; 11] = [
+                    [14.0, 46.0],
+                    [16.0, 46.0],
+                    [22.0, 46.0],
+                    [26.0, 46.0],
+                    [36.0, 46.0],
+                    [42.0, 46.0],
+                    [44.0, 46.0],
+                    [50.0, 46.0],
+                    [56.0, 46.0],
+                    [59.0, 46.0],
+                    [66.0, 46.0],
+                ];
+                let fg_color = sunrise_client::hud::rgba(224, 224, 224, 255);
+                let shadow_color = sunrise_client::hud::rgba(56, 56, 56, 255);
+                let field_text_verts: Vec<_> = ours.vertices[n..]
+                    .iter()
+                    .copied()
+                    .filter(|v| v.text == 1)
+                    .collect();
+                assert_eq!(
+                    field_text_verts.len(),
+                    EXPECTED_FOREGROUND_ORIGINS.len() * 12
+                );
+                let mut fg_origins = Vec::new();
+                let mut shadow_origins = Vec::new();
+                for quad in field_text_verts.as_chunks::<6>().0 {
+                    if quad[0].color == fg_color {
+                        fg_origins.push(quad[0].pos);
+                    } else if quad[0].color == shadow_color {
+                        shadow_origins.push(quad[0].pos);
+                    } else {
+                        panic!("unexpected text quad color: {:#010x}", quad[0].color);
+                    }
+                }
+                assert_eq!(fg_origins, EXPECTED_FOREGROUND_ORIGINS);
+                assert_eq!(
+                    shadow_origins,
+                    EXPECTED_FOREGROUND_ORIGINS.map(|[x, y]| [x + 1.0, y + 1.0])
+                );
+
+                assert!(game.mounted_widget_mouse_clicked([16.0, 50.0], 0, 0, false));
+                assert_eq!(game.mounted_focused_text_edit(None).unwrap().cursor, 35);
+                assert!(game.mounted_widget_mouse_clicked([36.0, 50.0], 0, 0, false));
+                assert_eq!(game.mounted_focused_text_edit(None).unwrap().cursor, 39);
             });
         },
     );
