@@ -4396,6 +4396,7 @@ dependencies = [
  "serde_json",
  "sunrise-assets",
  "sunrise-core",
+ "sunrise-mod-vocab",
  "sunrise-world",
 ]
 
@@ -4512,6 +4513,7 @@ dependencies = [
  "naga",
  "png",
  "pollster",
+ "pp-rs",
  "rustix 1.1.5",
  "serde",
  "serde_json",
@@ -4565,6 +4567,7 @@ dependencies = [
  "sunrise-client-core",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-vocab",
  "sunrise-protocol",
  "sunrise-world",
 ]
@@ -4669,6 +4672,7 @@ dependencies = [
  "sunrise-client-lib",
  "sunrise-core",
  "sunrise-items",
+ "sunrise-mod-api",
  "sunrise-mod-runtime",
  "sunrise-mod-vocab",
  "sunrise-protocol",
@@ -4863,6 +4867,7 @@ dependencies = [
  "sunrise-assets",
  "sunrise-core",
  "sunrise-game-discovery",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",

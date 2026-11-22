@@ -119,20 +119,23 @@ impl ItemTables<'_> {
         step: ItemStep,
         splash: &mut impl FnMut(ItemSplash),
     ) -> bool {
-        item.finish_move_block_effects(
-            self.world,
-            self.facts,
-            no_physics,
-            Some(&self.motion.blocks),
-            step,
-            self.context,
-        );
+        if !no_physics {
+            let motion = sunrise_client::motion::BodyMotion {
+                world: self.world,
+                collision: self.collision,
+                facts: self.facts,
+                blocks: Some(&self.motion.blocks),
+                context: self.context,
+                side: None,
+            };
+            item.apply_move_and_vanilla_step(motion, step);
+        }
+        item.finish_move_block_effects(self.world, self.facts, step);
         item.push_by_bubble_column(self.world, self.registry, self.facts, self.collision);
         let alive = item.tick_settle(
             self.world,
             self.registry,
             self.facts,
-            no_physics,
             step,
             self.context,
             &self.side,

@@ -853,7 +853,17 @@ pub(super) fn world_block_entity(
     pos: [i32; 3],
 ) -> Option<BlockEntityRef> {
     loaded_block_entity(world, pos)?;
-    let generation = world.block_entities.generation(&(pos[0], pos[1], pos[2]))?;
+    block_entity_handle(world, level, pos)
+}
+
+/// Construct a handle after the caller has checked that the entry is resident.
+pub(super) fn block_entity_handle(
+    world: &World,
+    level: LevelRef,
+    pos: [i32; 3],
+) -> Option<BlockEntityRef> {
+    let [x, y, z] = pos;
+    let generation = world.block_entities.generation(&(x, y, z))?;
     Some(mod_api::__private::game::block_entity_ref(
         level, pos, generation,
     ))

@@ -1,8 +1,10 @@
 # Block parts
 
 `BlockPart::clone_item_stack` answers on the server when a player picks the block. It receives the
-level, position, block state and `include_data`, true when a creative player picks with Ctrl. Return
-`None` to keep the game's item.
+level, position, block state, and `include_data`, true when a creative player picks with Ctrl.
+`event.player` is the player who sent the pick request. Use it with the read-only host for
+player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
+a client hit face. Return `None` to keep the game's item.
 
 ## Breaking-crack display
 
@@ -43,19 +45,33 @@ hook never runs on a server. See [Random display ticks for blocks](../../how-to/
 
 `BlockPart::light_emission` supplies positional light for blocks that declare
 `dynamic_light: true`. It runs on both sides with a read-only host. Return `Some(level)`
-to replace the state's emission or `None` to keep it.
+to replace the state's emission or `None` to keep it. Use `event.state` as the emitter;
+a [contextual query](../../how-to/world/block-state-facts.md#contextual-light-emission) can name
+an unplaced state at that position.
 
 | Rule | Behavior |
 | --- | --- |
 | Eligibility | Every state of a block declaring `dynamic_light` is queried; other blocks are not. |
-| Calls | Chunk arrival, block edits and `LevelRef::check_light(host, pos)` query emission. |
+| Calls | Explicit `LevelRef::get_light_emission` reads, chunk arrival, block edits and `LevelRef::check_light` query emission. |
 | Caching | Light workers read the stored answer; they do not call your Part. Call `check_light` when data your answer depends on changes. |
 | Thread | The callback runs on the thread that owns the level. |
-| Range | Values above 15 are clamped to 15 before entering the light queue. |
+| Range | Explicit reads return the Part's raw answer. Values above 15 are clamped only before entering the light queue. |
 | Client updates | A server light update queries each affected section's cells at most once per cell per update. |
 | Exclusions | The block's own rendered light, ambient occlusion and mob-spawn rules use the state's light instead. |
 
 Keep the callback a pure function of the level, position and state, without side effects.
+
+## Enchanting power
+
+`BlockPart::enchant_power_bonus` receives the queried `state`, provider `pos`, `table_pos`,
+and a read-only host. `event.power` starts at 1.0 for `#minecraft:enchantment_power_provider`
+and 0.0 otherwise. Explicit reads receive the answer unchanged; offers and particles keep the
+default if the Part answers with NaN or infinity.
+
+For live offers and `LevelRef::get_enchant_power_bonus`, `event.level` names the level to use
+for contextual reads, even if it is not the level in play. An explicit query may supply a state
+that isn't at `pos` or positions outside a table's bookshelf scan. For the client particle
+snapshot, `event.level` is `None` and both positions are the origin; answer from the state alone.
 
 ## Path classification
 
@@ -148,6 +164,29 @@ template block writes still call the rotation Part at their placed world positio
 | Refusals | A state of another block, or one the game does not have, is refused with a warning; the game's state is placed. |
 | Mirroring | Stays the game's: vanilla's table, or the template's for a mod block. |
 | Panics | A panicking part is contained with a warning, and the game's state is placed. |
+
+## Step effects
+
+`BlockPart::step_on` is the block's `Block.stepOn` callback. It runs on the `getOnPosLegacy`
+state of a grounded entity affected by blocks, after the move's restitution and block speed factor
+but before the entity's inside-block effects. An idle grounded item still steps even when it does
+not move. Each effects pass has its own callback; this is not a landing notification.
+
+Register the Part on the block. `StepOnEvent` carries the contacted `state` and `pos`, the entity id
+and kind, whether it is `stepping_carefully`, its world-space `bounds` as `[min, max]` XYZ corners,
+and its current `movement` (velocity). Edit `movement` to change what the rest of this tick sees.
+Non-finite edits are ignored; there is no veto. Keep movement answers consistent on both sides and
+on replay.
+
+`LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
+queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
+only if the block still holds the contacted state. An invalid state or non-finite movement or damage
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
+
+Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
+([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
 
 ## Landing writes
 

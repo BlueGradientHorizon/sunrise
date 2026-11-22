@@ -154,6 +154,16 @@ fixed once, when the mods are installed. Every cancellable hook's event has a `c
 cancelled reaches only mods that receive cancelled events. `receive_cancelled` on a hook without a cancel does not
 compile, and `#[listener]` is for a mod's hooks only: a part is called for its own thing, in no order.
 
+### Canceling or consuming a projectile
+
+In `projectile_impact`, use `host.entity(event.projectile)` to resolve the live projectile,
+even if the captured hit would normally consume it. Canceling alone suppresses the hit and
+lets the projectile continue according to its type. Call `EntityRef::discard(host)` to consume
+it without applying the hit. A discard makes the handle stale immediately; another listener
+clearing cancellation cannot bring that projectile back. If a listener changes the projectile
+or its target so the captured hit no longer applies, the game skips that hit instead of tracing
+it again.
+
 ## Events and shared state
 
 Each hook method takes its host, where it has one, and one event:
@@ -303,6 +313,11 @@ snapshots as their `Host` equivalents, without inserting a default, generating l
 chunks. A level view in an open transaction sees tentative Part-state writes in that frame.
 Unloaded or stale holders fail; clients have no server Part state. All of these reads require the
 owning game thread and are never available in worker hook bodies.
+
+A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
+`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
+other reads on that view, including staged changes. A client asks its own providers about its
+local data; placement still follows the server's result. See [Capabilities](capabilities.md).
 
 `LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
 

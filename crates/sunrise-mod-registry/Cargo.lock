@@ -1441,6 +1441,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sunrise-core",
+ "sunrise-mod-source",
  "sunrise-mod-surface",
  "sunrise-mod-vocab",
  "sunrise-shader-api",
