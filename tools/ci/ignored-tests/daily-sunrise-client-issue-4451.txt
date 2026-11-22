@@ -1468,7 +1468,7 @@ sunrise-client game::native_hooks::death_source_tests::skeleton_arrow_death_cred
 sunrise-client game::native_hooks::death_source_tests::zombie_ai_melee_armor_hurt_retains_the_real_source lib daily resources
 sunrise-client game::native_hooks::enchanted_block_loot::tests::a_listener_sets_the_level_a_block_table_reads lib daily resources
 sunrise-client game::native_hooks::enchantment_and_lang_tests::a_trait_mod_measures_text_through_its_draw_context lib daily resources
-sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily resources
+sunrise-client game::native_hooks::enchantment_and_lang_tests::enchantment_registry_returns_records_and_unknown_cost lib daily child-process
 sunrise-client game::native_hooks::enchantment_and_lang_tests::translate_gives_the_text_of_a_defined_key_and_none_otherwise lib daily resources
 sunrise-client game::native_hooks::entity_inside::entity_inside_tests::landing_writes_apply_at_the_batch_end lib daily resources
 sunrise-client game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush lib daily child-process
