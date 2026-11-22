@@ -193,9 +193,9 @@ pub struct World {
     /// The chunks changed in bulk (`edit_runs`) since the log was last
     /// drained, kept while `block_log` is: sent to the players whole.
     pub bulk_log: FxHashSet<(i32, i32)>,
-    /// Explicit resends waiting for the owning column's light work. Unlike bulk edits, these
-    /// do not refresh far terrain for a client that hasn't received the chunk.
-    pub chunk_resends: FxHashSet<(i32, i32)>,
+    /// Explicit resends with their light-completion markers (`ChunkResend`). Unlike bulk edits,
+    /// these do not refresh far terrain for a client that hasn't received the chunk.
+    pub chunk_resends: FxHashMap<(i32, i32), ChunkResend>,
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
@@ -839,6 +839,21 @@ impl World {
         chunk.saved = Some(Arc::new(extras));
         self.modified.insert(chunk_key);
     }
+}
+
+/// Completion boundary for an explicit chunk resend (`ChunkMap.waitForLightBeforeSending` /
+/// `ThreadedLevelLightEngine.waitForPendingTasks`): tracks only the light work that preceded
+/// the resend request, so later light checks do not keep the resend queued indefinitely.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChunkResend {
+    /// Preceding light work for this column is complete; ready to send on the next broadcast.
+    Ready,
+    /// Waiting for the next `Streaming::relight_edits` pass to drain preceding `light_edits`
+    /// in this column's 3x3 neighbourhood.
+    WaitingEdits,
+    /// Waiting for a whole-column light job for this column (including any replacement needed
+    /// if a superseded in-flight job is discarded without applying) to finish `apply_lit`.
+    WaitingLight,
 }
 
 /// The game rules and difficulty a player's health reads (`Player.isInvulnerableTo`,

@@ -1,6 +1,6 @@
 //! Bulk block edits, chunk relighting and chunk resends for server mods.
 use super::Game;
-use sunrise_client::{lan::hub::Hub, world::World};
+use sunrise_client::{lan::hub::Hub, streaming::Streaming, world::World};
 
 impl Game<'_> {
     /// For a server mod: the runs made at once, straight into the chunks of the authoritative level `dimension`
@@ -31,11 +31,12 @@ impl Game<'_> {
         }
         Ok(changed)
     }
-    /// Resolve an open server level and its server's hub, without switching levels.
+    /// Resolve an open server level, its streaming scheduler, and its server's hub, without
+    /// switching levels.
     fn resolve_chunk_level_mut(
         &mut self,
         level: mod_api::LevelRef,
-    ) -> Result<(&mut World, Option<&Hub>), mod_api::ChunkRefusal> {
+    ) -> Result<(&mut World, &mut Streaming, Option<&Hub>), mod_api::ChunkRefusal> {
         use mod_api::ChunkRefusal;
         if !self.is_logical_server() {
             return Err(ChunkRefusal::Client);
@@ -43,14 +44,16 @@ impl Game<'_> {
         if !self.level_handle_current(level) {
             return Err(ChunkRefusal::Stale);
         }
-        let world = if level.dimension() == self.dim.key() {
-            &mut self.world
+        let (world, streaming) = if level.dimension() == self.dim.key() {
+            (&mut self.world, &mut self.streaming)
         } else {
-            self.levels
-                .parked_world_mut_of(level.dimension_id())
-                .ok_or(ChunkRefusal::Stale)?
+            let parked = self
+                .levels
+                .parked_mut_of(level.dimension_id())
+                .ok_or(ChunkRefusal::Stale)?;
+            (&mut parked.world, &mut parked.streaming)
         };
-        Ok((world, self.lan.as_ref().map(|host| &host.hub)))
+        Ok((world, streaming, self.lan.as_ref().map(|host| &host.hub)))
     }
     /// `chunks` of any open server level (active or parked), and the loaded ring around each
     /// loaded chunk, queued to be lit again whole on that level's light engine
@@ -63,7 +66,7 @@ impl Game<'_> {
         level: mod_api::LevelRef,
         chunks: &[[i32; 2]],
     ) -> Result<u32, mod_api::ChunkRefusal> {
-        let (world, _) = self.resolve_chunk_level_mut(level)?;
+        let (world, _, _) = self.resolve_chunk_level_mut(level)?;
         let mut queued = 0u32;
         for &[x, z] in chunks {
             if !world.chunks.contains_key(&(x, z)) {
@@ -94,12 +97,12 @@ impl Game<'_> {
     ) -> Result<(), mod_api::ChunkRefusal> {
         let level = chunk.level();
         let [x, z] = chunk.pos();
-        let (world, hub) = self.resolve_chunk_level_mut(level)?;
+        let (world, streaming, hub) = self.resolve_chunk_level_mut(level)?;
         if !world.chunks.contains_key(&(x, z)) {
             return Err(mod_api::ChunkRefusal::NotLoaded);
         }
         if hub.is_some_and(|hub| hub.has_chunk_resend_target(level.dimension_id(), (x, z))) {
-            world.chunk_resends.insert((x, z));
+            streaming.queue_chunk_resend(world, (x, z));
         }
         Ok(())
     }

@@ -142,7 +142,7 @@ const IDLE_TICKS: u32 = 300;
 /// A level that is not in place: every per-level field of `Game`.
 pub(super) struct Parked {
     pub(super) world: World,
-    streaming: Streaming,
+    pub(super) streaming: Streaming,
     locator: Option<Arc<VanillaTerrain>>,
     save: Arc<SaveDir>,
     block_ticks: Ticks,

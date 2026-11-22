@@ -184,7 +184,7 @@ fn parked_chunk_resend_checks_sent_watchers_on_owning_dimension() {
         });
         assert_eq!(chunk.resend(game), Ok(()));
         let world = game.levels.parked_world_of("minecraft:overworld").unwrap();
-        assert!(world.chunk_resends.contains(&(100, 100)));
+        assert!(world.chunk_resends.contains_key(&(100, 100)));
         assert!(game.world.chunk_resends.is_empty());
     });
 }
@@ -272,6 +272,123 @@ fn resend_waits_for_the_relight_before_sending_to_an_interior_holder() {
             rx.try_recv().is_err(),
             "the interior holder needed only the resend"
         );
+    });
+}
+
+/// A later `check_light` on an ordinary air cell after `update_light` does not keep an earlier
+/// resend queued once the light work that preceded the resend has completed.
+#[test]
+#[ignore = "daily"]
+fn later_light_check_does_not_prevent_chunk_resend() {
+    use std::time::{Duration, Instant};
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+
+    if run_fresh_cases(
+        "game::native_chunk_relight_tests::later_light_check_does_not_prevent_chunk_resend",
+        "SUNRISE_CHUNK_RESEND_MARKER_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
+    with_guests(|game| {
+        roofed(game);
+        let level = game.level("minecraft:overworld").unwrap();
+        let torch_pos = [1608, 110, 1608];
+        let air_pos = [1608, 105, 1608];
+        let key = (100, 100);
+        let torch = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:torch")
+            .unwrap();
+        let column = Arc::make_mut(game.world.chunks.get_mut(&key).unwrap());
+        column.set(torch_pos[0], torch_pos[1], torch_pos[2], torch.0);
+        column.lit = true;
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.sender = PlayerSender::new(tx, Arc::default());
+            g.dimension = "minecraft:overworld".into();
+            g.center = Some(key);
+            g.sent_chunks
+                .extend((99..=101).flat_map(|x| (99..=101).map(move |z| (x, z))));
+        });
+        game.world.light_log = Some(Default::default());
+        game.streaming.paused = false;
+
+        // 1. Queue a relight and resend, wait for the whole-column job to apply, then queue a
+        // fresh no-change air light check before broadcasting: the resend must still go out.
+        assert_eq!(level.relight_chunks(game, &[[key.0, key.1]]), Ok(9));
+        assert_eq!(
+            game.chunk(level, [key.0, key.1]).unwrap().resend(game),
+            Ok(())
+        );
+        game.streaming.update_light(&mut game.world);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while game.streaming.has_column_light_job(key) || game.world.dirty_light.contains(&key) {
+            assert!(Instant::now() < deadline, "light worker did not finish");
+            game.streaming.wait(Duration::from_millis(50));
+            game.streaming.update_light(&mut game.world);
+        }
+        assert!(game.level_check_light(level, air_pos));
+        assert!(!game.world.light_edits.is_empty());
+        game.lan_broadcast_changes();
+        let Out::Packet(body) = rx
+            .try_recv()
+            .expect("later pending check must not block completed resend")
+        else {
+            panic!("expected a chunk packet");
+        };
+        let mut reader = Reader::new(&body);
+        let id = reader.varint().unwrap();
+        let Clientbound::LevelChunkWithLight(packet) =
+            Clientbound::decode(id, reader.rest()).unwrap()
+        else {
+            panic!("expected LevelChunkWithLight");
+        };
+        assert_eq!((packet.x, packet.z), key);
+        let mut received = Chunk::empty(packet.x, packet.z);
+        let layers = packet.light.layers(game.world.layout().sections() + 2);
+        sunrise_client::light::light_from_layers(&mut received, &layers, true);
+        assert_eq!(
+            received.light(torch_pos[0], torch_pos[1], torch_pos[2]) & 15,
+            14
+        );
+        assert!(rx.try_recv().is_err());
+
+        // 2. A resend queued while a pending `check_light` exists waits for that check's
+        // `update_light`, and then still sends even if another check is queued before broadcast.
+        assert!(!game.world.light_edits.is_empty());
+        assert_eq!(
+            game.chunk(level, [key.0, key.1]).unwrap().resend(game),
+            Ok(())
+        );
+        game.lan_broadcast_changes();
+        assert!(
+            rx.try_recv().is_err(),
+            "earlier pending check not drained yet"
+        );
+        game.streaming.update_light(&mut game.world);
+        assert!(game.level_check_light(level, air_pos));
+        assert!(!game.world.light_edits.is_empty());
+        game.lan_broadcast_changes();
+        let Out::Packet(body) = rx
+            .try_recv()
+            .expect("later check after update_light must not block resend")
+        else {
+            panic!("expected a chunk packet");
+        };
+        let mut reader = Reader::new(&body);
+        let id = reader.varint().unwrap();
+        let Clientbound::LevelChunkWithLight(packet) =
+            Clientbound::decode(id, reader.rest()).unwrap()
+        else {
+            panic!("expected LevelChunkWithLight");
+        };
+        assert_eq!((packet.x, packet.z), key);
+        assert!(rx.try_recv().is_err());
     });
 }
 

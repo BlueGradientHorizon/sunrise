@@ -11,7 +11,7 @@ use crate::{
     graphics::LeafCullingMode,
     light::{LightChanges, LightTables, light_chunk},
     mesher::{MeshScratch, MeshTables, Region, SectionMesh, borrow},
-    world::World,
+    world::{ChunkResend, World},
 };
 use std::{
     collections::{BinaryHeap, HashSet, VecDeque},
@@ -2499,6 +2499,11 @@ impl Streaming {
             && !world.dirty_light.contains(&(x, z))
         {
             self.apply_lit(world, x, z, sections, snapshot);
+            if let Some(resend) = world.chunk_resends.get_mut(&(x, z))
+                && *resend == ChunkResend::WaitingLight
+            {
+                *resend = ChunkResend::Ready;
+            }
         }
         match self.lighting.values().filter_map(|job| job.snapshot).min() {
             Some(oldest) => self.light_log.retain(|(seq, _)| *seq > oldest),
@@ -2574,6 +2579,28 @@ impl Streaming {
             world.dirty_sections.clear();
         }
     }
+    /// Record an explicit chunk resend for `key` behind a completion marker covering only the
+    /// light work already queued or running for `key` (`ThreadedLevelLightEngine.waitForPendingTasks`).
+    /// Later light checks or edits do not move this marker once recorded.
+    pub fn queue_chunk_resend(&self, world: &mut World, key: (i32, i32)) {
+        let state = if world.dirty_light.contains(&key) || self.has_active_column_light_job(key) {
+            ChunkResend::WaitingLight
+        } else if world.light_edits.iter().any(|&((ex, _, ez), _, _)| {
+            (ex >> 4).abs_diff(key.0) <= 1 && (ez >> 4).abs_diff(key.1) <= 1
+        }) {
+            ChunkResend::WaitingEdits
+        } else {
+            ChunkResend::Ready
+        };
+        world.chunk_resends.insert(key, state);
+    }
+
+    fn has_active_column_light_job(&self, key: (i32, i32)) -> bool {
+        self.lighting
+            .get(&key)
+            .is_some_and(|job| job.snapshot.is_some())
+    }
+
     /// Whether a whole-column job for `key` was submitted and its result has not been taken.
     pub fn has_column_light_job(&self, key: (i32, i32)) -> bool {
         self.lighting.contains_key(&key)
@@ -2584,6 +2611,10 @@ impl Streaming {
         !self.lighting.is_empty()
             || !self.viewing.is_empty()
             || !world.light_edits.is_empty()
+            || world
+                .chunk_resends
+                .values()
+                .any(|state| *state == ChunkResend::WaitingEdits)
             || world
                 .dirty_light
                 .iter()
@@ -2617,41 +2648,57 @@ impl Streaming {
     /// Relight block edits on lit chunks in place (vanilla's incremental light
     /// engine) instead of recomputing the 3x3 chunks around each edit.
     fn relight_edits(&mut self, world: &mut World) {
-        if world.light_edits.is_empty() {
+        if !world.light_edits.is_empty() {
+            let edits = std::mem::take(&mut world.light_edits);
+            let positions: Vec<(i32, i32, i32)> = edits
+                .iter()
+                .filter(|(_, old, new)| self.light_tables.differs(*old, *new))
+                .map(|(p, _, _)| *p)
+                .collect();
+            if !positions.is_empty() {
+                let positions = if positions.len() > INLINE_RELIGHT_MAX {
+                    self.relight_on_workers(world, positions)
+                } else {
+                    positions
+                };
+                if !positions.is_empty() {
+                    let mut changed = LightChanges::default();
+                    crate::light::relight(
+                        &mut world.chunks,
+                        &self.light_tables,
+                        self.sky_light,
+                        &positions,
+                        false,
+                        &mut changed,
+                    );
+                    Self::mark_light_changes(world, &changed);
+                    Self::relight_beside_unlit(world, &changed);
+                    if !self.lighting.is_empty() {
+                        for p in positions {
+                            self.light_edit_sequence += 1;
+                            self.light_log.push((self.light_edit_sequence, p));
+                        }
+                    }
+                }
+            }
+        }
+        self.advance_waiting_edits(world);
+    }
+
+    /// Release resend markers that waited only on the `light_edits` pass that just ran, or
+    /// promote them to `WaitingLight` when that pass queued whole-column work for the column.
+    fn advance_waiting_edits(&self, world: &mut World) {
+        if world.chunk_resends.is_empty() {
             return;
         }
-        let edits = std::mem::take(&mut world.light_edits);
-        let positions: Vec<(i32, i32, i32)> = edits
-            .iter()
-            .filter(|(_, old, new)| self.light_tables.differs(*old, *new))
-            .map(|(p, _, _)| *p)
-            .collect();
-        if positions.is_empty() {
-            return;
-        }
-        let positions = if positions.len() > INLINE_RELIGHT_MAX {
-            self.relight_on_workers(world, positions)
-        } else {
-            positions
-        };
-        if positions.is_empty() {
-            return;
-        }
-        let mut changed = LightChanges::default();
-        crate::light::relight(
-            &mut world.chunks,
-            &self.light_tables,
-            self.sky_light,
-            &positions,
-            false,
-            &mut changed,
-        );
-        Self::mark_light_changes(world, &changed);
-        Self::relight_beside_unlit(world, &changed);
-        if !self.lighting.is_empty() {
-            for p in positions {
-                self.light_edit_sequence += 1;
-                self.light_log.push((self.light_edit_sequence, p));
+        for (&key, state) in &mut world.chunk_resends {
+            if *state == ChunkResend::WaitingEdits {
+                *state =
+                    if world.dirty_light.contains(&key) || self.has_active_column_light_job(key) {
+                        ChunkResend::WaitingLight
+                    } else {
+                        ChunkResend::Ready
+                    };
             }
         }
     }
@@ -4332,6 +4379,79 @@ mod tests {
             streaming.order, 9,
             "four superseded jobs and five current jobs"
         );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn resend_marker_waits_for_replacement_and_ignores_later_checks() {
+        use std::time::{Duration, Instant};
+
+        let (mut world, mut streaming, _) = section_visibility::tests::fixture();
+        for z in -1..=1 {
+            for x in -1..=1 {
+                world.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        world.dirty_light.insert((0, 0));
+        streaming.queue_chunk_resend(&mut world, (0, 0));
+        assert_eq!(
+            world.chunk_resends.get(&(0, 0)),
+            Some(&ChunkResend::WaitingLight)
+        );
+        streaming.update_light(&mut world);
+        assert_eq!(streaming.order, 1);
+        assert!(streaming.has_column_light_job((0, 0)));
+
+        // Re-dirty while the first job is still in flight so it must be discarded and replaced.
+        let shared = Arc::clone(&streaming.shared);
+        let mailbox = shared.done.done.lock().unwrap();
+        world.dirty_light.insert((0, 0));
+        streaming.update_light(&mut world);
+        assert_eq!(streaming.order, 1);
+        assert_eq!(
+            world.chunk_resends.get(&(0, 0)),
+            Some(&ChunkResend::WaitingLight)
+        );
+        drop(mailbox);
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while streaming.order < 2 {
+            assert!(Instant::now() < deadline, "superseded job did not return");
+            streaming.wait(Duration::from_millis(50));
+            streaming.update_light(&mut world);
+        }
+        assert!(!streaming.is_lit(0, 0), "superseded light was discarded");
+        assert_eq!(
+            world.chunk_resends.get(&(0, 0)),
+            Some(&ChunkResend::WaitingLight),
+            "resend waits until the replacement job applies"
+        );
+
+        while streaming.has_column_light_job((0, 0)) {
+            assert!(Instant::now() < deadline, "replacement job did not finish");
+            streaming.wait(Duration::from_millis(50));
+            streaming.update_light(&mut world);
+        }
+        assert!(streaming.is_lit(0, 0));
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
+
+        // A fresh light check queued after completion does not move the ready marker.
+        world.light_edits.push(((8, 64, 8), 0, 0));
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
+
+        // A resend queued behind an existing light check waits for one `relight_edits` pass,
+        // and is unaffected by a later check queued after that pass.
+        world.chunk_resends.clear();
+        streaming.queue_chunk_resend(&mut world, (0, 0));
+        assert_eq!(
+            world.chunk_resends.get(&(0, 0)),
+            Some(&ChunkResend::WaitingEdits)
+        );
+        streaming.update_light(&mut world);
+        assert!(world.light_edits.is_empty());
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
+        world.light_edits.push(((8, 64, 8), 0, 0));
+        assert_eq!(world.chunk_resends.get(&(0, 0)), Some(&ChunkResend::Ready));
     }
 
     /// Edits in two neighbouring columns light those and the ten around
