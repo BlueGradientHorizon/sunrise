@@ -62,7 +62,8 @@ pub struct DatapackSnapshot {
 pub enum DatapackSnapshotError {
     /// The bytes are not a snapshot, or are more than [`MAX_SNAPSHOT_BYTES`].
     Malformed,
-    /// More registries or entries than [`MAX_SNAPSHOT_REGISTRIES`] and [`MAX_SNAPSHOT_ENTRIES`].
+    /// More registries than [`MAX_SNAPSHOT_REGISTRIES`], or more entries, tags, or members
+    /// of one tag than [`MAX_SNAPSHOT_ENTRIES`].
     TooLarge,
     /// The snapshot has a registry this side did not declare.
     UnknownRegistry {
@@ -116,7 +117,28 @@ impl DatapackRegistrySet {
         declarations: &[DatapackRegistryDeclaration],
         accepts: impl Fn(&DatapackRegistryDeclaration) -> bool,
     ) -> DatapackSnapshot {
-        snapshot_of(&self.registries, &self.tags, declarations, accepts)
+        let mut registries: Vec<_> = declarations
+            .iter()
+            .filter(|declaration| declaration.sync != DatapackRegistrySync::ServerOnly)
+            .filter(|declaration| accepts(declaration))
+            .filter_map(|declaration| {
+                let entries = self.registries.get(&declaration.key)?;
+                Some(DatapackSnapshotRegistry {
+                    key: declaration.key.clone(),
+                    fields: declaration.fields.clone(),
+                    tags: self.tags.get(&declaration.key).cloned().unwrap_or_default(),
+                    entries: entries
+                        .iter()
+                        .map(|(id, entry)| DatapackSnapshotEntry {
+                            id: id.clone(),
+                            values: entry.values.iter().map(|(_, v)| v.clone()).collect(),
+                        })
+                        .collect(),
+                })
+            })
+            .collect();
+        registries.sort_by(|a, b| a.key.cmp(&b.key));
+        DatapackSnapshot { registries }
     }
 
     /// The snapshot for a client that `offered` these registries (`offer`): a registry goes
@@ -152,49 +174,6 @@ impl DatapackRegistrySet {
             received_registries: Some(candidate.synchronized),
         }
     }
-}
-
-/// The snapshot of `published`, as [`DatapackRegistrySet::snapshot`] builds it.
-fn snapshot_of(
-    published: &BTreeMap<String, BTreeMap<String, DatapackEntry>>,
-    tags: &BTreeMap<String, BTreeMap<String, Vec<String>>>,
-    declarations: &[DatapackRegistryDeclaration],
-    accepts: impl Fn(&DatapackRegistryDeclaration) -> bool,
-) -> DatapackSnapshot {
-    let mut registries: Vec<_> = declarations
-        .iter()
-        .filter(|declaration| declaration.sync != DatapackRegistrySync::ServerOnly)
-        .filter(|declaration| accepts(declaration))
-        .filter_map(|declaration| {
-            let entries = published.get(&declaration.key)?;
-            Some(DatapackSnapshotRegistry {
-                key: declaration.key.clone(),
-                fields: declaration.fields.clone(),
-                tags: tags.get(&declaration.key).cloned().unwrap_or_default(),
-                entries: entries
-                    .iter()
-                    .map(|(id, entry)| DatapackSnapshotEntry {
-                        id: id.clone(),
-                        values: entry.values.iter().map(|(_, v)| v.clone()).collect(),
-                    })
-                    .collect(),
-            })
-        })
-        .collect();
-    registries.sort_by(|a, b| a.key.cmp(&b.key));
-    DatapackSnapshot { registries }
-}
-
-/// Encoded bytes of selected synchronized registries before tags are bound, or None when
-/// the snapshot byte bound would be exceeded. Binding tags accounts their added bytes.
-pub(super) fn snapshot_size(
-    declarations: &[DatapackRegistryDeclaration],
-    registries: &BTreeMap<String, BTreeMap<String, DatapackEntry>>,
-    accepts: impl Fn(&DatapackRegistryDeclaration) -> bool,
-) -> Option<usize> {
-    snapshot_of(registries, &BTreeMap::new(), declarations, accepts)
-        .encode()
-        .map(|bytes| bytes.len())
 }
 
 impl DatapackSnapshot {
@@ -244,10 +223,10 @@ impl DatapackSnapshot {
 
     /// Checks the snapshot against this side's `declarations` and builds the candidate to
     /// activate: every registry must be one this side declared with the same schema, every
-    /// value must fit its field, ids must be valid and unique, references must resolve, and a
-    /// registry declared `Required` must be present. A declared registry the snapshot lacks
-    /// (server-only, or optional and not negotiated) stays empty. Nothing is built unless
-    /// everything passes.
+    /// value must fit its field, ids must be valid and unique, references and tag members must
+    /// resolve, and a registry declared `Required` must be present. Counts are checked against
+    /// the snapshot bounds. A declared registry the snapshot lacks (server-only, or optional and
+    /// not negotiated) stays empty. Nothing is built unless everything passes.
     pub fn candidate(
         &self,
         declarations: &[DatapackRegistryDeclaration],
@@ -316,17 +295,20 @@ impl DatapackSnapshot {
             });
         }
         resolve_references(declarations, &registries).map_err(DatapackSnapshotError::Unresolved)?;
-        let snapshot_bytes = snapshot_size(declarations, &registries, |declaration| {
-            seen.contains(declaration.key.as_str())
-        })
-        .ok_or(DatapackSnapshotError::TooLarge)?;
         let mut candidate = DatapackCandidate {
             registries,
             tags: BTreeMap::new(),
-            snapshot_bytes,
             synchronized: seen.into_iter().map(str::to_owned).collect(),
         };
         for sent in &self.registries {
+            if sent.tags.len() > MAX_SNAPSHOT_ENTRIES
+                || sent
+                    .tags
+                    .values()
+                    .any(|members| members.len() > MAX_SNAPSHOT_ENTRIES)
+            {
+                return Err(DatapackSnapshotError::TooLarge);
+            }
             candidate
                 .bind_tags(&sent.key, sent.tags.clone())
                 .map_err(DatapackSnapshotError::Unresolved)?;
@@ -661,6 +643,33 @@ mod tests {
             DatapackSnapshot::decode(&bytes),
             Err(DatapackSnapshotError::Malformed)
         );
+    }
+
+    #[test]
+    fn tag_bounds_apply_to_received_snapshots_not_local_candidates() {
+        let declaration = spell(DatapackRegistrySync::Required);
+        let declarations = std::slice::from_ref(&declaration);
+        let files = [(
+            "data/addon/example/spell/fire.json".to_owned(),
+            vec![("pack".to_owned(), br#"{"power": 7}"#.to_vec())],
+        )];
+        for tags in [
+            (0..65_537)
+                .map(|n| (format!("example:tag_{n}"), Vec::new()))
+                .collect(),
+            BTreeMap::from([("example:hot".into(), vec!["addon:fire".into(); 65_537])]),
+        ] {
+            let mut local = DatapackCandidate::build(declarations, &files).unwrap();
+            local.bind_tags("example:spell", tags).unwrap();
+            let snapshot =
+                DatapackRegistrySet::from_candidate(local).snapshot(declarations, |_| true);
+            let bytes = snapshot.encode().unwrap();
+            let received = DatapackSnapshot::decode(&bytes).unwrap();
+            assert_eq!(
+                received.candidate(declarations),
+                Err(DatapackSnapshotError::TooLarge)
+            );
+        }
     }
 
     #[test]

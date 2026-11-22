@@ -1,3 +1,30 @@
-ids = ["method:DatapackRegistriesRegistrar::declare_datapack_registry", "type:DatapackRegistrationError", "type:DatapackRegistrySync"]
-why = "Registry declaration no longer means that clients need the mod. Like NeoForge's NewDatapackRegistryEvent.worldRegistry and reloadableRegistry and DataPackRegistriesHooks.addWorldRegistry, and vanilla's RegistryDataLoader.load, local loading is distinct from what is sent to clients. Only a Required registry makes a server-only package incompatible with the join-content rule; the load refusal names the registry."
-migrate = "The declare_datapack_registry call is unchanged. When moving a registry to a side = \"server\" package, pass DatapackRegistrySync::ServerOnly to keep entries local, or DatapackRegistrySync::Optional to send entries only to clients that offer the same registry and schema. Keep DatapackRegistrySync::Required with side = \"both\" if joining clients must have the registry. DatapackRegistrationError::WrongSide now means the declaring package is client-only; a server-only package declaring Required is refused at package load instead."
+ids = [
+    "method:DatapackRegistriesRegistrar::declare_datapack_registry",
+    "type:DatapackRegistrationError",
+    "type:DatapackRegistrySync",
+    "const:MAX_DATAPACK_ENTRY_BYTES",
+    "type:DatapackCandidate",
+    "handle:DatapackCandidate::build",
+    "handle:DatapackCandidate::bind_tags",
+    "handle:DatapackRegistryDeclaration::decode_entry",
+    "type:DatapackLoadError",
+    "type:DatapackLoadReason",
+    "type:DatapackLoadReason.TooManyRegistries",
+    "type:DatapackLoadReason.EntryTooLarge",
+    "type:DatapackLoadReason.TooManyEntries",
+    "type:DatapackLoadReason.CandidateTooLarge",
+    "type:DatapackLoadReason.SnapshotTooLarge",
+    "type:DatapackLoadReason.ReadFile",
+    "handle:DatapackSnapshot::candidate",
+    "type:DatapackSnapshotError.TooLarge",
+]
+why = """
+Registry declaration no longer means that clients need the mod. Like NeoForge's NewDatapackRegistryEvent.worldRegistry and reloadableRegistry and DataPackRegistriesHooks.addWorldRegistry, and vanilla's RegistryDataLoader.load, local loading is distinct from what is sent to clients. Only a Required registry makes a server-only package incompatible with the join-content rule; the load refusal names the registry.
+
+Vanilla's ResourceManagerRegistryLoadTask.load selects the winning resource and RegistryLoadTask.PendingRegistration.loadFromResource reads it with pack attribution. Local registry loading now reads the whole winner and checks its schema, references and tags without the transport ceilings. A snapshot that is actually received still has byte and count limits; validation does not encode it a second time.
+"""
+migrate = """
+- Keep the declare_datapack_registry call. When moving a registry to a side = "server" package, pass DatapackRegistrySync::ServerOnly to keep entries local, or DatapackRegistrySync::Optional to send entries only to clients that offer the same registry and schema. Keep DatapackRegistrySync::Required with side = "both" if joining clients must have the registry. DatapackRegistrationError::WrongSide now means the declaring package is client-only; a server-only package declaring Required is refused at package load instead.
+- Remove MAX_DATAPACK_ENTRY_BYTES and checks based on it; there is no replacement for local files. Keep calling DatapackCandidate::build(declarations, files), candidate.bind_tags(registry, tags), or declaration.decode_entry(text) as before. Remove DatapackLoadReason match arms for TooManyRegistries, EntryTooLarge, TooManyEntries, CandidateTooLarge and SnapshotTooLarge. Match the new DatapackLoadReason::ReadFile(message) for an I/O failure and report it with DatapackLoadError's registry, entry, pack and file fields. A failed read does not yield an empty file or trigger a lower-pack read.
+- Keep calling DatapackSnapshot::decode(bytes) followed by snapshot.candidate(declarations). Match DatapackSnapshotError::TooLarge instead of Unresolved carrying DatapackLoadReason::TooManyEntries when a received registry has too many tags or a tag has too many members.
+"""
