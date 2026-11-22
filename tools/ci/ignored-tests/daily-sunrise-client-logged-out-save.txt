@@ -1,0 +1,2 @@
+# player_logged_out before the leaving player is saved (#4484): a world with guests and prepared resources. Rows: PACKAGE TEST TARGET daily REASON, sorted.
+sunrise-client game::native_hooks::player_leave::player_leave_tests::what_a_listener_changes_on_a_leaving_player_is_saved lib daily resources
