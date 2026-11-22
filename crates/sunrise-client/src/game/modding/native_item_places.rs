@@ -155,16 +155,6 @@ impl Game<'_> {
         let tag = sunrise_client::command::args::normalize(tag);
         self.res.mob_data().entity_has(&tag, entity_type)
     }
-    /// `DefaultAttributes.getSupplier(type).getBaseValue(attribute)`: the suppliers the attribute
-    /// catalog published when it was built (`resource_load::publish_entity_type_defaults`), the
-    /// same table a scoped or startup host's default reads.
-    pub(super) fn entity_type_default_attribute(
-        &self,
-        entity_type: &str,
-        attribute: &str,
-    ) -> Result<Option<f64>, mod_api::EntityTypeReadError> {
-        mod_api::__private::entity_type_default_attribute(entity_type, attribute)
-    }
     /// The stack at a player's or an item entity's place; none for an empty one, a player who
     /// isn't here or is dead, an item entity not in the level in place, any other place
     /// (`ItemPlace::stack` reads those), and on a client.

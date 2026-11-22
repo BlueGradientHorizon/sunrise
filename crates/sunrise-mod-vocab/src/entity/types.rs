@@ -1281,27 +1281,6 @@ impl From<crate::text::TextFormError> for OpenMenuError {
     }
 }
 
-/// Why an entity type's default could not be read ([`ItemsHost::entity_type_default_attribute`]).
-#[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-pub enum EntityTypeReadError {
-    /// Read where metadata may not be (registration, config loading) or before the game built
-    /// its attribute catalog, mods' rows included.
-    Unavailable,
-}
-
-impl crate::AccessRefusal for EntityTypeReadError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
-impl NoBackend for EntityTypeReadError {
-    fn no_backend() -> Self {
-        Self::Unavailable
-    }
-}
-
 impl crate::AccessRefusal for OpenMenuError {
     fn unavailable() -> Self {
         Self::PlayerUnavailable

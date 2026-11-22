@@ -62,23 +62,20 @@ pub trait ItemsHost {
     fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool;
     /// Side: both.
     /// An entity type's default value of an attribute, with no entity spawned
-    /// (`DefaultAttributes.getSupplier(type).getBaseValue(attribute)`): the base a new entity
-    /// of `entity_type` (`minecraft:zombie`) starts with for `attribute`
-    /// (`minecraft:max_health`), for vanilla's types and mods' (a mod type's declared row,
-    /// NeoForge's `EntityAttributeCreationEvent` and `EntityAttributeModificationEvent`
-    /// included). Both names are read as `Identifier.parse` reads them: `max_health` and
-    /// `:max_health` are `minecraft:`'s. Metadata: readable in setup, a reload and a world once
-    /// the game has built its attribute catalog, on every host, the same on both sides.
-    /// `Ok(None)` for a type that is no registered entity type, one with no attribute supplier
-    /// (not a living type, `minecraft:item`), or an attribute it does not have or the game does
-    /// not know; `Err(Unavailable)` before the catalog is built.
+    /// (`DefaultAttributes.getSupplier(type).getValue(attribute)`): what a new entity of
+    /// `entity_type` (`minecraft:zombie`) has for `attribute` (`minecraft:max_health`) before
+    /// any modifier, its supplier's base inside the attribute's range, for vanilla's types and
+    /// mods' (a mod type's declared row, NeoForge's `EntityAttributeCreationEvent` and
+    /// `EntityAttributeModificationEvent` included). Both names are read as `Identifier.parse`
+    /// reads them: `max_health` and `:max_health` are `minecraft:`'s. Metadata: every host
+    /// answers it, in setup, a reload and a world, once the game has built its attribute catalog,
+    /// the same on both sides; it never unwinds. None before the catalog is built (registration,
+    /// config loading), for a type that is no registered entity type or has no attribute
+    /// supplier (not a living type, `minecraft:item`), and for an attribute it does not have or
+    /// the game does not know.
     #[access(Metadata)]
-    #[published(crate::entity::entity_type_defaults::entity_type_default_attribute)]
-    fn entity_type_default_attribute(
-        &self,
-        entity_type: &str,
-        attribute: &str,
-    ) -> Result<Option<f64>, EntityTypeReadError>;
+    #[published(entity_type_default_attribute)]
+    fn entity_type_default_attribute(&self, entity_type: &str, attribute: &str) -> Option<f64>;
     /// Side: both.
     /// The stack an SNBT item compound stands for, read as `ItemStack.CODEC` reads a saved
     /// item: `{id:"minecraft:diamond_sword",count:1,components:{"minecraft:damage":5}}`

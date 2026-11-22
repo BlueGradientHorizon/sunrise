@@ -211,19 +211,18 @@ underwater or activator ejection.
 
 ## A type's default attributes
 
-`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type starts with, with no
-entity spawned: `DefaultAttributes.getSupplier(type).getBaseValue(attribute)`. It works for vanilla's types and mods'
-registered ones (a mod type's declared row, with the attributes other mods added to it), on both sides. It is metadata,
-like `entity_type_in_tag`: any host answers it in setup, a reload or a world once the game has built its attribute
-catalog.
+`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type has, with no entity
+spawned and before any modifier: `DefaultAttributes.getSupplier(type).getValue(attribute)`, the supplier's base inside
+the attribute's range. It works for vanilla's types and mods' registered ones (a mod type's declared row, with the
+attributes other mods added to it), on both sides. It is metadata, like `entity_type_in_tag`: any host answers it in
+setup, a reload or a world once the game has built its attribute catalog, and it never unwinds.
 
 ```rust,ignore
 // The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
-let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health")?;
-let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor")?;
+let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health");
+let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor");
 ```
 
-`Ok(None)` means the type is no registered entity type, has no attribute supplier (it isn't a living type, such as
-`minecraft:item`), doesn't have that attribute, or the attribute is unknown. Names are read as `Identifier.parse` reads
-them: `zombie` and `:zombie` are `minecraft:zombie`. Before the catalog is built (registration, config loading) it
-refuses with `EntityTypeReadError::Unavailable`.
+`None` means the catalog isn't built yet (registration, config loading), the type is no registered entity type or has
+no attribute supplier (it isn't a living type, such as `minecraft:item`), or it doesn't have that attribute, or the
+attribute is unknown. Names are read as `Identifier.parse` reads them: `zombie` and `:zombie` are `minecraft:zombie`.

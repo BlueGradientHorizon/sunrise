@@ -299,8 +299,8 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
             Ok(level) => level,
             Err(error) => return error.to_compile_error().into(),
         };
-        // `#[published(path)]`: a metadata read every host answers from what the game
-        // published, so a scoped or startup host's default refuses or answers, never panics.
+        // `#[published(name)]`: a metadata read every host answers from what the game
+        // published (`crate::__private::name`), so no host's default panics or unwinds.
         let published = match method
             .attrs
             .iter()
@@ -316,7 +316,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
                 syn::FnArg::Typed(arg) => Some(arg.pat.clone()),
                 syn::FnArg::Receiver(_) => None,
             });
-            method.default = Some(syn::parse_quote!({ #path(#(#args),*) }));
+            method.default = Some(syn::parse_quote!({ crate::__private::#path(#(#args),*) }));
             method.semi_token = None;
             continue;
         }

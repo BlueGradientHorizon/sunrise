@@ -195,16 +195,28 @@ impl Catalog {
         })
     }
     /// An entity type's default of an attribute, by name
-    /// (`DefaultAttributes.getSupplier(type).getBaseValue(attribute)`), both names read as
-    /// `Identifier.parse` reads them: a bare or empty namespace (`zombie`, `:zombie`) is
+    /// (`DefaultAttributes.getSupplier(type).getValue(attribute)`: its base inside the
+    /// attribute's range, as a fresh entity's value reads before any modifier), both names read
+    /// as `Identifier.parse` reads them: a bare or empty namespace (`zombie`, `:zombie`) is
     /// `minecraft:`'s. None for a type with no supplier, an attribute it lacks or an unknown name.
     pub fn type_default(&self, entity: &str, attribute: &str) -> Option<f64> {
         let id = self.id(&identifier(attribute))?;
-        self.default_base(&identifier(entity), id)
+        let base = self.default_base(&identifier(entity), id)?;
+        Some(self.attribute(id).definition.sanitize(base))
     }
-    /// The entity types with an attribute supplier, in name order.
-    pub fn entity_types(&self) -> impl Iterator<Item = &str> {
-        self.defaults.keys().map(String::as_str)
+    /// The entity type's whole supplier by value (`AttributeSupplier.getValue` of each attribute
+    /// it has, by name): [`Self::entity_row`]'s bases inside their attributes' ranges.
+    pub fn supplier_values(&self, entity: &str) -> Option<std::collections::HashMap<String, f64>> {
+        let bases = self.defaults.get(entity)?;
+        Some(
+            self.attributes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, a)| {
+                    bases[i].map(|base| (a.name.clone(), a.definition.sanitize(base)))
+                })
+                .collect(),
+        )
     }
     /// The entity type's supplier base of an attribute, if the type has it.
     pub fn default_base(&self, entity: &str, id: AttributeId) -> Option<f64> {
@@ -652,8 +664,30 @@ mod row_tests {
         assert_eq!(catalog.type_default("ruby:ghoul", "max_health"), Some(40.0));
         assert_eq!(catalog.type_default("ruby:ghoul", "armor"), Some(2.0));
         assert_eq!(catalog.type_default("minecraft:item", "max_health"), None);
-        assert!(catalog.entity_types().any(|t| t == "ruby:ghoul"));
-        assert!(!catalog.entity_types().any(|t| t == "minecraft:item"));
+        assert!(catalog.entities().any(|t| t == "ruby:ghoul"));
+        assert!(!catalog.entities().any(|t| t == "minecraft:item"));
+        // A declared base outside its attribute's range: the supplier's value is inside it, the
+        // raw base (a spawn's) stays what was declared.
+        let wide = Arc::new(
+            vanilla
+                .with_entity_row(
+                    "ruby:titan",
+                    "minecraft:zombie",
+                    &[("minecraft:max_health".into(), 5000.0)],
+                )
+                .unwrap(),
+        );
+        let health = wide.id("minecraft:max_health").unwrap();
+        assert_eq!(wide.default_base("ruby:titan", health), Some(5000.0));
+        assert_eq!(wide.type_default("ruby:titan", "max_health"), Some(1024.0));
+        assert_eq!(
+            wide.supplier_values("ruby:titan").unwrap()["minecraft:max_health"],
+            1024.0
+        );
+        assert_eq!(
+            wide.create("ruby:titan").unwrap().value(health).unwrap(),
+            1024.0
+        );
     }
 
     /// #3728: asks to widen bounds join as their union, in either order; a

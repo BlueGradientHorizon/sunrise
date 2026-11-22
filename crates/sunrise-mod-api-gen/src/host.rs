@@ -555,6 +555,40 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                     ) {
                         return Err(format!("{name}: unknown access level {level}"));
                     }
+                    // `#[published(name)]`: the game answers as every host does, from the table the
+                    // game published (`mod_api::__private::name`), which gates its own access and
+                    // answers None outside it, so the forwarder neither checks nor unwinds.
+                    if let Some(published) =
+                        entry.attrs.iter().find(|a| a.path().is_ident("published"))
+                    {
+                        let read = published
+                            .parse_args::<syn::Path>()
+                            .map_err(|e| format!("{name}: {e}"))?;
+                        let sig = entry.sig.to_token_stream();
+                        let args = signature_args(&entry.sig, name)?;
+                        code.push_str(&format!(
+                            "{sig} {{ mod_api::__private::{}({args}) }}\n",
+                            read.to_token_stream()
+                        ));
+                        continue;
+                    }
+                    // `#[published(name)]`: the game answers as every host does, from the table the
+                    // game published (`mod_api::__private::name`), which gates its own access and
+                    // answers None outside it, so the forwarder neither checks nor unwinds.
+                    if let Some(published) =
+                        entry.attrs.iter().find(|a| a.path().is_ident("published"))
+                    {
+                        let read = published
+                            .parse_args::<syn::Path>()
+                            .map_err(|e| format!("{name}: {e}"))?;
+                        let sig = entry.sig.to_token_stream();
+                        let args = signature_args(&entry.sig, name)?;
+                        code.push_str(&format!(
+                            "{sig} {{ mod_api::__private::{}({args}) }}\n",
+                            read.to_token_stream()
+                        ));
+                        continue;
+                    }
                     let read_stack = entry.attrs.iter().any(|a| a.path().is_ident("read_stack"));
                     let (setup, args, checked_write) =
                         boundary_arguments(&entry.sig, name, read_stack)?;

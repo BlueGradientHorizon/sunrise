@@ -1,12 +1,12 @@
 //! Entity types' default attributes (`DefaultAttributes`), as the game publishes them once its
 //! attribute catalog is built: every host reads the same table, a world open or not, so the read
 //! never needs a game behind the host (`ItemsHost::entity_type_default_attribute`).
-use crate::EntityTypeReadError;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-/// Each entity type's attribute supplier: its attributes' base values, by namespaced name.
+/// Each entity type's attribute supplier: its attributes' values, by namespaced name, as the
+/// supplier gives them (`AttributeSupplier.getValue`: the base inside the attribute's range).
 type Suppliers = HashMap<String, HashMap<String, f64>>;
 
 /// The published suppliers; none before the game's first catalog.
@@ -24,30 +24,24 @@ pub fn publish_entity_type_defaults(
     }
 }
 
-/// `DefaultAttributes.getSupplier(type).getBaseValue(attribute)`: the default body of
-/// `ItemsHost::entity_type_default_attribute` on every host. `Unavailable` where metadata may not
-/// be read or no catalog has been published yet; never a panic.
-pub fn entity_type_default_attribute(
-    entity_type: &str,
-    attribute: &str,
-) -> Result<Option<f64>, EntityTypeReadError> {
+/// `DefaultAttributes.getSupplier(type).getValue(attribute)`: what every host answers for
+/// `ItemsHost::entity_type_default_attribute`, the game included. None where metadata may not be
+/// read, before a catalog is published, or where the type or attribute has no value; never a
+/// panic and never an unwind.
+pub fn entity_type_default_attribute(entity_type: &str, attribute: &str) -> Option<f64> {
     if !crate::world::phase::access_allowed(
         "entity_type_default_attribute",
         crate::world::phase::LoadAccess::Metadata,
     ) {
-        return Err(EntityTypeReadError::Unavailable);
+        return None;
     }
-    let suppliers = PUBLISHED
-        .read()
-        .ok()
-        .and_then(|published| published.clone())
-        .ok_or(EntityTypeReadError::Unavailable)?;
-    Ok(lookup(&suppliers, entity_type, attribute, |id| {
+    let suppliers = PUBLISHED.read().ok()?.clone()?;
+    lookup(&suppliers, entity_type, attribute, |id| {
         crate::content::registry_keys::resolved_entity_type_key(id).is_some()
-    }))
+    })
 }
 
-/// The supplier base of `attribute` for `entity_type` in `suppliers`, both names read as
+/// The supplier value of `attribute` for `entity_type` in `suppliers`, both names read as
 /// `Identifier.parse` reads them. None for a type `registered` does not know (a mod's row for a
 /// type no mod registered), a type with no supplier, or an attribute it lacks.
 fn lookup(
