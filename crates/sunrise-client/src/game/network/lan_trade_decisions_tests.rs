@@ -497,6 +497,8 @@ fn a_restock_prices_the_screen_for_the_player_as_the_work_step_saw_them() {
                         trader.offers[0].uses,
                     ) = (5, 10);
                     trader.paying = true;
+                    // The voice from opening the screen has finished its cooldown by work time.
+                    game.mobs[0].ambient_timer = 0;
                     game.audio.capture = Some(Vec::new());
 
                     tick_work(game);
@@ -645,6 +647,7 @@ fn an_earlier_restock_does_not_skip_a_paused_mobs_first_action() {
     super::in_own_process(
         "game::lan_trade_decisions_tests::an_earlier_restock_does_not_skip_a_paused_mobs_first_action",
         || {
+            crate::entry::install_client_hooks();
             let breathed = Arc::new(AtomicBool::new(false));
             let mods: Mods = vec![ModEntry::new(
                 "pufferfish-breath",
