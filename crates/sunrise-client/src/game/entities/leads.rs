@@ -441,11 +441,7 @@ impl Game<'_> {
         }
     }
     /// `LeashFenceKnotEntity.hurtServer` -> `kill` and `dropItem` for a natural or explicit knot.
-    pub(super) fn break_leash_knot(
-        &mut self,
-        id: u32,
-        source: Option<Target>,
-    ) -> bool {
+    pub(super) fn break_leash_knot(&mut self, id: u32, source: Option<Target>) -> bool {
         if let Some(fence) = self.natural_knot(id) {
             let at = leash::knot_state(fence).position.components();
             self.knot_ids.remove(&fence);
