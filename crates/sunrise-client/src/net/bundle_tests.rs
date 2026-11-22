@@ -430,12 +430,11 @@ fn bundled_large_simple_particles_stay_compact_in_memory() {
     frame.u8(0xFF);
     let wire_len = frame.data.len();
 
+    let reader = play_reader(reader, writer.clone(), send, data, Transport::empty());
     server.send(&delimiter).unwrap();
     server.send(&frame.data).unwrap();
     server.send(&delimiter).unwrap();
     drop(server);
-
-    let reader = play_reader(reader, writer.clone(), send, data, Transport::empty());
     let Event::Bundle(bundle) = events
         .recv_timeout_owned(Duration::from_secs(5))
         .unwrap()
