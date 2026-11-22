@@ -772,7 +772,8 @@ fn a_panicking_trade_listener_undoes_the_take_and_the_next_trade_works() {
             assert!(game.transactions.is_empty());
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), result(game), stat(game)), (1, 1, 1));
+            assert_eq!(CALLS.get(), 0, "the panicking listener stays disabled");
+            assert_eq!((result(game), stat(game)), (1, 1));
         })
     });
 }
@@ -795,7 +796,8 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             assert!(game.transactions.is_empty());
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), result(game), stat(game)), (3, 3, 3));
+            assert_eq!(CALLS.get(), 0, "the panicking listener stays disabled");
+            assert_eq!((result(game), stat(game)), (3, 3));
         })
     });
 }
