@@ -5,6 +5,7 @@ use crate::game::{
     Audio, Game, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
 };
 use mod_api::EquipmentSlot;
+use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::item::{Component, Stack, component};
