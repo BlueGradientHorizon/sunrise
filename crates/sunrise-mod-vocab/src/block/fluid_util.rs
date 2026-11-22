@@ -260,8 +260,9 @@ pub fn try_place_fluid(
 /// sounds, and game events (including a pickup through `FLUIDS`), as well as the waterlogging
 /// tick and any ticks scheduled by a `place_liquid` Part through its
 /// [`LevelWriteHost`](crate::LevelWriteHost).
-/// Without an enclosing transaction, those effects publish before the dispenser's click and
-/// smoke. A single container is replaced in place (the first slot, else
+/// Without a transaction in the dispenser's level, those effects publish before the helper
+/// inserts or prepares an overflow remainder, and before the dispenser's click and smoke.
+/// A single container is replaced in place (the first slot, else
 /// the second when the first was emptied); when both slots remain populated, the first slot
 /// stays in the dispenser slot and the second slot's remainder goes into the dispenser, else out
 /// of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
@@ -279,35 +280,35 @@ pub fn dispense_container(
     let [dx, dy, dz] = event.facing.normal();
     let front = [x + dx, y + dy, z + dz];
     let side = Some(event.facing.opposite());
-    let stack = event.stack.clone();
-    let left = host
-        .transaction(|host, _tx| {
-            let moved = host.scratch_slots(stack.clone(), |host, _tx, copy| {
-                // The container's handler sees one container at a time, whatever the stack.
-                let one = ItemPlace::OneByOne(Box::new(copy.clone()));
-                let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
-                let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
-                    || try_place_fluid(host, &item, None, level, front, false).is_some();
-                transferred.then_some(()).ok_or(())
-            });
-            match moved {
-                // The changed container went into the first slot: a single one, replaced in place.
-                Ok(((), (first, None))) => Ok(first),
-                Ok(((), (None, Some(changed)))) => Ok(Some(changed)),
-                Ok(((), (Some(first), Some(changed)))) => {
-                    backend_mut_of(host)
-                        .ok_or(())?
-                        .dispense_add_remainder(event.dimension, event.pos, event.facing, changed)
-                        .map_err(|_| ())?;
-                    Ok(Some(first))
-                }
-                Err(ScratchError::Aborted(())) => host
-                    .dispense_default(event.dimension, event.pos, event.facing, stack)
-                    .map_err(|_| ()),
-                Err(ScratchError::Unavailable | ScratchError::Stack(_)) => Err(()),
-            }
-        })
-        .ok()?;
+    // The loan owns the transfer scope. Closing it publishes the transfer before we
+    // route or prepare overflow, unless the caller's source-level scope still owns both.
+    let moved = host.scratch_slots(event.stack.clone(), |host, _tx, copy| {
+        // The container's handler sees one container at a time, whatever the stack.
+        let one = ItemPlace::OneByOne(Box::new(copy.clone()));
+        let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
+        let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
+            || try_place_fluid(host, &item, None, level, front, false).is_some();
+        transferred.then_some(()).ok_or(())
+    });
+    let left = match moved {
+        Ok(((), (first, None))) => first,
+        Ok(((), (None, Some(changed)))) => Some(changed),
+        Ok(((), (Some(first), Some(changed)))) => {
+            backend_mut_of(host)?
+                .dispense_add_remainder(event.dimension, event.pos, event.facing, changed)
+                .ok()?;
+            Some(first)
+        }
+        Err(ScratchError::Aborted(())) => host
+            .dispense_default(
+                event.dimension,
+                event.pos,
+                event.facing,
+                event.stack.clone(),
+            )
+            .ok()?,
+        Err(_) => return None,
+    };
     Some((left, 1000))
 }
 

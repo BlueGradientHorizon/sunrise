@@ -9,7 +9,9 @@ use crate::game::{
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{chunk::Chunk, items::ItemStack};
-use sunrise_core::{geometry::Direction, position::BlockPos, ticks::TickTypeId};
+use sunrise_core::{
+    geometry::Direction, position::BlockPos, random::RandomSource, ticks::TickTypeId,
+};
 use sunrise_world::{fluid::FluidKind, registry::BlockStateId};
 
 /// The dispenser, facing east, and the block in front of it.
@@ -53,11 +55,18 @@ impl ItemPart for DetachedReply {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct PickupSnapshot {
+    second_slot_count: u32,
+    next_random: i32,
+}
+
 #[derive(Clone, Default)]
 struct Notices {
     contents: Arc<Mutex<Vec<DimensionKey>>>,
     fluids: Arc<Mutex<Vec<(String, String)>>>,
     reopen_on_pickup: bool,
+    pickup_snapshots: Option<Arc<Mutex<Vec<PickupSnapshot>>>>,
 }
 
 #[mod_api::sunrise_part]
@@ -148,8 +157,20 @@ impl Hooks for Containers {
             event.event,
             "minecraft:fluid_pickup" | "minecraft:fluid_place"
         ) {
-            if self.0.reopen_on_pickup && event.event == "minecraft:fluid_pickup" {
-                host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
+            if event.event == "minecraft:fluid_pickup" {
+                if self.0.reopen_on_pickup {
+                    host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
+                }
+                if let Some(snapshots) = &self.0.pickup_snapshots {
+                    let level = host.level(event.dimension).unwrap();
+                    let items = level.capability(host, &ITEMS, DISPENSER, None).unwrap();
+                    let second_slot_count = items.amount(host, 1);
+                    let next_random = level.with_random(host, |random| random.next_int()).unwrap();
+                    snapshots.lock().unwrap().push(PickupSnapshot {
+                        second_slot_count,
+                        next_random,
+                    });
+                }
             }
             self.0
                 .fluids
@@ -927,6 +948,54 @@ fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_re
         );
         assert!(game.world.block_entities.get(&SLOT_POS).is_none());
         assert!(rows().is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn fluid_pickup_publishes_before_remainder_insertion_or_overflow_draws() {
+    if spawn_dispenser_case("fluid_pickup_publishes_before_remainder_insertion_or_overflow_draws") {
+        return;
+    }
+    let snapshots = Arc::new(Mutex::new(Vec::new()));
+    let notices = Notices {
+        pickup_snapshots: Some(snapshots.clone()),
+        ..Notices::default()
+    };
+    with_dispenser_notices(notices, |game, _, _| {
+        for full in [false, true] {
+            let slots = game
+                .world
+                .block_entities
+                .get_mut(&SLOT_POS)
+                .unwrap()
+                .slots_mut();
+            slots[0] = Some(ItemStack::new("minecraft:bucket", 2));
+            slots[1..].fill(full.then(|| ItemStack::new("minecraft:stone", 64)));
+            set_front(game, "minecraft:water");
+            // Call the behaviour directly so the dispenser's slot-selection draw is not involved.
+            let next_random = game.world.random.clone().next_int();
+            let left = dispense(game, ItemStack::new("minecraft:bucket", 2));
+            assert_eq!(left, Some(ItemStack::new("minecraft:bucket", 1)));
+            assert_eq!(
+                std::mem::take(&mut *snapshots.lock().unwrap()),
+                [PickupSnapshot {
+                    second_slot_count: if full { 64 } else { 0 },
+                    next_random,
+                }]
+            );
+            if full {
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(
+                    game.dropped[0].stack,
+                    ItemStack::new("minecraft:water_bucket", 1)
+                );
+            } else {
+                let slots = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+                assert_eq!(slots[1], Some(ItemStack::new("minecraft:water_bucket", 1)));
+                assert!(game.dropped.is_empty());
+            }
+        }
     });
 }
 
