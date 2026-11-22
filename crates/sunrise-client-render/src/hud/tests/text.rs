@@ -468,3 +468,45 @@ fn missing_glyph_quads_match_vanilla_26_3_witness() {
         }
     }
 }
+
+#[test]
+fn world_glyph_copies_emit_per_glyph_before_decorations() {
+    let root = two_glyph_font("world-glyph-order");
+    let atlas = HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+        root.to_path_buf(),
+    ))
+    .unwrap();
+    let _ = fs::remove_dir_all(&root);
+    let mut batch = HudBatch::scratch([320, 240]);
+    let text = crate::text::Text::styled(
+        "ab",
+        crate::text::Style {
+            bold: true,
+            underlined: true,
+            strikethrough: true,
+            color: Some(0xFFAA00),
+            ..Default::default()
+        },
+    );
+    batch.text_styled_world(&atlas, &text, 0.0, 0.0, u32::MAX, true);
+    let quads = batch.vertices.as_chunks::<6>().0;
+    // 2 glyphs * (2 shadow + 2 fg) = 8 glyph quads, then 2 glyphs * 2 decorations * (shadow + fg) = 8 effect quads.
+    assert_eq!(quads.len(), 16);
+    let fg = rgba(0xFF, 0xAA, 0x00, 0xFF);
+    // Glyph 0: shadow, bold shadow, fg, bold fg.
+    assert_ne!(quads[0][0].color, fg);
+    assert_ne!(quads[1][0].color, fg);
+    assert_eq!(quads[2][0].color, fg);
+    assert_eq!(quads[3][0].color, fg);
+    assert!(quads[2][0].pos[0] < quads[4][0].pos[0]);
+    // Glyph 1: shadow, bold shadow, fg, bold fg.
+    assert_ne!(quads[4][0].color, fg);
+    assert_ne!(quads[5][0].color, fg);
+    assert_eq!(quads[6][0].color, fg);
+    assert_eq!(quads[7][0].color, fg);
+    // Decorations follow all glyphs, with world depths 0.01 (shadow) and 0.04 (foreground).
+    for pair in quads[8..].as_chunks::<2>().0 {
+        assert_eq!(pair[0][0].depth, 0.01_f32);
+        assert_eq!(pair[1][0].depth, 0.01_f32 + 0.03_f32);
+    }
+}

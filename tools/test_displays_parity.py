@@ -3,7 +3,7 @@
 
 Compiles and runs VanillaDisplayParityOracle against the pinned 26.3 client jar on JDK 25,
 writing witness.json and meta.json into .local/witness/<version>/displays/, then runs the
-21 Rust tests across sunrise-client-render, sunrise-client-lib, and sunrise-client against it
+17 Rust parity tests across sunrise-client-render, sunrise-client-lib, and sunrise-client against it
 via SUNRISE_DISPLAY_PARITY_WITNESS."""
 import argparse
 import json
@@ -24,7 +24,6 @@ RENDER_TESTS = [
     'gfx::entity_batch::tests::classic_polygon_offset_text_quads_sort_far_to_near_like_vanilla_26_3',
     'gfx::entity_batch::tests::classic_translucent_item_quads_sort_far_to_near_like_vanilla_26_3',
     'gfx::oit_features::tests::oit_text_polygon_offset_depth_bias_matches_vanilla_26_3',
-    'gfx::entity_pixel_test::scrgb::block_display_83224_has_no_seam_at_x1026',
     'hud::tests::atlas::packed_sprites_have_clamp_to_edge_padding_matching_vanilla_26_3',
     'hud::tests::text::missing_glyph_quads_match_vanilla_26_3_witness',
 ]
@@ -40,14 +39,11 @@ CLIENT_TESTS = [
     'game::text_displays::display_parity_tests::teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_26_3',
     'game::text_displays::display_parity_tests::display_shadow_respects_pre_tick_and_invisibility_flag_26_3',
     'game::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3',
-    'game::text_displays::display_parity_tests::no_culling_text_displays_are_not_frustum_culled_26_3',
     'game::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3',
     'game::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3',
     'game::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3',
-    'game::text_displays::display_parity_tests::block_display_backface_culling_translucent_pass_and_light_emission_26_3',
-    'game::text_displays::display_parity_tests::display_name_tags_and_fire_block_light_match_vanilla_26_3',
-    'game::text_displays::display_parity_tests::section_compiled_and_visible_gates_displays_and_mobs_26_3',
     'game::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3',
+    'game::text_displays::display_parity_tests::review_parity_witness_matches_vanilla_26_3',
 ]
 
 

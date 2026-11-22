@@ -239,6 +239,9 @@ public final class VanillaDisplayParityOracle {
         @Override public int getBrightness(LightLayer layer, BlockPos pos) {
             return layer == LightLayer.BLOCK ? blockLight : skyLight;
         }
+        @Override public boolean noCollision(Entity entity, AABB box) {
+            return true;
+        }
         @Override public int getMaxLocalRawBrightness(BlockPos pos) { return 15; }
         @Override public BlockState getBlockState(BlockPos pos) { return chunk.getBlockState(pos); }
         @Override public FluidState getFluidState(BlockPos pos) { return Fluids.EMPTY.defaultFluidState(); }
@@ -322,6 +325,7 @@ public final class VanillaDisplayParityOracle {
         root.add("inline_player_head", recordInlinePlayerHead(level));
         root.add("missing_glyph_quads", recordMissingGlyphQuads(level, font));
         root.add("block_display_83224", recordBlockDisplay83224(level));
+        root.add("review_parity", recordReviewParity(level, font));
 
         Path outPath = Path.of(args[0]);
         Files.createDirectories(outPath.getParent());
@@ -1602,6 +1606,267 @@ public final class VanillaDisplayParityOracle {
         // Vanilla projection matrix at fov=70, 1280x800, near=0.05, far=2048
         Matrix4f proj = new Matrix4f().setPerspective((float) (70.0 * (Math.PI / 180.0)), 1280.0F / 800.0F, 0.05F, 2048.0F);
         out.add("projection_70_1280x800_bits", mat4Bits(proj));
+
+        return out;
+    }
+
+    static JsonObject recordReviewParity(StubClientLevel level, Font font) throws Exception {
+        JsonObject out = new JsonObject();
+        var A_START = accessor(Display.class, "DATA_TRANSFORMATION_INTERPOLATION_START_DELTA_TICKS_ID");
+        var A_DUR = accessor(Display.class, "DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID");
+        var A_TP_DUR = accessor(Display.class, "DATA_POS_ROT_INTERPOLATION_DURATION_ID");
+        var A_TRANS = accessor(Display.class, "DATA_TRANSLATION_ID");
+        var A_VIEW_RANGE = accessor(Display.class, "DATA_VIEW_RANGE_ID");
+        var A_SHADOW_R = accessor(Display.class, "DATA_SHADOW_RADIUS_ID");
+        var A_WIDTH = accessor(Display.class, "DATA_WIDTH_ID");
+        var A_HEIGHT = accessor(Display.class, "DATA_HEIGHT_ID");
+        var A_GLOW = accessor(Display.class, "DATA_GLOW_COLOR_OVERRIDE_ID");
+        var A_TEXT = accessor(Display.TextDisplay.class, "DATA_TEXT_ID");
+        Method setFromPacket = findMethod(
+            net.minecraft.client.multiplayer.ClientPacketListener.class,
+            "setValuesFromPositionPacket",
+            net.minecraft.world.entity.PositionMoveRotation.class,
+            Set.class,
+            Entity.class,
+            boolean.class
+        );
+
+        // 1. Movement packet semantics: relative Teleport against active target & >4096 oldPosAndRot.
+        {
+            JsonObject mv = new JsonObject();
+            Display.TextDisplay d = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            d.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(d, dv(A_TP_DUR, 10));
+            d.moveOrInterpolateTo(new Vec3(10.0, 0.0, 0.0), 30.0F, 0.0F);
+            var change = new net.minecraft.world.entity.PositionMoveRotation(new Vec3(0.0, 0.0, 0.0), Vec3.ZERO, 15.0F, 0.0F);
+            var rels = Set.of(
+                net.minecraft.world.entity.Relative.X,
+                net.minecraft.world.entity.Relative.Y,
+                net.minecraft.world.entity.Relative.Z,
+                net.minecraft.world.entity.Relative.Y_ROT
+            );
+            boolean wasInterp = (boolean) setFromPacket.invoke(null, change, rels, d, true);
+            mv.addProperty("rel_yaw_was_interpolated", wasInterp);
+            for (int i = 0; i < 10; i++) tickEntity(d);
+            mv.addProperty("rel_yaw_final_yRot_bits", fb(d.getYRot()));
+
+            // >4096 non-interpolated path resolves oldPosition / yRotO independently.
+            Display.TextDisplay dFar = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            dFar.snapTo(1.0, 2.0, 3.0, 10.0F, 5.0F);
+            dFar.setOldPosAndRot(new Vec3(-4.0, -5.0, -6.0), 20.0F, -10.0F);
+            var farChange = new net.minecraft.world.entity.PositionMoveRotation(new Vec3(100.0, 0.0, 0.0), Vec3.ZERO, 15.0F, 0.0F);
+            boolean farInterp = (boolean) setFromPacket.invoke(null, farChange, rels, dFar, true);
+            mv.addProperty("far_was_interpolated", farInterp);
+            mv.add("far_pos_bits", dArr(dFar.getX(), dFar.getY(), dFar.getZ()));
+            mv.add("far_old_pos_bits", dArr(dFar.oldPosition().x(), dFar.oldPosition().y(), dFar.oldPosition().z()));
+            mv.add("far_rot_bits", fArr(dFar.getYRot(), dFar.getXRot()));
+            mv.add("far_old_rot_bits", fArr(dFar.yRotO, dFar.xRotO));
+            out.add("movement_packets", mv);
+        }
+
+        // 2. Rotation arithmetic and endpoints.
+        {
+            JsonObject rot = new JsonObject();
+            Display.TextDisplay d3 = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            d3.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(d3, dv(A_TP_DUR, 3));
+            d3.moveOrInterpolateTo(new Vec3(0.0, 0.0, 0.0), 0.0F, 7.0F);
+            tickEntity(d3);
+            rot.addProperty("pitch_0_to_7_tick1_bits", fb(d3.getXRot()));
+
+            Display.TextDisplay dSnap = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            dSnap.snapTo(0.0, 0.0, 0.0, 400.0F, 400.0F);
+            rot.addProperty("snap_400_yRot_bits", fb(dSnap.getYRot()));
+            rot.addProperty("snap_400_xRot_bits", fb(dSnap.getXRot()));
+            dSnap.setYRot(Float.NaN);
+            dSnap.setXRot(Float.POSITIVE_INFINITY);
+            rot.addProperty("nonfinite_retained_yRot_bits", fb(dSnap.getYRot()));
+            rot.addProperty("nonfinite_retained_xRot_bits", fb(dSnap.getXRot()));
+
+            dSnap.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            dSnap.yRotO = 350.0F;
+            rot.addProperty("getYRot_partial1_bits", fb(dSnap.getYRot(1.0F)));
+            out.add("rotation_arithmetic", rot);
+        }
+
+        // 3. Partial moves at duration 0, negative-duration repeat, and seating with active rotation.
+        {
+            JsonObject pm = new JsonObject();
+            Display.TextDisplay d = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            d.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(d, dv(A_TP_DUR, 4));
+            d.moveOrInterpolateTo(new Vec3(10.0, 0.0, 0.0), 0.0F, 0.0F);
+            tickEntity(d);
+            assign(d, dv(A_TP_DUR, 0));
+            d.moveOrInterpolateTo(45.0F, 0.0F);
+            pm.addProperty("partial_rot_at_dur0_x_bits", db(d.getX()));
+            pm.addProperty("partial_rot_at_dur0_yRot_bits", fb(d.getYRot()));
+
+            Display.TextDisplay dNeg = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            dNeg.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(dNeg, dv(A_TP_DUR, 4));
+            dNeg.moveOrInterpolateTo(new Vec3(4.0, 0.0, 0.0), 0.0F, 0.0F);
+            tickEntity(dNeg);
+            assign(dNeg, dv(A_TP_DUR, -2));
+            dNeg.moveOrInterpolateTo(new Vec3(4.0, 0.0, 0.0), 0.0F, 0.0F);
+            tickEntity(dNeg);
+            pm.addProperty("repeat_same_target_neg_dur_x_bits", db(dNeg.getX()));
+
+            Display.TextDisplay dSeat = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            dSeat.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(dSeat, dv(A_TP_DUR, 4));
+            dSeat.moveOrInterpolateTo(new Vec3(0.0, 0.0, 0.0), 40.0F, 0.0F);
+            tickEntity(dSeat);
+            dSeat.setPos(5.0, 2.0, -1.0);
+            tickEntity(dSeat);
+            pm.add("seated_adjust_pos_bits", dArr(dSeat.getX(), dSeat.getY(), dSeat.getZ()));
+            pm.addProperty("seated_adjust_yRot_bits", fb(dSeat.getYRot()));
+            out.add("partial_moves_and_seating", pm);
+        }
+
+        // 5. Transformation interpolation state: int wrap, neg-duration shadow radius, t=1.0 large translation.
+        {
+            JsonObject tx = new JsonObject();
+            Display.TextDisplay dw = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            assign(dw, dv(A_TEXT, Component.literal("W")));
+            tickEntity(dw); // tickCount = 1
+            assign(dw, dv(A_START, Integer.MAX_VALUE), dv(A_DUR, 4), dv(A_TRANS, new Vector3f(4.0F, 0.0F, 0.0F)));
+            tickEntity(dw); // tickCount = 2; 1 + MAX_VALUE wraps to MIN_VALUE in int before widening
+            Field startField = findField(Display.class, "interpolationStartClientTick");
+            tx.addProperty("wrapped_start_tick", (long) startField.get(dw));
+            tx.addProperty("wrapped_progress_0_bits", fb(dw.calculateInterpolationProgress(0.0F)));
+
+            Display.TextDisplay dsr = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            assign(dsr, dv(A_TEXT, Component.literal("S")), dv(A_SHADOW_R, 1.0F));
+            tickEntity(dsr);
+            assign(dsr, dv(A_START, 0), dv(A_DUR, -2), dv(A_SHADOW_R, 5.0F));
+            tickEntity(dsr);
+            assign(dsr, dv(A_START, 0), dv(A_DUR, 4));
+            tickEntity(dsr);
+            float p0 = dsr.calculateInterpolationProgress(0.0F);
+            tx.addProperty("neg_dur_then_start_only_shadow_r_at_0_bits", fb(dsr.renderState().shadowRadius().get(p0)));
+
+            Display.TextDisplay dLarge = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            assign(dLarge, dv(A_TEXT, Component.literal("L")), dv(A_TRANS, new Vector3f(33554432.0F, 0.0F, 0.0F)));
+            tickEntity(dLarge);
+            assign(dLarge, dv(A_START, 0), dv(A_DUR, 4), dv(A_TRANS, new Vector3f(1.0F, 0.0F, 0.0F)));
+            tickEntity(dLarge);
+            tx.addProperty("large_trans_at_1_x_bits", fb(dLarge.renderState().transformation().get(1.0F).translation().x()));
+            out.add("transformation_state", tx);
+        }
+
+        // 6. Display range NaN and AABB subnormal / +inf width.
+        {
+            JsonObject rg = new JsonObject();
+            Display.TextDisplay d = new Display.TextDisplay(entityType("minecraft:text_display"), level);
+            d.snapTo(0.0, 0.0, 0.0, 0.0F, 0.0F);
+            assign(d, dv(A_VIEW_RANGE, Float.NaN));
+            rg.addProperty("nan_view_range_renders_at_0", d.shouldRenderAtSqrDistance(0.0));
+
+            assign(d, dv(A_WIDTH, Float.MIN_VALUE), dv(A_HEIGHT, 1.0F));
+            AABB subBox = d.getInterpolatedBoundingBox(1.0F);
+            rg.add("subnormal_width_box_bits", dArr(subBox.minX, subBox.minY, subBox.minZ, subBox.maxX, subBox.maxY, subBox.maxZ));
+
+            assign(d, dv(A_WIDTH, Float.POSITIVE_INFINITY), dv(A_HEIGHT, 1.0F));
+            AABB infBox = d.getInterpolatedBoundingBox(1.0F);
+            rg.add("inf_width_box_bits", dArr(infBox.minX, infBox.minY, infBox.minZ, infBox.maxX, infBox.maxY, infBox.maxZ));
+            out.add("range_and_aabb", rg);
+        }
+
+        // 12. VertexSorting.DISTANCE_TO_ORIGIN tie break on (4096, 1, 1) vs (4096, 0, 0).
+        {
+            CompactVectorArray pts = new CompactVectorArray(2);
+            pts.set(0, 4096.0F, 0.0F, 0.0F);
+            pts.set(1, 4096.0F, 1.0F, 1.0F);
+            int[] order = VertexSorting.DISTANCE_TO_ORIGIN.sort(pts);
+            JsonArray arr = new JsonArray();
+            for (int idx : order) arr.add(idx);
+            out.add("vertex_sorting_4096_order", arr);
+        }
+
+        // 13. Block light for magma_block (emissiveRendering -> FULL_BRIGHT) and ender_chest (emission 7).
+        {
+            JsonObject bl = new JsonObject();
+            BlockState magma = Blocks.MAGMA_BLOCK.defaultBlockState();
+            BlockState echest = Blocks.ENDER_CHEST.defaultBlockState();
+            bl.addProperty("magma_emissive", magma.emissiveRendering());
+            bl.addProperty("magma_emission", magma.getLightEmission());
+            bl.addProperty("magma_resolved_light", magma.emissiveRendering() ? LightCoordsUtil.FULL_BRIGHT : LightCoordsUtil.lightCoordsWithEmission(0, magma.getLightEmission()));
+            bl.addProperty("ender_chest_emission", echest.getLightEmission());
+            bl.addProperty("ender_chest_resolved_light", LightCoordsUtil.lightCoordsWithEmission(0, echest.getLightEmission()));
+            out.add("block_display_light", bl);
+        }
+
+        // 14. Display.getTeamColor live glow_color_override change red -> blue.
+        {
+            JsonObject gl = new JsonObject();
+            Display.BlockDisplay bd = new Display.BlockDisplay(entityType("minecraft:block_display"), level);
+            assign(bd, dv(A_GLOW, 0xFF0000));
+            gl.addProperty("red", bd.getTeamColor());
+            assign(bd, dv(A_GLOW, 0x0000FF));
+            gl.addProperty("blue", bd.getTeamColor());
+            out.add("glow_color_override", gl);
+        }
+
+        // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0).
+        {
+            Matrix4f m = new Matrix4f().translate(16777216.0F, 0.0F, 0.0F).rotateZ((float) Math.toRadians(-45.0));
+            Vector3f p = m.transformPosition(new Vector3f(1.0F, 1.0F, 0.0F));
+            JsonObject jm = new JsonObject();
+            jm.add("rot_neg45_trans_16m_bits", fArr(p.x(), p.y(), p.z()));
+            Quaternionf qa = new Quaternionf(0.1F, 0.2F, 0.3F, 0.9F).normalize();
+            Quaternionf qb = new Quaternionf(-0.4F, 0.5F, -0.2F, 0.7F).normalize();
+            Quaternionf qs = new Quaternionf(qa).slerp(qb, 0.37F);
+            jm.add("slerp_bits", fArr(qs.x(), qs.y(), qs.z(), qs.w()));
+            out.add("joml_arithmetic", jm);
+        }
+
+        // 16. Glyph emission order for bold + shadow + underline + strikethrough on 2 glyphs.
+        {
+            CapturingStitcher effectStitcher = new CapturingStitcher();
+            BakedSheetGlyph whiteEffect = SpecialGlyphs.WHITE.bake(effectStitcher);
+            Font.Provider baseProv = (Font.Provider) findField(Font.class, "provider").get(font);
+            Font effectFont = new Font(new Font.Provider() {
+                @Override public GlyphSource glyphs(FontDescription desc) { return baseProv.glyphs(desc); }
+                @Override public net.minecraft.client.gui.font.glyphs.EffectGlyph effect() { return whiteEffect; }
+            });
+            Component styled = Component.literal("ab").withStyle(
+                Style.EMPTY.withBold(true).withUnderlined(true).withStrikethrough(true).withColor(0xFFAA00)
+            );
+            Font.PreparedText prepared = effectFont.prepareText(styled.getVisualOrderText(), 0.0F, 0.0F, 0xFFFFAA00, true, true, 0);
+            List<JsonObject> renderables = new ArrayList<>();
+            Matrix4f idMat = new Matrix4f();
+            prepared.visit(new Font.GlyphVisitor() {
+                @Override
+                public void acceptGlyph(TextRenderable.Styled glyph) {
+                    RecordingVertexConsumer vc = new RecordingVertexConsumer();
+                    glyph.render(idMat, vc, 0x00F000F0, false);
+                    JsonObject g = new JsonObject();
+                    g.addProperty("kind", "glyph");
+                    g.addProperty("quad_count", vc.vertices.size() / 4);
+                    JsonArray colors = new JsonArray();
+                    for (int i = 0; i < vc.vertices.size(); i += 4) {
+                        colors.add(vc.vertices.get(i).get("color_argb").getAsString());
+                    }
+                    g.add("quad_colors_argb", colors);
+                    renderables.add(g);
+                }
+
+                @Override
+                public void acceptEffect(TextRenderable effect) {
+                    RecordingVertexConsumer vc = new RecordingVertexConsumer();
+                    effect.render(idMat, vc, 0x00F000F0, false);
+                    JsonObject e = new JsonObject();
+                    e.addProperty("kind", "effect");
+                    e.addProperty("quad_count", vc.vertices.size() / 4);
+                    e.addProperty("top_bits", fb(effect.top()));
+                    renderables.add(e);
+                }
+            });
+            JsonArray arr = new JsonArray();
+            for (JsonObject r : renderables) arr.add(r);
+            out.add("glyph_visit_order", arr);
+        }
 
         return out;
     }

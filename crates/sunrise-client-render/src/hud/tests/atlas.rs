@@ -2048,3 +2048,44 @@ fn packed_sprites_have_clamp_to_edge_padding_matching_vanilla_26_3() {
     assert_eq!(raw(ax - 1, ay), [90, 180, 45, 255]);
     assert_eq!(raw(ax + 16, ay + 15), [90, 180, 45, 255]);
 }
+
+#[test]
+fn animation_upload_region_preserves_unpadded_and_blurred_borders() {
+    use super::super::animate::animation_upload_region;
+
+    // 2x2 frame with distinct left (red) and right (blue) columns.
+    let frame: Vec<u8> = [
+        [255, 0, 0, 255],
+        [0, 0, 255, 255],
+        [255, 0, 0, 255],
+        [0, 0, 255, 255],
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let place = |border| AnimatedPlacement {
+        x: 10,
+        y: 20,
+        w: 2,
+        h: 2,
+        border,
+    };
+
+    // Unpadded interior stays strictly within its assigned (x, y, w, h).
+    let (ux, uy, uw, uh, ubuf) = animation_upload_region(place(AtlasBorder::None), &frame);
+    assert_eq!((ux, uy, uw, uh), (10, 20, 2, 2));
+    assert_eq!(ubuf.as_ref(), frame.as_slice());
+
+    // Blurred repeating sprite wraps opposite horizontal edges (left border gets blue, right gets red).
+    let (wx, wy, ww, wh, wbuf) = animation_upload_region(place(AtlasBorder::Wrap), &frame);
+    assert_eq!((wx, wy, ww, wh), (9, 19, 4, 4));
+    let px = |buf: &[u8], x: usize, y: usize| &buf[(y * 4 + x) * 4..(y * 4 + x) * 4 + 4];
+    assert_eq!(px(&wbuf, 0, 1), &[0, 0, 255, 255]);
+    assert_eq!(px(&wbuf, 3, 1), &[255, 0, 0, 255]);
+
+    // Clamped sprite duplicates its own edges (left border gets red, right gets blue).
+    let (cx, cy, cw, ch, cbuf) = animation_upload_region(place(AtlasBorder::Clamp), &frame);
+    assert_eq!((cx, cy, cw, ch), (9, 19, 4, 4));
+    assert_eq!(px(&cbuf, 0, 1), &[255, 0, 0, 255]);
+    assert_eq!(px(&cbuf, 3, 1), &[0, 0, 255, 255]);
+}

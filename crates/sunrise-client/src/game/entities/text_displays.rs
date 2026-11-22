@@ -1590,6 +1590,142 @@ mod tests {
         assert_eq!((d.previous, d.position), (seat, next));
         assert_eq!(d.rotation[0], 60.0);
     }
+
+    #[test]
+    fn movement_packets_distinguish_position_sync_and_relative_teleport() {
+        use sunrise_protocol::packets::play::relative as rel;
+
+        // PositionSync from x=0 to x=65 (> 64 blocks) snaps even with a 10-tick duration.
+        let mut d = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        d.metadata(&[(10, 1, Value::Int(10))]);
+        assert!(!d.apply_position_sync([65.0, 0.0, 0.0], Some((20.0, 10.0)), true));
+        assert_eq!(d.position.x, 65.0);
+        assert_eq!(d.previous.x, 65.0);
+        assert!(!d.is_interpolating());
+
+        // PositionSync when not ticking snaps even within 64 blocks.
+        assert!(!d.apply_position_sync([66.0, 0.0, 0.0], Some((25.0, 0.0)), false));
+        assert_eq!(d.position.x, 66.0);
+
+        // Teleport with relative +15° yaw against an active 30° target queues 45°.
+        let mut dt = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        dt.metadata(&[(10, 1, Value::Int(10))]);
+        dt.move_to([10.0, 0.0, 0.0], Some((30.0, 0.0)));
+        let flags = rel::X | rel::Y | rel::Z | rel::Y_ROT;
+        assert!(
+            dt.apply_teleport_packet([0.0, 0.0, 0.0], 15.0, 0.0, flags)
+                .1
+        );
+        for _ in 0..10 {
+            dt.tick();
+        }
+        assert_eq!(dt.rotation[0], 45.0);
+
+        // Teleport > 4096 dist² resolves old pose independently on non-interpolated path.
+        let mut df = RemoteTextDisplay::new(Shows::Text, [1.0, 2.0, 3.0], 10.0);
+        df.snap_to(glam::DVec3::new(1.0, 2.0, 3.0), 10.0, 5.0);
+        df.previous = glam::DVec3::new(-4.0, -5.0, -6.0);
+        df.old_rotation = [20.0, -10.0];
+        assert!(
+            !df.apply_teleport_packet([100.0, 0.0, 0.0], 15.0, 0.0, flags)
+                .1
+        );
+        assert_eq!(df.position, glam::DVec3::new(101.0, 2.0, 3.0));
+        assert_eq!(df.previous, glam::DVec3::new(96.0, -5.0, -6.0));
+        assert_eq!(df.rotation, [25.0, 0.0]);
+        assert_eq!(df.old_rotation, [35.0, 0.0]);
+    }
+
+    #[test]
+    fn rotation_arithmetic_snap_nonfinite_and_partial_endpoints() {
+        let mut d = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        d.metadata(&[(10, 1, Value::Int(3))]);
+        d.move_to([0.0; 3], Some((0.0, 7.0)));
+        d.tick();
+        // Double-precision linear interpolation step: (0.0 + (7.0 - 0.0) / 3.0) as f32.
+        assert_eq!(
+            d.rotation[1].to_bits(),
+            ((7.0_f64 / 3.0_f64) as f32).to_bits()
+        );
+
+        d.snap_to(glam::DVec3::ZERO, 400.0, 400.0);
+        assert_eq!(d.rotation[0], 400.0);
+        assert_eq!(d.rotation[1], 40.0);
+        d.set_y_rot_raw(f32::NAN);
+        d.set_x_rot_raw(f32::INFINITY);
+        assert_eq!(d.rotation, [400.0, 40.0]);
+
+        d.snap_to(glam::DVec3::ZERO, 0.0, 0.0);
+        d.old_rotation = [350.0, 0.0];
+        assert_eq!(d.rotation_at(1.0)[0].to_bits(), 0.0_f32.to_bits());
+    }
+
+    #[test]
+    fn partial_moves_negative_duration_repeat_age_wrap_and_nan_range() {
+        // Duration=0 rotation-only packet completes active X target.
+        let mut d = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        d.metadata(&[(10, 1, Value::Int(4))]);
+        d.move_to([10.0, 0.0, 0.0], Some((0.0, 0.0)));
+        d.tick();
+        d.metadata(&[(10, 1, Value::Int(0))]);
+        d.move_to_opt(None, Some((45.0, 0.0)));
+        assert_eq!(d.position.x, 10.0);
+        assert_eq!(d.rotation[0], 45.0);
+
+        // Repeating identical target after setting negative duration preserves active ease.
+        let mut dn = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        dn.metadata(&[(10, 1, Value::Int(4))]);
+        dn.move_to([4.0, 0.0, 0.0], Some((0.0, 0.0)));
+        dn.tick();
+        dn.metadata(&[(10, 1, Value::Int(-2))]);
+        dn.move_to([4.0, 0.0, 0.0], Some((0.0, 0.0)));
+        dn.tick();
+        assert_eq!(dn.position.x, 2.0);
+
+        // Age + start_delta wraps in i32 before widening to i64 (age becomes 2 on tick 2).
+        let mut dw = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+        dw.metadata(&[(
+            23,
+            0,
+            Value::Text(sunrise_core::nbt::Tag::String("W".into())),
+        )]);
+        dw.tick(); // age = 1
+        dw.metadata(&[
+            (8, 1, Value::Int(i32::MAX)),
+            (9, 1, Value::Int(4)),
+            (11, 0, Value::Floats(vec![4.0, 0.0, 0.0])),
+        ]);
+        dw.tick(); // age = 2 -> 2i32.wrapping_add(i32::MAX) == i32::MIN + 1
+        assert_eq!(dw.start, i64::from(i32::MIN + 1));
+        assert_eq!(dw.progress(0.0), 1.0);
+
+        // NaN view_range is rejected by strict range check.
+        dw.metadata(&[(17, 2, Value::Float(f32::NAN))]);
+        assert!(!dw.in_range(glam::DVec3::ZERO, 1.0));
+    }
+
+    #[test]
+    fn see_through_collector_sorts_tags_and_displays_together() {
+        let mut collector = SeeThroughCollector::default();
+        let make = |c: u32| {
+            [sunrise_client::mesher::Vertex {
+                pos: [0.0; 3],
+                uv: [0.0; 2],
+                layer: 0,
+                color: c,
+                light: 0,
+                normal: [0; 4],
+                glint_uv: [0.0; 2],
+            }; 4]
+        };
+        collector.push_slice(submit_distance_sq(0.0, 0.0, -2.0), &make(1)); // near tag
+        collector.push_slice(submit_distance_sq(0.0, 0.0, -5.0), &make(2)); // far display
+        collector.push_slice(submit_distance_sq(0.0, 0.0, -5.0), &make(3)); // tie display
+        let mut out = Vec::new();
+        collector.flush(&mut out);
+        let order: Vec<u32> = out.as_chunks::<4>().0.iter().map(|q| q[0].color).collect();
+        assert_eq!(order, vec![2, 3, 1]);
+    }
 }
 
 #[cfg(test)]

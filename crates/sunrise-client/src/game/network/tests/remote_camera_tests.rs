@@ -125,3 +125,29 @@ fn a_frame_camera_turns_with_its_facing() {
     assert_eq!(view(1), (0.0, -90.0));
     assert_eq!(view(0), (0.0, 90.0));
 }
+
+#[test]
+fn a_server_camera_follows_a_tracked_display() {
+    use crate::game::text_displays::{RemoteTextDisplay, Shows};
+    let display = RemoteTextDisplay::new(Shows::Text, [3.0, 70.0, -4.0], 90.0).with_pitch(15.0);
+    let mut displays = indexmap::IndexMap::new();
+    displays.insert(42, display);
+    let entities = CameraEntities {
+        mobs: &[],
+        stands: &[],
+        boats: &[],
+        frames: &[],
+        tnts: &[],
+        displays: &displays,
+    };
+    assert!(entities.holds(42));
+    let view = entities
+        .view(42)
+        .expect("a display is a valid camera entity");
+    assert_eq!(view.position, [3.0, 70.0, -4.0]);
+    assert_eq!(view.previous, [3.0, 70.0, -4.0]);
+    assert_eq!((view.y_rot_o, view.y_rot), (90.0, 90.0));
+    assert_eq!((view.x_rot_o, view.x_rot), (15.0, 15.0));
+    assert_eq!(view.eye_height, 0.0);
+    assert!(view.living.is_none());
+}

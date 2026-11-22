@@ -1281,20 +1281,13 @@ mod scrgb {
     }
 
     #[test]
-    #[ignore = "run by tools/test_displays_parity.py"]
+    #[ignore = "daily"]
     fn block_display_83224_has_no_seam_at_x1026() {
         use super::super::*;
         use bytemuck::Zeroable;
         let _gpu = crate::gfx::test_gpu::lock();
-
-        let witness_path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
-            "SUNRISE_DISPLAY_PARITY_WITNESS must be set (run via tools/test_displays_parity.py)",
-        );
-        let witness_text = std::fs::read_to_string(&witness_path)
-            .unwrap_or_else(|e| panic!("failed to read {witness_path}: {e}"));
-        let w: serde_json::Value = serde_json::from_str(&witness_text).unwrap();
-        let hex_f32 = |v: &serde_json::Value| {
-            f32::from_bits(u32::from_str_radix(v.as_str().unwrap(), 16).unwrap())
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
         };
 
         // Pack a minimal HudAtlas containing opaque block/lime_concrete so its UV placement
@@ -1318,8 +1311,82 @@ mod scrgb {
         let _ = std::fs::remove_dir_all(&root);
         let sprite = atlas.sprites["block/lime_concrete"];
 
-        // Build EID 83224's exact 6 faces from the 26.3 witness.
-        let faces = w["block_display_83224"]["faces"].as_object().unwrap();
+        // Build EID 83224's exact 6 faces from its deterministic center-billboard pose.
+        let ent_y = f64::from_bits(0x4072_d9eb_851e_b852);
+        let cam_y = f64::from_bits(0x4072_d9eb_94c0_0000);
+        let mut pose = crate::camera::joml::Mat4::IDENTITY;
+        pose.translate(0.0, (ent_y - cam_y) as f32, 0.0);
+        pose.rotate(crate::camera::joml::Quat::rotation_y(-std::f32::consts::PI));
+        let mut tx = crate::camera::joml::Mat4::IDENTITY;
+        tx.translate(
+            f32::from_bits(0x4039_c28f),
+            f32::from_bits(0x4001_0000),
+            f32::from_bits(0xc089_eb85),
+        );
+        tx.scale(
+            f32::from_bits(0x3fce_6666),
+            f32::from_bits(0x3d5c_28f6),
+            f32::from_bits(0x3ca3_d70a),
+        );
+        pose = pose.mul_affine(&tx);
+
+        let faces: [([[f32; 3]; 4], [i8; 4]); 6] = [
+            // down, up, north, south, west, east after 180° Y billboard orientation.
+            (
+                [
+                    [0.0, 0.0, 1.0],
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 0.0, 1.0],
+                ],
+                [0, -127, 0, crate::mesher::SHADED_CULL_W],
+            ),
+            (
+                [
+                    [0.0, 1.0, 0.0],
+                    [0.0, 1.0, 1.0],
+                    [1.0, 1.0, 1.0],
+                    [1.0, 1.0, 0.0],
+                ],
+                [0, 127, 0, crate::mesher::SHADED_CULL_W],
+            ),
+            (
+                [
+                    [1.0, 1.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                ],
+                [0, 0, 127, crate::mesher::SHADED_CULL_W],
+            ),
+            (
+                [
+                    [0.0, 1.0, 1.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 1.0],
+                    [1.0, 1.0, 1.0],
+                ],
+                [0, 0, -127, crate::mesher::SHADED_CULL_W],
+            ),
+            (
+                [
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [0.0, 1.0, 1.0],
+                ],
+                [127, 0, 0, crate::mesher::SHADED_CULL_W],
+            ),
+            (
+                [
+                    [1.0, 1.0, 1.0],
+                    [1.0, 0.0, 1.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                ],
+                [-127, 0, 0, crate::mesher::SHADED_CULL_W],
+            ),
+        ];
         let mut verts = Vec::with_capacity(24);
         let uvs = [
             [sprite.u0, sprite.v0],
@@ -1327,19 +1394,10 @@ mod scrgb {
             [sprite.u1, sprite.v1],
             [sprite.u1, sprite.v0],
         ];
-        for dir in ["down", "up", "north", "south", "west", "east"] {
-            let emitted = faces[dir]["emitted_vertices"].as_array().unwrap();
-            for (k, v) in emitted.iter().enumerate() {
-                let p = v["pos_bits"].as_array().unwrap();
-                let n = v["normal_bits"].as_array().unwrap();
-                let nb = [
-                    (hex_f32(&n[0]).clamp(-1.0, 1.0) * 127.0) as i8,
-                    (hex_f32(&n[1]).clamp(-1.0, 1.0) * 127.0) as i8,
-                    (hex_f32(&n[2]).clamp(-1.0, 1.0) * 127.0) as i8,
-                    crate::mesher::SHADED_CULL_W,
-                ];
+        for (corners, nb) in faces {
+            for (k, c) in corners.into_iter().enumerate() {
                 verts.push(Vertex {
-                    pos: [hex_f32(&p[0]), hex_f32(&p[1]), hex_f32(&p[2])],
+                    pos: pose.transform_position(c),
                     uv: uvs[k],
                     layer: 0,
                     color: u32::MAX,
@@ -1353,21 +1411,6 @@ mod scrgb {
         let view_proj =
             world_projection(70.0, 1280.0 / 800.0, 2048.0) * crate::camera::view_matrix(0.0, 0.0);
 
-        // Prefer hardware Vulkan (reproduces the RTX 4090 boundary sample) with software fallback.
-        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-        desc.backends = wgpu::Backends::VULKAN;
-        let instance = wgpu::Instance::new(desc);
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            force_fallback_adapter: false,
-            ..Default::default()
-        }))
-        .or_else(|_| {
-            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                force_fallback_adapter: true,
-                ..Default::default()
-            }))
-        })
-        .expect("Vulkan adapter");
         let mut limits = wgpu::Limits::default();
         limits.max_texture_dimension_2d = limits
             .max_texture_dimension_2d

@@ -1082,4 +1082,81 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn blend_at_one_preserves_exact_large_translation_and_culling_halves_in_f32() {
+        let from = TextDisplayData {
+            translation: [33_554_432.0, 0.0, 0.0],
+            ..Default::default()
+        };
+        let to = TextDisplayData {
+            translation: [1.0, 0.0, 0.0],
+            ..Default::default()
+        };
+        assert_eq!(to.blend(&from, 1.0).translation[0], 1.0);
+
+        let (lo, hi) = culling_box(glam::DVec3::ZERO, f32::from_bits(1), 1.0);
+        assert_eq!((lo.x, hi.x, lo.z, hi.z), (0.0, 0.0, 0.0, 0.0));
+        let (ilo, ihi) = culling_box(glam::DVec3::ZERO, f32::INFINITY, 1.0);
+        assert_eq!((ilo.x, ihi.x), (f64::NEG_INFINITY, f64::INFINITY));
+    }
+
+    #[test]
+    fn joml_pose_keeps_exact_affine_rounding_for_large_translation_and_rotation() {
+        let angle = (-45.0_f32).to_radians();
+        let d = TextDisplayData {
+            translation: [16_777_216.0, 0.0, 0.0],
+            left_rotation: [0.0, 0.0, (angle * 0.5).sin(), (angle * 0.5).cos()],
+            ..Default::default()
+        };
+        let pose = d.pose([0.0; 3], [0.0; 2], [0.0; 2]);
+        let pt = pose.transform_position([1.0, 1.0, 0.0]);
+        assert_eq!(pt[0].to_bits(), 16_777_216.0_f32.to_bits());
+    }
+
+    #[test]
+    fn cached_quads_reuses_layout_on_paint_change_and_static_inline_head() {
+        let atlas = crate::hud::HudAtlas::boot();
+        let mut d = TextDisplayData {
+            text: std::sync::Arc::new(crate::text::Text::literal("Hello world")),
+            background: 0x4000_0000,
+            opacity: -1,
+            ..Default::default()
+        };
+        let mut cache = CachedQuads::new(&atlas, &d, 0);
+        let lines_ptr = cache.lines.lines.as_ptr();
+        let lines_len = cache.lines.lines.len();
+
+        // Changing opacity/background repaints without rebuilding line layout.
+        d.background = 0x8011_2233;
+        d.opacity = 128u8 as i8;
+        assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
+        cache.update(&atlas, &d, 0);
+        assert_eq!(cache.lines.lines.as_ptr(), lines_ptr);
+        assert_eq!(cache.lines.lines.len(), lines_len);
+        assert!(cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
+
+        // Static inline player head stays cached across frames while atlas & skin revisions match.
+        let head = crate::entity_nbt::name_text(&sunrise_core::nbt::Tag::Compound(
+            [
+                (
+                    "object".into(),
+                    sunrise_core::nbt::Tag::String("player".into()),
+                ),
+                (
+                    "player".into(),
+                    sunrise_core::nbt::Tag::String("Alex".into()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ));
+        d.text = std::sync::Arc::new(head);
+        cache.update(&atlas, &d, 0);
+        assert!(!cache.obfuscated);
+        assert!(cache.has_inline_object);
+        assert!(cache.matches_atlas(&atlas, &d, 0));
+        assert!(cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
+        assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision + 1));
+    }
 }

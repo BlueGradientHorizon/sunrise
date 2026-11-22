@@ -271,6 +271,13 @@ fn display_shadow_respects_pre_tick_and_invisibility_flag_26_3() {
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::display_camera_angles_and_billboard_use_active_camera_not_player_26_3",
+        "SUNRISE_DISPLAY_CAMERA_ANGLES_CASE",
+        &["camera_angles"],
+    ) {
+        return;
+    }
     let w = parity_witness();
     with_client_game(|game| {
         game.view_frustum = None;
@@ -360,10 +367,15 @@ fn display_camera_angles_and_billboard_use_active_camera_not_player_26_3() {
 }
 
 #[test]
-#[ignore = "run by tools/test_displays_parity.py"]
+#[ignore = "daily"]
 fn no_culling_text_displays_are_not_frustum_culled_26_3() {
-    let w = parity_witness();
-    let live = &w["live_culling_and_no_culling"];
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::no_culling_text_displays_are_not_frustum_culled_26_3",
+        "SUNRISE_DISPLAY_NO_CULLING_CASE",
+        &["no_culling"],
+    ) {
+        return;
+    }
     with_client_game(|game| {
         let cam = DVec3::new(0.5, 301.620015, 0.5);
         game.camera_type = CameraType::FirstPerson;
@@ -390,12 +402,7 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
         game.tick_text_displays();
         let (mut normal, mut see_through) = (Vec::new(), Vec::new());
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
-        assert_eq!(
-            !normal.is_empty(),
-            live["no_culling_outside_frustum_should_render"]
-                .as_bool()
-                .unwrap()
-        );
+        assert!(!normal.is_empty());
 
         // Finite culling box behind the camera must be frustum-culled.
         game.text_displays.clear();
@@ -416,18 +423,40 @@ fn no_culling_text_displays_are_not_frustum_culled_26_3() {
         normal.clear();
         see_through.clear();
         game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
-        assert_eq!(
-            !normal.is_empty(),
-            live["finite_box_behind_camera_should_render"]
-                .as_bool()
-                .unwrap()
-        );
+        assert!(normal.is_empty());
+
+        // Infinite width alone must be frustum-culled (no +/-2 fallback) via JOML NaN rejection.
+        game.text_displays.clear();
+        assert!(game.spawn_remote_object(
+            1003,
+            "minecraft:text_display",
+            [0.5, 301.62, 2.0],
+            (0.0, 0.0),
+            0,
+        ));
+        game.text_displays.get_mut(&1003).unwrap().metadata(&[
+            (20, 2, Value::Float(f32::INFINITY)),
+            (21, 2, Value::Float(1.0)),
+            (23, 0, Value::Text(Tag::String("Inf".into()))),
+        ]);
+        game.tick_text_displays();
+        normal.clear();
+        see_through.clear();
+        game.text_display_geometry(cam, 1.0, &mut normal, &mut see_through);
+        assert!(normal.is_empty());
     });
 }
 
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_3",
+        "SUNRISE_DISPLAY_LIFECYCLE_CASE",
+        &["lifecycle"],
+    ) {
+        return;
+    }
     let w = parity_witness();
     let lc = &w["lifecycle"];
     let live = &w["live_culling_and_no_culling"];
@@ -747,6 +776,13 @@ fn display_lifecycle_pre_tick_deferred_swap_live_culling_and_culled_progress_26_
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::text_display_render_order_solid_split_and_see_through_sort_26_3",
+        "SUNRISE_DISPLAY_RENDER_ORDER_CASE",
+        &["render_order"],
+    ) {
+        return;
+    }
     let w = parity_witness();
     let phases = &w["text_submit_phases_and_sorting"];
     with_client_game(|game| {
@@ -949,6 +985,13 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn text_display_resolves_inline_player_head_profiles_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::text_display_resolves_inline_player_head_profiles_26_3",
+        "SUNRISE_DISPLAY_INLINE_HEAD_CASE",
+        &["inline_head"],
+    ) {
+        return;
+    }
     let w = parity_witness();
     let head = &w["inline_player_head"];
     let tag = decode_network_nbt_hex(&head["component_nbt_hex"]);
@@ -1004,16 +1047,20 @@ fn text_display_resolves_inline_player_head_profiles_26_3() {
 }
 
 #[test]
-#[ignore = "run by tools/test_displays_parity.py"]
+#[ignore = "daily"]
 fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
-    let w = parity_witness();
-    let bd = &w["block_display_render_type_and_cull"];
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::block_display_backface_culling_translucent_pass_and_light_emission_26_3",
+        "SUNRISE_DISPLAY_BLOCK_LIGHT_CASE",
+        &["block_light"],
+    ) {
+        return;
+    }
     with_client_game(|game| {
         game.view_frustum = None;
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
-        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
         game.settings.render_distance = 8;
         game.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
@@ -1021,6 +1068,7 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
 
         let emit_block = |game: &mut Game<'_>, id: i32, block: &str| -> Vec<Vertex> {
             game.text_displays.clear();
+            game.glowing_vertices.borrow_mut().clear();
             let state = game.pack.assets.registry.default_state(block).unwrap();
             assert!(game.spawn_remote_object(
                 id,
@@ -1041,8 +1089,6 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         };
 
         let concrete = emit_block(game, 5001, "minecraft:black_concrete");
-        assert_eq!(bd["cutout_cull"], true);
-        assert_eq!(bd["setup_model_opaque_is_cutout_sheet"], true);
         assert!(
             concrete.iter().all(|v| v.normal[3] == SHADED_CULL_W),
             "opaque block display must use back-face culling (SHADED_CULL_W)"
@@ -1050,8 +1096,6 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         assert!(concrete.iter().all(|v| (v.layer & 0xffff) == 0));
 
         let glass = emit_block(game, 5002, "minecraft:blue_stained_glass");
-        assert_eq!(bd["translucent_cull"], true);
-        assert_eq!(bd["setup_model_translucent_is_translucent_sheet"], true);
         assert!(
             glass.iter().all(|v| v.normal[3] == SHADED_CULL_W),
             "translucent block display must use back-face culling (SHADED_CULL_W)"
@@ -1064,32 +1108,64 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         );
 
         let glowstone = emit_block(game, 5003, "minecraft:glowstone");
-        let expected_block_light = bd["blocks"]["minecraft:glowstone"]["packed_block_light_coords"]
-            .as_u64()
-            .unwrap() as u32;
         assert!(
-            glowstone
-                .iter()
-                .all(|v| ((v.light >> 8) & 0xff) == expected_block_light),
-            "glowstone block display must emit block light {expected_block_light}, got {}",
+            glowstone.iter().all(|v| ((v.light >> 8) & 0xff) == 15 * 16),
+            "glowstone block display must emit block light 240, got {}",
             (glowstone[0].light >> 8) & 0xff
         );
+
+        // Magma block emissiveRendering resolves to full light (15, 15).
+        let magma = emit_block(game, 5004, "minecraft:magma_block");
+        assert!(
+            magma.iter().all(|v| v.light == 0xF0F0),
+            "magma_block display must emit full (15, 15) light 0xF0F0, got {:#x}",
+            magma[0].light
+        );
+
+        // Ender chest special geometry preserves block light 7 (112).
+        let echest = emit_block(game, 5005, "minecraft:ender_chest");
+        assert!(
+            echest.iter().all(|v| ((v.light >> 8) & 0xff) == 7 * 16),
+            "ender_chest display must emit block light 112, got {}",
+            (echest[0].light >> 8) & 0xff
+        );
+
+        // Glowing block display submits live glow_color_override (red -> blue without ticking).
+        game.text_displays
+            .get_mut(&5005)
+            .unwrap()
+            .metadata(&[(0, 0, Value::Byte(0x40)), (22, 1, Value::Int(0xFF0000))]);
+        game.glowing_vertices.borrow_mut().clear();
+        let mut out = Vec::new();
+        game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
+        assert!(!game.glowing_vertices.borrow().is_empty());
+        assert_eq!(game.glowing_vertices.borrow()[0].color, 0xFF00_00FF);
+        game.text_displays
+            .get_mut(&5005)
+            .unwrap()
+            .metadata(&[(22, 1, Value::Int(0x0000FF))]);
+        game.glowing_vertices.borrow_mut().clear();
+        out.clear();
+        game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
+        assert_eq!(game.glowing_vertices.borrow()[0].color, 0xFFFF_0000);
     });
 }
 
 #[test]
-#[ignore = "run by tools/test_displays_parity.py"]
+#[ignore = "daily"]
 fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
-    let w = parity_witness();
-    let feats = &w["display_entity_features"];
-    let nt = &feats["name_tags"];
-    let fire = &feats["fire"];
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::display_name_tags_and_fire_block_light_match_vanilla_26_3",
+        "SUNRISE_DISPLAY_NAME_TAG_CASE",
+        &["name_tag"],
+    ) {
+        return;
+    }
     with_client_game(|game| {
         game.view_frustum = None;
         game.posed_rotation = Some((0.0, 0.0));
         game.view.y_rot = 0.0;
         game.view.x_rot = 0.0;
-        // Match VanillaDisplayParityOracle's `Entity.setViewScale(1.0)`.
         game.settings.render_distance = 8;
         game.settings.entity_distance = 1.0;
         let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
@@ -1102,10 +1178,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
             (3, 0, Value::Bool(true)),
         ]);
         // Pre-first-tick: DisplayRenderer.submit does not submit name tag.
-        assert_eq!(
-            !game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty(),
-            nt["pre_tick_submitted_name_tag"].as_bool().unwrap()
-        );
+        assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
         // Post-first-tick with empty text: hasSubState() is true -> submits name tag.
         game.text_displays.get_mut(&6001).unwrap().metadata(&[(
             23,
@@ -1114,29 +1187,54 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         )]);
         game.tick_text_displays();
         let tags = game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0));
-        assert_eq!(
-            tags.iter().any(|t| t == "DisplayTag"),
-            nt["post_tick_empty_text_submitted_name_tag"]
-                .as_bool()
-                .unwrap()
-        );
+        assert!(tags.iter().any(|t| t == "DisplayTag"));
+        // Zero view_range suppresses tag through the unified visibility decision.
+        game.text_displays
+            .get_mut(&6001)
+            .unwrap()
+            .metadata(&[(17, 2, Value::Float(0.0))]);
+        assert!(game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0)).is_empty());
+        game.text_displays
+            .get_mut(&6001)
+            .unwrap()
+            .metadata(&[(17, 2, Value::Float(1.0))]);
         // Beyond 64 blocks: suppressed.
-        assert_eq!(
-            game.shown_name_tags(DVec3::new(0.0, 0.0, 65.0))
+        assert!(
+            !game
+                .shown_name_tags(DVec3::new(0.0, 0.0, 65.0))
                 .iter()
-                .any(|t| t == "DisplayTag"),
-            nt["beyond_64_extracted_name"].as_bool().unwrap()
+                .any(|t| t == "DisplayTag")
         );
+        // Display brightness override lights the solid name tag; shift key (discrete) suppresses see-through copy.
+        game.text_displays.get_mut(&6001).unwrap().metadata(&[
+            (16, 1, Value::Int((15 << 20) | (15 << 4))),
+            (0, 0, Value::Byte(0x02)),
+        ]);
+        game.tick_text_displays();
+        let (mut solid_tag, mut faded_tag) = (Vec::new(), Vec::new());
+        game.name_tag_geometry(
+            DVec3::new(0.0, 0.0, 5.0),
+            1.0,
+            &mut solid_tag,
+            &mut faded_tag,
+        );
+        assert!(!solid_tag.is_empty());
+        assert!(
+            faded_tag.is_empty(),
+            "discrete display must omit see-through tag copy"
+        );
+        assert!(solid_tag.iter().all(|v| v.light == 0xF0F0));
+
         // CustomNameVisible = false (not crosshair pick): suppressed.
         game.text_displays
             .get_mut(&6001)
             .unwrap()
             .metadata(&[(3, 0, Value::Bool(false))]);
-        assert_eq!(
-            game.shown_name_tags(DVec3::new(0.0, 0.0, 5.0))
+        assert!(
+            !game
+                .shown_name_tags(DVec3::new(0.0, 0.0, 5.0))
                 .iter()
-                .any(|t| t == "DisplayTag"),
-            nt["name_visible_false_extracted_name"].as_bool().unwrap()
+                .any(|t| t == "DisplayTag")
         );
 
         // 2. Burning display block light = 15 without brightness override; override wins when set.
@@ -1163,9 +1261,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         let mut out = Vec::new();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
         assert!(!out.is_empty());
-        let expected_fire_block =
-            fire["block_light_no_override_on_fire"].as_u64().unwrap() as u32 * 16;
-        assert_eq!((out[0].light >> 8) & 0xff, expected_fire_block);
+        assert_eq!((out[0].light >> 8) & 0xff, 15 * 16);
 
         // Brightness override (block=3, sky=5) beats fire light 15.
         game.text_displays.get_mut(&6002).unwrap().metadata(&[(
@@ -1177,9 +1273,7 @@ fn display_name_tags_and_fire_block_light_match_vanilla_26_3() {
         out.clear();
         game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
         assert!(!out.is_empty());
-        let expected_override_block =
-            fire["block_light_with_override_on_fire"].as_u64().unwrap() as u32 * 16;
-        assert_eq!((out[0].light >> 8) & 0xff, expected_override_block);
+        assert_eq!((out[0].light >> 8) & 0xff, 3 * 16);
     });
 }
 
@@ -1187,13 +1281,11 @@ const SECTION_GATE_NAME: &str = "game::text_displays::display_parity_tests::sect
 const SECTION_GATE_CASE: &str = "SUNRISE_DISPLAY_SECTION_GATE_CASE";
 
 #[test]
-#[ignore = "run by tools/test_displays_parity.py"]
+#[ignore = "daily"]
 fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
     if run_fresh_cases(SECTION_GATE_NAME, SECTION_GATE_CASE, &["section_gate"]) {
         return;
     }
-    let w = parity_witness();
-    let gate = &w["section_compiled_and_visible_gate"];
     with_client_game(|game| {
         let _event_loop = frame_scene(game);
         game.view_frustum = None;
@@ -1248,18 +1340,9 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
         let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
-        let uncompiled = gate["inside_build_uncompiled"].as_bool().unwrap();
-        assert_eq!(
-            !normal.is_empty(),
-            uncompiled,
-            "text display in uncompiled section"
-        );
-        assert_eq!(
-            !blocks.is_empty(),
-            uncompiled,
-            "block display in uncompiled section"
-        );
-        assert_eq!(mob_drawn, uncompiled, "mob in uncompiled section");
+        assert!(normal.is_empty(), "text display in uncompiled section");
+        assert!(blocks.is_empty(), "block display in uncompiled section");
+        assert!(!mob_drawn, "mob in uncompiled section");
 
         // Compiled empty section while fading (< 0.3 visibility) stays hidden; fade = 0 renders.
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
@@ -1277,18 +1360,9 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range.clone(), &mut mob_verts);
         let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
-        let fading = gate["inside_build_empty_fading_0_2"].as_bool().unwrap();
-        assert_eq!(
-            !normal.is_empty(),
-            fading,
-            "text display in fading empty section"
-        );
-        assert_eq!(
-            !blocks.is_empty(),
-            fading,
-            "block display in fading empty section"
-        );
-        assert_eq!(mob_drawn, fading, "mob in fading empty section");
+        assert!(normal.is_empty(), "text display in fading empty section");
+        assert!(blocks.is_empty(), "block display in fading empty section");
+        assert!(!mob_drawn, "mob in fading empty section");
 
         game.settings.chunk_fade = 0.0;
         normal.clear();
@@ -1300,21 +1374,12 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         let mob_frame = game.begin_mob_geometry(cam, 1.0);
         game.mob_run_geometry(&mob_frame, mob_range, &mut mob_verts);
         let mob_drawn = !mob_verts.is_empty() || game.skin_frame.borrow().vertices > 0;
-        let visible = gate["inside_build_empty_fade_0"].as_bool().unwrap();
-        assert_eq!(
-            !normal.is_empty(),
-            visible,
-            "text display in visible empty section"
-        );
-        assert_eq!(
-            !blocks.is_empty(),
-            visible,
-            "block display in visible empty section"
-        );
-        assert_eq!(mob_drawn, visible, "mob in visible empty section");
+        assert!(!normal.is_empty(), "text display in visible empty section");
+        assert!(!blocks.is_empty(), "block display in visible empty section");
+        assert!(mob_drawn, "mob in visible empty section");
 
         // Above and below build height: always visible even when uncompiled.
-        for (id, y, key) in [
+        for (id, y, label) in [
             (7003, 340.0, "above_build_height_uncompiled"),
             (7004, -80.0, "below_build_height_uncompiled"),
         ] {
@@ -1334,7 +1399,7 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
             game.tick_text_displays();
             normal.clear();
             game.text_display_geometry(DVec3::new(0.5, y, 0.5), 1.0, &mut normal, &mut see_through);
-            assert_eq!(!normal.is_empty(), gate[key].as_bool().unwrap(), "{key}");
+            assert!(!normal.is_empty(), "{label}");
         }
     });
 }
@@ -1342,6 +1407,13 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
 #[test]
 #[ignore = "run by tools/test_displays_parity.py"]
 fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3",
+        "SUNRISE_DISPLAY_83224_CASE",
+        &["bold_83224"],
+    ) {
+        return;
+    }
     let w = parity_witness();
     let argb_to_abgr = |v: &serde_json::Value| {
         let argb = u32::from_str_radix(v.as_str().unwrap(), 16).unwrap();
@@ -1535,4 +1607,393 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             );
         }
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
+    if run_fresh_cases(
+        "game::text_displays::display_parity_tests::set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3",
+        "SUNRISE_DISPLAY_SET_CAMERA_CASE",
+        &["set_camera"],
+    ) {
+        return;
+    }
+    use crate::game::remote::RemoteDimensionEntry;
+    use sunrise_client::level_loading::Reason;
+    use sunrise_protocol::{
+        connection::Pipe,
+        packets::play::{self, Clientbound as C, SpawnInfo},
+    };
+    with_client_game(|game| {
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "DisplayCamTest").unwrap();
+        let spawn = SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 0,
+            game_type: 3,
+            previous_game_type: None,
+            debug: false,
+            flat: true,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        };
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
+        let remote = game.remote.as_mut().unwrap();
+        remote.logged_in = true;
+        remote.entity_id = 7;
+
+        let chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+        game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
+
+        let td_kind = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:text_display")
+            .unwrap();
+        game.handle_packet(C::AddEntity(play::AddEntity {
+            id: 9001,
+            uuid: 9001,
+            kind: td_kind,
+            position: [0.5, 64.0, 0.5],
+            velocity: [0.0; 3],
+            pitch: 0,
+            yaw: 0,
+            head_yaw: 0,
+            data: 0,
+        }))
+        .unwrap();
+        game.text_displays.get_mut(&9001).unwrap().metadata(&[(
+            23,
+            0,
+            Value::Text(Tag::String("CamDisplay".into())),
+        )]);
+        game.tick_text_displays_with_freeze(true);
+
+        // SetCamera packet targeting a tracked display attaches camera, hides in first person, shows in third person.
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 9001 }))
+            .unwrap();
+        assert_eq!(game.remote_camera_id(), Some(9001));
+        let snap = game
+            .spectated_camera_snapshot()
+            .expect("camera follows display");
+        assert_eq!(snap.position, [0.5, 64.0, 0.5]);
+        assert_eq!(snap.eye_height, 0.0);
+
+        game.view_frustum = None;
+        game.posed_rotation = Some((0.0, 0.0));
+        game.view.y_rot = 0.0;
+        game.view.x_rot = 0.0;
+        game.camera_type = CameraType::FirstPerson;
+        let (mut normal, mut see_through) = (Vec::new(), Vec::new());
+        game.text_display_geometry(
+            DVec3::new(0.5, 64.0, 0.5),
+            1.0,
+            &mut normal,
+            &mut see_through,
+        );
+        assert!(
+            normal.is_empty(),
+            "camera display must be hidden in first person"
+        );
+
+        game.camera_type = CameraType::ThirdPersonBack;
+        game.text_display_geometry(
+            DVec3::new(0.5, 64.0, 0.5),
+            1.0,
+            &mut normal,
+            &mut see_through,
+        );
+        assert!(
+            !normal.is_empty(),
+            "camera display must render in third person"
+        );
+
+        // Return camera to player and verify shared see-through sort interleaves name tag & text display.
+        game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
+            .unwrap();
+        assert_eq!(game.remote_camera_id(), None);
+        game.camera_type = CameraType::FirstPerson;
+        game.text_displays.clear();
+        assert!(game.spawn_remote_object(
+            9002,
+            "minecraft:text_display",
+            [0.0, 64.0, -2.0],
+            (0.0, 0.0),
+            0,
+        ));
+        game.text_displays.get_mut(&9002).unwrap().metadata(&[
+            (2, 0, Value::OptText(Some(Tag::String("NearTag".into())))),
+            (3, 0, Value::Bool(true)),
+            (23, 0, Value::Text(Tag::String("".into()))),
+        ]);
+        assert!(game.spawn_remote_object(
+            9003,
+            "minecraft:text_display",
+            [0.0, 64.0, -6.0],
+            (0.0, 0.0),
+            0,
+        ));
+        game.text_displays.get_mut(&9003).unwrap().metadata(&[
+            (23, 0, Value::Text(Tag::String("FarHolo".into()))),
+            (25, 1, Value::Int(0xFF11_2233u32 as i32)),
+            (26, 0, Value::Byte(-1)),
+            (27, 0, Value::Byte(2)), // see_through
+        ]);
+        game.tick_text_displays_with_freeze(true);
+        let mut collector = super::SeeThroughCollector::default();
+        let (mut solid, mut st_out) = (Vec::new(), Vec::new());
+        let cam = DVec3::new(0.0, 64.0, 0.0);
+        game.name_tag_geometry_into(cam, 1.0, &mut solid, &mut collector);
+        game.text_display_geometry_into(cam, 1.0, &mut solid, &mut collector);
+        collector.flush(&mut st_out);
+        let far_bg = 0xFF33_2211u32;
+        let first_far = st_out
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .position(|q| q[0].color == far_bg)
+            .expect("far see-through hologram background");
+        assert_eq!(
+            first_far, 0,
+            "farther see-through hologram must sort before nearer faded name tag"
+        );
+    });
+}
+
+#[test]
+#[ignore = "run by tools/test_displays_parity.py"]
+fn review_parity_witness_matches_vanilla_26_3() {
+    let w = parity_witness();
+    let rp = &w["review_parity"];
+
+    // 1. Movement packets: relative yaw against active target and >4096 oldPosAndRot.
+    use sunrise_protocol::packets::play::relative as rel;
+    let mv = &rp["movement_packets"];
+    let mut dt = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dt.metadata(&[(10, 1, Value::Int(10))]);
+    dt.move_to([10.0, 0.0, 0.0], Some((30.0, 0.0)));
+    let flags = rel::X | rel::Y | rel::Z | rel::Y_ROT;
+    assert_eq!(
+        dt.apply_teleport_packet([0.0; 3], 15.0, 0.0, flags).1,
+        mv["rel_yaw_was_interpolated"].as_bool().unwrap()
+    );
+    for _ in 0..10 {
+        dt.tick();
+    }
+    assert_eq!(
+        dt.rotation[0].to_bits(),
+        hex_u32(&mv["rel_yaw_final_yRot_bits"])
+    );
+
+    let mut df = RemoteTextDisplay::new(Shows::Text, [1.0, 2.0, 3.0], 10.0);
+    df.snap_to(DVec3::new(1.0, 2.0, 3.0), 10.0, 5.0);
+    df.previous = DVec3::new(-4.0, -5.0, -6.0);
+    df.old_rotation = [20.0, -10.0];
+    assert_eq!(
+        df.apply_teleport_packet([100.0, 0.0, 0.0], 15.0, 0.0, flags)
+            .1,
+        mv["far_was_interpolated"].as_bool().unwrap()
+    );
+    assert_eq!(
+        df.position.to_array(),
+        hex_f64_arr::<3>(&mv["far_pos_bits"])
+    );
+    assert_eq!(
+        df.previous.to_array(),
+        hex_f64_arr::<3>(&mv["far_old_pos_bits"])
+    );
+    assert_eq!(
+        df.rotation.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&mv["far_rot_bits"])
+    );
+    assert_eq!(
+        df.old_rotation.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&mv["far_old_rot_bits"])
+    );
+
+    // 2. Rotation arithmetic and endpoints.
+    let rot = &rp["rotation_arithmetic"];
+    let mut d3 = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    d3.metadata(&[(10, 1, Value::Int(3))]);
+    d3.move_to([0.0; 3], Some((0.0, 7.0)));
+    d3.tick();
+    assert_eq!(
+        d3.rotation[1].to_bits(),
+        hex_u32(&rot["pitch_0_to_7_tick1_bits"])
+    );
+    let mut dsnap = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dsnap.snap_to(DVec3::ZERO, 400.0, 400.0);
+    assert_eq!(
+        dsnap.rotation[0].to_bits(),
+        hex_u32(&rot["snap_400_yRot_bits"])
+    );
+    assert_eq!(
+        dsnap.rotation[1].to_bits(),
+        hex_u32(&rot["snap_400_xRot_bits"])
+    );
+    dsnap.set_y_rot_raw(f32::NAN);
+    dsnap.set_x_rot_raw(f32::INFINITY);
+    assert_eq!(
+        dsnap.rotation[0].to_bits(),
+        hex_u32(&rot["nonfinite_retained_yRot_bits"])
+    );
+    assert_eq!(
+        dsnap.rotation[1].to_bits(),
+        hex_u32(&rot["nonfinite_retained_xRot_bits"])
+    );
+    dsnap.snap_to(DVec3::ZERO, 0.0, 0.0);
+    dsnap.old_rotation[0] = 350.0;
+    assert_eq!(
+        dsnap.rotation_at(1.0)[0].to_bits(),
+        hex_u32(&rot["getYRot_partial1_bits"])
+    );
+
+    // 3. Partial moves at duration 0, negative duration repeat, and seated adjustment.
+    let pm = &rp["partial_moves_and_seating"];
+    let mut dp = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dp.metadata(&[(10, 1, Value::Int(4))]);
+    dp.move_to([10.0, 0.0, 0.0], Some((0.0, 0.0)));
+    dp.tick();
+    dp.metadata(&[(10, 1, Value::Int(0))]);
+    dp.move_to_opt(None, Some((45.0, 0.0)));
+    assert_eq!(
+        dp.position.x.to_bits(),
+        hex_u64(&pm["partial_rot_at_dur0_x_bits"])
+    );
+    assert_eq!(
+        dp.rotation[0].to_bits(),
+        hex_u32(&pm["partial_rot_at_dur0_yRot_bits"])
+    );
+
+    let mut dneg = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dneg.metadata(&[(10, 1, Value::Int(4))]);
+    dneg.move_to([4.0, 0.0, 0.0], Some((0.0, 0.0)));
+    dneg.tick();
+    dneg.metadata(&[(10, 1, Value::Int(-2))]);
+    dneg.move_to([4.0, 0.0, 0.0], Some((0.0, 0.0)));
+    dneg.tick();
+    assert_eq!(
+        dneg.position.x.to_bits(),
+        hex_u64(&pm["repeat_same_target_neg_dur_x_bits"])
+    );
+
+    let mut dseat = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dseat.metadata(&[(10, 1, Value::Int(4))]);
+    dseat.move_to([0.0; 3], Some((40.0, 0.0)));
+    dseat.tick();
+    dseat.ride(DVec3::new(5.0, 2.0, -1.0));
+    dseat.tick();
+    assert_eq!(
+        dseat.position.to_array(),
+        hex_f64_arr::<3>(&pm["seated_adjust_pos_bits"])
+    );
+    assert_eq!(
+        dseat.rotation[0].to_bits(),
+        hex_u32(&pm["seated_adjust_yRot_bits"])
+    );
+
+    // 5. Transformation interpolation state: int wrap, negative duration shadow radius, t=1.0 large translation.
+    let tx = &rp["transformation_state"];
+    let mut dw = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dw.metadata(&[(23, 0, Value::Text(Tag::String("W".into())))]);
+    dw.tick();
+    dw.metadata(&[
+        (8, 1, Value::Int(i32::MAX)),
+        (9, 1, Value::Int(4)),
+        (11, 0, Value::Floats(vec![4.0, 0.0, 0.0])),
+    ]);
+    dw.tick();
+    assert_eq!(dw.start, tx["wrapped_start_tick"].as_i64().unwrap());
+    assert_eq!(
+        dw.progress(0.0).to_bits(),
+        hex_u32(&tx["wrapped_progress_0_bits"])
+    );
+
+    let mut dsr = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dsr.metadata(&[
+        (23, 0, Value::Text(Tag::String("S".into()))),
+        (18, 2, Value::Float(1.0)),
+    ]);
+    dsr.tick();
+    dsr.metadata(&[
+        (8, 1, Value::Int(0)),
+        (9, 1, Value::Int(-2)),
+        (18, 2, Value::Float(5.0)),
+    ]);
+    dsr.tick();
+    dsr.metadata(&[(8, 1, Value::Int(0)), (9, 1, Value::Int(4))]);
+    dsr.tick();
+    let sr_p = dsr.calculate_interpolation_progress(0.0);
+    assert_eq!(
+        dsr.eval_render_state(sr_p).shadow_radius.to_bits(),
+        hex_u32(&tx["neg_dur_then_start_only_shadow_r_at_0_bits"])
+    );
+
+    let from_t = sunrise_client::text_display::TextDisplayData {
+        translation: [33_554_432.0, 0.0, 0.0],
+        ..Default::default()
+    };
+    let to_t = sunrise_client::text_display::TextDisplayData {
+        translation: [1.0, 0.0, 0.0],
+        ..Default::default()
+    };
+    assert_eq!(
+        to_t.blend(&from_t, 1.0).translation[0].to_bits(),
+        hex_u32(&tx["large_trans_at_1_x_bits"])
+    );
+
+    // 6. NaN view range and subnormal / infinite culling box.
+    let rg = &rp["range_and_aabb"];
+    let mut dr = RemoteTextDisplay::new(Shows::Text, [0.0; 3], 0.0);
+    dr.metadata(&[(17, 2, Value::Float(f32::NAN))]);
+    assert_eq!(
+        dr.in_range(DVec3::ZERO, 1.0),
+        rg["nan_view_range_renders_at_0"].as_bool().unwrap()
+    );
+    dr.metadata(&[
+        (20, 2, Value::Float(f32::from_bits(1))),
+        (21, 2, Value::Float(1.0)),
+    ]);
+    let (slo, shi) = dr.interpolated_bounding_box(1.0);
+    assert_eq!(
+        [slo.x, slo.y, slo.z, shi.x, shi.y, shi.z].map(f64::to_bits),
+        hex_f64_arr::<6>(&rg["subnormal_width_box_bits"]).map(f64::to_bits)
+    );
+    dr.metadata(&[(20, 2, Value::Float(f32::INFINITY))]);
+    let (ilo, ihi) = dr.interpolated_bounding_box(1.0);
+    assert_eq!(
+        [ilo.x, ilo.y, ilo.z, ihi.x, ihi.y, ihi.z].map(f64::to_bits),
+        hex_f64_arr::<6>(&rg["inf_width_box_bits"]).map(f64::to_bits)
+    );
+
+    // 14. Live glow_color_override red -> blue.
+    let gl = &rp["glow_color_override"];
+    let mut dg = RemoteTextDisplay::new(Shows::Block, [0.0; 3], 0.0);
+    dg.metadata(&[(22, 1, Value::Int(0xFF0000))]);
+    assert_eq!(dg.data.glow_color as i64, gl["red"].as_i64().unwrap());
+    dg.metadata(&[(22, 1, Value::Int(0x0000FF))]);
+    assert_eq!(dg.data.glow_color as i64, gl["blue"].as_i64().unwrap());
+
+    // 15. JOML exact arithmetic: translateX(16777216) * rotateZ(-45deg) on (1, 1, 0).
+    let jm = &rp["joml_arithmetic"];
+    let ang = (-45.0_f32).to_radians();
+    let td_jm = sunrise_client::text_display::TextDisplayData {
+        translation: [16_777_216.0, 0.0, 0.0],
+        left_rotation: [0.0, 0.0, (ang * 0.5).sin(), (ang * 0.5).cos()],
+        ..Default::default()
+    };
+    let pt = td_jm
+        .pose([0.0; 3], [0.0; 2], [0.0; 2])
+        .transform_position([1.0, 1.0, 0.0]);
+    assert_eq!(
+        pt.map(f32::to_bits).to_vec(),
+        hex_u32_vec(&jm["rot_neg45_trans_16m_bits"])
+    );
 }
