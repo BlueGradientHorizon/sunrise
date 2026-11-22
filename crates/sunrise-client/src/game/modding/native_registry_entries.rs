@@ -409,11 +409,8 @@ pub(super) fn bind_datapack_tags(
     candidate: &mut mod_api::DatapackCandidate,
 ) -> Result<(), String> {
     for declaration in mod_api::__private::datapack_registry_declarations() {
-        let (namespace, path) = declaration
-            .key
-            .split_once(':')
+        let folder = mod_api::__private::game::datapack_registry_directory(&declaration.key)
             .ok_or("invalid mod registry key")?;
-        let folder = format!("{namespace}/{path}");
         let known: std::collections::BTreeSet<_> = candidate
             .entries(&declaration.key)
             .map_err(|error| format!("mod registry tags: {error:?}"))?

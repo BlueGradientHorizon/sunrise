@@ -1,35 +1,40 @@
 use serde_json::json;
 
 #[test]
-fn candidate_registry_folder_collision_assigns_entry_to_minecraft_registry() {
+fn candidate_registry_folders_do_not_choose_between_two_declared_registries() {
     let root = tempfile::tempdir().unwrap();
-    std::fs::write(root.path().join("command-registries.json"),
-        br#"{"by_registry":{"example:spell":{"ids":["example:original"]},"minecraft:example/spell":{"ids":["minecraft:original"]}}}"#).unwrap();
+    let keys = ["example:spell", "minecraft:example/spell"];
+    let declarations = keys.map(|key| mod_api::DatapackRegistryDeclaration {
+        mod_id: "example".into(),
+        key: key.into(),
+        fields: vec![],
+        sync: mod_api::DatapackRegistrySync::ServerOnly,
+    });
+    let files = sunrise_client::datapack::RegistryFiles::from([(
+        "data/test/example/spell/nested/added.json".into(),
+        ("file/winner".into(), b"{}".to_vec()),
+    )]);
     let view = super::candidate_registries(
         root.path(),
-        &[("example/spell/test:added".into(), vec![b"{}".to_vec()])],
+        &[],
+        &files,
+        &declarations,
         &sunrise_world::conditions::LoadConditions::new([]),
-    );
-    assert_eq!(
-        view["example:spell"]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        vec!["example:original"]
-    );
-    assert_eq!(
-        view["minecraft:example/spell"]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        vec!["minecraft:original", "test:added"]
     );
     let conditions = sunrise_world::conditions::LoadConditions::new([]).with_registries(
         view.iter()
             .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
     );
-    assert!(!conditions.allows(&json!({"neoforge:conditions":[{"type":"neoforge:registered","registry":"example:spell","value":"test:added"}]})));
-    assert!(conditions.allows(&json!({"neoforge:conditions":[{"type":"neoforge:registered","registry":"minecraft:example/spell","value":"test:added"}]})));
+    for registry in keys {
+        assert_eq!(
+            view[registry]
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["test:nested/added"]
+        );
+        assert!(conditions.allows(&json!({"neoforge:conditions":[{"type":"neoforge:registered","registry":registry,"value":"test:nested/added"}]})));
+    }
     assert_eq!(conditions.check_errors(), Ok(()));
 }
 

@@ -269,7 +269,8 @@ impl Game<'_> {
                 .collect(),
         );
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(root)?;
-        let conditions = self.registered_load_conditions(&inventory, stack, root, &files)?;
+        let (conditions, registry_files) =
+            self.registered_load_conditions(&inventory, stack, root, &files)?;
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
@@ -342,7 +343,8 @@ impl Game<'_> {
             &root.join("data"),
             &overlay,
         ));
-        let datapack_candidate = self.datapack_candidate(stack, &conditions);
+        let datapack_candidate = Self::datapack_candidate(&registry_files, &conditions);
+        drop(registry_files);
         // The recipe tables, the stations and the recipe book read one folder:
         // hold its files so it is read once.
         let _recipe_files = sunrise_client::json_folder::read(&root.join("data/minecraft/recipe"));
@@ -546,49 +548,32 @@ impl Game<'_> {
     }
     /// The entries of the mods' datapack registries in the winning pack files: decoded with
     /// each registry's schema and checked as one candidate, so a bad entry fails the load
-    /// before any table is published. `None` when no mod declared a registry: nothing is
-    /// scanned. A file whose `neoforge:conditions` fail is absent; the key is dropped before
-    /// the schema sees the file.
+    /// before any table is published. `None` when no mod declared a registry. A file whose
+    /// `neoforge:conditions` fail is absent; the key is dropped before the schema sees the file.
     fn datapack_candidate(
-        &self,
-        stack: &functions::PackStack,
+        files: &sunrise_client::datapack::RegistryFiles,
         conditions: &sunrise_world::conditions::LoadConditions,
     ) -> Result<Option<mod_api::DatapackCandidate>> {
+        use mod_api::__private::game::DatapackCandidateBuilder;
         let declarations = mod_api::__private::datapack_registry_declarations();
         if declarations.is_empty() {
             return Ok(None);
         }
-        let keys: Vec<(&str, &str)> = declarations
-            .iter()
-            .filter_map(|declaration| declaration.key.split_once(':'))
-            .collect();
-        // Content files come before the world's enabled packs, lowest priority first.
-        let packs: Vec<_> = std::iter::once(&stack.content)
-            .chain(stack.enabled_packs())
-            .collect();
-        let files: Vec<_> =
-            sunrise_client::datapack::registry_files(&packs, &keys, |path, bytes| {
-                // Malformed JSON is kept for the registry's own decode diagnostic.
-                serde_json::from_slice::<serde_json::Value>(bytes)
-                    .map_or(true, |json| conditions.allows_file(&json, path))
-            })
-            .map_err(|error| {
-                format!(
-                    "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                    error.registry, error.entry, error.pack, error.file, error.reason
-                )
-            })?
-            .into_iter()
-            .collect();
-        mod_api::DatapackCandidate::build(declarations, &files)
-            .map(Some)
-            .map_err(|error| {
-                format!(
-                    "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                    error.registry, error.entry, error.pack, error.file, error.reason
-                )
-                .into()
-            })
+        DatapackCandidateBuilder::from_winners(
+            declarations,
+            files
+                .iter()
+                .map(|(file, (pack, bytes))| (file.as_str(), pack.as_str(), bytes.as_slice())),
+            |file, json| conditions.allows_file(json, file),
+        )
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "datapack registry {} entry {} (pack {}, file {}): {:?}",
+                error.registry, error.entry, error.pack, error.file, error.reason
+            )
+            .into()
+        })
     }
     /// A world open's tables, and the first generation of the registries the mods declared.
     pub(super) fn open_world_tables(

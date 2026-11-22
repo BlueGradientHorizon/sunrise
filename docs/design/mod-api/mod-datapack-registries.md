@@ -112,11 +112,14 @@ stored there. The visitor is called once on success and never on refusal. It can
 schema order or use `entry.get(name)`. It cannot retain the borrow; a mod keeps IDs for a new
 lookup or explicitly copies the fields it needs as a snapshot.
 
-Local registry loading does not use the network snapshot's byte limit. The scanner reads only
-the winning resource per path and passes its full contents to the condition predicate. If the winning
-resource cannot be read, the error names the registry, entry, pack and file. Candidate construction checks
-entry IDs, schemas and references; resolved tags are checked against the accepted entries. Neither path
-encodes a trial snapshot. A failure leaves the old generation live.
+Local registry loading does not use the network snapshot's byte limit. NeoForge's
+`Registries.registryDirPath` uses `<path>` for a `minecraft:<path>` key and `<namespace>/<path>` for
+other registry keys; entries and tags share that rule. As in `FileToIdConverter.registry`, a physical
+path in two registry directories is an entry in both. The scanner reads only the winning resource per
+path and keeps its pack identity. The local builder stages decoded entries and resolved tags per
+registry, then checks references against the complete candidate. An unreadable resource or an
+unresolved reference names the pack supplying that entry. Neither local path encodes a trial
+snapshot. A failure leaves the old generation live.
 
 ## Stage 4 progress
 

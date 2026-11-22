@@ -1,7 +1,10 @@
 //! Load-scoped registration and per-candidate condition lookup.
 use super::Game;
-use mod_api::__private::game::{CallbackOwner, RegistrationContextNew};
-use std::{collections::BTreeMap, sync::Arc};
+use mod_api::__private::game::{
+    CallbackOwner, RegistrationContextNew, datapack_entry_id, datapack_registry_directory,
+};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
+use sunrise_client::datapack::RegistryFiles;
 use sunrise_world::conditions::ConditionContextRead;
 
 pub(super) type ConditionTable =
@@ -70,7 +73,7 @@ impl Game<'_> {
         stack: &super::functions::PackStack,
         root: &std::path::Path,
         files: &[(String, Vec<Vec<u8>>)],
-    ) -> Result<sunrise_world::conditions::LoadConditions, String> {
+    ) -> Result<(sunrise_world::conditions::LoadConditions, RegistryFiles), String> {
         // `ICondition.IContext`: the world's feature flags and every registry's
         // entries as this candidate holds them. Tags join later, once this load has bound them.
         let features = || stack.features.iter().map(String::as_str);
@@ -80,59 +83,33 @@ impl Game<'_> {
         let admission = base.clone().with_features(features());
         // DataStore's fixed content folders omit mod-declared registry folders.
         // Include those entries from this candidate's packs before conditions read them.
-        let registry_files = candidate_registry_files(stack)?;
+        let declarations = mod_api::__private::datapack_registry_declarations();
+        let registry_files =
+            candidate_registry_files(stack, declarations).map_err(|error| format!("{error:?}"))?;
         let registries =
-            candidate_registries(root, files.iter().chain(&registry_files), &admission);
-        Ok(base.with_features(features()).with_registries(
+            candidate_registries(root, files, &registry_files, declarations, &admission);
+        let conditions = base.with_features(features()).with_registries(
             registries
                 .iter()
                 .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),
-        ))
+        );
+        Ok((conditions, registry_files))
     }
 }
 
-/// Read declared registry folders with the same scanner as the live registry loader.
-/// Convert its resource paths to the content keys candidate_registries consumes.
+/// Select the physical winners used by both the condition context and registry decoding.
 fn candidate_registry_files(
     stack: &super::functions::PackStack,
-) -> Result<Vec<(String, Vec<Vec<u8>>)>, String> {
-    let declarations = mod_api::__private::datapack_registry_declarations();
-    if declarations.is_empty() {
-        return Ok(Vec::new());
-    }
+    declarations: &[mod_api::DatapackRegistryDeclaration],
+) -> Result<RegistryFiles, Box<mod_api::DatapackLoadError>> {
     let keys: Vec<_> = declarations
         .iter()
-        .filter_map(|declaration| declaration.key.split_once(':'))
+        .map(|declaration| declaration.key.as_str())
         .collect();
     let packs: Vec<_> = std::iter::once(&stack.content)
         .chain(stack.enabled_packs())
         .collect();
-    // Admission is evaluated below, against the load-scoped conditions; no fallback.
-    let files = sunrise_client::datapack::registry_files(&packs, &keys, |_, _| true)
-        .map_err(|error| format!("{error:?}"))?
-        .into_iter()
-        .flat_map(|(file, versions)| {
-            let bytes: Vec<Vec<u8>> = versions.into_iter().map(|(_, bytes)| bytes).collect();
-            // A file under nested declared folders is an entry of each, as the live loader reads it.
-            let entries: Vec<String> = file
-                .strip_prefix("data/")
-                .and_then(|rest| rest.split_once('/'))
-                .map(|(namespace, path)| {
-                    keys.iter()
-                        .filter_map(|(ns, key)| {
-                            let folder = format!("{ns}/{key}");
-                            path.strip_prefix(&folder)
-                                .and_then(|entry| entry.strip_prefix('/'))
-                                .and_then(|entry| entry.strip_suffix(".json"))
-                                .map(|entry| format!("{folder}/{namespace}:{entry}"))
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            entries.into_iter().map(move |key| (key, bytes.clone()))
-        })
-        .collect();
-    Ok(files)
+    sunrise_client::datapack::registry_files(&packs, &keys)
 }
 
 /// Every registry's entries as the candidate load holds them, which `neoforge:registered` reads:
@@ -140,9 +117,11 @@ fn candidate_registry_files(
 /// load added), and the entries the candidate's pack `files` add to a registry that takes them
 /// (vanilla's, or a datapack registry a mod declared). So an id a pack adds counts on its first
 /// load, and one a pack no longer has stops counting on the next.
-fn candidate_registries<'a>(
+fn candidate_registries(
     root: &std::path::Path,
-    files: impl IntoIterator<Item = &'a (String, Vec<Vec<u8>>)>,
+    files: &[(String, Vec<Vec<u8>>)],
+    declared_files: &RegistryFiles,
+    declarations: &[mod_api::DatapackRegistryDeclaration],
     admission: &sunrise_world::conditions::LoadConditions,
 ) -> BTreeMap<String, std::collections::BTreeSet<String>> {
     let export: serde_json::Value = std::fs::read(root.join("command-registries.json"))
@@ -160,42 +139,51 @@ fn candidate_registries<'a>(
                 (registry.clone(), ids.collect())
             })
             .collect();
-    for declaration in mod_api::__private::datapack_registry_declarations().iter() {
+    for declaration in declarations {
         registries.entry(declaration.key.clone()).or_default();
     }
-    // A pack file's key is `<folder>/<namespace>:<path>`: `worldgen/biome/test:dunes` for
-    // `minecraft:worldgen/biome`, `mymod/spell/test:fire` for a mod's `mymod:spell`.
-    let folder = |registry: &str| match registry.split_once(':') {
-        Some(("minecraft", path)) => path.to_owned(),
-        Some((namespace, path)) => format!("{namespace}/{path}"),
-        None => registry.to_owned(),
-    };
-    let by_folder: BTreeMap<String, String> = registries
-        .keys()
-        .map(|registry| (folder(registry), registry.clone()))
-        .collect();
-    for (key, versions) in files {
-        let Some(slash) = key.find(':').and_then(|colon| key[..colon].rfind('/')) else {
+    let mut by_folder: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for registry in registries.keys() {
+        if let Some(directory) = datapack_registry_directory(registry) {
+            by_folder
+                .entry(directory.into_owned())
+                .or_default()
+                .push(registry.clone());
+        }
+    }
+    // DataStore keys spell the same physical resource as `<folder>/<namespace>:<path>`.
+    // Keep one winner even when the same file was also listed for a declared registry.
+    let overlay_winners = files.iter().filter_map(|(key, versions)| {
+        let (prefix, path) = key.split_once(':')?;
+        let (directory, namespace) = prefix.rsplit_once('/')?;
+        let file = format!("data/{namespace}/{directory}/{path}.json");
+        (!declared_files.contains_key(&file))
+            .then_some((Cow::Owned(file), versions.last()?.as_slice()))
+    });
+    let winners = overlay_winners.chain(
+        declared_files
+            .iter()
+            .map(|(file, (_, bytes))| (Cow::Borrowed(file.as_str()), bytes.as_slice())),
+    );
+    for (file, bytes) in winners {
+        let Some((_, path)) = file
+            .strip_prefix("data/")
+            .and_then(|rest| rest.split_once('/'))
+        else {
             continue;
         };
-        let Some(registry) = by_folder.get(&key[..slash]) else {
+        let mut folders = path
+            .match_indices('/')
+            .filter_map(|(slash, _)| by_folder.get_key_value(&path[..slash]))
+            .peekable();
+        if folders.peek().is_none() {
             continue;
-        };
-        // The winning registry file, if its own conditions hold: an entry
-        // they turn off is not there. Non-registry files belong to their loaders.
-        // The path the loaders test it under (`data/<namespace>/<folder>/<path>.json`).
-        let file_path = key[slash + 1..]
-            .split_once(':')
-            .map(|(namespace, path)| format!("data/{namespace}/{}/{path}.json", &key[..slash]))
-            .unwrap_or_else(|| key.clone());
-        let admitted = versions.last().is_some_and(|bytes| {
-            let Ok(file) = serde_json::from_slice::<serde_json::Value>(bytes) else {
-                return true;
-            };
+        }
+        if let Ok(json) = serde_json::from_slice::<serde_json::Value>(bytes) {
             // An admission probe is not the entry's loader. A codec error
             // omits it here; the owning loader will report it.
-            let Ok(conditions) = admission.decode_file_conditions(&file) else {
-                return false;
+            let Ok(conditions) = admission.decode_file_conditions(&json) else {
+                continue;
             };
             let mut reads_candidate = false;
             conditions.visit_context_reads(|read| {
@@ -205,19 +193,27 @@ fn candidate_registries<'a>(
                 );
             });
             // This pass does not have the candidate's registry and tag views yet.
-            reads_candidate
-                || conditions
-                    .allows_file_isolated(admission, &file_path)
+            if !reads_candidate
+                && !conditions
+                    .allows_file_isolated(admission, &file)
                     .unwrap_or(false)
-        });
-        if !admitted {
-            continue;
+            {
+                continue;
+            }
         }
-        let id = key[slash + 1..].to_owned();
-        registries
-            .get_mut(registry)
-            .expect("named above")
-            .insert(id);
+        // A resource under nested folders, or a folder shared by two registry
+        // keys, contributes the entry seen by each independent FileToIdConverter.
+        for (directory, keys) in folders {
+            let Some(id) = datapack_entry_id(directory, &file) else {
+                continue;
+            };
+            for registry in keys {
+                registries
+                    .get_mut(registry)
+                    .expect("named above")
+                    .insert(id.clone());
+            }
+        }
     }
     registries
 }

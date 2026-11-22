@@ -3,6 +3,7 @@
 //! declares a flat record schema once at startup; the game decodes every
 //! entry against it without running mod code. See `docs/design/mod-api/mod-datapack-registries.md`.
 use serde_json::Value;
+use std::borrow::Cow;
 use sunrise_core::identifier::Identifier;
 
 /// How a registry's entries reach joining clients.
@@ -282,14 +283,26 @@ pub(crate) fn check_schema(fields: &[DatapackField]) -> Result<(), DatapackRegis
     Ok(())
 }
 
+/// NeoForge's `Registries.registryDirPath` (`CommonHooks.prefixNamespace`),
+/// relative to the entry's namespace directory.
+pub fn datapack_registry_directory(registry: &str) -> Option<Cow<'_, str>> {
+    let (namespace, path) = registry.split_once(':')?;
+    Some(if namespace == "minecraft" {
+        Cow::Borrowed(path)
+    } else {
+        Cow::Owned(format!("{namespace}/{path}"))
+    })
+}
+
 impl DatapackRegistryDeclaration {
-    /// The file an entry `entry` (`addon:fire`) of this registry (`example:spell`)
-    /// sits in, inside a data pack: `data/addon/example/spell/fire.json`.
+    /// The file an entry (`addon:fire`) sits in, inside a data pack. For
+    /// `example:spell` it is `data/addon/example/spell/fire.json`; for
+    /// `minecraft:spell` it is `data/addon/spell/fire.json`.
     pub fn entry_file(&self, entry: &str) -> Option<String> {
         let (entry_namespace, entry_path) = entry.split_once(':')?;
-        let (registry_namespace, registry_path) = self.key.split_once(':')?;
+        let directory = datapack_registry_directory(&self.key)?;
         Some(format!(
-            "data/{entry_namespace}/{registry_namespace}/{registry_path}/{entry_path}.json"
+            "data/{entry_namespace}/{directory}/{entry_path}.json"
         ))
     }
 
@@ -301,11 +314,20 @@ impl DatapackRegistryDeclaration {
     pub fn decode_entry(&self, text: &str) -> Result<DatapackEntry, DatapackDecodeError> {
         let json: Value = serde_json::from_str(text)
             .map_err(|error| DatapackDecodeError::Malformed(error.to_string()))?;
-        let Value::Object(object) = json else {
-            return Err(DatapackDecodeError::NotAnObject);
-        };
-        decode_record(&self.fields, &object, &[])
+        decode_datapack_entry(self, &json)
     }
+}
+
+/// Decode an already parsed entry. The resource loader handles pack conditions
+/// and removes their metadata before handing the JSON to the schema.
+pub fn decode_datapack_entry(
+    declaration: &DatapackRegistryDeclaration,
+    json: &Value,
+) -> Result<DatapackEntry, DatapackDecodeError> {
+    let Value::Object(object) = json else {
+        return Err(DatapackDecodeError::NotAnObject);
+    };
+    decode_record(&declaration.fields, object, &[])
 }
 
 /// Decodes a JSON object against a flat record schema, the same way for every user of it (a
@@ -416,15 +438,19 @@ mod tests {
         }
     }
 
-    /// NeoForge's rule for a datapack registry outside `minecraft` (its Registries guide, "Datapack
-    /// Registries"): `data/<entry namespace>/<registry namespace>/<registry path>/<entry>.json`.
-    /// It is not vanilla's, which uses the registry's path only; registration refuses a
-    /// `minecraft` key, so no vanilla-path case exists.
     #[test]
     fn entry_files_follow_neoforges_namespaced_registry_folder() {
         assert_eq!(
             spell().entry_file("addon:fire").as_deref(),
             Some("data/addon/example/spell/fire.json")
+        );
+        let vanilla = DatapackRegistryDeclaration {
+            key: "minecraft:magic/spell".into(),
+            ..spell()
+        };
+        assert_eq!(
+            vanilla.entry_file("addon:nested/fire").as_deref(),
+            Some("data/addon/magic/spell/nested/fire.json")
         );
         assert_eq!(spell().entry_file("nocolon"), None);
     }

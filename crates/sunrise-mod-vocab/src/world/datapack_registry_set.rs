@@ -5,8 +5,9 @@
 //! set when building fails. See `docs/design/mod-api/mod-datapack-registries.md`.
 use super::datapack_registry::{
     DatapackDecodeError, DatapackEntry, DatapackFieldKind, DatapackRegistryDeclaration,
-    DatapackValue, valid_namespaced,
+    DatapackValue, datapack_registry_directory, decode_datapack_entry, valid_namespaced,
 };
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Why a candidate was refused. The whole candidate fails, never one entry.
@@ -62,7 +63,7 @@ pub struct DatapackLoadError {
 /// Local candidates are built independently of network snapshot limits.
 #[derive(Clone, Debug, PartialEq)]
 // no wire: the game's candidate; a mod reads the published set through a level handle
-// exhaustive: built by DatapackCandidate::build or DatapackSnapshot::candidate
+// exhaustive: built by the local candidate builder or DatapackSnapshot::candidate
 pub struct DatapackCandidate {
     pub(super) registries: BTreeMap<String, BTreeMap<String, DatapackEntry>>,
     pub(super) tags: BTreeMap<String, BTreeMap<String, Vec<String>>>,
@@ -70,94 +71,162 @@ pub struct DatapackCandidate {
     pub(super) synchronized: BTreeSet<String>,
 }
 
-/// The id of the entry in `file` (`data/addon/example/spell/fire.json` is `addon:fire`), when
-/// the file is in `declaration`'s folder.
-fn entry_of(declaration: &DatapackRegistryDeclaration, file: &str) -> Option<String> {
-    let rest = file.strip_prefix("data/")?;
-    let (namespace, rest) = rest.split_once('/')?;
-    let (registry_namespace, registry_path) = declaration.key.split_once(':')?;
+/// Inverse of `DatapackRegistryDeclaration::entry_file` for a registry directory.
+/// Each matching directory interprets the physical file independently.
+pub fn datapack_entry_id(directory: &str, file: &str) -> Option<String> {
+    let (namespace, rest) = file.strip_prefix("data/")?.split_once('/')?;
     let path = rest
-        .strip_prefix(registry_namespace)?
-        .strip_prefix('/')?
-        .strip_prefix(registry_path)?
+        .strip_prefix(directory)?
         .strip_prefix('/')?
         .strip_suffix(".json")?;
     (!path.is_empty()).then(|| format!("{namespace}:{path}"))
 }
 
+/// Local load stages, not yet eligible for publication or network projection.
+#[derive(Default)]
+// no wire: local staging retains pack provenance and does not cross a process boundary
+pub struct DatapackCandidateBuilder {
+    registries: BTreeMap<String, BTreeMap<String, DatapackEntry>>,
+    tags: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    packs: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+impl DatapackCandidateBuilder {
+    /// Add a registry's accepted entries with their winning pack ids and the tags
+    /// already resolved against those entries by the registry's tag loader.
+    pub fn stage_registry(
+        &mut self,
+        registry: &str,
+        entries: BTreeMap<String, (DatapackEntry, String)>,
+        tags: BTreeMap<String, Vec<String>>,
+    ) {
+        let (decoded, packs) = entries
+            .into_iter()
+            .map(|(id, (entry, pack))| ((id.clone(), entry), (id, pack)))
+            .unzip();
+        self.registries.insert(registry.to_owned(), decoded);
+        self.packs.insert(registry.to_owned(), packs);
+        if tags.is_empty() {
+            self.tags.remove(registry);
+        } else {
+            self.tags.insert(registry.to_owned(), tags);
+        }
+    }
+
+    /// Finish the local candidate only once all registries are staged; references may be forward
+    /// or cyclic. A refusal identifies the pack supplying the referring entry, not its target.
+    pub fn finish(
+        mut self,
+        declarations: &[DatapackRegistryDeclaration],
+    ) -> Result<DatapackCandidate, Box<DatapackLoadError>> {
+        for declaration in declarations {
+            self.registries.entry(declaration.key.clone()).or_default();
+        }
+        resolve_references(declarations, &self.registries).map_err(|mut error| {
+            if let Some(pack) = self
+                .packs
+                .get_mut(&error.registry)
+                .and_then(|entries| entries.remove(&error.entry))
+            {
+                error.pack = pack;
+            }
+            error
+        })?;
+        Ok(DatapackCandidate {
+            registries: self.registries,
+            tags: self.tags,
+            synchronized: BTreeSet::new(),
+        })
+    }
+
+    /// Decode selected resources `(file, pack, bytes)`, testing each physical winner before
+    /// decoding its entry in every matching registry.
+    pub fn from_winners<'a>(
+        declarations: &[DatapackRegistryDeclaration],
+        files: impl IntoIterator<Item = (&'a str, &'a str, &'a [u8])>,
+        mut accepts: impl FnMut(&str, &Value) -> bool,
+    ) -> Result<DatapackCandidate, Box<DatapackLoadError>> {
+        let directories: Vec<_> = declarations
+            .iter()
+            .map(|declaration| datapack_registry_directory(&declaration.key))
+            .collect();
+        let mut staged = vec![BTreeMap::new(); declarations.len()];
+        for (file, pack, bytes) in files {
+            let mut parsed = None;
+            for (index, directory) in directories.iter().enumerate() {
+                let Some(entry) = directory
+                    .as_deref()
+                    .and_then(|directory| datapack_entry_id(directory, file))
+                else {
+                    continue;
+                };
+                let declaration = &declarations[index];
+                let fail = |reason| {
+                    Box::new(DatapackLoadError {
+                        registry: declaration.key.clone(),
+                        entry: entry.clone(),
+                        file: file.to_owned(),
+                        pack: pack.to_owned(),
+                        reason,
+                    })
+                };
+                if !valid_namespaced(&entry) {
+                    return Err(fail(DatapackLoadReason::InvalidEntryId));
+                }
+                let json = if let Some(json) = &parsed {
+                    json
+                } else {
+                    let text = std::str::from_utf8(bytes)
+                        .map_err(|_| fail(DatapackLoadReason::NotUtf8))?;
+                    let mut json: Value = serde_json::from_str(text).map_err(|error| {
+                        fail(DatapackLoadReason::Decode(DatapackDecodeError::Malformed(
+                            error.to_string(),
+                        )))
+                    })?;
+                    if !accepts(file, &json) {
+                        break;
+                    }
+                    // Conditions are resource metadata, not a field in the registry schema.
+                    if let Value::Object(object) = &mut json {
+                        object.remove("neoforge:conditions");
+                    }
+                    parsed.insert(json)
+                };
+                let decoded = decode_datapack_entry(declaration, json)
+                    .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
+                staged[index].insert(entry, (decoded, pack.to_owned()));
+            }
+        }
+        let mut builder = Self::default();
+        for (declaration, entries) in declarations.iter().zip(staged) {
+            builder.stage_registry(&declaration.key, entries, BTreeMap::new());
+        }
+        builder.finish(declarations)
+    }
+}
+
 impl DatapackCandidate {
-    /// Decodes the winning file of every entry of every declared registry in `files`
-    /// (`data/<entry namespace>/<registry namespace>/<registry path>/<entry>.json`, each with
-    /// its versions in pack order, the last winning as `ResourceManager` hands them out), then
-    /// resolves every reference to a declared registry against the whole candidate, so a
-    /// forward reference works and an absent target refuses everything. A reference to a
-    /// registry no declaration here covers (a vanilla one) is not checked. The caller has
-    /// already dropped files whose pack conditions do not hold. Each version is its pack's id
-    /// and its bytes, so a refusal names the pack. Local loading does not check snapshot size
-    /// or entry counts. The error is boxed: it is large, and a refused candidate is rare.
+    /// Decodes the winning file of every entry of every declared registry in `files`, using
+    /// [`DatapackRegistryDeclaration::entry_file`]'s directory rule. Each file has versions in
+    /// pack order, the last winning as `ResourceManager` hands them out. The caller selects
+    /// which files to supply; this constructor does not test pack conditions.
+    ///
+    /// References resolve against the whole candidate, so a forward reference works and an
+    /// absent target in a declared registry refuses everything. References to undeclared
+    /// registries are not checked. Each version is its pack's id and its bytes, so a refusal
+    /// names the pack. Local loading does not check snapshot size or entry counts.
     pub fn build(
         declarations: &[DatapackRegistryDeclaration],
         files: &[(String, Vec<(String, Vec<u8>)>)],
     ) -> Result<Self, Box<DatapackLoadError>> {
-        let mut registries: BTreeMap<String, BTreeMap<String, DatapackEntry>> = declarations
-            .iter()
-            .map(|declaration| (declaration.key.clone(), BTreeMap::new()))
-            .collect();
-        for declaration in declarations {
-            let fail = |entry: &str, file: &str, pack: &str, reason| {
-                Box::new(DatapackLoadError {
-                    registry: declaration.key.clone(),
-                    entry: entry.to_owned(),
-                    file: file.to_owned(),
-                    pack: pack.to_owned(),
-                    reason,
-                })
-            };
-            for (file, versions) in files {
-                let Some(entry) = entry_of(declaration, file) else {
-                    continue;
-                };
-                let winner = versions.last();
-                let pack = winner.map_or("", |(pack, _)| pack.as_str());
-                let fail = |reason| fail(&entry, file, pack, reason);
-                if !valid_namespaced(&entry) {
-                    return Err(fail(DatapackLoadReason::InvalidEntryId));
-                }
-                let Some((_, bytes)) = winner else {
-                    continue;
-                };
-                let entries = registries
-                    .get_mut(&declaration.key)
-                    .expect("every declaration has a registry");
-                let text =
-                    std::str::from_utf8(bytes).map_err(|_| fail(DatapackLoadReason::NotUtf8))?;
-                // Conditions belong to the engine, not to the declaring mod's schema.
-                let stripped = serde_json::from_str::<serde_json::Value>(text)
-                    .ok()
-                    .and_then(|mut json| {
-                        json.as_object_mut()?.remove("neoforge:conditions")?;
-                        serde_json::to_string(&json).ok()
-                    });
-                let decoded = declaration
-                    .decode_entry(stripped.as_deref().unwrap_or(text))
-                    .map_err(|error| fail(DatapackLoadReason::Decode(error)))?;
-                entries.insert(entry, decoded);
-            }
-        }
-        resolve_references(declarations, &registries).map_err(|mut error| {
-            // The referring entry's winning pack.
-            if let Some((_, versions)) = files.iter().find(|(file, _)| *file == error.file) {
-                error.pack = versions
-                    .last()
-                    .map_or_else(String::new, |(pack, _)| pack.clone());
-            }
-            error
-        })?;
-        Ok(Self {
-            registries,
-            tags: BTreeMap::new(),
-            synchronized: BTreeSet::new(),
-        })
+        DatapackCandidateBuilder::from_winners(
+            declarations,
+            files.iter().filter_map(|(file, versions)| {
+                let (pack, bytes) = versions.last()?;
+                Some((file.as_str(), pack.as_str(), bytes.as_slice()))
+            }),
+            |_, _| true,
+        )
     }
 
     /// The accepted entry names of a registry, sorted, before publication.
@@ -404,7 +473,7 @@ mod tests {
     }
 
     /// An entry in another mod's namespace sits in that namespace's folder; nested paths work;
-    /// files of other registries and other folders are not entries.
+    /// files of unrelated registries and other folders are not entries.
     #[test]
     fn entries_come_from_their_namespaced_folder_only() {
         let files = [
@@ -412,16 +481,45 @@ mod tests {
             file("data/addon/example/spell/ice.json", &[r#"{"power": 4}"#]),
             file(
                 "data/addon/example/spell/nested/hail.json",
-                &[r#"{"power": 5}"#],
+                &[r#"{"power": 5}"#, r#"{"power": 7}"#],
             ),
             file("data/example/example/other/fire.json", &[r#"{"power": 1}"#]),
+            file(
+                "data/example/example/spellbook/fire.json",
+                &[r#"{"power": 1}"#],
+            ),
             file("data/example/spell/fire.json", &[r#"{"power": 1}"#]),
             file("data/addon/example/spell/ice.txt", &[r#"{"power": 1}"#]),
+            file(
+                "data/addon/minecraft/example/spell/nested/old.json",
+                &[r#"{"power": 1}"#],
+            ),
         ];
-        let set = DatapackRegistrySet::from_candidate(candidate(&files));
+        let declarations = [
+            spell(),
+            DatapackRegistryDeclaration {
+                key: "minecraft:example/spell/nested".into(),
+                ..spell()
+            },
+        ];
+        let set = DatapackRegistrySet::from_candidate(
+            DatapackCandidate::build(&declarations, &files).unwrap(),
+        );
         assert_eq!(
             set.entries("example:spell").unwrap(),
             ["addon:ice", "addon:nested/hail", "example:fire"]
+        );
+        assert_eq!(
+            set.entries("minecraft:example/spell/nested").unwrap(),
+            ["addon:hail"]
+        );
+        // Each registry has its own entry ID for the same physical winner.
+        assert_eq!(power(&set, "addon:nested/hail"), DatapackValue::Int(7));
+        assert_eq!(
+            set.get("minecraft:example/spell/nested", "addon:hail")
+                .unwrap()
+                .get("power"),
+            Some(&DatapackValue::Int(7))
         );
         assert_eq!(
             set.entries("example:nothing"),
@@ -509,7 +607,7 @@ mod tests {
         assert_eq!(power(&set, "example:fire"), DatapackValue::Int(4));
         let missing = [file(
             "data/example/example/spell/fire.json",
-            &[r#"{"power": 4, "next": "addon:ice"}"#],
+            &[r#"{"power": 4}"#, r#"{"power": 7, "next": "addon:ice"}"#],
         )];
         assert_eq!(
             DatapackCandidate::build(&[spell()], &missing),
@@ -517,7 +615,7 @@ mod tests {
                 registry: "example:spell".into(),
                 entry: "example:fire".into(),
                 file: "data/example/example/spell/fire.json".into(),
-                pack: "pack/0".into(),
+                pack: "pack/1".into(),
                 reason: DatapackLoadReason::UnresolvedReference {
                     field: "next".into(),
                     registry: "example:spell".into(),

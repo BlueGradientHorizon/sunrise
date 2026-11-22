@@ -10,3 +10,14 @@ pub use world::datapack_snapshot::{
     DatapackNegotiationError, DatapackSnapshot, DatapackSnapshotEntry, DatapackSnapshotError,
     DatapackSnapshotRegistry, MAX_SNAPSHOT_BYTES,
 };
+
+mod __private {
+    mod game {
+        pub use crate::world::datapack_registry::{
+            datapack_registry_directory, decode_datapack_entry,
+        };
+        pub use crate::world::datapack_registry_set::{
+            DatapackCandidateBuilder, datapack_entry_id,
+        };
+    }
+}

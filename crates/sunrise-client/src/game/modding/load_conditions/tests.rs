@@ -565,11 +565,6 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         .to_string(),
     )
     .unwrap();
-    let pack = |keys: &[&str]| -> Vec<(String, Vec<Vec<u8>>)> {
-        keys.iter()
-            .map(|key| ((*key).to_owned(), vec![b"{}".to_vec()]))
-            .collect()
-    };
     let registered = |registry: &str, value: &str| {
         json!({"neoforge:conditions": [
             {"type": "neoforge:registered", "registry": registry, "value": value}
@@ -580,7 +575,10 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         .with_lookup([("test:flag", |args: &Value| {
             Ok(args["value"] != "neoforge:registered")
         })]);
-    let mut files = pack(&["worldgen/biome/test:dunes", "recipe/test:a/b"]);
+    let mut files = Vec::from(
+        ["worldgen/biome/test:dunes", "recipe/test:a/b"]
+            .map(|key| (key.to_owned(), vec![b"{}".to_vec()])),
+    );
     // The winning file tests false; the string argument is not a registry read,
     // and the lower pack's unconditional entry must not be used instead.
     files.push((
@@ -591,7 +589,8 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
                 .to_vec(),
         ],
     ));
-    let first = super::candidate_registries(root.path(), &files, &admission);
+    let registry_files = sunrise_client::datapack::RegistryFiles::new();
+    let first = super::candidate_registries(root.path(), &files, &registry_files, &[], &admission);
     let first = sunrise_world::conditions::LoadConditions::new([]).with_registries(
         first
             .iter()
@@ -604,7 +603,7 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
     assert!(first.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
     assert!(!first.allows(&registered("minecraft:worldgen/biome", "test:off")));
     assert!(first.allows(&registered("minecraft:item", "minecraft:stone")));
-    let next = super::candidate_registries(root.path(), &pack(&[]), &admission);
+    let next = super::candidate_registries(root.path(), &[], &registry_files, &[], &admission);
     let next = sunrise_world::conditions::LoadConditions::new([]).with_registries(
         next.iter()
             .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),

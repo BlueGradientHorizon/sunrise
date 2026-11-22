@@ -141,8 +141,13 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
     let winning = root.join("datapacks/override/data/registry_test/registry_test/spell/fire.json");
     let tag = root.join("datapacks/base/data/registry_test/tags/block/publication.json");
     write(&tag, r#"{"values":["minecraft:stone"]}"#);
+    let conditioned = "data/registry_test/registry_test/spell/conditioned.json";
     write(
-        &root.join("datapacks/base/data/registry_test/registry_test/spell/conditioned.json"),
+        &root.join("datapacks/base").join(conditioned),
+        r#"{"power":3}"#,
+    );
+    write(
+        &root.join("datapacks/override").join(conditioned),
         r#"{"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"missing_condition_fixture"}],"power":"invalid"}"#,
     );
     mod_platform::testing::with_mods(

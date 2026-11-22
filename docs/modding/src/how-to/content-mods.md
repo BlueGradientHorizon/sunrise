@@ -978,10 +978,13 @@ A code mod can declare a datapack registry of its own with `Registrar::declare_d
 fields)` (NeoForge's `NewDatapackRegistryEvent`).
 `path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
-each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
-(`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
-registries have it. The game loads entries from mod content and enabled data packs, reading only the
-winning file for each entry. An unreadable winner fails the load and the error names its pack and file.
+each required or given a default. `DatapackRegistryDeclaration::entry_file` uses NeoForge's directory rule:
+entry `addon:fire` in `example:spell` is `data/addon/example/spell/fire.json`; in a registry named
+`minecraft:spell` it is `data/addon/spell/fire.json`, with no `minecraft/` registry prefix. Tags use
+that same registry directory under `tags/`. Nested registry and entry paths keep their subfolders.
+The game loads entries from mod content and enabled data packs, reading only the winning resource at
+each file path. If two registry directories contain that path, each registry interprets it relative to its
+own directory. An unreadable winner fails the load and the error names its pack and file.
 The game decodes entries against the schema without running mod code: an undeclared key, a missing required
 key, a wrong type or an out-of-range value fails the entry, and a default never stands in for invalid data.
 Local loads do not use the byte limits of network offers or snapshots.
