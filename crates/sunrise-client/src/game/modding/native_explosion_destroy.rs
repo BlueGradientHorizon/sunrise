@@ -78,10 +78,9 @@ impl Game<'_> {
             && mod_api::__private::listened(mod_api::HookId::ExplosionDetonate)
         {
             // This block-only phase has no entity victims; listeners may remove, add or reorder
-            // block positions (`ExplosionEvent.Detonate`).
+            // block positions (`ExplosionEvent.Detonate`), and the resulting list is kept in
+            // order with multiplicity intact for `interactWithBlocks` and `createFire`.
             self.native_explosion_detonate(self.dim.id(), center, &mut targets, &mut Vec::new());
-            seen.clear();
-            targets.retain(|p| seen.insert(*p));
         }
         // Unlike the reference's rays, a mod's list never loads terrain.
         let (min_y, max_y) = (self.world.bottom_y(), self.world.top_y());

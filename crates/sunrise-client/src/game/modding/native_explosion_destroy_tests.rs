@@ -222,7 +222,8 @@ fn a_detonate_listener_edits_reorders_and_adds_positions() {
             set(game, p, "cobblestone");
         }
         watch.edit.store(true, Ordering::Relaxed);
-        // Java Random seed 7: nextInt(2) is 1, so index 0 stays first after shuffle.
+        // Java Random seed 7 on the 3-entry list [[3,80,3], [2,80,1], [3,80,3]]:
+        // nextInt(3) is 1 and nextInt(2) is 1, leaving [3, 80, 3] first after shuffle.
         game.world.random.set_seed(7);
         let positions = [[1, 80, 1], [2, 80, 1]];
         destroy(game, &positions, blast(ExplosionInteraction::Block), Ok(2));
@@ -240,6 +241,43 @@ fn a_detonate_listener_edits_reorders_and_adds_positions() {
         let (item, count, at) = &drops[0];
         assert_eq!((item.as_str(), *count), ("minecraft:cobblestone", 2));
         assert_eq!([at.x.floor() as i32, at.z.floor() as i32], [3, 3], "{at:?}");
+
+        // Multiplicity: Java Random seed 2 draws nextInt(3) = 1, then 0.
+        // Caller duplicates are normalized before the hook (1 draw -> stays air), while a
+        // listener-added duplicate stays in the list and gets a second ignition roll (ignites).
+        set(game, [3, 79, 3], "stone");
+        watch.edit.store(false, Ordering::Relaxed);
+        game.world.random.set_seed(2);
+        destroy(
+            game,
+            &[[3, 80, 3], [3, 80, 3]],
+            Blast {
+                fire: true,
+                ..blast(ExplosionInteraction::None)
+            },
+            Ok(0),
+        );
+        assert_eq!(
+            name(game, [3, 80, 3]),
+            "minecraft:air",
+            "caller duplicate normalized before hook"
+        );
+        watch.edit.store(true, Ordering::Relaxed);
+        game.world.random.set_seed(2);
+        destroy(
+            game,
+            &[],
+            Blast {
+                fire: true,
+                ..blast(ExplosionInteraction::None)
+            },
+            Ok(0),
+        );
+        assert_eq!(
+            name(game, [3, 80, 3]),
+            "minecraft:fire",
+            "listener-added duplicate kept for second fire roll"
+        );
     });
 }
 

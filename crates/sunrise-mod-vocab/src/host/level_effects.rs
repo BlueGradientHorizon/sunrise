@@ -187,9 +187,10 @@ pub trait LevelEffectsBackendMut {
     /// explosion to the hooks: `explosion_start` first, which may cancel it (then nothing breaks
     /// and the answer is 0), then, for a radius of at least 0.00001, `explosion_detonate` with
     /// the positions as its block list, in the order given, a repeated one once; listeners may
-    /// remove, add or reorder positions (`ExplosionEvent.Detonate`), and duplicates are kept
-    /// once in the resulting order before loaded-chunk and height filtering. Then the block step
-    /// in vanilla's order: the positions shuffled with the level's random, and each block hit as
+    /// remove, add or reorder positions (`ExplosionEvent.Detonate`), and the resulting list is
+    /// kept in order with multiplicity intact, filtered only to loaded chunks within the level's
+    /// height. Then the block step in vanilla's order: the positions shuffled with the level's
+    /// random, and each block hit as
     /// the blast hits one (air skipped; `can_drop_from_explosion`; loot with the radius under
     /// the decay interaction; experience when the causing entity is a player;
     /// `on_block_exploded`, whose default sets air and primes TNT owned by the causing entity),

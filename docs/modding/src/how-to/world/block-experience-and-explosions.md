@@ -291,9 +291,9 @@ Each call is one explosion to the hooks. `explosion_start` hears it first and
 may cancel it: then nothing breaks and the answer is 0. For a radius of at
 least 0.00001, `explosion_detonate` hears the positions as its block list, in
 the order given, a repeated one once. Listeners may remove, add or reorder
-positions (`ExplosionEvent.Detonate`), and duplicates are kept once in the
-resulting order before loaded-chunk and height filtering. Then the block step
-runs as a blast's does, in vanilla's order:
+positions (`ExplosionEvent.Detonate`), and the resulting list is kept in order
+with multiplicity intact, filtered only to loaded chunks within the level's
+height. Then the block step runs as a blast's does, in vanilla's order:
 
 1. The positions are shuffled with the level's random.
 2. Each block is hit: air is skipped; `can_drop_from_explosion` decides the
