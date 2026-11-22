@@ -1,0 +1,2 @@
+# Clientbound admission packet regression (prepared client resources).
+sunrise-client game::remote::tests::client_admission_tests::add_player_requires_info_before_replacing_a_tracked_entity lib daily resources
