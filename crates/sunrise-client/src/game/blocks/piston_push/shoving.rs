@@ -41,7 +41,7 @@ impl Game<'_> {
             })
             .filter_map(|target| self.stable_push_target(target))
             .collect();
-        let _scope = moving_colliders::Scope::enter_level(self.collider_level(), end.clone());
+        let mut current = end.clone();
         let mut stand_grid = None;
         let mut shoved = false;
         for (after, before, delta, swept) in sweeps {
@@ -78,17 +78,29 @@ impl Game<'_> {
                     let movement = delta
                         .scale(fraction)
                         .add_vector(direction.scale(piston_push::PUSH_OFFSET));
-                    let _shove = Shove::enter(selected.id, source);
-                    self.move_pushed_body(
-                        MoverType::Carried,
-                        None,
-                        target,
-                        body,
-                        movement,
-                        false,
-                        &mut stand_grid,
-                    );
+                    {
+                        let _scope = moving_colliders::Scope::enter_level(
+                            self.collider_level(),
+                            current.clone(),
+                        );
+                        let _shove = Shove::enter(selected.id, source);
+                        self.move_pushed_body(
+                            MoverType::Carried,
+                            None,
+                            target,
+                            body,
+                            movement,
+                            false,
+                            &mut stand_grid,
+                        );
+                    }
                     shoved = true;
+                    if current.placed().any(|p| p.exempt.contains(&selected.id)) {
+                        // This body owns a collider, or is the vehicle of a holder. Its
+                        // new pose is an obstacle to later shoves, not another sweep.
+                        self.position_riders();
+                        current = self.placed_moving_colliders();
+                    }
                 }
             }
         }

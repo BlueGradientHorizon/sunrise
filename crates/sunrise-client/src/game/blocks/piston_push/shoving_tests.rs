@@ -1,10 +1,12 @@
 use super::*;
+use crate::game::native_client_session::tests::{finish_login, logged_client};
 use crate::game::native_entity_refs::tests::{bind_acting_guest, with_client_game, with_game};
 use mod_api::{Collider, ColliderBox};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ItemEntity, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::nbt::Tag;
-use sunrise_protocol::packets::play::{self, Clientbound};
+use sunrise_protocol::connection::Connection;
+use sunrise_protocol::packets::play::{self, Clientbound, Serverbound};
 
 const PLAYER: u32 = 42;
 const CONN: u32 = 1;
@@ -123,6 +125,43 @@ fn a_collider_shove_stops_at_a_wall_without_impact_damage() {
 
 #[test]
 #[ignore = "daily"]
+fn a_later_shove_collides_with_a_holder_already_displaced() {
+    crate::game::in_own_process(
+        "game::piston_push::carrying::shoving::tests::a_later_shove_collides_with_a_holder_already_displaced",
+        || {
+            with_game(|game| {
+                empty_chunk(game);
+                let source = holder(game, 2.5);
+                let first = game.take_entity_id();
+                let second = game.take_entity_id();
+                game.dropped.push(item(first, 4.0, 4.125, Vec3::ZERO));
+                game.dropped.push(item(second, 4.5, 4.875, Vec3::ZERO));
+                game.entity(first)
+                    .unwrap()
+                    .set_collider(
+                        game,
+                        Some(Collider {
+                            boxes: vec![ColliderBox {
+                                min: [-1.0, -0.25, 0.5],
+                                max: [-0.75, 0.75, 1.0],
+                            }],
+                            ..Collider::default()
+                        }),
+                    )
+                    .unwrap();
+                shove(game, source, 6.5);
+                let first_x = 6.75 + 0.125 + 0.01;
+                assert_eq!(game.dropped[0].position.x, first_x);
+                // The first item's box began behind the second item. After the first shove,
+                // its west face stops the second item before the source's end position.
+                assert_eq!(game.dropped[1].position.x, first_x - 1.0 - 0.125);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_predicted_collider_shove_passes_the_server_move_check() {
     crate::game::in_own_process(
         "game::piston_push::carrying::shoving::tests::a_predicted_collider_shove_passes_the_server_move_check",
@@ -131,7 +170,13 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
             let (packet, to) = {
                 let mut report = None;
                 with_client_game(|game| {
-                    game.init_remote_for_replay().unwrap();
+                    let mut wire = Connection::local(logged_client(game));
+                    wire.reader
+                        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                        .unwrap();
+                    finish_login(game, &mut wire);
+                    game.title = None;
+                    game.screen = crate::game::Screen::Playing;
                     empty_chunk(game);
                     let mut player = PlayerMotion::new(game.motion, from).unwrap();
                     player.entity_id = PLAYER as i32;
@@ -141,13 +186,23 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                     game.spawn_entity(source, "minecraft:pig", [4.0, PIG_Y, 4.5], [0.0; 3]);
                     let remote = game.remote.as_mut().unwrap();
                     remote.entity_id = PLAYER as i32;
+                    remote.loaded_sent = true;
+                    remote.level_load.finish();
                     remote.colliders.insert(
                         source as u32,
                         sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap(),
                     );
                     // The last client tick saw the old pose; packet intake precedes the next.
-                    let start = game.placed_moving_colliders();
-                    game.carry_pass(&start);
+                    game.tick().unwrap();
+                    loop {
+                        let (id, bytes) = wire.recv().unwrap();
+                        if matches!(
+                            Serverbound::decode(id, &bytes).unwrap(),
+                            Serverbound::ClientTickEnd(_)
+                        ) {
+                            break;
+                        }
+                    }
                     game.handle_packet(Clientbound::EntityPositionSync(play::EntityPositionSync {
                         id: source,
                         path: play::PositionPath::Linear([4.75, PIG_Y, 4.5]),
@@ -156,22 +211,24 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         on_ground: false,
                     }))
                     .unwrap();
-                    let start = game.placed_moving_colliders();
-                    game.carry_pass(&start);
+                    game.tick().unwrap();
                     let player = game.player.as_ref().unwrap();
                     let to = player.position.components();
                     assert_eq!(player.bounds().min_position().x, 5.0 + 0.01);
-                    let mut sender = sunrise_client::player_sync::PositionSender::default();
-                    let _ = sender.update(from.components(), (0.0, 0.0), false, false);
-                    let packet = sender
-                        .update(
-                            to,
-                            (0.0, 0.0),
-                            player.ground.on_ground,
-                            player.collision.horizontal,
-                        )
-                        .unwrap();
-                    report = Some((packet, to));
+                    let mut movement = None;
+                    loop {
+                        let (id, bytes) = wire.recv().unwrap();
+                        let packet = Serverbound::decode(id, &bytes).unwrap();
+                        let sent = match &packet {
+                            Serverbound::MovePlayerPos(p) => [p.x, p.y, p.z],
+                            Serverbound::MovePlayerPosRot(p) => [p.x, p.y, p.z],
+                            Serverbound::ClientTickEnd(_) => break,
+                            _ => continue,
+                        };
+                        assert_eq!(sent, to, "the tick's own report includes the shove");
+                        assert!(movement.replace(packet).is_none());
+                    }
+                    report = Some((movement.expect("position before ClientTickEnd"), to));
                 });
                 report.unwrap()
             };

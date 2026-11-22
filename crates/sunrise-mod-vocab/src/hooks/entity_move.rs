@@ -19,8 +19,9 @@ pub trait Hooks {
     /// and is switched off for the session. It takes no Host - the maintainer
     /// ruling, like the enderman's teleport: the listener only decides the
     /// delta, and its `context` is the loop `context` of the side that ticks
-    /// the body. Server-authoritative: the client does not predict a custom
-    /// movement. Beyond NeoForge: there is no counterpart.
+    /// the body. The hook fires only on the server. The client predicts ordinary collider
+    /// displacement for its own player, not a listener's replacement. The server remains
+    /// authoritative. Beyond NeoForge: there is no counterpart.
     ///
     /// Version 3: `MoveCause::Carried` also covers a translating collider shoving a body
     /// in its path, not just carrying one standing on it. `MoveCause` is `#[non_exhaustive]`:

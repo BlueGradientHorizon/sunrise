@@ -179,6 +179,11 @@ impl Scope {
         }
     }
 
+    /// The snapshot installed for the level's tick, for its end-of-tick displacement pass.
+    pub fn placed() -> Prepared {
+        PLACED.with_borrow(|current| Prepared(current.index.clone()))
+    }
+
     /// Whether the named level already has a snapshot in scope.
     pub fn covers(level: mod_api::LevelRef) -> bool {
         PLACED.with_borrow(|current| current.level == Some(level))

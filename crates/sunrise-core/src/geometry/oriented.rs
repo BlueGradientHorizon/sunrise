@@ -426,11 +426,11 @@ impl OrientedCollider {
         direction = direction.with_component(axis, amount);
         let sweep = mover.expand_towards(direction);
         let mut allowed = amount;
-        let axes = self.axes();
+        let axes = self.axes(DEGENERATE_AXIS);
         self.with_candidates(sweep, |candidates| {
             for &index in candidates {
                 let obb = self.obb(self.boxes.boxes[index as usize]);
-                if let Some((_, reach)) = self.time_of_impact(&axes, mover, direction, amount, &obb)
+                if let Some(reach) = self.time_of_impact(&axes, mover, direction, &obb)
                     && reach.abs() < allowed.abs()
                 {
                     allowed = reach;
@@ -444,13 +444,12 @@ impl OrientedCollider {
     /// Only boxes that survive at the same local index and bounds can sweep. `delta` is the
     /// collider's displacement from this pose to `after`, which has the same orientation.
     pub fn translation_push_fraction(&self, after: &Self, mover: Aabb, delta: Vec3) -> f64 {
-        // Translating the collider toward the body is the same relative motion as holding the
-        // collider still and sweeping the body the other way.
+        // PistonMath.getMovementArea sweeps the advancing face, not the old solid volume.
+        // For a turned box moving diagonally there can be several advancing faces.
         let relative = delta.scale(-1.0);
-        let sweep = mover.expand_towards(relative);
-        let axes = self.axes();
-        let amount = delta.length();
-        self.with_candidates(sweep, |candidates| {
+        let axes = self.axes(0.0);
+        let components = self.frame.axes.map(|axis| delta.dot(axis));
+        self.with_candidates(mover.expand_towards(relative), |candidates| {
             let mut first = 1.0_f64;
             for &index in candidates {
                 let index = index as usize;
@@ -458,22 +457,58 @@ impl OrientedCollider {
                 if after.boxes.boxes.get(index) != Some(&local) {
                     continue;
                 }
-                if let Some((time, _)) =
-                    self.time_of_impact(&axes, mover, relative, amount, &self.obb(local))
-                    && time >= 0.0
-                {
-                    // A body already overlapping the back face is not a new contact,
-                    // even if the overlap is only roundoff and the sweep exits it.
-                    first = first.min(time);
+                let obb = self.obb(local);
+                for (i, component) in components.into_iter().enumerate() {
+                    if component == 0.0 {
+                        continue;
+                    }
+                    let mut face = Obb {
+                        centre: obb
+                            .centre
+                            .add_vector(self.frame.axes[i].scale(component.signum() * obb.half[i])),
+                        half: obb.half,
+                    };
+                    face.half[i] = 0.0;
+                    if let Some(time) = self.face_entry(&axes, mover, relative, &face) {
+                        first = first.min(time);
+                        if first == 0.0 {
+                            return 1.0;
+                        }
+                    }
                 }
             }
             1.0 - first
         })
     }
 
+    /// First time the box crosses the advancing face. Strict overlap of the
+    /// projections gives an open contact interval, including a face already
+    /// inside the body at the start but not a graze that never advances into it.
+    fn face_entry(&self, axes: &Axes, mover: Aabb, relative: Vec3, face: &Obb) -> Option<f64> {
+        let (mut enter, mut exit) = (0.0_f64, 1.0_f64);
+        for axis in axes.iter() {
+            let (distance, radii) = self.extents(mover, face, axis);
+            let speed = relative.dot(axis);
+            if speed == 0.0 {
+                if distance.abs() >= radii {
+                    return None;
+                }
+            } else {
+                let t1 = (distance - radii) / speed;
+                let t2 = (distance + radii) / speed;
+                enter = enter.max(t1.min(t2));
+                exit = exit.min(t1.max(t2));
+                if enter >= exit {
+                    return None;
+                }
+            }
+        }
+        Some(enter)
+    }
+
     /// Whether the entity box overlaps any box deeper than the collision epsilon.
     pub fn intersects(&self, mover: Aabb) -> bool {
-        let axes = self.axes();
+        let axes = self.axes(DEGENERATE_AXIS);
         self.with_candidates(mover, |candidates| {
             candidates.iter().any(|&index| {
                 let obb = self.obb(self.boxes.boxes[index as usize]);
@@ -485,7 +520,7 @@ impl OrientedCollider {
     /// Calls `f` with the index of each box the entity box overlaps deeper than the collision
     /// epsilon, until it answers true.
     pub fn overlapping(&self, mover: Aabb, mut f: impl FnMut(u32) -> bool) {
-        let axes = self.axes();
+        let axes = self.axes(DEGENERATE_AXIS);
         self.with_candidates(mover, |candidates| {
             for &index in candidates {
                 let obb = self.obb(self.boxes.boxes[index as usize]);
@@ -502,12 +537,12 @@ impl OrientedCollider {
         let Some(&local) = self.boxes.boxes.get(index as usize) else {
             return false;
         };
-        self.overlap_depth(&self.axes(), mover, &self.obb(local)) > COLLISION_EPSILON
+        self.overlap_depth(&self.axes(DEGENERATE_AXIS), mover, &self.obb(local)) > COLLISION_EPSILON
     }
 
     /// The axes of the separating-axis test: the world axes, the box's, and their cross
     /// products (those not parallel), computed once for a query.
-    fn axes(&self) -> Axes {
+    fn axes(&self, cross_threshold: f64) -> Axes {
         let world = [
             Vec3::new(1.0, 0.0, 0.0),
             Vec3::new(0.0, 1.0, 0.0),
@@ -524,7 +559,7 @@ impl OrientedCollider {
             for l in local {
                 let c = w.cross(l);
                 let n = c.length_squared();
-                if n > DEGENERATE_AXIS {
+                if n > cross_threshold {
                     list[count] = c.scale(1.0 / n.sqrt());
                     count += 1;
                 }
@@ -554,16 +589,10 @@ impl OrientedCollider {
             .fold(f64::INFINITY, f64::min)
     }
 
-    /// The entry time and distance along `direction` before the box meets `obb`, if it does
-    /// within the movement. `amount` is signed for a mover sliding along one world axis.
-    fn time_of_impact(
-        &self,
-        axes: &Axes,
-        mover: Aabb,
-        direction: Vec3,
-        amount: f64,
-        obb: &Obb,
-    ) -> Option<(f64, f64)> {
+    /// How far along `direction` (one axis, signed) the box travels before meeting `obb`, if it
+    /// does within the movement.
+    fn time_of_impact(&self, axes: &Axes, mover: Aabb, direction: Vec3, obb: &Obb) -> Option<f64> {
+        let amount = direction.x + direction.y + direction.z;
         let (mut enter, mut exit) = (f64::NEG_INFINITY, f64::INFINITY);
         // The travel distance the entering axis gives; exact when that axis is the movement's.
         let mut reach = 0.0;
@@ -604,7 +633,7 @@ impl OrientedCollider {
             return None;
         }
         // Float noise from a turned frame is not a movement.
-        Some((enter, if reach.abs() < 1.0e-9 { 0.0 } else { reach }))
+        Some(if reach.abs() < 1.0e-9 { 0.0 } else { reach })
     }
 
     /// Heights, above the bottom of `step_box`, at which the box could stand on a face of this
@@ -789,6 +818,22 @@ mod tests {
         }
         // Away from the wall nothing stops it.
         assert_eq!(collider.collide(mover, Axis::X, -5.0), -5.0);
+    }
+
+    #[test]
+    fn a_translating_collider_sweeps_only_its_advancing_face() {
+        let boxes = Arc::new(ColliderBoxes::new(vec![b([0.0; 3], [1.0; 3])]));
+        let delta = Vec3::new(1.0, 0.0, 0.0);
+        let start = OrientedCollider::new(Frame::translation(Vec3::ZERO), boxes.clone());
+        let end = OrientedCollider::new(Frame::translation(delta), boxes);
+        let push = |min, max| start.translation_push_fraction(&end, b(min, max), delta);
+        assert_eq!(push([0.875, 0.25, 0.25], [1.125, 0.75, 0.75]), 1.0);
+        assert_eq!(push([-0.125, 0.25, 0.25], [0.125, 0.75, 0.75]), 0.0);
+        assert_eq!(
+            push([1.25, 1.0 - 2.0_f64.powi(-25), 0.25], [1.5, 1.25, 0.75]),
+            0.75
+        );
+        assert_eq!(push([1.25, 1.0, 0.25], [1.5, 1.25, 0.75]), 0.0);
     }
 
     /// A box turned 45 degrees about y shows a corner to a mover coming along x: the mover
