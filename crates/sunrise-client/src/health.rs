@@ -2866,7 +2866,7 @@ mod tests {
                 Default::default(),
                 0.0,
             );
-            m.on_ground = true;
+            m.ground.on_ground = true;
             m.attrs.knockback_resistance = own;
             m.gear_knockback_resistance = gear;
             m.knockback(level, 0.4, 3.0, 0.0, &hit, 0.0);
@@ -2898,7 +2898,7 @@ mod tests {
                 Default::default(),
                 0.0,
             );
-            m.on_ground = true;
+            m.ground.on_ground = true;
             m.attrs.knockback_resistance = resistance;
             m
         };

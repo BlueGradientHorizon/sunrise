@@ -642,7 +642,7 @@ impl Game<'_> {
                     let stack = ItemStack::new(item, 1);
                     // ItemRowWidget, an ItemDisplayWidget: "Item: <name>".
                     sunrise_client::widgets::narratable(|| {
-                        let name = sunrise_client::stations::hover_name(&self.pack.names, &stack);
+                        let name = self.stack_hover_name_text(&stack).plain();
                         sunrise_client::widgets::Narratable::text(
                             tr("narration.item", &[&name]),
                             [left + 1.0, y + 1.0, 18.0, 18.0],

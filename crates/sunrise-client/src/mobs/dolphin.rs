@@ -234,7 +234,7 @@ impl Goal for Jump {
             || m.head_pitch == 0.0
             || m.head_pitch.abs() >= 10.0
             || !m.fluids.in_water)
-            && !m.on_ground
+            && !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let [sx, sz] = motion_step(m.yaw);

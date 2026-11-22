@@ -36,14 +36,6 @@ pub fn stage(bundle: &Bundle, output: &Path) -> Result<(), String> {
                 ));
             }
         }
-        for config in [".cargo/config", ".cargo/config.toml"] {
-            if input.join(config).exists() {
-                return Err(format!(
-                    "{}: Cargo source configuration is refused",
-                    input.display()
-                ));
-            }
-        }
         rewrite_dependencies(bundle, &relative, &mut manifest, &mut todo)?;
         if let Some(targets) = manifest
             .get_mut("target")

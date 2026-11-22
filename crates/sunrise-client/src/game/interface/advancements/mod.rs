@@ -835,7 +835,7 @@ impl Game<'_> {
             position: [m.position.x, m.position.y, m.position.z],
             on_fire: m.fire_ticks > 0 && !m.mod_fire_immune,
             baby: m.is_baby(),
-            on_ground: m.on_ground,
+            on_ground: m.ground.on_ground,
             equipment,
             // LivingEntity.getActiveEffectsMap supplies the active predicate instances.
             effects: m
