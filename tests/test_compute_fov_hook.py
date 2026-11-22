@@ -28,7 +28,7 @@ impl Studio { fn flying(&self) -> bool { self.freecam.active } }
 struct Game { view: View, settings: Settings, override_fov: Option<f32>, studio: Studio }
 impl Game {
     fn fov_effect_scale(&self) -> f32 { 1.0 }
-    fn death_time(&self) -> Option<i32> { None }
+    fn camera_death_time(&self) -> Option<i32> { None }
     fn camera_fluid(&self, camera: [f64; 3]) { assert_eq!(camera, [1.0, 2.0, 3.0]); }
     fn zoomed_fov_degrees(&self, fov: f32) -> f32 { fov / 2.0 }
     fn native_compute_fov(&self, partial: f32, camera: [f64; 3], degrees: &mut f32) {
