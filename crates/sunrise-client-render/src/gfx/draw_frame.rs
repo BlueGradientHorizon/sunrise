@@ -488,40 +488,19 @@ impl Renderer {
         // The walk reads the graph GPU culling is given (checked after it).
         #[cfg(debug_assertions)]
         let graph_given = self.occlusion.generation();
-        if gpu_frame && let Some(gpu) = &mut self.gpu_culling {
-            let input = gpu_culling::FrameInputs::new(
-                camera,
-                self.sections.min_y(),
-                self.layout.sections() as i32,
-                radius,
-                &view,
-            )
-            .with_reach(self.occlusion.reach().filter(|_| bounded))
-            .with_eye(eye)
-            .with_view_proj(jittered)
-            .with_occlude(self.cull_on);
-            let prepared = crate::spans::time("gpu culling", || {
-                gpu.prepare(
-                    &self.device,
-                    &self.queue,
-                    &mut self.uploads,
-                    &mut encoder,
-                    &input,
-                    self.own_timing.as_mut(),
-                )
-            });
-            // A frame whose planes leave the test's integers (the camera millions of blocks
-            // above or below the level), or whose eye is not a number, is the CPU's.
-            gpu_frame = prepared == gpu_culling::Prepared::Gpu;
-            if prepared == gpu_culling::Prepared::OutOfMemory {
-                log::warn!(
-                    "Sunrise renderer: GPU culling off until the next start: its buffers do not fit in video memory"
-                );
-                self.offer_gpu_culling(crate::graphics::GpuCullingOffer::OutOfMemory);
-                let _ = self.set_gpu_culling(false);
-            }
-        }
+        let sourced_frame;
+        (gpu_frame, sourced_frame) = self.prepare_gpu_culling(
+            gpu_frame,
+            camera,
+            &view,
+            radius,
+            eye,
+            jittered,
+            bounded,
+            &mut encoder,
+        );
         self.gpu_frame = gpu_frame;
+        self.gpu_sourced_frame = sourced_frame;
         let reachable = &self.occlusion;
         let cutout = &self.lod_cutout;
         // Sections fading out (`leave_section`) are past the render distance:
@@ -570,23 +549,14 @@ impl Renderer {
             // Far tiles take the frustum test a cell at a time: a cell out of
             // view leaves every tile in it out, and one wholly in view leaves
             // them only their distance. The sort below is the same either way.
+            // A frame the sourced-geometry pass draws in lists only what it leaves the CPU.
+            let cells = match sourced_frame {
+                true => &self.lod_listed,
+                false => &self.lod_cells,
+            };
             let lods = &self.lods;
-            self.lod_cells.walk(camera, &view, |inside, key| {
-                let Some(tile) = lods.get(&key) else {
-                    return;
-                };
-                let Some(listed) = (if inside {
-                    tile.visible_inside(key, camera, now)
-                } else {
-                    tile.visible(key, camera, &view, now)
-                }) else {
-                    return;
-                };
-                visible_lods.push(listed);
-                if let Some(active) = &mut animated {
-                    mark_layers(active, &tile.animated);
-                }
-            });
+            let mut list = |tile| visible_lods.push(tile);
+            lod::walk_tiles(cells, lods, camera, &view, now, animated, &mut list);
             visible_lods.sort_unstable_by_key(|v| (v.distance, v.key));
         }
         let mut shadow_visible = std::mem::take(&mut self.shadow_visible);
@@ -883,6 +853,11 @@ impl Renderer {
         // bounds, but for those fading or with a stand-in (`lod::Tile::cull_bounds`).
         for (i, v) in visible_lods.iter().enumerate() {
             let tile = &self.lods[&v.key];
+            // The sourced-geometry pass draws the solid quads of the whole meshes it has records
+            // of; listed for their water, their instance stays.
+            if sourced_frame && tile.gpu_draws_solid() {
+                continue;
+            }
             let s = tile.drawn();
             let index = visible.len() + i;
             let tested = cull.as_ref().and(tile.cull_bounds(v.fade));
@@ -1183,6 +1158,10 @@ impl Renderer {
         // (`GpuCulling::copy_stats`).
         if gpu_frame && let Some(gpu) = &self.gpu_culling {
             section_draw_calls += gpu.draw_calls();
+        }
+        // The sourced-geometry pass's, one per page; the meshes it alone draws are not counted.
+        if sourced_frame && let Some(sourced) = &self.gpu_sourced {
+            section_draw_calls += sourced.draw_calls();
         }
         let debug_depth = frame.debug_lines.len() as u32;
         let debug_opaque = frame
@@ -2039,6 +2018,9 @@ impl Renderer {
         } else {
             self.show_stats(serial, cpu);
         }
+        if sourced_frame && let Some(sourced) = &self.gpu_sourced {
+            sourced.dispatch(&mut encoder, self.own_timing.as_mut());
+        }
         // The world's targets: the screen, or the scaled target of `post`.
         let pack_post = !frame.title && self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
         // One of Sunrise's own packs reads the same world target.
@@ -2694,6 +2676,9 @@ impl Renderer {
                         None => {
                             let gpu = self.gpu_culling.as_ref().filter(|_| gpu_frame);
                             let occluding = gpu.is_some_and(|g| g.occluding());
+                            // The sourced-geometry pass's draws after every near one and the
+                            // CPU's: it lies past the render distance (`sourced_geometry::gpu`).
+                            let sourced = self.gpu_sourced.as_ref().filter(|_| sourced_frame);
                             let page_group = |page: u32| {
                                 pulled
                                     .then(|| self.flat.as_ref()?.page_group(page))
@@ -2715,6 +2700,10 @@ impl Renderer {
                                         draws.len() as u32,
                                         pulled,
                                     );
+                                    if let Some(sourced) = sourced {
+                                        sourced.draw(&mut pass, &self.arena, page_group);
+                                        pass.set_vertex_buffer(1, self.instances.slice(..));
+                                    }
                                 }
                             }
                             // As cull.rs's arm: the boxes against phase 1's depth, then
@@ -2760,6 +2749,9 @@ impl Renderer {
                                         draws.len() as u32,
                                         pulled,
                                     );
+                                    if let Some(sourced) = sourced {
+                                        sourced.draw(&mut pass, &self.arena, page_group);
+                                    }
                                 }
                             }
                         }
@@ -3705,7 +3697,7 @@ pub(super) fn collect_shadow_sections<T>(
 }
 
 /// Marks `layers` in `active`, a bit per animated sprite layer (`Renderer::animate`).
-fn mark_layers(active: &mut [u64], layers: &[u16]) {
+pub(super) fn mark_layers(active: &mut [u64], layers: &[u16]) {
     for &layer in layers {
         let layer = usize::from(layer);
         active[layer / u64::BITS as usize] |= 1 << (layer % u64::BITS as usize);

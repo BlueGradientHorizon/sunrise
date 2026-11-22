@@ -81,6 +81,10 @@ pub struct Renderer {
     /// for the settings in `graphics::gpu_culling_offer`), and whether the last frame drew
     /// them so (`gpu_frame`).
     pub(crate) gpu_culling: Option<gpu_culling::GpuCulling>,
+    /// Sourced geometry's records beside them (`sourced_geometry::gpu`), made with the first
+    /// recorded mesh and dropped with the last, and whether the last frame drew them so.
+    pub(crate) gpu_sourced: Option<sourced_geometry::gpu::SourcedGpu>,
+    pub(crate) gpu_sourced_frame: bool,
     pub(crate) gpu_culling_offer: crate::graphics::GpuCullingOffer,
     pub(crate) gpu_frame: bool,
     /// GPU frames since GPU culling was switched on: the first and every 64th after it
@@ -298,6 +302,9 @@ pub struct Renderer {
     /// The same tiles by cell (`lod::TileGrid`), to test them a handful of
     /// boxes at a time (`draw_frame`).
     pub(crate) lod_cells: lod::TileGrid,
+    /// The tiles a frame the GPU pass draws sourced geometry in still lists (`Tile::gpu_listed`),
+    /// while GPU culling is on.
+    pub(crate) lod_listed: lod::TileGrid,
     /// Far tiles' occlusion culling slots (`lod::Tile::cull_slot`): those
     /// free, and the next never used.
     pub(crate) lod_cull_free: Vec<u32>,

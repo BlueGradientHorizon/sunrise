@@ -2308,6 +2308,8 @@ impl Renderer {
             cull_on: cull.is_some(),
             sides_on: true,
             gpu_culling: None,
+            gpu_sourced: None,
+            gpu_sourced_frame: false,
             gpu_culling_offer,
             gpu_frame: false,
             #[cfg(debug_assertions)]
@@ -2464,6 +2466,7 @@ impl Renderer {
             lods: FxHashMap::default(),
             lod_vertex_bytes: 0,
             lod_cells: lod::TileGrid::default(),
+            lod_listed: lod::TileGrid::default(),
             lod_cull_free: Vec::new(),
             lod_cull_next: 0,
             lod_cutout: Default::default(),
