@@ -18,7 +18,7 @@ class MouseScrollingHookTests(unittest.TestCase):
         start = source.index("                    let (raw_x, raw_y) = match delta")
         normalize = source[start:source.index("                    // ScreenEvent.MouseScrolled.Pre", start)]
         start = source.index("                    if self.hotbar_takes_wheel()", start)
-        dispatch = source[start:source.index("                    if self.screen == Screen::Chat", start)]
+        dispatch = source[start:source.index("                    match self.screen {", start)]
         hotbar = "\n".join(method(source, name) for name in
                             ("hotbar_takes_wheel", "hotbar_scroll_canceled", "hotbar_wheel_step"))
         fixture = r"""
