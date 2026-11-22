@@ -925,7 +925,8 @@ impl Game<'_> {
     }
     /// Block `block`'s registered item slots (`WorldlyContainer`), read from
     /// its per-block declaration when the ticking table is built.
-    /// At most 256 slots, with slot numbers past the count left out.
+    /// Registration already checks the saved slot count. The table builder leaves
+    /// out slot references past that count.
     /// Its menu must be one of the supported menus:
     /// `containers::MOD_MENUS` or a content mod's menu type
     /// (`data/<id>/sunrise/menu/`) with as many
