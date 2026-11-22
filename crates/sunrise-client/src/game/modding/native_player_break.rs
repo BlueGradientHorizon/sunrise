@@ -70,6 +70,7 @@ impl Game<'_> {
             )
         });
         if removed {
+            self.invalidate_active_player_breaks(pos);
             self.native_player_destroyed_block(pos, state, block_entity);
         }
         removed
@@ -80,7 +81,10 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
     use sunrise_client::{command::args::GameMode, items::ItemStack, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
 
@@ -561,6 +565,173 @@ mod tests {
                 assert!(!game.player_destroy_block(player, pos, false));
                 assert_eq!(block(game, pos), "minecraft:air");
                 assert_eq!(game.held().unwrap().damage, 1);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_nested_turtle_egg_break_does_not_repeat_removal_effects() {
+        let done = Arc::new(AtomicBool::new(false));
+        struct FinishOnce(Arc<AtomicBool>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for FinishOnce {
+            fn break_block(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::BreakBlockEvent<'_>,
+            ) -> mod_api::Flow {
+                if !self.0.swap(true, Ordering::Relaxed) {
+                    let player = host.players().acting_player().expect("the breaker acts");
+                    assert!(player.destroy_block(host, event.pos, false));
+                }
+                mod_api::Flow::Continue
+            }
+        }
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "finish-once",
+            Box::new(FinishOnce(done.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                let registry = game.pack.assets.registry;
+                let egg = |eggs: u32| {
+                    let base = registry.default_state("minecraft:turtle_egg").unwrap();
+                    let mut state = registry.state(base).unwrap().clone();
+                    state.properties.insert("eggs".into(), eggs.to_string());
+                    registry.resolve(&state).unwrap()
+                };
+                let nest = [6, 64, 4];
+                game.world.set(nest[0], nest[1], nest[2], egg(3)).unwrap();
+                assert!(!game.player_destroy_block(player, nest, false));
+                assert_eq!(game.world.block(nest[0], nest[1], nest[2]), egg(2));
+                assert_eq!(game.held().unwrap().damage, 1);
+                assert_eq!(game.stats.get("mined", "minecraft:turtle_egg"), 1);
+
+                // A nested survival break of ice over stone leaves water, not air;
+                // the outer break must still skip removal, wear, and statistics.
+                done.store(false, Ordering::Relaxed);
+                let ice = [7, 64, 4];
+                place(game, [7, 63, 4], "minecraft:stone");
+                place(game, ice, "minecraft:ice");
+                assert!(!game.player_destroy_block(player, ice, false));
+                assert_eq!(block(game, ice), "minecraft:water");
+                assert_eq!(game.held().unwrap().damage, 2);
+                assert_eq!(game.stats.get("mined", "minecraft:ice"), 1);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn restricted_break_attempts_fire_pre_canceled_and_keep_hard_restrictions() {
+        let normal_seen = Arc::new(AtomicUsize::new(0));
+        let canceled_seen: Arc<Mutex<Vec<([i32; 3], bool)>>> = Arc::new(Mutex::new(Vec::new()));
+        let clear_cancel = Arc::new(AtomicBool::new(true));
+
+        struct NormalObserver(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for NormalObserver {
+            fn break_block(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                _: &mut mod_api::BreakBlockEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                mod_api::Flow::Continue
+            }
+        }
+
+        struct CancelledObserver {
+            seen: Arc<Mutex<Vec<([i32; 3], bool)>>>,
+            clear_cancel: Arc<AtomicBool>,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for CancelledObserver {
+            #[listener(receive_cancelled)]
+            fn break_block(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::BreakBlockEvent<'_>,
+            ) -> mod_api::Flow {
+                self.seen.lock().unwrap().push((event.pos, event.cancelled));
+                if self.clear_cancel.load(Ordering::Relaxed) {
+                    event.cancelled = false;
+                }
+                mod_api::Flow::Continue
+            }
+        }
+
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new("normal", Box::new(NormalObserver(normal_seen.clone()))),
+            mod_api::ModEntry::new(
+                "cancelled",
+                Box::new(CancelledObserver {
+                    seen: canceled_seen.clone(),
+                    clear_cancel: clear_cancel.clone(),
+                }),
+            ),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let player = with_player(game, ItemStack::new("minecraft:diamond_pickaxe", 1));
+                let (stone, command, air) = ([6, 64, 4], [7, 64, 4], [8, 64, 4]);
+                place(game, stone, "minecraft:stone");
+                place(game, command, "minecraft:command_block");
+
+                // Air and unloaded positions have no valid subject and do not post.
+                assert!(!game.player_destroy_block(player, air, false));
+                assert!(!game.player_destroy_block(player, [16, 64, 4], false));
+                assert!(canceled_seen.lock().unwrap().is_empty());
+
+                // Adventure, spectator, and unauthorized game-master attempts post
+                // pre-canceled; clearing the cancel still leaves the block intact.
+                game.set_mode(GameMode::Adventure);
+                assert!(!game.player_destroy_block(player, stone, false));
+                assert_eq!(block(game, stone), "minecraft:stone");
+
+                game.set_mode(GameMode::Spectator);
+                assert!(!game.player_destroy_block(player, stone, false));
+                assert_eq!(block(game, stone), "minecraft:stone");
+
+                game.set_mode(GameMode::Creative);
+                assert!(!game.player_destroy_block(player, command, false));
+                assert_eq!(block(game, command), "minecraft:command_block");
+
+                // Creative sword: pre-canceled by the item check; staying canceled
+                // keeps the block, while un-canceling lets the break proceed as in
+                // NeoForge BreakBlockEvent.
+                game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+                clear_cancel.store(false, Ordering::Relaxed);
+                assert!(!game.player_destroy_block(player, stone, false));
+                assert_eq!(block(game, stone), "minecraft:stone");
+
+                clear_cancel.store(true, Ordering::Relaxed);
+                assert!(game.player_destroy_block(player, stone, false));
+                assert_eq!(block(game, stone), "minecraft:air");
+
+                assert_eq!(normal_seen.load(Ordering::Relaxed), 0);
+                assert_eq!(
+                    *canceled_seen.lock().unwrap(),
+                    vec![
+                        (stone, true),
+                        (stone, true),
+                        (command, true),
+                        (stone, true),
+                        (stone, true),
+                    ]
+                );
             });
         });
     }

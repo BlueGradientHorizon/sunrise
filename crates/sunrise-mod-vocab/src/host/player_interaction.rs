@@ -86,10 +86,13 @@ pub trait PlayerInteractionBackendMut {
     ) -> Option<bool>;
     /// Side: server.
     /// `ServerPlayerGameMode.destroyBlock`: breaks the block at `pos` in the player's level as
-    /// this player breaks it, as FTB Ultimine does for each block of a vein. The player's game
-    /// mode, main-hand item's restrictions and game-master permissions still apply, and
-    /// `break_block` may veto the break. Unlike a dig packet (`handleBlockBreakAction`), this
-    /// does not check spawn protection, reach, or whether normal mining could finish the block.
+    /// this player breaks it, as FTB Ultimine does for each block of a vein. On a live block,
+    /// `break_block` posts in NeoForge `CommonHooks.fireBlockBreak` order: pre-canceled when
+    /// the main-hand item, game mode, or game-master permissions refuse the break, and hard
+    /// game-mode and game-master restrictions still prevent removal even if a
+    /// `#[listener(receive_cancelled)]` listener clears the cancel. Unlike a dig packet
+    /// (`handleBlockBreakAction`), this does not check spawn protection, reach, or whether
+    /// normal mining could finish the block.
     /// The break runs the block's effects, `player_destroyed_block`, the loot rolled for the
     /// main-hand item and its enchantments, `block_drops` with this player as the breaker, item
     /// wear, the mined statistic and exhaustion. A vein miner can take the drops and experience
@@ -101,7 +104,8 @@ pub trait PlayerInteractionBackendMut {
     /// again from `break_block` must guard their own reentry on a still-present block.
     /// True only if this call removed a block. False off the server, for a stale, dead or
     /// out-of-level player, for air or an unloaded position, on a restriction or veto, or
-    /// if a listener already removed the block.
+    /// if a listener already removed the block or completed a nested player break at that
+    /// position in that level (even if a non-air block or fluid remains).
     #[access(WorldOnly)]
     fn player_destroy_block(
         &mut self,

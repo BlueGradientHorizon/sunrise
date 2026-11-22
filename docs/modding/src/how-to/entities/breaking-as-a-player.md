@@ -1,10 +1,13 @@
 # Breaking blocks as a player
 
 `PlayerRef::destroy_block(host, pos, into_inventory)` breaks a block as that player breaks it,
-through vanilla's `ServerPlayerGameMode.destroyBlock`, as FTB Ultimine does for each block of a
-vein. Game mode, the main-hand item's restrictions, game-master permissions and the
-`break_block` veto still apply. This is not a dig packet: there is no check for spawn protection,
-reach or mining progress. For example, a survival player can directly destroy bedrock.
+through vanilla's `ServerPlayerGameMode.destroyBlock` and NeoForge's `CommonHooks.fireBlockBreak`,
+as FTB Ultimine does for each block of a vein. On a live block, `break_block` posts pre-canceled
+when game mode, the main-hand item's restrictions, or game-master permissions refuse the break;
+`#[listener(receive_cancelled)]` listeners can observe those attempts, while game-mode and
+game-master restrictions still prevent removal even if the cancel is cleared. This is not a dig
+packet: there is no check for spawn protection, reach or mining progress. For example, a survival
+player can directly destroy bedrock.
 
 `player_destroyed_block` hears a successful removal. Loot is rolled for the main-hand item and
 its enchantments; `block_drops` sees the player as `breaker`; and item wear, statistics and
@@ -13,7 +16,8 @@ drops go to the player's inventory after `block_drops`, and overflow drops from 
 
 The result is `true` only if this call removed the block. It is `false` for a player who is dead
 or not present in the hook's level, an absent block, a refusal or veto, or a block a listener
-already removed.
+already removed or broke in a nested call at that position in that level (even if a non-air block
+or fluid such as fewer turtle eggs or water remains).
 
 ## A vein miner
 
