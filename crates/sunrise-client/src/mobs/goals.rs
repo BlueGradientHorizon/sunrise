@@ -1655,6 +1655,31 @@ impl MeleeAttack {
         self.bite = Some(sound);
         self
     }
+    /// `MeleeAttackGoal.checkAndPerformAttack`, which `tick` calls after the path
+    /// recalculation and the cooldown's countdown: when `canPerformAttack` holds (the
+    /// cooldown is over, the target is within melee range and in sight),
+    /// `resetAttackCooldown`, then `swingForAttack` and `doHurtTarget`. The cooldowns of
+    /// the piglins', brutes', hoglins' and zoglins' `MeleeAttack.create` behaviour and the
+    /// fox's bite after the strike (`FoxMeleeAttackGoal.checkAndPerformAttack`) are applied
+    /// here too. The polar bear's goal overrides the method, as in vanilla, and doesn't come
+    /// through here. A native mod takes the strike here through `[[native.mixin]]`, where a
+    /// Java mod's mixin on `checkAndPerformAttack` cancels or delays it (#4678).
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn check_and_perform_attack(&mut self, m: &mut Mob, who: Who, t: &TargetInfo, cx: &mut Cx) {
+        if self.until_attack <= 0 && m.within_melee_range(cx.w, t) && m.sees(cx.w, who) {
+            let interval = match self.baby_interval {
+                Some(baby) if m.is_baby() => baby,
+                _ => self.interval,
+            };
+            self.until_attack = adjusted(true, interval);
+            m.swing();
+            super::ai::do_hurt_target(m, who, cx);
+            if let Some(sound) = self.bite {
+                let at = [m.position.x, m.position.y, m.position.z];
+                cx.events.push(MobEvent::Sound(sound, at, 1.0, 1.0));
+            }
+        }
+    }
 }
 impl Goal for MeleeAttack {
     goal_clone!();
@@ -1723,6 +1748,8 @@ impl Goal for MeleeAttack {
     fn every_tick(&self) -> bool {
         true
     }
+    /// `MeleeAttackGoal.tick`: look at the target, recalculate the path, count the cooldown
+    /// down, then `checkAndPerformAttack` (`ZombieAttackGoal.tick` raises the arms after it).
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         let Some(who) = m.ai.target else { return };
         let Some(t) = cx.w.target_info(who) else {
@@ -1762,18 +1789,8 @@ impl Goal for MeleeAttack {
                 &t,
                 cx,
             );
-        } else if self.until_attack <= 0 && m.within_melee_range(cx.w, &t) && m.sees(cx.w, who) {
-            let interval = match self.baby_interval {
-                Some(baby) if m.is_baby() => baby,
-                _ => self.interval,
-            };
-            self.until_attack = adjusted(true, interval);
-            m.swing();
-            super::ai::do_hurt_target(m, who, cx);
-            if let Some(sound) = self.bite {
-                let at = [m.position.x, m.position.y, m.position.z];
-                cx.events.push(MobEvent::Sound(sound, at, 1.0, 1.0));
-            }
+        } else {
+            self.check_and_perform_attack(m, who, &t, cx);
         }
         if self.zombie {
             self.raise_arm += 1;
@@ -4577,6 +4594,70 @@ mod melee_continue_tests {
             Some((true, false)),
             "a mob chases a survival player and stops when they become a spectator"
         );
+    }
+}
+
+#[cfg(test)]
+mod check_and_perform_attack_tests {
+    use super::*;
+    use crate::mobs::world::{test_player, with_test_world};
+    use std::sync::Arc;
+    use sunrise_core::geometry::Vec3;
+
+    /// What `call` leaves: the goal's cooldown, whether the mob swings, and its hits on the
+    /// player.
+    fn strike(
+        goal: &mut MeleeAttack,
+        m: &mut Mob,
+        world: &MobWorld,
+        call: impl FnOnce(&mut MeleeAttack, &mut Mob, &mut Cx),
+    ) -> (i32, bool, usize) {
+        let mut fixture = crate::health::TestLevel::new(0);
+        let mut events = Vec::new();
+        let mut cx = Cx {
+            w: world,
+            level: &mut fixture.level(),
+            events: &mut events,
+        };
+        call(goal, m, &mut cx);
+        let hits = events
+            .iter()
+            .filter(|e| matches!(e, MobEvent::AttackPlayer(..)))
+            .count();
+        (goal.until_attack, m.ai.swinging, hits)
+    }
+
+    /// `MeleeAttackGoal.checkAndPerformAttack`: while the cooldown runs, nothing; once it is
+    /// over, with the target in reach and in sight, `resetAttackCooldown` (20 ticks), the swing
+    /// and one hit. `tick` counts the cooldown down before it calls the method, as vanilla's
+    /// does, so a zombie one tick from its next attack strikes in that tick.
+    #[test]
+    #[ignore = "daily"]
+    fn the_strike_comes_after_the_cooldown_countdown_in_tick() {
+        let mut outcomes = Vec::new();
+        let ran = with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:zombie"].clone());
+            let mut world = w.clone();
+            world.player = Some(test_player(Vec3::new(1.5, 64.0, 0.5)));
+            let t = world.target_info(Who::Player).unwrap();
+            for (until_attack, through_tick) in [(1, false), (0, false), (1, true)] {
+                let mut m = Mob::new(1, kind.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0);
+                m.ai.target = Some(Who::Player);
+                let mut goal = MeleeAttack::new(1.0, false);
+                goal.until_attack = until_attack;
+                outcomes.push(strike(&mut goal, &mut m, &world, |goal, m, cx| {
+                    if through_tick {
+                        goal.tick(m, cx);
+                    } else {
+                        goal.check_and_perform_attack(m, Who::Player, &t, cx);
+                    }
+                }));
+            }
+        });
+        if !ran {
+            return;
+        }
+        assert_eq!(outcomes, [(1, false, 0), (20, true, 1), (20, true, 1)]);
     }
 }
 

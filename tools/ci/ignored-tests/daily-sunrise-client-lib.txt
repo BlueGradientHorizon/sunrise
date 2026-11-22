@@ -215,6 +215,7 @@ sunrise-client-lib mobs::goals::breed_continue_tests::a_breed_goal_stops_when_th
 sunrise-client-lib mobs::goals::breed_partner_range_tests::a_mate_inside_the_eight_block_sphere_is_courted lib daily resources
 sunrise-client-lib mobs::goals::breed_partner_range_tests::a_mate_outside_the_eight_block_sphere_is_ignored lib daily resources
 sunrise-client-lib mobs::goals::breed_xp_tests::the_breed_xp_follows_the_mob_drops_rule lib daily resources
+sunrise-client-lib mobs::goals::check_and_perform_attack_tests::the_strike_comes_after_the_cooldown_countdown_in_tick lib daily resources
 sunrise-client-lib mobs::goals::eat_block_tests::a_mods_grief_answer_overrides_the_rule_for_its_mob lib daily resources
 sunrise-client-lib mobs::goals::eat_block_tests::the_eat_goal_breaks_short_grass_only_with_mob_griefing lib daily resources
 sunrise-client-lib mobs::goals::eat_block_tests::the_eat_goal_turns_grass_to_dirt_only_with_mob_griefing lib daily resources
