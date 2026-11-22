@@ -1,7 +1,7 @@
 //! `level.relight_chunks` (queued, not lit synchronously) and `chunk.resend` through the public
 //! handles, covering active and parked server levels as well as each named refusal.
 
-use super::native_entity_refs::tests::{with_client_game, with_game};
+use super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{ChunkRefusal, LevelRef, LightLayer, WorldEpoch};
 use std::sync::Arc;
@@ -93,22 +93,16 @@ fn a_stale_handle_is_refused_by_name() {
     });
 }
 
-/// A parked open level accepts `relight_chunks` and `chunk.resend` on its own `World` without
-/// touching the level in place, advances its queued light jobs on `update_parked_light`, and
-/// refuses unloaded chunks with `NotLoaded`.
+/// A parked open level accepts relights on its own world and advances them without a level tick.
 #[test]
 #[ignore = "daily"]
-fn parked_level_relight_and_resend_target_the_owning_dimension() {
+fn parked_level_relights_on_the_owning_dimension() {
     with_game(|game| {
         roofed(game);
         let overworld = game.level("minecraft:overworld").unwrap();
-        game.world.block_log = Some(Vec::new());
         game.world.dirty_light.clear();
-        game.world.bulk_log.clear();
         game.enter_level(super::Dim::Nether).unwrap();
-        // Neither Nether's dirty_light nor bulk_log should be touched by Overworld calls.
         game.world.dirty_light.clear();
-        game.world.bulk_log.clear();
 
         assert_eq!(overworld.relight_chunks(game, &[[100, 100]]), Ok(9));
         assert!(game.world.dirty_light.is_empty());
@@ -120,19 +114,6 @@ fn parked_level_relight_and_resend_target_the_owning_dimension() {
                 .len(),
             9
         );
-
-        let loaded = mod_api::__private::game::chunk_ref(overworld, [100, 100]);
-        assert_eq!(loaded.resend(game), Ok(()));
-        assert!(game.world.bulk_log.is_empty());
-        assert!(
-            game.levels
-                .parked_world_of("minecraft:overworld")
-                .unwrap()
-                .bulk_log
-                .contains(&(100, 100))
-        );
-        let unloaded = mod_api::__private::game::chunk_ref(overworld, [400, 400]);
-        assert_eq!(unloaded.resend(game), Err(ChunkRefusal::NotLoaded));
 
         // Drive parked light updates until the queued roofed column finishes lighting.
         // `with_game` creates `Game` on the title screen with `streaming.paused = true`;
@@ -176,63 +157,136 @@ fn parked_level_relight_and_resend_target_the_owning_dimension() {
     });
 }
 
-/// On a parked level without an active `block_log`, `chunk.resend` checks real sent-chunk
-/// watchers on that dimension before queueing `bulk_log`.
+/// A live block log and an in-memory guest are not proof the guest was sent the chunk.
 #[test]
 #[ignore = "daily"]
 fn parked_chunk_resend_checks_sent_watchers_on_owning_dimension() {
     with_guests(|game| {
         roofed(game);
         let overworld = game.level("minecraft:overworld").unwrap();
-        game.world.block_log = None;
-        game.world.bulk_log.clear();
+        game.world.block_log = Some(Vec::new());
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.dimension = "minecraft:overworld".into();
+            g.center = Some((100, 100));
+            g.set_address(sunrise_client::lan::conn::MEMORY_ADDRESS);
+        });
         game.enter_level(super::Dim::Nether).unwrap();
 
         let chunk = mod_api::__private::game::chunk_ref(overworld, [100, 100]);
-        // No guest has been sent (100, 100) in Overworld yet: Ok, nothing queued.
         assert_eq!(chunk.resend(game), Ok(()));
-        assert!(
-            !game
-                .levels
-                .parked_world_of("minecraft:overworld")
-                .unwrap()
-                .bulk_log
-                .contains(&(100, 100))
+        let world = game.levels.parked_world_of("minecraft:overworld").unwrap();
+        assert!(world.block_log.is_some());
+        assert!(world.chunk_resends.is_empty());
+        assert!(world.bulk_log.is_empty(), "no far-terrain handoff queued");
+
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.sent_chunks.insert((100, 100));
+        });
+        assert_eq!(chunk.resend(game), Ok(()));
+        let world = game.levels.parked_world_of("minecraft:overworld").unwrap();
+        assert!(world.chunk_resends.contains(&(100, 100)));
+        assert!(game.world.chunk_resends.is_empty());
+    });
+}
+
+/// An interior holder receives the corrected light in the chunk packet, not a separate light
+/// update. The block values stay the same; only the stored light was stale.
+#[test]
+#[ignore = "daily"]
+fn resend_waits_for_the_relight_before_sending_to_an_interior_holder() {
+    use std::time::{Duration, Instant};
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+
+    if run_fresh_cases(
+        "game::native_chunk_relight_tests::resend_waits_for_the_relight_before_sending_to_an_interior_holder",
+        "SUNRISE_CHUNK_RESEND_CHILD",
+        &["game"],
+    ) {
+        return;
+    }
+    with_guests(|game| {
+        roofed(game);
+        let level = game.level("minecraft:overworld").unwrap();
+        let pos = [1608, 110, 1608];
+        let key = (100, 100);
+        let torch = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:torch")
+            .unwrap();
+        let column = Arc::make_mut(game.world.chunks.get_mut(&key).unwrap());
+        column.set(pos[0], pos[1], pos[2], torch.0);
+        column.lit = true;
+        assert_eq!(
+            game.level_brightness(level, LightLayer::Block, pos),
+            Some(0)
         );
 
-        // Once a guest watching Overworld has been sent (100, 100), resend queues it.
-        game.lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update(0, |g| _ = g.sent_chunks.insert((100, 100)));
-        assert_eq!(chunk.resend(game), Ok(()));
+        let (tx, rx) = std::sync::mpsc::channel();
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.sender = PlayerSender::new(tx, Arc::default());
+            g.dimension = "minecraft:overworld".into();
+            g.center = Some(key);
+            g.sent_chunks
+                .extend((99..=101).flat_map(|x| (99..=101).map(move |z| (x, z))));
+        });
+        game.world.light_log = Some(Default::default());
+        game.streaming.paused = false;
+        assert_eq!(level.relight_chunks(game, &[[key.0, key.1]]), Ok(9));
+        assert_eq!(
+            game.chunk(level, [key.0, key.1]).unwrap().resend(game),
+            Ok(())
+        );
+        game.lan_broadcast_changes();
+        assert!(rx.try_recv().is_err(), "light was still queued");
+        game.streaming.update_light(&mut game.world);
+        assert!(game.streaming.has_column_light_job(key));
+        game.lan_broadcast_changes();
+        assert!(rx.try_recv().is_err(), "worker light was not yet applied");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while game.streaming.has_column_light_job(key) {
+            assert!(Instant::now() < deadline, "light worker did not finish");
+            game.streaming.wait(Duration::from_millis(50));
+            game.streaming.update_light(&mut game.world);
+        }
+        game.lan_broadcast_changes();
+        let Out::Packet(body) = rx.try_recv().expect("resend reaches the interior holder") else {
+            panic!("expected a chunk packet");
+        };
+        let mut reader = Reader::new(&body);
+        let id = reader.varint().unwrap();
+        let Clientbound::LevelChunkWithLight(packet) =
+            Clientbound::decode(id, reader.rest()).unwrap()
+        else {
+            panic!("expected LevelChunkWithLight");
+        };
+        assert_eq!((packet.x, packet.z), key);
+        let mut received = Chunk::empty(packet.x, packet.z);
+        let layers = packet.light.layers(game.world.layout().sections() + 2);
+        sunrise_client::light::light_from_layers(&mut received, &layers, true);
+        assert_eq!(received.light(pos[0], pos[1], pos[2]) & 15, 14);
         assert!(
-            game.levels
-                .parked_world_of("minecraft:overworld")
-                .unwrap()
-                .bulk_log
-                .contains(&(100, 100))
+            rx.try_recv().is_err(),
+            "the interior holder needed only the resend"
         );
     });
 }
 
-/// A chunk that is not loaded is `NotLoaded`; a loaded one is queued to go out whole.
+/// Loading is required even with no recipients; a loaded chunk with none is a no-op.
 #[test]
 #[ignore = "daily"]
 fn a_chunk_is_resent_only_when_loaded() {
     with_game(|game| {
         roofed(game);
         let level = game.level(game.dim.id()).unwrap();
-        game.world.block_log = Some(Vec::new());
-        game.world.bulk_log.clear();
         let loaded = game.chunk(level, [100, 100]).unwrap();
         assert_eq!(loaded.resend(game), Ok(()));
-        assert!(game.world.bulk_log.contains(&(100, 100)));
         let unloaded = mod_api::__private::game::chunk_ref(level, [400, 400]);
         assert_eq!(unloaded.resend(game), Err(ChunkRefusal::NotLoaded));
-        assert!(!game.world.bulk_log.contains(&(400, 400)));
+        assert!(game.world.chunk_resends.is_empty());
     });
 }
 

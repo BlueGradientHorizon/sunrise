@@ -18,6 +18,7 @@ use crate::{
     collisions::SceneCollisions,
     effects::{EffectInstance, PlayerEffects},
     items::ItemStack,
+    streaming::Streaming,
     text::Text,
     world::World,
 };
@@ -2564,6 +2565,7 @@ impl Hub {
                 let _ = ctx.world.block_log.take();
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
+                ctx.world.chunk_resends.clear();
             }
             return events;
         }
@@ -2578,7 +2580,7 @@ impl Hub {
         crate::spans::time("lan_viewed_levels", || self.send_viewed(ctx));
         crate::spans::time("lan_block_changes", || {
             self.broadcast_light_changes(ctx.world);
-            self.broadcast_block_changes(ctx.world);
+            self.broadcast_block_changes(ctx.world, ctx.streaming);
         });
         // ServerGamePacketListenerImpl.tick: the actions handled since the last tick are
         // acknowledged after the block changes they made were sent, so a client's predicted
@@ -3077,10 +3079,10 @@ impl Hub {
     /// before the block events: what changed since the last time (the last
     /// tick's block events, entities and block entities, this tick's
     /// scheduled and random ticks), as it is now.
-    pub fn broadcast_changes(&mut self, world: &mut World) {
+    pub fn broadcast_changes(&mut self, world: &mut World, streaming: &Streaming) {
         if self.guests.iter().any(|g| self.here(g)) || self.viewed_here() {
             self.broadcast_light_changes(world);
-            self.broadcast_block_changes(world);
+            self.broadcast_block_changes(world, Some(streaming));
         }
     }
 
@@ -5311,7 +5313,7 @@ mod tests {
             .insert(pos, BlockEntity::Mod(Box::new(machine)));
         world.block_log = Some(vec![pos]);
         // Nobody has the chunk yet: no tag is built, and the fields wait.
-        hub.broadcast_block_changes(&mut world);
+        hub.broadcast_block_changes(&mut world, None);
         assert_eq!(BUILT.load(Ordering::Relaxed), 0);
         assert!(first.try_recv().is_err());
         hub.guests.update(0, |g| _ = g.sent_chunks.insert((0, 0)));
@@ -5355,14 +5357,14 @@ mod tests {
         // The column goes whole in the same broadcast: the change is kept for the fields.
         world.bulk_log.insert((0, 0));
         world.block_log.as_mut().unwrap().extend([pos, pos]);
-        hub.broadcast_block_changes(&mut world);
+        hub.broadcast_block_changes(&mut world, None);
         let once = Tag::Compound(Compound::from([progress.clone(), effect]));
         for viewer in [&first, &second] {
             assert_eq!(tags(viewer), std::slice::from_ref(&once));
         }
         let built = BUILT.load(Ordering::Relaxed);
         world.block_log.as_mut().unwrap().push(pos);
-        hub.broadcast_block_changes(&mut world);
+        hub.broadcast_block_changes(&mut world, None);
         let plain = Tag::Compound(Compound::from([progress.clone()]));
         for viewer in [&first, &second] {
             assert_eq!(tags(viewer), std::slice::from_ref(&plain));

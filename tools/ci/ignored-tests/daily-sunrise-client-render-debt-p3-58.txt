@@ -1,0 +1,1 @@
+sunrise-client-render streaming::tests::redirtying_a_batch_keeps_its_worker_slots_until_the_results_are_consumed lib daily resources

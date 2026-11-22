@@ -291,6 +291,13 @@ struct MeshSettings {
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
     visibility: Option<Arc<section_visibility::FrozenPlan>>,
 }
+/// Tracks a light job until it leaves the queue or its result is received.
+struct LightJob {
+    seq: u64,
+    /// Edit sequence when submitted, or `None` if the column was unloaded or replaced.
+    snapshot: Option<u64>,
+}
+
 enum Job {
     Generate(i32, i32),
     /// A region to decorate, with the final chunks in it (region index and
@@ -587,7 +594,7 @@ pub struct Streaming {
     decorates: bool,
     /// `ChunkGenerator::decorates_beside_final`.
     saves_beside_final: bool,
-    lighting: FxHashMap<(i32, i32), u64>,
+    lighting: FxHashMap<(i32, i32), LightJob>,
     meshing: FxHashMap<(i32, i32, i32), u64>,
     /// Mesh jobs actually in flight. `meshing` can hide more than one job for a
     /// section when an edit replaces its entry before the old job lands, so the
@@ -667,8 +674,6 @@ pub struct Streaming {
     /// Applied edits by sequence, replayed onto light jobs snapshotted before them.
     light_log: Vec<(u64, (i32, i32, i32))>,
     light_edit_sequence: u64,
-    /// Edit sequence at each in-flight light job's snapshot.
-    light_snapshots: FxHashMap<(i32, i32), u64>,
     pub generated_total: u64,
     pub meshed_total: u64,
     /// Chunks come from a server (`insert_remote`/`forget`): nothing is
@@ -1278,7 +1283,6 @@ impl Streaming {
             light_tables,
             light_log: Vec::new(),
             light_edit_sequence: 0,
-            light_snapshots: Default::default(),
             generated_total: 0,
             meshed_total: 0,
             remote: false,
@@ -1330,8 +1334,9 @@ impl Streaming {
     /// relit, and it and its neighbours remesh (`enableChunkLight`).
     pub fn insert_remote(&mut self, world: &mut World, chunk: Chunk) {
         let key = (chunk.x, chunk.z);
-        self.lighting.remove(&key);
-        self.light_snapshots.remove(&key);
+        if let Some(job) = self.lighting.get_mut(&key) {
+            job.snapshot = None;
+        }
         world.install_light_column(chunk);
         self.lit.insert(key);
         self.generated_total += 1;
@@ -1428,14 +1433,23 @@ impl Streaming {
         if !gone.is_empty()
             && let Ok(mut queue) = self.shared.queue.lock()
         {
-            release_columns(&mut queue, gone);
+            release_columns(&mut queue, gone, |job| {
+                if let Job::Light(x, z, ..) = job {
+                    self.lighting.remove(&(*x, *z));
+                }
+            });
         }
         for &(x, z) in gone {
             self.lit.remove(&(x, z));
             self.meshed.remove(&(x, z));
-            self.lighting.remove(&(x, z));
+            if let Some(job) = self.lighting.get_mut(&(x, z)) {
+                job.snapshot = None;
+            }
             world.dirty_sections.take_column(x, z);
             world.entities_pending.remove(&(x, z));
+        }
+        if self.lighting.is_empty() {
+            self.light_log.clear();
         }
     }
     /// Queue a job for the column `at`, nearest first: its distance (`distance`)
@@ -1903,7 +1917,6 @@ impl Streaming {
         }
         self.requeue();
         self.relight_edits(world);
-        self.invalidate_dirty_light(world);
         hz_laps.lap("st_relight_edits");
         let deferred = std::mem::take(&mut self.deferred).into_iter();
         let received = self.shared.done.take();
@@ -1950,16 +1963,7 @@ impl Streaming {
                 }
                 Done::Saved(protos) => self.receive_saved(protos),
                 Done::LightView(x, z, proto, view) => self.receive_light_view(x, z, proto, view),
-                Done::Lit(x, z, sections, seq) => {
-                    if self.lighting.get(&(x, z)) != Some(&seq)
-                        || world.dirty_light.contains(&(x, z))
-                    {
-                        continue;
-                    }
-                    self.lighting.remove(&(x, z));
-                    let snapshot = self.light_snapshots.remove(&(x, z)).unwrap_or(u64::MAX);
-                    self.apply_lit(world, x, z, sections, snapshot);
-                }
+                Done::Lit(x, z, sections, seq) => self.receive_lit(world, x, z, sections, seq),
                 Done::Meshed(upload) => {
                     self.mesh_jobs = self.mesh_jobs.saturating_sub(1);
                     let MeshUpload { key, seq, .. } = upload;
@@ -2043,8 +2047,9 @@ impl Streaming {
                 world.entities_pending.remove(key);
                 self.lit.remove(key);
                 self.meshed.remove(key);
-                self.lighting.remove(key);
-                self.light_snapshots.remove(key);
+                if let Some(job) = self.lighting.get_mut(key) {
+                    job.snapshot = None;
+                }
             }
             if !far.is_empty() {
                 let far: HashSet<(i32, i32)> = far.iter().copied().collect();
@@ -2351,7 +2356,11 @@ impl Streaming {
             let ready = (-1..=1).all(|dz| {
                 (-1..=1).all(|dx| {
                     let n = (x + dx, z + dz);
-                    (self.lit.contains(&n) && !self.lighting.contains_key(&n))
+                    (self.lit.contains(&n)
+                        && self
+                            .lighting
+                            .get(&n)
+                            .is_none_or(|job| job.snapshot.is_none()))
                         || (self.section_visibility.listening
                             && n != (x, z)
                             && !world.chunks.contains_key(&n))
@@ -2469,23 +2478,42 @@ impl Streaming {
         self.mesh_columns_scratch = columns;
         (uploads, removed)
     }
-    /// Drop in-flight light jobs for columns re-dirtied after they were queued,
-    /// so stale worker results cannot overwrite or skip a newer relight request.
-    fn invalidate_dirty_light(&mut self, world: &World) {
-        if world.dirty_light.is_empty() || self.lighting.is_empty() {
+    /// Retire the actual worker job. If the column was dirtied again, leave its coalesced
+    /// entry in `dirty_light` for the scheduler and do not publish this snapshot's light.
+    fn receive_lit(
+        &mut self,
+        world: &mut World,
+        x: i32,
+        z: i32,
+        sections: Vec<crate::chunk::Light>,
+        seq: u64,
+    ) {
+        let std::collections::hash_map::Entry::Occupied(entry) = self.lighting.entry((x, z)) else {
+            return;
+        };
+        if entry.get().seq != seq {
             return;
         }
-        self.lighting.retain(|k, _| !world.dirty_light.contains(k));
-        self.light_snapshots
-            .retain(|k, _| !world.dirty_light.contains(k));
-        if self.light_snapshots.is_empty() {
-            self.light_log.clear();
+        let job = entry.remove();
+        if let Some(snapshot) = job.snapshot
+            && !world.dirty_light.contains(&(x, z))
+        {
+            self.apply_lit(world, x, z, sections, snapshot);
+        }
+        match self.lighting.values().filter_map(|job| job.snapshot).min() {
+            Some(oldest) => self.light_log.retain(|(seq, _)| *seq > oldest),
+            None => self.light_log.clear(),
         }
     }
-    /// Schedule queued whole-column light jobs once all neighbours exist,
-    /// nearest first and bounded to what the light workers can chew per pass
-    /// (matching vanilla `ThreadedLevelLightEngine`).
+
+    /// Schedule queued whole-column light jobs once all neighbours exist, nearest first.
+    /// As in `ThreadedLevelLightEngine.runUpdate`, the batch counts actual jobs, not new
+    /// requests; a job superseded by `dirty_light` still occupies its slot until it returns.
     fn schedule_light(&mut self, world: &mut World) {
+        let room = (self.workers * 4).saturating_sub(self.lighting.len());
+        if room == 0 {
+            return;
+        }
         let mut light = std::mem::take(&mut self.light_scratch);
         light.clear();
         let mut gone = std::mem::take(&mut self.gone_scratch);
@@ -2493,14 +2521,13 @@ impl Streaming {
         for &(x, z) in world.dirty_light.iter() {
             if !world.chunks.contains_key(&(x, z)) {
                 gone.push((x, z));
-            } else if self.light_region_ready(world, x, z) {
+            } else if !self.lighting.contains_key(&(x, z)) && self.light_region_ready(world, x, z) {
                 light.push((self.distance(x, z), x, z));
             }
         }
         for key in gone.drain(..) {
             world.dirty_light.remove(&key);
         }
-        let room = (self.workers * 4).saturating_sub(self.lighting.len());
         nearest_first(&mut light, room);
         for (_, x, z) in light.drain(..) {
             let Some(region) = self.light_region(world, x, z) else {
@@ -2508,9 +2535,13 @@ impl Streaming {
             };
             world.dirty_light.remove(&(x, z));
             self.sequence += 1;
-            self.lighting.insert((x, z), self.sequence);
-            self.light_snapshots
-                .insert((x, z), self.light_edit_sequence);
+            self.lighting.insert(
+                (x, z),
+                LightJob {
+                    seq: self.sequence,
+                    snapshot: Some(self.light_edit_sequence),
+                },
+            );
             self.submit(
                 Some((x, z)),
                 1,
@@ -2527,27 +2558,14 @@ impl Streaming {
         if self.paused {
             return;
         }
-        if !self.has_pending_light(world) {
-            return;
-        }
         self.relight_edits(world);
-        self.invalidate_dirty_light(world);
         let pending = std::mem::take(&mut self.deferred)
             .into_iter()
             .chain(self.shared.done.take());
         for done in pending {
             match done {
                 Done::LightView(x, z, proto, view) => self.receive_light_view(x, z, proto, view),
-                Done::Lit(x, z, sections, seq) => {
-                    if self.lighting.get(&(x, z)) != Some(&seq)
-                        || world.dirty_light.contains(&(x, z))
-                    {
-                        continue;
-                    }
-                    self.lighting.remove(&(x, z));
-                    let snapshot = self.light_snapshots.remove(&(x, z)).unwrap_or(u64::MAX);
-                    self.apply_lit(world, x, z, sections, snapshot);
-                }
+                Done::Lit(x, z, sections, seq) => self.receive_lit(world, x, z, sections, seq),
                 other => self.deferred.push(other),
             }
         }
@@ -2556,6 +2574,11 @@ impl Streaming {
             world.dirty_sections.clear();
         }
     }
+    /// Whether a whole-column job for `key` was submitted and its result has not been taken.
+    pub fn has_column_light_job(&self, key: (i32, i32)) -> bool {
+        self.lighting.contains_key(&key)
+    }
+
     /// Whether this level has light work still running or ready to schedule.
     pub fn has_pending_light(&self, world: &World) -> bool {
         !self.lighting.is_empty()
@@ -2625,7 +2648,7 @@ impl Streaming {
         );
         Self::mark_light_changes(world, &changed);
         Self::relight_beside_unlit(world, &changed);
-        if !self.light_snapshots.is_empty() {
+        if !self.lighting.is_empty() {
             for p in positions {
                 self.light_edit_sequence += 1;
                 self.light_log.push((self.light_edit_sequence, p));
@@ -2674,11 +2697,6 @@ impl Streaming {
             );
             Self::mark_light_changes(world, &changed);
             Self::relight_beside_unlit(world, &changed);
-        }
-        let oldest = self.light_snapshots.values().copied().min();
-        match oldest {
-            Some(oldest) => self.light_log.retain(|(seq, _)| *seq > oldest),
-            None => self.light_log.clear(),
         }
     }
     /// A column whose light an edit changed beside a column not lit yet gets
@@ -2742,6 +2760,7 @@ impl Streaming {
         self.meshing.clear();
         self.mesh_jobs = 0;
         self.lighting.clear();
+        self.light_log.clear();
         self.jobs.notify_all();
     }
     /// Save what generation holds outside the world: the proto chunks
@@ -3574,7 +3593,11 @@ fn rank_again(queue: &mut BinaryHeap<Queued>, distance: impl Fn(i32, i32) -> i64
 /// generation of the chunks it left. A job without a column (a save, meshes to free)
 /// stays, as vanilla keeps the tasks of a chunk that is still loaded. Returns how many
 /// jobs went.
-fn release_columns(queue: &mut BinaryHeap<Queued>, gone: &FxHashSet<(i32, i32)>) -> usize {
+fn release_columns(
+    queue: &mut BinaryHeap<Queued>,
+    gone: &FxHashSet<(i32, i32)>,
+    mut release: impl FnMut(&Job),
+) -> usize {
     if queue.is_empty() || gone.is_empty() {
         return 0;
     }
@@ -3582,7 +3605,14 @@ fn release_columns(queue: &mut BinaryHeap<Queued>, gone: &FxHashSet<(i32, i32)>)
     let before = queued.len();
     let kept: Vec<Queued> = queued
         .into_iter()
-        .filter(|job| !job.at.is_some_and(|at| gone.contains(&at)))
+        .filter(|job| {
+            if job.at.is_some_and(|at| gone.contains(&at)) {
+                release(&job.job);
+                false
+            } else {
+                true
+            }
+        })
         .collect();
     let released = before - kept.len();
     *queue = BinaryHeap::from(kept);
@@ -4256,6 +4286,54 @@ mod tests {
         }
     }
 
+    #[test]
+    #[ignore = "daily"]
+    fn redirtying_a_batch_keeps_its_worker_slots_until_the_results_are_consumed() {
+        use std::time::{Duration, Instant};
+
+        let (mut world, mut streaming, _) = section_visibility::tests::fixture();
+        for z in -1..=1 {
+            for x in -1..=5 {
+                world.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+            }
+        }
+        let columns = (0..5).map(|x| (x, 0));
+        world.dirty_light.extend(columns.clone());
+        streaming.update_light(&mut world);
+        assert_eq!(streaming.order, 4, "initial one-worker batch");
+
+        let shared = Arc::clone(&streaming.shared);
+        let mailbox = shared.done.done.lock().unwrap();
+        for _ in 0..3 {
+            world.dirty_light.extend(columns.clone());
+            streaming.update_light(&mut world);
+            assert_eq!(
+                streaming.order, 4,
+                "no new snapshots before completions are taken"
+            );
+            assert_eq!(world.dirty_light.len(), 5, "one replacement per column");
+        }
+        drop(mailbox);
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        streaming.wait(Duration::from_millis(50));
+        streaming.update_light(&mut world);
+        assert!(
+            columns.clone().all(|(x, z)| !streaming.is_lit(x, z)),
+            "stale light is discarded"
+        );
+        while columns.clone().any(|(x, z)| !streaming.is_lit(x, z)) {
+            assert!(Instant::now() < deadline, "replacement jobs did not finish");
+            streaming.wait(Duration::from_millis(50));
+            streaming.update_light(&mut world);
+        }
+        assert!(world.dirty_light.is_empty());
+        assert_eq!(
+            streaming.order, 9,
+            "four superseded jobs and five current jobs"
+        );
+    }
+
     /// Edits in two neighbouring columns light those and the ten around
     /// them again; a column next to one that can't be lit whole keeps its
     /// edits in the frame.
@@ -4372,20 +4450,23 @@ mod tests {
         };
         // Nothing goes for a column that is still loaded, or for nothing at all.
         let mut queue = queued();
-        assert_eq!(release_columns(&mut queue, &FxHashSet::default()), 0);
         assert_eq!(
-            release_columns(&mut queue, &[(20, 20)].into_iter().collect()),
+            release_columns(&mut queue, &FxHashSet::default(), |_| {}),
+            0
+        );
+        assert_eq!(
+            release_columns(&mut queue, &[(20, 20)].into_iter().collect(), |_| {}),
             0
         );
         assert_eq!(queue.len(), 5);
         // Both of (0, 0)'s jobs go, its neighbour's and the save stay.
         let gone: FxHashSet<(i32, i32)> = [(0, 0)].into_iter().collect();
-        assert_eq!(release_columns(&mut queue, &gone), 2);
+        assert_eq!(release_columns(&mut queue, &gone, |_| {}), 2);
         assert_eq!(pops(queue), [None, Some((1, 0)), Some((9, 9))]);
         // Every column leaving at once: only the jobs without one are left.
         let mut queue = queued();
         let all: FxHashSet<(i32, i32)> = [(0, 0), (1, 0), (9, 9)].into_iter().collect();
-        assert_eq!(release_columns(&mut queue, &all), 4);
+        assert_eq!(release_columns(&mut queue, &all, |_| {}), 4);
         assert_eq!(pops(queue), [None]);
     }
 

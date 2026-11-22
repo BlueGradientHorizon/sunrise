@@ -193,6 +193,9 @@ pub struct World {
     /// The chunks changed in bulk (`edit_runs`) since the log was last
     /// drained, kept while `block_log` is: sent to the players whole.
     pub bulk_log: FxHashSet<(i32, i32)>,
+    /// Explicit resends waiting for the owning column's light work. Unlike bulk edits, these
+    /// do not refresh far terrain for a client that hasn't received the chunk.
+    pub chunk_resends: FxHashSet<(i32, i32)>,
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
@@ -385,6 +388,7 @@ impl World {
             block_log_held: Vec::new(),
             path_writes: None,
             bulk_log: Default::default(),
+            chunk_resends: Default::default(),
             light_log: None,
             moving_piston_fallback: Vec::new(),
             moving_pistons: Vec::new(),
@@ -683,6 +687,7 @@ impl World {
     pub fn unload_chunk(&mut self, key: (i32, i32)) -> Option<Arc<Chunk>> {
         self.capability_generations.unload_chunk(key);
         let chunk = self.chunks.remove(&key)?;
+        self.chunk_resends.remove(&key);
         self.retain_border(key, &chunk);
         Some(chunk)
     }

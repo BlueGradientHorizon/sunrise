@@ -48,12 +48,12 @@ pub trait LevelLightBackendMut {
     /// chunks). Accepted at once and never lit during the call: the owning level's light engine
     /// schedules and batches the queued columns across its light updates (matching vanilla
     /// `ThreadedLevelLightEngine`), and a column whose eight neighbours are not all loaded waits
-    /// until they are. Re-queuing a column whose earlier light job is still in flight invalidates
-    /// the stale result so the column is lit from its current blocks. The light that changed goes
-    /// to the players watching that chunk's level, as any relight's does. There is no completion
-    /// event and no per-call count of finished chunks: a mod that needs the new light reads it on
-    /// a later tick (`level_brightness`), and `chunk_resend` sends the chunk with whatever light
-    /// has landed when its level broadcasts changes. Returns how many columns were newly queued,
+    /// until they are. Re-queuing a column whose earlier light job is still in flight discards the
+    /// stale result when it arrives, then the scheduler can submit the latest work for that column.
+    /// Light changes go to the players watching the chunk's level as usual. There is no completion
+    /// event: read the new light on a later tick (`level_brightness`), or call `chunk_resend`
+    /// immediately to send the chunk to its current holders once its light work has been applied.
+    /// Returns how many columns were newly queued,
     /// the ring included; a column not loaded, or already waiting in the queue, is not counted.
     /// Each refusal queues nothing and is named by `ChunkRefusal`: `Stale` (stale handle or
     /// unloaded level) and `Client`.

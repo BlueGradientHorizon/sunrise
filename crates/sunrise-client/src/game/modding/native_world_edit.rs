@@ -1,6 +1,6 @@
 //! Bulk block edits, chunk relighting and chunk resends for server mods.
 use super::Game;
-use sunrise_client::world::World;
+use sunrise_client::{lan::hub::Hub, world::World};
 
 impl Game<'_> {
     /// For a server mod: the runs made at once, straight into the chunks of the authoritative level `dimension`
@@ -31,13 +31,11 @@ impl Game<'_> {
         }
         Ok(changed)
     }
-    /// Resolve any open server level (active or parked) for chunk light/resend scheduling,
-    /// returning `ChunkRefusal::Client` off a logical server or `ChunkRefusal::Stale` for a
-    /// stale or non-resident level handle.
+    /// Resolve an open server level and its server's hub, without switching levels.
     fn resolve_chunk_level_mut(
         &mut self,
         level: mod_api::LevelRef,
-    ) -> Result<&mut World, mod_api::ChunkRefusal> {
+    ) -> Result<(&mut World, Option<&Hub>), mod_api::ChunkRefusal> {
         use mod_api::ChunkRefusal;
         if !self.is_logical_server() {
             return Err(ChunkRefusal::Client);
@@ -45,12 +43,14 @@ impl Game<'_> {
         if !self.level_handle_current(level) {
             return Err(ChunkRefusal::Stale);
         }
-        if level.dimension() == self.dim.key() {
-            return Ok(&mut self.world);
-        }
-        self.levels
-            .parked_world_mut_of(level.dimension_id())
-            .ok_or(ChunkRefusal::Stale)
+        let world = if level.dimension() == self.dim.key() {
+            &mut self.world
+        } else {
+            self.levels
+                .parked_world_mut_of(level.dimension_id())
+                .ok_or(ChunkRefusal::Stale)?
+        };
+        Ok((world, self.lan.as_ref().map(|host| &host.hub)))
     }
     /// `chunks` of any open server level (active or parked), and the loaded ring around each
     /// loaded chunk, queued to be lit again whole on that level's light engine
@@ -63,7 +63,7 @@ impl Game<'_> {
         level: mod_api::LevelRef,
         chunks: &[[i32; 2]],
     ) -> Result<u32, mod_api::ChunkRefusal> {
-        let world = self.resolve_chunk_level_mut(level)?;
+        let (world, _) = self.resolve_chunk_level_mut(level)?;
         let mut queued = 0u32;
         for &[x, z] in chunks {
             if !world.chunks.contains_key(&(x, z)) {
@@ -86,31 +86,20 @@ impl Game<'_> {
         }
         Ok(queued)
     }
-    /// Queue a loaded chunk of any open server level (active or parked) to go whole to its
-    /// watchers on that level's next block-change broadcast (`World::bulk_log`, matching vanilla
-    /// `ChunkHolder.broadcastChanges` / `PlayerChunkSender`).
+    /// Queue a loaded chunk to go whole to the players who hold it, on its level's block-change
+    /// broadcast after the column's pending light work (`ChunkMap.waitForLightBeforeSending`).
     pub(super) fn chunk_resend(
         &mut self,
         chunk: mod_api::ChunkRef,
     ) -> Result<(), mod_api::ChunkRefusal> {
         let level = chunk.level();
         let [x, z] = chunk.pos();
-        let has_target = {
-            let world = self.resolve_chunk_level_mut(level)?;
-            if !world.chunks.contains_key(&(x, z)) {
-                return Err(mod_api::ChunkRefusal::NotLoaded);
-            }
-            if world.block_log.is_some() {
-                world.bulk_log.insert((x, z));
-                return Ok(());
-            }
-            self.lan
-                .as_ref()
-                .is_some_and(|h| h.hub.has_chunk_resend_target(level.dimension_id(), (x, z)))
-        };
-        if has_target {
-            let world = self.resolve_chunk_level_mut(level)?;
-            world.bulk_log.insert((x, z));
+        let (world, hub) = self.resolve_chunk_level_mut(level)?;
+        if !world.chunks.contains_key(&(x, z)) {
+            return Err(mod_api::ChunkRefusal::NotLoaded);
+        }
+        if hub.is_some_and(|hub| hub.has_chunk_resend_target(level.dimension_id(), (x, z))) {
+            world.chunk_resends.insert((x, z));
         }
         Ok(())
     }

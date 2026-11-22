@@ -1621,21 +1621,23 @@ impl Game<'_> {
     /// this server tick, without switching `self.dim` or running chunk generation/unloads.
     pub(super) fn update_parked_light(&mut self, ticked: &[Dim]) {
         let viewed_active = self.lan.as_ref().is_some_and(|h| h.hub.viewed.active());
-        let skip_view: Vec<Dim> = if viewed_active {
-            self.levels
-                .parked
-                .keys()
-                .copied()
-                .filter(|d| !ticked.contains(d) && self.needs_view_pass(*d))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        for (dim, parked) in &mut self.levels.parked {
-            if ticked.contains(dim) || skip_view.contains(dim) {
-                continue;
+        let pending: Vec<Dim> = self
+            .levels
+            .parked
+            .iter()
+            .filter_map(|(&dim, parked)| {
+                (!ticked.contains(&dim)
+                    && !(viewed_active && self.needs_view_pass(dim))
+                    && !parked.streaming.paused
+                    && parked.streaming.has_pending_light(&parked.world))
+                .then_some(dim)
+            })
+            .collect();
+        for dim in pending {
+            self.ask_edited_light_emission(dim);
+            if let Some(parked) = self.levels.parked.get_mut(&dim) {
+                parked.streaming.update_light(&mut parked.world);
             }
-            parked.streaming.update_light(&mut parked.world);
         }
     }
 

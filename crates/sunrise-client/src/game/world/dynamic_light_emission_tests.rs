@@ -3,7 +3,7 @@
 //! state's light, an answer above 15 is stored as 15, a bulk replacement and a reload of the
 //! chunk keep or ask again as the cells' states say, and `check_light` and a server's light
 //! update ask again.
-use super::Game;
+use super::{Dim, Game};
 use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::*;
 use std::sync::{
@@ -135,7 +135,7 @@ fn a_dynamic_light_part_answers_by_position_for_declared_blocks_only() {
             game.world
                 .set_with_notification(1, 68, 2, plain, false)
                 .unwrap();
-            game.ask_edited_light_emission();
+            game.ask_edited_light_emission(game.dim);
             assert_eq!(
                 depth.take(),
                 [[1, -10, 2], [1, 64, 2], [1, 65, 2], [1, 66, 2], [1, 67, 2]],
@@ -184,6 +184,36 @@ fn a_dynamic_light_part_answers_by_position_for_declared_blocks_only() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission() {
+    with_lights(
+        "game::dynamic_light_emission_tests::an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission",
+        |game, overworld, States { lamp, .. }, depth| {
+            depth.glow.store(11, Ordering::Relaxed);
+            game.world
+                .set_with_notification(1, 70, 2, lamp, false)
+                .unwrap();
+            assert!(depth.take().is_empty());
+            game.enter_level(Dim::Nether).unwrap();
+            game.levels
+                .parked_mut(Dim::Overworld)
+                .unwrap()
+                .streaming
+                .paused = false;
+
+            game.update_parked_light(&[Dim::Nether]);
+
+            assert_eq!(game.dim, Dim::Nether);
+            assert_eq!(depth.take(), [[1, 70, 2]]);
+            assert_eq!(
+                game.level_brightness(overworld, LightLayer::Block, [1, 70, 2]),
+                Some(11)
+            );
+        },
+    );
+}
+
 /// `check_light` asks a declared block's part again once at the next update however often it
 /// is called, and asks nothing of an undeclared block; it is refused on a client and for another
 /// dimension's handle. A server's light update asks a client's part again, for the changed
@@ -201,7 +231,7 @@ fn check_light_and_a_light_update_ask_the_part_again() {
             game.world
                 .set_with_notification(1, 71, 2, plain, false)
                 .unwrap();
-            game.ask_edited_light_emission();
+            game.ask_edited_light_emission(game.dim);
             assert_eq!(depth.take(), [[1, 70, 2]]);
             assert_eq!(answer(game, 70), Some(5));
             game.world.light_edits.clear();
@@ -218,7 +248,7 @@ fn check_light_and_a_light_update_ask_the_part_again() {
                 "repeated checks queue one edit"
             );
             assert_eq!(answer(game, 70), Some(5));
-            game.ask_edited_light_emission();
+            game.ask_edited_light_emission(game.dim);
             assert_eq!(
                 depth.take(),
                 [[1, 70, 2]],
