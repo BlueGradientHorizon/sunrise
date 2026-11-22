@@ -226,7 +226,7 @@ impl Game<'_> {
         let previous_window = self.lan.as_ref().and_then(|host| {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         });
-        self.guest_replace_menu(conn, false, |game| {
+        self.guest_replace_menu_then(conn, false, |game| {
             // A mod menu type's block tells the client where it is, with what its
             // mod writes (`openMenu` with an extra-data writer); a stock menu
             // sends nothing more.
@@ -248,7 +248,7 @@ impl Game<'_> {
                             host.hub
                                 .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
                         }
-                        return MenuOpen::Refused;
+                        return Err(MenuOpen::Refused);
                     }
                     Some(data)
                 }
@@ -262,10 +262,10 @@ impl Game<'_> {
                     host.hub
                         .send_to(conn, &C::ContainerClose(play::ContainerClose { container }));
                 }
-                return MenuOpen::Stale;
+                return Err(MenuOpen::Stale);
             }
             let Some(gi) = game.guest_index(conn) else {
-                return MenuOpen::Refused;
+                return Err(MenuOpen::Refused);
             };
             // Park the opener's window-0 cursor and build the first contents from
             // their inventory, even when an open through BlockEntityRef runs in their turn.
@@ -289,7 +289,13 @@ impl Game<'_> {
                 });
                 Some(host.hub.guest(conn)?.menu_generation)
             }) else {
-                return MenuOpen::Refused;
+                return Err(MenuOpen::Refused);
+            };
+            Ok(menu_generation)
+        }, |game, result| {
+            let menu_generation = match result {
+                Ok(generation) => generation,
+                Err(refused) => return refused,
             };
             // ChestMenu and ShulkerBoxMenu own startOpen, including an active ender chest.
             game.guest_container_opener(conn, pos, true);
@@ -501,10 +507,26 @@ impl Game<'_> {
         tell: bool,
         open: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        self.guest_replace_menu_then(conn, tell, open, |_, result| result)
+    }
+
+    /// Finish installing the new menu before its opening notifications. If teardown queued a
+    /// replacement, that request must still follow these notifications in publication order.
+    fn guest_replace_menu_then<T, R>(
+        &mut self,
+        conn: u32,
+        tell: bool,
+        install: impl FnOnce(&mut Self) -> T,
+        notify: impl FnOnce(&mut Self, T) -> R,
+    ) -> R {
         let hold = self.hold_menu_opens(conn);
         self.guest_remove_menus(conn, MenuRemoval::Live, tell);
-        let result = open(self);
-        self.resume_menu_opens(hold);
+        let installed = install(self);
+        let hold = self.release_empty_menu_open_hold(hold);
+        let result = notify(self, installed);
+        if let Some(hold) = hold {
+            self.resume_menu_opens(hold);
+        }
         result
     }
 

@@ -196,6 +196,23 @@ impl super::Game<'_> {
         MenuOpenHold(conn)
     }
 
+    /// Installation is complete. Keep a hold through notifications only if there are
+    /// older opens to publish afterwards. An empty hold must not defer a fresh open
+    /// from a block's `startOpen` event while its installed menu is still current.
+    pub(super) fn release_empty_menu_open_hold(
+        &mut self,
+        hold: MenuOpenHold,
+    ) -> Option<MenuOpenHold> {
+        if !self.transactions.menu_publications[&hold.0]
+            .queue
+            .is_empty()
+        {
+            return Some(hold);
+        }
+        self.resume_menu_opens(hold);
+        None
+    }
+
     pub(super) fn resume_menu_opens(&mut self, MenuOpenHold(conn): MenuOpenHold) {
         self.transactions
             .menu_publications
