@@ -1712,7 +1712,7 @@ pub(super) fn emit<'a>(
         let body = match contract {
             _ if isolated_menu_place => format!("{lookup} {calls}"),
             _ if mod_cancel => format!(
-                "if *{o} && !super::receives_cancelled(HookId::{hook_id}) {{ return; }} {build} {calls} {write_back}",
+                "if *{o} && !super::receives_cancelled(HookId::{hook_id}) {{ return; }}\n{build} {calls} {write_back}",
                 o = cancel_out.unwrap()
             ),
             Contract::Cancel => format!(
