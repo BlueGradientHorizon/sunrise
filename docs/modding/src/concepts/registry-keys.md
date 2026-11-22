@@ -190,7 +190,7 @@ and use strings, as do labels and tags.
 ## Hot item and block identities
 
 Resolve item and block keys during load and keep them for tick and menu calls.
-`item_burn_time`, `item_compost_chance`, `give`, `enchantment_supports`'s item,
+`item_burn_time`, `item_compost_chance`, `enchantment_supports`'s item,
 and GUI `item` / `item_model` take `ItemKey`. `block_item`, `fluid_bucket` and
 `screen_hovered_item` return item keys. `level.block`, `lit_block_name` and
 `Hit.block` return block keys; `BlockEntityDrawContext::block` takes one.
