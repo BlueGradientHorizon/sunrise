@@ -71,10 +71,12 @@ ID outside the `minecraft` namespace.
 
 The game calls each accepted supplier once when it freezes the layer table, in
 registration order. A duplicate ID does not run its supplier. The frozen table
-retains the definitions, not the suppliers. Call
-`ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
-resulting `ModelPart` tree for posing and drawing. Baking again and reloading
-resources reuse the definition.
+retains the definitions, not the suppliers. `ClientHost::bake_layer` looks up
+both mod-registered layers (`"mymod:golem#main"`) and vanilla or resource-pack
+layers (`"minecraft:zombie#main"`, `"minecraft:player#main"`) from the
+reload-bound layer set without reading from disk. Bake each layer once during
+renderer setup or after a resource reload and keep the owned `ModelPart` tree
+for posing and drawing; baking again reuses the indexed definition.
 
 ## Worn humanoid equipment
 
@@ -94,6 +96,41 @@ event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
     models: [inner, outer],
     textures: [inner_texture, outer_texture],
 }))?;
+```
+
+Implement `ClientItemExtensions` using the borrowed draw inputs and the
+reload-bound references:
+
+```rust,ignore
+impl ClientItemExtensions for ChestLayers {
+    fn armor_texture(
+        &self,
+        _host: &dyn ClientHost,
+        _stack: &ItemStackView<'_>,
+        _layer_type: EquipmentLayerType,
+        layer: &EquipmentLayer<'_>,
+        default_texture: &str,
+    ) -> ArmorTextureRef {
+        if layer.texture == "mymod:chest_outer" {
+            self.textures[1]
+        } else if default_texture.is_empty() {
+            self.textures[0]
+        } else {
+            ArmorTextureRef::DEFAULT
+        }
+    }
+
+    fn armor_layer_model(
+        &self,
+        _host: &dyn ClientHost,
+        _stack: &ItemStackView<'_>,
+        _layer_type: EquipmentLayerType,
+        _layer: &EquipmentLayer<'_>,
+        index: u32,
+    ) -> ArmorModelRef {
+        self.models.get(index as usize).copied().unwrap_or(ArmorModelRef::VANILLA)
+    }
+}
 ```
 
 Trees are API-owned `ModelPart` trees, built directly or baked from a
@@ -142,13 +179,15 @@ again. Babies do not draw trims. Foil goes on the first drawn material when ther
 is no trim, and on the trim otherwise.
 
 Model and texture references are scoped to the resource load. A stale reference
-uses vanilla's model or the supplied default texture and is logged each time.
-If a callback is refused, the whole piece draws as vanilla for that draw, even
-if an earlier layer succeeded. A later draw can still use that provider. A panic
-also discards the custom draw, logs and shows an error toast naming the mod, and
-disables that mod's callback for that item for the rest of the session. A resource
-reload does not revive it. Callbacks work with borrowed draw inputs and select
-reload-bound references, not geometry or rebakes.
+uses vanilla's model or the supplied default texture and is logged each time
+without disabling the provider. If a callback is refused or the equipped stack
+is invalid, the refusal is reported each time and the whole piece draws as
+vanilla for that draw (even if an earlier layer succeeded), without disabling
+subsequent valid draws. A panic also discards that piece's custom layers, logs
+and shows an error toast naming the mod, and disables that mod's provider for
+that item for the rest of the session, including across resource reloads.
+Callbacks work with borrowed draw inputs and select reload-bound references,
+not geometry or rebakes.
 
 ## Standalone model bakers
 
@@ -220,10 +259,11 @@ instead of drawn as GPU instances; the 16,384-copy budget bounds that cost.
 opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
 cull mask the caller supplies) are Sunrise's options for mod copies.
 
-`block_state_model(state)` (on `RenderAssets`) resolves a block state as one model: the parts
+`block_state_model(state)` (on `RenderAssets`) resolves a `BlockState` as one model: the parts
 its blockstate file selects for its properties, weighted alternatives at the fixed seed
-`BlockEntityDrawContext::block` uses, each tinted face in the block's default tint. It draws
-through `draw_model_instances`, instance groups and `draw.terrain_model`, not `draw.model`.
+`BlockEntityDrawContext::block(state)` uses (which likewise takes a resolved `BlockState`),
+each tinted face in the block's default tint. It draws through `draw_model_instances`,
+instance groups and `draw.terrain_model`, not `draw.model`.
 Resolve it once per state in `client_setup` and `client_resources_reloaded`.
 
 ## Terrain materials in a block entity
