@@ -3061,15 +3061,13 @@ mod census {
                                 }
                             }
                         }
-                        Item::Mod(inline) if inline.content.is_some() => {
-                            if !mod_source::modules::test_only(&inline.attrs) {
-                                walk(
-                                    &inline.content.as_ref().unwrap().1,
-                                    &format!("{module}::{}", inline.ident),
-                                    out,
-                                    traits,
-                                );
-                            }
+                        Item::Mod(syn::ItemMod {
+                            attrs,
+                            ident,
+                            content: Some((_, body)),
+                            ..
+                        }) if !mod_source::modules::test_only(attrs) => {
+                            walk(body, &format!("{module}::{ident}"), out, traits);
                         }
                         _ => {}
                     }
