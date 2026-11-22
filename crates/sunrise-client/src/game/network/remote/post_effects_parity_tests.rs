@@ -1,7 +1,7 @@
 //! Play-phase `post_effects` lifecycle and pre-login protocol error against 26.3.
 use crate::game::{Game, native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
-use sunrise_client::{multiplayer, net::Session, title::Mode};
+use sunrise_client::{camera::CameraType, multiplayer, net::Session, title::Mode};
 use sunrise_protocol::{
     connection::{Connection, Pipe},
     packets::{
@@ -142,7 +142,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
                 .unwrap(),
             );
         }
-        let (creeper_kind, enderman_kind) = {
+        let (creeper_kind, enderman_kind, spider_kind) = {
             let entity_types = game
                 .remote
                 .as_ref()
@@ -153,6 +153,7 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
             (
                 entity_types.id("minecraft:creeper").unwrap(),
                 entity_types.id("minecraft:enderman").unwrap(),
+                entity_types.id("minecraft:spider").unwrap(),
             )
         };
         let spectate = |peer: &mut Connection, id: i32, kind: i32| {
@@ -214,6 +215,57 @@ fn post_effects_cleared_on_login_respawn_and_reconfigure_body() {
                 "minecraft:invert",
             ]
         );
+        // Reusing the frame buffer keeps unchanged String allocations and preserves repeats.
+        let mut reused = Vec::new();
+        game.sync_requested_post_effects(&mut reused, std::iter::empty());
+        let ptrs: Vec<*const u8> = reused.iter().map(String::as_ptr).collect();
+        game.sync_requested_post_effects(&mut reused, std::iter::empty());
+        assert_eq!(
+            reused,
+            vec![
+                "minecraft:end_of_frame",
+                "minecraft:invert",
+                "minecraft:invert",
+            ]
+        );
+        assert_eq!(
+            reused.iter().map(String::as_ptr).collect::<Vec<_>>(),
+            ptrs,
+            "unchanged effect IDs must reuse their String allocations across frames"
+        );
+
+        // Server camera switch vs F5 perspective transitions match vanilla 26.3.
+        let cam_witness = &witness["camera_switch_and_perspective"];
+        let expect_cam = |game: &Game<'_>, prefix: &str| {
+            let expected_effect = match cam_witness[format!("{prefix}_effect")].as_str().unwrap() {
+                "none" => None,
+                other => Some(other),
+            };
+            let expected_active = cam_witness[format!("{prefix}_active")].as_bool().unwrap();
+            assert_eq!(game.spectated_post_effect, expected_effect, "{prefix}");
+            assert_eq!(
+                game.spectated_post_effect_active, expected_active,
+                "{prefix}"
+            );
+        };
+        game.apply_camera_type(CameraType::ThirdPersonBack);
+        spectate(&mut peer, 502, creeper_kind);
+        wait_for_pong(game, &mut peer, 90);
+        expect_cam(game, "set_camera_creeper_in_third_person");
+        game.apply_camera_type(CameraType::ThirdPersonFront);
+        expect_cam(game, "f5_third_back_to_front");
+        game.apply_camera_type(CameraType::FirstPerson);
+        expect_cam(game, "f5_third_front_to_first");
+        game.apply_camera_type(CameraType::ThirdPersonBack);
+        expect_cam(game, "f5_first_to_third_back");
+        spectate(&mut peer, 503, spider_kind);
+        wait_for_pong(game, &mut peer, 91);
+        expect_cam(game, "set_camera_spider_in_third_person");
+        peer.send(&C::SetCamera(play::SetCamera { camera_id: 1 }).encode())
+            .unwrap();
+        wait_for_pong(game, &mut peer, 92);
+        expect_cam(game, "set_camera_player_in_third_person");
+        game.apply_camera_type(CameraType::FirstPerson);
 
         for keep in 0..=3i8 {
             peer.send(

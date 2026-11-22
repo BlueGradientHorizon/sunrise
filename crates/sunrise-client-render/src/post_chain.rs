@@ -777,6 +777,11 @@ impl<'a> Request<'a> {
     }
 }
 
+struct ChainSlot {
+    id: String,
+    chain: Option<Chain>,
+}
+
 /// Every chain, the pipelines and the frame copy they work on.
 pub struct PostEffects {
     layout: wgpu::BindGroupLayout,
@@ -784,16 +789,18 @@ pub struct PostEffects {
     pipelines: HashMap<(&'static str, &'static str, wgpu::TextureFormat), wgpu::RenderPipeline>,
     nearest: wgpu::Sampler,
     bilinear: wgpu::Sampler,
-    /// `ShaderManager`'s chains by id; `None` when the file is missing.
-    chains: HashMap<String, Option<Chain>>,
+    /// `ShaderManager`'s chains in dense slots; `None` when the file is missing or failed.
+    chains: Vec<ChainSlot>,
+    /// Lookup from normalised chain id to its dense slot in `chains`.
+    chain_ids: HashMap<String, usize>,
     /// `GameRenderer.failedPostEffects`.
     failed: HashSet<String>,
-    /// Reused execution-order list for this frame's applied chains (preserves repeats).
-    applied: Vec<String>,
-    /// Chains active on the previous frame (for retiring inactive persistent targets).
-    active_chains: HashSet<String>,
-    /// Scratch set swapped with `active_chains` each frame to avoid per-frame allocations.
-    prev_active_chains: HashSet<String>,
+    /// Reused execution-order slot list for this frame's applied chains (preserves repeats).
+    applied: Vec<usize>,
+    /// Parallel flags for `chains`: whether each slot ran on the current frame.
+    active_chains: Vec<bool>,
+    /// Parallel flags for `chains`: whether each slot ran on the previous frame.
+    prev_active_chains: Vec<bool>,
     root: ResourceSource,
     /// The frame as the chains see `minecraft:main`.
     work: Option<(wgpu::Texture, wgpu::TextureView)>,
@@ -949,11 +956,12 @@ impl PostEffects {
             pipelines: HashMap::new(),
             nearest: make(wgpu::FilterMode::Nearest),
             bilinear: make(wgpu::FilterMode::Linear),
-            chains: HashMap::new(),
+            chains: Vec::new(),
+            chain_ids: HashMap::new(),
             failed: HashSet::new(),
             applied: Vec::new(),
-            active_chains: HashSet::new(),
-            prev_active_chains: HashSet::new(),
+            active_chains: Vec::new(),
+            prev_active_chains: Vec::new(),
             preloading: None,
             #[cfg(test)]
             test_workers: Vec::new(),
@@ -975,12 +983,33 @@ impl PostEffects {
         }
     }
 
+    fn store_chain(&mut self, id: String, chain: Option<Chain>) -> usize {
+        if let Some(&slot) = self.chain_ids.get(&id) {
+            self.chains[slot].chain = chain;
+            return slot;
+        }
+        let slot = self.chains.len();
+        self.chain_ids.insert(id.clone(), slot);
+        self.chains.push(ChainSlot { id, chain });
+        self.active_chains.push(false);
+        self.prev_active_chains.push(false);
+        slot
+    }
+
+    #[cfg(test)]
+    fn chain(&self, id: &str) -> Option<&Chain> {
+        self.chain_ids
+            .get(id)
+            .and_then(|&slot| self.chains[slot].chain.as_ref())
+    }
+
     /// `GameRenderer.reloadPostEffects`-alike: forget chains loaded from another
     /// root, and the failures with them (`shouldResetFailedPostEffects`).
     fn use_root(&mut self, root: &ResourceSource) {
         if !self.root.same_generation(root) {
             self.root = root.to_owned();
             self.chains.clear();
+            self.chain_ids.clear();
             self.failed.clear();
             self.active_chains.clear();
             self.prev_active_chains.clear();
@@ -993,9 +1022,12 @@ impl PostEffects {
     /// change and retire persistent targets of chains active on the previous frame.
     pub fn clear_active(&mut self, root: &ResourceSource) {
         self.use_root(root);
-        for id in self.active_chains.drain() {
-            if let Some(Some(chain)) = self.chains.get_mut(&id) {
-                chain.close_persistent_targets();
+        for (slot, active) in self.active_chains.iter_mut().enumerate() {
+            if *active {
+                *active = false;
+                if let Some(chain) = self.chains[slot].chain.as_mut() {
+                    chain.close_persistent_targets();
+                }
             }
         }
     }
@@ -1003,17 +1035,18 @@ impl PostEffects {
     /// Retire persistent targets of chains active last frame that did not apply this frame.
     fn retire_inactive_persistent_targets(&mut self) {
         std::mem::swap(&mut self.prev_active_chains, &mut self.active_chains);
-        self.active_chains.clear();
-        for id in &self.applied {
-            if !self.active_chains.contains(id.as_str()) {
-                self.active_chains.insert(id.clone());
-            }
+        self.active_chains.fill(false);
+        for &slot in &self.applied {
+            self.active_chains[slot] = true;
         }
-        for id in self.prev_active_chains.drain() {
-            if !self.active_chains.contains(id.as_str())
-                && let Some(Some(chain)) = self.chains.get_mut(&id)
-            {
-                chain.close_persistent_targets();
+        for (slot, was_active) in self.prev_active_chains.iter_mut().enumerate() {
+            if *was_active {
+                *was_active = false;
+                if !self.active_chains[slot]
+                    && let Some(chain) = self.chains[slot].chain.as_mut()
+                {
+                    chain.close_persistent_targets();
+                }
             }
         }
     }
@@ -1035,7 +1068,7 @@ impl PostEffects {
         }
         let ids: Vec<String> = ids
             .into_iter()
-            .filter(|id| !self.chains.contains_key(*id) && !self.failed.contains(*id))
+            .filter(|id| !self.chain_ids.contains_key(*id) && !self.failed.contains(*id))
             .map(normalise)
             .collect();
         if ids.is_empty() {
@@ -1091,7 +1124,7 @@ impl PostEffects {
                         self.failed.insert(id.clone());
                         None
                     });
-                    self.chains.insert(id, loaded);
+                    self.store_chain(id, loaded);
                 }
                 Err(mpsc::TryRecvError::Empty) => return,
                 Err(mpsc::TryRecvError::Disconnected) => {
@@ -1590,7 +1623,9 @@ impl PostEffects {
             if self.failed.contains(id.as_ref()) || self.pending.contains(id.as_ref()) {
                 continue;
             }
-            if !self.chains.contains_key(id.as_ref()) {
+            let slot = if let Some(&slot) = self.chain_ids.get(id.as_ref()) {
+                slot
+            } else {
                 let owned = id.into_owned();
                 let empty = Extras::default();
                 let extras = req.extras.unwrap_or(&empty);
@@ -1602,28 +1637,26 @@ impl PostEffects {
                         None
                     }
                 };
-                let loaded_ok = loaded.is_some();
-                self.chains.insert(owned.clone(), loaded);
-                if loaded_ok {
-                    self.applied.push(owned);
-                }
-            } else if matches!(self.chains.get(id.as_ref()), Some(Some(_))) {
-                self.applied.push(id.into_owned());
+                self.store_chain(owned, loaded)
+            };
+            if self.chains[slot].chain.is_some() {
+                self.applied.push(slot);
             }
         }
         let format = frame.format().remove_srgb_suffix();
         // A pass whose pipeline the device refuses refuses its effect, named, which is skipped.
         let mut applied = std::mem::take(&mut self.applied);
-        applied.retain(|id| {
-            let Some(Some(chain)) = self.chains.get_mut(id.as_str()) else {
+        applied.retain(|&slot| {
+            let Some(chain) = self.chains[slot].chain.as_mut() else {
                 return false;
             };
             let Err(e) = chain.ensure_pipelines(device, format) else {
                 return true;
             };
+            let id = self.chains[slot].id.clone();
             log::warn!("Failed to load post effect {id}: {e}");
-            self.failed.insert(id.clone());
-            self.chains.insert(id.clone(), None);
+            self.failed.insert(id);
+            self.chains[slot].chain = None;
             false
         });
         self.applied = applied;
@@ -1641,7 +1674,7 @@ impl PostEffects {
         if self
             .applied
             .iter()
-            .any(|id| matches!(self.chains.get(id.as_str()), Some(Some(c)) if reads_globals(c)))
+            .any(|&slot| self.chains[slot].chain.as_ref().is_some_and(reads_globals))
         {
             self.poly_globals = req.poly_globals.map(|build| build());
         }
@@ -1702,8 +1735,8 @@ impl PostEffects {
         let gl_depth = self.gl_depth_target.take();
         let depth = depth.and(gl_depth.as_ref().map(|(_, v)| v));
         let applied = std::mem::take(&mut self.applied);
-        for id in &applied {
-            let mut chain = self.chains.remove(id).flatten().expect("loaded above");
+        for &slot in &applied {
+            let mut chain = self.chains[slot].chain.take().expect("loaded above");
             self.run_chain(
                 device,
                 queue,
@@ -1716,7 +1749,7 @@ impl PostEffects {
                 format,
                 timing.as_deref_mut(),
             );
-            self.chains.insert(id.clone(), Some(chain));
+            self.chains[slot].chain = Some(chain);
         }
         self.applied = applied;
         // The frame, as the chains left it.
@@ -2599,6 +2632,7 @@ mod tests {
             "minecraft:repeated_invert".to_owned(),
             "minecraft:repeated_invert".to_owned(),
         ];
+        let id_ptr_before = effects.chains[0].id.as_ptr();
         let (ran, px_twice) = run(&device, &queue, &mut effects, &source, &twice);
         assert!(ran);
         assert!(
@@ -2606,6 +2640,8 @@ mod tests {
             "double invert must restore original colour: {px_twice:?}"
         );
         assert_eq!(effects.chains.len(), 1);
+        assert_eq!(effects.applied, [0, 0]);
+        assert_eq!(effects.chains[0].id.as_ptr(), id_ptr_before);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -2663,8 +2699,8 @@ mod tests {
         // Frame 3: removed (empty list) retires persistent targets while keeping the compiled chain.
         let (ran, _) = run(&device, &queue, &mut effects, &source, &[]);
         assert!(!ran);
-        let chain = effects.chains["minecraft:persist_retire"]
-            .as_ref()
+        let chain = effects
+            .chain("minecraft:persist_retire")
             .expect("compiled chain stays cached");
         assert!(chain.textures.is_empty(), "persistent target must retire");
 
@@ -2684,8 +2720,8 @@ mod tests {
         );
         effects.clear_active(&source);
         assert!(
-            effects.chains["minecraft:persist_retire"]
-                .as_ref()
+            effects
+                .chain("minecraft:persist_retire")
                 .expect("compiled chain stays cached across clear_active")
                 .textures
                 .is_empty()
@@ -3451,9 +3487,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(1));
             effects.collect_preloaded();
         }
-        let chain = effects.chains["minecraft:preloaded"]
-            .as_ref()
-            .expect("loaded");
+        let chain = effects.chain("minecraft:preloaded").expect("loaded");
         assert!(chain.passes.iter().all(|pass| {
             pass.translated
                 .as_ref()
@@ -3470,10 +3504,11 @@ mod tests {
         assert!(near(top[0], 32) && top[1] == 0 && top[3] == 255, "{top:?}");
         assert!(bottom[0] == 0 && near(bottom[1], 128), "{bottom:?}");
         effects.use_root(&source.clone());
-        assert!(effects.chains.contains_key("minecraft:preloaded"));
+        assert!(effects.chain_ids.contains_key("minecraft:preloaded"));
         // Reopening the same pack creates a new generation, even at the same path.
         effects.use_root(&ResourceSource::archive(&jar).unwrap());
         assert!(effects.chains.is_empty());
+        assert!(effects.chain_ids.is_empty());
         assert!(effects.pending.is_empty());
         assert!(!root.join("assets").exists());
         std::fs::remove_dir_all(root).unwrap();
@@ -3518,9 +3553,7 @@ mod tests {
             );
             assert!(effects.failed.is_empty(), "{name}");
             // The chain ran on the resources' own GLSL, not the stand-ins.
-            let chain = effects.chains[&format!("minecraft:{name}")]
-                .as_ref()
-                .unwrap();
+            let chain = effects.chain(&format!("minecraft:{name}")).unwrap();
             assert!(
                 chain.passes.iter().all(|p| p.translated.is_some()),
                 "{name}"

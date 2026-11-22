@@ -11292,21 +11292,23 @@ impl Game<'_> {
         pr.lap("pr_hud");
         self.locator_camera =
             (!title).then_some((camera.to_array(), view_yaw, view_pitch, fov_degrees));
-        let mut requested_post_effects = std::mem::take(&mut self.requested_post_effects_buf);
-        self.fill_requested_post_effects(&mut requested_post_effects);
         // The packs' Polytone post chains, after vanilla's (#11486).
         let game_ticks = self.world.game_time as f64 + alpha;
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame);
-        let polytone_extras = match (&self.pack.polytone_post, polytone_frame) {
+        let (polytone_effects, polytone_extras) = match (&self.pack.polytone_post, polytone_frame) {
             (Some(post), Some(frame)) => {
                 let (effects, extras) = post.frame(frame);
-                requested_post_effects.extend(effects);
-                Some(extras)
+                (effects, Some(extras))
             }
-            _ => None,
+            _ => (Vec::new(), None),
         };
+        let mut requested_post_effects = std::mem::take(&mut self.requested_post_effects_buf);
+        self.sync_requested_post_effects(
+            &mut requested_post_effects,
+            polytone_effects.iter().map(String::as_str),
+        );
         // Polytone's globals (wiki "Extra Shader Uniforms"), built only when something reads
         // them: here when an installed pack core shader does, and by the post effects when a
         // pass of theirs does (`Request::poly_globals`, called at most once a frame). The
@@ -11708,7 +11710,6 @@ impl Game<'_> {
             None => Err("renderer".into()),
         };
         drop(frame);
-        requested_post_effects.clear();
         self.requested_post_effects_buf = requested_post_effects;
         prepared_draws.clear();
         *self.prepared_model_draws.borrow_mut() = prepared_draws;

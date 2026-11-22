@@ -85,23 +85,44 @@ impl Game<'_> {
     }
     /// `GameRenderer.update`'s `requestedPostEffects`: `end_of_frame` (a resource
     /// pack's own chain), then the server's `LocalPlayer.postEffects`, then the
-    /// active spectated entity's chain. Only the world is drawn through them.
-    pub(super) fn fill_requested_post_effects(&self, out: &mut Vec<String>) {
-        out.clear();
-        if self.title.is_some() || self.player.is_none() {
-            return;
+    /// active spectated entity's chain, then `extra`. Reuses unchanged `String`
+    /// slots in `out` without deduplicating repeated effect IDs.
+    pub(super) fn sync_requested_post_effects<'a>(
+        &self,
+        out: &mut Vec<String>,
+        extra: impl IntoIterator<Item = &'a str>,
+    ) {
+        fn set_slot(out: &mut Vec<String>, len: &mut usize, id: &str) {
+            if let Some(slot) = out.get_mut(*len) {
+                if slot != id {
+                    slot.clear();
+                    slot.push_str(id);
+                }
+            } else {
+                out.push(id.to_owned());
+            }
+            *len += 1;
         }
-        out.push("minecraft:end_of_frame".to_owned());
-        out.extend(self.post_effects.iter().cloned());
-        if self.spectated_post_effect_active
-            && let Some(effect) = self.spectated_post_effect
-        {
-            out.push(effect.to_owned());
+        let mut len = 0;
+        if self.title.is_none() && self.player.is_some() {
+            set_slot(out, &mut len, "minecraft:end_of_frame");
+            for effect in &self.post_effects {
+                set_slot(out, &mut len, effect);
+            }
+            if self.spectated_post_effect_active
+                && let Some(effect) = self.spectated_post_effect
+            {
+                set_slot(out, &mut len, effect);
+            }
         }
+        for effect in extra {
+            set_slot(out, &mut len, effect);
+        }
+        out.truncate(len);
     }
     pub(super) fn requested_post_effects(&self) -> Vec<String> {
         let mut out = Vec::new();
-        self.fill_requested_post_effects(&mut out);
+        self.sync_requested_post_effects(&mut out, std::iter::empty());
         out
     }
     /// `Screen.extractBlurredBackground` over the panorama or the world and

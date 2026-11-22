@@ -100,7 +100,7 @@ impl Game<'_> {
         if camera_removed {
             // Minecraft.setCameraEntity returns to the local player when the
             // spectated entity leaves, including clearing its post chain.
-            self.check_entity_post_effect(self.camera_type.is_first_person());
+            self.check_entity_post_effect(true);
         }
     }
 }

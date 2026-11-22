@@ -255,9 +255,9 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.camera = camera_after_packet(r.camera, r.entity_id, camera_id, in_level);
         }
-        // Minecraft.setCameraEntity, for an entity the level holds.
+        // Minecraft.setCameraEntity recomputes the spectated entity post effect in either perspective.
         if in_level || player {
-            self.check_entity_post_effect(self.camera_type.is_first_person());
+            self.check_entity_post_effect(true);
         }
     }
     /// `GameRenderer.clearSpectatedEntityPostEffect`.
