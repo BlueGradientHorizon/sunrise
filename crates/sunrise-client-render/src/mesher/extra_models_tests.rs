@@ -385,6 +385,36 @@ fn run_tint_cases() {
     let mut region = [[None; 3]; 3];
     region[1][1] = Some(&chunk);
     let leaf_layer = layer(&world, "minecraft:block/oak_leaves");
+    let mut tables = world.tables(Vec::new());
+    tables
+        .apply_tint_layers(
+            registry,
+            &std::collections::BTreeMap::from([
+                (
+                    "test:missing_block".to_owned(),
+                    Arc::from([mod_api::TintLayer::Source(Arc::new(Counted {
+                        asked: Default::default(),
+                        answer: Answer::Panic,
+                    }))]),
+                ),
+                (
+                    "minecraft:stone".to_owned(),
+                    Arc::from([mod_api::TintLayer::Vanilla(mod_api::VanillaTint::Constant(
+                        0x00_FF00,
+                    ))]),
+                ),
+            ]),
+            Some(ModTintValues {
+                states: values.states.clone(),
+                metadata: values.metadata,
+            }),
+        )
+        .unwrap();
+    assert!(
+        !tables.has_custom_tint_sources(),
+        "constant layers and absent-block registrations need no scheduler pass"
+    );
+
     let mut preparation = AttachedTintScratch::default();
     for answer in [Answer::Green, Answer::Panic, Answer::DropPanic] {
         let source = Arc::new(Counted {
@@ -549,8 +579,9 @@ impl mod_api::BlockTintSource for SharedTint {
     }
 }
 
-/// The gold attachment is the only face with this CTM overlay. Its `tintBlock` supplies a
-/// different provider than the leaves' own one, but both providers share the poisoned mutex.
+/// Only the gold attachment uses this CTM overlay. Its `tintBlock` supplies a different
+/// provider than the leaves' own one. Both providers share the poisoned mutex, even in
+/// sections with no preparation.
 #[test]
 #[ignore = "daily"]
 fn an_attachment_overlay_panic_does_not_call_a_different_source_on_the_worker() {
@@ -669,4 +700,15 @@ fn run_overlay_panic_case() {
         4,
         0xFF_FFFF,
     );
+
+    // An ordinary section with no attachments gets no prepared answer. Its base provider still
+    // reaches the shared poisoned mutex, but the failure yields white once for the whole block.
+    let mut plain = Chunk::empty(1, 0);
+    plain.set(7, MIN_Y + 4, 2, oak.0);
+    let mut next_region = [[None; 3]; 3];
+    next_region[1][1] = Some(&plain);
+    let mesh = mesh_on_worker(&world, &tables, &next_region, None);
+    assert_top_color(&mesh, leaf, 7, 4, 0xFF_FFFF);
+    assert_eq!(leaf_source.asked.load(Ordering::Relaxed), 2);
+    assert_eq!(overlay_source.asked.load(Ordering::Relaxed), 1);
 }

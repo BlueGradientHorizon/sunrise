@@ -73,9 +73,8 @@ pub(super) const QUAD_MAX_BYTES: usize = QUAD_BYTES + size_of::<TerrainSource>()
 /// cell order and then list order. A face is drawn only while the section's budget still holds
 /// [`FACE_QUADS`] more quads of [`QUAD_MAX_BYTES`], whatever it expands to; at the first face
 /// that cannot fit, drawing stops, so the last model may be partially drawn. The block geometry
-/// is always kept. A face a mod's own
-/// tint source colours takes its colour from `attached`, prepared before the mesh was scheduled:
-/// no mod code runs here.
+/// is always kept. During preparation, the faces that fit ask their custom tint sources; on the
+/// worker they use the prepared colour or white without calling mod code.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn add(
     mesher: &Mesher<'_>,
@@ -83,27 +82,16 @@ pub(super) fn add(
     groups: Option<&GroupCells>,
     tints: &mut Tints<'_>,
     out: &mut SectionMesh,
-    cells: &[(CellFaces<'_>, &Arc<[mod_api::ModelRef]>)],
+    cells: &[(CellFaces, u32)],
+    models: &FxHashMap<u32, Arc<[mod_api::ModelRef]>>,
     visibility_bytes: usize,
 ) {
     tints.drawing_extras = true;
-    draw(mesher, pad, groups, tints, out, cells, visibility_bytes);
-    tints.drawing_extras = false;
-}
-
-fn draw(
-    mesher: &Mesher<'_>,
-    pad: &Padded,
-    groups: Option<&GroupCells>,
-    tints: &mut Tints<'_>,
-    out: &mut SectionMesh,
-    cells: &[(CellFaces<'_>, &Arc<[mod_api::ModelRef]>)],
-    visibility_bytes: usize,
-) {
-    for (at, models) in cells {
+    for (at, key) in cells {
+        let state = &mesher.tables.info[at.sample.id as usize];
         let start = [out.solid.len(), out.translucent.len()];
         let mut full = false;
-        'models: for &model in models.iter() {
+        'models: for &model in models[key].iter() {
             // A handle a resource reload made stale draws nothing.
             let Ok(model) = mesher.render.resolve_model(model) else {
                 continue;
@@ -113,18 +101,18 @@ fn draw(
                     full = true;
                     break 'models;
                 }
-                mesher.model_face(pad, groups, tints, out, at, face, false);
+                mesher.model_face(pad, groups, tints, out, at, state, face, false);
             }
         }
         if mesher.shader_pack {
-            let source =
-                TerrainSource::new(at.sample.id, at.sample.pos, at.sample.state.emission, false);
+            let source = TerrainSource::new(at.sample.id, at.sample.pos, state.emission, false);
             out.record_source(start, source);
         }
         if full {
-            return;
+            break;
         }
     }
+    tints.drawing_extras = false;
 }
 
 /// Whether the section `out` has room for one more face at its largest. With a shader pack, the

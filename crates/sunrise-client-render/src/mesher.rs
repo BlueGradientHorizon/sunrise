@@ -1415,25 +1415,14 @@ impl MeshTables {
                     if let Some(&color) = preparing.colors.get(&key) {
                         return Some(color);
                     }
-                    let color = crate::crash::contain(|| {
-                        mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle)
-                    });
-                    let preparing = tints
+                    let color =
+                        mod_tint::ask(self, &**source, (id, index), tints, pos, nether, particle);
+                    tints
                         .preparing
                         .as_mut()
-                        .expect("tint preparation is active");
-                    if color.is_err() {
-                        static SOURCE_FAILED: std::sync::atomic::AtomicBool =
-                            std::sync::atomic::AtomicBool::new(false);
-                        if !SOURCE_FAILED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                            log::warn!(
-                                "Sunrise: a block tint source panicked colouring an extra model; using white"
-                            );
-                        }
-                        preparing.failed = true;
-                    }
-                    let color = color.unwrap_or(0xFF_FFFF);
-                    preparing.colors.insert(key, color);
+                        .expect("tint preparation is active")
+                        .colors
+                        .insert(key, color);
                     return Some(color);
                 }
                 if let Some(prepared) = &tints.attached {
@@ -1656,6 +1645,10 @@ pub struct MeshScratch {
     /// Per padded row (`pi(-B, y, z) / P`), bit `x + B` set where the block
     /// is `isSolidRender` (`MeshTables::solid`).
     solid_rows: Vec<u32>,
+    /// The catalog's selected models for the current cell, by slot.
+    model_slots: Vec<u32>,
+    /// Faces of cells with attachments, with their dynamic cell keys in the chunk.
+    extras: Vec<(CellFaces, u32)>,
     /// The next section's extra-model tints (`Mesher::prepare_attached_tints`), taken by
     /// its mesh.
     pub(crate) attached_tints: Option<Arc<extra_models::AttachedTints>>,
@@ -2411,10 +2404,10 @@ impl Mesher<'_> {
         let info = &self.tables.info;
         let catalog = &self.render.model_catalog;
         let groups = self.group_cells(region, base_y, &mut scratch.groups);
-        let mut models = Vec::new();
+        let slots = &mut scratch.model_slots;
+        let extras = &mut scratch.extras;
+        extras.clear();
         let extra_models = (!center.extra_models.is_empty()).then_some(&center.extra_models);
-        // The cells with extra models, in cell order, and what their faces are drawn with.
-        let mut extras = Vec::new();
         for y in 0..16 {
             for z in 0..16 {
                 // The padded index of the row's x = 0 cell: `pi(x, y, z)` is
@@ -2477,24 +2470,28 @@ impl Mesher<'_> {
                     // The models a client mod draws as part of this block: after the section's
                     // own geometry and within its budget (`extra_models::add`).
                     let extra = extra_models.filter(|_| !state.air).and_then(|extra| {
-                        extra.get(&((sy as u32) << 12 | crate::chunk::index(x, y, z) as u32))
+                        let key = (sy as u32) << 12 | crate::chunk::index(x, y, z) as u32;
+                        extra.get(&key).map(|models| (key, models))
                     });
                     if !state.model && extra.is_none() {
                         continue;
                     }
                     let world = BlockPos::new(center.x * 16 + x, base_y + y, center.z * 16 + z);
-                    if !state.model
-                        || catalog
-                            .models_at(BlockStateId(id), world, &mut models)
-                            .is_err()
-                    {
-                        models.clear();
+                    if !state.model || catalog.slots_at(BlockStateId(id), world, slots).is_err() {
+                        slots.clear();
                     }
+                    let mut models = slots.iter().map(|&slot| {
+                        catalog
+                            .model_by_slot(slot)
+                            .expect("catalog chose a valid model slot")
+                    });
                     // ModelBlockRenderer: the first part decides smooth lighting
                     // for all, the block's own before a mod's (a handle a resource reload made
                     // stale draws nothing); light-emitting blocks are always lit flat.
-                    let first = models.first().copied().or_else(|| {
-                        extra?
+                    let base_first = models.next();
+                    let first = base_first.or_else(|| {
+                        let (_, models) = extra?;
+                        models
                             .iter()
                             .find_map(|&model| self.render.resolve_model(model).ok())
                     });
@@ -2522,7 +2519,6 @@ impl Mesher<'_> {
                             pos: [x, y, z],
                             cell,
                             id,
-                            state,
                             world,
                             visible,
                         },
@@ -2530,7 +2526,7 @@ impl Mesher<'_> {
                         ao,
                     };
                     let start = [out.solid.len(), out.translucent.len()];
-                    for model in &models {
+                    for model in base_first.into_iter().chain(models) {
                         for face in &model.faces {
                             self.model_face(
                                 pad,
@@ -2538,6 +2534,7 @@ impl Mesher<'_> {
                                 &mut tints,
                                 &mut out,
                                 &at,
+                                state,
                                 face,
                                 force_solid,
                             );
@@ -2549,8 +2546,8 @@ impl Mesher<'_> {
                             TerrainSource::new(id, [x, y, z], state.emission, false),
                         );
                     }
-                    if let Some(extra) = extra {
-                        extras.push((at, extra));
+                    if let Some((key, _)) = extra {
+                        extras.push((at, key));
                     }
                 }
             }
@@ -2562,7 +2559,8 @@ impl Mesher<'_> {
                 groups,
                 &mut tints,
                 &mut out,
-                &extras,
+                extras,
+                &center.extra_models,
                 visibility_bytes,
             );
         }
@@ -2689,14 +2687,14 @@ impl Mesher<'_> {
         pad: &Padded,
         groups: Option<&GroupCells>,
         tints: &Tints<'_>,
-        at: &FaceCell<'_>,
+        at: &FaceCell,
+        state: &Info,
         face: &BakedFace,
     ) -> (Pick, [Option<Overlay>; MAX_OVERLAYS]) {
         let FaceCell {
             pos,
             cell,
             id,
-            state,
             world,
             ..
         } = *at;
@@ -2776,23 +2774,30 @@ impl Mesher<'_> {
         tints: &mut Tints,
         out: &mut SectionMesh,
         at: &CellFaces,
+        state: &Info,
         face: &BakedFace,
         force_solid: bool,
     ) {
-        if !self.draws_model_face(pad, &at.sample, face) {
+        if !self.draws_model_face(pad, &at.sample, state, face) {
             return;
         }
-        self.face(pad, groups, tints, out, at, face, force_solid);
+        self.face(pad, groups, tints, out, at, state, face, force_solid);
     }
 
-    fn draws_model_face(&self, pad: &Padded, at: &FaceCell<'_>, face: &BakedFace) -> bool {
+    fn draws_model_face(
+        &self,
+        pad: &Padded,
+        at: &FaceCell,
+        state: &Info,
+        face: &BakedFace,
+    ) -> bool {
         if face.quad.cull.is_some_and(|d| !at.visible[d as usize]) {
             return false;
         }
         let connected = &self.render.connected;
         // A pane's top and bottom strips between stacked panes, with
         // connected textures.
-        if at.state.pane
+        if state.pane
             && !connected.is_empty()
             && let Some(dy) = match face.quad.facing {
                 ModelDirection::Up => Some(1),
@@ -2821,11 +2826,12 @@ impl Mesher<'_> {
         groups: Option<&GroupCells>,
         tints: &mut Tints,
         out: &mut SectionMesh,
-        at: &CellFaces<'_>,
+        at: &CellFaces,
+        state: &Info,
         face: &BakedFace,
         force_solid: bool,
     ) {
-        let FaceCell { pos, id, state, .. } = at.sample;
+        let FaceCell { pos, id, .. } = at.sample;
         let CellFaces { origin, ao, .. } = *at;
         let q = &face.quad;
         // A quad's own light (a model's glowing part) may raise the tier; whether it
@@ -2865,7 +2871,7 @@ impl Mesher<'_> {
             };
             ([lighting::gray(directional); 4], [coords; 4], [1.0f32; 4])
         };
-        let (pick, overlays) = self.face_tiles(pad, groups, tints, &at.sample, face);
+        let (pick, overlays) = self.face_tiles(pad, groups, tints, &at.sample, state, face);
         let tint = if tints.drawing_extras && matches!(pick, Pick::Nothing) {
             None
         } else {
@@ -3071,20 +3077,19 @@ impl Mesher<'_> {
 const MAX_OVERLAYS: usize = 8;
 /// The part of a model face's context shared by tint preparation and drawing.
 #[derive(Clone, Copy)]
-struct FaceCell<'a> {
+struct FaceCell {
     /// Section-local position.
     pos: [i32; 3],
     /// Padded index.
     cell: usize,
     id: u32,
-    state: &'a Info,
     world: BlockPos,
     /// By `Direction`: whether a face culled toward that side is drawn.
     visible: [bool; 6],
 }
 /// The cell and placement and lighting needed to draw its faces.
-struct CellFaces<'a> {
-    sample: FaceCell<'a>,
+struct CellFaces {
+    sample: FaceCell,
     /// The block's lower north-west corner with its offset.
     origin: [f32; 3],
     ao: bool,
