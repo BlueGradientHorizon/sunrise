@@ -330,8 +330,7 @@ impl<'a> DamageContainer<'a> {
     /// Each callback receives a read-only view of the live container at that reduction stage and
     /// the current reduction value (vanilla's or the preceding modifier's output), and returns the
     /// new reduction value. A panic in the callback disables this mod's reduction callbacks for
-    /// the rest of the session and leaves the incoming reduction value unchanged; a phase refusal
-    /// is logged on every occurrence without latching.
+    /// the rest of the session and leaves the incoming reduction value unchanged.
     pub fn add_reduction_modifier(
         &mut self,
         reduction: Reduction,

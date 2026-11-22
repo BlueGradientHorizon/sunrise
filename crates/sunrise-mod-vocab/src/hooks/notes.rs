@@ -1395,43 +1395,6 @@ Look blocks up once and keep what you need (a few words a block for your own sha
 
 The hook runs during clicks, drags and shift-clicks with the read-only `Host` on server and client prediction; answer from the stack and host alone, and fast. If a part panics, its answers are discarded and its callback is disabled for the session; the shared log and error toast name the mod. Other parts still answer the check. Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
 
-### Shift-click in a mod container
-
-`menu_quick_move(kind, subject, container_slots, slot, stack, handled)` (contract version 5) is a mod container's
-`AbstractContainerMenu.quickMoveStack`, the method a Java menu overrides to say where a shift-clicked stack goes. It is
-asked on the server before the game's own routing, for the mod block entity whose menu a player shift-clicked
-with the left or right button, on a vanilla menu type (`minecraft:generic_9x1`...) or on the mod's own menu type.
-`subject` (`BlockEntityScope<'_>`) lends sequential access to the live resident block entity (`subject.with_view(...)`,
-which exposes `position()`, `item_slot(...)`, `set_item_slot(...)`, `nbt()`, `data_slots()` and returns `None` if the
-block entity was removed or replaced during the call), the server `Host` (`subject.host()`), and atomic transactions
-(`subject.transaction(...)`). `slot` is the menu's index: below `container_slots` a container slot (its own, linked,
-or the crafting result), from there the player's inventory, its 27 main slots, then the hotbar. The live menu asks
-`Slot.mayPickup` first, then passes a copy of what the slot holds as `stack`. Take what you move out of `stack` and
-return `Flow::Cancel`: the actual clicked source keeps the remainder (`None` empties it), the game's routing is
-skipped, and the player's client gets the whole menu again. For a linked slot or result this does not replace an
-own storage slot. A result handler must consume its inputs: the remainder stays available for the inputs it leaves
-until the grid changes. Left unhandled, the same menu routes the click without asking pickup again; a later Part
-sees earlier `stack` proposals. Writes through `subject.with_view(...)`
-validate at the boundary and apply to the live resident block entity in place, marking the chunk dirty. A handled move
-settles the clicked slot before publishing implicit `BlockEntity.setChanged` notices for its resident slot edits and
-committed `ITEMS` writes, then calls `menu_slot_take` where applicable. A destination's deferred notice is delivered
-only if the original backing container remains. Surviving slot edits on a refused or unhandled move still notify.
-An explicit `BlockEntityRef::set_changed` call is immediate; a same-block write made in that callback applies without
-queuing a second notice. Use `subject.transaction(...)` when an edit must span the subject and other world storage
-atomically. A panicking callback loses its `stack` and `handled` outputs and is disabled for `menu_quick_move` for
-the rest of the session. A later Part can still handle the move; if none does after a quick-move Part panics, the menu
-is resynced instead of falling back. A panic contained in a nested hook does not by itself reject the move.
-An invalid `stack` remainder leaves the clicked slot's original stack untouched. If the mod removes its own block, the menu
-closes and the player's inventory is sent again. This is how a storage terminal whose items live in other blocks, or a
-screen that hides the container's slots, takes a shift-click from the inventory, and how a machine sends fuel to its
-fuel slot and ores to its input.
-
-Not asked for an empty slot, a slot the mod's screen hides, another click type, a spectator or a dead player, a menu
-no longer valid, or a shift-click during a drag (it only ends the drag, as in vanilla). It is asked once per click, where vanilla asks `quickMoveStack` again while the same item keeps moving: move
-all you want in one call. The clicking player's state is swapped in (`subject.host().players().acting_player()` names them), and the block entity stays resident in the level during the call. Only a server's players (single player's server
-thread, LAN guests, a dedicated server) shift-click this way; a native mod's own menus (`native_open_menu`) get their
-clicks already.
-
 ### The loop context
 
 `dyn LoopContext` is the read-only view for a hook fired inside a menu, recipe or
@@ -1560,7 +1523,7 @@ mod mixin or use it replaces in its design or PR."#]
   synchronising. `/kill` and `native_kill_mob` don't reach it yet: they set the health to 0 instead of hurting with
   `minecraft:generic_kill` as vanilla does. A mod may also install owned reduction modifier closures on the live
   container (`container.add_reduction_modifier(Reduction::Armor, |view, amount| amount * 0.5)`, NeoForge's
-  `addReductionModifier` / `IReductionFunction`): each runs in registration order when its reduction stage executes
+  `addModifier` / `IReductionFunction`): each runs in registration order when its reduction stage executes
   (the damage cooldown, armor, Resistance, protection enchantments, a witch's innate resistance, the absorption hearts),
   receiving a read-only `DamageContainerView` of the live container at that stage and the current reduction value
   (vanilla's or the preceding modifier's output). Matching NeoForge's `DamageContainer` semantics, the modified
@@ -1574,8 +1537,7 @@ mod mixin or use it replaces in its design or PR."#]
   `0.0` starting reduction. Modifiers last for the hit. A panic inside a reduction callback is caught through the
   shared hook panic boundary (without writing a crash report), disables that mod's reduction
   callbacks for the rest of the session, reports loudly via `log::error!` and an error toast naming the mod, and leaves
-  the incoming reduction value unchanged so other mods and the hit continue; a phase refusal is logged as a warning on
-  each occurrence without latching and leaves the reduction value unchanged.
+  the incoming reduction value unchanged so other mods and the hit continue.
 
 - `living_damage_pre` (NeoForge's `LivingDamageEvent.Pre`) runs in `LivingEntity.actuallyHurt` after armor and magic
   reductions and before absorption, lending the same live mutable `DamageContainer` (no snapshot conversion). A listener
