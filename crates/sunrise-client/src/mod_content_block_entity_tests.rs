@@ -172,6 +172,13 @@ fn cross_namespace_declarations_do_not_replace_existing_block_or_item_keys() {
         ),
     ] {
         let mut mods = vec![declared_mod()];
+        mods[0]
+            .content
+            .blocks
+            .iter_mut()
+            .find(|block| block.id == "test:b")
+            .unwrap()
+            .item = true;
         let mut refusals = Vec::new();
         accept_declared(
             &mut mods,
