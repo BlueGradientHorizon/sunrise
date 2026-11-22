@@ -149,17 +149,17 @@ impl Renderer {
     /// reads: that frame's, or an error, never an older one. The last frame's PNG has already
     /// waited for it, without a limit, as `screenshot` does.
     pub fn finish_sequence_frame(&mut self) -> Result<()> {
-        self.device
-            .poll(wgpu::PollType::Wait {
+        super::in_flight::poll_live(
+            &self.device,
+            &self.device_lost,
+            wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: Some(std::time::Duration::from_secs(30)),
-            })
-            .map_err(|e| format!("the frame didn't finish on the GPU: {e}"))?;
-        if self.device_lost() {
-            return Err("the graphics device was lost".into());
-        }
+            },
+        )
+        .map_err(|e| format!("the frame didn't finish on the GPU: {e}"))?;
         if let Some((_, Some(post))) = &mut self.pack_post {
-            post.take_center_depth(&self.device)?;
+            post.take_center_depth()?;
         }
         Ok(())
     }
@@ -297,10 +297,6 @@ impl Renderer {
         let report = self.install_shader_pack(loading.dimension, built.map(Some));
         Some((loading.dimension, loading.label, loading.started, report))
     }
-    /// Whether a `shaders/` pack is still building (`load_shader_pack`).
-    pub fn shader_pack_loading(&self) -> bool {
-        self.pack_loading.is_some()
-    }
     /// Drops the running shader pack, of either kind.
     pub fn drop_shader_packs(&mut self) {
         self.pack_loading = None;
@@ -383,33 +379,7 @@ impl Renderer {
     /// terrain's in the pack's block atlas (made here when missing; none when it does not fit).
     pub fn pack_inputs(&mut self) -> sunrise_shaders::GameInputs {
         let terrain = self.pack_terrain_inputs();
-        // A geometry stage reads flat draws' vertices itself, through their index buffer.
-        let terrain_geometry = terrain
-            .clone()
-            .filter(|_| self.pack_terrain_flat)
-            .map(|mut inputs| {
-                inputs.declarations.push_str(
-                    "layout(set = 5, binding = 0) readonly buffer HzIndices { uint hz_indices[]; };\n",
-                );
-                sunrise_shaders::GeometryInputs {
-                    inputs,
-                    // Flat terrain inputs pull their own vertex (`PULL_FLAT`, `gl_VertexIndex` → `hz_vertex_index`).
-                    pull: String::new(),
-                    index: "hz_indices[@]".to_owned(),
-                }
-            });
-        sunrise_shaders::GameInputs {
-            terrain_geometry,
-            entity_geometry: Some(pack_entities::geometry_inputs()),
-            sky: Some(pack_sky::inputs()),
-            celestial: Some(pack_sky::celestial_inputs()),
-            entities: Some(pack_entities::inputs()),
-            clouds: Some(pack_entities::cloud_inputs()),
-            weather: Some(pack_weather::inputs()),
-            lines: Some(pack_lines::inputs()),
-            hand: Some(pack_hand::inputs()),
-            ..pack_atlas::game_terrain(terrain, &self.pack_lava_layers)
-        }
+        pack_atlas::game_inputs(terrain, self.pack_terrain_flat, &self.pack_lava_layers)
     }
 
     pub(super) fn pack_terrain_inputs(&mut self) -> Option<sunrise_shaders::GbuffersInputs> {

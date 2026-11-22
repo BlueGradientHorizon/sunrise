@@ -1,9 +1,9 @@
 //! Sole-owner main execution and root-commit raw publication.
 use super::Game;
 use mod_api::{
-    HandlerThread, IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError,
-    PayloadDirection, PayloadId, PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus,
-    PlayerRef, Text,
+    __private::game::CallbackFailure, ConfigurationTaskError, HandlerThread, IPayloadContext,
+    Identifier, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadDirection, PayloadId,
+    PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
 };
 use std::sync::Arc;
 use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
@@ -13,14 +13,10 @@ use sunrise_protocol::payload_negotiation::Phase;
 pub(super) struct Deferred {
     epoch: Arc<Epoch>,
     prepared: Prepared,
-    #[cfg(test)]
-    probe_server_reply: bool,
 }
 const _: () = assert!(std::mem::size_of::<Deferred>() <= 256);
 impl Deferred {
     pub(super) fn publish(self) {
-        #[cfg(test)]
-        wasm_tests::publication(self.probe_server_reply);
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }
@@ -79,7 +75,7 @@ impl Game<'_> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    fn queue_payload(
+    pub(super) fn queue_payload(
         &mut self,
         endpoint: Endpoint,
         epoch: Arc<Epoch>,
@@ -90,59 +86,14 @@ impl Game<'_> {
         self.after_commit(super::transactions::After::Payload(Deferred {
             epoch,
             prepared,
-            #[cfg(test)]
-            probe_server_reply: endpoint.side() == Side::Server && id.0 == "raw_probe:receipt",
         }));
-        #[cfg(test)]
-        wasm_tests::staged_reply(endpoint.side() == Side::Server && id.0 == "raw_probe:receipt");
         Ok(PayloadAccepted::Queued)
     }
-    pub(super) fn receive_client_payload(
-        &mut self,
-        incoming: &mut Incoming,
-    ) -> sunrise_client::Result<bool> {
-        let Some(remote) = self.remote.as_ref() else {
-            return Ok(true);
-        };
-        let endpoint = remote.session.payload_endpoint();
-        Ok(self.run_payload(endpoint, incoming))
-    }
-    /// Endpoint identity was captured on ingress, not resolved from a later guest incarnation.
-    pub(super) fn receive_server_payload(
-        &mut self,
-        endpoint: Endpoint,
-        incoming: &mut Incoming,
-    ) -> bool {
-        self.run_payload(endpoint, incoming)
-    }
-    /// False only while the original receiving root remains deferred at the head.
-    fn run_payload(&mut self, endpoint: Endpoint, incoming: &mut Incoming) -> bool {
+    /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
+    pub(super) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
         if !incoming.epoch.active() {
-            return true;
+            return;
         }
-        if let Some(holder) = incoming.expired_busy(std::time::Instant::now()) {
-            let error = incoming.busy_failure(holder);
-            if incoming.raw {
-                log::warn!(
-                    "Mod {} failed on raw channel {}: {error}",
-                    incoming.receiver.owner(),
-                    incoming.id.0
-                );
-            } else {
-                log::warn!("{error}");
-                endpoint.disconnect(Text::translate(
-                    "disconnect.genericReason",
-                    vec![Text::literal(format!(
-                        "a mod's payload handler failed ({})",
-                        sunrise_client::raw_payloads::mod_of(&incoming.id)
-                    ))],
-                ));
-            }
-            return true;
-        }
-        let body = std::mem::replace(&mut incoming.body, Body::Payload(PayloadBytes(Vec::new())));
-        #[cfg(test)]
-        let wasm_health_before = wasm_tests::health(self, &endpoint, &incoming.id);
         let seal = self.transaction_open();
         let mut context = MainContext {
             game: self,
@@ -152,59 +103,29 @@ impl Game<'_> {
             disconnect: None,
             failure: None,
         };
-        let result = match body {
+        let result = match incoming.body {
             Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => {
                 incoming.receiver.handle(bytes, &mut context)
             }
-            Body::Payload(_) => Err(mod_api::PayloadHandleError::Failed(
+            Body::Payload(_) => Err(CallbackFailure::Refused(
                 "payload was not dispatched on its declared network executor".into(),
             )),
-            Body::Work(work) => incoming
-                .receiver
-                .run_work(work.as_ref(), &mut context)
-                .map_err(mod_api::PayloadHandleError::Failed),
-        };
-        let result = match result {
-            Err(mod_api::PayloadHandleError::Busy { payload, holder }) => {
-                context.game.transaction_close(&seal, false);
-                drop(context);
-                if incoming.defer(payload, &holder, std::time::Instant::now()) {
-                    return false;
-                }
-                let error = incoming.busy_failure(&holder);
-                if incoming.raw {
-                    log::warn!(
-                        "Mod {} failed on raw channel {}: {error}",
-                        incoming.receiver.owner(),
-                        incoming.id.0
-                    );
-                } else {
-                    log::warn!("{error}");
-                    endpoint.disconnect(Text::translate(
-                        "disconnect.genericReason",
-                        vec![Text::literal(format!(
-                            "a mod's payload handler failed ({})",
-                            sunrise_client::raw_payloads::mod_of(&incoming.id)
-                        ))],
-                    ));
-                }
-                return true;
-            }
-            Err(mod_api::PayloadHandleError::Failed(error)) => Err(error),
-            Ok(()) => Ok(()),
+            Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
         };
         let reason = context.disconnect.take();
-        let failure = context.failure.take().or_else(|| result.err());
+        let failure = match result {
+            Err(error @ (CallbackFailure::Panicked | CallbackFailure::Poisoned)) => Some(error),
+            result => context.failure.take().or_else(|| result.err()),
+        };
         context.game.transaction_close(&seal, failure.is_none());
-        #[cfg(test)]
-        wasm_tests::observe(
-            wasm_health_before,
-            context.game,
-            &endpoint,
-            &incoming.id,
-            failure.is_none(),
-        );
-        if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
+        if matches!(
+            failure,
+            Some(CallbackFailure::Panicked | CallbackFailure::Poisoned)
+        ) {
+            // The shared boundary already reported the panic; keep the epoch alive.
+            return;
+        }
+        if let Some(CallbackFailure::Refused(error)) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
             // refusal rolls back its own work only, and the next mod still runs.
             log::warn!(
@@ -212,7 +133,7 @@ impl Game<'_> {
                 incoming.receiver.owner(),
                 incoming.id.0
             );
-        } else if let Some(error) = failure {
+        } else if let Some(CallbackFailure::Refused(error)) = failure {
             // The reason goes to the log; the player is told only which mod's handler failed.
             log::warn!("payload {} failed: {error}", incoming.id.0);
             endpoint.disconnect(Text::translate(
@@ -225,9 +146,7 @@ impl Game<'_> {
         } else if let Some(reason) = reason {
             endpoint.disconnect(reason);
         }
-        // Both the finish barrier and ingress credit cover root publication/rollback.
-        drop(context);
-        true
+        // The rest of Incoming releases the turn and ingress credit after publication/rollback.
     }
 }
 struct MainContext<'a, 'resources> {
@@ -236,7 +155,7 @@ struct MainContext<'a, 'resources> {
     endpoint: Endpoint,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
-    failure: Option<String>,
+    failure: Option<CallbackFailure>,
 }
 impl IPayloadContext for MainContext<'_, '_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -295,6 +214,48 @@ impl IPayloadContext for MainContext<'_, '_> {
     fn check_payload_token(&self, token: &mod_api::PayloadToken) -> Result<(), PayloadSendError> {
         mod_api::__private::game::check_payload_token(token)
     }
+    /// The main thread's group send is transactional, as every main-thread send.
+    fn send_to(
+        &mut self,
+        players: &[PlayerRef],
+        id: &PayloadId,
+        bytes: PayloadBytes,
+    ) -> Result<u32, PayloadSendError> {
+        if self.disconnect.is_some() {
+            return Err(PayloadSendError::Disconnected);
+        }
+        if self.endpoint.side() != Side::Server {
+            return Err(PayloadSendError::WrongDirection(id.clone()));
+        }
+        if self.endpoint.transport().local.droppable(&id.0).is_none() {
+            return Err(PayloadSendError::NotDroppable(id.clone()));
+        }
+        Ok(self.game.players_send_payload(players, id, bytes))
+    }
+    fn finish_configuration_task(
+        &mut self,
+        task_type: &Identifier,
+    ) -> Result<(), ConfigurationTaskError> {
+        if self.endpoint.side() != Side::Server || self.epoch.phase != Phase::Configuration {
+            return Err(ConfigurationTaskError::WrongContext);
+        }
+        if self.disconnect.is_some() || !self.epoch.active() {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        let session = match self.endpoint.configuration_session() {
+            Some(weak) => weak.upgrade().ok_or(ConfigurationTaskError::Disconnected)?,
+            None => return Err(ConfigurationTaskError::NotRunning),
+        };
+        if self
+            .endpoint
+            .transport()
+            .epoch()
+            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, self.epoch))
+        {
+            return Err(ConfigurationTaskError::Disconnected);
+        }
+        session.finish_type(task_type)
+    }
     fn disconnect(&mut self, reason: Text) {
         self.disconnect = Some(reason);
     }
@@ -307,7 +268,14 @@ impl IPayloadContext for MainContext<'_, '_> {
         }
         let receiver = self.receiver.clone();
         if let Err(error) = receiver.run_work(work.as_ref(), self) {
-            self.failure = Some(error);
+            // Preserve the first panic even if the caller catches or overwrites its
+            // error by attempting more work on the now-disabled callback.
+            if !matches!(
+                self.failure,
+                Some(CallbackFailure::Panicked | CallbackFailure::Poisoned)
+            ) {
+                self.failure = Some(error);
+            }
             return Err(PayloadContextError::Disconnected);
         }
         Ok(PayloadWorkStatus::Complete)
@@ -320,23 +288,20 @@ mod config_tests;
 #[path = "payload_transport/disconnect_tests.rs"]
 mod disconnect_tests;
 #[cfg(test)]
+#[path = "payload_transport/main_panic_tests.rs"]
+mod main_panic_tests;
+#[cfg(test)]
 #[path = "payload_transport/raw_fault_tests.rs"]
 mod raw_fault_tests;
 #[cfg(test)]
 #[path = "payload_transport/sender_tests.rs"]
 mod sender_tests;
 #[cfg(test)]
+#[path = "payload_transport/task_tests.rs"]
+mod task_tests;
+#[cfg(test)]
 #[path = "payload_transport/tests.rs"]
 mod tests;
 #[cfg(test)]
 #[path = "payload_transport/typed_tests.rs"]
 mod typed_tests;
-#[cfg(test)]
-#[path = "payload_transport/typed_wasm_tests.rs"]
-mod typed_wasm_tests;
-#[cfg(test)]
-#[path = "payload_transport/wasm_config_tests.rs"]
-mod wasm_config_tests;
-#[cfg(test)]
-#[path = "payload_transport/wasm_tests.rs"]
-mod wasm_tests;

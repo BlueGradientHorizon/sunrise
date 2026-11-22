@@ -11,7 +11,8 @@
 //! stays reserved, so no mod may declare it (`Local::capture`), and the generic packet API
 //! still refuses it.
 use sunrise_protocol::{
-    attachment_sync, collider_sync,
+    attachment_sync, collider_sync, connection_groups, general_entity,
+    packets::custom_payload::{CAULDRON_ENTRIES_CHANNEL, CAULDRON_USE_CHANNEL},
     payload_negotiation::{Error, Flow, ManifestBuilder, Phase, RegistrationPhase},
 };
 
@@ -23,7 +24,7 @@ pub(super) struct Declaration {
     pub version: &'static str,
 }
 
-/// Every engine declaration. Attachment sync and collider sync: play, clientbound only.
+/// Every optional engine declaration in the play payload table.
 pub(super) const DECLARATIONS: &[Declaration] = &[
     Declaration {
         phase: Phase::Play,
@@ -36,6 +37,30 @@ pub(super) const DECLARATIONS: &[Declaration] = &[
         id: collider_sync::CHANNEL,
         flow: Flow::ToClient,
         version: collider_sync::VERSION,
+    },
+    Declaration {
+        phase: Phase::Play,
+        id: connection_groups::CHANNEL,
+        flow: Flow::ToClient,
+        version: connection_groups::VERSION,
+    },
+    Declaration {
+        phase: Phase::Play,
+        id: general_entity::CHANNEL,
+        flow: Flow::ToClient,
+        version: general_entity::VERSION,
+    },
+    Declaration {
+        phase: Phase::Play,
+        id: CAULDRON_ENTRIES_CHANNEL,
+        flow: Flow::ToClient,
+        version: "1",
+    },
+    Declaration {
+        phase: Phase::Play,
+        id: CAULDRON_USE_CHANNEL,
+        flow: Flow::Bidirectional,
+        version: "1",
     },
 ];
 

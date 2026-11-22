@@ -88,7 +88,10 @@ fn window_value(game: &mut Game<'_>) -> Option<i32> {
         .unwrap()
         .query(&VALUE)
         .ok()?;
-    rows.iter().next().map(|row| *row.unwrap().value)
+    rows.iter().try_next().unwrap().map(|row| {
+        row.with_value(game.attachment_frame_borrow(), |value| *value)
+            .unwrap()
+    })
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.
@@ -159,7 +162,7 @@ pub(super) fn peer(port: u16, name: &str, sunrise: bool) -> Connection {
             .unwrap();
     if sunrise {
         // A server queries a client only once its brand says Sunrise.
-        let mut brand = sunrise_protocol::buf::Writer::new();
+        let mut brand = ::sunrise_core::vanilla_bytes::Writer::new();
         brand.string("sunrise");
         c.send(
             &cfg::Serverbound::CustomPayload(cfg::CustomPayload {

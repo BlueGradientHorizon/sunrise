@@ -1,5 +1,6 @@
 //! The options screens bound to the game: drawing, input, applying settings
 //! (video, sound, chat, font, language) and the F11 fullscreen toggle.
+use super::shader_packs::{TogglePlan, active_pack, dev_pack, plan_shader_toggle};
 use super::{Game, ResizeState, Screen};
 use serde_json::{Value, json};
 use sunrise_client::{
@@ -8,6 +9,7 @@ use sunrise_client::{
     hud::HudBatch,
     lang,
     options_ui::{Event, Page},
+    text::Text,
     window::{FrameContext, InactivityFpsLimit, framerate_limit},
 };
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
@@ -147,7 +149,7 @@ impl Game<'_> {
     pub(super) fn open_options_at(&mut self, from_title: bool, page: Page) {
         // Gameplay keys must not stay held behind the options screen, where
         // bindings can also change before the physical key is released.
-        self.keys.clear();
+        self.clear_device_keys();
         self.set_screen(Screen::Options);
         self.options_from_title = from_title;
         let minecart_improvements = self.minecart_improvements();
@@ -200,7 +202,11 @@ impl Game<'_> {
             self.ui.options.pack_configs = super::packs::pack_configs(&self.vanilla_root());
         }
     }
-    pub(super) fn draw_options(&mut self, batch: &mut HudBatch) {
+    pub(super) fn draw_options(&mut self, batch: &mut HudBatch, allowed: bool) {
+        if !allowed {
+            self.ui.options.discard_draw();
+            return;
+        }
         self.watch_pack_folder();
         let context = self.controller_settings_context();
         if self.ui.options.controller_open() {
@@ -272,14 +278,15 @@ impl Game<'_> {
             _ => {}
         }
     }
-    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<()> {
+    pub(super) fn options_mouse(&mut self, pressed: bool, right: bool) -> Result<bool> {
         if !pressed {
             if right {
-                return Ok(());
+                return Ok(false);
             }
-            let events = self.ui.options.release();
+            let (events, handled) = self.ui.options.release_with_outcome();
             self.dragging = false;
-            return self.handle_option_events(events);
+            self.handle_option_events(events)?;
+            return Ok(handled);
         }
         if !right {
             self.dragging = true;
@@ -290,7 +297,7 @@ impl Game<'_> {
         });
         let mut ui = std::mem::take(&mut self.ui.options);
         ui.shift = self.modifiers.shift_key();
-        let events = ui.click(
+        let (events, handled) = ui.click_with_outcome(
             &mut self.settings,
             &self.gui.atlas,
             self.cursor.0,
@@ -301,7 +308,8 @@ impl Game<'_> {
             right,
         );
         self.ui.options = ui;
-        self.handle_option_events(events)
+        self.handle_option_events(events)?;
+        Ok(handled)
     }
     pub(super) fn options_drag(&mut self) -> Result<()> {
         let size = self.gui_size();
@@ -593,7 +601,7 @@ impl Game<'_> {
         self.hold_fullbright();
         let s = &self.settings;
         if let Some(r) = self.renderer.as_mut() {
-            r.gamma = s.gamma;
+            r.gamma = s.gamma as f32;
             r.improved_transparency = s.improved_transparency;
             r.set_present_mode(s.vsync, s.sunrise.present_mode);
             r.animated_textures = s.sunrise.animated_textures;
@@ -630,7 +638,7 @@ impl Game<'_> {
                 &Self::options_path().with_file_name(sunrise_client::graphics::HDR_MARKER),
             );
         }
-        let mut volumes = s.volumes;
+        let mut volumes = s.volumes.map(|gain| gain as f32);
         volumes[0] = 1.0;
         sunrise_client::settings::set_source_volumes(volumes);
         super::narrator::sync(s);
@@ -708,6 +716,50 @@ impl Game<'_> {
         self.settings.fullscreen = !self.settings.fullscreen;
         self.settings.save(&Self::options_path());
         self.apply_ui_settings();
+    }
+    /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
+    /// pick again. The same persistent pick the Shader Packs screen writes: turning off keeps
+    /// the last non-empty pick, resuming restores it, and the off state survives a restart.
+    /// With `SUNRISE_SHADER_PACK` set the developer override wins and the key does nothing.
+    /// Invalidation stays with the normal selection path: the next frame's `shader_pack_inputs`
+    /// sees the changed pick and drops or loads the pack itself, for either pack kind.
+    pub(super) fn toggle_shader_pack(&mut self) {
+        let present = |key: &str| {
+            sunrise_client::shader_pack_list::resolve(&Self::shader_packs_dir(), key)
+                .1
+                .exists()
+        };
+        let plan = plan_shader_toggle(
+            &self.settings.sunrise.shader_pack,
+            &self.settings.extras.last_shader_pack,
+            dev_pack().is_some(),
+            present,
+            |key| !active_pack(key, &self.settings.mods).is_empty(),
+        );
+        match plan {
+            TogglePlan::Noop => {}
+            TogglePlan::Hint => {
+                self.system_message(Text::tr("sunrise.shaders.noPack", &[]));
+            }
+            TogglePlan::HintClearLast => {
+                self.settings.extras.last_shader_pack.clear();
+                self.settings.save(&Self::options_path());
+                self.system_message(Text::tr("sunrise.shaders.noPack", &[]));
+            }
+            TogglePlan::HintModOff(name) => {
+                self.system_message(Text::tr("sunrise.shaders.modOff", &[&name]));
+            }
+            TogglePlan::Off(name) => {
+                self.settings.set_shader_pick("");
+                self.settings.save(&Self::options_path());
+                self.system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
+            }
+            TogglePlan::On(name) => {
+                self.settings.set_shader_pick(&name);
+                self.settings.save(&Self::options_path());
+                self.system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
+            }
+        }
     }
     /// `FramerateLimitTracker.getFramerateLimit`: the Max Framerate option,
     /// throttled when minimised, idle, or in a menu without a world.

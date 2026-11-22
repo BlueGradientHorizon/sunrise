@@ -1130,7 +1130,10 @@ pub fn render_pack(
         [SIZE; 2],
         &[],
         &mut |_, _, _, _| {},
-    );
+        &std::sync::atomic::AtomicBool::new(false),
+        super::in_flight::poll_live,
+    )
+    .unwrap();
     let (color, read) = (screen.texture(), SIZE * 4);
     let readback = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
@@ -1207,6 +1210,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         glint_ticks: 0.0,
         nether_lighting: false,
         entities: &[],
+        explicit_particles: None,
         static_block_entities: &[],
         visible_static_block_entity_sections: &[],
         static_block_entity_stats: crate::block_entity_render::StaticCacheFrameStats::default(),
@@ -1225,6 +1229,7 @@ fn probe_frame(hud: &HudBatch) -> super::Frame<'_> {
         see_through: &[],
         world_primitives: Default::default(),
         celestial: &[],
+        celestial_bodies: &[],
         stars: None,
         hand: &[],
         hand_items: &[],
@@ -1274,6 +1279,151 @@ mod scrgb {
             "instanced scRGB {gpu} != cpu {cpu} at tint 0xFF3040 light 0x00F0 (ratio {ratio})"
         );
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn explicit_particle_layers_render_in_device_sized_draws() {
+    use super::particle_draws::{EXPLICIT_PARTICLE_OVERLAY, ParticleDraws, ParticlePipelines};
+    let _gpu = crate::gfx::test_gpu::lock();
+    let frame = software_frame_lit(
+        [1, 1],
+        &[255; 4],
+        Mat4::IDENTITY,
+        0.0,
+        [SIZE; 2],
+        &[255; 16 * 16 * 4],
+    )
+    .expect("software Vulkan frame");
+    let shader = frame
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(entity_shader().into()),
+        });
+    let layout = frame
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&frame.bindings)],
+            immediate_size: 0,
+        });
+    let buffers = [Some(wgpu::VertexBufferLayout {
+        array_stride: size_of::<Vertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ENTITY_ATTRIBUTES,
+    })];
+    let reuse = reuse::Reuse::default();
+    let kept = reuse.on(&frame.device);
+    let pipelines = ParticlePipelines::new(entity_pipeline_factory(
+        &kept,
+        &layout,
+        &layout,
+        &shader,
+        &buffers,
+        wgpu::TextureFormat::Rgba8Unorm,
+        false,
+    ));
+    let quad = |x: f32, y: f32, z, color, back: bool| {
+        let mut corners = [(0.25, -0.25), (0.25, 0.25), (-0.25, 0.25), (-0.25, -0.25)];
+        if back {
+            corners.reverse();
+        }
+        corners.map(|(dx, dy)| Vertex {
+            pos: [x + dx, y + dy, z],
+            uv: [0.5; 2],
+            layer: EXPLICIT_PARTICLE_OVERLAY,
+            color,
+            light: 0,
+            normal: [0; 4],
+            glint_uv: [0.0; 2],
+        })
+    };
+    let opaque = [
+        quad(-0.5, 0.5, 0.75, 0x8000_00ff, false),
+        quad(-0.5, 0.5, 0.5, 0xff00_ff00, false),
+        quad(-0.5, -0.5, 0.75, 0x08ff_ffff, false),
+        quad(0.5, -0.5, 0.75, 0xffff_ffff, true),
+        quad(0.0, -0.5, 0.75, 0xffff_0000, false),
+    ];
+    let translucent = [
+        quad(0.5, 0.5, 0.75, 0x8000_00ff, false),
+        quad(0.5, 0.5, 0.5, 0xff00_ff00, false),
+    ];
+    let mut draws = [ParticleDraws::default(), ParticleDraws::default()];
+    let mut uploads = super::upload::Uploads::new(&frame.device);
+    let mut encoder = frame.device.create_command_encoder(&Default::default());
+    for (draws, vertices) in draws
+        .iter_mut()
+        .zip([opaque.as_flattened(), translucent.as_flattened()])
+    {
+        let limit = size_of::<[Vertex; 4]>() as u64;
+        assert_eq!(
+            draws.prepare(&frame.device, &mut uploads, &mut encoder, vertices, limit),
+            1
+        );
+    }
+    let index = super::Renderer::quad_indices(&frame.device, 1);
+    {
+        let color = frame.color.create_view(&Default::default());
+        let depth = frame.depth.create_view(&Default::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth,
+                stencil_ops: None,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+            }),
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &frame.group, &[]);
+        pass.set_index_buffer(index.slice(..), wgpu::IndexFormat::Uint32);
+        for (draws, pipeline) in draws
+            .iter()
+            .zip([&pipelines.opaque, &pipelines.translucent])
+        {
+            pass.set_pipeline(pipeline);
+            draws.draw(&mut pass);
+        }
+    }
+    uploads.finish(&encoder);
+    let pixels = readback(&frame, encoder).expect("particle output readback");
+    let rgb = |x, y| {
+        let at = ((y * SIZE + x) * 4) as usize;
+        &pixels[at..at + 3]
+    };
+    assert_eq!(
+        rgb(SIZE / 4, SIZE / 4),
+        [255, 0, 0],
+        "opaque replaces covered pixels and writes depth"
+    );
+    assert_eq!(
+        rgb(SIZE * 3 / 4, SIZE / 4),
+        [128, 0, 0],
+        "translucent blends and writes depth"
+    );
+    assert_eq!(rgb(SIZE / 4, SIZE * 3 / 4), [0, 0, 0], "alpha cutout");
+    assert_eq!(
+        rgb(SIZE * 3 / 4, SIZE * 3 / 4),
+        [0, 0, 0],
+        "back face culling"
+    );
+    assert_eq!(
+        rgb(SIZE / 2, SIZE * 3 / 4),
+        [0, 0, 255],
+        "the final upload partition was drawn"
+    );
 }
 
 /// Draws a real screen batch through the engine HUD pipeline on software Vulkan.

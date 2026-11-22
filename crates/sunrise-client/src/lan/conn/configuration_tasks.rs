@@ -1,5 +1,5 @@
 //! Read configuration while the server thread advances the task queue.
-use super::super::configuration_tasks::{ConfigurationRequest, Session, next_connection};
+use super::super::configuration_tasks::{ConfigurationRequest, Session};
 use super::*;
 
 pub(super) fn configure(
@@ -14,7 +14,9 @@ pub(super) fn configure(
     let Some(requests) = &shared.configuration_requests else {
         return Ok(());
     };
-    let connection = next_connection().ok_or("Configuration connection identifiers exhausted")?;
+    let connection = shared
+        .next_configuration_connection()
+        .ok_or("Configuration connection identifiers exhausted")?;
     let sender = c
         .task_sender(transport.clone())
         .map_err(|e| e.to_string())?;
@@ -27,7 +29,9 @@ pub(super) fn configure(
             session: session.clone(),
         })
         .map_err(|e| e.to_string())?;
+    c.set_configuration_session(Arc::downgrade(&session));
     let result = wait(c, info, transport, negotiation, &session);
+    c.clear_configuration_session();
     session.close();
     c.reader
         .set_read_timeout(Some(READ_TIMEOUT))
@@ -98,6 +102,3 @@ fn wait(
         }
     }
 }
-#[cfg(test)]
-#[path = "configuration_tasks_tests.rs"]
-mod tests;

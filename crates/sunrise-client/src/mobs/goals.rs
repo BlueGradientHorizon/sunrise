@@ -1,6 +1,7 @@
 //! Vanilla's `GoalSelector` (priorities, MOVE/LOOK/JUMP/TARGET control flags,
 //! interruption) and the shared goals of `net.minecraft.world.entity.ai.goal`.
 use super::{Mob, MobEvent, MobWorld, Seen, Species, Who, world::TargetInfo};
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -64,6 +65,20 @@ pub trait Goal: std::fmt::Debug + Send + Sync {
         false
     }
     fn tick(&mut self, _m: &mut Mob, _cx: &mut Cx) {}
+    /// Goals that move the body itself can stop for the owning level to handle
+    /// a trample, passenger fall, or hurt. The ordinary path runs without a pause.
+    fn tick_until_movement_pause(
+        &mut self,
+        mob: &mut Mob,
+        cx: &mut Cx,
+    ) -> Option<super::living::TravelPause> {
+        self.tick(mob, cx);
+        None
+    }
+    /// Finish a goal that stopped in its own movement; false for a different goal.
+    fn after_movement(&mut self, _m: &mut Mob, _cx: &mut Cx) -> bool {
+        false
+    }
     fn box_clone(&self) -> Box<dyn Goal>;
     /// The goal's name for debugging (`Goal.toString`).
     fn name(&self) -> &'static str {
@@ -107,6 +122,13 @@ pub struct GoalSelector {
     locked: [Option<usize>; 4],
     pub disabled: u8,
 }
+#[derive(Debug)]
+pub(super) struct GoalMovementPause {
+    pub(super) movement: super::living::TravelPause,
+    slot: usize,
+    pub(super) force: bool,
+}
+
 impl GoalSelector {
     pub fn add(&mut self, priority: i32, goal: impl Goal + 'static) {
         self.add_boxed(priority, Box::new(goal));
@@ -155,6 +177,11 @@ impl GoalSelector {
     }
     /// GoalSelector.tick
     pub fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
+        self.prepare_tick(m, cx);
+        self.tick_running(m, cx, true);
+    }
+
+    fn prepare_tick(&mut self, m: &mut Mob, cx: &mut Cx) {
         for i in 0..self.goals.len() {
             if self.goals[i].running
                 && (self.goals[i].goal.flags() & self.disabled != 0
@@ -199,7 +226,6 @@ impl GoalSelector {
                 self.goals[i].goal.start(m, cx);
             }
         }
-        self.tick_running(m, cx, true);
     }
     pub fn tick_running(&mut self, m: &mut Mob, cx: &mut Cx, force: bool) {
         for g in &mut self.goals {
@@ -208,6 +234,62 @@ impl GoalSelector {
             }
         }
     }
+    pub(super) fn tick_until_movement_pause(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        force: bool,
+    ) -> Option<GoalMovementPause> {
+        if force {
+            self.prepare_tick(m, cx);
+        }
+        self.tick_from(m, cx, force, 0)
+    }
+
+    fn tick_from(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        force: bool,
+        start: usize,
+    ) -> Option<GoalMovementPause> {
+        for (slot, g) in self.goals.iter_mut().enumerate().skip(start) {
+            if g.running
+                && (force || g.goal.every_tick())
+                && let Some(movement) = g.goal.tick_until_movement_pause(m, cx)
+            {
+                return Some(GoalMovementPause {
+                    movement,
+                    slot,
+                    force,
+                });
+            }
+        }
+        None
+    }
+
+    pub(super) fn resume_movement(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+        paused: GoalMovementPause,
+    ) -> Option<GoalMovementPause> {
+        if let ControlFlow::Break(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
+            return Some(GoalMovementPause { movement, ..paused });
+        }
+        if m.removed {
+            return None;
+        }
+        // An owning-host listener can remove or shift the running goal. Only
+        // the still-resident goal holding this pause can finish its path update.
+        let next = self
+            .goals
+            .iter_mut()
+            .position(|g| g.goal.after_movement(m, cx))
+            .map_or(paused.slot, |slot| slot + 1);
+        self.tick_from(m, cx, paused.force, next)
+    }
+
     pub fn stop_all(&mut self, m: &mut Mob, cx: &mut Cx) {
         for i in 0..self.goals.len() {
             self.stop(i, m, cx);
@@ -1033,8 +1115,7 @@ impl Goal for ClimbOnTopOfPowderSnow {
         if !super::ai::in_powder_snow(m, cx.w)
             || !cx
                 .w
-                .data
-                .entity_has("minecraft:powder_snow_walkable_mobs", &m.kind.id)
+                .entity_tag_bit(&m.kind, crate::items::EntityTypeTags::POWDER_SNOW_WALKABLE)
         {
             return false;
         }
@@ -1089,7 +1170,7 @@ impl Panic {
 pub fn should_panic(m: &Mob) -> bool {
     m.last_damage
         .is_some_and(|(d, t)| d.causes_panic() && i64::from(m.age) - t <= 40)
-        || m.fire_ticks > 0 && !m.kind.flags.fire_immune
+        || m.is_on_fire()
 }
 impl Goal for Panic {
     goal_clone!();
@@ -1100,7 +1181,7 @@ impl Goal for Panic {
         let wanted = if self.environmental {
             m.last_damage.is_some_and(|(d, t)| {
                 super::armadillo::environmental(d.kind) && i64::from(m.age) - t <= 40
-            }) || m.fire_ticks > 0 && !m.kind.flags.fire_immune
+            }) || m.is_on_fire()
         } else {
             should_panic(m)
         };
@@ -1724,14 +1805,14 @@ impl Goal for LeapAtTarget {
             return false;
         };
         let d = m.distance_sqr(t.position);
-        if !(4.0..=16.0).contains(&d) || !m.on_ground {
+        if !(4.0..=16.0).contains(&d) || !m.ground.on_ground {
             return false;
         }
         self.target = [t.position.x, t.position.y, t.position.z];
         m.random.next_int_bound(reduced(5)).unwrap_or(1) == 0
     }
     fn can_continue(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        !m.on_ground
+        !m.ground.on_ground
     }
     fn start(&mut self, m: &mut Mob, _: &mut Cx) {
         let mut d = [
@@ -2927,7 +3008,9 @@ impl Goal for EatBlock {
 
 /// BreathAirGoal: swim up to air when the air supply runs low.
 #[derive(Clone, Debug, Default)]
-pub struct BreathAir;
+pub struct BreathAir {
+    movement_paused: bool,
+}
 impl BreathAir {
     /// `BreathAirGoal.findAirPosition`: `BlockPos.neighborColumn` walks the
     /// center, north, east, south and west columns, each bottom to top.
@@ -2967,6 +3050,18 @@ impl BreathAir {
             1.0,
         );
     }
+
+    fn move_to_air(m: &mut Mob, cx: &mut Cx, pause: bool) -> Option<super::living::TravelPause> {
+        Self::find_air(m, cx);
+        let input = Vec3::new(
+            f64::from(m.ai.xxa),
+            f64::from(m.ai.yya),
+            f64::from(m.ai.zza),
+        );
+        m.move_relative(0.02, input);
+        m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {})
+            .break_value()
+    }
 }
 impl Goal for BreathAir {
     goal_clone!();
@@ -2984,16 +3079,22 @@ impl Goal for BreathAir {
         Self::find_air(m, cx);
     }
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        Self::find_air(m, cx);
-        let input = Vec3::new(
-            f64::from(m.ai.xxa),
-            f64::from(m.ai.yya),
-            f64::from(m.ai.zza),
-        );
-        m.move_relative(0.02, input);
-        let mut ev = Vec::new();
-        m.do_move(cx.w, cx.level, &mut ev, &mut Default::default()); // the fresh gate, armed by `do_move`
-        cx.events.extend(ev);
+        let _ = Self::move_to_air(m, cx, false);
+    }
+    fn tick_until_movement_pause(
+        &mut self,
+        m: &mut Mob,
+        cx: &mut Cx,
+    ) -> Option<super::living::TravelPause> {
+        let movement = Self::move_to_air(m, cx, true);
+        self.movement_paused = movement.is_some();
+        movement
+    }
+    fn after_movement(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
+        std::mem::take(&mut self.movement_paused)
+    }
+    fn stop(&mut self, _: &mut Mob, _: &mut Cx) {
+        self.movement_paused = false;
     }
 }
 /// TryFindLiquidGoal (water): head for nearby water when stranded on land.
@@ -3007,7 +3108,7 @@ impl Goal for TryFindWater {
         MOVE
     }
     fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if !m.on_ground || m.fluids.in_water {
+        if !m.ground.on_ground || m.fluids.in_water {
             return false;
         }
         let (bx, by, bz) = (
@@ -3237,6 +3338,7 @@ mod breeding_variant_tests {
             let partner = [mate.seen(None, &crate::items::Items::empty())];
             for asks_baby_spawn in [false, true] {
                 let w = MobWorld {
+                    side: sunrise_client::motion::dry_side(),
                     goal_host: None,
                     asks_baby_spawn,
                     mob_drops: false,
@@ -3299,6 +3401,7 @@ mod breeding_variant_tests {
                     [(false, true), (false, false), (true, true), (true, false)]
                 {
                     let world = MobWorld {
+                        side: sunrise_client::motion::dry_side(),
                         goal_host: None,
                         asks_baby_spawn: ask_mods,
                         mob_drops,

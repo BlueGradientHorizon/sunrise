@@ -11,7 +11,6 @@ pub mod announced_channels;
 pub mod config_payloads;
 pub mod configuration_tasks;
 pub use advancements::ServerAdvancements;
-pub mod anticheat;
 pub mod arrivals;
 pub mod attributes;
 mod biome_resend;
@@ -30,8 +29,6 @@ pub mod discovery;
 mod effect_meta;
 pub mod entity;
 pub mod equipment_cache;
-pub mod far;
-pub mod forwarding;
 pub mod guest;
 pub mod guest_list;
 pub mod handoff;
@@ -44,7 +41,6 @@ pub mod menu_extra_rev;
 mod payload_bounds_tests;
 pub mod player_shown;
 pub mod playerdata;
-pub mod prediction;
 pub mod recipes;
 mod registry_names;
 pub mod scoreboard;
@@ -95,7 +91,7 @@ pub struct Joined {
     pub uuid: u128,
     pub name: String,
     /// The profile's properties (skin textures, in online mode).
-    pub properties: Vec<sunrise_protocol::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     pub info: ClientInformation,
     pub brand: String,
     pub sender: PlayerSender,
@@ -235,12 +231,6 @@ pub const SUNRISE_CLIENTS_ONLY: &str = "sunrise-clients-only";
 /// What another client is told.
 pub const SUNRISE_CLIENTS_ONLY_REASON: &str =
     "This server is for the Sunrise client: playsunrise.net";
-/// The server.properties key (server.toml's `server.accept_older_clients`) that lets 26.2 clients join
-/// (off unless "true").
-pub const ACCEPT_OLDER_CLIENTS: &str = "sunrise-accept-older-clients";
-/// What a 26.2 client is told while only its packet ids are translated (#10404).
-pub const OLDER_CLIENTS_UNFINISHED: &str =
-    "This server lets 26.2 join, but Sunrise cannot translate 26.2 yet: join with 26.3";
 
 /// How the server side of the network behaves: an integrated server's LAN
 /// uses the defaults, a dedicated server takes them from server.properties.
@@ -275,9 +265,6 @@ pub struct NetConfig {
     pub gate: Option<LoginGate>,
     /// Online mode: players are authenticated (a LAN world's when its host is signed in).
     pub online: Option<Arc<OnlineMode>>,
-    /// Behind a Velocity proxy: the secret its forwarded player information is signed with. Only an offline
-    /// server (the proxy authenticates) uses it; without it a login is the plain offline one.
-    pub forwarding_secret: Option<Vec<u8>>,
     /// `[transfer]` on: the players a proxy said would arrive
     /// (`arrivals::Transfers`), shared with the hub. A login uses its
     /// expectation up as it starts, once the bans and the whitelist let it in.
@@ -305,15 +292,6 @@ pub struct NetConfig {
     /// client whose `minecraft:brand` isn't Sunrise's is turned away during
     /// configuration. A brand can be spoofed: a gate, not security.
     pub sunrise_clients_only: bool,
-    /// `sunrise-accept-older-clients` (off): a client of 26.2 joins too, its packets renumbered
-    /// (sunrise_protocol::adapter::ClientSession). Off, it is turned away as vanilla turns it away.
-    pub accept_older_clients: bool,
-    /// Lets an older client past configuration although only its packet ids are translated yet
-    /// (#10404's later parts translate the registry ids and the packets whose layout changed): for tests
-    /// of the id renumbering, never in server.toml. False, such a client is told
-    /// [`OLDER_CLIENTS_UNFINISHED`] before any registry data, tag or play packet would reach it in 26.3's
-    /// ids and layouts.
-    pub older_clients_play: bool,
     /// `sunrise-lod-distance` (Sunrise's own server.properties key, 64): how
     /// far, in chunks, the server samples far terrain for Sunrise clients
     /// (`lod_net`); 0 serves none.
@@ -355,15 +333,12 @@ impl NetConfig {
             bypasses_limit: None,
             gate: None,
             online: None,
-            forwarding_secret: None,
             arrivals: None,
             log: None,
             resource_pack: None,
             code_of_conducts: Vec::new(),
             server_links: Vec::new(),
             sunrise_clients_only: false,
-            accept_older_clients: false,
-            older_clients_play: false,
             lod_distance: crate::lod_net::DEFAULT_DISTANCE,
             levels: crate::chunk::LevelShapes::VANILLA,
             owner_profile: None,
@@ -379,13 +354,13 @@ impl NetConfig {
 /// waits for it: until it answers (or when it fails) the owner is listed
 /// without properties, as before.
 pub struct OwnerProfile {
-    properties: std::sync::OnceLock<Vec<sunrise_protocol::packets::login::Property>>,
-    fetch: Mutex<Receiver<Vec<sunrise_protocol::packets::login::Property>>>,
+    properties: std::sync::OnceLock<Vec<sunrise_core::profile::AccountProperty>>,
+    fetch: Mutex<Receiver<Vec<sunrise_core::profile::AccountProperty>>>,
 }
 
 impl OwnerProfile {
     pub fn new(
-        fetch: impl FnOnce() -> Vec<sunrise_protocol::packets::login::Property> + Send + 'static,
+        fetch: impl FnOnce() -> Vec<sunrise_core::profile::AccountProperty> + Send + 'static,
     ) -> Self {
         let (send, receive) = channel();
         let _ = std::thread::Builder::new()
@@ -400,7 +375,7 @@ impl OwnerProfile {
     }
     /// The owner's properties once fetched; empty while the fetch is out
     /// or when it failed. Never blocks.
-    pub fn properties(&self) -> &[sunrise_protocol::packets::login::Property] {
+    pub fn properties(&self) -> &[sunrise_core::profile::AccountProperty] {
         if let Some(properties) = self.properties.get() {
             return properties;
         }
@@ -463,6 +438,8 @@ pub struct Shared {
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
     configuration_requests: Option<Sender<configuration_tasks::ConfigurationRequest>>,
+    lan_incarnation: u64,
+    next_configuration_connection: AtomicU64,
     pub config: NetConfig,
     motd: Mutex<String>,
     max_players: AtomicUsize,
@@ -498,6 +475,15 @@ impl Shared {
     /// `/reload`: the data new connections are sent from now on.
     pub fn set_sync(&self, sync: Arc<data::SyncData>) {
         *self.sync.lock().unwrap_or_else(|e| e.into_inner()) = sync;
+    }
+    /// Allocate a per-server configuration connection identifier bound to this
+    /// `Lan` incarnation. Exhaustion is permanent for this server; never wrap and
+    /// reuse a token.
+    pub(super) fn next_configuration_connection(&self) -> Option<mod_api::ConfigurationConnection> {
+        self.next_configuration_connection
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .ok()
+            .map(|id| mod_api::__private::configuration_connection(self.lan_incarnation, id))
     }
     /// Allocate from the shared network and connectionless actor namespace.
     /// Exhaustion is permanent for this server; never wrap and reuse a token.
@@ -624,10 +610,6 @@ impl Shared {
     /// ServerStatus.CODEC): description, players with up to 12 shuffled
     /// names, version, favicon and enforcesSecureChat when true.
     pub fn status_json(&self) -> String {
-        self.status_json_for(PROTOCOL_VERSION)
-    }
-    /// [`Self::status_json`] stating `protocol`: an older client's own, when it may join.
-    pub fn status_json_for(&self, protocol: i32) -> String {
         use crate::server::json::Json;
         let motd = self.motd.lock().unwrap().clone();
         let online: Vec<(u128, String)> = self.online.lock().unwrap().clone();
@@ -669,7 +651,10 @@ impl Shared {
                 "version".to_owned(),
                 Json::Object(vec![
                     ("name".to_owned(), Json::String(GAME_VERSION.to_owned())),
-                    ("protocol".to_owned(), Json::Number(protocol.to_string())),
+                    (
+                        "protocol".to_owned(),
+                        Json::Number(PROTOCOL_VERSION.to_string()),
+                    ),
                 ]),
             ),
         ];
@@ -756,12 +741,18 @@ impl Lan {
         let (listen, port, announce) = (config.listen, config.port, config.announce);
         let hide_online_players = config.hide_online_players;
         let enable_status = config.enable_status;
+        static NEXT_LAN_INCARNATION: AtomicU64 = AtomicU64::new(1);
+        let lan_incarnation = NEXT_LAN_INCARNATION
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .map_err(|_| io::Error::other("LAN incarnation identifiers exhausted"))?;
         let shared = Arc::new(Shared {
             payload_local: crate::raw_payloads::Local::capture(crate::raw_payloads::Side::Server)
                 .map_err(io::Error::other)?,
             sync: Mutex::new(sync),
             events: tx,
             configuration_requests: request_tx,
+            lan_incarnation,
+            next_configuration_connection: AtomicU64::new(1),
             motd: Mutex::new(config.motd.clone()),
             max_players: AtomicUsize::new(config.max_players),
             hide_online_players: AtomicBool::new(hide_online_players),
@@ -782,7 +773,7 @@ impl Lan {
         });
         let mut lan = Self {
             shared,
-            configuration_tasks: configuration_tasks::Tasks::default(),
+            configuration_tasks: configuration_tasks::Tasks::new(lan_incarnation),
             events,
             configuration_requests: request_rx,
             port: 0,
@@ -873,14 +864,17 @@ impl Lan {
     pub fn connect_local(&self) -> io::Result<sunrise_protocol::connection::Pipe> {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let shared = self.shared.clone();
-        // Configuration payload handlers of wasm mods run on this thread.
-        sunrise_guest_stack::spawn("sunrise-local-conn".into(), move || {
-            if let Err(e) = conn::serve_local(server, shared)
-                && std::env::var_os("SUNRISE_NET_DEBUG").is_some()
-            {
-                log::warn!("[lan] local: {e}");
-            }
-        })?;
+        // Mod configuration payload handlers run on this thread.
+        std::thread::Builder::new()
+            .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+            .name("sunrise-local-conn".into())
+            .spawn(move || {
+                if let Err(e) = conn::serve_local(server, shared)
+                    && std::env::var_os("SUNRISE_NET_DEBUG").is_some()
+                {
+                    log::warn!("[lan] local: {e}");
+                }
+            })?;
         Ok(client)
     }
     /// Everything the connection threads reported since the last call.
@@ -1094,11 +1088,14 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>, stop: &AtomicBool) {
                     continue;
                 };
                 shared.wait(&counted, &stream);
-                // Configuration payload handlers of wasm mods run on this thread.
-                let _ = sunrise_guest_stack::spawn("sunrise-lan-conn".into(), move || {
-                    WAITING.set(Some(counted.2));
-                    handle(stream, addr, counted);
-                });
+                // Mod configuration payload handlers run on this thread.
+                let _ = std::thread::Builder::new()
+                    .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+                    .name("sunrise-lan-conn".into())
+                    .spawn(move || {
+                        WAITING.set(Some(counted.2));
+                        handle(stream, addr, counted);
+                    });
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(25));
@@ -1158,6 +1155,46 @@ mod tests {
     use super::conn::MEMORY_ADDRESS;
     use super::*;
     use std::{io::Read, time::Instant};
+
+    #[test]
+    fn stale_configuration_connection_cannot_address_replacement_lan_with_same_local_id() {
+        let config = || NetConfig {
+            listen: false,
+            announce: false,
+            ..NetConfig::lan(0, "config-incarnation".into(), 1)
+        };
+        let lan_a =
+            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
+                .unwrap();
+        let mut lan_b =
+            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
+                .unwrap();
+        let conn_a = lan_a.shared.next_configuration_connection().unwrap();
+        let conn_b = lan_b.shared.next_configuration_connection().unwrap();
+        let (inc_a, local_a) = mod_api::__private::configuration_connection_parts(conn_a);
+        let (inc_b, local_b) = mod_api::__private::configuration_connection_parts(conn_b);
+        assert_eq!(local_a, 1);
+        assert_eq!(local_b, 1);
+        assert_ne!(inc_a, inc_b);
+        assert_ne!(conn_a, conn_b);
+
+        let (sender, _peer) =
+            config_payloads::ConfigSender::test_sender(crate::raw_payloads::Transport::empty());
+        let session = configuration_tasks::Session::new(sender);
+        lan_b
+            .configuration_tasks
+            .insert(&configuration_tasks::ConfigurationRequest {
+                connection: conn_b,
+                player: 1,
+                name: "Peer".into(),
+                session: session.clone(),
+            });
+        assert!(lan_b.configuration_tasks.get(conn_b).is_some());
+        assert!(lan_b.configuration_tasks.get(conn_a).is_none());
+        assert!(lan_b.configuration_tasks.take_task(conn_a, 0).is_none());
+        assert!(lan_b.configuration_tasks.remove(conn_a).is_empty());
+        assert!(lan_b.configuration_tasks.get(conn_b).is_some());
+    }
 
     #[test]
     #[ignore = "daily"]

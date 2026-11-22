@@ -251,6 +251,8 @@ impl Game<'_> {
                 origin,
                 tool: None,
                 block_pos: None,
+                target: None,
+                interacting: None,
             };
             adv::conditions(&c["player"], &ctx(&me), w)
                 && adv::conditions(&c["zombie"], &ctx(&zombie), w)
@@ -275,7 +277,7 @@ fn carry_over(from: &Mob, to: &mut Mob) {
     to.previous_head_pitch = from.head_pitch;
     to.fall_distance = from.fall_distance;
     to.hurt_time = from.hurt_time;
-    to.on_ground = from.on_ground;
+    to.ground.on_ground = from.ground.on_ground;
     to.fire_ticks = from.fire_ticks;
     to.persistent = from.persistent;
     to.custom_name = from.custom_name.clone();
@@ -467,6 +469,7 @@ mod tests {
                 pose: [0.0; 9],
                 polygons: Vec::new(),
                 children: Vec::new(),
+                layer: None,
             }),
             layers: Default::default(),
             texture: String::new(),

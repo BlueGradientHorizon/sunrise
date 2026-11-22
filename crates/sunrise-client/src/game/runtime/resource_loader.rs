@@ -64,6 +64,7 @@ impl GameCpuResources {
     pub(super) fn load(
         resources: &sunrise_assets::resource_source::ResourceRoot,
         document: Option<&sunrise_client::mobs::EntityModelDocument>,
+        model_library: Option<&sunrise_assets::resolve::ModelLibrary>,
     ) -> Result<Self> {
         let root = resources.prepared();
         let owned_document;
@@ -91,7 +92,7 @@ impl GameCpuResources {
                 paintings::PaintingVariants::load(root)
             });
             let frames = named_scope(scope, "game_cpu.frames", move || {
-                frames::bake_frames(resources.source())
+                frames::bake_frames(model_library)
             });
             let armor_stand_assets = named_scope(scope, "game_cpu.armor_stands", move || {
                 armor_stands::ArmorStandAssets::load(resources.source(), document)
@@ -189,7 +190,38 @@ pub(super) struct Loaded {
 /// ready, then the core bundle with a handle to the rest worker.
 pub(super) enum LoaderMsg {
     Ui(UiResources, PathBuf),
-    Done(std::result::Result<Loaded, String>),
+    /// Clear the failed revision on the thread that owns settings, then acknowledge.
+    ClearPackSelection {
+        revision: u64,
+        ack: std::sync::mpsc::Sender<()>,
+    },
+    Done(std::result::Result<Loaded, LoaderFailure>),
+}
+
+impl LoaderMsg {
+    pub(super) fn done(result: Result<Loaded>) -> Self {
+        Self::Done(result.map_err(
+            |error| match error.downcast::<mods::DeclarationFailures>() {
+                Ok(refusals) => LoaderFailure::Declarations(*refusals),
+                Err(error) => LoaderFailure::Other(error.to_string()),
+            },
+        ))
+    }
+}
+
+/// Only the startup report needs its error type preserved across threads.
+pub(super) enum LoaderFailure {
+    Declarations(mods::DeclarationFailures),
+    Other(String),
+}
+
+impl From<LoaderFailure> for Box<dyn std::error::Error> {
+    fn from(error: LoaderFailure) -> Self {
+        match error {
+            LoaderFailure::Declarations(refusals) => refusals.into(),
+            LoaderFailure::Other(message) => message.into(),
+        }
+    }
 }
 
 pub(super) enum PendingWorldEntry {
@@ -258,15 +290,16 @@ pub(super) fn run_loading(
     started: Instant,
 ) -> Result<()> {
     let progress = Progress::new();
+    let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
     let (receiver, loader) = startup_menu::spawn_loader(
         &options,
         &settings,
+        menu.pack_selection_revision,
         mods::LoadRole::startup(options.execution_role),
         &vanilla_root,
         started,
         &progress,
     )?;
-    let menu = startup_menu::StartupMenu::new(&options, pack_error.as_deref())?;
     let loading = Loading {
         window: None,
         renderer: None,
@@ -281,6 +314,7 @@ pub(super) fn run_loading(
         started,
         panorama_rotation: Default::default(),
         progress,
+        bar: 0.0,
         receiver,
         loaded: None,
         delivered: false,

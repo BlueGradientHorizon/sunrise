@@ -38,13 +38,18 @@ indexings (`a + b + c + ...`), is refused by name: split a long sum over several
 
 ## 2. Register the pipeline
 
+Call `event.register(pipeline)` in `register_render_pipelines` at client startup.
+The event adds declarations in order and does not expose earlier registrations.
+Resource reloads rebuild the registered pipelines from the current shader files;
+they do not call the registration hook again.
+
 ```rust,ignore
 fn register_render_pipelines(
     &self,
     _context: &RegistrationContext,
     event: &mut RegisterRenderPipelinesEvent<'_>,
 ) {
-    event.pipelines.push(RenderPipeline::new(
+    event.register(RenderPipeline::new(
         Identifier::parse("example:glow").unwrap(), // the pipeline's id
         Identifier::parse("example:glow").unwrap(), // assets/example/shaders/pipeline/glow.wgsl
         PipelineBlend::Additive,
@@ -57,7 +62,7 @@ fn register_render_pipelines(
 scaled by its alpha. `WorldDepth::Tested` hides the quads behind nearer world surfaces, and
 `ThroughWalls` draws them over everything. No pipeline writes depth.
 
-The id must be in a namespace your mod owns. There is no per-mod pipeline count cap. A registration
+The id must be in a namespace your mod owns (or in a content package it serves via `served_by`). There is no per-mod pipeline count cap. A registration
 with an unowned namespace or a duplicate id is logged with the mod's id and dropped.
 
 ### Required or optional
@@ -66,15 +71,21 @@ A pipeline is required unless you register it with `.optional()`, as NeoForge's 
 and `registerOptionalPipeline` are:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id, fragment, PipelineBlend::Translucent, WorldDepth::Tested).optional(),
 );
 ```
 
 | Policy | When a resource load cannot build it |
 | --- | --- |
-| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. At startup the game does not start. A resource reload fails and keeps the previous resources, so handles from before it still draw; then, as vanilla does with any failed reload, the selected resource packs are dropped and the reload runs again. |
+| Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. Startup cannot finish with a broken required pipeline. A failed resource reload keeps the previous resources, so handles from before it still draw. |
 | Optional (`.optional()`) | The log has one line naming the pipeline and why. It resolves to `RenderPipelineError::Invalid`, and every other pipeline builds and draws. |
+
+Client resource pack recovery only runs if an optional pack was selected. It clears and saves the
+failing selection before reloading the required packs and mod content. If recovery fails, the
+error is reported and that selection stays cleared. If the player has already committed a newer
+selection during startup, the queued load uses it instead. Create World's data-pack editor is
+unaffected.
 
 A load cannot build a pipeline when its shader file is missing, the file is refused, or the GPU
 rejects the shader. The game never panics over a pipeline's shader.
@@ -111,9 +122,9 @@ not translate:
 ## 3. Resolve and draw
 
 ```rust,ignore
-fn client_setup(&self, host: &dyn ClientHost, _event: &mut ClientSetupEvent<'_>) {
+fn client_setup(&self, context: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent<'_>) {
     let id = Identifier::parse("example:glow").unwrap();
-    *self.glow.lock().unwrap() = host.render_assets().render_pipeline(&id).ok();
+    *self.glow.lock().unwrap() = context.render_assets().render_pipeline(&id).ok();
 }
 
 fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCustomGeometryEvent<'_>) {
@@ -152,7 +163,7 @@ draws itself is drawn with the next stage the game reaches.
 A pipeline can sample one texture (vanilla's `Sampler0`). Name it when you register the pipeline:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id.clone(), id, PipelineBlend::Additive, WorldDepth::Tested)
         .textured(PipelineTexture::Sprite(Identifier::parse("example:block/charge").unwrap())),
 );

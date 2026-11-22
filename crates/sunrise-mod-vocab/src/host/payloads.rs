@@ -10,7 +10,6 @@ pub trait PayloadsBackendMut {
     /// must be declared locally and negotiated for the current phase and direction.
     /// Publication waits for root commit; abort publishes nothing. Queued is not a
     /// delivery acknowledgement. No generic registered-body or per-tick count cap applies.
-    #[access(WorldOnly)]
     fn player_send_payload(
         &mut self,
         player: PlayerRef,
@@ -29,7 +28,6 @@ pub trait PayloadsServerHost {
     /// stale, no channel, wrong phase, backpressure, framing) is skipped and not counted. Returns
     /// how many sends were accepted, which is 0 for an empty list; a player listed twice is sent
     /// to twice. Publication waits for root commit; abort publishes nothing.
-    #[access(WorldOnly)]
     fn players_send_payload(
         &mut self,
         players: &[PlayerRef],
@@ -45,8 +43,7 @@ pub trait PayloadsClientHost {
     /// Queue exact application bytes to the connected server, using the frozen
     /// declaration for its current protocol. Optional absent channels return
     /// UnsupportedPeer. Frame refusal and Backpressure write no application bytes.
-    /// The root transaction owns publication and cancellation on both native and wasm.
-    #[access(ClientSetup)]
+    /// The root transaction owns publication and cancellation.
     fn send_payload_to_server(
         &mut self,
         id: &PayloadId,

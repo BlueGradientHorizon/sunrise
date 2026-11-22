@@ -50,11 +50,14 @@ fn falling_impacts_wear_the_helmet_before_normal_armor_and_reduction() {
             .registry
             .default_state("minecraft:anvil")
             .unwrap(),
+        blocks_building: true,
         start_pos: BlockPos::new(4, 100, 4),
         position,
         previous: position,
         velocity: Vec3::ZERO,
-        on_ground: false,
+        ground: Default::default(),
+        fire_ticks: 0,
+        sync_velocity: false,
         attachment_lifetime: Default::default(),
         rotation: [0.0; 2],
         join: Default::default(),

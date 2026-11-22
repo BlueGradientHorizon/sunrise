@@ -24,7 +24,6 @@ fn start_velocity(velocity: [f64; 3]) -> Option<Vec3> {
     })
 }
 
-#[allow(dead_code)]
 impl Game<'_> {
     /// Throws a falling block of `state` from `pos` (its bottom centre) at
     /// `velocity` (blocks a tick) in the level in place, `dimension`: it
@@ -81,13 +80,16 @@ impl Game<'_> {
             join: Default::default(),
             id: self.next_entity,
             state,
+            blocks_building: true,
             start_pos: cell,
             position: at,
             previous: at,
             velocity,
             age: 0,
             no_gravity: false,
-            on_ground: false,
+            ground: Default::default(),
+            fire_ticks: 0,
+            sync_velocity: false,
             drop_item: falling.drop_item,
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
@@ -289,12 +291,15 @@ mod tests {
                 .unwrap();
             let at = Vec3::new(0.5, 70.0, 0.5);
             game.falling.push(FallingBlock {
-                on_ground: false,
+                ground: Default::default(),
+                fire_ticks: 0,
+                sync_velocity: false,
                 attachment_lifetime: Default::default(),
                 rotation: [0.0; 2],
                 join: Default::default(),
                 id: 71,
                 state,
+                blocks_building: true,
                 start_pos: BlockPos::new(0, 70, 0),
                 position: at,
                 previous: at,

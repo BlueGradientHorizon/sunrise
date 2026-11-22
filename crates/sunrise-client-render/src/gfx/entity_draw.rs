@@ -1,8 +1,9 @@
 use super::*;
 
-/// entity.wgsl after the OverlayTexture constants it reads.
+/// entity.wgsl after the OverlayTexture constants and the particle overlay marker it reads.
 pub(super) fn entity_shader() -> String {
     crate::overlay::wgsl_constants()
+        + &format!("const EXPLICIT_PARTICLE_OVERLAY: u32 = {EXPLICIT_PARTICLE_OVERLAY}u;\n")
         + include_str!("../hdr_light.wgsl")
         + include_str!("../entity.wgsl")
 }
@@ -81,7 +82,8 @@ pub(super) fn entity_binding_entries() -> [wgpu::BindGroupLayoutEntry; 8] {
 
 pub(super) const ENTITY_ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Uint32,3=>Unorm8x4,4=>Uint8x4,5=>Snorm8x4,6=>Float32x2];
 
-pub(super) struct EntityPipelineOptions<'a> {
+#[derive(Clone, Copy)]
+pub(crate) struct EntityPipelineOptions<'a> {
     pub(super) label: &'a str,
     pub(super) cull_mode: Option<wgpu::Face>,
     pub(super) depth_write: bool,
@@ -188,6 +190,16 @@ impl Renderer {
         )?;
         self.prepared_models = Some(next);
         Ok(())
+    }
+
+    /// Move a validated upload out of a candidate renderer until model apply.
+    pub fn take_prepared_models(&mut self) -> Option<PreparedModels> {
+        self.prepared_models.take()
+    }
+
+    /// Publish the already validated model buffer after the atlas is visible.
+    pub fn publish_prepared_models(&mut self, models: Option<PreparedModels>) {
+        self.prepared_models = models;
     }
 
     /// The uploaded generation, when a prepared buffer is resident.

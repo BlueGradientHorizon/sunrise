@@ -68,8 +68,11 @@ impl Hooks for StateMod {
             mod_api::GeneralEntityCategory::Misc,
             0.8,
             1.9,
+            None,
             mod_api::GeneralSavePolicy::Save,
             true,
+            false,
+            None,
             8,
             3,
             1,
@@ -97,7 +100,6 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
     }
     with_mod(StateMod { refused: None }, |game| {
         // Registration is over once the game is built: the test runs in the world's phase.
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(Dim::Overworld);
         game.world
@@ -113,7 +115,7 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 /// is only declared while that phase is current.
 fn with_mod(state_mod: StateMod, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods =
         vec![mod_api::ModEntry::new("part_state", Box::new(state_mod))].into();
     mod_platform::testing::with_mods(mods, || {
@@ -149,6 +151,7 @@ fn robot_tag(uuid: i32) -> Tag {
         position: [0.5, 64.0, 0.5],
         velocity: [0.0; 3],
         rotation: [0.0, 90.0],
+        owner: None,
         uuid: [uuid, 0, 0, 2],
         envelope: super::general::GeneralTypeEnvelope {
             type_key: "part_state:robot".to_owned(),

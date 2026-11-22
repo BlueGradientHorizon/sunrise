@@ -29,7 +29,7 @@ pub enum ModelError {
 }
 
 /// An item requested at registration; its load-owned slot identifies the canonical name.
-// no wire: decoding validates the u32 slot with ItemKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u32 slot with ItemKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only registration creates a key
 pub struct ItemKey(pub(crate) u32);
@@ -46,8 +46,9 @@ impl ItemKey {
 }
 
 /// A menu type (`minecraft:generic_9x3`) in the built-in menu registry, in
-/// registration order. A key stays valid until the game exits.
-// no wire: decoding validates the u32 slot with MenuKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+/// registration order. A key stays valid until the game exits; `key.id(host)`
+/// pins its namespaced name, if available.
+// no wire: decoding validates the u32 slot with MenuKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the load-owned table creates keys
 pub struct MenuKey(pub(crate) u32);
@@ -55,7 +56,8 @@ pub struct MenuKey(pub(crate) u32);
 /// An enchantment (`minecraft:sharpness`) in the data-loaded enchantment
 /// registry, in registry order. Keys keep their identity across reloads; a
 /// reload changes which entries the table lists, not what an existing slot names.
-// no wire: decoding validates the u32 slot with EnchantmentKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+/// `key.id(host)` pins the name, if available, independently of a later reload.
+// no wire: decoding validates the u32 slot with EnchantmentKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the load-owned table creates keys
 pub struct EnchantmentKey(pub(crate) u32);
@@ -122,7 +124,8 @@ pub struct ContainerLootFilled<'a> {
     pub block: Option<[i32; 3]>,
     /// The container entity id, for a vehicle target.
     pub entity: Option<u32>,
-    /// The UUID of the player whose open starts the fill; None otherwise.
+    /// The UUID of the player whose open starts the fill. None for other accesses,
+    /// including vehicle slot reads during a player action.
     pub opener: Option<u128>,
 }
 
@@ -160,8 +163,11 @@ pub struct LootDrops<'a> {
     pub weapon: Option<&'a ItemStack>,
     /// The breaking or using tool (`LootContextParams.TOOL`). Always None for
     /// entity deaths. For the attacker's live hand, resolve `damage_source.causing`
-    /// through `host.entity`, then `host.living`, and read `living.hand_item(host, Hand::Main)`.
-    /// This reads when called, including changes made by earlier loot listeners.
+    /// through `host.entity`, then `host.living`, and read
+    /// `living.with_hand_item(host, Hand::Main, |stack| stack.item())`. To retain the
+    /// hand stack or inspect its components, call [`crate::ItemStackView::project`] in
+    /// the callback and handle a refused projection. This reads when called, including
+    /// changes made by earlier loot listeners.
     pub tool: Option<&'a ItemStack>,
     /// The radius of the explosion that broke the block.
     pub explosion: Option<f32>,
@@ -183,7 +189,8 @@ impl LootDrops<'_> {
     /// stack, preserving components even after the shooter changes hands.
     /// Otherwise reads the direct entity's weapon when called: a player's recorded
     /// auto-spin stack during Riptide, otherwise the live main hand.
-    /// Returns None for non-death drops or an absent or unavailable weapon.
+    /// Returns an owned snapshot, or `None` for non-death drops or a weapon that is absent,
+    /// unavailable or cannot be projected into an owned stack.
     pub fn weapon_item(&self, host: &dyn Host) -> Option<ItemStack> {
         let source = self.damage_source?;
         if let Some(weapon) = self.weapon {
@@ -191,7 +198,9 @@ impl LootDrops<'_> {
         }
         let entity = host.entity(u32::try_from(source.direct).ok().filter(|id| *id != 0)?)?;
         let living = host.living(entity)?;
-        backend_of(host)?.living_weapon_item(living)
+        living
+            .with_weapon_item(host, |stack| stack.project())
+            .flatten()
     }
 }
 
@@ -746,7 +755,7 @@ pub enum UsePhase {
     ItemBeforeBlock,
     /// `BlockBehaviour.useItemOn`, before the block's Part and template.
     Block,
-    /// `Item.useOn`, after the block passed and before the item's Part.
+    /// `Item.useOn`, after the block passes or is skipped and before the item's Part.
     ItemAfterBlock,
 }
 

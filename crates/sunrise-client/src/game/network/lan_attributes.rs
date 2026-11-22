@@ -6,7 +6,6 @@ use super::Game;
 use std::sync::Arc;
 use sunrise_client::items::ItemStack;
 use sunrise_client::{
-    effects,
     items::Items,
     lan::attributes::{add_modifier, instance, operation_named, syncable},
     mobs::{
@@ -134,11 +133,11 @@ impl Game<'_> {
     /// A mob's synced instances: the live attribute map's (#941) — what
     /// finalizeSpawn set, `/attribute` changed, the save loaded and every
     /// worn or held stack granted, its base and each modifier exactly once,
-    /// as the map holds them, a stored effect modifier among them — plus
-    /// movement speed (its first `aiStep` reads it, `LivingEntity.removeFrost`,
-    /// and no stack granted one), the baby speed modifier and the modifiers of
-    /// the effects on attributes the mob's store does not hold, which no map
-    /// holds.
+    /// as the map holds them, the stored effect modifiers among them
+    /// (`Mob::set_effect_modifiers`: a mob has no instance of the attributes
+    /// of the other effects, Haste's and Luck's) — plus movement speed (its
+    /// first `aiStep` reads it, `LivingEntity.removeFrost`, and no stack
+    /// granted one) and the baby speed modifier, which no map holds.
     pub(super) fn mob_attributes(
         &self,
         m: &Mob,
@@ -242,42 +241,6 @@ impl Game<'_> {
                 },
             );
         }
-        let base = |name: &str| {
-            Attr::ALL
-                .into_iter()
-                .find(|a| name.strip_prefix("minecraft:") == Some(a.name()))
-                .map(|a| finalize::base_value(m, a))
-        };
-        // LivingEntity.onEffectAdded: MobEffect.addAttributeModifiers. An
-        // effect on an attribute the mob's store holds (speed, slowness,
-        // strength, weakness, health boost) stored its modifier there when it
-        // was added (`Mob::set_effect_modifiers`), and the live map above sent
-        // it: only the effects on the other attributes are added here.
-        for effect in &m.extra.effects {
-            let (effect, amplifier) = (effect.id, effect.amplifier);
-            let Some((attribute, id, amount, op)) =
-                effects::effect_modifier(effect.trim_start_matches("minecraft:"))
-            else {
-                continue;
-            };
-            if base(attribute).is_some() {
-                continue;
-            }
-            let Some(a) = self.synced_attribute(kind, attribute) else {
-                continue;
-            };
-            let start = self.attribute_default(kind, attribute);
-            add_modifier(
-                out,
-                a,
-                start,
-                AttributeModifier {
-                    id: id.to_owned(),
-                    amount: amount * f64::from(amplifier + 1),
-                    operation: operation_named(op),
-                },
-            );
-        }
     }
 
     /// An armor stand's synced instances: movement speed (its first
@@ -317,8 +280,8 @@ impl Game<'_> {
     /// The instances a server player's tick creates, and
     /// `ServerPlayer.updatePlayerAttributes`: a creative player reaches 0.5
     /// further to blocks and 2 to entities. Its client reads the reach from
-    /// these synced modifiers. (The crouching player's waypoint range is
-    /// server-side only: lan_waypoints.rs hides it.)
+    /// these synced modifiers. The crouch modifier belongs to the server's
+    /// effective transmit range, like the item's equipment modifier.
     pub(in crate::game) fn update_player_attributes(&mut self) {
         let creative = self.mode_id() == 1;
         let Some(p) = self.player.as_mut() else {
@@ -354,6 +317,24 @@ impl Game<'_> {
             if has != creative {
                 let _ = p.set_modifier(attribute, id, amount, "add_value", creative);
             }
+        }
+        use sunrise_world::attributes::{Modifier, Operation};
+        const CROUCH_ID: &str = "minecraft:waypoint_transmit_range_crouch";
+        static CROUCH: std::sync::LazyLock<Modifier> = std::sync::LazyLock::new(|| {
+            Modifier::new(CROUCH_ID, -1.0, Operation::AddMultipliedTotal)
+                .expect("vanilla crouch modifier id")
+        });
+        if let Some(key) = p.attributes.key("minecraft:waypoint_transmit_range")
+            && let Ok(Some(handle)) = p.attributes.get_instance(Some(key))
+        {
+            let crouching = p.pose == sunrise_client::pose::Pose::Crouching;
+            let _ = p.attributes.edit(&handle, |value, observer| {
+                if crouching {
+                    value.add_or_update_transient(CROUCH.clone(), observer)
+                } else {
+                    value.remove(CROUCH_ID, observer).map(|_| ())
+                }
+            });
         }
     }
 }

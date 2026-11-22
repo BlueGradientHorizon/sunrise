@@ -9,37 +9,31 @@ pub trait EntityStanceBackend {
     /// Side: server.
     /// `Entity.isSpectator`: true for a player in spectator mode, false for
     /// every other entity.
-    #[access(WorldOnly)]
     fn entity_spectator(&self, entity: EntityRef) -> Option<bool>;
     /// Side: both.
     /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
     /// physical key binding or last tick's crouching pose); the server's shift-key flag.
     /// False for non-player entities, None for a stale or unreachable handle.
-    #[access(WorldOnly)]
     fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
-    #[access(WorldOnly)]
     fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// Whether the entity sprints (`Entity.isSprinting`): a player, or a
     /// cat or ocelot dashing after its target (their shared sprinting flag);
     /// false for the other kinds.
-    #[access(WorldOnly)]
     fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool>;
     /// Side: both.
     /// The player's swimming flag (`Entity.isSwimming`), not the swimming pose
     /// (which also covers crawling). On a client, the local player's own state,
     /// not an authoritative server answer. None for other players (a client keeps them as
     /// tracked bodies without the flag), other kinds and stale handles.
-    #[access(WorldOnly)]
     fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// The entity's pose (`Entity.getPose`) as `Pose` names it: `standing`,
     /// `crouching`, `swimming`, `sleeping`, a warden's `roaring`... Kinds
     /// with no pose stand.
-    #[access(WorldOnly)]
     fn entity_pose(&self, entity: EntityRef) -> Option<&'static str>;
 }
 /// The handles' writes of the `entity_stance` area, implemented by the game and reached through [`BackendMut`].
@@ -54,6 +48,5 @@ pub trait EntityStanceBackendMut {
     /// cat's, may set it again on its next step). It is not the player's sprint key: the
     /// player's client sets its own flag again from its input. False for a stale handle, on a
     /// client, and for kinds with no sprinting flag.
-    #[access(WorldOnly)]
     fn entity_set_sprinting(&mut self, entity: EntityRef, sprinting: bool) -> bool;
 }

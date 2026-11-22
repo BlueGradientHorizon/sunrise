@@ -200,50 +200,8 @@ impl Game<'_> {
 /// The local player's name (offline single player).
 pub const PLAYER_NAME: &str = "Player";
 
-/// The Overworld's world clock.
-pub(in crate::game) const OVERWORLD_CLOCK: &str = "minecraft:overworld";
-
-/// ServerClockManager.ServerClockInstance (the total ticks of the one the level in place follows
-/// are the world's day time).
-#[derive(Clone, Copy, Debug)]
-pub struct WorldClock {
-    pub partial: f32,
-    pub rate: f32,
-    pub paused: bool,
-}
-impl Default for WorldClock {
-    fn default() -> Self {
-        Self {
-            partial: 0.0,
-            rate: 1.0,
-            paused: false,
-        }
-    }
-}
-/// A clock time marker from the timelines (ClockTimeMarker); `resolve` is None past `i64::MAX`.
-#[derive(Clone, Copy, Debug)]
-pub struct TimeMarker {
-    pub ticks: i64,
-    pub period: Option<i64>,
-    pub show: bool,
-}
-impl TimeMarker {
-    pub fn occurs_at(&self, total: i64) -> bool {
-        match self.period {
-            Some(p) => self.ticks == total.rem_euclid(p),
-            None => self.ticks == total,
-        }
-    }
-    pub fn resolve(&self, total: i64) -> Option<i64> {
-        match self.period {
-            Some(p) => {
-                let d = self.ticks - total.rem_euclid(p);
-                total.checked_add(if d > 0 { d } else { p + d })
-            }
-            None => Some(self.ticks),
-        }
-    }
-}
+pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+pub use sunrise_gameplay::world_clock::{TimeMarker, WorldClock};
 /// `ChatComponent.Draft`: the text the chat box kept, and whether it was a command.
 pub struct ChatDraft {
     pub text: String,
@@ -304,8 +262,10 @@ pub struct UiState {
     pub timelines: BTreeMap<String, Option<i64>>,
     /// 0 peaceful .. 3 hard.
     pub difficulty: u8,
-    /// F1: hide the HUD.
+    /// Effective HUD visibility, which native mods can change.
     pub hide_gui: bool,
+    /// The player's F1 preference, independent of native HUD mode changes.
+    pub(super) player_hides_gui: bool,
     /// Native HUD mode: keep hands visible while the HUD is hidden.
     pub show_hand_when_hidden: bool,
     /// Death message key set by the cause of death (e.g. /kill).
@@ -364,10 +324,11 @@ impl UiState {
 
     fn toggle_hide_gui(&mut self) {
         use mod_api::HudMode;
-        self.set_hud_mode(if self.hide_gui {
-            HudMode::AllVisible
-        } else {
+        self.player_hides_gui = !self.player_hides_gui;
+        self.set_hud_mode(if self.player_hides_gui {
             HudMode::AllHidden
+        } else {
+            HudMode::AllVisible
         });
     }
 
@@ -420,9 +381,9 @@ mod hud_mode_tests {
         assert_eq!(ui.hud_mode(), HudMode::AllVisible);
         ui.set_hud_mode(HudMode::NoHud);
         ui.toggle_hide_gui();
-        assert_eq!(ui.hud_mode(), HudMode::AllVisible);
-        ui.toggle_hide_gui();
         assert_eq!(ui.hud_mode(), HudMode::AllHidden);
+        ui.toggle_hide_gui();
+        assert_eq!(ui.hud_mode(), HudMode::AllVisible);
         // Existing hidden state also hides hands without a separate setting.
         let ui = UiState {
             hide_gui: true,
@@ -538,8 +499,9 @@ static BLOCK_PROPERTIES: Mutex<Vec<(usize, Arc<BlockProperties>)>> = Mutex::new(
 /// `BlockProperties` of a block registry, listed once: a registry never
 /// changes once built, and walking its tens of thousands of states took
 /// about 30 ms of every world opening.
-pub(super) fn block_properties(registry: &'static BlockRegistry) -> Arc<BlockProperties> {
-    let key = std::ptr::from_ref(registry) as usize;
+pub(super) fn block_properties(registry: &BlockRegistry) -> Arc<BlockProperties> {
+    // The payload is retained for the process, so equal data shares one table whatever borrows it.
+    let key = registry.payload_identity();
     let mut cache = BLOCK_PROPERTIES.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, properties)) = cache.iter().find(|(cached, _)| *cached == key) {
         return properties.clone();
@@ -874,13 +836,7 @@ impl Game<'_> {
         reg.block_tags.sort();
         reg.blocks = BlockProperties::clone(&block_properties(self.pack.assets.registry));
         reg.summonable = summonable_entities(&ids.entity_types, self.res.mob_types().keys());
-        let mut types = ids.entity_types.clone();
-        if types.is_empty() {
-            types = reg.summonable.clone();
-            types.push("minecraft:player".into());
-            types.sort();
-        }
-        reg.entity_types = types;
+        reg.entity_types.clone_from(&ids.entity_types);
         // The mob effect registry: every effect `/effect` and the
         // `mob_effect` resource arguments accept.
         reg.effects = sunrise_client::brewing::all_effects()
@@ -908,6 +864,40 @@ impl Game<'_> {
             }
         }
         let reg = &mut self.ui.registries;
+        let particles: Vec<_> = mod_api::__private::particle_ids()
+            .map(str::to_owned)
+            .collect();
+        if !particles.is_empty() {
+            reg.by_registry
+                .entry("minecraft:particle_type".into())
+                .or_default()
+                .ids = particles;
+            reg.particle_options = Some(|name, fields| {
+                if let Some(result) = mod_api::__private::decode_particle_map(name, fields) {
+                    return Some(result.map(mod_api::ParticleOptions::from_typed));
+                }
+                let key = mod_api::__private::particle_named_key(name)?;
+                (mod_api::__private::particle_kind(key)
+                    == Some(mod_api::__private::ParticleKind::Custom))
+                .then(|| Ok(mod_api::ParticleOptions::simple(key)))
+            });
+        }
+        if reg.entity_types.is_empty() {
+            reg.entity_types.clone_from(&reg.summonable);
+            reg.entity_types.push("minecraft:player".into());
+        }
+        reg.entity_types.extend(
+            super::general::general_type_catalog()
+                .keys()
+                .map(str::to_owned),
+        );
+        reg.entity_types.sort();
+        reg.entity_types.dedup();
+        // Selector validation prefers the exported registry entry. Replace its
+        // vanilla IDs with the live list, keeping its tags.
+        if let Some(entry) = reg.by_registry.get_mut("minecraft:entity_type") {
+            entry.ids.clone_from(&reg.entity_types);
+        }
         // Native component names were validated and frozen before resources loaded.
         // The same inventory supplies both wire IDs and command components.
         for (_, name) in sunrise_protocol::item::custom::entries() {
@@ -977,8 +967,6 @@ impl Game<'_> {
     /// last time, when this method can restore it (a command draft only for
     /// /), else with its prefix.
     pub(super) fn open_chat_method(&mut self, prefix: &str) {
-        // handleKeybinds: the number keys select before key.chat and key.command.
-        self.select_queued_hotbar();
         let command = prefix == "/";
         let draft = self
             .ui
@@ -1022,9 +1010,6 @@ impl Game<'_> {
         self.ui.chat_screen = Some(screen);
         self.ui.chat_opened = Some(std::time::Instant::now());
         self.set_screen(Screen::Chat);
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
         self.capture(false);
     }
     pub(super) fn close_chat(&mut self, reason: ChatExit) {
@@ -1422,7 +1407,7 @@ impl Game<'_> {
         let amount = amount.clamp(-1.0, 1.0) * if shift { 1.0 } else { 7.0 };
         self.ui.chat.scroll_by(amount as i32, true);
     }
-    pub(super) fn chat_click(&mut self) {
+    pub(super) fn chat_click(&mut self) -> bool {
         let cursor = self.cursor;
         let height = self.renderer.as_ref().map_or(720.0, |r| {
             HudBatch::new(
@@ -1449,16 +1434,18 @@ impl Game<'_> {
                 .map_or_else(|| Self::leave_bed_button(width, height), |l| l.leave_bed);
             if sunrise_client::screen_draw::inside((cursor.0 as i32, cursor.1 as i32), x, y, w, h) {
                 self.wake_up(false, true);
-                return;
+                return true;
             }
         }
         if let Some(screen) = self.ui.chat_screen.as_mut() {
-            if screen.click(&m, &c, cursor.0 as f64, cursor.1 as f64) {
+            let (x, y) = (f64::from(cursor.0), f64::from(cursor.1));
+            let double_click = screen.live_double_click(x, y);
+            if screen.click(&m, &c, x, y, double_click) {
                 self.notify_chat_suggestion_completion();
-                return;
+                return true;
             }
         } else {
-            return;
+            return false;
         }
         let style = self
             .ui
@@ -1491,10 +1478,10 @@ impl Game<'_> {
             let copied =
                 Text::translate_with_fallback("sunrise.chat.copied", "Message copied", &[]);
             self.titles.set_overlay(copied, false);
-            return;
+            return true;
         }
         let Some(style) = style else {
-            return;
+            return false;
         };
         // ChatScreen.handleComponentClicked: with Shift held only an
         // insertion acts, else only the click event.
@@ -1503,8 +1490,9 @@ impl Game<'_> {
                 && let Some(screen) = self.ui.chat_screen.as_mut()
             {
                 screen.type_text(&m, &c, &insertion);
+                return true;
             }
-            return;
+            return false;
         }
         match style.click {
             Some(ClickEvent::CopyToClipboard(value)) => {
@@ -1527,6 +1515,8 @@ impl Game<'_> {
                     .and_then(super::profile_capture::profiler_args)
                 {
                     self.profiler_chat(args);
+                } else {
+                    return false;
                 }
             }
             // Screen.defaultHandleGameClickEvent: the dialog opens over the
@@ -1543,11 +1533,14 @@ impl Game<'_> {
                     remote
                         .session
                         .send_custom_click(&id, payload.map(std::sync::Arc::unwrap_or_clone));
+                } else {
+                    return false;
                 }
             }
             // Screen.defaultHandleClickEvent: a page link means nothing in chat.
-            Some(ClickEvent::ChangePage(_)) | None => {}
+            Some(ClickEvent::ChangePage(_)) | None => return false,
         }
+        true
     }
     /// `Screen.clickUrlAction`: nothing with Web Links off, else the link
     /// opens, after the confirmation unless Prompt on Links is off.
@@ -1616,9 +1609,9 @@ impl Game<'_> {
             super::packs::open_uri(&url);
         }
     }
-    pub(super) fn link_prompt_click(&mut self) {
+    pub(super) fn link_prompt_click(&mut self) -> bool {
         let Some(url) = self.link_prompt.clone() else {
-            return;
+            return false;
         };
         let pressed = self
             .link_prompt_layout(&url, self.gui_size())
@@ -1632,6 +1625,7 @@ impl Game<'_> {
             }
             self.answer_link_prompt(button == LINK_YES);
         }
+        pressed.is_some()
     }
     /// `Screen.clickCommandAction`: run a clicked command as the player
     /// without adding it to the chat history. A client mod's command goes
@@ -1694,6 +1688,15 @@ impl Game<'_> {
         if self.ui.hide_gui && !focused {
             return;
         }
+        let revision = self.inline_images_revision();
+        if self.ui.chat.inline_images_stale(revision) {
+            // Layout borrows a read-only Host while asking listeners.
+            let mut chat = std::mem::take(&mut self.ui.chat);
+            chat.refresh_inline_images(&self.gui.atlas, revision, |text| {
+                self.substitute_inline_images(text)
+            });
+            self.ui.chat = chat;
+        }
         self.ui.chat.smooth = self.settings.extras.chat_animation;
         self.ui.chat.hide_indicator = !self.settings.extras.chat_indicator;
         // The fractional tick makes the smooth chat extra's slide move every
@@ -1747,7 +1750,8 @@ impl Game<'_> {
     }
     pub(super) fn draw_chat_screen(&mut self, batch: &mut HudBatch) {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
-        self.gui_layer("minecraft:chat", batch, |g, batch| g.draw_chat(batch));
+        // ChatScreen extracts focused chat separately, outside the HUD chat slot.
+        self.draw_chat(batch);
         let Some(mut screen) = self.ui.chat_screen.take() else {
             self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
             return;
@@ -1997,21 +2001,37 @@ impl Game<'_> {
             .ui
             .rules
             .bool_at(sunrise_client::gamerules::vanilla::ADVANCE_TIME);
-        let state = *self.command_clock_state(&active);
         // A paused clock, or `advance_time` off, is a rate of 0 to the guests, as for the Overworld's.
-        let rate = if advancing && !state.paused {
-            state.rate
-        } else {
-            0.0
-        };
-        if let Some(host) = self.lan.as_mut() {
-            if active == OVERWORLD_CLOCK {
-                host.hub.overworld_day = None;
-                host.hub.level_clock = None;
+        let guest_rate = |state: &WorldClock| {
+            if advancing && !state.paused {
+                state.rate
             } else {
-                host.hub.overworld_day = Some(overworld);
-                host.hub.level_clock = Some((active, rate));
+                0.0
             }
+        };
+        let rate = guest_rate(self.command_clock_state(&active));
+        let end_total = self.command_clock_time("minecraft:the_end");
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        // The clocks neither field below covers: the End's and every other the world has met.
+        let others = std::iter::once(("minecraft:the_end", end_total, &self.ui.end_clock)).chain(
+            self.ui
+                .command_clocks
+                .iter()
+                .map(|(name, (total, state))| (name.as_str(), *total, state)),
+        );
+        for (name, total, state) in others {
+            if name != active && name != OVERWORLD_CLOCK {
+                host.hub.set_clock_state(name, total, guest_rate(state));
+            }
+        }
+        if active == OVERWORLD_CLOCK {
+            host.hub.overworld_day = None;
+            host.hub.level_clock = None;
+        } else {
+            host.hub.overworld_day = Some(overworld);
+            host.hub.level_clock = Some((active, rate));
         }
     }
     /// Makes `to` the clock `World.day_time` follows, as the level entered has it as its default
@@ -3038,7 +3058,10 @@ mod enchantment_snapshot_tests {
         game.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
         let root = game.options.resources.clone();
-        game.world_tables = game.stage_world_tables(&stack, false, &root).unwrap().0;
+        game.world_tables = game
+            .stage_world_tables(&stack, false, &root)
+            .unwrap()
+            .tables;
         assert!(
             game.world_tables.is_some(),
             "the real active table container must be available"
@@ -3190,8 +3213,9 @@ mod damage_type_registry_tests {
         .unwrap();
         game.world_root = dir;
         let stack = game.reload_datapacks(false, &[]).unwrap();
-        (game.world_tables, game.health_resources, _) =
-            game.stage_world_tables(&stack, false, &root).unwrap();
+        let staged = game.stage_world_tables(&stack, false, &root).unwrap();
+        game.world_tables = staged.tables;
+        game.health_resources = staged.health;
         game.level.allow_commands = Some(true);
         game.build_registries();
 

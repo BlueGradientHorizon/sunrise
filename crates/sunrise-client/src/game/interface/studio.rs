@@ -178,8 +178,9 @@ impl Game<'_> {
             TopBarAction::None => {}
             TopBarAction::OpenPauseMenu => {
                 self.pause_focus = None;
-                self.screen = Screen::Paused;
+                self.activate_screen(Screen::Paused);
                 self.pause_menu = true;
+                self.release_mappings_on_screen_open();
                 self.capture(false);
             }
             TopBarAction::ExitStudio => {
@@ -626,8 +627,9 @@ impl Game<'_> {
             }
             KeyCode::KeyP => {
                 self.pause_focus = None;
-                self.screen = Screen::Paused;
+                self.activate_screen(Screen::Paused);
                 self.pause_menu = true;
+                self.release_mappings_on_screen_open();
                 self.capture(false);
             }
             // The rest are the editor's.

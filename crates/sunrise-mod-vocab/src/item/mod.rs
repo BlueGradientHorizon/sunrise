@@ -14,11 +14,13 @@ pub(crate) mod enchantment_damage;
 #[doc(hidden)]
 pub mod enchantments;
 pub(crate) mod energy_capability;
+pub(crate) mod ingredient_predicate;
 pub(crate) mod item_component_handlers;
 // hidden: a module of game-side types; mods use their re-exports
 #[doc(hidden)]
 pub mod item_attributes;
 pub(crate) mod item_model_context;
+pub(crate) mod item_model_providers;
 /// Owned item values and typed component patches.
 pub mod item_stack;
 // hidden: a module of game-side types; mods use their re-exports

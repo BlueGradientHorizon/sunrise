@@ -50,6 +50,10 @@ impl Game<'_> {
                 self.settings.file.int("maxAnisotropyBit"),
             ),
         )
+        .and_then(|(renderer, clouds)| {
+            clouds?;
+            Ok(renderer)
+        })
     }
     /// Under `SUNRISE_HDR_FRAME=float` the frame follows what draws the picture
     /// (docs/design/hdr-linear-light.md, "When it changes"): when HDR, Smooth Gradients or the
@@ -165,7 +169,7 @@ impl Game<'_> {
         if reload {
             self.all_sections_changed();
         }
-        self.audio.master = self.settings.master_volume;
+        self.audio.master = self.settings.master_volume as f32;
         if self.settings.sound_device != self.audio.device() {
             let _ = self.audio.set_device(&self.settings.sound_device);
         }

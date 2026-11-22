@@ -1,14 +1,68 @@
 //! A key press while a world is open (`KeyboardHandler.keyPress` and the gameplay mappings).
 use super::inventory_input::drop_whole_stack;
 use super::*;
+use sunrise_client::keybinds::VanillaMappingSlot;
+
+const GUI_KEYS: [&str; 5] = [
+    "key.toggleGui",
+    "key.advancements",
+    "key.socialInteractions",
+    "key.chat",
+    "key.command",
+];
 
 impl Game<'_> {
+    /// `new InventoryScreen(player)`: the player's inventory, or in creative
+    /// mode the creative inventory `InventoryScreen.init` swaps in.
+    pub(super) fn open_player_inventory(&mut self) {
+        if self.creative {
+            self.set_screen(Screen::Creative);
+            self.refresh_creative_tabs();
+            self.creative_screen.reopen();
+            self.refresh_saved_hotbars();
+        } else {
+            self.set_screen(Screen::Inventory);
+        }
+        self.capture(false);
+    }
     /// A key press while a world is open (keyboard or control socket). `key`
     /// is the vanilla default the pressed mapping translates to, `raw` the
     /// physical key as pressed (the same where the caller had no window key):
     /// `Screen.keyPressed` hears the raw one, and only a raw key settles what
     /// the container's hotbar keys are now (`checkHotbarKeyPressed`).
     pub(super) fn key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
+        // Scripted presses and controller presses are delivered to the same mappings
+        // as window input; direct screen keys remain immediate.
+        if !self.mod_mappings_screen_open() && !self.replay.playing() {
+            let key = if key == KeyCode::Enter {
+                KeyCode::KeyT
+            } else {
+                key
+            };
+            if let Some(slot) = VanillaMappingSlot::by_default_key(key)
+                && Self::tick_mapping(slot.definition().0)
+            {
+                self.vanilla_mappings.click(slot);
+                return Ok(());
+            }
+        }
+        self.immediate_key_pressed(key, raw)
+    }
+
+    pub(super) fn tick_mapping(name: &str) -> bool {
+        matches!(
+            name,
+            "key.togglePerspective"
+                | "key.smoothCamera"
+                | "key.inventory"
+                | "key.quickActions"
+                | "key.swapOffhand"
+                | "key.drop"
+        ) || GUI_KEYS.contains(&name)
+            || name.starts_with("key.hotbar.")
+    }
+
+    pub(super) fn immediate_key_pressed(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         self.direct_craft_stop();
         if self.screen == Screen::Playing && self.replay.playing() {
             self.studio_key(key);
@@ -30,15 +84,13 @@ impl Game<'_> {
             return Ok(());
         }
         if self.sort_key_press(key)
-            || sunrise_client::keybinds::key_name(key)
-                .is_some_and(|name| self.hud_editor_key_press(name))
+            || sunrise_client::keybinds::key_name(key).is_some_and(|name| {
+                self.hud_editor_key_press(name) || self.shader_pack_key_press(name)
+            })
         {
             return Ok(());
         }
         if key == KeyCode::Escape && self.mod_browser_back() {
-            return Ok(());
-        }
-        if self.remote.is_some() && self.remote_key(key)? {
             return Ok(());
         }
         match key {
@@ -137,7 +189,6 @@ impl Game<'_> {
                 && self.creative_screen.tab().search
                 && self.search_tab_hotbar_key(key) => {}
             KeyCode::KeyT if self.screen == Screen::Inventory => self.recipe_focus_search(),
-            KeyCode::KeyT if self.screen == Screen::Playing => self.open_chat_method(""),
             // CreativeModeInventoryScreen.keyPressed: the chat key opens the
             // search tab from another tab, and `ignoreTextInput` drops the
             // letter it would have typed.
@@ -150,64 +201,11 @@ impl Game<'_> {
                     self.creative_ignore_text = true;
                 }
             }
-            // key.advancements.
-            KeyCode::KeyL if self.screen == Screen::Playing => {
-                self.open_advancements(false);
-                // Opened from the keybinds, like the inventory: vanilla releases
-                // an active use in the same tick.
-                self.release_use_for_keybind_screen();
-            }
-            // key.socialInteractions (Gui.handleKeybinds): only on a server; in single player
-            // the action bar says so, and the narrator.
-            KeyCode::KeyP if self.screen == Screen::Playing && !self.is_multiplayer_server() => {
-                let message = sunrise_client::text::Text::translate(
-                    "multiplayer.socialInteractions.not_available",
-                    &[],
-                );
-                self.titles.set_overlay(message.clone(), false);
-                self.say_system_now(&message);
-            }
-            KeyCode::KeyP if self.screen == Screen::Playing => {
-                self.open_social(false);
-                self.release_use_for_keybind_screen();
-            }
             KeyCode::KeyL if self.screen == Screen::Advancements => self.close_advancements(),
-            // key.quickActions: only open if a datapack provides dialog actions.
-            KeyCode::KeyG if self.screen == Screen::Playing => {
-                if self.has_quick_actions() {
-                    self.open_quick_actions();
-                }
-            }
-            KeyCode::Slash if self.screen == Screen::Playing => self.open_chat_method("/"),
-            // key.toggleGui is a KeyMapping: it clicks only with no screen open.
-            KeyCode::F1 if self.screen == Screen::Playing => self.toggle_hide_gui(),
             KeyCode::F11 => self.toggle_fullscreen(),
-            KeyCode::F5 if self.screen == Screen::Playing && !self.replay.playing() => {
-                self.cycle_camera()
-            }
             KeyCode::KeyE
                 if self.screen == Screen::Creative && self.creative_screen.tab().search => {}
             KeyCode::KeyE => match self.screen {
-                Screen::Playing if self.spectator() || self.in_portal_transition() => {}
-                Screen::Playing => {
-                    // handleKeybinds: the number keys select before key.inventory.
-                    self.select_queued_hotbar();
-                    // key.inventory while riding a tamed mount opens its inventory.
-                    if !self.open_ridden_mount_menu() {
-                        if self.tutorial.open_inventory() {
-                            self.persist_tutorial_step();
-                        }
-                        if self.creative {
-                            self.set_screen(Screen::Creative);
-                            self.refresh_creative_tabs();
-                            self.creative_screen.reopen();
-                            self.refresh_saved_hotbars();
-                        } else {
-                            self.set_screen(Screen::Inventory);
-                        }
-                        self.capture(false);
-                    }
-                }
                 Screen::Creative => {
                     self.pad_clear_focus();
                     if let Some(c) = self.carried.take() {
@@ -223,63 +221,6 @@ impl Game<'_> {
                 }
                 _ => {}
             },
-            // key.swapOffhand: on a server, ServerboundPlayerActionPacket SWAP_ITEM_WITH_OFFHAND
-            // (the server swaps the hands and sends both slots back; spectators can't).
-            KeyCode::KeyF if self.screen == Screen::Playing && self.remote.is_some() => {
-                if !self.spectator()
-                    && let Some(r) = self.remote.as_mut()
-                {
-                    r.pending_keys.push(key);
-                }
-            }
-            KeyCode::KeyF if self.screen == Screen::Playing => {
-                // handleKeybinds: the number keys select before key.swapOffhand.
-                self.select_queued_hotbar();
-                self.own_swap_hands();
-            }
-            KeyCode::KeyQ if self.screen == Screen::Playing => {
-                // handleKeybinds: the number keys select before key.drop.
-                self.select_queued_hotbar();
-                let all = drop_whole_stack(self.modifiers) || self.input_takes_stack_drop();
-                self.drop_held_item(all);
-            }
-            KeyCode::Digit1
-            | KeyCode::Digit2
-            | KeyCode::Digit3
-            | KeyCode::Digit4
-            | KeyCode::Digit5
-            | KeyCode::Digit6
-            | KeyCode::Digit7
-            | KeyCode::Digit8
-            | KeyCode::Digit9
-                if self.screen == Screen::Playing =>
-            {
-                let slot = match key {
-                    KeyCode::Digit1 => 0,
-                    KeyCode::Digit2 => 1,
-                    KeyCode::Digit3 => 2,
-                    KeyCode::Digit4 => 3,
-                    KeyCode::Digit5 => 4,
-                    KeyCode::Digit6 => 5,
-                    KeyCode::Digit7 => 6,
-                    KeyCode::Digit8 => 7,
-                    _ => 8,
-                };
-                // Minecraft.handleKeybinds: a spectator's number keys drive
-                // the spectator menu, not the hotbar; a creative player
-                // holding the load or save toolbar key loads or saves a
-                // toolbar instead (load first when both are held).
-                let load = self.mapped_key_down("key.loadToolbarActivator");
-                if self.spectator() {
-                    self.spectator_hotbar_key(slot as i32);
-                } else if self.creative
-                    && (load || self.mapped_key_down("key.saveToolbarActivator"))
-                {
-                    self.hotbar_load_or_save(slot, load);
-                } else {
-                    self.hotbar_presses[slot].press();
-                }
-            }
             _ if self.screen == Screen::Paused && self.pause_menu => {
                 self.pause_key(key)?;
             }
@@ -291,6 +232,86 @@ impl Game<'_> {
         }
         Ok(())
     }
+    /// Minecraft.handleKeybinds and Gui.handleKeybinds, in their polling order.
+    /// Opening a screen releases the live mappings, including clicks not yet reached.
+    pub(super) fn handle_play_keybinds(&mut self) {
+        while self.consume_mapping_click("key.togglePerspective") {
+            self.cycle_camera();
+        }
+        while self.consume_mapping_click("key.smoothCamera") {
+            self.smooth_camera_action();
+        }
+        for name in GUI_KEYS {
+            if name == "key.command" && self.mod_mappings_screen_open() {
+                break;
+            }
+            while self.consume_mapping_click(name) {
+                match name {
+                    "key.toggleGui" => self.toggle_hide_gui(),
+                    "key.advancements" => self.open_advancements(false),
+                    "key.socialInteractions" if self.is_multiplayer_server() => {
+                        self.open_social(false)
+                    }
+                    "key.socialInteractions" => {
+                        let message = sunrise_client::text::Text::translate(
+                            "multiplayer.socialInteractions.not_available",
+                            &[],
+                        );
+                        self.titles.set_overlay(message.clone(), false);
+                        self.say_system_now(&message);
+                    }
+                    "key.chat" => self.open_chat_method(""),
+                    "key.command" => self.open_chat_method("/"),
+                    _ => unreachable!("listed GUI key"),
+                }
+            }
+        }
+        self.select_queued_hotbar();
+        while self.consume_mapping_click("key.inventory") {
+            self.open_inventory_key_action();
+        }
+        while self.consume_mapping_click("key.quickActions") {
+            self.open_quick_actions();
+        }
+        while self.consume_mapping_click("key.swapOffhand") {
+            if !self.spectator() {
+                if self.remote.is_some() {
+                    self.remote_swap_hands();
+                } else {
+                    self.own_swap_hands();
+                }
+            }
+        }
+        while self.consume_mapping_click("key.drop") {
+            if !self.spectator() {
+                if self.remote.is_some() {
+                    let all = self.has_control_down() || self.input_takes_stack_drop();
+                    self.remote_drop(all);
+                } else {
+                    let all = drop_whole_stack(self.modifiers) || self.input_takes_stack_drop();
+                    self.drop_held_item(all);
+                }
+            }
+        }
+    }
+
+    /// The inventory key either asks the vehicle's server menu or opens the local inventory.
+    pub(super) fn open_inventory_key_action(&mut self) {
+        if self.in_portal_transition() {
+            return;
+        }
+        if self.remote.is_some() && (self.riding_mount_with_menu() || self.riding_chest_boat()) {
+            self.remote_request_mount_inventory();
+        } else if self.remote.is_some() || (!self.spectator() && !self.open_ridden_mount_menu()) {
+            if self.tutorial.open_inventory() {
+                self.persist_tutorial_step();
+            }
+            self.recipe_ui.reset_screen();
+            self.craft_size = 2;
+            self.open_player_inventory();
+        }
+    }
+
     /// handlePlayerAction SWAP_ITEM_WITH_OFFHAND for the window's own player
     /// with no server: the mods hear it as a server's players
     /// (`player_swap_hands`), and may stop it or change what each hand gets.

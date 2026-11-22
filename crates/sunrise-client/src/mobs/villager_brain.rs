@@ -1679,7 +1679,7 @@ impl B {
                         pos: site,
                     });
                 }
-                restock_if_due(m, cx.w);
+                restock_if_due(m, cx.w, cx.events);
                 true
             }
             B::HarvestFarmland {
@@ -3341,16 +3341,71 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
         }
     }
 }
+/// The live inputs to `Villager.updateSpecialPrices` belonging to the trading player.
+pub struct TradingPlayer {
+    pub uuid: Option<[i32; 4]>,
+    pub hero: Option<i32>,
+    /// `MerchantContainer.updateSellItem` plays feedback only with a payment.
+    pub paying: bool,
+}
+
+pub trait TradingPlayers {
+    fn trading_player(&self, villager: u32) -> Option<TradingPlayer>;
+}
+
+/// What a work-step restock changes in the trading screen, with the player's prices and
+/// the trade sound's pitch as chosen at the work step.
+#[derive(Clone, Debug)]
+pub struct RestockNotice {
+    pub mob: u32,
+    pub step: crate::merchant::RestockStep,
+    pub reputation: i32,
+    pub hero: Option<i32>,
+    pub pitch: Option<f32>,
+}
+
 /// `WorkAtPoi.start`'s restock.
-pub(super) fn restock_if_due(m: &mut Mob, w: &MobWorld) {
+fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if w.professions.state_index(&m.extra.profession).is_none() {
         return;
     }
     let day = w.day_time.div_euclid(24000);
-    if let Some(t) = m.extra.trade.as_mut()
-        && t.should_restock(w.game_time, day)
-    {
+    let Some(t) = m.extra.trade.as_mut() else {
+        return;
+    };
+    // Each step with a trading player runs `updateSpecialPrices`, which
+    // updates and resends its screen (a new day can send two); the trade
+    // sound's pitch is drawn here, in work-step order.
+    let catch_up = t.catch_up(w.game_time, day);
+    let restock = t.restock_due(w.game_time).then(|| {
         t.restock(w.game_time);
+        crate::merchant::RestockStep::Restock
+    });
+    if (catch_up.is_none() && restock.is_none()) || !m.extra.flag2 || t.offers.is_empty() {
+        return;
+    }
+    let Some(player) = w
+        .trading_players
+        .and_then(|players| players.trading_player(m.id))
+    else {
+        return;
+    };
+    let reputation = player
+        .uuid
+        .zip(super::villager::ext(m))
+        .map_or(0, |(uuid, ext)| ext.gossips.reputation(uuid));
+    let interval = m.ambient_interval();
+    for step in catch_up.into_iter().chain(restock) {
+        let pitch = (player.paying
+            && crate::merchant::reset_trade_update_clock(&mut m.ambient_timer, interval))
+        .then(|| m.voice_pitch());
+        events.push(MobEvent::VillagerRestockStep(RestockNotice {
+            mob: m.id,
+            step,
+            reputation,
+            hero: player.hero,
+            pitch,
+        }));
     }
 }
 #[cfg(test)]

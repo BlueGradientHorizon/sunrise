@@ -1,5 +1,6 @@
 //! The trust boundary for a mod-owned registry lock. Never resolve missing pins online.
 use std::collections::BTreeMap;
+use sunrise_mod_package::native_route::game_registry_pin_conflicts;
 
 const CRATES_IO: &str = sunrise_addresses::CARGO_CRATES_IO_SOURCE;
 
@@ -13,15 +14,7 @@ pub struct Identity {
 #[derive(Clone, Debug)]
 pub struct Record {
     checksum: Option<String>,
-    edges: std::collections::BTreeSet<Identity>,
     raw: toml::Table,
-}
-
-#[derive(Clone, Debug)]
-struct Reference {
-    name: String,
-    version: Option<semver::Version>,
-    source: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -31,7 +24,7 @@ pub struct RegistryLock {
 }
 
 impl RegistryLock {
-    /// Parse untrusted lock records once; consumers use typed identities and edges.
+    /// Parse untrusted lock records once; consumers use typed identities.
     pub fn parse(text: &str) -> Result<Self, String> {
         let lock: toml::Table = text.parse().map_err(|e| format!("Cargo.lock: {e}"))?;
         let records = lock
@@ -39,7 +32,6 @@ impl RegistryLock {
             .and_then(toml::Value::as_array)
             .ok_or("Cargo.lock: missing packages")?;
         let mut parsed = Self::default();
-        let mut pending = Vec::new();
         for record in records {
             let table = record.as_table().ok_or("Cargo.lock: invalid package")?;
             let field = |key| {
@@ -75,44 +67,11 @@ impl RegistryLock {
                 }
                 Some(checksum.to_owned())
             };
-            let mut dependencies = Vec::new();
-            if let Some(deps) = table.get("dependencies") {
-                for dep in deps.as_array().ok_or("Cargo.lock: invalid dependencies")? {
-                    let dep = dep
-                        .as_str()
-                        .ok_or("Cargo.lock: invalid dependency reference")?;
-                    let parts: Vec<_> = dep.split_whitespace().collect();
-                    if parts.is_empty() || parts.len() > 3 {
-                        return Err(format!("Cargo.lock: invalid dependency {dep}"));
-                    }
-                    let version = parts
-                        .get(1)
-                        .map(|version| semver::Version::parse(version))
-                        .transpose()
-                        .map_err(|e| format!("Cargo.lock: dependency {dep}: {e}"))?;
-                    let source = parts
-                        .get(2)
-                        .map(|source| {
-                            source
-                                .strip_prefix('(')
-                                .and_then(|source| source.strip_suffix(')'))
-                                .map(str::to_owned)
-                                .ok_or("Cargo.lock: invalid dependency source")
-                        })
-                        .transpose()?;
-                    dependencies.push(Reference {
-                        name: parts[0].into(),
-                        version,
-                        source,
-                    });
-                }
-            }
             let identity = Identity {
                 name,
                 version,
                 source,
             };
-            pending.push((identity.clone(), dependencies));
             let records = if identity.source.is_empty() {
                 &mut parsed.local
             } else {
@@ -123,7 +82,6 @@ impl RegistryLock {
                     identity.clone(),
                     Record {
                         checksum,
-                        edges: Default::default(),
                         raw: table.clone(),
                     },
                 )
@@ -134,37 +92,6 @@ impl RegistryLock {
                     identity.name, identity.version
                 ));
             }
-        }
-        for (id, references) in pending {
-            let mut edges = std::collections::BTreeSet::new();
-            for dep in references {
-                let matches: Vec<_> = parsed
-                    .packages
-                    .keys()
-                    .chain(parsed.local.keys())
-                    .filter(|id| {
-                        id.name == dep.name
-                            && dep.version.as_ref().is_none_or(|v| v == &id.version)
-                            && dep
-                                .source
-                                .as_ref()
-                                .is_none_or(|source| source == &id.source)
-                    })
-                    .collect();
-                if matches.len() != 1 {
-                    return Err(format!(
-                        "Cargo.lock: ambiguous or missing dependency {}",
-                        dep.name
-                    ));
-                }
-                edges.insert(matches[0].clone());
-            }
-            parsed
-                .packages
-                .get_mut(&id)
-                .or_else(|| parsed.local.get_mut(&id))
-                .expect("parsed identity")
-                .edges = edges;
         }
         Ok(parsed)
     }
@@ -183,6 +110,26 @@ impl RegistryLock {
             }
         }
         Ok(())
+    }
+
+    /// Returns the registry pins in `resolved` that moved a version this lock already supplies.
+    /// SDK-local identities are a separate source, checked by `check_pins`.
+    pub(super) fn moved_pins<'game, 'resolved>(
+        &'game self,
+        resolved: &'resolved Self,
+    ) -> impl Iterator<Item = (&'game Identity, &'resolved Identity)> {
+        resolved.packages.keys().filter_map(move |id| {
+            (!self.packages.contains_key(id))
+                .then(|| {
+                    self.packages.keys().find(|game| {
+                        game.name == id.name
+                            && game.source == id.source
+                            && game_registry_pin_conflicts(&game.version, &id.version)
+                    })
+                })
+                .flatten()
+                .map(|game| (game, id))
+        })
     }
 
     /// Withholds the registry identity of each crate the SDK builds from its own source (`names`,
@@ -252,54 +199,6 @@ impl RegistryLock {
         Ok(())
     }
 
-    pub fn check_mod(
-        &self,
-        mod_id: &str,
-        root: &str,
-        skip_local: &std::collections::BTreeSet<String>,
-        pins: &Self,
-    ) -> Result<(), String> {
-        let root = self
-            .local
-            .keys()
-            .find(|id| id.name == root)
-            .ok_or_else(|| format!("{mod_id}: staged Cargo.lock has no mod root"))?;
-        let mut pending = vec![root.clone()];
-        let mut seen = std::collections::BTreeSet::new();
-        while let Some(id) = pending.pop() {
-            if !seen.insert(id.clone()) {
-                continue;
-            }
-            let record = self
-                .packages
-                .get(&id)
-                .or_else(|| self.local.get(&id))
-                .expect("resolved edge identity");
-            if !id.source.is_empty() && !pins.packages.contains_key(&id) {
-                let versions = pins
-                    .packages
-                    .keys()
-                    .filter(|pin| pin.name == id.name)
-                    .map(|pin| pin.version.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return Err(format!(
-                    "{mod_id}: {name} resolved to {version}, but its own Cargo.lock pins [{versions}]. If its Cargo.toml changed since it was locked, run native-lock with update on it. Otherwise another mod in this build pins {name} {version}, and the two build together only once they pin the same version.",
-                    name = id.name,
-                    version = id.version
-                ));
-            }
-            pending.extend(
-                record
-                    .edges
-                    .iter()
-                    .filter(|dep| !dep.source.is_empty() || !skip_local.contains(&dep.name))
-                    .cloned(),
-            );
-        }
-        Ok(())
-    }
-
     pub fn game_package_names(&self) -> std::collections::BTreeSet<String> {
         self.local.keys().map(|id| id.name.clone()).collect()
     }
@@ -343,6 +242,16 @@ mod tests {
         let mut allowed = game.clone();
         allowed.extend(pins).unwrap();
         allowed
+    }
+
+    #[test]
+    fn separate_zero_zero_patch_versions_do_not_move_game_pins() {
+        let game = parsed(&[package("early-crate", "0.0.1", 'a', &[])]);
+        let resolved = parsed(&[
+            package("early-crate", "0.0.1", 'a', &[]),
+            package("early-crate", "0.0.2", 'b', &[]),
+        ]);
+        assert!(game.moved_pins(&resolved).next().is_none());
     }
 
     #[test]
@@ -431,32 +340,21 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_cannot_borrow_another_mods_transitive_pin() {
-        let owned = RegistryLock::parse(&lock(CRATES_IO, &"a".repeat(64))).unwrap();
-        let other = lock(CRATES_IO, &"b".repeat(64)).replace("1.0.15", "0.4.8");
-        let resolved = RegistryLock::parse(&format!(
-            "{other}\n[[package]]\nname='mod'\nversion='1.0.0'\ndependencies=['itoa']\n"
-        ))
-        .unwrap();
-        let error = resolved
-            .check_mod("example", "mod", &Default::default(), &owned)
-            .unwrap_err();
-        for detail in ["example", "itoa", "1.0.15", "0.4.8"] {
-            assert!(error.contains(detail), "{error}");
-        }
-    }
-
-    #[test]
-    fn sdk_and_declared_mod_roots_are_opaque_to_a_mods_registry_lock() {
-        let resolved = RegistryLock::parse(&format!("{}\n[[package]]\nname='mod'\nversion='1.0.0'\ndependencies=['sdk','other']\n[[package]]\nname='sdk'\nversion='1.0.0'\ndependencies=['itoa']\n[[package]]\nname='other'\nversion='1.0.0'\ndependencies=['itoa']\n", lock(CRATES_IO, &"a".repeat(64)))).unwrap();
-        resolved
-            .check_mod(
-                "example",
-                "mod",
-                &std::collections::BTreeSet::from(["sdk".into(), "other".into()]),
-                &RegistryLock::default(),
-            )
-            .unwrap();
+    fn mods_that_pin_different_versions_of_one_package_build_on_either_pin() {
+        let game = RegistryLock::default();
+        let first = parsed(&[package("dtoa", "1.0.9", 'a', &[])]);
+        let second = parsed(&[package("dtoa", "1.0.11", 'b', &[])]);
+        let mut allowed = allowed(&game, &first);
+        allowed.extend(&second).unwrap();
+        // One workspace resolves one of them for both mods.
+        allowed.check_pins(&first).unwrap();
+        allowed.check_pins(&second).unwrap();
+        let neither = parsed(&[package("dtoa", "1.0.10", 'c', &[])]);
+        let error = allowed.check_pins(&neither).unwrap_err();
+        assert!(
+            error.contains("dtoa 1.0.10") && error.contains("1.0.9, 1.0.11"),
+            "{error}"
+        );
     }
 
     #[test]

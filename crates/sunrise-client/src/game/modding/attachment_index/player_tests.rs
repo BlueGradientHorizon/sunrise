@@ -149,7 +149,7 @@ fn travel_moves_rows_before_guest_callbacks_and_keeps_captured_values() {
             .attachments
             .registration()
             .unwrap();
-        game.start_server_trip(12, Dim::Nether, None, false);
+        game.start_server_trip(12, Dim::Nether, None);
         assert!(snapshot(game, Dim::Overworld).is_empty());
         let nether = snapshot(game, Dim::Nether);
         assert_eq!(nether.len(), 1);

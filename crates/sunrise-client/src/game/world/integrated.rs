@@ -22,7 +22,7 @@ use std::{
     net::TcpListener,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicI32, AtomicU16, AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU16, AtomicU32, AtomicU64, Ordering},
         mpsc::{Receiver, RecvTimeoutError, Sender, channel, sync_channel},
     },
     thread::JoinHandle,
@@ -33,6 +33,7 @@ use sunrise_client::spans::startup;
 use sunrise_client::{
     Result,
     audio::Audio,
+    chunk_io::Reports,
     lan::{Lan, MAX_PLAYERS, NetConfig, OwnerProfile, hub::HubConfig},
     settings::Settings,
     title::WorldOptions,
@@ -50,31 +51,26 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const NO_ANSWER: &str =
     "the integrated server stopped or did not answer within 10 s (the game log says which)";
 
-/// The server thread holds its `Game` by value and runs every tick on it.
-/// It reserves the same guest limit and host headroom as the main thread.
-const SERVER_THREAD_STACK: usize =
-    sunrise_guest_stack::GUEST_STACK_BYTES + sunrise_guest_stack::HOST_HEADROOM;
-
-/// The server thread's stack size: [`SERVER_THREAD_STACK`], or what `RUST_MIN_STACK` asks for
-/// when that is larger. std reads the variable only for a thread spawned without a size, and
-/// harnesses raise it for this thread (`tools/test_wind_burst_hook.py`, the parity tools).
+/// The server thread holds its `Game` by value and runs every tick on it. It uses the game
+/// worker stack floor or a larger `RUST_MIN_STACK` requested by a harness. std only reads that
+/// variable for threads spawned without an explicit size.
 fn server_thread_stack() -> usize {
     static SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *SIZE.get_or_init(|| stack_for(std::env::var("RUST_MIN_STACK").ok().as_deref()))
 }
 
-/// [`SERVER_THREAD_STACK`], or `min_stack` (a byte count, as std parses `RUST_MIN_STACK`) when
-/// that is larger.
+/// Interpret `min_stack` as a byte count, as std parses `RUST_MIN_STACK`.
 fn stack_for(min_stack: Option<&str>) -> usize {
     min_stack
         .and_then(|bytes| bytes.parse::<usize>().ok())
-        .map_or(SERVER_THREAD_STACK, |bytes| bytes.max(SERVER_THREAD_STACK))
+        .unwrap_or_default()
+        .max(sunrise_threads::GAME_THREAD_STACK_BYTES)
 }
 
 /// `LevelLoadProgressTracker.EXPECTED_PLAYER_CHUNKS`: the 7x7 chunks around the spawn.
 const PLAYER_CHUNKS: usize = 49;
 
-/// What the window tells its server thread.
+/// What the window and its server thread share.
 #[derive(Default)]
 struct Flags {
     #[cfg(test)]
@@ -84,6 +80,8 @@ struct Flags {
     stop: AtomicBool,
     finished: AtomicBool,
     failure: Mutex<Option<String>>,
+    /// The owning window's report inbox, shared with this server and its region workers.
+    reports: Arc<Reports>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
     published: AtomicU16,
@@ -92,9 +90,9 @@ struct Flags {
     /// server follows while it runs (IntegratedServer.tickServer).
     render_distance: AtomicI32,
     simulation_distance: AtomicI32,
-    /// `options.entityDistanceScaling` (an `f32`'s bits), which
+    /// `options.entityDistanceScaling` (an `f64`'s bits), which
     /// `IntegratedServer.getScaledTrackingDistance` reads on every call.
-    entity_distance: AtomicU32,
+    entity_distance: AtomicU64,
     /// `MinecraftServer.isCurrentlySaving`: the server is autosaving.
     saving: AtomicBool,
     /// The generators of the levels the server has run, by dimension: what
@@ -156,6 +154,21 @@ pub(super) struct Integrated {
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
 }
 impl Integrated {
+    /// The window's handle on a server fixture, with no server thread behind it.
+    #[cfg(test)]
+    pub(super) fn fixture_for(serving: &Serving) -> Self {
+        let (tasks, _receiver) = channel();
+        Self {
+            flags: serving.flags.clone(),
+            thread: None,
+            emergency_save: None,
+            tasks,
+            world_name: "test".into(),
+            save_folder: "test".into(),
+            rule_registry: Default::default(),
+        }
+    }
+
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
     fn queue_pregen_option(&self, enabled: bool) {
@@ -203,7 +216,7 @@ impl Integrated {
     }
     /// The window's render and simulation distances and its Entity Distance
     /// option, for the server to follow.
-    pub fn set_distances(&self, render: i32, simulation: i32, entity: f32) {
+    pub fn set_distances(&self, render: i32, simulation: i32, entity: f64) {
         self.flags.render_distance.store(render, Ordering::Relaxed);
         self.flags
             .simulation_distance
@@ -273,6 +286,19 @@ impl Integrated {
     pub fn post(&self, f: impl FnOnce(&mut Game<'_>) + Send + 'static) -> bool {
         self.tell(OwnerRequest::InTest(Box::new(f)))
     }
+    /// An integrated server whose thread already finished, just before the window disconnects.
+    #[cfg(test)]
+    pub(in crate::game) fn stopped_for_test() -> Self {
+        Self {
+            flags: Arc::new(Flags::default()),
+            thread: None,
+            emergency_save: None,
+            tasks: channel().0,
+            world_name: "Test world".into(),
+            save_folder: "test_world".into(),
+            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        }
+    }
     /// `IntegratedServer.halt(true)`: returns once the world is saved and let go.
     pub fn stop(mut self) -> Result<()> {
         self.halt()
@@ -336,6 +362,33 @@ struct LoadPhase {
     done: bool,
 }
 impl Serving {
+    /// A server thread's handle with no thread behind it, published on `port` (0: not).
+    #[cfg(test)]
+    pub(super) fn fixture(port: u16) -> Self {
+        Self::fixture_with_reports(port, Arc::default())
+    }
+
+    #[cfg(test)]
+    pub(super) fn fixture_with_reports(port: u16, reports: Arc<Reports>) -> Self {
+        let flags = Arc::new(Flags {
+            reports,
+            ..Flags::default()
+        });
+        flags.published.store(port, Ordering::Relaxed);
+        let (_sender, tasks) = channel();
+        Self {
+            flags,
+            tasks,
+            owner: 1,
+            pending: None,
+            load: LoadPhase::default(),
+        }
+    }
+    /// Send reports only to this server's owner, not to LAN clients.
+    pub(super) fn reports(&self) -> &Reports {
+        &self.flags.reports
+    }
+
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
     pub(super) fn set_saving(&self, saving: bool) {
         self.flags.saving.store(saving, Ordering::Relaxed);
@@ -458,13 +511,13 @@ impl Game<'_> {
                 Arc::new(OwnerProfile::new(move || {
                     sunrise_client::skins::fetch_own_properties(id)
                         .into_iter()
-                        .map(|(name, value, signature)| {
-                            sunrise_protocol::packets::login::Property {
+                        .map(
+                            |(name, value, signature)| sunrise_core::profile::AccountProperty {
                                 name,
                                 value,
                                 signature,
-                            }
-                        })
+                            },
+                        )
                         .collect()
                 }))
             }),
@@ -499,7 +552,10 @@ impl Game<'_> {
         self.world_biomes_base = self.world_biomes.clone();
         let (res, pack, settings) = (self.res.clone(), self.pack.clone(), self.settings.clone());
         sunrise_client::parallel::set_setting(settings.sunrise.parallel_tick);
-        let flags = Arc::new(Flags::default());
+        let flags = Arc::new(Flags {
+            reports: self.client_reports.clone(),
+            ..Flags::default()
+        });
         flags
             .render_distance
             .store(settings.render_distance, Ordering::Relaxed);
@@ -995,12 +1051,14 @@ impl Game<'_> {
 
     /// `MinecraftServer.stopServer`: the players are saved and sent away,
     /// then the world is saved.
-    pub(super) fn stop_integrated(&mut self, crashed: bool) -> Result<()> {
+    pub(super) fn stop_integrated(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
         // Abort background terrain generation/decoration on shutdown, matching vanilla behavior.
         self.streaming.abort_generation();
         self.levels.abort_parked_generation();
-        // The close request: lifecycle observation stops.
-        self.native_lifecycle.begin_close();
+        // A failed open keeps its opening phase until the final save attempts finish.
+        if run_error.is_none() || !self.native_lifecycle.is_opening() {
+            self.native_lifecycle.begin_close();
+        }
         self.native_configs_server_stop();
         self.native_players_leaving();
         // IntegratedServer.stopServer: teardownPublishedState.
@@ -1023,7 +1081,7 @@ impl Game<'_> {
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
-        self.finish_server_save(crashed)
+        self.finish_server_save(crashed, run_error)
     }
 }
 
@@ -1078,22 +1136,26 @@ impl Game<'_> {
             // Commands.performCommand runs in the player's level.
             let (back, theirs) = (self.dim, super::Dim::from_id(&g.dimension));
             let entered = theirs == back || self.enter_level(theirs).is_ok();
-            if entered && let Some(swap) = self.enter_guest_in_dimension(conn, back) {
-                let command = command.strip_prefix('/').unwrap_or(command).to_owned();
-                let (lines, ran) = self.recording_command_outcome(|game| {
-                    game.as_console(|g| {
-                        g.chat_capture = Some(Vec::new());
-                        // A command a native mod registered goes to the mods
-                        // first, as the owner's own chat does (the console is
-                        // level 4, so every registered usage is allowed).
-                        if !g.perform_native_command(conn, 4, command.trim()) {
-                            g.run_command(&command);
-                        }
-                        g.chat_capture.take().unwrap_or_default()
+            if entered
+                && let Some((lines, ran)) = self.with_guest_swap(conn, back, |game| {
+                    let command = command.strip_prefix('/').unwrap_or(command).to_owned();
+                    game.recording_command_outcome(|game| {
+                        game.as_console(|g| {
+                            g.chat_capture = Some(Vec::new());
+                            // A command a native mod registered goes to the mods
+                            // first, as the owner's own chat does (the console is
+                            // level 4, so every registered usage is allowed).
+                            if g.perform_native_command(conn, 4, command.trim(), false)
+                                .is_none()
+                            {
+                                g.run_command(&command);
+                            }
+                            g.chat_capture.take().unwrap_or_default()
+                        })
                     })
-                });
+                })
+            {
                 outcome = ran;
-                self.leave_guest(swap);
                 if let Some(host) = self.lan.as_mut() {
                     host.hub.sync_all_effects();
                 }
@@ -1155,6 +1217,11 @@ impl Game<'_> {
             self.apply_publish();
         }
     }
+    /// Whether anyone but a single-player owner can join this world: any hub of a client or
+    /// a dedicated server, an integrated server's only once published to LAN.
+    pub(super) fn open_to_others(&self) -> bool {
+        self.lan.is_some() && (!self.serving() || self.published_port().is_some())
+    }
     /// `IntegratedServer.getPort` while published.
     pub(super) fn published_port(&self) -> Option<u16> {
         let s = self.serving.as_ref()?;
@@ -1201,7 +1268,7 @@ impl Game<'_> {
     fn follow_distances(&mut self, flags: &Flags) {
         // IntegratedServer.getScaledTrackingDistance reads the option each time.
         self.settings.entity_distance =
-            f32::from_bits(flags.entity_distance.load(Ordering::Relaxed));
+            f64::from_bits(flags.entity_distance.load(Ordering::Relaxed));
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1348,10 +1415,10 @@ fn serve(
     )
     // `IntegratedServer.setSingleplayerProfile`: the account this world belongs to
     // (an older world's offline owner moves to it at open).
-    .map(|request| request.owned_by(&launch.player, launch.owner))
-    .and_then(|request| {
+    .and_then(|mut request| {
+        request.chunk_reports = flags.reports.clone();
         WorldLoader::start(
-            request,
+            request.owned_by(&launch.player, launch.owner),
             res.clone(),
             pack.clone(),
             options.clone(),
@@ -1361,7 +1428,7 @@ fn serve(
     });
     let opening = Opening {
         world,
-        sync: preload_sync_data(&res.core.item_data),
+        sync: preload_sync_data(&res.core.item_data, res.shared_items()),
     };
     let mut server = match startup::time("server.game_new", || {
         server_game(res, pack, options, settings)
@@ -1405,14 +1472,6 @@ impl Game<'_> {
             .spawn(move || {
                 let run = || -> Result<()> {
                     let mut server = server_game(&res, pack, options, settings)?;
-                    // The oracle supplies an already-open synthetic world rather
-                    // than running the normal config and startup lifecycle.
-                    server
-                        .mod_phase
-                        .advance(mod_api::__private::ModPhase::Config)?;
-                    server
-                        .mod_phase
-                        .advance(mod_api::__private::ModPhase::World)?;
                     match fixture {
                         ComponentHarness::Dispenser(spec) => server.dispense_fixture(&spec),
                         ComponentHarness::Sculk(spec) => server.sculk_fixture(&spec),
@@ -1484,7 +1543,7 @@ pub(super) mod tests {
         let scratch = tempfile::tempdir().unwrap();
         let home = scratch.path().to_path_buf();
         let previous = std::panic::take_hook();
-        sunrise_client::crash::install(home.clone(), "client");
+        sunrise_client::crash::install(home.clone(), "client", || None);
         let (tasks, receiver) = channel::<OwnerRequest>();
         let mut server = Integrated {
             emergency_save: None,
@@ -1534,22 +1593,21 @@ pub(super) mod tests {
         assert!(text.contains("in native mod example:posted, hook server_tick"));
     }
 
-    /// The server thread keeps guest headroom, and a larger `RUST_MIN_STACK` still
-    /// reaches it (#2430).
+    /// The integrated server keeps its stack floor and honors a larger
+    /// `RUST_MIN_STACK` override (#2430).
     #[test]
-    fn the_server_thread_stack_keeps_guest_headroom_and_larger_overrides() {
-        let minimum = 136 * 1024 * 1024;
-        assert_eq!(super::stack_for(None), minimum);
+    fn integrated_server_stack_honors_its_floor_and_larger_overrides() {
+        let host_stack = 8 * 1024 * 1024;
+        assert_eq!(super::stack_for(None), host_stack);
         assert_eq!(
             super::stack_for(Some("1048576")),
-            minimum,
-            "smaller asks keep guest headroom"
+            host_stack,
+            "smaller values keep the integrated server floor"
         );
-        assert_eq!(super::stack_for(Some("268435456")), 256 * 1024 * 1024);
-        assert_eq!(super::stack_for(Some("16777216")), minimum);
+        assert_eq!(super::stack_for(Some("16777216")), 16 * 1024 * 1024);
         assert_eq!(
             super::stack_for(Some("lots")),
-            minimum,
+            host_stack,
             "an unparsed value is ignored"
         );
     }
@@ -1613,6 +1671,133 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn block_state_weathering_reverts_after_integrated_session_stops() {
+        use mod_api::HostBlockStates;
+        use sunrise_world::level::{BlockMapValue, BlockMaps};
+
+        super::super::native_entity_refs::tests::with_client_game(|window| {
+            window.join_world_rest().unwrap();
+            let state = |name| BlockStatesHost::block_state_id(window, name).unwrap();
+            let copper = state("minecraft:copper_block");
+            let exposed = state("minecraft:exposed_copper");
+            let oxidized = state("minecraft:oxidized_copper");
+            let next = || window.block_states().next_weathering_stage(copper);
+            assert_eq!(next(), Some(exposed));
+
+            for failed_open in [false, true] {
+                let mut options = window.options.clone();
+                options.dedicated = Some(Vec::new());
+                options.execution_role = ExecutionRole::IntegratedServer;
+                let mut server = server_game(
+                    &window.res,
+                    window.pack.clone(),
+                    options,
+                    window.settings.clone(),
+                )
+                .unwrap();
+                server.save = window.save.clone();
+                let result = server.run_server_lifecycle(false, |server, began| {
+                    *began = true;
+                    // Model publication at open_world_tables, before later steps can fail.
+                    let maps = BlockMaps::from_values(
+                        [(
+                            "minecraft:copper_block",
+                            BlockMapValue::Oxidizable("minecraft:oxidized_copper".into()),
+                        )],
+                        |_| 0,
+                    );
+                    server.res.behaviours().set_block_maps(Some(Arc::new(maps)));
+                    assert_eq!(next(), Some(oxidized));
+                    if failed_open {
+                        Err("open failed after map publication".into())
+                    } else {
+                        server.world_adopted = true;
+                        Ok(())
+                    }
+                });
+                if failed_open {
+                    assert_eq!(
+                        result.unwrap_err().to_string(),
+                        "open failed after map publication"
+                    );
+                } else {
+                    result.unwrap();
+                }
+                // The window and its resource tables outlive both kinds of session.
+                assert_eq!(next(), Some(exposed), "failed_open = {failed_open}");
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use sunrise_client::{
+            lan::data::{SyncData, WorldTags},
+            text::Text,
+        };
+
+        if run_fresh_cases(
+            "game::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
+            "SUNRISE_INTEGRATED_DISCONNECT_SYNC_CHILD",
+            &["disconnect"],
+        ) {
+            return;
+        }
+        with_client_game(|game| {
+            for failure in [None, Some("test shutdown failure")] {
+                let sync = Arc::new(SyncData::empty());
+                super::super::lan::sync::install_wire_reload(
+                    &game.options.resources,
+                    &game.res.core.item_data,
+                    &game.pack_files(),
+                    Some(sync.clone()),
+                    game.adv.tree.clone(),
+                    WorldTags::new(game.res.shared_items(), &game.health_resources.damage),
+                );
+                let flags = Arc::new(Flags::default());
+                let stopping = flags.clone();
+                let (tasks, _waiting_server) = channel();
+                let (observed, probe) = channel();
+                game.integrated = Some(Integrated {
+                    emergency_save: None,
+                    flags,
+                    thread: Some(std::thread::spawn(move || {
+                        let deadline = Instant::now() + Duration::from_secs(5);
+                        while !stopping.stop.load(Ordering::Relaxed) {
+                            assert!(Instant::now() < deadline, "stop was never requested");
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                        observed
+                            .send(super::super::lan::sync::cached_reload_sync())
+                            .unwrap();
+                        *stopping.failure.lock().unwrap() = failure.map(str::to_owned);
+                    })),
+                    tasks,
+                    world_name: "fixture".into(),
+                    save_folder: "fixture".into(),
+                    rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                });
+                let result = game.leave_server(Some(Text::literal("test disconnect")));
+                assert_eq!(
+                    result.err().map(|error| error.to_string()),
+                    failure.map(str::to_owned)
+                );
+                assert!(
+                    probe
+                        .try_recv()
+                        .unwrap()
+                        .is_some_and(|seen| Arc::ptr_eq(&seen, &sync)),
+                    "the cache must still hold the server's snapshot during shutdown"
+                );
+                assert!(super::super::lan::sync::cached_reload_sync().is_none());
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn client_session_identifies_only_its_own_integrated_server() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let _pipe = super::super::native_client_session::tests::logged_client(game);
@@ -1628,20 +1813,13 @@ pub(super) mod tests {
             });
             let local = game.client_session().client_server().unwrap();
             assert!(local.integrated_local);
-            assert_eq!(local.name.as_deref(), Some("First world"));
+            assert_eq!(local.name, Some("First world"));
             assert_eq!(local.address, None);
-            assert_eq!(local.save_folder.as_deref(), Some("first_world"));
+            assert_eq!(local.save_folder, Some("first_world"));
             game.integrated.as_mut().unwrap().world_name = "Renamed world".into();
-            assert_eq!(
-                game.client_session()
-                    .client_server()
-                    .unwrap()
-                    .name
-                    .as_deref(),
-                Some("Renamed world")
-            );
             let renamed = game.client_session().client_server().unwrap();
-            assert_eq!(renamed.save_folder, local.save_folder);
+            assert_eq!(renamed.name, Some("Renamed world"));
+            assert_eq!(renamed.save_folder, Some("first_world"));
             game.integrated.take();
             let guest = game.client_session().client_server().unwrap();
             assert!(!guest.integrated_local);
@@ -1651,28 +1829,201 @@ pub(super) mod tests {
         });
     }
 
+    #[derive(Debug, PartialEq, Eq)]
+    enum CheckpointEvent {
+        LevelSaved,
+        WorldSaved,
+        LevelUnloaded,
+        Closed(mod_api::WorldPhase, String),
+    }
+
+    struct CheckpointMod(Arc<Mutex<Vec<CheckpointEvent>>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for CheckpointMod {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r
+                .block_entity_type("counter")
+                .blocks(&["crash_checkpoint:counter"])
+                .build();
+            r.block_entity_part(&kind, CheckpointCounter).unwrap();
+        }
+
+        fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+            event
+                .register(
+                    mod_api::Block::new("crash_checkpoint:counter", "minecraft:barrel")
+                        .with_item(false),
+                )
+                .unwrap();
+        }
+
+        fn level_save(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::LevelSaveEvent<'_>,
+        ) {
+            if event.dimension == Dim::Overworld.id() {
+                self.0.lock().unwrap().push(CheckpointEvent::LevelSaved);
+            }
+        }
+
+        fn world_saved(&self, _: &mut dyn mod_api::ServerHost, _: &mut mod_api::WorldSavedEvent) {
+            self.0.lock().unwrap().push(CheckpointEvent::WorldSaved);
+        }
+
+        fn level_unload(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::LevelUnloadEvent<'_>,
+        ) {
+            if event.dimension == Dim::Overworld.id() {
+                self.0.lock().unwrap().push(CheckpointEvent::LevelUnloaded);
+            }
+        }
+
+        fn world_lifecycle(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::WorldLifecycleEvent<'_>,
+        ) {
+            use mod_api::WorldPhase::{WorldCloseFailed, WorldCloseFinal};
+            if matches!(event.phase, WorldCloseFailed | WorldCloseFinal) {
+                self.0.lock().unwrap().push(CheckpointEvent::Closed(
+                    event.phase,
+                    event.error_text.to_owned(),
+                ));
+            }
+        }
+    }
+
+    struct CheckpointCounter;
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockPart for CheckpointCounter {}
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockEntityPart for CheckpointCounter {
+        fn block_entity_save_additional(
+            &self,
+            host: &dyn mod_api::LevelHost,
+            event: &mut mod_api::BlockEntitySaveAdditionalEvent<'_>,
+        ) {
+            let entity = host
+                .block_entity(event.pos)
+                .expect("counter is still resident");
+            let data = host
+                .block_entity_data(entity)
+                .expect("counter handle is live");
+            event.tag.insert(
+                "saved_progress".into(),
+                data.get(&"progress".into()).unwrap().clone(),
+            );
+        }
+    }
+
+    /// Install the mod before building the fixture's frozen block and block entity registries.
+    fn with_checkpoint_mod(test: impl FnOnce(&mut Game<'_>, &Mutex<Vec<CheckpointEvent>>)) {
+        use crate::game::native_entity_refs::tests::{fixture_root, with_game_at};
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "crash_checkpoint",
+            Box::new(CheckpointMod(events.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            mod_api::__private::mark_game_thread();
+            let resources =
+                crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+            with_game_at(resources.prepared().to_path_buf(), |game| {
+                test(game, &events)
+            });
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn integrated_tick_panic_saves_changed_world() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let root = std::env::temp_dir().join(format!(
-                "sunrise-integrated-crash-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
-            std::fs::create_dir_all(&root).unwrap();
-            game.world_root = root.clone();
-            game.save = Arc::new(sunrise_client::save::SaveDir::new(
-                root.clone(),
-                sunrise_client::save::LevelShape::OVERWORLD,
-                Some(Default::default()),
-            ));
+        use crate::game::{
+            native_entity_refs::tests::run_fresh_cases,
+            native_living_refs::tests::{ZOMBIE_UUID, hurt_pig, send_to_the_nether, summon_mob},
+        };
+        use sunrise_client::{
+            chunk::Chunk,
+            containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
+            save::{LevelShape, SaveDir, SessionLock},
+        };
+        use sunrise_core::nbt::Tag;
+
+        const NAME: &str = "game::integrated::tests::integrated_tick_panic_saves_changed_world";
+        // The mod's block and block entity declarations freeze process-wide registries.
+        if run_fresh_cases(NAME, "SUNRISE_CRASH_CHECKPOINT_CHILD", &["crash"]) {
+            return;
+        }
+        with_checkpoint_mod(|game, events| {
+            let scratch = tempfile::tempdir().unwrap();
+            let root = scratch.path();
+            let open = || {
+                SaveDir::new(
+                    root.to_path_buf(),
+                    LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                )
+            };
+            game.world_root = root.to_path_buf();
+            game.save = Arc::new(open());
             // Crash shutdown only saves an adopted world whose storage is owned.
-            game.session_lock = Some(sunrise_client::save::SessionLock::acquire(&root).unwrap());
+            game.session_lock = Some(SessionLock::acquire(root).unwrap());
             game.world_adopted = true;
+            game.native_level_opened(Dim::Overworld);
+            game.native_lifecycle_world_ready();
+
+            if !game.world.chunks.contains_key(&(0, 0)) {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            }
+            let (victim, attacker) = hurt_pig(game);
+            send_to_the_nether(game, attacker);
+            let bystander = summon_mob(game, "minecraft:pig", "{NoAI:1b,UUID:[I;21,22,23,24]}");
+            let victim_uuid = Tag::IntArray(game.persist.uuid_of(victim).unwrap().to_vec());
+            let bystander_uuid = Tag::IntArray(game.persist.uuid_of(bystander).unwrap().to_vec());
+            let slot = game.mobs.iter().position(|m| m.id == victim).unwrap();
+            let ticks_since_hurt = 17;
+            assert!(game.mobs[slot].ai.last_hurt_by_ref.is_none());
+            game.mobs.update(slot, |m| {
+                m.age = (m.ai.last_hurt_by_time + ticks_since_hurt) as u32;
+            });
+            // The victim joined first, but re-enters the bystander's section last.
+            let at = game.mobs[slot].position;
+            let outside = sunrise_core::geometry::Vec3::new(at.x, 50.0, at.z);
+            for (from, to) in [(at, outside), (outside, at)] {
+                game.mobs.update(slot, |m| m.position = to);
+                game.entity_section_step(victim, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            }
+            let living = game.living(game.entity(victim).unwrap()).unwrap();
+            assert_eq!(
+                living.last_attacker(game).unwrap().level(game),
+                game.level(Dim::Nether.id())
+            );
+
+            let block = game
+                .pack
+                .assets
+                .registry
+                .default_state("crash_checkpoint:counter")
+                .unwrap();
+            game.world.set(1, 64, 1, block).unwrap();
+            game.world.block_entities.insert(
+                (1, 64, 1),
+                BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                    "crash_checkpoint:counter".into(),
+                    ModBlockEntityFields {
+                        nbt: [("progress".into(), Tag::Int(41))].into(),
+                        ..Default::default()
+                    },
+                ))),
+            );
             game.player = Some(
                 sunrise_client::motion::PlayerMotion::new(
                     game.motion,
@@ -1680,6 +2031,24 @@ pub(super) mod tests {
                 )
                 .unwrap(),
             );
+            // The owner's file as last saved, with an experience total the panicking tick's
+            // state (37) differs from.
+            game.level.xp_total = 11;
+            game.level.write_player(root, game.res.items()).unwrap();
+            let owner_file = std::fs::read_dir(root.join("players").join("data"))
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            let owner_xp = || {
+                let player = sunrise_client::save::read_dat(&owner_file)?;
+                match player.get("XpTotal") {
+                    Some(sunrise_core::nbt::Tag::Int(xp)) => Some(*xp),
+                    _ => None,
+                }
+            };
+            assert_eq!(owner_xp(), Some(11));
             let flags = Arc::new(Flags::default());
             flags.fail_tick.store(true, Ordering::Relaxed);
             flags.published.store(1234, Ordering::Relaxed);
@@ -1691,17 +2060,49 @@ pub(super) mod tests {
                 pending: None,
                 load: LoadPhase::default(),
             });
-            let error = game.integrated_tick_loop(&flags).unwrap_err();
-            assert_eq!(
-                error.to_string(),
-                "the server thread panicked: integrated tick fixture"
-            );
-            let saved = sunrise_client::save::Level::read(&root).unwrap();
+            events.lock().unwrap().clear();
+            let error = game.integrated_tick_loop(&flags).unwrap_err().to_string();
+            assert!(error.contains("integrated tick fixture"));
+            let saved = sunrise_client::save::Level::read(root).unwrap();
             assert_eq!(saved.name, "saved after integrated tick panic");
-            assert_eq!(saved.xp_total, 37);
+            // A fresh reader has no pending writes or captured payload to fall back to.
+            let disk = open();
+            let chunk = disk
+                .raw_chunk(0, 0)
+                .expect("crash checkpoint wrote the chunk");
+            let Some(Tag::List(entities)) = chunk.tag.get("block_entities") else {
+                panic!("crash checkpoint lost the block entities");
+            };
+            let counter = entities
+                .iter()
+                .find(|tag| tag.get("id") == Some(&Tag::String("crash_checkpoint:counter".into())))
+                .expect("crash checkpoint lost the counter");
+            assert_eq!(counter.get("saved_progress"), Some(&Tag::Int(41)));
+            let entities = disk.load_entities(0, 0).unwrap();
+            let ids: Vec<_> = entities.iter().map(|tag| tag.get("UUID")).collect();
+            assert_eq!(ids, [Some(&bystander_uuid), Some(&victim_uuid)]);
+            let victim = &entities[1];
+            assert_eq!(
+                victim.get("last_hurt_by_mob"),
+                Some(&Tag::IntArray(ZOMBIE_UUID.to_vec()))
+            );
+            assert_eq!(
+                victim.get("ticks_since_last_hurt_by_mob"),
+                Some(&Tag::Int(ticks_since_hurt))
+            );
+            assert_eq!(
+                *events.lock().unwrap(),
+                [
+                    CheckpointEvent::LevelSaved,
+                    CheckpointEvent::WorldSaved,
+                    CheckpointEvent::LevelUnloaded,
+                    CheckpointEvent::Closed(mod_api::WorldPhase::WorldCloseFailed, error),
+                ]
+            );
+            // No hub: players are not saved, so the owner's file keeps what it had.
+            assert_eq!(owner_xp(), Some(11));
             assert_eq!(flags.published.load(Ordering::Relaxed), 0);
             assert!(game.session_lock.is_none());
-            std::fs::remove_dir_all(&root).ok();
         });
     }
 

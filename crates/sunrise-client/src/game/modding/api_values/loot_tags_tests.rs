@@ -1,7 +1,10 @@
 struct TestTags;
 impl engine::LootTags for TestTags {
-    fn members(&self, _: &str, _: &str) -> Vec<String> {
-        Vec::new()
+    fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
+        None
+    }
+    fn item_tag_names(&self) -> Option<&engine::ItemTagNames> {
+        None
     }
 }
 struct TagReader;
@@ -24,27 +27,28 @@ impl ModLootFunction for TagReader {
     }
     fn apply(
         &self,
-        _: &LootEntryData,
+        data: &LootEntryData,
         mut stack: LootStack,
         context: &mut dyn LootTypeContext,
     ) -> Result<LootStack, String> {
         let tags = context.tags();
-        let tag = tags
-            .key(&mod_api::Identifier::parse("test:ingredients").unwrap())
-            .unwrap();
-        let members = tags.items(tag).unwrap();
-        stack.count = if tags.is_in_tag(stack.item, tag) == Some(true) {
-            assert_eq!(
-                members
-                    .iter()
-                    .map(|key| mod_api::__private::item_key_id(*key).unwrap())
-                    .collect::<Vec<_>>(),
-                ["minecraft:potion", "minecraft:stick"]
-            );
-            2
-        } else {
-            assert!(members.is_empty());
-            0
+        let id = data.value()["tag"].as_str().unwrap_or("test:ingredients");
+        let tag = tags.key(&mod_api::Identifier::parse(id).unwrap()).unwrap();
+        stack.count = match tags.items(tag) {
+            mod_api::TagMembers::Members(members) if members.is_empty() => 1,
+            mod_api::TagMembers::Members(members) => {
+                assert_eq!(
+                    members
+                        .iter()
+                        .map(|key| mod_api::__private::item_key_id(*key).unwrap())
+                        .collect::<Vec<_>>(),
+                    ["minecraft:potion", "minecraft:stick"]
+                );
+                2
+            }
+            mod_api::TagMembers::Missing => 0,
+            mod_api::TagMembers::Unavailable => panic!("loot has a loaded item table"),
+            other => panic!("unexpected tag lookup result: {other:?}"),
         };
         Ok(stack)
     }
@@ -64,14 +68,25 @@ impl mod_api::ModLootCondition for TagReader {
             .key(&mod_api::Identifier::parse("test:missing").unwrap())
             .unwrap();
         assert_eq!(tags.is_in_tag(stick, missing), Some(false));
-        assert!(tags.items(missing).unwrap().is_empty());
+        assert_eq!(tags.items(missing), mod_api::TagMembers::Missing);
         Ok(holds)
     }
 }
 #[test]
+#[ignore = "daily"]
 fn loot_types_read_current_membership_and_order_after_tag_reload() {
+    use crate::game::{loot_tags::LootTags, native_entity_refs::tests::run_fresh_cases};
+    use mod_api::{Identifier, Tags};
     use std::collections::HashMap;
     use sunrise_items::items::{Items, TagRegistry};
+
+    if run_fresh_cases(
+        "game::api_values::loot_values::tests::loot_types_read_current_membership_and_order_after_tag_reload",
+        "SUNRISE_LOOT_TAG_LIST_FIXTURE",
+        &["reload"],
+    ) {
+        return;
+    }
     super::super::prepare_stack_boundary_tests();
     let mut items = Items::for_tests(HashMap::new());
     with_mods(
@@ -81,18 +96,33 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             super::super::resolve_stack_boundary_test_items();
-            for (members, expected_count, expected_holds) in [
+            let name = Identifier::parse("test:ingredients").unwrap();
+            let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
+            for (members, expected_count, expected_holds, item_tags, tag_names) in [
                 (
-                    vec!["minecraft:potion".to_owned(), "minecraft:stick".to_owned()],
+                    Some(vec![
+                        "minecraft:potion".to_owned(),
+                        "minecraft:stick".to_owned(),
+                    ]),
                     2,
                     true,
+                    vec![name.clone()],
+                    vec![name.clone()],
                 ),
-                (Vec::new(), 0, false),
+                (Some(Vec::new()), 1, false, vec![], vec![name]),
+                (None, 0, false, vec![], vec![]),
             ] {
                 items.set_tags(
                     TagRegistry::Item,
-                    HashMap::from([("test:ingredients".into(), members)]),
+                    members
+                        .into_iter()
+                        .map(|members| ("test:ingredients".into(), members))
+                        .collect(),
                 );
+                let tags = LootTags(&items);
+                assert_eq!(tags.item_tags(stick), Some(item_tags));
+                assert_eq!(tags.item_tag_names(), Some(tag_names));
+
                 let mut value = stack();
                 let mut holds = false;
                 apply_type(
@@ -111,6 +141,55 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
                 );
                 assert_eq!(value.count, expected_count);
                 assert_eq!(holds, expected_holds);
+            }
+        },
+    );
+}
+
+#[test]
+fn registered_loot_function_reads_only_tags_bound_by_the_pack_loader() {
+    use sunrise_core::random::LegacyRandom;
+    use sunrise_world::loot::{LootData, PackOverlay};
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("items.json"), r#"{"minecraft:stick":{}}"#).unwrap();
+    let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+    let cases = crate::game::native_tags::PACK_BINDING_CASES;
+    let mut files = Vec::new();
+    for (name, bytes, _) in cases {
+        files.push((format!("tags/binding:item/{name}"), vec![bytes.to_vec()]));
+        let table = serde_json::json!({"pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:stick"}]}],
+            "modifier":{"type":"tag_reader:count","tag":format!("binding:{name}")}});
+        files.push((
+            format!("loot_table/binding:{name}"),
+            vec![serde_json::to_vec(&table).unwrap()],
+        ));
+    }
+    with_mods(
+        vec![ModEntry::new("tag_reader", Box::new(TagReader))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            mod_api::__private::resolve_items(["minecraft:stick"]).unwrap();
+            let loot = LootData::load_with_types(
+                root.path(),
+                &PackOverlay::new(&files),
+                &defaults,
+                crate::game::loot_types::capture(),
+            )
+            .unwrap();
+            for (name, _, is_bound) in cases {
+                let drops = loot.roll(
+                    &format!("binding:{name}"),
+                    &mut LegacyRandom::new(0),
+                    0.0,
+                    None,
+                    None,
+                );
+                assert_eq!(
+                    drops.iter().map(|stack| stack.count).sum::<i32>(),
+                    i32::from(is_bound),
+                    "{name}"
+                );
             }
         },
     );

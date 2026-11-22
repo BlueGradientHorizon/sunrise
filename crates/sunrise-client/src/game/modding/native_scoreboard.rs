@@ -37,8 +37,7 @@ pub(super) fn api_text(text: &EngineText) -> Result<mod_api::Text, TextFormError
 }
 
 fn engine_text(text: &mod_api::Text) -> Result<EngineText, TextFormError> {
-    use super::api_values::TryIntoEngine;
-    text.try_into_engine(&())
+    sunrise_client_lib::api_text::to_serialized_engine(text)
 }
 
 fn engine_comp(text: &mod_api::Text) -> Result<Comp, TextFormError> {
@@ -72,7 +71,7 @@ fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextForm
             if let Comp::Object(fields) = &mut json {
                 fields.insert("text".into(), Comp::String(String::new()));
             }
-            NumberFormat::Styled(api_text(&comp_text(&json))?.style)
+            NumberFormat::Styled(std::mem::take(&mut api_text(&comp_text(&json))?.style))
         }
     })
 }
@@ -115,7 +114,7 @@ impl Game<'_> {
     pub(super) fn score_holder_key(&self, holder: &ScoreHolder) -> Option<String> {
         match holder {
             ScoreHolder::Name(name) => Some(name.clone()),
-            ScoreHolder::Player(player) => self.player_name(*player),
+            ScoreHolder::Player(player) => self.player_name(*player).map(str::to_owned),
             ScoreHolder::Entity(entity) => {
                 self.existing_holder_name(self.native_entity_target(*entity)?)
             }
@@ -583,19 +582,25 @@ pub(in crate::game) mod tests {
         );
     }
 
-    /// A component the API cannot hold is refused by name, in a number format and in a text: it
-    /// is not flattened to its plain words.
+    /// A component deeper than the serialization limit survives in-memory capture, while
+    /// writing it back across the serialization boundary is refused by name, never flattened.
     #[test]
     fn a_text_too_deep_for_the_api_is_refused_by_name() {
         let mut deep = literal("x");
         for _ in 0..600 {
             deep = serde_json::json!({"text": "", "extra": [deep]});
         }
+        let captured = api_text(&comp_text(&deep)).unwrap();
+        assert_eq!(engine_text(&captured), Err(TextFormError::TooDeep));
+        let fixed = api_number_format(&sb::NumberFormat::Fixed(deep)).unwrap();
+        assert_eq!(engine_number_format(&fixed), Err(TextFormError::TooDeep));
         assert_eq!(
-            api_number_format(&sb::NumberFormat::Fixed(deep.clone())),
-            Err(TextFormError::TooDeep)
+            api_text(
+                &EngineText::empty()
+                    .with_component(serde_json::json!({"text": "x", "test:meta": [null]}))
+            ),
+            Err(TextFormError::NestedNull)
         );
-        assert_eq!(api_text(&comp_text(&deep)), Err(TextFormError::TooDeep));
         assert!(api_text(&comp_text(&literal("x"))).is_ok());
     }
 

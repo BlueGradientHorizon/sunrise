@@ -14,7 +14,6 @@ pub trait PlayerInteractionBackend {
     /// the delay from the attack speed attribute and the main-hand item.
     /// Inside `attack_entity` it reads the charge that blow uses: the hook
     /// runs before `Player.attack` resets the ticker. None for a stale or unavailable player.
-    #[access(WorldOnly)]
     /// Non-finite partial ticks return `None`; finite partials are not restricted.
     fn player_attack_strength_scale(&self, player: PlayerRef, partial: f32) -> Option<f32>;
     /// Side: server.
@@ -24,7 +23,6 @@ pub trait PlayerInteractionBackend {
     /// `can_place_on` component matches the clicked block, the one `pos` lies against. The game's
     /// own use runs the same check (`ItemStack.useOn`, buckets). None for a stale or unavailable
     /// player, and for one in another level than the one in place.
-    #[access(WorldOnly)]
     fn player_may_use_item_at(
         &self,
         player: PlayerRef,
@@ -37,7 +35,6 @@ pub trait PlayerInteractionBackend {
     /// rule is on, and their teams allow it (allies on a team without friendly fire cannot,
     /// `Player.canHarmPlayer`). Attacks, arrows and tridents ask the same. None when either
     /// handle is stale or unavailable.
-    #[access(WorldOnly)]
     fn player_can_harm(&self, player: PlayerRef, other: PlayerRef) -> Option<bool>;
     /// Side: both.
     /// Whether `entity` is within the player's reach by the server's rule
@@ -50,7 +47,6 @@ pub trait PlayerInteractionBackend {
     /// stale player or entity, one whose box Sunrise doesn't keep, or one in
     /// another level. On a client, `player` must be the local player: the range and main hand
     /// are its synced copy, its eye position is predicted, and the target's box is its client copy.
-    #[access(WorldOnly)]
     fn player_within_entity_reach(
         &self,
         player: PlayerRef,
@@ -72,11 +68,10 @@ pub trait PlayerInteractionBackendMut {
     /// `can_harvest_block` parts, then the global `player_harvest_check`, so it **runs those
     /// hooks** with this player. Sunrise's sites all share this one answer, unlike NeoForge's
     /// break progress, which skips the block override. Nothing requires `pos` to hold `state`. On
-    /// a server any online player can be asked; on a client only the local player. None for a
-    /// stale handle or player, a dead server player, a level other than the one in place, a
-    /// player the client has no state for, and a call from inside the harvest hooks themselves
-    /// (`can_harvest_block`, `player_harvest_check`), which would recurse.
-    #[access(WorldOnly)]
+    /// a server a connected or fake player can be asked; on a client only the local player. None
+    /// for a stale handle or player, an unknown block state, a dead server player, a level other than the one in place,
+    /// a player the client has no state for, and a call from inside either harvest hook
+    /// (`can_harvest_block`, `player_harvest_check`), even when asking about a different state.
     fn player_has_correct_tool_for_drops(
         &mut self,
         player: PlayerRef,
@@ -102,9 +97,8 @@ pub trait PlayerInteractionBackendMut {
     /// the block. Breaking from `break_block` or `block_drops` makes them hear these breaks too:
     /// a mod keeps its own guard, and a break started from inside eight others is refused (a
     /// Sunrise safeguard that the reference does not have). True when the block was removed; false, with nothing broken, for a stale handle, a player who
-    /// isn't here or is dead, air, an unloaded block, a block no survival player can break
+    /// isn't here, is dead or is in another level than the hook's, air, an unloaded block, a block no survival player can break
     /// (bedrock), a canceled break, and off a server.
-    #[access(WorldOnly)]
     fn player_destroy_block(
         &mut self,
         player: PlayerRef,
@@ -120,7 +114,6 @@ pub trait PlayerInteractionBackendMut {
     /// higher one has no effect. Any nonnegative sequence is accepted, so a value too high can
     /// end pending client predictions early. Refuses, queueing nothing, with
     /// `PlayerWorldRefusal`: `Client`, `Stale`, `NoConnection` and `NegativeSequence`.
-    #[access(WorldOnly)]
     fn player_ack_block_changes(
         &mut self,
         player: PlayerRef,
@@ -134,7 +127,6 @@ pub trait PlayerInteractionBackendMut {
     /// it does not itself acknowledge or clear pending client predictions.
     /// Refuses, sending nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `NoConnection`, `UnknownState` and
     /// `PositionNotSendable` (y outside -2048..=2047, x or z outside -33554432..33554432).
-    #[access(WorldOnly)]
     fn player_show_block(
         &mut self,
         player: PlayerRef,
@@ -150,14 +142,17 @@ pub trait PlayerInteractionBackendMut {
     /// the player's turn (a bed places its head, a door its upper half). Nothing else of vanilla's `BlockItem.place`
     /// or `useOn` runs: no check that the block may be placed there (survival, entity
     /// obstruction, build permission, spawn protection), no `placed_block` advancement trigger or
-    /// statistic, no place sound, no game event, no item used or consumed, and `setPlacedBy` is
-    /// not given the player as placer. The player is only whose turn `setPlacedBy` runs in, so it is
+    /// statistic, generic item placement sound or game event, or item use or consumption.
+    /// The block callback may produce its own effects.
+    /// `setPlacedBy` is not given the player as placer. The player is only whose turn `setPlacedBy` runs in, so it is
     /// not "as player" in the sense of a use-on. The state is written as given. Refuses, writing
     /// nothing, with `PlayerWorldRefusal`: `Client`, `Stale`, `Dead`, `StaleLevel`, `OtherLevel`
-    /// (not the level in place, where the player is), `UnknownState`, `OutOfWorld`, `NotLoaded`
-    /// and `Unchanged` (that state already stands there, or the write was refused as
-    /// `level_set_block` returns false).
-    #[access(WorldOnly)]
+    /// (that `level` is not the level in place: both placement steps, the write
+    /// and `setPlacedBy`, use the supplied level), `UnknownState`, `OutOfWorld`, `NotLoaded`,
+    /// `Fenced` (the origin or a direct companion or callback write is held by a carrier transfer),
+    /// `InTransaction` (a completed wither pattern in an open Host transaction), and `Unchanged`
+    /// (that state already stands there, or `level_set_block` returns false). Neighbour updates
+    /// follow the level's normal rules.
     fn player_place_block(
         &mut self,
         player: PlayerRef,

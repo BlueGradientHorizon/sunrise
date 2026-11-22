@@ -1,23 +1,16 @@
 # Entity parts and mob goals
 
-Entity Parts run in native mods in full. A wasm mod may also register one with `r.entity_part`, but
-the part's `general_entity_tick` and client-side `can_rider_interact` cross. The goal, behavior, spawn-size and shear methods
-(`register_goals`, `register_behaviors`, `spawn_cluster_size`, `is_shearable`, `on_sheared`) are native-only.
-A wasm part that overrides one of them is refused at load by name, as
-`EntityPart::<method>: a wasm entity part cannot override native-only methods`, instead of the
-override being silently never called.
-
-On wasm each general row keeps its own attachments, so two rows of one type share the part but not
-their state. A trap in a row's tick rolls that row's writes back and stops the mod's dependency group (the
-mod and the mods linked to it); the game keeps it stopped, and mods outside that group go on ticking.
+Register an `EntityPart` with `r.entity_part` to attach code to an entity type. Individual
+entities of that type share the part, not their attachments.
 
 ## Picking while riding
 
 `can_rider_interact` mirrors NeoForge's `IEntityExtension.canRiderInteract`. Attach an
 `EntityPart` to the candidate's entity type and set `event.allowed = true` to let a
 rider pick it like an unrelated entity. The output starts false; parts run in
-dependency order and the last write wins. The hook has version 1 and exposes
-`event.entity: EntityRef` and a writable `event.allowed: bool` with a `ClientHost`.
+dependency order and the last write wins. The hook exposes `event.subject: EntityClientScope<'_>`
+(borrow the candidate's read-only `EntityClientView` with `with_view`, or `&mut dyn ClientHost`
+sequentially with `host()`) and a writable `event.allowed: bool`.
 
 The ordinary client pick excludes entities sharing the camera's root vehicle,
 including other passengers, not just the directly ridden entity. The shared
@@ -32,6 +25,25 @@ and never ask this hook. Server interaction checks remain reach-only.
 
 The existing family traversal order is retained; exact vanilla section and
 within-section insertion ordering is a separate engine correction.
+
+## Entity tags
+
+On the server, `entity.tags(host)` lends an `EntityTags<'_>` view of the entity's scoreboard
+tags (`Entity.entityTags()`), not its entity-type registry tags. A live entity without tags
+gives an empty view (`tags.is_empty()`); a stale handle, client or snapshot without live tags
+gives `None`. A goal can read its own mob's tags and the tags of other live mobs lent to the tick.
+
+Use `entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` for an exact match
+without allocating. View equality compares exact UTF-16 tag membership, ignoring order and
+repeated entries. `tags.iter_utf16()` still yields tags in saved order, so use
+`a.iter_utf16().eq(b.iter_utf16())` when the order matters. To keep the old `Vec<String>`
+equality, including replacement characters for unpaired surrogates, compare
+`a.iter_utf16().map(String::from_utf16_lossy).eq(b.iter_utf16().map(String::from_utf16_lossy))`.
+
+Use `String::from_utf16(units)` to reject unpaired surrogates, `String::from_utf16_lossy(units)`
+for the same replacement characters as `/tag ... list`, or `units.to_vec()` to keep the exact
+units after the host borrow ends. For the old replacement-character membership check, use
+`tags.iter_utf16().any(|units| String::from_utf16_lossy(units) == name)`.
 
 ## Goals
 
@@ -84,6 +96,12 @@ Clearing a fox's target ends defending without changing its trusted entities. An
 target controls its creepy flag and attacking speed modifier; clearing it also clears its stared-at
 flag. A zombified piglin schedules its first anger sound and next alert when it acquires a target
 from none, not when switching between targets. Targeting a player does not count as player damage.
+A goal moves its own mob with `set_delta_movement([x, y, z])` and `add_delta_movement([x, y, z])`
+(`Entity.setDeltaMovement` and `addDeltaMovement`, in blocks a tick), and reads the current value with
+`delta_movement()`, as `LeapAtTargetGoal` and `DolphinJumpGoal` do. The write applies at once, inside the
+mob's AI step, so the travel that follows in the same tick uses it, and clients see it through ordinary motion
+tracking. A component that is not finite (in the delta or the sum) answers false and leaves the velocity
+unchanged; nothing is clamped.
 
 
 ## Part state
@@ -128,8 +146,9 @@ let full = Robot::edit_state(host, robot, |_, charge| {
   `minecraft:player` (a player's respawn identity is not decided yet), every other vanilla family
   (boats, minecarts, items, projectiles, armor stands...) and an unknown id refuse the load with
   `PartStateRefusal::EntityKind`, naming the type. `entity_part` itself checks no type.
-- The declaration is refused at the call as for block entities, copying on death included. Like
-  `entity_part`, `entity_part_with_state` is native-only; Part state is server-side for now.
+- The declaration is refused at the call as for block entities, copying on death included. Part
+  state is server-side. Its registration errors, residency checks and state errors are
+  local values; only the attachment's state value is saved through its codec.
 
 ## Brain behaviors
 

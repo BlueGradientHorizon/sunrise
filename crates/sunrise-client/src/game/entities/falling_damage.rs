@@ -29,11 +29,24 @@ impl Game<'_> {
                     position: Some([block.position.x, block.position.y, block.position.z]),
                     ..Default::default()
                 };
-                for index in 0..self.mobs.len() {
-                    if !self.mobs[index].alive()
-                        || !falling_block::bounds(block.position)
-                            .intersects(self.mobs[index].bounds())
-                    {
+                // FallingBlockEntity.causeFallDamage selects the entities first, then hurts
+                // them in order. Death listeners can spawn or remove rows between hits.
+                let bounds = falling_block::bounds(block.position);
+                let victims: Vec<_> = self
+                    .mobs
+                    .iter()
+                    .filter(|mob| mob.alive() && !mob.removed && bounds.intersects(mob.bounds()))
+                    .map(|mob| mob.join)
+                    .collect();
+                let source = sunrise_client::mobs::Damage {
+                    from: attack.position,
+                    ..sunrise_client::mobs::Damage::of(mob_kind)
+                };
+                for join in victims {
+                    let Some(index) = self.mobs.locate(join) else {
+                        continue;
+                    };
+                    if self.mobs[index].removed {
                         continue;
                     }
                     let plan = self.prepare_knockback_credit(
@@ -42,13 +55,12 @@ impl Game<'_> {
                         self.combat.attack(),
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    falling_block::hurt_mobs_with_kind(
+                    self.mobs[index].damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
-                        [&mut self.mobs[index]],
-                        block.position,
                         impact.amount,
-                        mob_kind,
+                        source,
                     );
+                    self.finish_mob_damage_at(index);
                 }
                 // Enderman.hurtServer: a falling block is no living attacker.
                 if let Err(e) = self.settle_hurt_teleports() {
@@ -167,21 +179,16 @@ impl Game<'_> {
             {
                 self.world.block_entities.insert(key, entity);
             }
-            if let Some(entity) = self.world.block_entities.get(&key) {
-                let mut tag = sunrise_client::save::block_entity_encode::encode(
-                    key,
-                    entity,
-                    &name,
-                    self.res.items(),
-                );
+            if let Some(sunrise_core::nbt::Tag::Compound(carried)) = block
+                .saved
+                .as_ref()
+                .and_then(|saved| saved.1.get("TileEntityData"))
+                && let Some(entity) = self.world.block_entities.get(&key)
+            {
+                let mut tag = self.encode_live_block_entity(key, entity, &name, self.res.items());
                 // FallingBlockEntity.tick copies each supplied field over the
                 // new block entity's saved defaults before loadWithComponents.
-                if let Some(sunrise_core::nbt::Tag::Compound(carried)) = block
-                    .saved
-                    .as_ref()
-                    .and_then(|saved| saved.1.get("TileEntityData"))
-                    && let sunrise_core::nbt::Tag::Compound(fields) = &mut tag
-                {
+                if let sunrise_core::nbt::Tag::Compound(fields) = &mut tag {
                     fields.extend(carried.clone());
                     self.load_block_entity_nbt(pos, &sunrise_client::snbt::to_snbt(&tag));
                 }
@@ -232,7 +239,7 @@ impl Game<'_> {
         }) {
             return;
         }
-        let Some(id) = self.motion.health.damage.id(kind) else {
+        let Some(id) = self.health_resources.damage.id(kind) else {
             return;
         };
         let attack = sunrise_client::health::Attack {
@@ -263,6 +270,7 @@ impl Game<'_> {
                 blocked: false,
             });
         }
+        self.finish_guest_damage();
     }
 }
 

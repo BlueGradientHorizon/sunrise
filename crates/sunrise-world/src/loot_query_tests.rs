@@ -13,7 +13,10 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         predicates: Arc::default(),
         items: HashMap::new(),
         enchantments: vec![],
+        primary_answers: Default::default(),
+        support_answers: Default::default(),
         tags: HashMap::new(),
+        item_tag_names: None,
         smelting: vec![],
     }
 }

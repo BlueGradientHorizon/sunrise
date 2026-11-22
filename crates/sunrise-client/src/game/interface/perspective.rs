@@ -17,7 +17,7 @@ use sunrise_client::{
 use sunrise_client::{
     entities::nameplate::NameplateDistances,
     hud::HudBatch,
-    mobs::{Anim, Brain, Mob, MobType},
+    mobs::{Anim, Brain, Mob, MobType, render::FrameDraw},
     mouse::Rotation,
     pose::Pose,
 };
@@ -347,7 +347,6 @@ impl Game<'_> {
             }
         };
         let mut view = self.view;
-        let pull = self.hooks_camera_distance(partial);
         let kind = self.camera_type;
 
         let context = CollisionContext::for_entity(
@@ -376,8 +375,7 @@ impl Game<'_> {
             &entity,
             partial,
             kind,
-            |distance| {
-                let mut distance = distance * pull;
+            |mut distance| {
                 self.native_camera_distance(partial, kind.is_mirrored(), &entity, &mut distance);
                 distance
             },
@@ -516,6 +514,10 @@ impl Game<'_> {
             };
             let mut m = Mob::new(0, kind, p.position, self.yaw);
             m.head_pitch = self.pitch;
+            // The render state starts with the profile's paired default skin and model.
+            let skin = sunrise_client::tab_list::default_skin(self.own_uuid());
+            m.skin = Some(skin.into());
+            m.slim = skin.contains("/slim/");
             self.player_model = Some(m);
         }
         let pose = p.pose;
@@ -725,9 +727,8 @@ impl Game<'_> {
             .riding
             .and_then(|id| self.boats.iter().find(|b| b.id == id))
         {
-            let delta = (self.yaw - b.yaw + 180.0).rem_euclid(360.0) - 180.0;
-            let clamped = delta.clamp(-105.0, 105.0) - delta;
-            self.yaw += clamped;
+            let (yaw, clamped) = sunrise_client::camera::clamp_boat_rotation(self.yaw, b.yaw);
+            self.yaw = yaw;
             // clampRotation moves `yRotO` with the view.
             self.rope_rot_old.0 += clamped;
         }
@@ -753,20 +754,23 @@ impl Game<'_> {
             m.head_pitch = pitch;
         }
     }
-    /// `LevelExtractor`'s skip of the camera entity: the player's own body
-    /// is drawn unless the camera is in first person, or while it sleeps.
+    /// `LevelExtractor` submits the local player only when it holds the camera, and
+    /// skips the first-person body unless it is sleeping. Studio freecam draws it too.
     pub(super) fn own_body_in_view(&self) -> bool {
-        !self.camera_type.is_first_person() || self.sleeping.is_some() || self.studio.flying()
+        self.studio.flying()
+            || (self.controls_camera()
+                && (!self.camera_type.is_first_person() || self.sleeping.is_some()))
     }
     /// Whether the player's own model shows in the world view (its body or,
     /// while invisible, only its armour and held items).
     pub(super) fn player_model_shown(&self) -> bool {
         (self.own_body_in_view()
-            || shadow_pass_takes_own_model(
-                self.pack_shadow_casters.1,
-                self.pack_ids.is_some(),
-                self.spectator(),
-            ))
+            || (self.controls_camera()
+                && shadow_pass_takes_own_model(
+                    self.occlusion.shadow_casters.1,
+                    self.pack_ids.is_some(),
+                    self.spectator(),
+                )))
             && self
                 .player
                 .as_ref()
@@ -790,6 +794,25 @@ impl Game<'_> {
     pub(super) fn own_body_visible(&self) -> bool {
         body_visible(self.own_invisible(), self.own_team())
     }
+    /// The local player's body in the ordered entity pass.
+    pub(super) fn local_player_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
+    ) {
+        let body_in_view = self.own_body_in_view();
+        let start = out.len();
+        self.mark_player(start, !body_in_view);
+        self.mark_motion(start, Self::MOTION_OWN_PLAYER);
+        self.player_model_geometry(camera, self.own_player_alpha(), out);
+        // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
+        if self.pack_ids.is_none() && !body_in_view {
+            self.shadow_only_vertices
+                .borrow_mut()
+                .extend(out.drain(start..));
+        }
+    }
+
     /// The player's model for the entity pass in third person.
     pub(super) fn player_model_geometry(
         &self,
@@ -816,25 +839,41 @@ impl Game<'_> {
         let body = self.own_body_visible();
         // The mods' pre hooks (`render_player_pre`, then `render_living_pre`), as for the other
         // players: a cancel skips the rest of this player's drawing and its post hooks, and the
-        // frame's later passes (flames, name tag) leave it out too.
+        // frame's later name tag pass leaves it out too; its flames stay.
         let name = self.own_profile_name();
         let who = PlayerRender {
             name: &name,
             local: true,
         };
         let listened = self.mob_render_listened();
-        let pre = self.mod_render_pre(m, Some(who), listened, alpha as f32, camera, packed, out);
-        let Some(hidden) = pre else {
+        let mut frame_draw = FrameDraw::default();
+        if !self.mod_render_pre(
+            m,
+            Some(who),
+            listened,
+            alpha as f32,
+            camera,
+            packed,
+            &mut frame_draw,
+            out,
+        ) {
             return;
+        }
+        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
+        let show_layers = sunrise_client::mobs::render::layers_shown(m);
+        let layers = if show_layers {
+            self.mod_layers(m)
+        } else {
+            None
         };
-        // The mods' layers' posed parts, kept from the draw below while they want them.
-        let (mut parts, layers) = (None, self.mod_layers(m));
+        frame_draw.capture_model =
+            layers.is_some() || (listened && self.mob_render_post_listened(true));
         // A spectator still draws its own model in third person: the poses'
         // visibility (set by player_model_visibility) hides body parts, and
         // translucent_body marks the body OIT for the ghostly look. Only first
         // person and dead players skip it.
         if body || self.spectator() {
-            sunrise_client::mobs::render::render_with_hidden(
+            sunrise_client::mobs::render::render_with_frame(
                 m,
                 alpha as f32,
                 camera,
@@ -842,8 +881,7 @@ impl Game<'_> {
                 packed,
                 self,
                 &self.player_armor_layers(),
-                hidden,
-                (listened || layers.is_some()).then_some(&mut parts),
+                &mut frame_draw,
                 out,
             );
         } else {
@@ -855,12 +893,12 @@ impl Game<'_> {
                 packed,
                 self,
                 &self.player_armor_layers(),
-                (listened || layers.is_some()).then_some(&mut parts),
+                &mut frame_draw,
                 out,
             );
         }
-        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
-        if sunrise_client::mobs::render::layers_shown(m) {
+        let model = frame_draw.model();
+        if show_layers {
             let chest = self.armor[1].as_ref().map(|s| &*s.item);
             // CapeLayer: no cape on an invisible player (`isInvisible`, whoever looks).
             if !self.own_invisible() {
@@ -874,8 +912,6 @@ impl Game<'_> {
                 packed,
                 out,
             );
-            let world = sunrise_hooks::players::Pass::World;
-            self.own_layers_geometry(m, world, camera, alpha as f32, packed, out);
             self.player_elytra_geometry(m, chest, camera, alpha as f32, packed, out);
             self.spin_attack_geometry(m, camera, alpha as f32, packed, out);
             self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
@@ -887,7 +923,7 @@ impl Game<'_> {
             self.mod_layer_geometry(
                 m,
                 Some(who),
-                parts,
+                model,
                 layers,
                 alpha as f32,
                 camera,
@@ -896,7 +932,7 @@ impl Game<'_> {
             );
         }
         // The post hooks, whether or not the layers drew (a spectator draws none).
-        self.mod_render_post(m, Some(who), parts, alpha as f32, camera, packed, out);
+        self.mod_render_post(m, Some(who), model, alpha as f32, camera, packed, out);
         // LivingEntity.isCurrentlyGlowing: the Glowing effect.
         let vanilla = self
             .potions
@@ -984,7 +1020,15 @@ impl Game<'_> {
                 );
             } else {
                 sunrise_client::mobs::render::render_layers(
-                    &m, 1.0, camera, &lookup, light, data, &armour, None, &mut verts,
+                    &m,
+                    1.0,
+                    camera,
+                    &lookup,
+                    light,
+                    data,
+                    &armour,
+                    &mut FrameDraw::default(),
+                    &mut verts,
                 );
             }
         });
@@ -1000,8 +1044,6 @@ impl Game<'_> {
             240 | 240 << 8,
             &mut verts,
         );
-        let picture = sunrise_hooks::players::Pass::Picture;
-        self.own_layers_geometry(&m, picture, camera, 1.0, 240 | 240 << 8, &mut verts);
         // `WingsLayer` draws through `RenderTypes.armorCutoutNoCull`: the
         // wings' faces show from both sides (the elytra texture is empty on
         // the face that looks at the body).
@@ -1022,7 +1064,7 @@ impl Game<'_> {
         let fire = self
             .player
             .as_ref()
-            .filter(|p| p.fire_ticks > 0 && !p.spectator)
+            .filter(|p| p.is_on_fire() && !p.spectator)
             .map(|p| (p.dimensions.width, p.dimensions.height));
         let glints = preview_glint_quads(&verts, gui, wings.clone(), self.glint_frame);
         let quads = player_preview_quads_no_cull(verts, gui, fire, &atlas.sprites, wings);
@@ -2008,8 +2050,8 @@ mod preview_tests {
             heightmaps: Default::default(),
             animations: Default::default(),
             biome_tags: Default::default(),
-            entity_tags: Default::default(),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
@@ -2017,6 +2059,7 @@ mod preview_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let draw = |body: bool| {
@@ -2028,7 +2071,15 @@ mod preview_tests {
                 );
             } else {
                 sunrise_client::mobs::render::render_layers(
-                    &m, 1.0, at, &atlas, 0xF0F0, &data, &armour, None, &mut out,
+                    &m,
+                    1.0,
+                    at,
+                    &atlas,
+                    0xF0F0,
+                    &data,
+                    &armour,
+                    &mut FrameDraw::default(),
+                    &mut out,
                 );
             }
             out
@@ -2053,7 +2104,7 @@ mod preview_tests {
                 0xF0F0,
                 &data,
                 armour,
-                None,
+                &mut FrameDraw::default(),
                 out,
             );
         }

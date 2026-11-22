@@ -993,6 +993,7 @@ mod hub_tests {
             next_entity: &mut next,
             spawn: [0.5, 64.0, 0.5],
             spawn_angle: [0.0; 2],
+            spawn_dimension: "minecraft:overworld",
             difficulty: 2,
             difficulty_locked: false,
             clock_rate: 1.0,
@@ -1018,6 +1019,7 @@ mod hub_tests {
             next_entity: next,
             spawn: [0.5, 64.0, 0.5],
             spawn_angle: [0.0; 2],
+            spawn_dimension: "minecraft:overworld",
             difficulty: 2,
             difficulty_locked: false,
             clock_rate: 1.0,
@@ -1222,7 +1224,7 @@ mod hub_tests {
         let (mut held_chunks, mut watcher_chunks) = (0, 0);
         let (mut held_adds, mut watcher_adds) = (Vec::new(), Vec::new());
         for _ in 0..30 {
-            hub.tick_level(&mut ctx);
+            hub.tick_level(&mut ctx, None);
             hub.end_tick();
             let mine_now = packets(&mine);
             let seen_now = packets(&seen);

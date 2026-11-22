@@ -462,6 +462,9 @@ fn swirls(list: &[Particle], builtin: &Builtin) -> Vec<ParticleOptions> {
     let channel = |argb: i32, shift: u32| ((argb >> shift) & 255) as f32 / 255.0;
     list.iter()
         .filter_map(|p| {
+            if let Some(ParticleData::Mod { name, options }) = &p.data {
+                return super::lan_particles::decode_mod_particle(name, options);
+            }
             let name = builtin.get("minecraft:particle_type")?.name(p.id)?;
             let ty = ParticleType::from_name(name)?;
             Some(match p.data {
@@ -594,6 +597,7 @@ mod tests {
                 pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                 polygons: Vec::new(),
                 children: Vec::new(),
+                layer: None,
             }),
             layers: Default::default(),
             texture: String::new(),
@@ -721,6 +725,8 @@ mod tests {
                     spectator: false,
                     permission: 0,
                     sunrise: true,
+                    general_entity: true,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -728,8 +734,8 @@ mod tests {
                     sources: None,
                     tracker: &mut tracker,
                     out: &mut packets,
-                    gone: None,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();
@@ -885,6 +891,8 @@ mod tests {
                     spectator: false,
                     permission: 0,
                     sunrise: true,
+                    general_entity: true,
+                    attachment_sender: None,
                     moved: true,
                     position: [0.0; 3],
                     view_distance: 10,
@@ -892,8 +900,8 @@ mod tests {
                     sources: None,
                     tracker: &mut tracker,
                     out: &mut packets,
-                    gone: None,
                 }],
+                None,
                 |_| Some(100),
             );
             let mut sent = Vec::new();

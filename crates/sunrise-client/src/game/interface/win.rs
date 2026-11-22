@@ -43,7 +43,7 @@ impl Game<'_> {
             finish,
             frame: Instant::now(),
         });
-        self.keys.clear();
+        self.clear_device_keys();
         self.set_screen(Screen::Win);
         self.capture(false);
     }
