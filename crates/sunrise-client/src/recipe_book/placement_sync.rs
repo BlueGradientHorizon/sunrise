@@ -72,12 +72,6 @@ pub struct CatalogIdentity {
     pub menu: ResourceId,
     pub book: ResourceId,
 }
-#[derive(Clone, Debug, PartialEq, Eq, mod_api::Wire)]
-pub struct Selection {
-    pub catalog: CatalogIdentity,
-    pub number: u64,
-    pub display: DisplayId,
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, mod_api::Wire)]
 pub enum Refusal {
     Unsupported,
@@ -91,14 +85,8 @@ pub enum Refusal {
     TooLarge,
     Invalid,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, mod_api::Wire)]
-pub enum Outcome {
-    Placed,
-    MissingIngredients,
-    Refused(Refusal),
-}
 
-#[derive(Clone, Debug, PartialEq, Eq, mod_api::Wire)]
+#[derive(Clone, Debug, PartialEq, mod_api::Wire)]
 pub enum Frame {
     Hello {
         epoch: u64,
@@ -129,12 +117,14 @@ pub enum Frame {
         bytes: Vec<u8>,
     },
     Place {
-        selection: Selection,
+        catalog: CatalogIdentity,
+        display: DisplayId,
         use_max: bool,
     },
-    Reply {
-        selection: Selection,
-        outcome: Outcome,
+    Ghost {
+        catalog: CatalogIdentity,
+        recipe: ResourceId,
+        display: mod_api::RecipeBookDisplay,
     },
     Refused {
         epoch: u64,
@@ -150,7 +140,7 @@ pub enum Frame {
 
 /// Bump when the placement frame or catalogue protocol changes. Part size is
 /// also included independently in `schema()`.
-const PROTOCOL: u64 = 3;
+const PROTOCOL: u64 = 4;
 
 /// Encode the remote display projection of already validated native declarations.
 pub fn encode_catalogue(declarations: &[mod_api::RecipeBookCategory]) -> Result<Vec<u8>, Refusal> {
@@ -215,7 +205,6 @@ pub struct Client {
     pending: Option<PendingCatalog>,
     catalog: Option<CatalogIdentity>,
     completed: Option<CatalogIdentity>,
-    selection: Option<Selection>,
 }
 impl Client {
     /// Reset connection authority before negotiating a different epoch.
@@ -243,7 +232,6 @@ impl Client {
         self.pending = None;
         self.catalog = None;
         self.completed = None;
-        self.selection = None;
     }
     pub fn invalidate(&mut self, epoch: u64) -> bool {
         if self.epoch != Some(epoch) {
@@ -252,7 +240,6 @@ impl Client {
         self.pending = None;
         self.catalog = None;
         self.completed = None;
-        self.selection = None;
         true
     }
     /// A catalogue refusal must name the outstanding request, not a superseded window.
@@ -381,36 +368,19 @@ impl Client {
         }
         self.completed = None;
         self.catalog = Some(identity);
-        self.selection = None;
         true
     }
-    pub fn select(&mut self, display: DisplayId, use_max: bool) -> Option<Frame> {
-        self.selection = None;
+    pub fn place(&self, display: DisplayId, use_max: bool) -> Option<Frame> {
         let catalog = self.catalog.clone()?;
-        let number = self.number.checked_add(1)?;
-        self.number = number;
-        let selection = Selection {
+        Some(Frame::Place {
             catalog,
-            number,
             display,
-        };
-        self.selection = Some(selection.clone());
-        Some(Frame::Place { selection, use_max })
+            use_max,
+        })
     }
-    /// Only a current missing-ingredients reply authorizes ghost installation.
-    /// Consume only the reply to the current selection so stale replies cannot
-    /// install ghosts for a newer selection.
-    pub fn reply(&mut self, selection: &Selection, outcome: Outcome) -> Option<Outcome> {
-        if self.selection.as_ref() != Some(selection)
-            || self.catalog.as_ref() != Some(&selection.catalog)
-        {
-            return None;
-        }
-        self.selection = None;
-        Some(outcome)
-    }
-    pub fn click(&mut self) {
-        self.selection = None;
+    /// Only a server ghost for the currently accepted catalogue may populate this opening.
+    pub fn accepts_ghost(&self, catalog: &CatalogIdentity) -> bool {
+        self.catalog.as_ref() == Some(catalog)
     }
     pub fn epoch(&self) -> Option<u64> {
         self.epoch
@@ -423,7 +393,7 @@ impl Client {
     }
 }
 
-/// Replay protection is connection-scoped, not reset by a repeated Hello or menu close.
+/// Catalogue-transfer sequencing is connection-scoped, not reset by a repeated Hello or menu close.
 pub struct Authority {
     epoch: u64,
     ready: bool,
@@ -465,11 +435,10 @@ impl Authority {
     pub fn owns(&self, catalog: &CatalogIdentity) -> bool {
         self.ready && self.catalog.as_ref() == Some(catalog)
     }
-    pub fn place(&mut self, selection: &Selection) -> Result<(), Refusal> {
-        if !self.owns(&selection.catalog) || selection.number <= self.last {
+    pub fn place(&self, catalog: &CatalogIdentity) -> Result<(), Refusal> {
+        if !self.owns(catalog) {
             return Err(Refusal::Stale);
         }
-        self.last = selection.number;
         Ok(())
     }
     pub fn clear(&mut self) {

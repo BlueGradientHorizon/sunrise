@@ -29,7 +29,7 @@ pub(super) struct PlacementOverlay {
     pub(super) sources: Vec<u32>,
 }
 impl Game<'_> {
-    pub(super) fn request_mod_book_recipe(&mut self, recipe: String, source: u32) {
+    pub(in crate::game) fn request_mod_book_recipe(&mut self, recipe: String, source: u32) {
         if !self
             .native_net
             .placement
@@ -42,8 +42,9 @@ impl Game<'_> {
         let Ok(recipe) = recipe.try_into() else {
             return;
         };
+        self.recipe_ui.ghost.clear();
         let use_max = self.has_shift_down();
-        if let Some(frame) = self.native_net.placement.client.select(
+        if let Some(frame) = self.native_net.placement.client.place(
             sunrise_client::recipe_book::placement_sync::DisplayId { recipe, source },
             use_max,
         ) {
@@ -94,28 +95,20 @@ impl Game<'_> {
     }
     pub(in crate::game) fn install_mod_book_ghost(
         &mut self,
-        selection: &sunrise_client::recipe_book::placement_sync::Selection,
+        catalog: &sunrise_client::recipe_book::placement_sync::CatalogIdentity,
+        recipe: &sunrise_client::recipe_book::placement_sync::ResourceId,
+        display: &mod_api::RecipeBookDisplay,
     ) {
         let Some(view) = self
             .native_net
             .placement
             .view
             .as_ref()
-            .filter(|view| view.identity == selection.catalog)
+            .filter(|view| &view.identity == catalog)
         else {
             return;
         };
-        let Some(layout) = view.index.layout(selection.catalog.menu.as_str()).cloned() else {
-            return;
-        };
-        let Some(display) = view
-            .index
-            .categories()
-            .flat_map(|category| &category.displays)
-            .find(|entry| entry.recipe == selection.display.recipe.as_str())
-            .and_then(|entry| entry.displays.get(selection.display.source as usize))
-            .cloned()
-        else {
+        let Some(layout) = view.index.layout(catalog.menu.as_str()).cloned() else {
             return;
         };
         let result = match layout.declaration() {
@@ -133,7 +126,7 @@ impl Game<'_> {
         };
         // The game's own ghosts for the layout (none for `Mod`), then the menu part's say.
         let mut ghosts: Vec<mod_api::GhostSlot> = layout
-            .map(&display, fuel_empty)
+            .map(display, fuel_empty)
             .unwrap_or_default()
             .into_iter()
             .map(|(slot, display)| mod_api::GhostSlot {
@@ -142,12 +135,12 @@ impl Game<'_> {
                 result: Some(slot) == result,
             })
             .collect();
-        let menu = selection.catalog.menu.as_str();
+        let menu = catalog.menu.as_str();
         if mod_api::__private::menu_listens(mod_api::HookId::RecipeBookGhost, menu) {
             self.native_recipe_book_ghost(mod_api::__private::RecipeBookGhostCall {
                 menu,
-                recipe: selection.display.recipe.as_str(),
-                display: &display,
+                recipe: recipe.as_str(),
+                display,
                 ghosts: &mut ghosts,
             });
         }

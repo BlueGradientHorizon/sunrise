@@ -81,6 +81,34 @@ impl Game<'_> {
         }
         Ok(())
     }
+    pub(super) fn server_mod_book_display(
+        &self,
+        catalog: &sync::CatalogIdentity,
+        display: &sync::DisplayId,
+    ) -> Result<Display, sync::Refusal> {
+        let index = self
+            .recipe_tables
+            .books
+            .as_ref()
+            .and_then(|result| result.as_ref().ok())
+            .ok_or(sync::Refusal::Invalid)?;
+        if index.generation() != catalog.generation {
+            return Err(sync::Refusal::Stale);
+        }
+        let mut resolved = index
+            .categories()
+            .filter(|category| {
+                category.target_menu == catalog.menu.as_str()
+                    && category.book.as_str() == catalog.book.as_str()
+            })
+            .flat_map(|category| &category.displays)
+            .find(|entry| entry.recipe == display.recipe.as_str())
+            .and_then(|entry| entry.displays.get(display.source as usize))
+            .cloned()
+            .ok_or(sync::Refusal::UnknownDisplay)?;
+        self.concretize_mod_book_display(&mut resolved)?;
+        Ok(resolved)
+    }
     pub(super) fn server_mod_book_catalogue(
         &mut self,
         conn: u32,

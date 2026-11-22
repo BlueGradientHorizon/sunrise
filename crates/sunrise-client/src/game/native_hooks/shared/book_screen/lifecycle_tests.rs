@@ -847,7 +847,10 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert_eq!(window.window, 1);
 
                 // The server's catalogue answers the client's first request.
-                let client = &mut game.native_net.placement.client;
+                use sunrise_client::recipe_book::{
+                    menu_layout::MenuLayoutMetadata,
+                    placement_sync::{DisplayId, Frame, encode_catalogue},
+                };
                 let identity = CatalogIdentity {
                     epoch: 6,
                     number: 1,
@@ -859,9 +862,22 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     book: window.book.clone(),
                 };
                 let (_, _, layout) = mod_api::RecipeBookLayout::registered("bound:menu").unwrap();
-                client.start(identity.clone(), layout, 1).unwrap();
-                assert!(client.part(6, 1, 0, vec![0]).unwrap().is_some());
-                assert!(client.accept_catalog(identity.clone()));
+                let bytes = encode_catalogue(&[]).unwrap();
+                game.remote_mod_book_placement(Frame::Start {
+                    identity: identity.clone(),
+                    layout,
+                    storage: MenuLayoutMetadata {
+                        slots: 3,
+                        crafting: None,
+                    },
+                    total: bytes.len() as u32,
+                });
+                game.remote_mod_book_placement(Frame::Part {
+                    epoch: 6,
+                    number: 1,
+                    offset: 0,
+                    bytes,
+                });
                 let kept = |game: &Game<'_>| {
                     game.native_net.placement.client.catalog() == Some(&identity)
                         && game.native_net.placement.client.window() == Some(&window)
@@ -892,57 +908,71 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert_eq!(game.native_screen_slot(0), Some((30.0, 40.0)));
                 assert_eq!(game.native_screen_slot(1), None);
 
-                // A refused placement keeps the active catalogue and allows later valid intent
-                // without clearing or re-requesting.
-                use sunrise_client::recipe_book::placement_sync::{
-                    DisplayId, Frame, Outcome, Refusal,
-                };
-                let Frame::Place { selection, .. } = game
-                    .native_net
-                    .placement
-                    .client
-                    .select(
+                // Placements do not wait on a server reply; only a current server ghost
+                // installs ghost slots, and a new recipe click or menu replacement clears it.
+                let recipe = ResourceId::try_from("bound:recipe".to_owned()).unwrap();
+                assert!(matches!(
+                    game.native_net.placement.client.place(
                         DisplayId {
-                            recipe: ResourceId::try_from("bound:recipe".to_owned()).unwrap(),
+                            recipe: recipe.clone(),
                             source: 0,
                         },
                         false,
-                    )
-                    .expect("placement selection")
-                else {
-                    panic!("placement frame");
-                };
-                game.remote_mod_book_placement(Frame::Reply {
-                    selection,
-                    outcome: Outcome::Refused(Refusal::Denied),
-                });
-                assert!(kept(game));
-                let Frame::Place {
-                    selection: second, ..
-                } = game
-                    .native_net
-                    .placement
-                    .client
-                    .select(
+                    ),
+                    Some(Frame::Place {
+                        catalog,
+                        use_max: false,
+                        ..
+                    }) if catalog == identity
+                ));
+                assert!(matches!(
+                    game.native_net.placement.client.place(
                         DisplayId {
-                            recipe: ResourceId::try_from("bound:recipe".to_owned()).unwrap(),
+                            recipe: recipe.clone(),
                             source: 0,
                         },
                         true,
-                    )
-                    .expect("later valid placement selection")
-                else {
-                    panic!("placement frame");
+                    ),
+                    Some(Frame::Place {
+                        catalog,
+                        use_max: true,
+                        ..
+                    }) if catalog == identity
+                ));
+                let ghost_display = mod_api::RecipeBookDisplay::Shapeless {
+                    ingredients: vec![mod_api::RecipeSlotDisplay::Item("minecraft:stick".into())],
+                    result: mod_api::RecipeSlotDisplay::Item("minecraft:stone".into()),
+                    station: mod_api::RecipeSlotDisplay::Item("minecraft:crafting_table".into()),
                 };
-                game.remote_mod_book_placement(Frame::Reply {
-                    selection: second,
-                    outcome: Outcome::Placed,
+                game.remote_mod_book_placement(Frame::Ghost {
+                    catalog: identity.clone(),
+                    recipe: recipe.clone(),
+                    display: ghost_display.clone(),
                 });
+                // Slot 0 is visible; slot 1 was hidden above and receives no ghost.
+                assert_eq!(
+                    game.ghost_slots(),
+                    vec![(300, "minecraft:stick".to_owned(), false)]
+                );
                 assert!(kept(game));
+                game.request_mod_book_recipe("bound:recipe".to_owned(), 0);
+                assert!(game.ghost_slots().is_empty());
+                assert!(kept(game));
+
+                game.remote_mod_book_placement(Frame::Ghost {
+                    catalog: identity.clone(),
+                    recipe: recipe.clone(),
+                    display: ghost_display.clone(),
+                });
+                assert_eq!(
+                    game.ghost_slots(),
+                    vec![(300, "minecraft:stick".to_owned(), false)]
+                );
 
                 // The server replaces the menu in place, with no close packet.
                 open(game);
                 assert_eq!(game.screen, Screen::Inventory);
+                assert!(game.ghost_slots().is_empty());
                 assert_ne!(game.remote.as_ref().unwrap().menu.generation, first);
                 let replacement = game.native_net.placement.client.window().unwrap();
                 assert_eq!(replacement.window, 1);
@@ -950,6 +980,13 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert!(!game.native_book_placement_window_matches(&window));
                 assert!(!game.native_book_placement_catalog_matches(&identity));
                 assert_eq!(game.native_net.placement.client.catalog(), None);
+                // A late ghost for the replaced opening cannot populate the new opening.
+                game.remote_mod_book_placement(Frame::Ghost {
+                    catalog: identity.clone(),
+                    recipe,
+                    display: ghost_display,
+                });
+                assert!(game.ghost_slots().is_empty());
                 assert_eq!(game.native_screen_slot(0), Some((8.0, 18.0)));
                 assert_eq!(game.native_screen_slot(1), Some((80.0, 18.0)));
                 assert!(

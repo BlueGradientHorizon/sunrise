@@ -33,6 +33,41 @@ pub(super) enum MenuRemoval {
     Disconnected,
 }
 
+/// Recipe placement request entering the shared current-window placement router.
+#[derive(Clone, Copy)]
+pub(super) enum RecipePlacementIntent<'a> {
+    Vanilla {
+        container: i32,
+        display: i32,
+        use_max: bool,
+    },
+    ModBook {
+        catalog: &'a sunrise_client::recipe_book::placement_sync::CatalogIdentity,
+        display: &'a sunrise_client::recipe_book::placement_sync::DisplayId,
+        use_max: bool,
+    },
+}
+
+fn guest_open_window(host: &super::lan::LanHost, conn: u32) -> i32 {
+    if let Some(m) = host.hub.guest(conn).and_then(|g| g.menu.as_ref()) {
+        return m.window;
+    }
+    if let Some((window, _, _)) = super::native_menus::open_menu_of(host, conn) {
+        return window;
+    }
+    host.menus
+        .get(&conn)
+        .and_then(|menus| {
+            menus
+                .crafting
+                .table
+                .as_ref()
+                .map(|(window, ..)| *window)
+                .or_else(|| menus.station.as_ref().map(|station| station.window))
+        })
+        .unwrap_or(0)
+}
+
 /// The guest's menus the game runs: kept between clicks, so a drag (quick
 /// craft) spans them as in vanilla.
 #[derive(Default)]
@@ -1048,56 +1083,159 @@ impl Game<'_> {
         conn: u32,
         p: &sunrise_protocol::packets::recipes::PlaceRecipe,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        self.lan_route_place_recipe(
+            conn,
+            RecipePlacementIntent::Vanilla {
+                container: p.container,
+                display: p.recipe,
+                use_max: p.use_max,
+            },
+        );
+    }
+
+    /// Shared current-window recipe placement router for vanilla `PlaceRecipe`
+    /// and mod-book `Frame::Place` (`ServerGamePacketListenerImpl.handlePlaceRecipe`).
+    pub(super) fn lan_route_place_recipe(&mut self, conn: u32, intent: RecipePlacementIntent<'_>) {
+        let Some((gi, player, name, creative, container, id, use_max)) = (|| {
+            let host = self.lan.as_ref()?;
+            let gi = host.hub.guests.iter().position(|g| g.conn == conn)?;
+            let g = &host.hub.guests[gi];
+            if !g.placed || !host.hub.here(g) || g.dead || g.health <= 0.0 || g.spectator() {
+                return None;
+            }
+            let (container, use_max) = match intent {
+                RecipePlacementIntent::Vanilla {
+                    container, use_max, ..
+                } => (container, use_max),
+                RecipePlacementIntent::ModBook {
+                    catalog, use_max, ..
+                } => (catalog.window, use_max),
+            };
+            if container != guest_open_window(host, conn) {
+                return None;
+            }
+            // The server menu uses the world's active data-pack tables, the same
+            // tables used by the guest menu below. The base resources can have a
+            // different display registry or placement for an overridden recipe.
+            let id = match intent {
+                RecipePlacementIntent::Vanilla { display, .. } => world_stations!(self)
+                    .recipe_index
+                    .recipe_of_display(display)?
+                    .to_owned(),
+                RecipePlacementIntent::ModBook { display, .. } => {
+                    display.recipe.as_str().to_owned()
+                }
+            };
+            // An unknown or impossible recipe is refused outright.
+            if !g.recipe_book.knows(&id) {
+                return None;
+            }
+            if matches!(intent, RecipePlacementIntent::Vanilla { .. })
+                && world_recipes!(self)
+                    .placement(&id)
+                    .is_none_or(|placement| placement.impossible())
+            {
+                return None;
+            }
+            Some((
+                gi,
+                g.uuid,
+                g.name.clone(),
+                g.creative(),
+                container,
+                id,
+                use_max,
+            ))
+        })() else {
+            if let RecipePlacementIntent::ModBook { display, .. } = intent {
+                log::warn!(
+                    "[recipe book] refused mod-book placement for {} on conn {conn}: unavailable or unknown",
+                    display.recipe.as_str()
+                );
+            }
             return;
         };
-        let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return;
-        };
-        let g = &host.hub.guests[gi];
-        if g.spectator() {
-            return;
-        }
-        // The server menu uses the world's active data-pack tables, the same
-        // tables used by the guest menu below. The base resources can have a
-        // different display registry or placement for an overridden recipe.
-        let Some(id) = world_stations!(self)
-            .recipe_index
-            .recipe_of_display(p.recipe)
-            .map(str::to_owned)
-        else {
-            return;
-        };
-        // An unknown or impossible recipe is refused outright.
-        if !g.recipe_book.knows(&id)
-            || world_recipes!(self)
-                .placement(&id)
-                .is_none_or(|placement| placement.impossible())
-        {
-            return;
-        }
-        let (player, name, creative) = (g.uuid, g.name.clone(), g.creative());
-        self.native_player_recipe_book_click(player, &name, &id, p.use_max);
-        // A mod menu type's crafting grid places as a crafting table's.
-        if self.lan_mod_crafting_window(gi, p.container).is_some() {
-            let placed = self.lan_mod_craft_apply(gi, p.container, |menu, env| {
-                menu.place_recipe(env, &id, p.use_max, creative, None)
-            });
-            if placed == Some(PostPlace::Ghost) {
-                self.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .send_ghost_recipe(conn, p.container, &id);
+        if !self.guest_menu_still_valid(conn) {
+            if let RecipePlacementIntent::ModBook { display, .. } = intent {
+                log::warn!(
+                    "[recipe book] refused mod-book placement for {} on conn {conn}: invalid menu",
+                    display.recipe.as_str()
+                );
             }
             return;
         }
+        match intent {
+            RecipePlacementIntent::ModBook {
+                catalog,
+                display,
+                use_max,
+            } => match self.server_mod_book_place(conn, catalog, display, use_max) {
+                Ok(PostPlace::Nothing) => {}
+                Ok(PostPlace::Ghost) => {
+                    // A policy or root-commit callback may have closed or replaced the menu.
+                    if self
+                        .mod_book_menu_snapshot(conn, catalog.window, catalog.menu.as_str())
+                        .is_ok_and(|now| now.instance == catalog.instance)
+                    {
+                        match self.server_mod_book_display(catalog, display) {
+                            Ok(resolved) => self.send_guest_mod_book_placement(
+                                conn,
+                                sunrise_client::recipe_book::placement_sync::Frame::Ghost {
+                                    catalog: catalog.clone(),
+                                    recipe: display.recipe.clone(),
+                                    display: resolved,
+                                },
+                            ),
+                            Err(reason) => log::warn!(
+                                "[recipe book] skipped mod-book ghost for {} on conn {conn}: {reason:?}",
+                                display.recipe.as_str()
+                            ),
+                        }
+                    }
+                }
+                Err(reason) => {
+                    log::warn!(
+                        "[recipe book] refused mod-book placement for {} on conn {conn}: {reason:?}",
+                        display.recipe.as_str()
+                    );
+                }
+            },
+            RecipePlacementIntent::Vanilla { display, .. } => {
+                self.native_player_recipe_book_click(player, &name, &id, use_max);
+                let placed = self.lan_place_in_current_menu(gi, container, &id, use_max, creative);
+                if placed == Some(PostPlace::Ghost)
+                    && self
+                        .lan
+                        .as_ref()
+                        .is_some_and(|host| container == guest_open_window(host, conn))
+                    && let Some(host) = self.lan.as_mut()
+                {
+                    host.hub.send_ghost_recipe(conn, container, display);
+                }
+            }
+        }
+    }
+
+    fn lan_place_in_current_menu(
+        &mut self,
+        gi: usize,
+        container: i32,
+        id: &str,
+        use_max: bool,
+        creative: bool,
+    ) -> Option<PostPlace> {
+        let conn = self.lan.as_ref()?.hub.guests.get(gi)?.conn;
         // AbstractFurnaceMenu.handlePlacement: the current furnace's slots,
         // rather than the separate crafting-table menu, own cooking inputs.
-        let furnace = self.lan.as_ref().unwrap().hub.guests[gi]
+        let furnace = self
+            .lan
+            .as_ref()?
+            .hub
+            .guests
+            .get(gi)?
             .menu
             .as_ref()
-            .filter(|m| p.container != 0 && m.window == p.container)
+            .filter(|m| container != 0 && m.window == container)
             .and_then(|m| match m.slots {
                 Slots::Block(pos) => Some(pos),
                 _ => None,
@@ -1113,25 +1251,24 @@ impl Game<'_> {
                 }
                 _ => None,
             });
-        let placed = if let Some((pos, kind, items)) = furnace {
+        if let Some((pos, kind, items)) = furnace {
             // Opening need not have created the click/drag cache yet.
             let mut menu = self
                 .lan
-                .as_mut()
-                .unwrap()
+                .as_mut()?
                 .menus
                 .entry(conn)
                 .or_default()
                 .crafting
                 .machine
                 .take()
-                .filter(|(window, m)| *window == p.container && m.kind() == kind)
+                .filter(|(window, m)| *window == container && m.kind() == kind)
                 .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
             let placed = self.guest_menu_op(gi, &mut menu, |menu, env| {
                 for (k, item) in items.iter().enumerate() {
                     menu.set_slot(env, k, item.clone());
                 }
-                menu.place_recipe(env, &id, p.use_max, creative, None)
+                menu.place_recipe(env, id, use_max, creative, None)
             });
             let changed = (0..3).any(|k| menu.slot(k) != items[k].as_ref());
             if let Some(BlockEntity::Furnace(f)) = self.world.block_entities.get_mut(&pos) {
@@ -1143,26 +1280,16 @@ impl Game<'_> {
             if changed {
                 self.container_changed(pos);
             }
-            *self
-                .lan
-                .as_mut()
-                .unwrap()
-                .menus
-                .entry(conn)
-                .or_default()
-                .crafting
-                .machine = Some((p.container, menu));
+            if let Some(host) = self.lan.as_mut() {
+                *host.menus.entry(conn).or_default().crafting.machine = Some((container, menu));
+            }
             // Hub::sync_containers broadcasts the actual changed slots.
             placed
         } else {
-            self.lan_apply_recipe(gi, p.container, |menu, env| {
-                menu.place_recipe(env, &id, p.use_max, creative, None)
+            // Handles inventory (window 0), crafting table, and mod crafting menus.
+            self.lan_apply_recipe(gi, container, |menu, env| {
+                menu.place_recipe(env, id, use_max, creative, None)
             })
-        };
-        if placed == Some(PostPlace::Ghost)
-            && let Some(host) = self.lan.as_mut()
-        {
-            host.hub.send_ghost_recipe(conn, p.container, &id);
         }
     }
 

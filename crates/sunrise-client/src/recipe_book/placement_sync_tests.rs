@@ -63,11 +63,24 @@ fn display() -> DisplayId {
         source: 2,
     }
 }
-fn select(client: &mut Client) -> Selection {
-    let Frame::Place { selection, .. } = client.select(display(), false).unwrap() else {
+fn ghost_display() -> mod_api::RecipeBookDisplay {
+    mod_api::RecipeBookDisplay::Furnace {
+        ingredient: mod_api::RecipeSlotDisplay::Item("minecraft:iron_ore".into()),
+        fuel: mod_api::RecipeSlotDisplay::AnyFuel,
+        result: mod_api::RecipeSlotDisplay::Item("minecraft:iron_ingot".into()),
+        station: mod_api::RecipeSlotDisplay::Item("minecraft:furnace".into()),
+        duration: 200,
+        experience: 0.7,
+    }
+}
+fn place(client: &Client) -> (CatalogIdentity, DisplayId) {
+    let Frame::Place {
+        catalog, display, ..
+    } = client.place(display(), false).unwrap()
+    else {
         panic!("placement request")
     };
-    selection
+    (catalog, display)
 }
 #[test]
 fn negotiation_and_repeated_hello_preserve_monotonic_requests() {
@@ -202,78 +215,70 @@ fn catalogue_larger_than_a_frame_needs_complete_ordered_fragments() {
     assert!(client.accept_catalog(result.identity));
 }
 #[test]
-fn only_the_current_missing_response_can_install_a_ghost_once() {
+fn only_the_current_catalogue_accepts_a_server_ghost() {
     let mut client = client();
     let identity = open(&mut client);
+    assert!(!client.accepts_ghost(&identity));
     complete(&mut client, &identity);
-    let old = select(&mut client);
-    let current = select(&mut client);
-    assert_eq!(client.reply(&old, Outcome::MissingIngredients), None);
-    let mut wrong = current.clone();
-    wrong.catalog.generation += 1;
-    assert_eq!(client.reply(&wrong, Outcome::MissingIngredients), None);
-    let mut wrong = current.clone();
-    wrong.display.source += 1;
-    assert_eq!(client.reply(&wrong, Outcome::MissingIngredients), None);
-    assert_eq!(
-        client.reply(&current, Outcome::MissingIngredients),
-        Some(Outcome::MissingIngredients)
-    );
-    assert_eq!(client.reply(&current, Outcome::MissingIngredients), None);
-    let current = select(&mut client);
-    assert_eq!(
-        client.reply(&current, Outcome::Placed),
-        Some(Outcome::Placed)
-    );
-    let current = select(&mut client);
-    assert_eq!(
-        client.reply(&current, Outcome::Refused(Refusal::Denied)),
-        Some(Outcome::Refused(Refusal::Denied))
-    );
+    assert!(client.accepts_ghost(&identity));
+    let (catalog, clicked) = place(&client);
+    assert_eq!(catalog, identity);
+    assert_eq!(clicked, display());
+    // Multiple placements on the same catalogue do not require a server reply between them.
+    assert!(client.place(display(), true).is_some());
+    let mut wrong = identity.clone();
+    wrong.generation += 1;
+    assert!(!client.accepts_ghost(&wrong));
+    let mut wrong = identity.clone();
+    wrong.instance += 1;
+    assert!(!client.accepts_ghost(&wrong));
+    let mut wrong = identity.clone();
+    wrong.nonce += 1;
+    assert!(!client.accepts_ghost(&wrong));
+    assert!(client.accepts_ghost(&identity));
 }
 #[test]
-fn click_close_reload_and_reconnect_invalidate_pending_ghost_replies() {
+fn close_reload_and_reconnect_invalidate_late_ghosts() {
     let mut client = client();
     let identity = open(&mut client);
     complete(&mut client, &identity);
-    let pending = select(&mut client);
-    client.click();
-    assert_eq!(client.reply(&pending, Outcome::MissingIngredients), None);
-    let pending = select(&mut client);
+    assert!(client.accepts_ghost(&identity));
     client.close();
-    assert_eq!(client.reply(&pending, Outcome::MissingIngredients), None);
+    assert!(!client.accepts_ghost(&identity));
+    assert!(client.place(display(), false).is_none());
     let current = open(&mut client);
     complete(&mut client, &current);
-    let pending = select(&mut client);
+    assert!(client.accepts_ghost(&current));
     assert!(client.invalidate(11));
-    assert_eq!(client.reply(&pending, Outcome::MissingIngredients), None);
+    assert!(!client.accepts_ghost(&current));
     let current = open(&mut client);
     complete(&mut client, &current);
-    let pending = select(&mut client);
+    assert!(client.accepts_ghost(&current));
     client.hello(12);
-    assert_eq!(client.reply(&pending, Outcome::MissingIngredients), None);
+    assert!(!client.accepts_ghost(&current));
     assert!(client.catalog().is_none());
     assert!(!client.invalidate(11));
 }
 #[test]
-fn server_replay_guard_binds_epoch_instance_generation_and_catalogue() {
+fn server_authority_binds_epoch_instance_generation_and_catalogue() {
     let mut client = client();
     let identity = open(&mut client);
     complete(&mut client, &identity);
     let mut authority = Authority::new(11);
     authority.hello(11, schema()).unwrap();
     authority.publish(identity.clone()).unwrap();
-    let current = select(&mut client);
+    let (current, _) = place(&client);
     let mut stale = current.clone();
-    stale.catalog.instance += 1;
+    stale.instance += 1;
     assert_eq!(authority.place(&stale), Err(Refusal::Stale));
     let mut stale = current.clone();
-    stale.catalog.generation += 1;
+    stale.generation += 1;
     assert_eq!(authority.place(&stale), Err(Refusal::Stale));
+    // Repeated placements against the same active catalogue succeed without per-click sequence state.
     authority.place(&current).unwrap();
-    assert_eq!(authority.place(&current), Err(Refusal::Stale));
+    authority.place(&current).unwrap();
     authority.clear();
-    assert_eq!(authority.place(&select(&mut client)), Err(Refusal::Stale));
+    assert_eq!(authority.place(&current), Err(Refusal::Stale));
     authority.hello(11, schema()).unwrap();
     assert_eq!(authority.publish(identity), Err(Refusal::Stale));
 }
@@ -282,10 +287,11 @@ fn placement_frames_share_the_registered_settings_channel_without_vanilla_ids() 
     let mut client = client();
     let identity = open(&mut client);
     complete(&mut client, &identity);
-    let selection = select(&mut client);
-    let frame = Frame::Reply {
-        selection: selection.clone(),
-        outcome: Outcome::MissingIngredients,
+    let (catalog, mut display) = place(&client);
+    let frame = Frame::Ghost {
+        catalog: catalog.clone(),
+        recipe: display.recipe.clone(),
+        display: ghost_display(),
     };
     let message = super::super::settings_sync::Message::Placement(frame);
     let mut bytes = super::super::settings_codec::encode(&message).unwrap();
@@ -293,10 +299,11 @@ fn placement_frames_share_the_registered_settings_channel_without_vanilla_ids() 
     assert_eq!(super::super::settings_codec::decode(&bytes), Some(message));
     bytes.push(0);
     assert!(super::super::settings_codec::decode(&bytes).is_none());
-    let mut selection = selection;
-    selection.display.recipe = id(&format!("demo:{}", "a".repeat(32_762)));
+
+    display.recipe = id(&format!("demo:{}", "a".repeat(32_762)));
     let message = super::super::settings_sync::Message::Placement(Frame::Place {
-        selection: selection.clone(),
+        catalog: catalog.clone(),
+        display: display.clone(),
         use_max: true,
     });
     let encoded = super::super::settings_codec::encode(&message).unwrap();
@@ -305,15 +312,27 @@ fn placement_frames_share_the_registered_settings_channel_without_vanilla_ids() 
         Some(message)
     );
 
-    selection.display.recipe = id(&format!("demo:{}", "a".repeat(32_763)));
+    display.recipe = id(&format!("demo:{}", "a".repeat(32_763)));
     let frame = Frame::Place {
-        selection,
+        catalog: catalog.clone(),
+        display: display.clone(),
         use_max: true,
     };
     assert!(super::super::placement_codec::encode(&frame).is_err());
     let mut raw = mod_api::wire::Writer::new();
     raw.put(&frame);
     assert!(super::super::placement_codec::decode(raw.bytes()).is_none());
+
+    let oversize_ghost = Frame::Ghost {
+        catalog,
+        recipe: display.recipe,
+        display: ghost_display(),
+    };
+    assert!(super::super::placement_codec::encode(&oversize_ghost).is_err());
+    let mut raw = mod_api::wire::Writer::new();
+    raw.put(&oversize_ghost);
+    assert!(super::super::placement_codec::decode(raw.bytes()).is_none());
+
     let slash_path = ResourceId::try_from("demo:kitchen/pot".to_owned()).unwrap();
     assert_eq!(slash_path.as_str(), "demo:kitchen/pot");
     for id in ["..:pot", "pot", ":pot", "demo:", "demo:bad path"] {

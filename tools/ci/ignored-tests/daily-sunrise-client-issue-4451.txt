@@ -2226,7 +2226,7 @@ sunrise-client game::raids::entity_ticking_tests::a_wave_spawns_only_where_entit
 sunrise-client game::rail_parts_tests::rail_parts_decide_the_track_carts_and_connections_follow lib daily resources
 sunrise-client game::random_order_tests::chunks_random_tick_in_the_same_order_however_they_loaded lib daily resources
 sunrise-client game::recipe_book_variants_tests::a_recipe_with_eight_displays_sends_eight_entries lib daily resources
-sunrise-client game::recipe_book_variants_tests::control_a_multi_display_recipe_still_has_no_ghost lib daily resources
+sunrise-client game::recipe_book_variants_tests::clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_none lib daily resources
 sunrise-client game::recipe_properties_tests::tests::disconnect_discards_properties_before_reconnect lib daily resources
 sunrise-client game::remote::attachment_query_tests::synced_client_queries_follow_replacement_retirement_and_level_changes lib daily resources
 sunrise-client game::remote::block_entity_data_tests::block_entity_data_received_after_merge lib daily resources

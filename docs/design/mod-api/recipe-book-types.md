@@ -388,10 +388,12 @@ The server tests the recipe type's authoritative predicates against exact
 component-aware stack classes and rechecks its live context after callbacks.
 It commits placement atomically, or refuses without publishing a partial plan.
 Persistent machines retain their real fuel and cooked output; placement does not
-craft their output. Only a current server missing-ingredients response installs
-ghost hints. Every new click, window change, disconnect or declaration reload
-revokes pending hints. Ghosts use the shared vanilla painter and the active
-screen's native slot geometry, never built-in slot coordinates.
+craft their output. Ordinary placement relies on normal menu/slot sync with no
+separate acknowledgement; only a server ghost for the current catalogue and
+opening installs ghost hints. Clicking a recipe or menu slot, replacing or
+closing the window, disconnecting or reloading declarations clears ghosts. Ghosts
+use the shared vanilla painter and the active screen's native slot geometry,
+never built-in slot coordinates.
 
 Displays are pictures, not ingredient predicates; declaring a result ghost never
 grants a real stack. NeoForge 26.3 public documentation names no registration

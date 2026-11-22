@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 pub use sunrise_protocol::custom_book::CHANNEL;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Message {
     Hello,
     Ready,

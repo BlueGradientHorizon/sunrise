@@ -2351,10 +2351,10 @@ impl Hub {
     }
 
     /// ServerPlayer.initInventoryMenu / sendAllDataToRemote for the inventory menu.
-    /// ClientboundPlaceGhostRecipePacket: the recipe `id` faded into the
-    /// guest's menu `container`, whose items were missing.
-    pub fn send_ghost_recipe(&mut self, conn: u32, container: i32, id: &str) {
-        let Some(display) = self.sync.advancements.ghost_display(id, &self.sync) else {
+    /// ClientboundPlaceGhostRecipePacket: the clicked display `display` faded
+    /// into the guest's menu `container`, whose items were missing.
+    pub fn send_ghost_recipe(&mut self, conn: u32, container: i32, display: i32) {
+        let Some(display) = self.sync.advancements.ghost_display(display, &self.sync) else {
             return;
         };
         self.send_to(

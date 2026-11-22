@@ -8,11 +8,12 @@ fn identifiers_fit(frame: &Frame) -> bool {
     match frame {
         Frame::Catalog { menu, book, .. } => menu.fits_wire() && book.fits_wire(),
         Frame::Start { identity, .. } => identity.menu.fits_wire() && identity.book.fits_wire(),
-        Frame::Place { selection, .. } | Frame::Reply { selection, .. } => {
-            selection.catalog.menu.fits_wire()
-                && selection.catalog.book.fits_wire()
-                && selection.display.recipe.fits_wire()
-        }
+        Frame::Place {
+            catalog, display, ..
+        } => catalog.menu.fits_wire() && catalog.book.fits_wire() && display.recipe.fits_wire(),
+        Frame::Ghost {
+            catalog, recipe, ..
+        } => catalog.menu.fits_wire() && catalog.book.fits_wire() && recipe.fits_wire(),
         Frame::Hello { .. }
         | Frame::Ready { .. }
         | Frame::Part { .. }

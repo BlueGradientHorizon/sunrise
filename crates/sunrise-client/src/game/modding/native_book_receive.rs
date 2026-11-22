@@ -197,34 +197,23 @@ impl Game<'_> {
                     }
                 }
             }
-            sync::Frame::Reply { selection, outcome } => {
+            sync::Frame::Ghost {
+                catalog,
+                recipe,
+                display,
+            } => {
                 if self.native_book_placement_window().as_ref()
                     != self.native_net.placement.client.window()
+                    || !self.native_net.placement.client.accepts_ghost(&catalog)
                 {
                     log::warn!(
-                        "[recipe book] ignored placement reply for inactive window {}",
-                        selection.catalog.window
+                        "[recipe book] ignored stale ghost for {} in window {}",
+                        recipe.as_str(),
+                        catalog.window
                     );
                     return;
                 }
-                let Some(outcome) = self.native_net.placement.client.reply(&selection, outcome)
-                else {
-                    log::warn!(
-                        "[recipe book] ignored stale placement reply for {}",
-                        selection.display.recipe.as_str()
-                    );
-                    return;
-                };
-                match outcome {
-                    sync::Outcome::Placed => {}
-                    sync::Outcome::MissingIngredients => self.install_mod_book_ghost(&selection),
-                    sync::Outcome::Refused(reason) => {
-                        log::warn!(
-                            "mod recipe-book placement refused for {}: {reason:?}",
-                            selection.display.recipe.as_str()
-                        );
-                    }
-                }
+                self.install_mod_book_ghost(&catalog, &recipe, &display);
             }
             sync::Frame::Refused {
                 epoch,

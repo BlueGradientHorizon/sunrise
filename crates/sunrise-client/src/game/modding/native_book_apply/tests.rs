@@ -9,8 +9,15 @@ use sunrise_client::{
         settings_connection::Connection, settings_sync::Authority, slot_layout::CheckedSlotLayout,
     },
 };
-/// A guest with a three-slot mod menu open on a block, and the selection its client would send.
-fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::Selection) {
+/// A guest with a three-slot mod menu open on a block, and the catalogue & display its client would send.
+fn open_mod_menu(
+    game: &mut Game<'_>,
+) -> (
+    (i32, i32, i32),
+    MenuSnapshot,
+    sync::CatalogIdentity,
+    sync::DisplayId,
+) {
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
         id: "review:menu",
@@ -79,30 +86,26 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
         menu: "review:menu".to_owned().try_into().unwrap(),
         book: "review:book".to_owned().try_into().unwrap(),
     };
-    let selection = sync::Selection {
-        catalog: catalog.clone(),
-        number: 2,
-        display: sync::DisplayId {
-            recipe: "review:recipe".to_owned().try_into().unwrap(),
-            source: 0,
-        },
+    let display = sync::DisplayId {
+        recipe: "review:recipe".to_owned().try_into().unwrap(),
+        source: 0,
     };
     let mut server = super::super::native_book_placement::Server::new(1);
     server.peer.hello(1, sync::schema()).unwrap();
-    server.peer.publish(catalog).unwrap();
+    server.peer.publish(catalog.clone()).unwrap();
     game.native_net.placement.servers.insert(12, server);
     let mut connection = Connection::default();
-    let book = selection.catalog.book.clone();
+    let book = catalog.book.clone();
     connection.authority = Some(Authority::negotiate(1, vec![book.clone()], &[book].into()));
     game.native_net.book_connections.insert(12, connection);
-    (pos, before, selection)
+    (pos, before, catalog, display)
 }
 
 #[test]
 #[ignore = "daily"]
 fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
     super::super::native_guest_turn_tests::with_guests(|game| {
-        let (pos, before, selection) = open_mod_menu(game);
+        let (pos, before, catalog, display) = open_mod_menu(game);
         let layout = CheckedSlotLayout::new(
             mod_api::RecipeBookLayout::Furnace {
                 input: 0,
@@ -122,14 +125,14 @@ fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
         )
         .unwrap();
         let root = game.transaction_open();
-        assert!(game.mod_book_placement_context(&before, &selection));
+        assert!(game.mod_book_placement_context(&before, &catalog));
         let child = game.transaction_open();
         assert_eq!(
-            game.stage_mod_book_place(&before, &selection, &plan, false),
+            game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
             Err(sync::Refusal::Changed)
         );
         game.transaction_close(&child, false);
-        assert!(game.mod_book_placement_context(&before, &selection));
+        assert!(game.mod_book_placement_context(&before, &catalog));
         game.lan
             .as_mut()
             .unwrap()
@@ -137,7 +140,7 @@ fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
             .guests
             .update(0, |g| g.health = 1.0);
         assert_eq!(
-            game.stage_mod_book_place(&before, &selection, &plan, false),
+            game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
             Err(sync::Refusal::Changed)
         );
         assert_eq!(
@@ -155,7 +158,7 @@ fn actual_game_stage_refuses_nested_frame_and_mutated_actor() {
 #[ignore = "daily"]
 fn a_mod_layout_without_a_listening_part_refuses_and_changes_nothing() {
     super::super::native_guest_turn_tests::with_guests(|game| {
-        let (pos, before, selection) = open_mod_menu(game);
+        let (pos, before, catalog, display) = open_mod_menu(game);
         let plan = MenuPlacement::for_mod(
             "review:menu".into(),
             Placement::of(
@@ -166,7 +169,7 @@ fn a_mod_layout_without_a_listening_part_refuses_and_changes_nothing() {
         .unwrap();
         let root = game.transaction_open();
         assert_eq!(
-            game.stage_mod_book_place(&before, &selection, &plan, false),
+            game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
             Err(sync::Refusal::Unsupported)
         );
         assert_eq!(
@@ -184,7 +187,7 @@ fn a_mod_layout_without_a_listening_part_refuses_and_changes_nothing() {
 #[ignore = "daily"]
 fn place_recipe_in_grid_places_once_per_click() {
     super::super::native_guest_turn_tests::with_guests(|game| {
-        let (_, before, selection) = open_mod_menu(game);
+        let (_, before, _, display) = open_mod_menu(game);
         let plan = MenuPlacement::for_mod(
             "review:menu".into(),
             Placement::of(
@@ -203,7 +206,7 @@ fn place_recipe_in_grid_places_once_per_click() {
             .recipe_book
             .clone();
         game.native_net.placement.session = Some(Session {
-            recipe: selection.display.recipe.as_str().to_owned(),
+            recipe: display.recipe.as_str().to_owned(),
             graph: Backings::capture(game, &before, &plan).unwrap(),
             menu: Box::new(Menu::new(Kind::Mod(before.kind))),
             plan,
@@ -268,7 +271,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
     crate::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let (_, opened, selection) = open_mod_menu(game);
+            let (_, opened, catalog, display) = open_mod_menu(game);
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 let open = g.menu.as_mut().unwrap();
                 open.slots = Slots::Native;
@@ -306,7 +309,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
             .unwrap();
             let root = game.transaction_open();
             assert_eq!(
-                game.stage_mod_book_place(&before, &selection, &plan, false),
+                game.stage_mod_book_place(&before, &catalog, &display, &plan, false),
                 Ok(PostPlace::Nothing)
             );
             game.transaction_close(&root, true);
@@ -365,7 +368,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                 .clone();
             let root = game.transaction_open();
             assert_eq!(
-                game.stage_mod_book_place(&stale_contents, &selection, &plan, false),
+                game.stage_mod_book_place(&stale_contents, &catalog, &display, &plan, false),
                 Err(sync::Refusal::Changed)
             );
             game.transaction_close(&root, false);
@@ -384,10 +387,256 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
             );
             let root = game.transaction_open();
             assert_eq!(
-                game.stage_mod_book_place(&stale_identity, &selection, &plan, false),
+                game.stage_mod_book_place(&stale_identity, &catalog, &display, &plan, false),
                 Err(sync::Refusal::Changed)
             );
             game.transaction_close(&root, false);
         });
+    });
+}
+
+static ROUTER_BOOK_KEY: std::sync::OnceLock<mod_api::RecipeBookTypeKey> =
+    std::sync::OnceLock::new();
+
+fn router_display(ingredient: &str, result: &str, experience: f32) -> mod_api::RecipeBookDisplay {
+    mod_api::RecipeBookDisplay::Furnace {
+        ingredient: mod_api::RecipeSlotDisplay::Item(ingredient.into()),
+        fuel: mod_api::RecipeSlotDisplay::AnyFuel,
+        result: mod_api::RecipeSlotDisplay::Item(result.into()),
+        station: mod_api::RecipeSlotDisplay::Item("minecraft:furnace".into()),
+        duration: 200,
+        experience,
+    }
+}
+
+struct RouterMod;
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for RouterMod {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.register_recipe_type("review:furnace");
+        r.register_raw_recipe_serializer("review:furnace", "review:furnace");
+        let key = r.recipe_book_type("review:book").unwrap();
+        let _ = ROUTER_BOOK_KEY.set(key.clone());
+        r.menu_recipe_book(
+            "review:menu",
+            &key,
+            "review:furnace",
+            mod_api::RecipeBookLayout::Furnace {
+                input: 0,
+                fuel: 1,
+                result: 2,
+            },
+        )
+        .unwrap();
+    }
+    fn recipe_book_categories(
+        &self,
+        _: mod_api::HostSide,
+        event: &mut mod_api::RecipeBookCategoriesEvent<'_>,
+    ) {
+        event.categories.push(mod_api::RecipeBookCategory {
+            id: "review:cat".into(),
+            recipe_type: "review:furnace".into(),
+            icon: "minecraft:furnace".into(),
+            secondary_icon: None,
+            target_menu: "review:menu".into(),
+            book: ROUTER_BOOK_KEY.get().unwrap().clone(),
+            search_group: "review:search".into(),
+            displays: vec![mod_api::RecipeBookDisplayEntry {
+                recipe: "review:recipe".into(),
+                displays: vec![
+                    router_display("minecraft:iron_ore", "minecraft:iron_ingot", 0.7),
+                    router_display("minecraft:gold_ore", "minecraft:gold_ingot", 1.0),
+                ],
+                placement: Some(mod_api::PlacementInfo {
+                    cells: vec![Some(mod_api::Ingredient::of(vec![
+                        "minecraft:iron_ore".into(),
+                    ]))],
+                    shape: None,
+                }),
+            }],
+        });
+    }
+}
+
+fn drain_placement_frames(
+    rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
+) -> Vec<sync::Frame> {
+    use sunrise_client::recipe_book::{settings_codec, settings_sync::Message};
+    use sunrise_protocol::packets::play::Clientbound as C;
+    let mut frames = Vec::new();
+    for out in rx.try_iter() {
+        let bodies = match out {
+            sunrise_client::lan::Out::Packet(body) => vec![body],
+            sunrise_client::lan::Out::Packets(bodies) => bodies,
+            sunrise_client::lan::Out::Disconnect(_) => panic!("unexpected disconnect"),
+        };
+        for body in bodies {
+            let mut reader = sunrise_protocol::buf::Reader::new(&body);
+            let id = reader.varint().unwrap();
+            if let Ok(C::CustomPayload(payload)) = C::decode(id, reader.rest())
+                && payload.channel == "sunrise:recipe_book_settings"
+                && let Some(Message::Placement(frame)) = settings_codec::decode(&payload.data)
+            {
+                frames.push(frame);
+            }
+        }
+    }
+    frames
+}
+
+#[test]
+#[ignore = "daily"]
+fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("review", Box::new(RouterMod))].into();
+    mod_platform::testing::with_mods(mods, || {
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                "review:menu".into(),
+                "review".into(),
+                3,
+                0,
+                vec![2],
+                vec![],
+                None,
+                None,
+                true,
+                None,
+            )],
+            || {
+                super::super::native_guest_turn_tests::with_guests(|game| {
+                    mod_api::__private::resolve_menus(["review:menu"]).unwrap();
+                    let recipes = sunrise_client::crafting::Recipes::from_sources(
+                        &game.options.resources,
+                        game.items(),
+                        &sunrise_world::loot::PackOverlay::NONE,
+                        vec![(
+                            "review:recipe".into(),
+                            serde_json::json!({"type": "review:furnace"}),
+                        )],
+                        game.res.core.item_data.context(),
+                    )
+                    .unwrap();
+                    game.recipe_tables.install_test_recipes(recipes);
+                    game.recipe_tables.books = None;
+
+                    let (pos, _, mut catalog, display) = open_mod_menu(game);
+                    game.ensure_mod_book_displays();
+                    let generation = game
+                        .recipe_tables
+                        .books
+                        .as_ref()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .generation();
+                    catalog.generation = generation;
+                    {
+                        let mut server = super::super::native_book_placement::Server::new(1);
+                        server.peer.hello(1, sync::schema()).unwrap();
+                        server.peer.publish(catalog.clone()).unwrap();
+                        server.displays.insert("review:recipe".into(), 2);
+                        game.native_net.placement.servers.insert(12, server);
+                    }
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.sender = sunrise_client::lan::PlayerSender::new(tx, Default::default());
+                        g.recipe_book.recipes.insert("review:recipe".into());
+                        g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                            "minecraft:iron_ore",
+                            2,
+                        ));
+                    });
+
+                    // Ordinary placement updates real slots and emits no ACK or Ghost frame.
+                    game.guest_mod_book_placement(
+                        12,
+                        sync::Frame::Place {
+                            catalog: catalog.clone(),
+                            display: display.clone(),
+                            use_max: false,
+                        },
+                    );
+                    assert!(drain_placement_frames(&rx).is_empty());
+                    assert_eq!(
+                        game.world.block_entities.get(&pos).unwrap().slots()[0]
+                            .as_ref()
+                            .unwrap()
+                            .item
+                            .as_ref(),
+                        "minecraft:iron_ore"
+                    );
+
+                    // Missing ingredients sends one Ghost frame for the clicked non-first variant.
+                    if let Some(BlockEntity::Mod(block)) = game.world.block_entities.get_mut(&pos) {
+                        block.items[0] = None;
+                    }
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.inventory[9] = None;
+                    });
+                    let second_variant = sync::DisplayId {
+                        recipe: display.recipe.clone(),
+                        source: 1,
+                    };
+                    game.guest_mod_book_placement(
+                        12,
+                        sync::Frame::Place {
+                            catalog: catalog.clone(),
+                            display: second_variant,
+                            use_max: false,
+                        },
+                    );
+                    assert_eq!(
+                        drain_placement_frames(&rx),
+                        vec![sync::Frame::Ghost {
+                            catalog: catalog.clone(),
+                            recipe: display.recipe.clone(),
+                            display: router_display(
+                                "minecraft:gold_ore",
+                                "minecraft:gold_ingot",
+                                1.0,
+                            ),
+                        }]
+                    );
+
+                    // A refused placement emits no Ghost/ACK and does not block later placement.
+                    game.guest_mod_book_placement(
+                        12,
+                        sync::Frame::Place {
+                            catalog: catalog.clone(),
+                            display: sync::DisplayId {
+                                recipe: display.recipe.clone(),
+                                source: 99,
+                            },
+                            use_max: false,
+                        },
+                    );
+                    assert!(drain_placement_frames(&rx).is_empty());
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.inventory[9] = Some(sunrise_client::items::ItemStack::new(
+                            "minecraft:iron_ore",
+                            1,
+                        ));
+                    });
+                    game.guest_mod_book_placement(
+                        12,
+                        sync::Frame::Place {
+                            catalog,
+                            display,
+                            use_max: false,
+                        },
+                    );
+                    assert!(drain_placement_frames(&rx).is_empty());
+                    assert_eq!(
+                        game.world.block_entities.get(&pos).unwrap().slots()[0]
+                            .as_ref()
+                            .unwrap()
+                            .item
+                            .as_ref(),
+                        "minecraft:iron_ore"
+                    );
+                });
+            },
+        );
     });
 }

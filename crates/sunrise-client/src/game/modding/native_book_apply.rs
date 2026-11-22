@@ -32,24 +32,8 @@ impl Game<'_> {
     pub(super) fn server_mod_book_place(
         &mut self,
         conn: u32,
-        selection: &sync::Selection,
-        use_max: bool,
-    ) -> sync::Outcome {
-        match self.apply_mod_book_place(conn, selection, use_max) {
-            Ok(post) => {
-                if post == PostPlace::Ghost {
-                    sync::Outcome::MissingIngredients
-                } else {
-                    sync::Outcome::Placed
-                }
-            }
-            Err(reason) => sync::Outcome::Refused(reason),
-        }
-    }
-    fn apply_mod_book_place(
-        &mut self,
-        conn: u32,
-        selection: &sync::Selection,
+        catalog: &sync::CatalogIdentity,
+        display: &sync::DisplayId,
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
         use sync::Refusal as R;
@@ -62,22 +46,20 @@ impl Game<'_> {
             .get(&conn)
             .and_then(|connection| connection.authority.as_ref())
             .ok_or(R::Unsupported)?;
-        if settings.epoch != selection.catalog.epoch
-            || !settings.contains(selection.catalog.book.as_str())
-        {
+        if settings.epoch != catalog.epoch || !settings.contains(catalog.book.as_str()) {
             return Err(R::Stale);
         }
         let authority = self
             .native_net
             .placement
             .servers
-            .get_mut(&conn)
+            .get(&conn)
             .ok_or(R::Unsupported)?;
-        authority.peer.place(selection)?;
+        authority.peer.place(catalog)?;
         if !authority
             .displays
-            .get(selection.display.recipe.as_str())
-            .is_some_and(|count| selection.display.source < *count)
+            .get(display.recipe.as_str())
+            .is_some_and(|count| display.source < *count)
         {
             return Err(R::UnknownDisplay);
         }
@@ -88,33 +70,29 @@ impl Game<'_> {
             .as_ref()
             .and_then(|result| result.as_ref().ok())
             .ok_or(R::Invalid)?;
-        if index.generation() != selection.catalog.generation {
+        if index.generation() != catalog.generation {
             return Err(R::Stale);
         }
         let plan = index
-            .placement(selection.display.recipe.as_str())
+            .placement(display.recipe.as_str())
             .map_err(refusal)?
             .clone();
-        let before = self.mod_book_menu_snapshot(
-            conn,
-            selection.catalog.window,
-            selection.catalog.menu.as_str(),
-        )?;
-        if before.instance != selection.catalog.instance {
+        let before = self.mod_book_menu_snapshot(conn, catalog.window, catalog.menu.as_str())?;
+        if before.instance != catalog.instance {
             return Err(R::Stale);
         }
-        if !before.known.contains(selection.display.recipe.as_str()) {
+        if !before.known.contains(display.recipe.as_str()) {
             return Err(R::Denied);
         }
         let seal = self.transaction_open();
-        let result = self.stage_mod_book_place(&before, selection, &plan, use_max);
+        let result = self.stage_mod_book_place(&before, catalog, display, &plan, use_max);
         self.transaction_close(&seal, result.is_ok());
         result
     }
     fn mod_book_placement_context(
         &self,
         before: &MenuSnapshot,
-        selection: &sync::Selection,
+        catalog: &sync::CatalogIdentity,
     ) -> bool {
         self.transactions.len() == 1
             && self.mod_book_menu_unchanged(before)
@@ -123,21 +101,21 @@ impl Game<'_> {
                 .placement
                 .servers
                 .get(&before.conn)
-                .is_some_and(|server| server.peer.owns(&selection.catalog))
+                .is_some_and(|server| server.peer.owns(catalog))
             && self
                 .native_net
                 .book_connections
                 .get(&before.conn)
                 .and_then(|connection| connection.authority.as_ref())
                 .is_some_and(|authority| {
-                    authority.epoch == selection.catalog.epoch
-                        && authority.contains(selection.catalog.book.as_str())
+                    authority.epoch == catalog.epoch && authority.contains(catalog.book.as_str())
                 })
     }
     fn stage_mod_book_place(
         &mut self,
         before: &MenuSnapshot,
-        selection: &sync::Selection,
+        catalog: &sync::CatalogIdentity,
+        display: &sync::DisplayId,
         plan: &MenuPlacement,
         use_max: bool,
     ) -> Result<PostPlace, sync::Refusal> {
@@ -161,7 +139,7 @@ impl Game<'_> {
         let sources = block_pos.map_or_else(Vec::new, |pos| {
             self.lan_recipe_sources(gi, before.kind, pos)
         });
-        if !self.mod_book_placement_context(before, selection) || !graph.unchanged(self) {
+        if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
             return Err(R::Changed);
         }
         let stocks = graph.add_sources(self, &sources)?;
@@ -187,7 +165,7 @@ impl Game<'_> {
         let name = guest.name.clone();
         let post = if plan.awaits_grid() {
             let session = Session {
-                recipe: selection.display.recipe.as_str().to_owned(),
+                recipe: display.recipe.as_str().to_owned(),
                 plan: plan.clone(),
                 menu,
                 graph,
@@ -212,7 +190,7 @@ impl Game<'_> {
                 ..self.menu_env()
             };
             menu.place_custom_recipe(&env, plan, use_max, before.game_mode == 1, || {
-                self.mod_book_placement_context(before, selection) && graph.unchanged_blocks(self)
+                self.mod_book_placement_context(before, catalog) && graph.unchanged_blocks(self)
             })
             .map_err(refusal)?
         };
@@ -224,7 +202,7 @@ impl Game<'_> {
                 block_pos.map(|pos| [pos.0, pos.1, pos.2]),
                 &mut result,
             );
-            if !self.mod_book_placement_context(before, selection) || !graph.unchanged(self) {
+            if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
                 return Err(R::Changed);
             }
             menu.load_slot(crafting.result, result);
@@ -233,7 +211,7 @@ impl Game<'_> {
             return Err(R::Changed);
         }
         // The guest's fields are back in the hub before comparing or storing them.
-        if !self.mod_book_placement_context(before, selection) || !graph.unchanged(self) {
+        if !self.mod_book_placement_context(before, catalog) || !graph.unchanged(self) {
             return Err(R::Changed);
         }
         let changes = graph.changes(&mut menu);

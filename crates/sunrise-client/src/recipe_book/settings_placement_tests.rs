@@ -43,6 +43,29 @@ fn placement_requires_the_existing_negotiation_without_a_rate_budget() {
     }))
     .unwrap();
     assert!(connection.receive_placement(&wrong_direction).is_none());
+    let wrong_ghost = settings_codec::encode(&Message::Placement(Frame::Ghost {
+        catalog: super::super::super::placement_sync::CatalogIdentity {
+            epoch: 7,
+            number: 1,
+            window: 1,
+            nonce: 1,
+            instance: 1,
+            generation: 1,
+            menu: ResourceId::try_from("demo:menu".to_owned()).unwrap(),
+            book: book.clone(),
+        },
+        recipe: ResourceId::try_from("demo:recipe".to_owned()).unwrap(),
+        display: mod_api::RecipeBookDisplay::Furnace {
+            ingredient: mod_api::RecipeSlotDisplay::Item("minecraft:iron_ore".into()),
+            fuel: mod_api::RecipeSlotDisplay::AnyFuel,
+            result: mod_api::RecipeSlotDisplay::Item("minecraft:iron_ingot".into()),
+            station: mod_api::RecipeSlotDisplay::Item("minecraft:furnace".into()),
+            duration: 200,
+            experience: 0.7,
+        },
+    }))
+    .unwrap();
+    assert!(connection.receive_placement(&wrong_ghost).is_none());
     assert!(connection.receive_placement(&[4]).is_none());
     assert!(connection.receive_placement(&[7]).is_none());
     for _ in 0..25 {
