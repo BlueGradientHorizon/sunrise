@@ -17,12 +17,14 @@ fn a_sulfur_cube_sends_its_fuse_at_19_and_from_bucket_at_20() {
     )
     .unwrap();
     // No attribute catalog: the rows' values stay as written.
-    let attributes = &std::sync::Arc::new(sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
-        "data_version": sunrise_world::DATA_VERSION,
-        "attributes": [],
-        "entities": {},
-    }))
-    .unwrap());
+    let attributes = &std::sync::Arc::new(
+        sunrise_world::attributes::entity::Catalog::from_json(&serde_json::json!({
+            "data_version": sunrise_world::DATA_VERSION,
+            "attributes": [],
+            "entities": {},
+        }))
+        .unwrap(),
+    );
     let types = sunrise_client::mobs::MobTypes::load_for_server(&root, attributes).unwrap();
     let _ = std::fs::remove_dir_all(&root);
     let kind = std::sync::Arc::new(types.types["minecraft:sulfur_cube"].clone());
