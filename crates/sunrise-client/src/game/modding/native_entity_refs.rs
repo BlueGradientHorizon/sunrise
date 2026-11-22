@@ -29,6 +29,7 @@ use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
     EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
 };
+use sunrise_client::join_seq::residency::table::{EntityLookup, Location};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
@@ -90,22 +91,43 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+        self.native_entity_target_with_location(entity)
+            .map(|(target, _)| target)
+    }
+
+    /// Resolve the handle and return its resident location, if admitted to the level.
+    pub(super) fn native_entity_target_with_location(
+        &self,
+        entity: EntityRef,
+    ) -> Option<(Target, Option<Location>)> {
         if self.held_out.contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
             return None;
         }
-        let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
-            self.server_resident_entity(entity.id())
+        let EntityLookup::Found { location, value } = self.server_resident_entity(entity.id())
         else {
-            return None;
+            // A lifecycle event lends the body without admitting it to the level.
+            let &(_, conn, _) = self
+                .player_state
+                .cloning_players
+                .iter()
+                .rev()
+                .find(|&&(_, _, id)| id == entity.id())?;
+            return if self.lan_acting == Some(conn) {
+                Some((Target::Player, None))
+            } else if self.lan_guest_swaps.contains(&conn) {
+                None
+            } else {
+                Some((Target::Guest(conn), None))
+            };
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
         (matches!(value, Target::Player | Target::Guest(_))
             || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        .then_some((value, Some(location)))
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
@@ -210,6 +232,13 @@ impl Game<'_> {
         let epoch = self.native_lifecycle.epoch()?;
         let remote = self.remote.as_ref().filter(|r| r.has_level())?;
         Some(LevelRef::new(epoch, remote.level_key))
+    }
+    /// The current world on its owning side, as a handle for a native query.
+    pub(super) fn native_current_level(&self) -> Option<LevelRef> {
+        if self.is_logical_server() {
+            return Some(self.level_ref(self.native_lifecycle.epoch()?, self.dim.key()));
+        }
+        self.native_client_level()
     }
     /// The name of a dimension's key.
     pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
@@ -3191,44 +3220,51 @@ pub(super) mod tests {
             // The turn's write is stored in the guest's record.
             let stored = game.lan.as_ref().unwrap().hub.guest(12).unwrap().abilities;
             assert!(stored.may_fly && stored.walking_speed == 0.3);
-            let swap = game.enter_guest(12).unwrap();
-            assert!(game.entity(12).is_some());
-            let other = game.entity(13).unwrap();
-            assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
-            assert_eq!(other.uuid(game), Some(13));
-            assert_eq!(
-                other.kind(game).and_then(|kind| kind.id(game)).as_deref(),
-                Some("minecraft:player")
-            );
-            let living = game.living(other).unwrap();
-            assert_eq!(
-                living
-                    .with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))
-                    .unwrap(),
-                Some("minecraft:stone")
-            );
-            let player = game.player(13).unwrap();
-            assert_eq!(player.fields().entity, other);
-            assert_eq!(player.game_mode(game), Some(GameMode::Survival));
-            assert!(game.player_set_game_mode(player, GameMode::Creative));
-            assert_eq!(player.game_mode(game), Some(GameMode::Creative));
-            assert_eq!(game.lan_acting, Some(12));
-            let acting = game.player(12).unwrap();
-            assert!(game.player_set_game_mode(acting, GameMode::Adventure));
-            assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
-            let nested = game.enter_guest(13).unwrap();
-            assert!(game.enter_guest(12).is_none());
-            assert_eq!(game.lan_acting, Some(13));
-            assert!(game.entity(12).is_none());
-            assert!(game.player(12).is_none());
-            assert!(
-                game.living(mod_api::EntityRef::new(other.epoch(), 12))
-                    .is_none()
-            );
-            assert!(game.entity(13).is_some());
-            game.leave_guest(nested);
-            assert_eq!(game.lan_acting, Some(12));
-            game.leave_guest(swap);
+            game.with_guest_swap(12, game.dim, |game| {
+                assert!(game.entity(12).is_some());
+                let other = game.entity(13).unwrap();
+                assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
+                assert_eq!(other.uuid(game), Some(13));
+                assert_eq!(
+                    other.kind(game).and_then(|kind| kind.id(game)).as_deref(),
+                    Some("minecraft:player")
+                );
+                let living = game.living(other).unwrap();
+                assert_eq!(
+                    living
+                        .with_equipment(game, EquipmentSlot::MainHand, |stack| stack
+                            .item()
+                            .id(game))
+                        .unwrap(),
+                    Some("minecraft:stone")
+                );
+                let player = game.player(13).unwrap();
+                assert_eq!(player.fields().entity, other);
+                assert_eq!(player.game_mode(game), Some(GameMode::Survival));
+                assert!(game.player_set_game_mode(player, GameMode::Creative));
+                assert_eq!(player.game_mode(game), Some(GameMode::Creative));
+                assert_eq!(game.lan_acting, Some(12));
+                let acting = game.player(12).unwrap();
+                assert!(game.player_set_game_mode(acting, GameMode::Adventure));
+                assert_eq!(game.player_game_mode(acting), Some(GameMode::Adventure));
+                game.with_guest_swap(13, game.dim, |game| {
+                    assert!(
+                        game.with_guest_swap(12, game.dim, |_| panic!("active guest re-entered"))
+                            .is_none()
+                    );
+                    assert_eq!(game.lan_acting, Some(13));
+                    assert!(game.entity(12).is_none());
+                    assert!(game.player(12).is_none());
+                    assert!(
+                        game.living(mod_api::EntityRef::new(other.epoch(), 12))
+                            .is_none()
+                    );
+                    assert!(game.entity(13).is_some());
+                })
+                .unwrap();
+                assert_eq!(game.lan_acting, Some(12));
+            })
+            .unwrap();
             assert!(game.lan_guest_swaps.is_empty());
             // A player saved in creative (game mode 1, mayfly and instabuild)
             // joins again: without force they stay creative; forced into the
@@ -3796,22 +3832,23 @@ pub(super) mod tests {
                 0
             );
             assert!(rx.try_recv().is_err());
-            let outer = game.enter_guest(real_id).unwrap();
-            assert!(!game.lan_acting_fake);
-            game.guest_cooldowns.push(("minecraft:real".into(), 7));
-            game.guest_player_sounds
-                .push(("outer".into(), [0.0; 3], 1.0, 1.0));
-            game.as_guest(fake_id, |game| {
-                assert!(game.lan_acting_fake);
-                game.guest_cooldowns.push(("minecraft:fake".into(), 20));
+            game.with_guest_swap(real_id, game.dim, |game| {
+                assert!(!game.lan_acting_fake);
+                game.guest_cooldowns.push(("minecraft:real".into(), 7));
+                game.guest_player_sounds
+                    .push(("outer".into(), [0.0; 3], 1.0, 1.0));
+                game.as_guest(fake_id, |game| {
+                    assert!(game.lan_acting_fake);
+                    game.guest_cooldowns.push(("minecraft:fake".into(), 20));
+                })
+                .unwrap();
+                assert!(!game.lan_acting_fake);
+                assert_eq!(game.guest_cooldowns.len(), 1);
+                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real");
+                assert_eq!(game.guest_player_sounds[0].0, "outer");
+                game.guest_player_sounds.clear();
             })
             .unwrap();
-            assert!(!game.lan_acting_fake);
-            assert_eq!(game.guest_cooldowns.len(), 1);
-            assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real");
-            assert_eq!(game.guest_player_sounds[0].0, "outer");
-            game.guest_player_sounds.clear();
-            game.leave_guest(outer);
             let out = rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
             let sunrise_client::lan::Out::Packet(body) = out else {
                 panic!("expected cooldown packet")
@@ -3827,26 +3864,27 @@ pub(super) mod tests {
             assert!(rx.try_recv().is_err());
 
             // A real turn nested in a fake must not receive the fake's cooldown.
-            let outer = game.enter_guest(fake_id).unwrap();
-            assert!(game.lan_acting_fake);
-            game.guest_cooldowns
-                .push(("minecraft:fake_outer".into(), 8));
-            game.guest_player_sounds
-                .push(("fake_outer".into(), [0.0; 3], 1.0, 1.0));
-            game.as_guest(real_id, |game| {
-                assert!(!game.lan_acting_fake);
-                let before = game.stats.get("custom", "minecraft:jump");
-                game.award_stat("custom", "minecraft:jump", 1);
-                assert_eq!(game.stats.get("custom", "minecraft:jump"), before + 1);
+            game.with_guest_swap(fake_id, game.dim, |game| {
+                assert!(game.lan_acting_fake);
                 game.guest_cooldowns
-                    .push(("minecraft:real_inner".into(), 9));
+                    .push(("minecraft:fake_outer".into(), 8));
+                game.guest_player_sounds
+                    .push(("fake_outer".into(), [0.0; 3], 1.0, 1.0));
+                game.as_guest(real_id, |game| {
+                    assert!(!game.lan_acting_fake);
+                    let before = game.stats.get("custom", "minecraft:jump");
+                    game.award_stat("custom", "minecraft:jump", 1);
+                    assert_eq!(game.stats.get("custom", "minecraft:jump"), before + 1);
+                    game.guest_cooldowns
+                        .push(("minecraft:real_inner".into(), 9));
+                })
+                .unwrap();
+                assert!(game.lan_acting_fake);
+                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:fake_outer");
+                assert_eq!(game.guest_player_sounds[0].0, "fake_outer");
+                game.guest_player_sounds.clear();
             })
             .unwrap();
-            assert!(game.lan_acting_fake);
-            assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:fake_outer");
-            assert_eq!(game.guest_player_sounds[0].0, "fake_outer");
-            game.guest_player_sounds.clear();
-            game.leave_guest(outer);
             let sunrise_client::lan::Out::Packet(body) =
                 rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap()
             else {
@@ -3882,26 +3920,27 @@ pub(super) mod tests {
             );
             second.placed = true;
             game.lan.as_mut().unwrap().hub.guests.push(second);
-            let outer = game.enter_guest(real_id).unwrap();
-            game.guest_cooldowns
-                .push(("minecraft:real_outer".into(), 10));
-            game.guest_player_sounds
-                .push(("real_outer".into(), [0.0; 3], 1.0, 1.0));
-            game.as_guest(3, |game| {
-                assert_eq!(game.lan_acting, Some(3));
-                assert!(
-                    game.as_guest(real_id, |_| panic!("active guest re-entered"))
-                        .is_none()
-                );
-                assert_eq!(game.lan_acting, Some(3));
+            game.with_guest_swap(real_id, game.dim, |game| {
                 game.guest_cooldowns
-                    .push(("minecraft:real_second".into(), 11))
+                    .push(("minecraft:real_outer".into(), 10));
+                game.guest_player_sounds
+                    .push(("real_outer".into(), [0.0; 3], 1.0, 1.0));
+                game.as_guest(3, |game| {
+                    assert_eq!(game.lan_acting, Some(3));
+                    assert!(
+                        game.as_guest(real_id, |_| panic!("active guest re-entered"))
+                            .is_none()
+                    );
+                    assert_eq!(game.lan_acting, Some(3));
+                    game.guest_cooldowns
+                        .push(("minecraft:real_second".into(), 11))
+                })
+                .unwrap();
+                assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real_outer");
+                assert_eq!(game.guest_player_sounds[0].0, "real_outer");
+                game.guest_player_sounds.clear();
             })
             .unwrap();
-            assert_eq!(&*game.guest_cooldowns[0].0, "minecraft:real_outer");
-            assert_eq!(game.guest_player_sounds[0].0, "real_outer");
-            game.guest_player_sounds.clear();
-            game.leave_guest(outer);
             for (receiver, expected) in [
                 (&rx, "minecraft:real_outer"),
                 (&rx2, "minecraft:real_second"),

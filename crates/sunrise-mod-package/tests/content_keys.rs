@@ -90,8 +90,8 @@ fn content_keys() {
 
         let content = Content::read(path, &package.manifest).unwrap();
         assert_eq!(content.server_only_refusal(&package.manifest), None);
-        let mut reader = content.reader().unwrap();
-        for file in &content.files {
+        let reader = content.reader();
+        for file in content.files.iter() {
             let mut parts = file.splitn(5, '/');
             if parts.next() != Some("data") {
                 continue;
@@ -146,8 +146,9 @@ fn content_keys() {
         extension_files.extend(
             content
                 .files
-                .into_iter()
-                .filter(|p| p.starts_with("data/sunrise/tags/")),
+                .iter()
+                .filter(|p| p.starts_with("data/sunrise/tags/"))
+                .cloned(),
         );
     }
 

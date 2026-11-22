@@ -8,10 +8,10 @@ and world. Non-finite numeric inputs are refused. A successful submission does n
 promise a visible particle: provider availability, sprite sets, distance and the
 player's particle settings apply. This method is not available on `ServerHost`.
 
-Particle options carry a `ParticleKey`, not an engine particle enum or a provider name.
+Particle options carry a registered key, not an engine particle enum or a provider name.
 Request the key with `Registrar::particle_key` during registration and retain it. The game resolves
 provider identities once when content loads. `ParticleOptions::simple(key)` handles both vanilla
-and custom sprite providers; custom providers require an `assets/<namespace>/particles/<path>.json`
+and asset-only sprite types; those types require an `assets/<namespace>/particles/<path>.json`
 sprite set. All option constructors take the resolved key, including `dust`, `item`, `trail`,
 `vibration`, `shriek`, `sculk_charge` and `dust_transition`. Use the corresponding vanilla key
 for these parameter families. Sending an option performs no string parsing or registry scan.
@@ -44,11 +44,78 @@ velocity and the level's light.
 
 ### Particle providers
 
-A particle provider (`Hooks::register_particle_providers`) moves a mod's own particle type with code. The type is
-named by its id (`mymod:spark`), its sprite set and spawn values are the declarative
-`assets/<namespace>/particles/<path>.json`, and it is spawned with `ParticleOptions::simple` on the key
-`Registrar::particle_key` issued for the id. The last successful registration for a name wins;
+A code-defined particle has a common `ParticleType<T>` and a client sprite-set provider.
+Register the type in `Hooks::register`; neither the client atlas nor its JSON is needed on a
+server. Register the provider in `Hooks::register_particle_providers` on the client. Its sprite
+list is `assets/<namespace>/particles/<path>.json`. Missing providers or sprite sets draw nothing.
+The last successful registration for a type wins;
 [a failed registration callback](../../concepts/load-phases.md#registration-and-setup) leaves the earlier provider in place.
+
+For example, a rising particle with a signed `lift` option can use two forms of the same value:
+SNBT fields for structured data and `/particle example:riser{lift:5}`, and a derived `Wire` value
+for play packets. The `type` field is written by the structured dispatcher, not by the map codec.
+
+```rust,ignore
+use mod_api::{Compound, ModParticle, ParticleBatch, ParticleLevelView, ParticleMapCodec,
+    ParticleProvider, ParticleStreamCodec, ParticleType, RandomSource, Registrar, Tag, Wire};
+use std::sync::Arc;
+
+#[derive(PartialEq, Wire)]
+struct Rise { lift: i32 }
+
+// In Hooks::register, retain the returned type in your mod's state.
+fn register_riser(registrar: &mut dyn Registrar) -> ParticleType<Rise> {
+    registrar.register_particle_type(
+        "example:riser", false,
+        ParticleMapCodec::new(
+            |fields, _registries| match fields.get(&"lift".into()) {
+                Some(Tag::Int(lift)) => Ok(Rise { lift: *lift }),
+                _ => Err("lift must be an integer".into()),
+            },
+            |value: &Rise, _registries| {
+                let mut fields = Compound::new();
+                fields.insert("lift".into(), Tag::Int(value.lift));
+                Ok(fields)
+            },
+        ),
+        ParticleStreamCodec::wire(),
+    )
+}
+
+struct Riser;
+impl ParticleProvider<Rise> for Riser {
+    fn create_particle(&self, options: &Rise, _level: &dyn ParticleLevelView,
+        _at: [f64; 3], aux: [f64; 3], _random: &mut dyn RandomSource,
+        particle: &mut ModParticle) -> Option<()> {
+        particle.velocity = [aux[0], f64::from(options.lift) * 0.01, aux[2]];
+        Some(())
+    }
+
+    fn tick(&self, particles: &mut ParticleBatch, _level: &dyn ParticleLevelView) {
+        for particle in particles {
+            for axis in 0..3 {
+                particle.position[axis] += particle.velocity[axis];
+            }
+        }
+    }
+}
+
+// In Hooks::register_particle_providers, using the retained `riser` type:
+event.providers.register_sprite_set(riser, Arc::new(Riser));
+// From a client hook:
+host.add_particle(&riser.options(Rise { lift: 5 }), at, [0.0; 3]);
+```
+
+For a provider that takes no options, use `ParticleMapCodec::unit()` and
+`ParticleStreamCodec::wire()` and call `ty.options(())`. Codecs may borrow their
+`ParticleRegistryView` to resolve item, fluid or particle names; encode stable names, not key
+slots. A codec error refuses the input rather than substituting default options.
+
+`create_particle` runs once for each spawn that reaches the provider, before the first tick.
+It can edit the sprite particle initialized by its JSON, or return `None` to decline that spawn.
+The position and three auxiliary values are exactly what the spawn supplied; the provider can
+interpret the auxiliary values as something other than velocity. The RNG is the particle
+engine's provider RNG, not the one used to thin spawns.
 
 The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
 once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
@@ -71,6 +138,55 @@ reads full sky where present and no block light; below a loaded column both laye
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
 Dispatch reuses its batch storage once it has enough capacity.
+
+### Extracting your own quads
+
+`ParticleProvider::extract` runs for each live particle whose current center is in the world
+camera's culling frustum, even when optional particle culling is off. The culling lens uses the wider
+of the configured and effective FOV, not the bobbed or narrowed render projection. Live GUI scenes
+use the ordinary quad and do not call `extract`. This is a draw call, separate from
+`tick`; it borrows the current and previous particle state, camera and frame light. By default
+it calls `output.add_default()`, which uses the same sprite, pose and blend as an ordinary quad.
+An override can call that method, append custom quads, or leave the output empty to draw nothing.
+The usual stock-quad geometry checks apply only to `add_default`.
+
+For example, a provider's `extract` can draw two overlapping opaque shapes at different angles:
+
+```rust,ignore
+use mod_api::{ModParticle, ParticleBlend, ParticleExtractView, ParticleQuad, QuadParticleRenderState};
+
+fn extract(&self, particle: &ModParticle, view: &ParticleExtractView,
+    output: &mut dyn QuadParticleRenderState) {
+    let t = f64::from(view.partial_tick);
+    let center: [f32; 3] = std::array::from_fn(|i| {
+        let world = particle.previous[i] + t * (particle.position[i] - particle.previous[i]);
+        (world - view.camera[i]) as f32
+    });
+    for (offset, rotation) in [
+        (-0.125, [0.0, 0.0, 0.0, 1.0]),
+        ( 0.125, [0.0, 1.0, 0.0, 1.0]),
+    ] {
+        let mut quad = ParticleQuad::default();
+        quad.layer = ParticleBlend::Opaque;
+        quad.center = [center[0] + offset, center[1], center[2]];
+        quad.rotation = rotation;
+        quad.half_size = particle.size;
+        quad.frame = particle.frame;
+        quad.color = 0xffcceeff;
+        quad.light_coords = view.light_coords;
+        output.add(quad);
+    }
+}
+```
+
+Centers are camera-relative and rotations are XYZW quaternions; the renderer does not normalize
+rotations. Each `frame` is an existing index into the bind-time sprite list. UVs are local to that
+sprite: `[0.0, 0.0, 1.0, 1.0]` selects it whole. `color` is `0xAARRGGBB`; for packed light use the
+view's value or vanilla's `LightCoordsUtil.pack`/`smoothPack` layout. The explicit layer wins over
+the group's blend. Opaque quads replace covered pixels after the alpha cut; translucent quads
+blend. Both are depth tested and culled from the back. The group still controls admission of the particle,
+not the number of quads it emits. The sink ignores an unresolved frame or non-finite geometry/UV
+without dropping other quads.
 
 ### Particle render groups
 
@@ -101,8 +217,9 @@ and world, for non-finite numbers and for more than 256 explosions.
 `PlayerInput`, using the game's movement implementation without replacing the
 live player's body. It returns `SimulatedMove` with position, velocity, ground,
 horizontal-collision and sprinting results. It refuses stale or inaccessible players,
-dead players, spectators, riders and invalid numeric input. A supplied velocity is
-input to the prediction, not a write to the player.
+dead players, spectators, riders and invalid numeric input. The prediction includes the
+local player's ordinary wall-escape nudge, which checks solid collider boxes when a collision
+scene is in scope. A supplied velocity is input to the prediction, not a write to the player.
 
 `LevelRef::collision_boxes` reads block collision boxes within a finite, ordered
 axis-aligned box. It excludes entity and border collisions. A refused level or a

@@ -276,8 +276,14 @@ pub(super) fn load_core(
             });
             let biomes = Step::spawn(scope, parallel, "biomes", || {
                 let biomes = Arc::new(
-                    startup::time("core.biomes", || Biomes::load(resources))
-                        .map_err(|e| e.to_string())?,
+                    startup::time("core.biomes", || {
+                        if headless {
+                            Biomes::load_for_server(resources)
+                        } else {
+                            Biomes::load(resources)
+                        }
+                    })
+                    .map_err(|e| e.to_string())?,
                 );
                 // A launch that names a world: its data preload needs only the
                 // block registry and the biomes, so it starts here rather than
@@ -427,6 +433,21 @@ pub(super) fn gameplay_tables(
         facts,
         gameplay_projection,
     })
+}
+
+/// Publishes `catalog`'s entity type suppliers, the ones mods declared and added to included,
+/// as `ItemsHost::entity_type_default_attribute` reads them (#3944): each attribute's supplier
+/// value (`AttributeSupplier.getValue`, the base inside its range; the spawn and reset bases
+/// stay the raw ones). The read answers only a registered entity type's: a declaration for a
+/// type no mod registered stays unread.
+pub(in crate::game) fn publish_entity_type_defaults(
+    catalog: &sunrise_world::attributes::entity::Catalog,
+) {
+    mod_api::__private::publish_entity_type_defaults(
+        catalog
+            .entities()
+            .filter_map(|entity| Some((entity.to_owned(), catalog.supplier_values(entity)?))),
+    );
 }
 
 /// The catalog with the attribute types mods declared (#812,
@@ -799,6 +820,8 @@ pub(super) fn load_resources_for_mods(
         environment,
         collision,
     } = core;
+    // The accepted suppliers and resolved entity keys belong to the same Parts installation.
+    publish_entity_type_defaults(&motion.attributes);
     let assets = Arc::new(assets);
     let render = Arc::new(render);
     // The namespaces of the mod block states registered now: what every level.dat saved from
@@ -968,7 +991,11 @@ pub(super) fn load_resources_for_mods(
                 })
             });
             let game_cpu = startup::time("handoff.game_cpu", || {
-                GameCpuResources::load(&resolved, entity_models.as_deref())
+                GameCpuResources::load(
+                    &resolved,
+                    entity_models.as_deref(),
+                    pack.render.model_library.as_deref().ok(),
+                )
             });
             (game_cpu, textures.map(Step::join))
         });

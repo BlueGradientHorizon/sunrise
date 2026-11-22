@@ -360,6 +360,10 @@ again and relights, and clients ask their own parts again as its light update re
 as it sits on the block's row: every state of the block is asked, so a block with only some states that vary pays
 the ask for all of them. Light that depends only on the state needs no part: use `light` or `state_light`.
 
+A mod can [query a candidate state's source light](world/block-state-facts.md#contextual-light-emission)
+with `LevelRef::get_light_emission`. It returns the raw Part answer or the declared light, with no
+relight. This differs from `LevelRef::brightness`, which reads the light the engine has propagated.
+
 A block copies its template's states. It can also declare state properties of
 its own, which its template does not have — how a pipe says which sides it
 connects to, or a machine whether it is running. Its states then become its
@@ -996,13 +1000,59 @@ world load.
 
 A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
 fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is a flat record
-schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
-each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
+`path` lands in a namespace the mod owns (`spell` of `example` is `example:spell`; explicit IDs may use extra manifest namespaces or a content package served via `served_by`), and `fields` is the
+entry's record schema. Its scalar kinds are `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`,
+`Identifier` and `Reference { registry }`, and they nest, as vanilla's codecs do:
+
+- `List { of, min_len, max_len }` is a JSON array (`Codec.list`, `sizeLimitedListOf`);
+- `Map { key, value }` is a JSON object with `Text`, `Identifier` or `Reference` keys (`Codec.unboundedMap`).
+  `as_map` returns a file's pairs in file order, and a default's in its declared order, on the server and on clients. Two keys naming the same id (`zombie` and
+  `minecraft:zombie`) are a duplicate. A text map key with `max_len: 0` accepts only the empty key;
+- `Record { fields }` is a nested object with the same field rules as the entry's own (a nested
+  `RecordCodecBuilder`).
+
+Each field, at any depth, is required (`DatapackField::required`), given a default (`with_default`) or optional with
+no default (`DatapackField::optional`, `optionalFieldOf`), which reads as `None` when left out. An optional kind
+stands only for a whole field, never inside a list, a map or another optional. Defaults are checked against their
+kinds at every depth, and an id or reference default is normalised wherever it sits (`stone` is `minecraft:stone`,
+map keys included).
+A list has no per-list count limit unless its `max_len` sets one. The entry file and candidate input size limits
+and the JSON parser's nesting limit still apply, as do the snapshot size and Wire depth limits for registries that
+sync. Read nested values with `as_list`, `as_map`, `get` and the scalar accessors (`as_int`, `as_text`...):
+
+```rust,ignore
+let int = |min, max| DatapackFieldKind::Int { min, max };
+r.declare_datapack_registry("model", DatapackRegistrySync::Required, vec![
+    DatapackField::required("entity", DatapackFieldKind::Identifier),
+    DatapackField::required("drops", DatapackFieldKind::List {
+        of: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("item", DatapackFieldKind::Identifier),
+            DatapackField::with_default("count", int(1, 64), DatapackValue::Int(1)),
+        ] }),
+        min_len: 1,
+        max_len: None,
+    }),
+    DatapackField::with_default("tiers", DatapackFieldKind::Map {
+        key: DatapackKeyKind::Text { max_len: 16 },
+        value: Box::new(DatapackFieldKind::Record { fields: vec![
+            DatapackField::required("data_per_kill", int(0, 1000)),
+        ] }),
+    }, DatapackValue::Map(Vec::new())),
+    DatapackField::optional("color", DatapackFieldKind::Text { max_len: 7 }),
+])?;
+// Later, from an entry's values: the count of its second drop, the data a superior kill gives.
+let count = entry.get("drops").and_then(|d| d.as_list()?.get(1)?.get("count")?.as_int());
+let data = entry.get("tiers").and_then(|t| t.get("superior")?.get("data_per_kill")?.as_int());
+```
+
+Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded
-registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type or an out-of-range value fails
-the entry, and a default never stands in for invalid data. The engine adds no entry-size or field-count limit
-of its own. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
+registries have it. The game decodes entries against the schema without running mod code: an undeclared key, a missing required key, a wrong type, an out-of-range value or a list
+of the wrong length fails the entry, at any depth, and a default never stands in for invalid data. The error names
+the value's path (`drops[3].item`, `tiers.basic.data_per_kill`); a key with a character other than letters, digits,
+`_`, `:`, `/` and `-` is quoted as the file spells it (`tiers["basic.data_per_kill"]`). A reference resolves against
+the whole candidate set wherever it sits. A feature type's config (`register_feature_type`) uses the same scalar kinds
+but stays a flat record: a nested or `Reference` config field is refused at registration. Only both-side packages (and both-side served namespace suppliers) may declare registries. The game loads entries from mod content and enabled data packs.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
 `level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry
@@ -1084,10 +1134,12 @@ before applying the stack limit.
 
 The query has no Host and may run for a slot that is never written. Seed a filter from the
 accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
-`contents_changed` once per backing block at root commit. If your provider writes directly
-to storage it owns, issue `set_changed` explicitly or seed the filter in the provider. Menu
-clicks and quick-move still use the declared rules and `menu_slot_rules` (vanilla's
-`Slot.mayPlace`); they do not ask the block entity part.
+`contents_changed` once per backing block on commit. During `menu_quick_move`, the notice waits
+for source settlement and only runs if the original backing container is still there. A write to
+the same block from its active notice still applies without a second notice. If your provider
+writes directly to storage it owns, issue `set_changed` explicitly or seed the filter in the
+provider. Menu clicks and quick-move still use the declared rules and `menu_slot_rules`
+(vanilla's `Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 
@@ -1453,13 +1505,15 @@ the entity and rotate with its yaw.
 
 ### Custom block-state definition types
 
-Register a type id with `Hooks::register_block_state_models` before client resources
-load. Set `neoforge:definition_type` to that id in the blockstate JSON, and answer
-`Hooks::instantiate_block_state_definition` on every load and reload. Read the whole
-file from `event.config` and enumerate `event.states` in registry order. Append a
-`BlockStateModelPick::Model` for each state you choose, with its index, model id,
-quarter turns and UV-lock setting; append `Refuse` with a reason to reject a file.
-See the generated hook notes for a powered-block example.
+Register a definition provider with `Hooks::register_block_state_models` before client resources
+load (`event.register(id, provider)`). Set `neoforge:definition_type` to that id in the
+blockstate JSON; the bound provider runs directly on every load and reload. Read the whole
+file from `input.config`, the block identifier from `input.block`, and enumerate `input.states`
+in registry order. Return `Ok(picks)` with a `BlockStateModelPick::Model` for each state you
+choose (its index, model id, quarter turns and UV-lock setting), or `Err(reason)` to reject a
+file. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted, and a
+later registration for the same id replaces an earlier one. See the generated hook notes for a
+powered-block example.
 
 A state not picked inherits the lower pack layer's selection when present;
 otherwise it draws no model. Pack layers bind independently. An unknown type,

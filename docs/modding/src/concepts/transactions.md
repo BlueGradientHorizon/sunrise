@@ -73,9 +73,9 @@ block entity. A replacement installed by the listener does not inherit the
 original entity's saved tag or lock. The replacement keeps its own items and
 saved data, including a lock set on its new handle, even if the position returns
 to the state the first write requested. On abort, the journal restores the
-original entity and undoes those edits. `host.edit_blocks` also restores the
-original blocks and block entities on abort; it publishes whole chunks on commit
-without drops or neighbor updates. If both kinds of write touch one position,
+original entity and undoes those edits. `host.edit_blocks` also quietly restores the
+original blocks, block entities and connection groups on abort; it publishes whole
+chunks with their resulting connection groups on commit, without drops or neighbor updates. If both kinds of write touch one position,
 they replay in call order; a later bulk edit cannot substitute its new block
 entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
 `Ok(None)` while a transaction is open, before running loot, experience or break
@@ -89,10 +89,10 @@ tick does not open a transaction for you. Use `event.subject.transaction` to mak
 a subject edit and a dropped-item write atomic:
 
 ```rust,ignore
-use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+use mod_api::{BlockEntityScope, ItemEntityRef, ItemStack};
 
 fn update(
-    tick: &mut BlockEntityTickScope<'_>,
+    tick: &mut BlockEntityScope<'_>,
     item: ItemEntityRef,
     replacement: ItemStack,
     progress: i32,
@@ -146,6 +146,12 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
   own entities after the commit's batch, in the order it asked.
 - Travel between levels is not journaled: an entity that arrives in another level during an aborted
   transaction stays where it arrived.
+
+For batched projectiles and thrown tridents, `projectile_impact` runs in the same transaction
+as the captured hit. Canceling the hit does not abort listener writes. Discarding the
+projectile makes its handle stale during the callback; the outermost commit notifies
+`entity_leave_level` once if the entity was announced. If a listener aborts its own nested
+discard and only cancels the hit, the original projectile stays alive.
 
 ## Transaction authority
 

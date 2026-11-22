@@ -325,7 +325,7 @@ impl Loading {
             renderer.release_surface();
         }
         let renderer_at = Instant::now();
-        let renderer = startup::time("renderer.world", || {
+        let (renderer, clouds) = startup::time("renderer.world", || {
             build_renderer(
                 window.clone(),
                 options.offscreen,
@@ -397,6 +397,9 @@ impl Loading {
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
+        if let Err(error) = clouds {
+            game.selection_reload_failed(&error);
+        }
         game.previous = Instant::now();
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
         game.settings.file.set(

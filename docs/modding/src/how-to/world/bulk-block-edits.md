@@ -16,7 +16,8 @@ NBT is not representable. At most 65,536 filters are allowed. Unloaded chunks an
 out-of-height portions of runs are skipped. Edits preserve strict block-entity behavior,
 drop no contents from replaced block entities, notify no neighbors and send whole changed chunks.
 Inside a transaction in the level in place, the new states and entities are visible immediately.
-Abort restores both; only the outermost commit in that level publishes the changed chunks.
+Abort quietly restores both, along with the connection group each replaced block had. Only the
+outermost commit in that level publishes the changed chunks, with their resulting connection groups.
 When a bulk edit and a `LevelRef::set_block` write touch the same position, they replay in
 call order. Only the ordinary write can spill contents or notify neighbors.
 
@@ -25,6 +26,12 @@ call order. Only the ordinary write can spill contents or notify neighbors.
 `ColumnBlocks.palette` also contains complete `BlockState` values. States of the
 same block with different properties have distinct entries. Only distinct numeric
 states are converted to API values, not each block in the returned columns.
+
+`ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
+colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
+unloaded). Colormap-derived grass and foliage tints are client-side only. See
+[Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
 
 ## Query terrain before loading chunks
 

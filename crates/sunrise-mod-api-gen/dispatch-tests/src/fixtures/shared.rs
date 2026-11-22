@@ -42,9 +42,6 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
-        pub(in crate::tests) fn entity_type_name(_: u32) -> Option<&'static str> {
-            Some("test:entity")
-        }
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
@@ -139,6 +136,18 @@ impl LevelSide<'_> {
         }
     }
 }
+enum LevelRandomSide<'a> {
+    Server(&'a mut dyn LevelRandomHost),
+    Client(&'a dyn LevelHost),
+}
+impl LevelRandomSide<'_> {
+    fn reborrow(&mut self) -> LevelRandomSide<'_> {
+        match self {
+            Self::Server(host) => LevelRandomSide::Server(&mut **host),
+            Self::Client(host) => LevelRandomSide::Client(*host),
+        }
+    }
+}
 struct TestHost;
 struct TestLevel;
 impl LevelHost for TestLevel {}
@@ -147,6 +156,20 @@ impl HitHost for TestLevel {}
 impl Host for TestHost {}
 impl ServerHost for TestHost {}
 impl ClientHost for TestHost {}
+
+#[test]
+fn level_random_dispatch_reborrows_the_active_side() {
+    let mut host = TestLevel;
+    assert!(matches!(
+        LevelRandomSide::Server(&mut host).reborrow(),
+        LevelRandomSide::Server(_)
+    ));
+    assert!(matches!(
+        LevelRandomSide::Client(&host).reborrow(),
+        LevelRandomSide::Client(_)
+    ));
+}
+
 #[allow(dead_code)]
 mod generated {
     pub(super) mod mod_api {
@@ -607,16 +630,21 @@ impl MenuPart for Mod {
     fn menu_subscribed(&self) -> &'static [Option<HookId>] {
         &[]
     }
-    fn menu_button(&self, _: &mut dyn ServerHost, event: &mut MenuButtonEvent<'_>) {
+    fn menu_button(&self, event: &mut MenuButtonEvent<'_>) {
         assert_eq!(event.context.player, 123);
         assert_eq!(event.context.player_entity_id, 42);
         assert_eq!(event.context.id, 9);
-        if let Some(entity) = event.entity.as_mut() {
-            assert_eq!(event.context.pos, Some([1, 2, 3]));
-            assert_eq!(entity.id(), "machine");
-            entity.data.push(9);
-        } else {
-            assert_eq!(event.context.pos, None);
+        let pos = event.context.pos;
+        if event
+            .subject
+            .with_view(|entity| {
+                assert_eq!(pos, Some([1, 2, 3]));
+                assert_eq!(entity.id(), "machine");
+                entity.data.push(9);
+            })
+            .is_none()
+        {
+            assert_eq!(pos, None);
         }
         *event.carried = Some(ItemStack {
             item: "bucket".into(),
@@ -639,11 +667,7 @@ impl EntityPart for Mod {
     fn entity_subscribed(&self) -> &'static [Option<HookId>] {
         &[]
     }
-    fn general_entity_tick(
-        &self,
-        _host: &mut dyn ServerHost,
-        event: &mut GeneralEntityTickEvent<'_>,
-    ) {
+    fn general_entity_tick(&self, event: &mut GeneralEntityTickEvent<'_>) {
         assert_eq!(event.kind, "mymod:robot");
         self.calls.lock().unwrap().push(self.id);
     }
@@ -720,7 +744,7 @@ impl Hooks for Mod {
         _: &mut dyn HitHost,
         event: &mut LivingIncomingDamageEvent<'_>,
     ) -> Flow {
-        event.container.0 = event.container.0 * 2.0 + self.id as f32;
+        *event.container.0 = *event.container.0 * 2.0 + self.id as f32;
         if self.id == 2 {
             Flow::Cancel
         } else {

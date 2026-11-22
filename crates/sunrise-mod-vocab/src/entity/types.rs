@@ -47,6 +47,38 @@ pub enum AttributeRegistrationError {
 // exhaustive: its field is private, so only registration creates a key
 pub struct EffectKey(pub(crate) u32);
 
+/// A damage type requested once through [`crate::Registrar::damage_type_key`].
+/// The key names the same registry ID that [`crate::HurtSource::damage_type`]
+/// reports; a level resolves that name in its current damage-type registry.
+// exhaustive: the scalar codec validates host slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[wire(via = u32)]
+pub struct DamageTypeKey(pub(crate) u32);
+
+impl From<&DamageTypeKey> for u32 {
+    fn from(key: &DamageTypeKey) -> Self {
+        key.0
+    }
+}
+impl TryFrom<u32> for DamageTypeKey {
+    type Error = &'static str;
+    fn try_from(slot: u32) -> Result<Self, Self::Error> {
+        let known = crate::parts::registration_membership(
+            crate::parts::RegistrationKeyKind::DamageType,
+            slot,
+        )
+        .unwrap_or_else(|| {
+            crate::parts::requested_keys()
+                .damage_types
+                .id(slot)
+                .is_some()
+        });
+        known
+            .then_some(Self(slot))
+            .ok_or("unknown DamageTypeKey slot")
+    }
+}
+
 /// An entity type (`minecraft:zombie`) in the built-in entity-type registry, in
 /// registration order. Returned by `EntityRef::kind`; Copy/Eq comparisons do not
 /// allocate. `key.id(host)` pins its namespaced name, if available, without
@@ -645,7 +677,10 @@ impl GoalSpec {
 }
 
 /// One goal of a mob's selector, as `goals` and `target_goals` read it.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local observation and does not implement `Wire`.
+// no wire: local mob goal inspection entry carrying a static goal id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct MobGoalEntry {
     /// The goal's priority: a lower number preempts a higher one.
@@ -1245,26 +1280,6 @@ impl From<PlayerRef> for EntityRef {
     }
 }
 
-/// The original player lent to `player_clone`. Every read expires when the hook returns;
-/// this is deliberately not a live player or entity handle.
-// exhaustive: its field is private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OriginalPlayerRef {
-    pub(crate) token: u64,
-}
-
-impl OriginalPlayerRef {
-    /// Read the original's attachment, including nonpersistent and non-copy-on-death data.
-    /// A missing value answers its default without changing the replacement player.
-    pub fn attachment<T: Clone + Send + Sync + 'static>(
-        self,
-        host: &mut dyn crate::Host,
-        key: &crate::AttachmentType<T>,
-    ) -> Result<T, crate::AttachmentError> {
-        key.get(host, crate::Holder::OriginalPlayer(self.token))
-    }
-}
-
 /// The collision flags left by a player's last `Entity.move`.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1669,9 +1684,9 @@ pub enum MoveCause {
     ShulkerBox,
     /// `MoverType.SHULKER`: a shulker mob's opening lid pushes it away.
     Shulker,
-    /// Sunrise's own: a moving collider (an entity's `set_collider`) carries the body standing on
-    /// it by the displacement of the contact point, once a tick after the level's entities ticked.
-    /// Vanilla has no such mover.
+    /// Sunrise's own: a moving collider (an entity's `set_collider`) carries a body standing on
+    /// it or shoves a body swept by its translation, after the level's entities tick. Vanilla
+    /// has no such mover.
     Carried,
 }
 

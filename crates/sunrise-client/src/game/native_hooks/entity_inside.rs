@@ -127,6 +127,7 @@ mod sweep_tests {
         wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         hurt_after: Option<(usize, f32)>,
+        generic: std::sync::Arc<std::sync::Mutex<Option<mod_api::DamageTypeKey>>>,
         panic_after: Option<usize>,
     }
     #[mod_api::sunrise_part]
@@ -150,7 +151,10 @@ mod sweep_tests {
             {
                 event.run_after(
                     mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt { amount },
+                    mod_api::EntityWrite::Hurt {
+                        damage_type: self.generic.lock().unwrap().unwrap(),
+                        amount,
+                    },
                 );
             }
             event.run_after(
@@ -183,6 +187,7 @@ mod sweep_tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for InsideMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            *self.0.generic.lock().unwrap() = Some(r.damage_type_key("minecraft:generic"));
             *self.0.wither.lock().unwrap() = Some(r.effect_key("minecraft:wither"));
             *self.0.speed.lock().unwrap() = Some(r.effect_key("minecraft:speed"));
             let stone = r.block_key("minecraft:stone");
@@ -365,14 +370,11 @@ mod sweep_tests {
         );
     }
 
-    /// A part that panics on its second contact: the panic is contained, the walk
-    /// and the player's tick go on, and the panicking callback's writes are refused
-    /// with it.
+    /// A part that panics on its first contact is disabled for this hook. The walk
+    /// and the player's tick go on without applying the failed callback's writes.
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_players_tick_restored() {
-        // The panic lands on every contact: each one is caught in the staged fire,
-        // and the mod keeps receiving the walk's contacts.
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -385,8 +387,8 @@ mod sweep_tests {
                 assert!(!dead);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert!(
                     (after - before).abs() < 1e-9,
@@ -782,8 +784,8 @@ mod sweep_tests {
                 game.put_back_dropped(items);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert_eq!(game.dropped.len(), rows, "the lifted row returned");
                 let item = game.dropped.first().unwrap();
@@ -1060,8 +1062,8 @@ mod sweep_tests {
                 );
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "the first panic disables the callback before the next contact"
                 );
                 assert_eq!(
                     game.creatures.projectiles.len(),
