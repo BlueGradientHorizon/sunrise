@@ -416,9 +416,6 @@ mod on_destroyed_by_push_reaction_tests;
 mod on_dropped_by_player;
 mod on_entity_item_update;
 mod on_item_use_first;
-mod overlay_message;
-#[cfg(test)]
-mod overlay_message_tests;
 mod panel_recipes;
 #[cfg(test)]
 mod panel_recipes_tests;
