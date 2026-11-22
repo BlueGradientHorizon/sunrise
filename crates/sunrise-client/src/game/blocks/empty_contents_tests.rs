@@ -102,6 +102,8 @@ fn dispense(game: &mut super::Game<'_>) -> Option<ItemStack> {
         ItemStack::new("minecraft:stick", 1),
     )
     .unwrap()
+    .continue_value()
+    .unwrap()
 }
 
 fn honey_at_target(game: &super::Game<'_>) -> bool {

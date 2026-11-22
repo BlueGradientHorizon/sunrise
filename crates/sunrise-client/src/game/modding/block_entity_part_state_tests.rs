@@ -241,16 +241,17 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         // An inner edit commits into the outer transaction, which then aborts: the value and
         // the chunk's unsaved mark go back, so a chunk that was clean is clean again.
         game.world.modified.clear();
-        let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, _| {
-            assert_eq!(press_part.edit_state(host, a, |_, n| *n = 11), Ok(()));
-            assert_eq!(press_part.state(host, a), Ok(11), "later steps see it");
-            assert!(
-                !sunrise_client::join_seq::visibility::passes_settled(),
-                "no save while it is tentative"
-            );
-            Err(())
-        });
-        assert_eq!(aborted, Err(()));
+        let aborted: Result<(), mod_api::TransactionError<()>> = (game as &mut dyn ServerHost)
+            .transaction(|host, _| {
+                assert_eq!(press_part.edit_state(host, a, |_, n| *n = 11), Ok(()));
+                assert_eq!(press_part.state(host, a), Ok(11), "later steps see it");
+                assert!(
+                    !sunrise_client::join_seq::visibility::passes_settled(),
+                    "no save while it is tentative"
+                );
+                Err(())
+            });
+        assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
         assert_eq!(stored(press_part, game, a), Some(9));
         assert!(
             !game.world.modified.contains(&(0, 0)),
@@ -451,12 +452,7 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
             let item = ItemStack::new("minecraft:stone", count);
             let stack = item.clone().try_into_api().unwrap();
             assert_eq!(
-                (game as &mut dyn ServerHost).transaction(|host, tx| entity.set_item_slot(
-                    host,
-                    tx,
-                    0,
-                    Some(stack)
-                )),
+                game.storage_transaction(|host, tx| entity.set_item_slot(host, tx, 0, Some(stack))),
                 Ok(true)
             );
             game.save_level(true).unwrap();
@@ -493,27 +489,30 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
         game.enter_level(Dim::Overworld).unwrap();
         assert!(!game.world.modified.contains(&chunk));
 
-        let root = game.transaction_open();
-        // Like a command that opens and commits its own transaction in the Nether.
-        game.enter_level(Dim::Nether).unwrap();
-        let stone =
-            mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:stone").unwrap(), 1)
-                .unwrap();
-        assert_eq!(
-            (game as &mut dyn ServerHost).transaction(|host, child| entity.set_item_slot(
-                host,
-                child,
-                0,
-                Some(stone)
-            )),
-            Ok(true)
-        );
-        assert!(
-            game.world.modified.contains(&chunk),
-            "the Nether transaction commits independently of the Overworld frame"
-        );
-        game.enter_level(Dim::Overworld).unwrap();
-        game.transaction_close(&root, true);
+        game.storage_scope(|game, _| {
+            // Like a command that opens and commits its own transaction in the Nether.
+            game.enter_level(Dim::Nether).unwrap();
+            let stone = mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:stone").unwrap(),
+                1,
+            )
+            .unwrap();
+            assert_eq!(
+                game.storage_transaction(|host, child| entity.set_item_slot(
+                    host,
+                    child,
+                    0,
+                    Some(stone)
+                )),
+                Ok(true)
+            );
+            assert!(
+                game.world.modified.contains(&chunk),
+                "the Nether transaction commits independently of the Overworld frame"
+            );
+            game.enter_level(Dim::Overworld).unwrap();
+            ((), true)
+        });
         assert!(!game.world.modified.contains(&chunk));
         assert!(
             game.levels
@@ -576,20 +575,21 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
         // Removed and replaced inside a transaction that then aborts: the handle is stale
         // while it is open, but the index keeps the map bound; the abort brings the very
         // binding back, and the tentative block entity's handle stays stale.
-        let seal = game.transaction_open();
-        game.journal_remove_block_entity(pos);
-        assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
-        assert_eq!(
-            indexed(game, a, progress),
-            Some(7),
-            "still bound until the root commits"
-        );
-        let tentative = press(game, pos);
-        assert_eq!(
-            press_part.edit_state(game, tentative, |_, n| *n = 5),
-            Ok(())
-        );
-        game.transaction_close(&seal, false);
+        let tentative = game.storage_scope(|game, _| {
+            game.journal_remove_block_entity(pos);
+            assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
+            assert_eq!(
+                indexed(game, a, progress),
+                Some(7),
+                "still bound until the root commits"
+            );
+            let tentative = press(game, pos);
+            assert_eq!(
+                press_part.edit_state(game, tentative, |_, n| *n = 5),
+                Ok(())
+            );
+            (tentative, false)
+        });
         assert_eq!(press_part.state(game, a), Ok(7));
         assert_eq!(indexed(game, a, progress), Some(7));
         assert_eq!(
@@ -599,13 +599,15 @@ fn a_removal_retires_its_state_only_at_the_root_commit() {
         assert_eq!(indexed(game, tentative, progress), None);
 
         // A nested removal committed into its parent is still not published.
-        let outer = game.transaction_open();
-        let inner = game.transaction_open();
-        game.journal_remove_block_entity(pos);
-        game.transaction_close(&inner, true);
-        assert_eq!(indexed(game, a, progress), Some(7));
-        // The root commit retires it.
-        game.transaction_close(&outer, true);
+        game.storage_scope(|game, _| {
+            game.storage_scope(|game, _| {
+                game.journal_remove_block_entity(pos);
+                ((), true)
+            });
+            assert_eq!(indexed(game, a, progress), Some(7));
+            // The root commit retires it.
+            ((), true)
+        });
         assert_eq!(press_part.state(game, a), Err(PartStateError::Stale));
         assert_eq!(indexed(game, a, progress), None);
         assert!(game.world.block_entities.attachments(pos).is_none());
@@ -643,24 +645,26 @@ fn a_save_or_unload_during_a_transaction_writes_only_committed_state() {
 
         // A save asked for while an edit is tentative is refused; once it aborts, the save
         // writes the committed value.
-        let seal = game.transaction_open();
-        assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 9), Ok(()));
-        assert!(game.save_level(true).is_err(), "refused while tentative");
-        game.transaction_close(&seal, false);
+        game.storage_scope(|game, _| {
+            assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 9), Ok(()));
+            assert!(game.save_level(true).is_err(), "refused while tentative");
+            ((), false)
+        });
         game.save_level(true).unwrap();
         assert_eq!(reload(game), Ok(Some(7)));
 
         // An unload due while a transaction is open waits for it to close, then saves the
         // committed value.
-        let seal = game.transaction_open();
-        assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 11), Ok(()));
-        assert!(game.streaming.set_forced(key.0, key.1, false));
-        for _ in 0..9 {
-            game.update_world();
-        }
-        assert!(game.world.chunks.contains_key(&key), "kept while tentative");
-        assert_eq!(press_part.state(game, entity), Ok(11));
-        game.transaction_close(&seal, false);
+        game.storage_scope(|game, _| {
+            assert_eq!(press_part.edit_state(game, entity, |_, n| *n = 11), Ok(()));
+            assert!(game.streaming.set_forced(key.0, key.1, false));
+            for _ in 0..9 {
+                game.update_world();
+            }
+            assert!(game.world.chunks.contains_key(&key), "kept while tentative");
+            assert_eq!(press_part.state(game, entity), Ok(11));
+            ((), false)
+        });
         game.update_world();
         assert!(!game.world.chunks.contains_key(&key), "unloaded");
         game.save_level(true).unwrap();
@@ -678,23 +682,24 @@ fn one_position_replaced_twice_in_an_aborted_transaction_gets_its_original_back(
         let pos = (1, 64, 1);
         let original = press(game, pos);
         assert_eq!(press_part.edit_state(game, original, |_, n| *n = 7), Ok(()));
-        let seal = game.transaction_open();
-        let mut tentative = Vec::new();
-        for value in [20, 30] {
-            game.journal_remove_block_entity(pos);
-            let replacement = press(game, pos);
+        let tentative = game.storage_scope(|game, _| {
+            let mut tentative = Vec::new();
+            for value in [20, 30] {
+                game.journal_remove_block_entity(pos);
+                let replacement = press(game, pos);
+                assert_eq!(
+                    press_part.edit_state(game, replacement, |_, n| *n = value),
+                    Ok(())
+                );
+                tentative.push(replacement);
+            }
             assert_eq!(
-                press_part.edit_state(game, replacement, |_, n| *n = value),
-                Ok(())
+                indexed(game, original, progress),
+                Some(7),
+                "bound until the root commits"
             );
-            tentative.push(replacement);
-        }
-        assert_eq!(
-            indexed(game, original, progress),
-            Some(7),
-            "bound until the root commits"
-        );
-        game.transaction_close(&seal, false);
+            (tentative, false)
+        });
         assert_eq!(press_part.state(game, original), Ok(7));
         assert_eq!(indexed(game, original, progress), Some(7));
         for handle in tentative {

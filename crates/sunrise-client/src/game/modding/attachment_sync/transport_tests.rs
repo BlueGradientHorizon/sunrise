@@ -113,9 +113,10 @@ pub(super) fn set_level(game: &Game<'_>, value: i32, commit: bool) {
         .as_ref()
         .unwrap()
         .call(move |server| {
-            let seal = server.transaction_open();
-            key.set(server, Holder::Level, value).unwrap();
-            server.transaction_close(&seal, commit);
+            server.storage_scope(|server, _| {
+                key.set(server, Holder::Level, value).unwrap();
+                ((), commit)
+            });
         })
         .unwrap();
 }
@@ -386,10 +387,11 @@ fn attachment_sync_follows_the_negotiated_route() {
                     .as_ref()
                     .unwrap()
                     .call(move |server| {
-                        let seal = server.transaction_open();
-                        bad.set(server, Holder::Level, ()).unwrap();
-                        good.set(server, Holder::Level, n).unwrap();
-                        server.transaction_close(&seal, true);
+                        server.storage_scope(|server, _| {
+                            bad.set(server, Holder::Level, ()).unwrap();
+                            good.set(server, Holder::Level, n).unwrap();
+                            ((), true)
+                        });
                     })
                     .unwrap();
             };
@@ -461,16 +463,17 @@ fn attachment_sync_follows_the_negotiated_route() {
                     .as_ref()
                     .unwrap()
                     .call(move |server| {
-                        let seal = server.transaction_open();
-                        AttachmentStore::discard(
-                            server,
-                            Holder::Level,
-                            "sync_route",
-                            "value",
-                            false,
-                        )
-                        .unwrap();
-                        server.transaction_close(&seal, commit);
+                        server.storage_scope(|server, _| {
+                            AttachmentStore::discard(
+                                server,
+                                Holder::Level,
+                                "sync_route",
+                                "value",
+                                false,
+                            )
+                            .unwrap();
+                            ((), commit)
+                        });
                     })
                     .unwrap();
             };
@@ -517,10 +520,11 @@ fn attachment_sync_follows_the_negotiated_route() {
                 .as_ref()
                 .unwrap()
                 .call(move |server| {
-                    let seal = server.transaction_open();
-                    bad.set(server, holder, ()).unwrap();
-                    good.set(server, holder, 23).unwrap();
-                    server.transaction_close(&seal, true);
+                    server.storage_scope(|server, _| {
+                        bad.set(server, holder, ()).unwrap();
+                        good.set(server, holder, 23).unwrap();
+                        ((), true)
+                    });
                 })
                 .unwrap();
             assert_eq!(values_until(&mut sunrise, holder, 23), [23]);
@@ -600,12 +604,13 @@ fn attachment_sync_follows_the_negotiated_route() {
                             value: Some([("n".into(), Tag::Int(99))].into()),
                         }],
                     };
-                    let seal = server.transaction_open();
-                    server.send_attachment_sync(&senders, &message);
-                    for sender in &senders {
-                        sender.payload_transport().begin_configuration();
-                    }
-                    server.transaction_close(&seal, true);
+                    server.storage_scope(|server, _| {
+                        server.send_attachment_sync(&senders, &message);
+                        for sender in &senders {
+                            sender.payload_transport().begin_configuration();
+                        }
+                        ((), true)
+                    });
                     senders.len()
                 })
                 .unwrap();

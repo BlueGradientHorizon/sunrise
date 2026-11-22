@@ -1,5 +1,5 @@
 use crate::{
-    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, Transaction, backend_of,
+    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, TransactionContext, backend_of,
 };
 
 /// A bundle's item handler at a place, using the game's shared bundle weight rules.
@@ -28,7 +28,7 @@ impl BundleItems {
     fn rewrite(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         changed: &ItemStack,
         moved: u32,
     ) -> u32 {
@@ -72,11 +72,12 @@ impl ResourceHandler<ItemResource> for BundleItems {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(offer) = resource.to_stack(amount) else {
             return 0;
         };
@@ -96,11 +97,12 @@ impl ResourceHandler<ItemResource> for BundleItems {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some((Some(out), changed)) = self
             .0
             .with_stack(host, |stack| stack.project())

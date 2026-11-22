@@ -6,7 +6,7 @@ use crate::__private::ingredient_parser::WalkedIngredient;
 use crate::Components;
 use crate::{
     BlockSide, CapabilityKey, DataLoadContext, FluidIdentity, FluidKey, ItemCapabilityKey,
-    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, Transaction,
+    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, TransactionContext,
 };
 use std::{fmt, marker::PhantomData};
 
@@ -297,11 +297,12 @@ impl ResourceHandler<FluidResource> for GameFluids {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let Some(backend) = crate::backend_mut_of(host) else {
             return 0;
         };
@@ -311,11 +312,12 @@ impl ResourceHandler<FluidResource> for GameFluids {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = crate::backend_of(host).and_then(|backend| backend.fluid_tank(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
             return 0;
@@ -404,7 +406,12 @@ impl GameBucket {
         }
     }
     /// One bucket here exchanged for `bucket`: `BUCKET` when that goes through, else 0.
-    fn exchange(&self, host: &mut dyn ServerHost, tx: &Transaction, bucket: crate::ItemKey) -> u32 {
+    fn exchange(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        bucket: crate::ItemKey,
+    ) -> u32 {
         let bucket = ItemResource::of(&ItemStack::of(bucket));
         match self.place.exchange(host, tx, &bucket, 1) {
             1 => BUCKET,
@@ -441,11 +448,12 @@ impl ResourceHandler<FluidResource> for GameBucket {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.buckets[0]);
         match self.bucket_of(resource) {
             Some(full) if index == 0 && empty && amount >= BUCKET => self.exchange(host, tx, full),
@@ -455,11 +463,12 @@ impl ResourceHandler<FluidResource> for GameBucket {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
+        crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let held = self.resource(host, index);
         match held {
             Some(held) if held == *resource && amount >= BUCKET => {

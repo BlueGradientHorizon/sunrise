@@ -1250,19 +1250,29 @@ pub(super) fn emit<'a>(
         let run = |mod_id_expr: &str, on_abort: &str, expression: &str| {
             run_with(mod_id_expr, on_abort, "", expression)
         };
-        let listener_call = |callee: &str| {
+        let listener_call = |callee: &str, mod_id_expr: &str| {
             let expression = format!("{callee}.{name}({invoke})");
             if panic_signal {
                 // Quick move chains the healthy Parts' proposals. Abort only the failing
                 // Part's storage writes before the shared panic boundary restores its outputs.
                 format!(
-                    "{event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
-                         Ok({callee}.{name}(&mut {event_type} {{\
-                             kind: {event}.kind, subject: subject.reborrow(),\
-                             container_slots: {event}.container_slots, slot: {event}.slot,\
-                             stack: &mut *{event}.stack,\
-                         }}))\
-                     }}).unwrap_or_else(|never| match never {{}})"
+                    "{{\
+                         use super::item::transaction::TransactionError;\
+                         match {event}.subject.transaction(|subject, _| -> Result<_, core::convert::Infallible> {{\
+                             Ok({callee}.{name}(&mut {event_type} {{\
+                                 kind: {event}.kind, subject: subject.reborrow(),\
+                                 container_slots: {event}.container_slots, slot: {event}.slot,\
+                                 stack: &mut *{event}.stack,\
+                             }}))\
+                         }}) {{\
+                             Ok(answer) => answer,\
+                             Err(TransactionError::Aborted(never)) => match never {{}},\
+                             Err(TransactionError::Unavailable) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
+                                 Flow::Continue\
+                             }}\
+                         }}\
+                     }}"
                 )
             } else if matches!(
                 name,
@@ -1270,15 +1280,23 @@ pub(super) fn emit<'a>(
             ) {
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, _) = host.as_ref().unwrap();
-                let commit = if contract == Contract::Listen {
-                    format!("{expression}; Ok(())")
+                let (commit, no_answer) = if contract == Contract::Listen {
+                    (format!("{expression}; Ok(())"), "")
                 } else {
-                    format!("Ok({expression})")
+                    (format!("Ok({expression})"), "Flow::Continue")
                 };
                 format!(
-                    "super::item::transaction::run_transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{\
-                         {commit}\
-                     }}).unwrap_or_else(|never| match never {{}})"
+                    "{{\
+                         use super::item::transaction::{{HostTransaction, TransactionError}};\
+                         match HostTransaction::transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{ {commit} }}) {{\
+                             Ok(answer) => answer,\
+                             Err(TransactionError::Aborted(never)) => match never {{}},\
+                             Err(TransactionError::Unavailable) => {{\
+                                 log::warn!(\"mod {{}}: {name} callback refused: transaction unavailable\", {mod_id_expr});\
+                                 {no_answer}\
+                             }}\
+                         }}\
+                     }}"
                 )
             } else {
                 expression
@@ -1321,7 +1339,7 @@ pub(super) fn emit<'a>(
                     &format!("{invoke_part}({callee}, {level}, &mut {event})"),
                 )
             } else {
-                run(mod_id_expr, on_abort, &listener_call(callee))
+                run(mod_id_expr, on_abort, &listener_call(callee, mod_id_expr))
             };
             let invocation = match contract {
                 Contract::Cancel => format!(
@@ -1366,10 +1384,11 @@ pub(super) fn emit<'a>(
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
         let cancel_step = if mod_cancel {
+            let mod_id_expr = format!("{mod_entry}.id");
             let invocation = run(
-                &format!("{mod_entry}.id"),
+                &mod_id_expr,
                 "continue;",
-                &listener_call(&mod_item),
+                &listener_call(&mod_item, &mod_id_expr),
             );
             if let Some(validator) = &hook.output_validator {
                 let flow = fresh_name("flow", &mut used);

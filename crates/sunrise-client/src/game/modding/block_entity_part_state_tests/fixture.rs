@@ -47,11 +47,12 @@ impl BlockEntityPart for Counter {
                 );
             }
             _ => {
-                let aborted: Result<(), ()> = host.transaction(|host, _| {
-                    assert_eq!(self.edit_state(host, entity, |_, n| *n = 100), Ok(()));
-                    Err(())
-                });
-                assert_eq!(aborted, Err(()));
+                let aborted: Result<(), mod_api::TransactionError<()>> =
+                    host.transaction(|host, _| {
+                        assert_eq!(self.edit_state(host, entity, |_, n| *n = 100), Ok(()));
+                        Err(())
+                    });
+                assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
                 let recursive = self.edit_state(host, entity, |host, n| {
                     *n += 1;
                     self.edit_state(host, entity, |_, n| *n = 50)

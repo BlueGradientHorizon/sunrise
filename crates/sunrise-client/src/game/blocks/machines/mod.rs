@@ -360,18 +360,14 @@ impl Containers<'_> {
     fn name(&self, state: BlockStateId) -> &str {
         self.registry.state(state).map_or("", |s| s.name.as_str())
     }
-    /// `ItemStack.getMaxStackSize`: its component, else the item's.
+    /// `ItemInstance.getMaxStackSize`, using the effective component after patching.
     pub(super) fn max_stack(&self, stack: &ItemStack) -> u32 {
-        if let Some(sunrise_core::nbt::Tag::Int(n)) = stack
-            .data()
-            .and_then(|d| d.other("minecraft:max_stack_size"))
-        {
-            return (*n).clamp(1, 99) as u32;
+        let info = self.items.get(&stack.item);
+        match stack.effective_max_stack_size(info) {
+            Some(max) => max.clamp(1, 99) as u32,
+            // Only unchecked legacy stacks can have a malformed component here.
+            None => info.map_or(64, |i| i.max_stack).max(1),
         }
-        self.items
-            .get(&stack.item)
-            .map_or(64, |i| i.max_stack)
-            .max(1)
     }
     /// `Container.getMaxStackSize(stack)` of a container: the container's own
     /// limit, at most the item's. `ComposterBlock.InputContainer` (levels 0 to
@@ -1497,7 +1493,7 @@ impl Game<'_> {
             return 0;
         };
         let resource = ItemResource::of(&snapshot);
-        mod_api::run_transaction(self, |game, tx| {
+        self.storage_transaction(|game, tx| {
             let host: &mut dyn mod_api::ServerHost = game;
             let went = part
                 .insert(host, tx, &resource, stack.count)
@@ -1528,7 +1524,7 @@ impl Game<'_> {
             return false;
         }
         let from = self.container_world_pos(hopper);
-        mod_api::run_transaction(self, |game, tx| {
+        self.storage_transaction(|game, tx| {
             use super::api_values::TryIntoApi;
             for slot in 0..hopper.len() {
                 let Some(snapshot) = game
@@ -1582,7 +1578,7 @@ impl Game<'_> {
             if part.amount(self, slot) == 0 || self.part_move_canceled(at, into, &one.item) {
                 continue;
             }
-            let moved = mod_api::run_transaction(self, |game, tx| {
+            let moved = self.storage_transaction(|game, tx| {
                 let host: &mut dyn mod_api::ServerHost = game;
                 let came = part.extract_at(host, tx, slot, &resource, 1);
                 if part.checked(came, 1, &at) != Some(1) {
@@ -2195,8 +2191,9 @@ impl Game<'_> {
         let Some(stack) = self.containers().get(&view, slot).cloned() else {
             return Ok(());
         };
+        let holder = self.world.block_entities.identity(key);
         let target = offset(key, facing);
-        let remaining = if dropper {
+        let mut remaining = if dropper {
             let side = facing.opposite();
             let inserted = self.with_container_at(target, side, |game, into| match into {
                 ContainerTarget::View(into) => {
@@ -2228,12 +2225,27 @@ impl Game<'_> {
                 None => self.dispense_default_in_level(key, facing, stack),
             }
         } else {
-            self.dispense_item(key, facing, stack)?
+            let ControlFlow::Continue(remaining) = self.dispense_item(key, facing, stack)? else {
+                return Ok(());
+            };
+            remaining
         };
-        if let Some(entry) = self.slot_mut_at(&view, slot) {
-            *entry = remaining;
+        // DispenserBlock.dispenseFrom calls BaseContainerBlockEntity.setItem after the
+        // behaviour returns. Only this resident write limits the detached remainder's count.
+        if !dropper && let Some(stack) = &mut remaining {
+            stack.count = stack
+                .count
+                .min(self.containers().max_stack_in(&view, stack));
         }
-        self.container_changed(key);
+        // A listener can replace the block entity while the behaviour runs. Like the
+        // vanilla BlockSource, the action owns the original row, not its replacement.
+        if holder.is_some() && self.world.block_entities.identity(key) == holder {
+            self.journal_block_entity_slot(key, slot);
+            if let Some(entry) = self.slot_mut_at(&view, slot) {
+                *entry = remaining;
+                self.after_commit(super::transactions::After::Changed(key));
+            }
+        }
         Ok(())
     }
 }

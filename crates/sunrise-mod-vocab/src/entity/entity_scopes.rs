@@ -1,7 +1,7 @@
 //! Scoped views and sequential host loans for entity-scoped and item-entity-scoped hooks.
 use crate::{
     ClientHost, EntityRef, EntityTypeKey, ItemEntityRef, ItemStack, ItemStackView, ServerHost,
-    StackWriteError, Transaction, WorldEpoch,
+    StackWriteError, TransactionContext, TransactionError, TransactionUnavailable, WorldEpoch,
 };
 
 /// Live resident view of a server general entity row during `general_entity_tick`.
@@ -117,17 +117,29 @@ impl<'a> EntityServerScope<'a> {
     }
 
     /// Commit the view's velocity, rotation and fall-distance writes together with other
-    /// journaled Host writes on `Ok`. Returning `Err` restores those writes.
+    /// journaled Host writes on `Ok`. A returned error restores those writes. A host that cannot open a scope returns
+    /// [`TransactionError::Unavailable`] without running `f`.
     pub fn transaction<T, E>(
         &mut self,
-        f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
-    ) -> Result<T, E> {
-        crate::item::transaction::run_transaction_on(
-            self,
-            |scope| scope.0.host().transaction_open(),
-            |scope, seal, commit| scope.0.host().transaction_close(seal, commit),
-            f,
-        )
+        f: impl for<'loan> FnOnce(
+            &'loan mut EntityServerScope<'_>,
+            &'loan TransactionContext,
+        ) -> Result<T, E>,
+    ) -> Result<T, TransactionError<E>> {
+        let mut f = Some(f);
+        let mut result = None;
+        self.0
+            .with_transaction_scope(&mut |access, tx| {
+                let Some(f) = f.take() else { return false };
+                let outcome = f(&mut EntityServerScope::new(access), tx);
+                let commit = outcome.is_ok();
+                result = Some(outcome);
+                commit
+            })
+            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
+        result
+            .ok_or(TransactionError::Unavailable)?
+            .map_err(TransactionError::Aborted)
     }
 }
 
@@ -378,17 +390,30 @@ impl<'a> ItemEntityServerScope<'a> {
     }
 
     /// Commit the view's stack, pickup-delay, target and velocity writes together with other
-    /// journaled Host writes on `Ok`. Returning `Err` restores those writes.
+    /// journaled Host writes on `Ok`. A returned error restores those writes. A host that cannot open a scope returns
+    /// [`TransactionError::Unavailable`] without running `f`.
     pub fn transaction<T, E>(
         &mut self,
-        f: impl FnOnce(&mut Self, &Transaction) -> Result<T, E>,
-    ) -> Result<T, E> {
-        crate::item::transaction::run_transaction_on(
-            self,
-            |scope| scope.access.host().transaction_open(),
-            |scope, seal, commit| scope.access.host().transaction_close(seal, commit),
-            f,
-        )
+        f: impl for<'loan> FnOnce(
+            &'loan mut ItemEntityServerScope<'_>,
+            &'loan TransactionContext,
+        ) -> Result<T, E>,
+    ) -> Result<T, TransactionError<E>> {
+        let item_id = self.item_id;
+        let mut f = Some(f);
+        let mut result = None;
+        self.access
+            .with_transaction_scope(&mut |access, tx| {
+                let Some(f) = f.take() else { return false };
+                let outcome = f(&mut ItemEntityServerScope::new(access, item_id), tx);
+                let commit = outcome.is_ok();
+                result = Some(outcome);
+                commit
+            })
+            .map_err(|TransactionUnavailable| TransactionError::Unavailable)?;
+        result
+            .ok_or(TransactionError::Unavailable)?
+            .map_err(TransactionError::Aborted)
     }
 }
 
@@ -412,6 +437,15 @@ pub trait ResidentGeneralEntity {
 pub trait EntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(EntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    fn with_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn EntityServerAccess,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
 }
 
 /// Engine backing for a read-only resident client entity view.
@@ -456,4 +490,13 @@ pub trait ResidentItemEntity {
 pub trait ItemEntityServerAccess {
     fn with_view(&mut self, f: &mut dyn FnMut(ItemEntitySubjectView<'_>));
     fn host(&mut self) -> &mut dyn ServerHost;
+    fn with_transaction_scope(
+        &mut self,
+        _callback: &mut dyn for<'loan> FnMut(
+            &'loan mut dyn ItemEntityServerAccess,
+            &'loan TransactionContext,
+        ) -> bool,
+    ) -> Result<(), TransactionUnavailable> {
+        Err(TransactionUnavailable)
+    }
 }

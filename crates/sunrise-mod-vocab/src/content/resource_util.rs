@@ -1,9 +1,14 @@
 //! Stock resource handlers and transfer helpers, following NeoForge's `ResourceHandlerUtil`.
-//! Writes and probes take `Some(tx)` for the current transaction or `None` to open a root.
-//! They refuse without calling handlers if the token does not name the current transaction,
-//! or if a transaction is open but no token was supplied. Probes always roll back.
+//! Writes and probes take `Some(tx)` for the innermost open transaction or `None` to open a root.
+//! Passing a context that does not match the host's innermost open transaction (including `None`
+//! while a transaction is open) panics before calling handlers. Probes always roll back;
+//! a refused transaction is `Err(TransactionError::Unavailable)`, not zero or no match.
 use crate::content::resource::{checked_transfer, in_turn, try_in_turn};
-use crate::{Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
+use crate::item::transaction::assert_transaction_matches;
+use crate::{
+    Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, TransactionContext,
+    TransactionError,
+};
 use std::ops::Range;
 
 /// Several handlers as one (`CombinedResourceHandler`): their indices one after another, the
@@ -71,11 +76,12 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         self.locate(index).map_or(0, |(handler, at)| {
             handler.insert_at(host, tx, at, resource, amount)
         })
@@ -83,11 +89,12 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         self.locate(index).map_or(0, |(handler, at)| {
             handler.extract_at(host, tx, at, resource, amount)
         })
@@ -95,13 +102,13 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        assert_transaction_matches(host, Some(tx));
         in_turn(
             host,
-            tx,
             amount,
             &self.handlers,
             |host, tx, (handler, _), left| handler.insert(host, tx, resource, left),
@@ -110,13 +117,13 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
     fn extract(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        assert_transaction_matches(host, Some(tx));
         in_turn(
             host,
-            tx,
             amount,
             &self.handlers,
             |host, tx, (handler, _), left| handler.extract(host, tx, resource, left),
@@ -129,7 +136,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 /// [`ResourceHandler`] on a struct holding the handler and forward to it:
 ///
 /// ```
-/// use mod_api::{Overanswered, ResourceHandler, ServerHost, Transaction};
+/// use mod_api::{Overanswered, ResourceHandler, ServerHost, TransactionContext, TransactionError};
 ///
 /// struct Delegating<R>(Box<dyn ResourceHandler<R>>);
 ///
@@ -152,7 +159,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     fn insert_at(
 ///         &self,
 ///         host: &mut dyn ServerHost,
-///         tx: &Transaction,
+///         tx: &TransactionContext,
 ///         index: usize,
 ///         resource: &R,
 ///         amount: u32,
@@ -162,17 +169,17 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     fn extract_at(
 ///         &self,
 ///         host: &mut dyn ServerHost,
-///         tx: &Transaction,
+///         tx: &TransactionContext,
 ///         index: usize,
 ///         resource: &R,
 ///         amount: u32,
 ///     ) -> u32 {
 ///         self.0.extract_at(host, tx, index, resource, amount)
 ///     }
-///     fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> Result<u32, Overanswered> {
+///     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, TransactionError<Overanswered>> {
 ///         self.0.insert(host, tx, r, n)
 ///     }
-///     fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> Result<u32, Overanswered> {
+///     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, TransactionError<Overanswered>> {
 ///         self.0.extract(host, tx, r, n)
 ///     }
 /// }
@@ -233,11 +240,12 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         self.inner(index).map_or(0, |at| {
             self.handler.insert_at(host, tx, at, resource, amount)
         })
@@ -245,11 +253,12 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         self.inner(index).map_or(0, |at| {
             self.handler.extract_at(host, tx, at, resource, amount)
         })
@@ -276,10 +285,26 @@ impl<R> ResourceHandler<R> for EmptyResourceHandler {
     fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&R>) -> u32 {
         0
     }
-    fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn insert_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: usize,
+        _: &R,
+        _: u32,
+    ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         0
     }
-    fn extract_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn extract_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: usize,
+        _: &R,
+        _: u32,
+    ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         0
     }
 }
@@ -318,11 +343,12 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         if self.is_valid(host, index, resource) {
             amount
         } else {
@@ -332,11 +358,12 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
-        _: &Transaction,
+        tx: &TransactionContext,
         index: usize,
         resource: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         if self.is_valid(host, index, resource) {
             amount
         } else {
@@ -367,15 +394,24 @@ impl<R> ResourceHandler<R> for VoidingResourceHandler {
     }
     fn insert_at(
         &self,
-        _: &mut dyn ServerHost,
-        _: &Transaction,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
         index: usize,
         _: &R,
         amount: u32,
     ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         if index == 0 { amount } else { 0 }
     }
-    fn extract_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn extract_at(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: usize,
+        _: &R,
+        _: u32,
+    ) -> u32 {
+        assert_transaction_matches(host, Some(tx));
         0
     }
 }
@@ -448,20 +484,23 @@ pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHan
 }
 
 /// Inserts up to `amount` of `resource`, topping up matching indices before empty ones.
-/// An overanswer rolls back the insertion and returns [`Overanswered`]. Pass `Some(tx)` for
-/// the current transaction or `None` to open a root. A mismatched token, including a missing
-/// token when a transaction is open, returns `Ok(0)` without calling the handler.
+/// An overanswer rolls back the insertion and returns `TransactionError::Aborted(Overanswered)`.
+/// A refused scope returns `TransactionError::Unavailable`. Pass `Some(tx)` for
+/// the innermost open transaction or `None` to open a root. Panics if `tx` does not match the
+/// host's innermost open transaction (including passing `None` while a transaction is open).
 pub fn insert_stacking<R: PartialEq>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
     resource: &R,
     amount: u32,
-    tx: Option<&Transaction>,
-) -> Result<u32, Overanswered> {
-    if !can_open(host, tx) || amount == 0 {
+    tx: Option<&TransactionContext>,
+) -> Result<u32, TransactionError<Overanswered>> {
+    assert_transaction_matches(host, tx);
+    if amount == 0 {
         return Ok(0);
     }
     host.transaction(|host, tx| try_insert_stacking(host, &handler.into(), resource, amount, tx))
+        .map_err(TransactionError::flatten)
 }
 
 fn try_insert_stacking<R: PartialEq>(
@@ -469,8 +508,8 @@ fn try_insert_stacking<R: PartialEq>(
     endpoint: &Attributed<'_, R>,
     resource: &R,
     amount: u32,
-    tx: &Transaction,
-) -> Result<u32, Overanswered> {
+    tx: &TransactionContext,
+) -> Result<u32, TransactionError<Overanswered>> {
     let handler = endpoint.handler;
     let size = handler.size(host);
     let indices = [true, false]
@@ -498,48 +537,55 @@ fn try_insert_stacking<R: PartialEq>(
     .map_err(|error| endpoint.attribute(error))
 }
 
-/// Takes up to `amount` of the first extractable resource `filter` accepts. An overanswer
-/// aborts the extraction. Pass `Some(tx)` for the current transaction or `None` to open a root.
-/// A mismatched token, including a missing token when a transaction is open, returns `None`
-/// without calling the handler.
+/// Takes up to `amount` of the first extractable resource `filter` accepts. A positive amount
+/// opens a rollback probe before scanning, even if nothing matches. An overanswer aborts the
+/// extraction. Pass `Some(tx)` for the innermost open transaction or `None` to open a root.
+/// A refused scope is `Err(TransactionError::Unavailable)`, not `Ok(None)`. Panics if `tx` does
+/// not match the host's innermost open transaction (including passing `None` while one is open).
 pub fn extract_first<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
     amount: u32,
-    tx: Option<&Transaction>,
-) -> Option<(R, u32)> {
-    if !can_open(host, tx) || amount == 0 {
-        return None;
+    tx: Option<&TransactionContext>,
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
+    assert_transaction_matches(host, tx);
+    if amount == 0 {
+        return Ok(None);
     }
-    host.transaction(|host, tx| {
-        let resource = probe_extractable(host, handler, filter).ok_or(())?;
-        let taken = handler
-            .extract(host, tx, &resource, amount)
-            .map_err(|_| ())?;
-        let taken = checked_transfer(taken, amount).map_err(|_| ())?;
+    let Some(resource) = probe_extractable(host, handler, filter)? else {
+        return Ok(None);
+    };
+    match host.transaction(|host, tx| {
+        let taken = handler.extract(host, tx, &resource, amount).map_err(Some)?;
+        let taken = checked_transfer(taken, amount)
+            .map_err(|error| Some(TransactionError::Aborted(error)))?;
         if taken == 0 {
-            Err(())
+            Err(None)
         } else {
             Ok((resource, taken))
         }
-    })
-    .ok()
+    }) {
+        Ok(taken) => Ok(Some(taken)),
+        Err(TransactionError::Aborted(None)) => Ok(None),
+        Err(TransactionError::Aborted(Some(error))) => Err(error),
+        Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+    }
 }
 
-/// The first resource `filter` accepts that can be extracted. Probes with the slot's whole
-/// int amount in a transaction that always rolls back. Pass `Some(tx)` for the current
-/// transaction or `None` to probe at the root. A mismatched token, including a missing token
-/// when a transaction is open, returns `None` without calling the handler.
+/// The first resource `filter` accepts that can be extracted. Opens a rollback scope before
+/// reading the handler and tries each candidate's whole int amount in a separate scope so a
+/// failed candidate cannot affect the next. Pass `Some(tx)` for the innermost open transaction
+/// or `None` to probe at the root. Panics if `tx` does not match the host's innermost open
+/// transaction (including passing `None` while a transaction is open). Returns `Ok(None)`
+/// if nothing matched, or `Err` for refusal or an overanswer.
 pub fn find_extractable_resource<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
-    tx: Option<&Transaction>,
-) -> Option<R> {
-    if !can_open(host, tx) {
-        return None;
-    }
+    tx: Option<&TransactionContext>,
+) -> Result<Option<R>, TransactionError<Overanswered>> {
+    assert_transaction_matches(host, tx);
     probe_extractable(host, handler, filter)
 }
 
@@ -547,22 +593,39 @@ fn probe_extractable<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
-) -> Option<R> {
-    (0..handler.size(host)).find_map(|index| {
-        let amount = u32::try_from(handler.amount_int(host, index)).ok()?;
-        let resource = handler
-            .resource(host, index)
-            .filter(|r| amount != 0 && filter(r))?;
-        let probe: Result<std::convert::Infallible, _> = host
-            .transaction(|host, tx| Err(handler.extract_at(host, tx, index, &resource, amount)));
-        let answer = probe.unwrap_err();
-        (answer > 0 && answer <= amount).then_some(resource)
-    })
-}
-
-/// Validates an optional enclosing transaction before opening any new journal.
-fn can_open(host: &dyn ServerHost, tx: Option<&Transaction>) -> bool {
-    host.transaction_current().as_ref() == tx
+) -> Result<Option<R>, TransactionError<Overanswered>> {
+    let mut remaining: Option<Range<usize>> = None;
+    while remaining.as_ref().is_none_or(|indices| !indices.is_empty()) {
+        let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
+            let indices = remaining.get_or_insert_with(|| 0..handler.size(host));
+            for index in indices {
+                let Ok(amount) = u32::try_from(handler.amount_int(host, index)) else {
+                    continue;
+                };
+                let Some(resource) = handler
+                    .resource(host, index)
+                    .filter(|r| amount != 0 && filter(r))
+                else {
+                    continue;
+                };
+                let answer = handler.extract_at(host, tx, index, &resource, amount);
+                // Roll back before looking at another candidate, even on a zero answer.
+                return Err(Some((resource, amount, answer)));
+            }
+            Err(None)
+        });
+        match probe {
+            Ok(never) => match never {},
+            Err(TransactionError::Unavailable) => return Err(TransactionError::Unavailable),
+            Err(TransactionError::Aborted(None)) => return Ok(None),
+            Err(TransactionError::Aborted(Some((resource, amount, answer)))) => {
+                if checked_transfer(answer, amount).map_err(TransactionError::Aborted)? > 0 {
+                    return Ok(Some(resource));
+                }
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// A borrowed move endpoint. Pass a capability reference to retain its provider's name in
@@ -593,9 +656,14 @@ impl<'a, R> From<&'a (dyn ResourceHandler<R> + 'a)> for Attributed<'a, R> {
 }
 
 impl<R> Attributed<'_, R> {
-    fn attribute(&self, mut error: Overanswered) -> Overanswered {
-        if error.owner.is_none() {
-            error.owner = self.owner.map(str::to_owned);
+    fn attribute(
+        &self,
+        mut error: TransactionError<Overanswered>,
+    ) -> TransactionError<Overanswered> {
+        if let TransactionError::Aborted(over) = &mut error
+            && over.owner.is_none()
+        {
+            over.owner = self.owner.map(str::to_owned);
         }
         error
     }
@@ -603,34 +671,36 @@ impl<R> Attributed<'_, R> {
     fn insert(
         &self,
         host: &mut dyn ServerHost,
-        tx: &Transaction,
+        tx: &TransactionContext,
         resource: &R,
         asked: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         self.handler
             .insert(host, tx, resource, asked)
-            .and_then(|answer| checked_transfer(answer, asked))
+            .and_then(|answer| checked_transfer(answer, asked).map_err(TransactionError::Aborted))
             .map_err(|error| self.attribute(error))
     }
 }
 
 /// Moves up to `max` of the resources `filter` accepts, in index order. The helper probes what
 /// it can extract, rolls the probe back, inserts, then extracts exactly what went in. A step
-/// that cannot extract that exact amount rolls back. [`Overanswered`] rolls back the entire
+/// that cannot extract that exact amount rolls back. `TransactionError::Aborted(Overanswered)` rolls back the entire
 /// move, even if the caller catches the error and commits the enclosing transaction. Pass a
 /// capability reference to retain its provider in the error, or a `&dyn ResourceHandler<R>`
 /// for a directly composed handler.
 ///
-/// Pass `Some(tx)` to run under the current transaction, or `None` to open a root. A token
-/// that does not name the current transaction, or `None` while one is open, moves nothing.
+/// Pass `Some(tx)` to run under the innermost open transaction, or `None` to open a root.
+/// Panics if `tx` does not match the host's innermost open transaction (including passing
+/// `None` while a transaction is open). A refused transaction or savepoint returns
+/// `TransactionError::Unavailable`.
 pub fn move_resources<'a, R: 'a>(
     host: &mut dyn ServerHost,
     from: impl Into<Attributed<'a, R>>,
     to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-) -> Result<u32, Overanswered> {
+    tx: Option<&TransactionContext>,
+) -> Result<u32, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
@@ -644,8 +714,8 @@ pub fn move_resources_stacking<'a, R: PartialEq + 'a>(
     to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-) -> Result<u32, Overanswered> {
+    tx: Option<&TransactionContext>,
+) -> Result<u32, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
         try_insert_stacking(host, &to, resource, out, tx)
@@ -657,9 +727,14 @@ fn move_resources_by<R>(
     from: Attributed<'_, R>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    tx: Option<&TransactionContext>,
+    insert: impl Fn(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        &R,
+        u32,
+    ) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     with_move_transaction(host, tx, |host| {
         let mut moved = 0;
         for index in 0..from.handler.size(host) {
@@ -690,8 +765,8 @@ pub fn move_first<'a, R: PartialEq + 'a>(
     to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+    tx: Option<&TransactionContext>,
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
@@ -705,8 +780,8 @@ pub fn move_first_stacking<'a, R: PartialEq + 'a>(
     to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+    tx: Option<&TransactionContext>,
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
         try_insert_stacking(host, &to, resource, out, tx)
@@ -718,9 +793,14 @@ fn move_first_by<R: PartialEq>(
     from: Attributed<'_, R>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: Option<&Transaction>,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+    tx: Option<&TransactionContext>,
+    insert: impl Fn(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        &R,
+        u32,
+    ) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     with_move_transaction(host, tx, |host| {
         let mut selected = None;
         let mut moved = 0;
@@ -748,15 +828,14 @@ fn move_first_by<R: PartialEq>(
     })
 }
 
-fn with_move_transaction<T: Default>(
+fn with_move_transaction<T>(
     host: &mut dyn ServerHost,
-    tx: Option<&Transaction>,
-    run: impl FnOnce(&mut dyn ServerHost) -> Result<T, Overanswered>,
-) -> Result<T, Overanswered> {
-    if !can_open(host, tx) {
-        return Ok(T::default());
-    }
+    tx: Option<&TransactionContext>,
+    run: impl FnOnce(&mut dyn ServerHost) -> Result<T, TransactionError<Overanswered>>,
+) -> Result<T, TransactionError<Overanswered>> {
+    assert_transaction_matches(host, tx);
     host.transaction(|host, _| run(host))
+        .map_err(TransactionError::flatten)
 }
 
 fn move_slot<R>(
@@ -765,32 +844,48 @@ fn move_slot<R>(
     index: usize,
     resource: &R,
     max: u32,
-    insert: &impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    insert: &impl Fn(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        &R,
+        u32,
+    ) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     let want = max.min(from.handler.amount(host, index));
     if want == 0 {
         return Ok(0);
     }
     // The destination must see the source before extraction, even though the probe may write.
-    let probe: Result<std::convert::Infallible, _> =
+    let probe: Result<std::convert::Infallible, TransactionError<u32>> =
         host.transaction(|host, tx| Err(from.handler.extract_at(host, tx, index, resource, want)));
-    let available = checked_transfer(probe.unwrap_err(), want).map_err(|e| from.attribute(e))?;
+    let extracted = match probe {
+        Ok(never) => match never {},
+        Err(TransactionError::Unavailable) => return Err(TransactionError::Unavailable),
+        Err(TransactionError::Aborted(extracted)) => extracted,
+    };
+    let available = checked_transfer(extracted, want)
+        .map_err(|e| from.attribute(TransactionError::Aborted(e)))?;
     if available == 0 {
         return Ok(0);
     }
-    host.transaction(|host, tx| {
+    match host.transaction(|host, tx| {
         let accepted = insert(host, tx, resource, available).map_err(Some)?;
         if accepted == 0 {
             return Err(None);
         }
         let taken = from.handler.extract_at(host, tx, index, resource, accepted);
-        let taken = checked_transfer(taken, accepted).map_err(|e| Some(from.attribute(e)))?;
+        let taken = checked_transfer(taken, accepted)
+            .map_err(|e| Some(from.attribute(TransactionError::Aborted(e))))?;
         if taken != accepted {
             return Err(None);
         }
         Ok(accepted)
-    })
-    .or_else(|error| error.map_or(Ok(0), Err))
+    }) {
+        Ok(accepted) => Ok(accepted),
+        Err(TransactionError::Aborted(Some(over))) => Err(over),
+        Err(TransactionError::Aborted(None)) => Ok(0),
+        Err(TransactionError::Unavailable) => Err(TransactionError::Unavailable),
+    }
 }
 
 #[cfg(test)]

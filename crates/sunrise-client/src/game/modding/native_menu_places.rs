@@ -13,8 +13,8 @@ use super::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
 use mod_api::__private::game::*;
 use mod_api::{
-    Hand, HostTransaction, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal,
-    MenuSlotPlace, ServerHost,
+    Hand, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal, MenuSlotPlace,
+    ServerHost,
 };
 use sunrise_client::items::ItemStack;
 use sunrise_client::lan::{
@@ -501,7 +501,7 @@ fn click_pickup(
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let here = at.resource(host);
         let have = at.amount(host);
         if let Some(here) = &here
@@ -578,7 +578,7 @@ fn click_quick_move(
         true => (size, player_slots, true),
         false => (0, count, false),
     };
-    game.transaction(|host, tx| {
+    game.storage_transaction(|host, tx| {
         let mut left = amount;
         for merge in [true, false] {
             for i in 0..len {
@@ -620,7 +620,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game as with_base_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use super::*;
-    use mod_api::{MenuReplace, MenuSlotBacking};
+    use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
     use sunrise_client::items::ItemStack;
     use sunrise_client::lan::menu::Slots;
 
