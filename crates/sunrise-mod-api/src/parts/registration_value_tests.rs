@@ -638,10 +638,15 @@ fn an_inventory_tick_reaches_only_the_parts_of_the_ticked_item() {
     let mut host = FakeHost::new();
     let stone = crate::__private::part_tests::stack("minecraft:stone", 1, 0);
     let diamond = crate::__private::part_tests::stack("minecraft:diamond", 1, 0);
-    dispatch_inventory_tick(&mut host, &stick(), 4, true);
-    dispatch_inventory_tick(&mut host, &stone, -106, false);
-    dispatch_inventory_tick(&mut host, &stick(), 100, false);
-    dispatch_inventory_tick(&mut host, &diamond, 0, false);
+    for (item, slot, selected) in [
+        (stick().item(), 4, true),
+        (stone.item(), -106, false),
+        (stick().item(), 100, false),
+        (diamond.item(), 0, false),
+    ] {
+        let place = crate::ItemPlace::PlayerSlot { player: 1, slot };
+        dispatch_inventory_tick(&mut host, item, &place, slot, selected);
+    }
     assert_eq!(*sticks.0.lock().unwrap(), [(4, true), (100, false)]);
     assert_eq!(*stones.0.lock().unwrap(), [(-106, false)]);
 }
