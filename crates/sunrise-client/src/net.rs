@@ -1539,6 +1539,11 @@ fn receive_play(
         ) {
             Ok(p) => p,
             Err(err) => {
+                // Vanilla Connection.exceptionCaught closes on an invalid sample ordinal or
+                // a sample longer than AbstractSampleLogger's buffer.
+                if id == sunrise_protocol::ids::play::clientbound::DEBUG_SAMPLE {
+                    return Err(Reason::plain(connection_lost(err, lang)));
+                }
                 if bundle.assembling() {
                     log::warn!("Sunrise: bundle packet refused: {err}");
                     return Err(Reason::keyed("multiplayer.disconnect.invalid_packet", lang));
@@ -3715,6 +3720,29 @@ mod tests {
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
         (root, server, session, thread)
+    }
+
+    #[test]
+    fn a_malformed_standalone_debug_sample_disconnects_without_waiting_for_the_peer() {
+        for (sample, kind) in [(vec![0; 4], 1), (vec![0; 5], play::DEBUG_SAMPLE_TICK_TIME)] {
+            let (root, mut server, session, reader) =
+                bundle_pipe("malformed-debug-sample", 1 << 20);
+            server
+                .send(&play::Clientbound::DebugSample(play::DebugSample { sample, kind }).encode())
+                .unwrap();
+            let result = session.events.recv_timeout_owned(Duration::from_secs(5));
+            drop(server);
+            reader.join().unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+            let (event, _credit) = result.unwrap().into_parts();
+            assert!(matches!(
+                event,
+                Event::Disconnected {
+                    from_server: false,
+                    ..
+                }
+            ));
+        }
     }
 
     #[test]
