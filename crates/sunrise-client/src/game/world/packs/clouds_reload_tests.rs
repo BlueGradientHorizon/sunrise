@@ -91,6 +91,7 @@ fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
             "startup",
             "shader_reload",
             "shader_startup",
+            "startup_rollback_pending",
             "filtered_reload",
         ],
     ) {
@@ -122,6 +123,7 @@ fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
             );
             a_reload_fails_and_drops_the_selection("file/filtered");
         }
+        "startup_rollback_pending" => startup_rollback_waits_for_world_resources(),
         "shader_reload" => a_reload_fails_and_drops_the_selection("file/oit_broken"),
         "shader_startup" => a_startup_load_fails_back_to_the_games_resources(
             "file/oit_broken",
@@ -132,6 +134,38 @@ fn a_pack_whose_clouds_vanilla_reads_past_fails_the_load() {
             "assets/minecraft/textures/environment/clouds.png: (5, 2) outside of image bounds (4, 6)",
         ),
     }
+}
+
+/// A device refusal during the startup handoff arrives before the world resource
+/// loader has necessarily joined. Its rollback clears the saved selection at once,
+/// but stages the replacement only after those resources are ready.
+fn startup_rollback_waits_for_world_resources() {
+    use crate::game::{Progress, WorldRestLoader};
+    with_client_game(|game| {
+        let (release, wait) = std::sync::mpsc::channel();
+        game.rest_loader = Some(WorldRestLoader {
+            progress: Progress::new(),
+            handle: std::thread::spawn(move || wait.recv().map_err(|e| e.to_string())),
+        });
+        game.settings.resource_packs = vec!["file/inner".into()];
+        game.selection_reload_failed("device refused the clouds pipeline");
+        assert!(game.settings.resource_packs.is_empty());
+        assert!(game.server_packs.load_fail.is_some());
+        assert!(game.pending_pack_reload);
+        assert!(game.pack_reload.is_none());
+        game.resume_world_entry().unwrap();
+        assert!(game.pack_reload.is_none());
+        release.send(()).unwrap();
+        game.rest_loader.take().unwrap().finish().unwrap();
+        game.resume_world_entry().unwrap();
+        assert!(!game.pending_pack_reload);
+        assert!(game.pack_reload.is_some());
+        while game.pack_reload.is_some() {
+            game.drive_pack_reload();
+            std::thread::yield_now();
+        }
+        assert!(game.gui.atlas.sky_shader.is_none());
+    });
 }
 
 /// The accepted pack loads, its sky shader and clouds in use. Selecting the `refused` one fails

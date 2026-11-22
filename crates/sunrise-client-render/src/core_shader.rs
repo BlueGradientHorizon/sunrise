@@ -467,11 +467,22 @@ fn expand_with(
     read: &dyn Fn(&str) -> Result<Option<String>, String>,
     defer: bool,
 ) -> Result<(String, Vec<ImportRefusal>), ImportRefusal> {
+    #[derive(Clone, Copy)]
+    enum Guard {
+        Import,
+        Include,
+        End,
+    }
     struct Walk<'a> {
         read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
         defer: bool,
         deferred: Vec<ImportRefusal>,
         seen: HashSet<String>,
+        guards: std::collections::HashMap<String, usize>,
+        stack: Vec<String>,
+        occupied: HashSet<usize>,
+        imported: HashSet<usize>,
+        marks: Vec<(usize, usize, Guard)>,
         pastes: u32,
         scanned: usize,
         out: String,
@@ -487,7 +498,13 @@ fn expand_with(
             }
         }
 
-        fn walk(&mut self, text: &str, dir: &str, depth: u32) -> Result<(), ImportRefusal> {
+        fn walk(
+            &mut self,
+            text: &str,
+            dir: &str,
+            depth: u32,
+            guaranteed: bool,
+        ) -> Result<(), ImportRefusal> {
             if depth > 16 {
                 return Err(ImportRefusal::TooDeep);
             }
@@ -495,8 +512,32 @@ fn expand_with(
             if self.scanned > MAX_SCANNED {
                 return Err(ImportRefusal::TooMuchScanned);
             }
-            for line in text.lines() {
-                let directive = line.trim_start().strip_prefix('#').map(str::trim_start);
+            if self.defer {
+                for number in text.split("hz_moj_import_").skip(1).filter_map(|tail| {
+                    let n = tail.bytes().take_while(u8::is_ascii_digit).count();
+                    tail[..n].parse::<usize>().ok()
+                }) {
+                    self.occupied.insert(number);
+                }
+            }
+            // A continued directive can spell a conditional across physical lines. Leave its
+            // active branches to GLSL rather than marking any of this file's imports guaranteed.
+            let guaranteed = guaranteed && !text.contains("\\\n") && !text.contains("\\\r\n");
+            let cleaned = (self.defer && text.contains("/*")).then(|| strip_comments(text));
+            let directives = cleaned.as_deref().unwrap_or(text);
+            let mut conditionals = 0usize;
+            for (line, directive_line) in text.lines().zip(directives.lines()) {
+                let directive = directive_line
+                    .trim_start()
+                    .strip_prefix('#')
+                    .map(str::trim_start);
+                if let Some(directive) = directive {
+                    match directive.split(|c: char| !is_ident(c)).next() {
+                        Some("if" | "ifdef" | "ifndef") => conditionals += 1,
+                        Some("endif") => conditionals = conditionals.saturating_sub(1),
+                        _ => {}
+                    }
+                }
                 let target = directive.and_then(|d| {
                     d.strip_prefix("include")
                         .map(|t| (t.trim(), false))
@@ -505,7 +546,26 @@ fn expand_with(
                 if let Some((target, once)) = target {
                     let id = include_id(target, dir)
                         .ok_or_else(|| ImportRefusal::Bad(target.to_owned()))?;
-                    if self.seen.insert(id.clone()) || !once {
+                    let paste = if self.defer {
+                        let previously_seen = self.seen.contains(&id);
+                        if guaranteed && conditionals == 0 {
+                            self.seen.insert(id.clone());
+                        }
+                        !once || (!previously_seen && !self.stack.contains(&id))
+                    } else {
+                        self.seen.insert(id.clone()) || !once
+                    };
+                    if paste {
+                        let index = self.guards.len();
+                        let index = *self.guards.entry(id.clone()).or_insert(index);
+                        if self.defer {
+                            let guard = if once { Guard::Import } else { Guard::Include };
+                            if once {
+                                self.imported.insert(index);
+                            }
+                            self.marks.push((self.out.len(), index, guard));
+                            self.stack.push(id.clone());
+                        }
                         self.pastes += 1;
                         if self.pastes > MAX_PASTES {
                             return Err(ImportRefusal::TooManyPastes);
@@ -513,7 +573,12 @@ fn expand_with(
                         match self.file(&id) {
                             Ok(file) => {
                                 let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
-                                self.walk(&file, parent, depth + 1)?;
+                                self.walk(
+                                    &file,
+                                    parent,
+                                    depth + 1,
+                                    guaranteed && conditionals == 0,
+                                )?;
                             }
                             Err(
                                 refusal @ (ImportRefusal::NotFound(_)
@@ -525,6 +590,12 @@ fn expand_with(
                                 self.deferred.push(refusal);
                             }
                             Err(refusal) => return Err(refusal),
+                        }
+                        if self.defer {
+                            self.stack.pop();
+                            if once {
+                                self.marks.push((self.out.len(), index, Guard::End));
+                            }
                         }
                     }
                     self.out.push('\n');
@@ -548,12 +619,49 @@ fn expand_with(
         defer,
         deferred: Vec::new(),
         seen: HashSet::new(),
+        guards: Default::default(),
+        stack: Vec::new(),
+        occupied: HashSet::new(),
+        imported: HashSet::new(),
+        marks: Vec::new(),
         pastes: 0,
         scanned: 0,
         out: String::new(),
     };
-    walk.walk(text, dir, 0)?;
-    Ok((walk.out, walk.deferred))
+    walk.walk(text, dir, 0, true)?;
+    if walk.imported.is_empty() {
+        return Ok((walk.out, walk.deferred));
+    }
+    // The pack can use any identifier. Allocate guards after reading every included source.
+    let names: Vec<usize> = (0..)
+        .filter(|n| !walk.occupied.contains(n))
+        .take(walk.guards.len())
+        .collect();
+    let mut out = String::new();
+    let mut start = 0;
+    for (at, index, guard) in walk.marks {
+        if !walk.imported.contains(&index) {
+            continue;
+        }
+        out.push_str(&walk.out[start..at]);
+        start = at;
+        let name = names[index];
+        match guard {
+            Guard::Import => out.push_str(&format!(
+                "\n#ifndef hz_moj_import_{name}\n#define hz_moj_import_{name}\n"
+            )),
+            Guard::Include => out.push_str(&format!("\n#define hz_moj_import_{name}\n")),
+            Guard::End => out.push_str("\n#endif\n"),
+        }
+        if out.len() > MAX_EXPANDED {
+            return Err(ImportRefusal::TooLarge);
+        }
+    }
+    out.push_str(&walk.out[start..]);
+    if out.len() > MAX_EXPANDED {
+        return Err(ImportRefusal::TooLarge);
+    }
+    Ok((out, walk.deferred))
 }
 
 /// `<ns:path>` under `shaders/include` (`minecraft` when there's no namespace), or `"path"` from
@@ -1427,6 +1535,10 @@ mod tests {
         translate_core(branch, fsh, &[], &include, &GLUE).unwrap();
         let error = translate_core(branch, fsh, &["WANTS"], &include, &GLUE).unwrap_err();
         assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
+        let active_after_skipped =
+            branch.replace("#endif", "#endif\n#moj_import <minecraft:nothing.glsl>");
+        let error = translate_core(&active_after_skipped, fsh, &[], &include, &GLUE).unwrap_err();
+        assert_eq!(error, "minecraft:shaders/include/nothing.glsl not found");
         let unreadable = |id: &str| -> Result<Option<String>, String> {
             if id.ends_with("nothing.glsl") {
                 Err(format!("{id}: not text"))
@@ -1443,6 +1555,36 @@ mod tests {
         let error =
             translate_core_at(&stages, &["WANTS"], &unreadable, &GLUE, &|_| false).unwrap_err();
         assert_eq!(error, "minecraft:shaders/include/nothing.glsl: not text");
+    }
+
+    #[test]
+    fn unconditional_imports_share_their_dependency() {
+        let large = " ".repeat(MAX_EXPANDED / 2 + 1);
+        let calls = std::cell::Cell::new(0);
+        let read = |id: &str| {
+            if id.ends_with("/shared") {
+                calls.set(calls.get() + 1);
+                Ok(Some(large.clone()))
+            } else {
+                Ok(Some("#moj_import <shared>".to_owned()))
+            }
+        };
+        expand_core_imports("#moj_import <left>\n#moj_import <right>", "", &read).unwrap();
+        assert_eq!(calls.get(), 1);
+        let repeated = expand_core_imports("#include <shared>\n#include <shared>", "", &read);
+        assert_eq!(repeated.unwrap_err(), ImportRefusal::TooLarge);
+    }
+
+    #[test]
+    fn only_an_active_include_consumes_a_legacy_import() {
+        let fragment = "out vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }";
+        let include = |_: &str| Some("float imported() { return 1.0; }".to_owned());
+        for first in ["#include", "#moj_import"] {
+            let vertex = format!(
+                "#define hz_moj_import_0\n#if 0\n#moj_import <a>\n#endif\n{first} <a>\n#moj_import <a>\nvoid main() {{ gl_Position = vec4(imported()); }}"
+            );
+            translate_core(&vertex, fragment, &[], &include, &GLUE).unwrap();
+        }
     }
 
     #[test]

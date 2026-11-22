@@ -308,23 +308,27 @@ impl Game<'_> {
         }
     }
     pub(super) fn reload_packs(&mut self) {
+        if let Err(e) = self.schedule_selection_reload() {
+            self.selection_reload_failed(&format!("could not start the pack reload: {e}"));
+        }
+    }
+
+    fn schedule_selection_reload(&mut self) -> std::io::Result<()> {
         // Pack reload updates tail-owned mob metadata. Keep menus responsive
         // until those resources exist, then apply the latest selection once.
         // A reload already under its overlay finishes first (vanilla's
         // `pendingReload`, which `runTick` starts once the overlay is gone).
         if reload_waits(self.rest_loader.is_some(), self.pack_reload.is_some()) {
             self.pending_pack_reload = true;
-            return;
+            return Ok(());
         }
-        if let Err(e) = self.spawn_pack_reload(ReloadKind::Selection) {
-            self.selection_reload_failed(&format!("could not start the pack reload: {e}"));
-        }
+        self.spawn_pack_reload(ReloadKind::Selection)
     }
     /// `reloadResourcePacks`' failure (`Minecraft.rollbackResourcePacks`): with
     /// a pack selected, all selected packs are dropped and the reload runs
     /// again, with the load-failure toast; with none left to drop, the pack
     /// screen again, with the error.
-    fn selection_reload_failed(&mut self, error: &str) {
+    pub(super) fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
@@ -333,7 +337,7 @@ impl Game<'_> {
             log::info!("Caught error loading resourcepacks, removing all selected resourcepacks");
             self.settings.resource_packs.clear();
             self.settings.save(&Self::options_path());
-            if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
+            if self.schedule_selection_reload().is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
                 let title = sunrise_client::text::Text::translate("resourcePack.load_fail", &[]);
                 match &mut self.server_packs.load_fail {
@@ -525,6 +529,10 @@ impl Game<'_> {
                         self.settings.file.int("maxAnisotropyBit"),
                     ),
                 )
+                .and_then(|(renderer, clouds)| {
+                    clouds?;
+                    Ok(renderer)
+                })
             })
             .transpose()
         {

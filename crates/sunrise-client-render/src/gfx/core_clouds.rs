@@ -201,18 +201,17 @@ pub(crate) struct CoreClouds {
     key: Option<crate::clouds::pack::FacesKey>,
 }
 
-/// What `f` makes, or none (said in the log, naming `what`) when the device refuses it: a
+/// What `f` makes, or the device refusal naming its pipeline: a
 /// pack's shader is untrusted, and the backend failing to compile it is an internal error.
-fn scoped<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Option<T> {
+fn scoped<T>(device: &wgpu::Device, what: &str, f: impl FnOnce() -> T) -> Result<T, String> {
     let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
     let made = f();
     let internal = pollster::block_on(internal.pop());
     if let Some(e) = internal.or(pollster::block_on(validation.pop())) {
-        log::warn!("the resource pack's clouds shader is not used{what}: {e}");
-        return None;
+        return Err(format!("{what}: {e}"));
     }
-    Some(made)
+    Ok(made)
 }
 
 impl Draw {
@@ -392,15 +391,13 @@ impl Draw {
 
 impl CoreClouds {
     /// The pipelines for `programs`, the classic ones drawing into the world's `format`, the
-    /// Improved Transparency ones where the device has it; `None` when neither is made (a
-    /// program reads a block it is not given or does not compile for the backend, which the
-    /// log says). A shader that doesn't read `CloudFaces` is drawn too, as many quads as the
+    /// Improved Transparency ones where the device supports it. Any backend refusal fails the load. A shader that doesn't read `CloudFaces` is drawn too, as many quads as the
     /// faces.
     pub(super) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         (classic, stages): (Option<&CoreProgram>, Option<&[CoreProgram; 3]>),
-    ) -> Option<Self> {
+    ) -> Result<Self, String> {
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack clouds"),
             size: INFO_OFFSET + 256,
@@ -411,31 +408,33 @@ impl CoreClouds {
         // RenderPipelines.CLOUDS: translucent, the default depth test and writes, back faces
         // culled; FLAT_CLOUDS without culling.
         // Checked when the packs loaded (`check`): what still fails here is the device's own
-        // refusal, said in the log, and that pipeline draws the native clouds.
-        let classic = classic.and_then(|program| {
-            scoped(device, "", || {
-                let targets = [Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })];
-                let draw = Draw::new(device, program, &targets, [true, true], &[]);
-                let group = draw.bind(device, &uniform, &faces, None);
-                (draw, group)
+        // refusal, which reaches the pack reload through build_renderer.
+        let classic = classic
+            .map(|program| {
+                scoped(device, CLASSIC_PIPELINE, || {
+                    let targets = [Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })];
+                    let draw = Draw::new(device, program, &targets, [true, true], &[]);
+                    let group = draw.bind(device, &uniform, &faces, None);
+                    (draw, group)
+                })
             })
-        });
+            .transpose()?;
         // OIT_CLOUDS: each stage's targets and depth test, the depth written only by the
         // bounds stage's fancy pipeline (its DEFAULT depth modifier); OIT_FLAT_CLOUDS writes
         // none.
         let oit = stages
             .filter(|_| super::oit::supported(device))
-            .and_then(|stages| {
-                scoped(device, " under Improved Transparency", || {
-                    let stage = |i: usize| {
-                        let stage = super::oit::Stage::ALL[i];
-                        let program = &stages[i];
-                        let first = stage == super::oit::Stage::DepthBounds;
-                        let targets = super::oit::stage_targets(stage);
+            .map(|stages| {
+                let stage = |i: usize| {
+                    let stage = super::oit::Stage::ALL[i];
+                    let program = &stages[i];
+                    let first = stage == super::oit::Stage::DepthBounds;
+                    let targets = super::oit::stage_targets(stage);
+                    scoped(device, OIT_STAGES[i].pipeline, || {
                         Draw::new(
                             device,
                             program,
@@ -443,26 +442,24 @@ impl CoreClouds {
                             [first, false],
                             OIT_STAGES[i].samplers,
                         )
-                    };
-                    Box::new(OitDraws {
-                        stages: [stage(0), stage(1), stage(2)],
-                        sampler: device.create_sampler(&wgpu::SamplerDescriptor {
-                            label: Some("Resource pack clouds"),
-                            ..Default::default()
-                        }),
-                        groups: None,
                     })
-                })
-            });
-        if classic.is_none() && oit.is_none() {
-            return None;
-        }
+                };
+                Ok::<_, String>(Box::new(OitDraws {
+                    stages: [stage(0)?, stage(1)?, stage(2)?],
+                    sampler: device.create_sampler(&wgpu::SamplerDescriptor {
+                        label: Some("Resource pack clouds"),
+                        ..Default::default()
+                    }),
+                    groups: None,
+                }))
+            })
+            .transpose()?;
         let reads_faces = classic
             .iter()
             .map(|(d, _)| d)
             .chain(oit.iter().flat_map(|o| &o.stages))
             .any(|d| d.faces_binding.is_some());
-        Some(Self {
+        Ok(Self {
             classic,
             oit,
             uniform,
@@ -676,12 +673,18 @@ impl super::Renderer {
     /// The resource packs' `core/clouds` (`HudAtlas::clouds_shader`), or the native clouds. As
     /// `set_lines_shader`: a pack's GLSL writes vanilla's gamma, so a frame of linear light keeps
     /// the native clouds.
-    pub fn set_clouds_shader(&mut self, programs: Option<&crate::clouds::pack::Programs>) {
+    pub fn set_clouds_shader(
+        &mut self,
+        programs: Option<&crate::clouds::pack::Programs>,
+    ) -> Result<(), String> {
         let programs = programs.filter(|_| !self.output.frame.linear_light);
-        self.core_clouds = programs.and_then(|p| {
-            let programs = (Some(&p.classic), Some(&*p.oit));
-            CoreClouds::new(&self.device, self.output.frame.format, programs)
-        });
+        self.core_clouds = programs
+            .map(|p| {
+                let programs = (Some(&p.classic), Some(&*p.oit));
+                CoreClouds::new(&self.device, self.output.frame.format, programs)
+            })
+            .transpose()?;
+        Ok(())
     }
 }
 
