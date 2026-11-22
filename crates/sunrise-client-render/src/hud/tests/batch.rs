@@ -102,3 +102,132 @@ fn clip_since_keeps_the_depth_of_an_item_or_scene_face() {
         assert!((depth - want).abs() < 1e-6, "y {y}: {depth} vs {want}");
     }
 }
+
+#[test]
+fn clip_since_remaps_only_the_scoped_part_of_a_coalesced_blend() {
+    let mut batch = HudBatch::scratch([320, 240]);
+    let quad = |batch: &mut HudBatch, x: f32, y: f32| {
+        batch.quad(
+            [[x, y], [x + 4.0, y], [x + 4.0, y + 4.0], [x, y + 4.0]],
+            [[0.0; 2]; 4],
+            u32::MAX,
+        );
+    };
+    quad(&mut batch, 32.0, 32.0);
+    batch.invert_since(0);
+    let start = batch.vertices.len();
+    quad(&mut batch, -8.0, 0.0); // outside
+    quad(&mut batch, 0.0, 0.0); // cut at x = 2
+    batch.invert_since(start);
+    assert_eq!(batch.blends, [(0..18, Blend::Invert)]);
+
+    batch.clip_since(start, 2.0, 0.0, 8.0, 8.0);
+    let positions: Vec<_> = batch.vertices.iter().map(|v| v.pos).collect();
+    assert_eq!(
+        positions,
+        [
+            [32.0, 32.0],
+            [36.0, 32.0],
+            [36.0, 36.0],
+            [32.0, 32.0],
+            [36.0, 36.0],
+            [32.0, 36.0],
+            [2.0, 0.0],
+            [4.0, 0.0],
+            [4.0, 4.0],
+            [2.0, 0.0],
+            [4.0, 4.0],
+            [2.0, 4.0],
+        ]
+    );
+    assert_eq!(batch.blends, [(0..12, Blend::Invert)]);
+
+    let start = batch.vertices.len();
+    quad(&mut batch, 0.0, 0.0);
+    batch.invert_since(start);
+    batch.clip_since(start, 2.0, 0.0, 2.0, 8.0); // empty scissor
+    quad(&mut batch, 16.0, 16.0);
+    assert_eq!(
+        batch.runs(),
+        [(0..12, Blend::Invert), (12..18, Blend::Alpha)]
+    );
+    assert_eq!(batch.vertices[12].pos, [16.0, 16.0]);
+}
+
+#[test]
+fn draw_scope_rollback_restores_the_prior_batch_tail() {
+    let font = crate::font::Font::metrics(&ResourceSource::indexed(Default::default()));
+    let mut batch = HudBatch::scratch([320, 240]);
+    let corners = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
+    let portal = EndPortalFill {
+        game_time: 0.5,
+        ..Default::default()
+    };
+    batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+    batch.invert_since(0);
+    batch.end_portal = portal;
+    batch.glint_alpha = 0.5;
+    batch.blur_at = 6;
+    let profile = Arc::new(serde_json::json!({"name":"baseline"}));
+    batch.inline_profiles.push(profile.clone());
+    assert_eq!(
+        batch.draw_scope(&font, |batch| {
+            batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+            batch.invert_since(6);
+            batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+            batch.blend_since(12, Blend::Additive);
+            batch.end_portal = EndPortalFill::default();
+            batch.glint_alpha = 0.25;
+            batch.blur_at = 18;
+            batch.pictures.push(Arc::new(pictures::Picture {
+                id: 1,
+                width: 1,
+                height: 1,
+                pixels: vec![255; 4],
+                flags: TextureFlags::default(),
+            }));
+            batch.patches.push(crate::font::Patch {
+                x: 4,
+                y: 0,
+                width: 1,
+                height: 1,
+                rgba: vec![255; 4],
+            });
+            batch.image_patches.push(dynamic_textures::ImagePatch {
+                origin: [0, 4],
+                size: [1, 1],
+                rgba: Arc::new([255; 4]),
+            });
+            batch
+                .inline_profiles
+                .push(Arc::new(serde_json::json!({"name":"scoped"})));
+            Err::<(), _>("abort")
+        }),
+        Err("abort")
+    );
+    batch.quad(corners.map(|[x, y]| [x + 8.0, y]), [[0.0; 2]; 4], u32::MAX);
+    assert_eq!(batch.runs(), [(0..6, Blend::Invert), (6..12, Blend::Alpha)]);
+    assert_eq!(
+        batch.vertices[..6]
+            .iter()
+            .map(|v| v.pos)
+            .collect::<Vec<_>>(),
+        [
+            [0.0, 0.0],
+            [4.0, 0.0],
+            [4.0, 4.0],
+            [0.0, 0.0],
+            [4.0, 4.0],
+            [0.0, 4.0]
+        ]
+    );
+    assert_eq!(batch.vertices[6].pos, [8.0, 0.0]);
+    assert_eq!(
+        (batch.end_portal, batch.glint_alpha, batch.blur_at),
+        (portal, 0.5, 6)
+    );
+    assert!(batch.pictures.is_empty());
+    assert!(batch.patches.is_empty());
+    assert!(batch.image_patches.is_empty());
+    assert_eq!(batch.inline_profiles, [profile]);
+}

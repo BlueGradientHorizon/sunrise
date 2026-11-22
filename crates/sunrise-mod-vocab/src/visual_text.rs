@@ -3,7 +3,8 @@ use crate::text::TextStyle;
 
 /// One character accepted by vanilla's `FormattedCharSink` in visual order.
 // exhaustive: the three values supplied by FormattedCharSink form this record.
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+// no wire: explicit retention of an in-process visitor value.
+#[derive(Clone, Debug, PartialEq)]
 pub struct VisualTextCharacter {
     /// Unicode scalar value, including shaping and mirroring applied by the client.
     pub scalar: u32,
@@ -12,4 +13,28 @@ pub struct VisualTextCharacter {
     /// UTF-16 offset within the sink's current directional/style run.
     /// This is not a global component offset; it restarts for each run.
     pub source_index: u32,
+}
+
+/// A character lent by `ClientHost::visit_text_visual_order`.
+// no wire: a borrow from an in-process visitor.
+// exhaustive: the three properties accepted by vanilla's FormattedCharSink.
+#[derive(Clone, Copy, Debug)]
+pub struct VisualTextCharacterRef<'a> {
+    /// The Unicode scalar in visual order, with shaping and mirroring already applied.
+    pub scalar: u32,
+    /// The character's effective style, valid for the visitor call.
+    pub style: &'a TextStyle,
+    /// UTF-16 offset in the current directional and effective-style run.
+    pub source_index: u32,
+}
+
+impl VisualTextCharacterRef<'_> {
+    /// Retain this character and its style independently of the visitor.
+    pub fn to_owned(self) -> VisualTextCharacter {
+        VisualTextCharacter {
+            scalar: self.scalar,
+            style: self.style.clone(),
+            source_index: self.source_index,
+        }
+    }
 }

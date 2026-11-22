@@ -5,6 +5,11 @@ use crate::game::{
 };
 use mod_api::{prelude::*, *};
 
+#[path = "draw/gui_canvas.rs"]
+mod gui_canvas;
+#[path = "draw/text_layout.rs"]
+pub(in crate::game) mod text_layout;
+
 /// Borrow `minecraft:default` directly or format another font identifier.
 pub(in crate::game) fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow<'static, str> {
     if id.namespace() == "minecraft" && id.path() == "default" {
@@ -40,12 +45,23 @@ impl TooltipFont for EngineTooltipFont<'_> {
     }
 }
 
+impl Game<'_> {
+    pub(in crate::game) fn draw_gui_canvas(
+        &self,
+        batch: &mut crate::hud::HudBatch,
+        scissor: Option<[f32; 4]>,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        gui_canvas::GameGuiCanvas::draw(batch, &self.gui.atlas, Some(self), scissor, draw)
+    }
+}
+
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::hud::HudBatch,
-    /// The call's open clips (`push_clip`), closed when the call returns.
-    clips: crate::game::gui_clips::GuiClips,
+    /// Only a scoped child owns a clip; its parent keeps the enclosing one.
+    clip: Option<crate::game::gui_clips::GuiClip>,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
     /// Lend a fresh clip stack and isolate the drawable tail of one listener.
@@ -79,13 +95,15 @@ impl<'a, 'g> GameDrawContext<'a, 'g> {
         Self {
             game,
             surface,
-            clips: Default::default(),
+            clip: None,
         }
     }
 }
 impl Drop for GameDrawContext<'_, '_> {
     fn drop(&mut self) {
-        self.clips.close_all(self.surface);
+        if let Some(clip) = self.clip.take() {
+            clip.close(self.surface);
+        }
     }
 }
 impl DrawContext for GameDrawContext<'_, '_> {
@@ -164,10 +182,17 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_item_stack(&mut *self.surface, &stack, at, size)
     }
-    fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
-        let draws = draws.try_into_engine(&())?;
-        crate::game::gui_pose::report_refused_poses(&draws);
-        self.game.native_gui_paint(&mut *self.surface, &draws)
+    fn draw_gui(
+        &mut self,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        self.game.draw_gui_canvas(
+            self.surface,
+            self.clip
+                .as_ref()
+                .map(crate::game::gui_clips::GuiClip::rect),
+            draw,
+        )
     }
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         self.game
@@ -187,23 +212,6 @@ impl DrawContext for GameDrawContext<'_, '_> {
     }
     fn text_width(&self, text: &str) -> f32 {
         self.game.native_text_width(&*self.surface, text)
-    }
-    fn text_lines(
-        &self,
-        text: &Text,
-        max_width: f32,
-        align: TextAlign,
-        scale: f32,
-    ) -> Result<TextLines, TextLinesRefusal> {
-        let local = sunrise_client_lib::api_text::to_local_engine(text);
-        label_layout_with(
-            &self.game.gui.atlas.font,
-            local.engine(),
-            max_width,
-            align,
-            scale,
-            |piece| Ok(local.text_to_api(piece)),
-        )
     }
     fn fluid(&mut self, fluid: &str, at: [f32; 2], size: f32) {
         self.game.native_fluid(&mut *self.surface, fluid, at, size)
@@ -225,11 +233,18 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<(), mod_api::Gui3dError> {
         self.game.native_model_3d(&mut *self.surface, subject, view)
     }
-    fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
-        self.clips.push(self.surface, rect)
-    }
-    fn pop_clip(&mut self) -> Result<(), GuiClipRefusal> {
-        self.clips.pop(self.surface)
+    fn with_scissor(
+        &mut self,
+        rect: [f32; 4],
+        draw: &mut dyn FnMut(&mut dyn DrawContext),
+    ) -> Result<(), GuiClipRefusal> {
+        let clip = crate::game::gui_clips::GuiClip::open(self.surface, rect, self.clip.as_ref())?;
+        draw(&mut GameDrawContext {
+            game: self.game,
+            surface: &mut *self.surface,
+            clip: Some(clip),
+        });
+        Ok(())
     }
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {
         self.game
@@ -250,85 +265,6 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_gui_draw_item_with(&mut *self.surface, &stack, at, text)
     }
-}
-/// `Font.lineHeight`: nine GUI pixels a line, before `scale`.
-const LINE_HEIGHT: f32 = 9.0;
-/// The most lines one layout may have; [`DrawContext::text_lines`] refuses more
-/// ([`TextLinesRefusal::TooManyLines`]) rather than answer a component of any size. The method's
-/// doc names the same number: keep them in step.
-const MAX_LINES: usize = 512;
-/// The most characters one layout's lines may hold together, before
-/// [`TextLinesRefusal::TooManyGlyphs`]. The method's doc names the same number: keep them in step.
-const MAX_GLYPHS: usize = 8192;
-/// Lays `text` out as a label's lines, as [`DrawContext::text_lines`] documents: the font's own
-/// split wraps it at `max_width / scale`, the font measures each line, `align` places them inside
-/// that wrapping width, and every dimension and position answered is scaled by `scale`.
-#[cfg(test)]
-fn label_layout(
-    font: &crate::font::Font,
-    text: &crate::text::Text,
-    max_width: f32,
-    align: TextAlign,
-    scale: f32,
-) -> Result<TextLines, TextLinesRefusal> {
-    label_layout_with(font, text, max_width, align, scale, |piece| {
-        Ok(piece.try_into_api()?)
-    })
-}
-fn label_layout_with(
-    font: &crate::font::Font,
-    text: &crate::text::Text,
-    max_width: f32,
-    align: TextAlign,
-    scale: f32,
-    mut to_api: impl FnMut(&crate::text::Text) -> Result<Text, TextLinesRefusal>,
-) -> Result<TextLines, TextLinesRefusal> {
-    // No position and no size to answer: a scale of zero or less, or one that is not a number,
-    // refuses rather than answering every line at an undefined place.
-    if !scale.is_finite() || scale <= 0.0 {
-        return Err(TextLinesRefusal::ScaleInvalid);
-    }
-    // A width the game cannot measure in refuses too: it is not "no wrapping", which would answer
-    // lines of any length in a box of no width.
-    if !max_width.is_finite() {
-        return Err(TextLinesRefusal::WidthNotFinite);
-    }
-    // Vanilla's one-pixel minimum (`StringSplitter.splitLines`): a finite box narrower than one
-    // pixel wraps at one — and so does one `scale` makes narrower — rather than not wrapping.
-    let wrap_width = max_width / scale;
-    if !wrap_width.is_finite() {
-        return Err(TextLinesRefusal::WidthNotFinite);
-    }
-    let wrap_width = wrap_width.max(1.0);
-    let wrapped = font.split_formatted(text, wrap_width);
-    if wrapped.len() > MAX_LINES {
-        return Err(TextLinesRefusal::TooManyLines);
-    }
-    let mut lines = Vec::with_capacity(wrapped.len());
-    let mut glyphs = 0usize;
-    for (i, piece) in wrapped.into_iter().enumerate() {
-        // The split keeps the legacy codes; applying them to each run's own style (a `§r` restores
-        // the style the run carried out of the break) lets a line measure and draw the same way.
-        let piece = piece.resolve_legacy();
-        glyphs += piece.chars().count();
-        if glyphs > MAX_GLYPHS {
-            return Err(TextLinesRefusal::TooManyGlyphs);
-        }
-        let width = font.width_text(&piece);
-        let x = match align {
-            TextAlign::Left => 0.0,
-            // `TextAlignment.CENTER.calculateLeft`: the half line width is rounded down.
-            TextAlign::Centre => wrap_width / 2.0 - (width / 2.0).floor(),
-            TextAlign::Right => wrap_width - width,
-        };
-        let at = [x * scale, i as f32 * LINE_HEIGHT * scale];
-        lines.push(TextLine::new(to_api(&piece)?, at, width * scale));
-    }
-    let width = lines.iter().map(|line| line.width).fold(0.0, f32::max);
-    let height = lines
-        .last()
-        .map_or(0.0, |line| line.at[1] + LINE_HEIGHT * scale);
-    Ok(TextLines::new(lines, width, height))
 }
 /// [`BlockEntityDrawContext`] on the game's `crate::game::native_block_entity_draw::BlockEntityDraw`.
 pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
@@ -586,8 +522,43 @@ mod tests {
         text.try_into_engine(&()).unwrap()
     }
 
-    /// The lines' plain characters, top to bottom.
-    fn plain(lines: &TextLines) -> Vec<String> {
+    #[derive(Debug)]
+    struct MeasuredLine {
+        text: Text,
+        at: [f32; 2],
+        width: f32,
+    }
+
+    #[derive(Debug)]
+    struct Measurement {
+        lines: Vec<MeasuredLine>,
+        size: TextLayoutSize,
+    }
+
+    fn measured(
+        font: &crate::font::Font,
+        text: &Text,
+        max_width: f32,
+        align: TextAlign,
+        scale: f32,
+    ) -> Result<Measurement, TextLayoutError> {
+        let layout = text_layout::LabelLayout::try_from(TextLayoutSpec {
+            max_width,
+            align,
+            scale,
+        })?;
+        let mut lines = Vec::new();
+        let size = layout.visit_components(font, text, &mut |line| {
+            lines.push(MeasuredLine {
+                text: line.text.clone(),
+                at: line.at,
+                width: line.width,
+            })
+        });
+        Ok(Measurement { lines, size })
+    }
+
+    fn plain(lines: &Measurement) -> Vec<String> {
         lines
             .lines
             .iter()
@@ -595,32 +566,15 @@ mod tests {
             .collect()
     }
 
-    /// Each character six GUI pixels wide, as the widget tests fake one.
-    fn layout(text: &str, max_width: f32, align: TextAlign, scale: f32) -> TextLines {
-        label_layout(
+    fn layout(text: &str, max_width: f32, align: TextAlign, scale: f32) -> Measurement {
+        measured(
             &fake_font(6.0),
-            &crate::text::Text::literal(text),
+            &Text::literal(text),
             max_width,
             align,
             scale,
         )
         .unwrap()
-    }
-
-    /// The layout `text` gets at `scale`, refusing where it should.
-    fn refusal(
-        text: &str,
-        max_width: f32,
-        align: TextAlign,
-        scale: f32,
-    ) -> Result<TextLines, TextLinesRefusal> {
-        label_layout(
-            &fake_font(6.0),
-            &crate::text::Text::literal(text),
-            max_width,
-            align,
-            scale,
-        )
     }
 
     #[test]
@@ -629,7 +583,7 @@ mod tests {
         // "brown fox" is one character too wide for the second line.
         let lines = layout("a quick brown fox", 48.0, TextAlign::Left, 1.0);
         assert_eq!(plain(&lines), ["a quick", "brown", "fox"]);
-        assert_eq!(lines.width, 42.0);
+        assert_eq!(lines.size.width, 42.0);
         assert!(
             lines.lines.iter().all(|line| line.width <= 48.0),
             "{:?}",
@@ -652,7 +606,7 @@ mod tests {
         );
         let empty = layout("", 100.0, TextAlign::Left, 1.0);
         assert!(empty.lines.is_empty());
-        assert_eq!((empty.width, empty.height), (0.0, 0.0));
+        assert_eq!((empty.size.width, empty.size.height), (0.0, 0.0));
     }
 
     #[test]
@@ -661,10 +615,10 @@ mod tests {
         // two leave two, the second from the split's own trailing newline.
         let one = layout("AA\n", 100.0, TextAlign::Left, 1.0);
         assert_eq!(plain(&one), ["AA", ""]);
-        assert_eq!((one.width, one.height), (12.0, 18.0));
+        assert_eq!((one.size.width, one.size.height), (12.0, 18.0));
         let two = layout("AA\n\n", 100.0, TextAlign::Left, 1.0);
         assert_eq!(plain(&two), ["AA", "", ""]);
-        assert_eq!((two.width, two.height), (12.0, 27.0));
+        assert_eq!((two.size.width, two.size.height), (12.0, 27.0));
     }
 
     #[test]
@@ -672,7 +626,7 @@ mod tests {
         // Nothing trims a label: the spaces at its start are characters like any other.
         let lead = layout("  AA", 100.0, TextAlign::Left, 1.0);
         assert_eq!(plain(&lead), ["  AA"]);
-        assert_eq!(lead.width, 24.0);
+        assert_eq!(lead.size.width, 24.0);
         // A run between words is kept when it fits, and the space a wrap breaks at is dropped.
         assert_eq!(
             plain(&layout("AA   BB", 100.0, TextAlign::Left, 1.0)),
@@ -717,9 +671,9 @@ mod tests {
     fn a_centred_line_rounds_the_half_line_width_down() {
         // A 15-pixel line in a 40-pixel box: `TextAlignment.CENTER.calculateLeft` floors the half
         // line width, so it starts at 13, not at the exact 12.5 an unrounded centre would give.
-        let lines = label_layout(
+        let lines = measured(
             &fake_font(5.0),
-            &crate::text::Text::literal("AAA"),
+            &Text::literal("AAA"),
             40.0,
             TextAlign::Centre,
             1.0,
@@ -733,17 +687,16 @@ mod tests {
         let lines = layout("A\nB\nC", 100.0, TextAlign::Left, 1.0);
         let down: Vec<f32> = lines.lines.iter().map(|line| line.at[1]).collect();
         assert_eq!(down, [0.0, 9.0, 18.0]);
-        assert_eq!(lines.height, 3.0 * 9.0);
+        assert_eq!(lines.size.height, 3.0 * 9.0);
         // A viewport sizes itself from the last line rather than the count.
-        assert_eq!(lines.height, down.last().unwrap() + 9.0);
+        assert_eq!(lines.size.height, down.last().unwrap() + 9.0);
     }
 
     #[test]
     fn styles_survive_wrapping() {
         let mut text = mod_api::Text::literal("AAAA BBBB");
         text.style.bold = Some(true);
-        let text: crate::text::Text = text.try_into_engine(&()).unwrap();
-        let lines = label_layout(&fake_font(6.0), &text, 30.0, TextAlign::Left, 1.0).unwrap();
+        let lines = measured(&fake_font(6.0), &text, 30.0, TextAlign::Left, 1.0).unwrap();
         assert_eq!(plain(&lines), ["AAAA", "BBBB"]);
         for line in &lines.lines {
             let line = engine(&line.text);
@@ -775,11 +728,7 @@ mod tests {
         head.style.shadow_color = Some(0xFF00_0011);
         let input = atlas.append(head);
         let font = fake_font(6.0);
-        let local = sunrise_client_lib::api_text::to_local_engine(&input);
-        let lines = label_layout_with(&font, local.engine(), 150.0, TextAlign::Left, 1.0, |line| {
-            Ok(local.text_to_api(line))
-        })
-        .unwrap();
+        let lines = measured(&font, &input, 150.0, TextAlign::Left, 1.0).unwrap();
         let redrawn = engine(&lines.lines[0].text);
         assert_eq!(redrawn.plain(), "[heart][Alex]");
         assert_eq!(font.width_text(&redrawn), lines.lines[0].width);
@@ -803,16 +752,7 @@ mod tests {
         let mut plain = Text::literal("B");
         plain.metadata = Tag::compound([("__sunrise_local_style_id", Tag::Int(0))]);
         let input = Text::literal("").append(styled).append(plain);
-        let local = sunrise_client_lib::api_text::to_local_engine(&input);
-        let lines = label_layout_with(
-            &fake_font(6.0),
-            local.engine(),
-            150.0,
-            TextAlign::Left,
-            1.0,
-            |line| Ok(local.text_to_api(line)),
-        )
-        .unwrap();
+        let lines = measured(&fake_font(6.0), &input, 150.0, TextAlign::Left, 1.0).unwrap();
         let [styled, plain] = lines.lines[0].text.children.as_slice() else {
             panic!("expected two styles")
         };
@@ -848,16 +788,7 @@ mod tests {
         let mut child = Text::literal("A");
         child.style.metadata = Tag::compound([("override", Tag::Int(2))]);
         root.children.push(child);
-        let local = sunrise_client_lib::api_text::to_local_engine(&root);
-        let lines = label_layout_with(
-            &fake_font(6.0),
-            local.engine(),
-            150.0,
-            TextAlign::Left,
-            1.0,
-            |line| Ok(local.text_to_api(line)),
-        )
-        .unwrap();
+        let lines = measured(&fake_font(6.0), &root, 150.0, TextAlign::Left, 1.0).unwrap();
         let style = &lines.lines[0].text.style;
         let Some(TextHover::Text(hover)) = &style.hover else {
             panic!("inherited hover")
@@ -914,7 +845,7 @@ mod tests {
         assert_eq!(widths, [24.0, 24.0, 24.0]);
         let down: Vec<f32> = lines.lines.iter().map(|line| line.at[1]).collect();
         assert_eq!(down, [0.0, 18.0, 36.0]);
-        assert_eq!((lines.width, lines.height), (24.0, 54.0));
+        assert_eq!((lines.size.width, lines.size.height), (24.0, 54.0));
         // Positions scale too: a 6-pixel line centred in 12 starts at 3, answered at 6.
         let one = layout("A", 24.0, TextAlign::Centre, 2.0);
         assert_eq!(one.lines[0].at, [6.0, 0.0]);
@@ -928,16 +859,16 @@ mod tests {
         for max_width in [0.0, 0.5, -4.0] {
             let lines = layout("AAA", max_width, TextAlign::Left, 1.0);
             assert_eq!(plain(&lines), ["A", "A", "A"], "{max_width}");
-            assert_eq!(lines.height, 27.0, "{max_width}");
+            assert_eq!(lines.size.height, 27.0, "{max_width}");
         }
     }
 
     #[test]
     fn a_glyph_wider_than_the_box_gets_a_line_of_its_own() {
         // A 20-pixel character in a 6-pixel box: neither fits, and neither is dropped.
-        let lines = label_layout(
+        let lines = measured(
             &fake_font(20.0),
-            &crate::text::Text::literal("AB"),
+            &Text::literal("AB"),
             6.0,
             TextAlign::Left,
             1.0,
@@ -945,59 +876,72 @@ mod tests {
         .unwrap();
         assert_eq!(plain(&lines), ["A", "B"]);
         assert_eq!(lines.lines[0].width, 20.0);
-        assert_eq!(lines.width, 20.0);
+        assert_eq!(lines.size.width, 20.0);
     }
 
     #[test]
     fn a_layout_refuses_a_width_or_a_scale_it_cannot_place() {
         for max_width in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
             assert_eq!(
-                refusal("AA", max_width, TextAlign::Left, 1.0).unwrap_err(),
-                TextLinesRefusal::WidthNotFinite,
+                measured(
+                    &fake_font(6.0),
+                    &Text::literal("AA"),
+                    max_width,
+                    TextAlign::Left,
+                    1.0
+                )
+                .unwrap_err(),
+                TextLayoutError::WidthNotFinite,
                 "{max_width}"
             );
         }
         for scale in [f32::NAN, f32::INFINITY, 0.0, -1.0] {
             assert_eq!(
-                refusal("AA", 100.0, TextAlign::Left, scale).unwrap_err(),
-                TextLinesRefusal::ScaleInvalid,
+                measured(
+                    &fake_font(6.0),
+                    &Text::literal("AA"),
+                    100.0,
+                    TextAlign::Left,
+                    scale
+                )
+                .unwrap_err(),
+                TextLayoutError::ScaleInvalid,
                 "{scale}"
             );
         }
         // A finite width `scale` makes overflow is no box at all, not a box of no width.
         assert_eq!(
-            refusal("AA", f32::MAX, TextAlign::Left, f32::MIN_POSITIVE).unwrap_err(),
-            TextLinesRefusal::WidthNotFinite
+            measured(
+                &fake_font(6.0),
+                &Text::literal("AA"),
+                f32::MAX,
+                TextAlign::Left,
+                f32::MIN_POSITIVE
+            )
+            .unwrap_err(),
+            TextLayoutError::WidthNotFinite
         );
     }
 
     #[test]
-    fn a_layout_refuses_more_lines_or_characters_than_its_budget() {
-        // 512 lines and 8192 characters are the most a layout answers, and both bounds are the last
-        // one it accepts.
-        assert!(refusal(&"x\n".repeat(511), 1e9, TextAlign::Left, 1.0).is_ok());
-        assert_eq!(
-            refusal(&"x\n".repeat(600), 1e9, TextAlign::Left, 1.0).unwrap_err(),
-            TextLinesRefusal::TooManyLines
-        );
-        assert!(refusal(&"a".repeat(8192), 1e9, TextAlign::Left, 1.0).is_ok());
-        assert_eq!(
-            refusal(&"a".repeat(8193), 1e9, TextAlign::Left, 1.0).unwrap_err(),
-            TextLinesRefusal::TooManyGlyphs
-        );
-    }
-
-    #[test]
-    fn a_layout_survives_the_wire() {
-        use mod_api::wire::{Reader, Wire, Writer};
-        let lines = layout("AAAA\nBB", 100.0, TextAlign::Centre, 1.0);
-        let mut writer = Writer::default();
-        lines.put(&mut writer);
-        let back: TextLines = Reader::decode(&writer.into_bytes()).unwrap();
-        assert_eq!(plain(&back), ["AAAA", "BB"]);
-        assert_eq!((back.width, back.height), (lines.width, lines.height));
-        let at: Vec<[f32; 2]> = back.lines.iter().map(|line| line.at).collect();
-        assert_eq!(at, [[38.0, 0.0], [44.0, 9.0]]);
+    fn a_layout_visits_every_line_and_character_without_transport_limits() {
+        let font = fake_font(6.0);
+        let layout = text_layout::LabelLayout::try_from(TextLayoutSpec {
+            max_width: 1e9,
+            align: TextAlign::Left,
+            scale: 1.0,
+        })
+        .unwrap();
+        let text = Text::literal("abcdefghijklmnop\n".repeat(600));
+        let mut lines = 0;
+        let mut characters = 0;
+        let size = layout.visit_components(&font, &text, &mut |line| {
+            lines += 1;
+            characters += engine(line.text).plain().len();
+        });
+        assert_eq!(lines, 601);
+        assert_eq!(characters, 9600);
+        assert_eq!((size.width, size.height), (96.0, 5409.0));
     }
 
     /// The game's own font and GUI atlas, read from the prepared resources alone: a real font with
@@ -1020,9 +964,6 @@ mod tests {
             .expect("the prepared resources' font and atlas")
     }
 
-    /// A label of 400 characters in a 120-pixel box, with the game's own font: every line fits,
-    /// the lines are as many as the text's own width needs, the drawn glyphs cover exactly the
-    /// height the layout answered, and every answer doubles with `scale`.
     #[test]
     #[ignore = "daily"]
     fn scaled_text_is_the_text_scaled_about_its_corner() {
@@ -1061,49 +1002,54 @@ mod tests {
             font.width("i"),
             font.width("m")
         );
-        let text = crate::text::Text::literal("mmmm ".repeat(80));
-        let lines = label_layout(font, &text, 120.0, TextAlign::Centre, 1.0).unwrap();
-        // The text needs this many 120-pixel lines even with no space wasted.
-        let floor = (font.width_text(&text) / 120.0).ceil() as usize;
-        assert!(
-            lines.lines.len() >= floor,
-            "{} lines for a floor of {floor}",
-            lines.lines.len()
-        );
-        assert!(lines.lines.len() >= 20, "{} lines", lines.lines.len());
-        for line in &lines.lines {
-            assert!(line.width <= 120.0, "{} wide", line.width);
+        let width = font.width("mmmm");
+        let scale = 2.0;
+        let spec = TextLayoutSpec {
+            max_width: width * scale,
+            align: TextAlign::Left,
+            scale,
+        };
+        let at = [10.0, 20.0];
+        let text = Text::literal("§cmmmm §aאבג §bmmmm");
+        let mut expected = crate::hud::HudBatch::scratch([320, 240]);
+        // Known line breaks and carried colours. The normal painter shapes the Hebrew line
+        // without exercising the wrapped canvas path or its style conversions.
+        for (line, y) in [("§cmmmm", 0.0), ("§aאבג", 9.0), ("§bmmmm", 18.0)] {
+            expected.text(&atlas, line, 0.0, y, u32::MAX, false);
         }
-        // What the lines draw: the glyphs' own extent, as the HUD batch records them.
-        let mut batch = crate::hud::HudBatch::scratch([1, 1]);
-        for line in &lines.lines {
-            batch.text_styled(
-                &atlas,
-                &engine(&line.text),
-                line.at[0],
-                line.at[1],
-                0xFFFF_FFFF,
-                false,
-            );
+        for v in &mut expected.vertices {
+            v.pos = [14.0 + v.pos[0] * scale, 26.0 + v.pos[1] * scale];
         }
-        let (top, bottom) = batch.vertices.iter().fold(
-            (f32::INFINITY, f32::NEG_INFINITY),
-            |(top, bottom), vertex| (top.min(vertex.pos[1]), bottom.max(vertex.pos[1])),
+        let original_vertices = expected.vertices.len();
+        expected.clip_since(0, 9.0, 16.0, 43.0, 69.0);
+        assert!(expected.vertices.len() < original_vertices);
+        for colour in [0xFF55_55FF, 0xFF55_FF55, 0xFFFF_FF55] {
+            assert!(expected.vertices.iter().any(|v| v.color == colour));
+        }
+
+        let mut actual = crate::hud::HudBatch::scratch([320, 240]);
+        gui_canvas::GameGuiCanvas::draw(&mut actual, &atlas, None, None, &mut |canvas| {
+            canvas.scope(
+                &[mod_api::client::hud_layout::PoseOp::Translate(4.0, 6.0)],
+                Some([5.0, 10.0, 34.0, 53.0]),
+                &mut |scoped| {
+                    let size = scoped.text_with_word_wrap(&text, at, spec, u32::MAX, false)?;
+                    assert_eq!(
+                        size,
+                        TextLayoutSize {
+                            width: width * scale,
+                            height: 54.0
+                        }
+                    );
+                    Ok(())
+                },
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&actual.vertices),
+            bytemuck::cast_slice::<_, u8>(&expected.vertices),
         );
-        assert!(
-            (bottom - top - lines.height).abs() <= 1.0,
-            "drawn {} against a height of {}",
-            bottom - top,
-            lines.height
-        );
-        // At scale 2 the same two-line word fits its box at twice every answer: a line's width,
-        // the second line's place and the block's height.
-        let word = crate::text::Text::literal("mmmm\nmmmm");
-        let plain_size = label_layout(font, &word, 200.0, TextAlign::Left, 1.0).unwrap();
-        let doubled = label_layout(font, &word, 200.0, TextAlign::Left, 2.0).unwrap();
-        assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
-        assert_eq!(doubled.lines[1].at[1], plain_size.lines[1].at[1] * 2.0);
-        assert_eq!(doubled.height, plain_size.height * 2.0);
     }
 
     #[test]
@@ -1146,16 +1092,7 @@ mod tests {
             parent.children.push(deep);
             deep = parent;
         }
-        let local = sunrise_client_lib::api_text::to_local_engine(&deep);
-        let lines = label_layout_with(
-            &fake_font(6.0),
-            local.engine(),
-            30.0,
-            TextAlign::Left,
-            1.0,
-            |piece| Ok(local.text_to_api(piece)),
-        )
-        .unwrap();
+        let lines = measured(&fake_font(6.0), &deep, 30.0, TextAlign::Left, 1.0).unwrap();
         assert_eq!(lines.lines.len(), 2);
         for line in &lines.lines {
             assert_eq!(line.text.style.bold, Some(true));

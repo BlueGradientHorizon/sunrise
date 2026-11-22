@@ -192,7 +192,7 @@ pub trait Notes {
 
 - To draw custom status rows, replace or wrap `minecraft:player_health` (hearts), `minecraft:armor_level`,
   `minecraft:food_level` or `minecraft:air_level` in `register_gui_layers`. Use the installed body's
-  `DrawContext` (`gui_paint` accepts a `GuiDraw` list). `gui_layer_pre` can veto a slot without vetoing
+  `DrawContext` (`draw_gui` lends a scoped canvas). `gui_layer_pre` can veto a slot without vetoing
   the other rows. Heart bookkeeping belongs to the vanilla heart body; bubble sounds belong to the
   vanilla air body.
 

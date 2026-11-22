@@ -26,7 +26,7 @@ impl HudBatch {
 }
 struct Game { res: Resources }
 impl Game {
-    fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
+    fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32, _seed: i32) {
         assert_eq!((stack.count, stack.damage, x, y), (42, 13, 2.0, 3.0));
         batch.vertices.push(1);
     }

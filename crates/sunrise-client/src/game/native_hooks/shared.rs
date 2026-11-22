@@ -1306,7 +1306,7 @@ impl Game<'_> {
             vanilla
         }
     }
-    /// The hearts the local player's health bar draws (`Hud.HeartType.forPlayer`, then
+    /// The hearts the local player's health bar draws (`Gui.HeartType.forPlayer`, then
     /// NeoForge's `PlayerHeartTypeEvent`): poisoned, else withered, else frozen when fully
     /// frozen, else normal, as a mod's `player_heart_type` leaves it. None without a player.
     pub(super) fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {

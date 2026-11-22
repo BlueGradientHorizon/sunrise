@@ -1,0 +1,2 @@
+# Seeded GUI models and decorations in scoped mod draws in a prepared game.
+sunrise-client game::gui_canvas_items_tests::scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze lib daily child-process

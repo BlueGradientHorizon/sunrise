@@ -30,9 +30,13 @@ mod tests {
             fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
                 let (x, y) = event.corners.place(Corner::TopLeft, 12.0, 12.0);
                 if self.0 {
-                    event.draw.push_clip([x, y, 5.0, 5.0]).unwrap();
-                    event.draw.fill([x, y, 12.0, 12.0], 0xffff_0000);
-                    panic!("discard my drawing");
+                    event
+                        .draw
+                        .with_scissor([x, y, 5.0, 5.0], &mut |draw| {
+                            draw.fill([x, y, 12.0, 12.0], 0xffff_0000);
+                            panic!("discard my drawing");
+                        })
+                        .unwrap();
                 }
                 event.draw.fill([x, y, 12.0, 12.0], 0xff00_ff00);
             }
