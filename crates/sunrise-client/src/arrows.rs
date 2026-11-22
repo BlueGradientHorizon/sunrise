@@ -1192,9 +1192,10 @@ impl Ticker<'_, '_, '_, '_> {
         if !self.st.was_touching_water {
             self.p.velocity = self.p.velocity.scale(f64::from(0.99f32));
         }
-        if physics && !self.st.in_ground {
-            // Entity.applyGravity: AbstractArrow.getDefaultGravity, none with NoGravity.
-            self.add_velocity(-self.p.get_gravity());
+        let gravity = self.p.get_gravity();
+        if physics && !self.st.in_ground && gravity != 0.0 {
+            // Entity.applyGravity skips the vector addition when gravity is zero.
+            self.add_velocity(-gravity);
         }
         // Projectile.tick, then Entity.baseTick's fluid and fire phases.
         if !self.st.has_been_shot {

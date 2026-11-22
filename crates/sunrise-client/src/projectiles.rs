@@ -1935,7 +1935,10 @@ impl Projectile {
                 // ThrowableProjectile: gravity, then inertia. Its drag is a
                 // float in vanilla (0.8F in water, `getAirDrag` 0.99F), so
                 // widens to the double that scales the motion.
-                self.velocity.y -= self.get_gravity();
+                let gravity = self.get_gravity();
+                if gravity != 0.0 {
+                    self.velocity = self.velocity.add_vector(Vec3::new(0.0, -gravity, 0.0));
+                }
                 let inertia = f64::from(if water { 0.8_f32 } else { 0.99_f32 });
                 self.velocity = Vec3::new(
                     self.velocity.x * inertia,
@@ -2107,8 +2110,10 @@ impl Projectile {
     /// `AbstractArrow.onHitEntity` pre-pierce damage: `ceil(clamp(pow * base, 0, i32::MAX))`.
     pub fn arrow_damage_rounded(&self, base_damage: f64) -> i32 {
         let v = self.velocity;
-        let speed = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();
-        (speed * base_damage).clamp(0.0, f64::from(i32::MAX)).ceil() as i32
+        let speed = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt() as f32;
+        (f64::from(speed) * base_damage)
+            .clamp(0.0, f64::from(i32::MAX))
+            .ceil() as i32
     }
     /// `AbstractArrow.onHitEntity` critical bonus draw, run after the pierce budget check.
     pub fn arrow_apply_crit(&mut self, mut damage: i32) -> f32 {
