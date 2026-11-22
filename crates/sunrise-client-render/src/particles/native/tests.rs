@@ -228,9 +228,9 @@ impl ParticleProvider for Calls {
 fn a_provider_runs_once_per_tick_on_all_its_particles() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let calls = Arc::new(Calls::default());
-    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e, calls.clone())).collect();
+    let mut e = engine_with(calls.clone());
+    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e)).collect();
     for p in &mut all {
         p.lifetime = 20;
         e.tick_particle(p, &level);
@@ -241,9 +241,13 @@ fn a_provider_runs_once_per_tick_on_all_its_particles() {
     e.tick_providers(&mut all, &level);
     assert_eq!(calls.0.lock().unwrap().len(), 1);
 }
-fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Particle {
+fn engine_with(provider: Arc<dyn ParticleProvider>) -> ParticleEngine {
+    let mut e = engine();
     e.providers.insert("example:orbit".into(), provider.clone());
     e.mod_sets.get_mut("example:orbit").unwrap().provider = Some((0, provider));
+    e
+}
+fn provided(e: &mut ParticleEngine) -> Particle {
     e.make(
         &ParticleOptions::named("example:orbit"),
         [1.0; 3],
@@ -257,9 +261,9 @@ fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Part
 fn a_providers_particle_moves_changes_frame_and_expires_by_its_tick() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let probe = Arc::new(Probe::default());
-    let mut p = provided(&mut e, probe.clone());
+    let mut e = engine_with(probe.clone());
+    let mut p = provided(&mut e);
     p.lifetime = 20;
     let mut copy = p.clone();
     tick_one(&mut e, &mut p, &level);
@@ -279,9 +283,9 @@ fn a_providers_particle_moves_changes_frame_and_expires_by_its_tick() {
 fn the_engine_expires_a_providers_particle_at_its_lifetime_without_calling_the_provider() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let probe = Arc::new(Probe::default());
-    let mut p = provided(&mut e, probe.clone());
+    let mut e = engine_with(probe.clone());
+    let mut p = provided(&mut e);
     p.lifetime = 2;
     for _ in 0..2 {
         tick_one(&mut e, &mut p, &level);
@@ -295,7 +299,6 @@ fn the_engine_expires_a_providers_particle_at_its_lifetime_without_calling_the_p
 fn a_provider_cannot_hand_the_renderer_a_bad_number() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let bad: [fn(&mut ModParticle); 5] = [
         |p| p.position[1] = f64::NAN,
         |p| p.position[0] = f64::INFINITY,
@@ -304,21 +307,20 @@ fn a_provider_cannot_hand_the_renderer_a_bad_number() {
         |p| p.size = f32::NAN,
     ];
     for tick in bad {
-        let mut p = provided(&mut e, Arc::new(Broken(tick)));
+        let mut e = engine_with(Arc::new(Broken(tick)));
+        let mut p = provided(&mut e);
         tick_one(&mut e, &mut p, &level);
         assert!(p.removed);
         assert_eq!(p.position, [1.0; 3]);
     }
-    let mut p = provided(
-        &mut e,
-        Arc::new(Broken(|p| {
-            p.size = 1.0e9;
-            p.rgba = [2.0, -1.0, 0.5, 9.0];
-            p.frame = u32::MAX;
-            p.lifetime = i32::MIN;
-            p.age = i32::MAX;
-        })),
-    );
+    let mut e = engine_with(Arc::new(Broken(|p| {
+        p.size = 1.0e9;
+        p.rgba = [2.0, -1.0, 0.5, 9.0];
+        p.frame = u32::MAX;
+        p.lifetime = i32::MIN;
+        p.age = i32::MAX;
+    })));
+    let mut p = provided(&mut e);
     tick_one(&mut e, &mut p, &level);
     assert!(!p.removed);
     assert_eq!((p.size, p.rgba), (16.0, [1.0, 0.0, 0.5, 1.0]));
@@ -338,8 +340,8 @@ impl ParticleProvider for Replacing {
 fn a_batch_handed_back_at_another_size_expires_its_particles() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
-    let mut p = provided(&mut e, Arc::new(Replacing));
+    let mut e = engine_with(Arc::new(Replacing));
+    let mut p = provided(&mut e);
     p.lifetime = 20;
     let at = p.position;
     tick_one(&mut e, &mut p, &level);
@@ -351,7 +353,6 @@ fn a_batch_handed_back_at_another_size_expires_its_particles() {
 fn a_quaternion_with_an_infinite_squared_length_expires_the_particle() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let facings = [
         ParticleFacing::Fixed([1.0e30, 0.0, 0.0, 0.0]),
         ParticleFacing::Fixed([f32::NAN, 0.0, 0.0, 1.0]),
@@ -366,7 +367,8 @@ fn a_quaternion_with_an_infinite_squared_length_expires_the_particle() {
                 }
             }
         }
-        let mut p = provided(&mut e, Arc::new(Set(facing)));
+        let mut e = engine_with(Arc::new(Set(facing)));
+        let mut p = provided(&mut e);
         tick_one(&mut e, &mut p, &level);
         assert!(p.removed, "{facing:?}");
     }
@@ -393,8 +395,8 @@ fn drawn(
     }
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
-    let mut p = provided(&mut e, Arc::new(Pose(facing, rolls.to_vec(), center)));
+    let mut e = engine_with(Arc::new(Pose(facing, rolls.to_vec(), center)));
+    let mut p = provided(&mut e);
     p.lifetime = 20;
     for _ in rolls {
         tick_one(&mut e, &mut p, &level);
@@ -505,7 +507,6 @@ fn rolls_at_the_accepted_limit_interpolate_to_finite_corners() {
 fn a_roll_past_the_limit_expires_the_particle() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     for roll in [f32::MAX, -f32::MAX, ROLL_LIMIT * 1.0000001] {
         struct Set(f32);
         impl ParticleProvider for Set {
@@ -515,7 +516,8 @@ fn a_roll_past_the_limit_expires_the_particle() {
                 }
             }
         }
-        let mut p = provided(&mut e, Arc::new(Set(roll)));
+        let mut e = engine_with(Arc::new(Set(roll)));
+        let mut p = provided(&mut e);
         tick_one(&mut e, &mut p, &level);
         assert!(p.removed, "{roll}");
     }
@@ -524,9 +526,9 @@ fn a_roll_past_the_limit_expires_the_particle() {
 fn a_second_tick_reuses_the_batch_storage() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let probe = Arc::new(Probe::default());
-    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e, probe.clone())).collect();
+    let mut e = engine_with(probe.clone());
+    let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e)).collect();
     let tick = |e: &mut ParticleEngine, all: &mut Vec<Particle>| {
         for p in all.iter_mut() {
             p.lifetime = 20;
@@ -558,8 +560,8 @@ fn only_the_slots_with_particles_are_visited() {
     assert!(batch.buckets.is_empty());
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
-    let mut p = provided(&mut e, Arc::new(Probe::default()));
+    let mut e = engine_with(Arc::new(Probe::default()));
+    let mut p = provided(&mut e);
     p.provided.as_mut().unwrap().slot = 40;
     p.lifetime = 20;
     e.tick_particle(&mut p, &level);
@@ -580,15 +582,13 @@ fn the_block_state_table_is_not_asked_while_no_provider_particle_is_ready() {
     let asked = || ASKED.load(std::sync::atomic::Ordering::Relaxed);
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
+    let mut e = engine_with(Arc::new(Probe::default()));
     e.set_block_state_source(counting);
     // A provider is registered, and no particle of it lives.
-    e.providers
-        .insert("example:orbit".into(), Arc::new(Probe::default()));
     e.tick_providers(&mut [], &level);
     assert_eq!(asked(), 0);
     // One lives and the engine has not aged it.
-    let mut p = provided(&mut e, Arc::new(Probe::default()));
+    let mut p = provided(&mut e);
     p.lifetime = 20;
     e.tick_providers(std::slice::from_mut(&mut p), &level);
     assert_eq!(asked(), 0);
@@ -604,9 +604,9 @@ fn the_block_state_table_is_not_asked_while_no_provider_particle_is_ready() {
 fn a_provider_does_not_run_while_the_game_has_no_block_state_table() {
     let scene = Scene::new();
     let level = scene.level();
-    let mut e = engine();
     let probe = Arc::new(Probe::default());
-    let mut p = provided(&mut e, probe.clone());
+    let mut e = engine_with(probe.clone());
+    let mut p = provided(&mut e);
     p.lifetime = 20;
     e.set_block_state_source(|| None);
     tick_one(&mut e, &mut p, &level);
