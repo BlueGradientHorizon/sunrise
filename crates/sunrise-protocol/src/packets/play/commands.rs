@@ -1,14 +1,23 @@
 //! The command tree (`ClientboundCommandsPacket`) and server-supplied suggestions.
 use crate::{
     Result,
-    buf::{Codec, Opt, Reader, Str, TrustedNbt},
+    buf::{Codec, List, Opt, Reader, Str, TrustedComponent, VarInt},
     packet,
 };
 use sunrise_core::{nbt::Tag, vanilla_bytes::Writer};
 
 packet!(
     /// One `ClientboundCommandSuggestionsPacket.Entry`: suggestion text and optional tooltip.
-    CommandSuggestion { text: String => Str, tooltip: Option<Tag> => Opt<TrustedNbt> }
+    CommandSuggestion { text: String => Str, tooltip: Option<Tag> => Opt<TrustedComponent> }
+);
+packet!(
+    /// `ClientboundCommandSuggestionsPacket.STREAM_CODEC`.
+    CommandSuggestions {
+        id: i32 => VarInt,
+        start: i32 => VarInt,
+        length: i32 => VarInt,
+        suggestions: Vec<CommandSuggestion> => List<CommandSuggestion>,
+    }
 );
 
 /// One entry of ClientboundCommandsPacket: a literal or an argument node.

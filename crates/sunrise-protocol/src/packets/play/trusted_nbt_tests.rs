@@ -147,10 +147,33 @@ fn player_info_uses_trusted_nbt() {
 
 #[test]
 fn command_suggestion_tooltips_use_trusted_nbt() {
-    assert_trusted_limits(|tooltip| CommandSuggestion {
-        text: "help".into(),
-        tooltip: Some(tooltip),
+    assert_trusted_limits(|tooltip| CommandSuggestions {
+        id: 1,
+        start: 0,
+        length: 1,
+        suggestions: vec![CommandSuggestion {
+            text: "help".into(),
+            tooltip: Some(tooltip),
+        }],
     });
+}
+
+#[test]
+fn command_suggestion_packet_rejects_nbt_that_is_not_a_tooltip_component() {
+    let packet = Clientbound::CommandSuggestions(CommandSuggestions {
+        id: 1,
+        start: 0,
+        length: 1,
+        suggestions: vec![CommandSuggestion {
+            text: "help".into(),
+            tooltip: Some(Tag::Int(7)),
+        }],
+    });
+    let bytes = packet.encode();
+    let mut r = Reader::new(&bytes);
+    let id = r.varint().unwrap();
+    let err = Clientbound::decode(id, r.rest()).unwrap_err();
+    assert!(err.to_string().starts_with("Failed to decode:"), "{err}");
 }
 
 #[test]

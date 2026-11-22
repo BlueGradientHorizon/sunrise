@@ -32,7 +32,10 @@ mod players;
 mod waypoints;
 pub use advancements::{Advancement, AdvancementDisplay, SeenAdvancements, UpdateAdvancements};
 pub use advancements::{AwardStats, StatList};
-pub use commands::{ARGUMENT_TYPES, ArgumentProperties, CommandNode, CommandSuggestion, Commands};
+pub use commands::{
+    ARGUMENT_TYPES, ArgumentProperties, CommandNode, CommandSuggestion, CommandSuggestions,
+    Commands,
+};
 pub use hud::{
     BossAction, BossEvent, NumberFormat, ResetScore, SetDisplayObjective, SetObjective,
     SetPlayerTeam, SetScore, TeamParameters,
@@ -908,6 +911,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     ChunkBatchStart(Empty) = CHUNK_BATCH_START,
     ClearTitles(Bool1) = CLEAR_TITLES,
     LowDiskSpaceWarning(Empty) = LOW_DISK_SPACE_WARNING,
+    CommandSuggestions(CommandSuggestions) = COMMAND_SUGGESTIONS,
     Commands(Commands) = COMMANDS,
     UpdateRecipes(super::recipes::UpdateRecipes) = UPDATE_RECIPES,
     RecipeBookAdd(super::recipes::RecipeBookAdd) = RECIPE_BOOK_ADD,
