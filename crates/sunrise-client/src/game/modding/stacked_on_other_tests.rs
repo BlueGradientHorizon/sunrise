@@ -848,7 +848,7 @@ mod families {
                     },
                 );
                 window.set(
-                    game.lan.as_ref().unwrap().play[&12]
+                    game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2058,7 +2058,7 @@ mod item_part_tests {
                             name: None,
                         },
                     );
-                    let mwin = game.lan.as_ref().unwrap().play[&12]
+                    let mwin = game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()
@@ -2088,7 +2088,7 @@ mod item_part_tests {
                     );
                     assert!(observations()[0].primary);
                     assert_eq!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2099,7 +2099,7 @@ mod item_part_tests {
                     );
                     game.transaction_close(&seal, false);
                     assert!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2132,7 +2132,7 @@ mod item_part_tests {
                     );
                     assert!(!observations()[0].primary);
                     assert_eq!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2162,7 +2162,7 @@ mod item_part_tests {
                         "direct pickup during active merchant drag must only reset drag"
                     );
                     assert!(
-                        game.lan.as_ref().unwrap().play[&12]
+                        game.lan.as_ref().unwrap().menus[&12]
                             .merchant
                             .as_ref()
                             .unwrap()
@@ -2186,7 +2186,7 @@ mod item_part_tests {
                     game.lan
                         .as_mut()
                         .unwrap()
-                        .play
+                        .menus
                         .get_mut(&12)
                         .unwrap()
                         .merchant
@@ -2209,7 +2209,7 @@ mod item_part_tests {
                         trace().is_empty(),
                         "LAN merchant 2-slot drag must not dispatch Parts"
                     );
-                    let mslots = &game.lan.as_ref().unwrap().play[&12]
+                    let mslots = &game.lan.as_ref().unwrap().menus[&12]
                         .merchant
                         .as_ref()
                         .unwrap()

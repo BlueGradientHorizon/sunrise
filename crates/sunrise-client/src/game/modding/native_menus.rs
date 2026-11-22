@@ -497,7 +497,7 @@ pub(super) fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Opti
             .map(|p| [p.0, p.1, p.2]);
         return Some((m.window, &m.registry_id, pos));
     }
-    let (window, menu, pos) = if let Some(gm) = play.and_then(|p| p.merchant.as_ref()) {
+    let (window, menu, pos) = if let Some(gm) = menus.and_then(|m| m.merchant.as_ref()) {
         (gm.window, "minecraft:merchant", None)
     } else if let Some((window, _, _, pos)) = menus.and_then(|m| m.crafting.table.as_ref()) {
         (*window, "minecraft:crafting", Some(*pos))

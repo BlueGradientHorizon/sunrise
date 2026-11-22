@@ -85,10 +85,31 @@ fn add_facade_dependencies(
     Ok(())
 }
 
+/// Add the SDK entry and give Cargo the same checked root used for generation.
+fn stage_library(
+    dest: &Path,
+    manifest: &mut toml::Table,
+    id: &str,
+    entry: &str,
+) -> Result<PathBuf, String> {
+    let lib = manifest
+        .entry("lib")
+        .or_insert_with(|| toml::Table::new().into())
+        .as_table_mut()
+        .ok_or(tr("Invalid lib table"))?;
+    let root = prebuilt::stage_entry(dest, lib.get("path"), id, entry)?;
+    lib.insert("path".into(), root.display().to_string().into());
+    lib.insert(
+        "crate-type".into(),
+        vec![toml::Value::String("dylib".into())].into(),
+    );
+    Ok(dest.join(root))
+}
+
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
-pub fn compile(
+pub(super) fn stage_and_cargo(
     rust: &dyn Toolchain,
     game: &Path,
     out: &Path,
@@ -97,7 +118,8 @@ pub fn compile(
     declared: &[Vec<dependencies::Dependency>],
     resolution: &dependencies::Resolution,
     options: Options<'_>,
-) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    check_only: bool,
+) -> Result<Option<(PathBuf, Vec<PathBuf>)>, String> {
     let sdk = options.sdk;
     let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     check_log_template(&template, sdk.native_log)?;
@@ -201,27 +223,11 @@ pub fn compile(
             );
         }
         wrapper_deps.insert(format!("mod_{position}"), dependency.into());
-        let lib = manifest
-            .entry("lib")
-            .or_insert_with(|| toml::Table::new().into())
-            .as_table_mut()
-            .ok_or(tr("Invalid lib table"))?;
-        lib.insert(
-            "crate-type".into(),
-            vec![toml::Value::String("dylib".into())].into(),
-        );
-        let root = dest.join(
-            lib.get("path")
-                .and_then(toml::Value::as_str)
-                .unwrap_or("src/lib.rs"),
-        );
-        let entry = root
-            .parent()
-            .ok_or(tr("Invalid library root"))?
-            .join("__sunrise_entry.rs");
-        fs::write(
-            &entry,
-            prebuilt::library_entry(
+        let root = stage_library(
+            &dest,
+            &mut manifest,
+            id,
+            &prebuilt::library_entry(
                 &template,
                 &[&bundle.manifest],
                 sdk.commit(),
@@ -229,14 +235,7 @@ pub fn compile(
                 &bundle.manifest.version.to_string(),
                 &[],
             ),
-        )
-        .map_err(|e| e.to_string())?;
-        let mut source = fs::read_to_string(&root).map_err(|e| e.to_string())?;
-        prebuilt::check_entry_root(&source, id)?;
-        source.push_str(
-            "\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n",
-        );
-        fs::write(&root, source).map_err(|e| e.to_string())?;
+        )?;
         mod_dirs.insert(id.clone(), dest.clone());
         mod_roots.insert(id.clone(), root);
         let mut externs: BTreeMap<String, PathBuf> = BTreeMap::from([
@@ -481,7 +480,7 @@ pub fn compile(
         keep_unchanged_times(out, &previous).map_err(|e| e.to_string())?;
         fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
     }
-    let mut command = super::cargo(rust, out, "build");
+    let mut command = super::cargo(rust, out, if check_only { "check" } else { "build" });
     command
         .args([
             "--workspace",
@@ -507,7 +506,11 @@ pub fn compile(
     let messages = out.join("cargo-messages.jsonl");
     let result = super::run_checked(
         command,
-        tr("Compiling registry mod libraries"),
+        if check_only {
+            tr("Checking native mod libraries")
+        } else {
+            tr("Compiling registry mod libraries")
+        },
         Some(fs::File::create(&messages).map_err(|e| e.to_string())?),
         None,
     );
@@ -552,6 +555,9 @@ pub fn compile(
             raw.lines().any(crate::rust::missing_system_libraries),
         );
         return Err(super::advised(error, blocked, libraries));
+    }
+    if check_only {
+        return Ok(None);
     }
     let binary = game.join("bin").join(crate::CLIENT);
     let release = target_dir.join(rust.target()).join("release");
@@ -600,7 +606,7 @@ pub fn compile(
             runtime.push(library);
         }
     }
-    Ok((binary, runtime))
+    Ok(Some((binary, runtime)))
 }
 
 /// Gives each file under `staged` whose bytes equal the file at the same place under `previous`
@@ -721,6 +727,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn registry_staging_inserts_the_implicit_library_root() {
+        let stage = tempfile::tempdir().unwrap();
+        let src = stage.path().join("src");
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("lib.rs"), "pub fn library() {}\n").unwrap();
+        let mut manifest = toml::toml! { [package] name = "example" version = "1.0.0" };
+
+        let root = stage_library(stage.path(), &mut manifest, "example", "// generated\n").unwrap();
+        let configured = manifest["lib"]["path"].as_str().unwrap();
+        assert_eq!(stage.path().join(configured), root);
+        assert_eq!(root, src.join("lib.rs"));
+        assert!(
+            fs::read_to_string(root)
+                .unwrap()
+                .contains("mod __sunrise_entry;")
+        );
+        assert_eq!(
+            fs::read_to_string(src.join("__sunrise_entry.rs")).unwrap(),
+            "// generated\n"
+        );
     }
 
     #[test]
@@ -982,7 +1011,7 @@ mod tests {
         let approve = std::env::var_os("SUNRISE_TEST_REGISTRY_DECLINE").is_none();
         let sdk = prebuilt::identity(&game).unwrap();
         let catalog = internals::Catalog::read(&game, sdk.commit()).unwrap();
-        let result = compile(
+        let result = stage_and_cargo(
             &rust,
             &game,
             &out,
@@ -1000,9 +1029,10 @@ mod tests {
                 sdk: &sdk,
                 catalog: &catalog,
             },
+            false,
         );
         if approve {
-            let (binary, _) = result.unwrap();
+            let (binary, _) = result.unwrap().unwrap();
             assert!(binary.is_file());
             eprintln!("compiled wrapper {}", binary.display());
         } else {

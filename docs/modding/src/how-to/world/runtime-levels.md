@@ -5,14 +5,15 @@ minigame arena, a pocket dimension per player. `host.runtime_levels()` has `open
 and `is_open`.
 
 In `Hooks::register_commands`, bind an operator-only [server command](../entities/server-commands.md).
-Return `Some(1)` after `open` accepts the request or `None` if it refuses:
+Return `Ok(1)` after `open` accepts the request, or a failure message if it refuses:
 
 ```rust,ignore
 event.commands.push(Command::op("openarena", 2).executes(|host, _, _| {
     let level = RuntimeLevel::new("mymod:pocket", RuntimeGenerator::Mod("mymod:arena".into()), 4242);
     // On success the level opens after this tick's levels have ticked.
-    host.runtime_levels().open("mymod:instance/ab12", level).ok()?;
-    Some(1)
+    host.runtime_levels().open("mymod:instance/ab12", level)
+        .map_err(|_| Text::translate("mymod.commands.arena_open_failed", vec![]))?;
+    Ok(1)
 }));
 ```
 

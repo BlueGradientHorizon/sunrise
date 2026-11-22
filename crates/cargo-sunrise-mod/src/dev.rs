@@ -3,6 +3,11 @@
 //! `native-build` runs (`sunrise_native_build::contract::run`, docs/modding/src/reference/sdk/08-native-build.md),
 //! and for `run` the result staged beside the SDK's game executable and started.
 use crate::sdk_fetch::{self, Base, CacheStamp};
+use std::collections::BTreeMap;
+use std::fs;
+use sunrise_mod_package::Package;
+
+mod libraries;
 use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,7 +16,7 @@ use sunrise_mod_package::sdk::{self, Index};
 use sunrise_native_build::{
     Bundle, contract,
     library_record::Library,
-    prebuilt::{self, Package, Route},
+    prebuilt::{self, Route},
     rust::Unpacked,
 };
 
@@ -213,12 +218,18 @@ pub(crate) struct NativeSdk {
 }
 
 impl NativeSdk {
-    fn slices(&self, side: sdk::Side, release: bool) -> Result<Package, String> {
+    fn slices(
+        &self,
+        side: sdk::Side,
+        route: Route,
+        release: bool,
+    ) -> Result<prebuilt::Package, String> {
         sdk_fetch::fetch_slices(
             &self.base,
             &self.index,
             &self.rust.target,
             side,
+            route,
             release,
             &self.dir,
             &self.stamp,
@@ -227,11 +238,18 @@ impl NativeSdk {
 
     fn compile(
         &self,
-        bundle: &Bundle,
+        bundles: &[Bundle],
         plan: &contract::Plan,
         events: &mut Events,
     ) -> Result<(), String> {
-        if prebuilt::needs_pinned_patch_tool(&plan.package, bundle)? {
+        let mut needs_tool = false;
+        for bundle in bundles {
+            if prebuilt::needs_pinned_patch_tool(&plan.package, bundle)? {
+                needs_tool = true;
+                break;
+            }
+        }
+        if needs_tool {
             let (_temporary, tool) =
                 sdk_fetch::fetch_tool(&self.base, &self.index, &self.rust.target, &self.dir)?;
             events.run_tool(&tool, plan)
@@ -272,6 +290,7 @@ pub(crate) struct Built {
     /// Revision for the package manifest: checked for mixins, inherited when they are unused.
     pub(crate) mixins: String,
     pub(crate) release: Option<(crate::release::BuiltLibrary, crate::release::AssetName)>,
+    prepared: Prepared,
 }
 
 /// Turns the build's event lines into the lines a developer reads, and keeps its result.
@@ -330,29 +349,113 @@ impl Write for Events {
     }
 }
 
-/// Compiles the native mod in `project` against its pinned SDK.
-pub(crate) fn build(
+struct Prepared {
+    plan: contract::Plan,
+    sdk: NativeSdk,
+    staged: Vec<Bundle>,
+    id: String,
+    crate_name: String,
+    mixins: String,
+    release_host: Option<(String, crate::release::AssetName)>,
+    rust_release: String,
+    origins: BTreeMap<String, PathBuf>,
+    // The builder keeps its outputs and generated workspace here. Keep the lock through run's
+    // copy of the artifacts (or the release archive write), not just through compilation.
+    _lock: fs::File,
+}
+
+impl Prepared {
+    fn failed(&self, error: String) -> String {
+        let error = self.origins.iter().fold(error, |error, (id, author)| {
+            error.replace(
+                &format!(
+                    "{}{sep}",
+                    self.plan.mods.join(stage_name(id)).display(),
+                    sep = std::path::MAIN_SEPARATOR
+                ),
+                &format!("{}{sep}", author.display(), sep = std::path::MAIN_SEPARATOR),
+            )
+        });
+        build_error(error)
+    }
+}
+
+fn build_error(error: String) -> String {
+    let hint = if error.contains("Cargo.lock") {
+        "\nTo refresh this project's own Cargo.lock, run: cargo sunrise-mod build --update-lock\nThat command does not update the locks of its libraries.\n"
+    } else {
+        "\n"
+    };
+    format!(
+        "{error}{hint}Build log: {}",
+        sunrise_native_build::log_path().display()
+    )
+}
+
+/// Avoid names reserved by package discovery at the input root (such as `native` and `rust`).
+fn stage_name(id: &str) -> String {
+    format!("mod-{id}")
+}
+
+fn prepare(
     project: &Path,
+    package: &Package,
+    with: &[&Path],
     update_lock: bool,
-    release_target: Option<(contract::TargetName, &str, &str)>,
-) -> Result<Built, String> {
+    target: contract::TargetName,
+    release_identity: Option<(&str, &str)>,
+) -> Result<Prepared, String> {
     let project =
         dunce::canonicalize(project).map_err(|e| format!("{}: {e}", project.display()))?;
-    let build = sdk_fetch::pin(&project)?;
-    let bundle = sunrise_native_build::bundle_in(&project)?
-        .ok_or_else(|| format!("{} is not a native mod", project.display()))?;
+    let bundle = sunrise_native_build::Bundle {
+        manifest: package.manifest.clone(),
+        dir: project.clone(),
+    };
+    let build = bundle.native().sunrise.clone();
     let id = bundle.manifest.id.clone();
     let cargo = sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
-    let release = release_target.is_some();
+    let release = release_identity.is_some();
     if release {
         sunrise_native_build::prebuilt::release_project(&cargo)?;
     }
     let crate_name = cargo.crate_name();
     let registry = matches!(Route::of(&[cargo]), Route::Registry);
-    let target = release_target.map_or(contract::TargetName::Client, |(target, _, _)| target);
     let side = sunrise_native_build::prebuilt::side(target.into());
+    let dependencies = libraries::Libraries::read(
+        &bundle.manifest,
+        with,
+        match target {
+            contract::TargetName::Client => sunrise_mod_package::manifest::Side::Client,
+            contract::TargetName::Server => sunrise_mod_package::manifest::Side::Server,
+        },
+    )?;
     let cache = cache_dir()?;
+    let work = if release {
+        cache
+            .join("release-work")
+            .join(&build)
+            .join(&id)
+            .join(sdk::Asset::host_name(computer()?, side))
+    } else {
+        cache.join("work").join(&id)
+    };
+    fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let work = dunce::canonicalize(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let lock_path = work.join("build.lock");
+    let work_lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+    work_lock
+        .lock()
+        .map_err(|e| format!("{}: {e}", lock_path.display()))?;
+    let input = tempfile::tempdir_in(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let sdk = native_sdk(&cache, &build)?;
+    let mut origins = dependencies.stage(&bundle, &sdk, &cache, input.path())?;
+    origins.insert(id.clone(), project.clone());
     let mixins = if bundle.needs_mixins() {
         sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk.index.mixins))?
             .revision()
@@ -364,66 +467,119 @@ pub(crate) fn build(
             .unwrap_or(&sdk.index.mixins.rev)
     }
     .to_owned();
-    let release_host = release_target
-        .map(|(_, tag, version)| {
+    let release_host = release_identity
+        .map(|(tag, version)| {
             let host = sdk::Asset::host_name(&sdk.rust.target, side);
             let name = crate::release::AssetName::archive(&id, version, tag, &host)?;
             Ok::<_, String>((host, name))
         })
         .transpose()?;
-    let package = sdk.slices(side, release)?;
-
-    let work = match &release_host {
-        Some((host, _)) => cache.join("release-work").join(&build).join(&id).join(host),
-        None => cache.join("work").join(&id),
-    };
-    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let rust = &sdk.rust;
     crate::native_build::install_host(&work);
     sunrise_native_build::clear_log()?;
-    let log = sunrise_native_build::log_path();
-    let failed = |error: String| {
-        let hint = if error.contains("Cargo.lock") {
-            "\nResolve the dependencies again with: cargo sunrise-mod build --update-lock\n"
-        } else {
-            "\n"
-        };
-        format!("{error}{hint}Build log: {}", log.display())
-    };
 
     if registry {
-        println!("Compiling the crates.io dependencies of {id}, as `cargo build` would");
+        println!("Using Cargo's crates.io dependencies for {id}");
     }
     let lock = project.join("Cargo.lock");
     if (registry || release) && (update_lock || !lock.exists()) {
         println!("Pinning dependencies in Cargo.lock");
         sunrise_native_build::registry_generate::generate(
-            || Ok(sdk.rust.clone()),
+            || Ok(rust.clone()),
             sunrise_native_build::registry_generate::game_lock,
             &bundle,
             update_lock,
         )
-        .map_err(failed)?;
+        .map_err(build_error)?;
     }
     if release {
         sunrise_native_build::prebuilt::check_release_lock(
             &crate::bounded::read_bytes(&lock, 16 << 20, crate::bounded::Symlinks::Refuse)
-                .map_err(|e| failed(e.to_string()))?,
+                .map_err(|e| build_error(e.to_string()))?,
         )
-        .map_err(failed)?;
+        .map_err(build_error)?;
     }
+    crate::registry_source::write_files(
+        &input.path().join(stage_name(&id)),
+        package.directory_files(&project)?,
+    )?;
+    let staged = sunrise_native_build::scan_bundles(input.path())?;
+    let projects = staged
+        .iter()
+        .map(sunrise_native_build::api::Project::read)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let slices = sdk.slices(side, Route::of(&projects), release)?;
+    let rust_release = sdk.index.toolchain.rust.clone();
+    let rust = sdk.rust.clone();
+    // A stable source path keeps the native builder's Cargo stage and fingerprints reusable.
+    let mods = work.join("input");
+    match fs::remove_dir_all(&mods) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("{}: {error}", mods.display()));
+        }
+        _ => (),
+    }
+    fs::rename(input.path(), &mods).map_err(|error| format!("{}: {error}", mods.display()))?;
+    Ok(Prepared {
+        plan: contract::Plan {
+            contract: contract::CONTRACT,
+            work,
+            toolchain: rust,
+            package: slices,
+            mods,
+            target,
+            registry: Some(!release),
+            mixins_from_source: false,
+        },
+        sdk,
+        staged,
+        id,
+        crate_name,
+        mixins,
+        release_host,
+        rust_release,
+        origins,
+        _lock: work_lock,
+    })
+}
 
-    let plan = contract::Plan {
-        contract: contract::CONTRACT,
-        work,
-        toolchain: sdk.rust.clone(),
+pub(crate) fn check(project: &Path, package: &Package, with: &[&Path]) -> Result<(), String> {
+    let prepared = prepare(
+        project,
         package,
-        mods: project,
+        with,
+        false,
+        contract::TargetName::Client,
+        None,
+    )?;
+    contract::check_rust(&prepared.plan).map_err(|error| prepared.failed(error))
+}
+
+/// Compiles the project and its libraries against the project's pinned SDK.
+pub(crate) fn build(
+    project: &Path,
+    package: &Package,
+    with: &[&Path],
+    update_lock: bool,
+    target: contract::TargetName,
+    release_identity: Option<(&str, &str)>,
+) -> Result<Built, String> {
+    let mut prepared = prepare(
+        project,
+        package,
+        with,
+        update_lock,
         target,
-        registry: Some(!release),
-        mixins_from_source: false,
-    };
+        release_identity,
+    )?;
+    let id = &prepared.id;
+    let failed = |error| prepared.failed(error);
     let mut events = Events::default();
-    sdk.compile(&bundle, &plan, &mut events).map_err(failed)?;
+    prepared
+        .sdk
+        .compile(&prepared.staged, &prepared.plan, &mut events)
+        .map_err(failed)?;
     let Some(contract::Event::Built {
         route,
         binary,
@@ -436,7 +592,7 @@ pub(crate) fn build(
     };
     let record = records
         .iter()
-        .find(|row| row.mod_id == id && row.kind == "mod")
+        .find(|row| row.mod_id == *id && row.kind == "mod")
         .ok_or_else(|| failed(format!("the build made no library for {id}")))?;
     let library = libraries
         .iter()
@@ -450,26 +606,38 @@ pub(crate) fn build(
                 record.file
             ))
         })?;
-    let release = release_host
+    let release = prepared
+        .release_host
+        .take()
         .map(|(host, name)| {
             let identity = sunrise_mod_package::index::registry::builds::library_identity(
-                &build,
-                &id,
-                &bundle.manifest.version.to_string(),
-                &sdk.index.toolchain.rust,
+                &package
+                    .manifest
+                    .native
+                    .as_ref()
+                    .expect("native project")
+                    .sunrise,
+                id,
+                &package.manifest.version.to_string(),
+                &prepared.rust_release,
             );
             crate::release::BuiltLibrary::from_event(&route, host, library, record, &identity)
                 .map(|library| (library, name))
         })
         .transpose()?;
-    println!("Built {}\nBuild log: {}", library.display(), log.display());
+    println!(
+        "Built {}\nBuild log: {}",
+        library.display(),
+        sunrise_native_build::log_path().display()
+    );
     Ok(Built {
         binary,
-        crate_name,
+        crate_name: prepared.crate_name.clone(),
         libraries,
         records,
-        mixins,
+        mixins: prepared.mixins.clone(),
         release,
+        prepared,
     })
 }
 
@@ -490,6 +658,8 @@ fn copy(from: &Path, to: &Path) -> Result<(), String> {
 /// between runs, so nothing of a player's is touched) and starts it with `args`.
 pub(crate) fn run(
     project: &Path,
+    mod_package: &Package,
+    with: &[&Path],
     resources: Option<&str>,
     jars: Option<&Path>,
     args: &[String],
@@ -507,10 +677,29 @@ pub(crate) fn run(
         ));
     }
     let stage = project.join(crate::RUN_DIR);
-    let mod_package = sunrise_mod_package::Package::read(project)?;
-    let home = crate::jar::stage_for_run(&mod_package.manifest, project, jars, args)?
-        .unwrap_or_else(|| stage.join("home"));
-    let built = build(project, false, None)?;
+    let launch = crate::jar::launch_arguments(project, args)?;
+    let target = if launch.installation_side() == sunrise_mod_package::manifest::Side::Server {
+        contract::TargetName::Server
+    } else {
+        contract::TargetName::Client
+    };
+    let built = build(project, mod_package, with, false, target, None)?;
+    let mut staged = fs::read_dir(&built.prepared.plan.mods)
+        .map_err(|e| e.to_string())?
+        .map(|entry| {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            let package = Package::read(&path)?;
+            Ok::<_, String>((path, package))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    staged.sort_by(|(_, a), (_, b)| a.manifest.id.cmp(&b.manifest.id));
+    let home = crate::jar::stage_for_run(
+        staged.iter().map(|(_, package)| &package.manifest),
+        project,
+        jars,
+        &launch,
+    )?
+    .unwrap_or_else(|| stage.join("home"));
     let app = stage.join("app");
     match std::fs::remove_dir_all(&app) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -540,15 +729,28 @@ pub(crate) fn run(
     let record_path = app.join("native-mods.json");
     std::fs::write(&record_path, record(&built.records)?)
         .map_err(|e| format!("{}: {e}", record_path.display()))?;
-    let files = mod_package.directory_files(project)?;
-    for (name, bytes) in files {
-        let to = package.join(id).join(&name);
-        std::fs::create_dir_all(to.parent().expect("a file in the package"))
-            .map_err(|e| e.to_string())?;
-        std::fs::write(&to, bytes).map_err(|e| format!("{}: {e}", to.display()))?;
+    let mut content = Vec::new();
+    for (path, source) in staged {
+        let id = &source.manifest.id;
+        if source.is_native() {
+            crate::registry_source::write_files(&package.join(id), source.directory_files(&path)?)?;
+        } else {
+            let installed = app.join(format!("{id}.smod"));
+            copy(&path, &installed)?;
+            content.push(installed);
+        }
     }
+    let Built {
+        crate_name,
+        prepared,
+        ..
+    } = built;
+    drop(prepared);
     println!("Starting {} with {id}", executable.display());
     let mut command = Command::new(&executable);
+    for path in content {
+        command.arg("--dev-mod").arg(path);
+    }
     command
         .arg("--game-dir")
         .arg(&game)
@@ -556,7 +758,7 @@ pub(crate) fn run(
         .arg(&resources)
         .args(args)
         .env("SUNRISE_HOME", &home)
-        .env("SUNRISE_LOG_STDERR", &built.crate_name)
+        .env("SUNRISE_LOG_STDERR", &crate_name)
         // A session file handed to this process is the caller's: the game would read and delete it.
         .env_remove("SUNRISE_SESSION_FILE");
     #[cfg(target_os = "linux")]

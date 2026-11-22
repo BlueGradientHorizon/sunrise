@@ -221,7 +221,7 @@ fn a_retained_sdk_builds_a_lower_mixin_with_its_signed_tool() {
     };
     let plan = contract::Plan {
         contract: contract::CONTRACT,
-        package: sdk.slices(sdk::Side::Client, false).unwrap(),
+        package: sdk.slices(sdk::Side::Client, Route::Rustc, false).unwrap(),
         toolchain: sdk.rust.clone(),
         target: contract::TargetName::Client,
         mods: root.path().join("mod"),
@@ -242,10 +242,14 @@ fn a_retained_sdk_builds_a_lower_mixin_with_its_signed_tool() {
     let good = fs::read(&tool).unwrap();
     fs::write(&tool, b"not the signed asset").unwrap();
     let mut events = Events::default();
-    assert!(sdk.compile(&bundle, &plan, &mut events).is_err());
+    assert!(
+        sdk.compile(std::slice::from_ref(&bundle), &plan, &mut events)
+            .is_err()
+    );
     assert!(events.built.is_none());
     fs::write(&tool, good).unwrap();
-    sdk.compile(&bundle, &plan, &mut events).unwrap();
+    sdk.compile(std::slice::from_ref(&bundle), &plan, &mut events)
+        .unwrap();
     assert_eq!(events.built, Some(result));
 
     // An explicitly empty map is still this tool's schema, not an older one. A missing

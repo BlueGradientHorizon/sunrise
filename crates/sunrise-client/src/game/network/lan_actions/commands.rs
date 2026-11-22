@@ -133,12 +133,10 @@ impl Game<'_> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.dim, |game| {
             game.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);
-            let ok = if game.perform_native_command(c.conn, c.permission, &c.command) {
-                true
-            } else if c.quiet {
-                game.run_command_quietly(&c.command)
-            } else {
-                game.run_command(&c.command)
+            let ok = match game.perform_native_command(c.conn, c.permission, &c.command, c.quiet) {
+                Some(ok) => ok,
+                None if c.quiet => game.run_command_quietly(&c.command),
+                None => game.run_command(&c.command),
             };
             game.ui.registries.permission = level;
             (ok, game.chat_capture.take().unwrap_or_default())

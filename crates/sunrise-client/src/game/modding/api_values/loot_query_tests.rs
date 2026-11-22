@@ -298,4 +298,7 @@ impl engine::LootTags for Tags {
         (registry == "item" && tag == "test:ability_tools")
             .then(|| vec!["minecraft:stick".into(), "minecraft:shears".into()])
     }
+    fn item_tag_names(&self) -> Option<&engine::ItemTagNames> {
+        None
+    }
 }

@@ -24,10 +24,11 @@ fn test(&self, context: &mut dyn mod_api::LootTypeContext) -> Result<bool, Strin
 The `items(tag)`, `blocks(tag)`
 and `fluids(tag)` methods return `TagMembers::Missing` if a tag is absent,
 `TagMembers::Members(keys)` for a loaded tag's ordered members (possibly empty),
-or `TagMembers::Unavailable` if a required key mapping is not available. There is
-no operation to enumerate every tag. A retained key keeps its identity across
-reloads, but its members come from the current evaluation's tables.
+or `TagMembers::Unavailable` if a required key mapping is not available.
+Use `item_tags(item)` for the names of tags an item belongs to, or `item_tag_names()`
+for every bound item tag's name, including empty tags. Both return identifiers without
+resolving keys. A retained key keeps its identity across reloads, but its members come
+from the current evaluation's tables.
 
-Neither
-callback gains a mutable game host or an opportunity to change tags. No tag
+Neither callback gains a mutable game host or an opportunity to change tags. No tag
 snapshot is copied when no codec with the evaluated type id is registered.

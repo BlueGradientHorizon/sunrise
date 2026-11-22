@@ -177,7 +177,7 @@ impl Hooks for FeedbackCommand {
                         assert_eq!(inner.feedback.len(), 1);
                     }
                 }
-                None
+                Err(Text::literal("probe failed").into())
             }));
     }
 }

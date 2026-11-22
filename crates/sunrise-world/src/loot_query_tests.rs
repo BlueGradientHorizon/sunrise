@@ -30,6 +30,7 @@ fn data(tables: Vec<(&str, Value)>) -> LootData {
         primary_answers: Default::default(),
         support_answers: Default::default(),
         tags: Default::default(),
+        item_tag_names: None,
         smelting: vec![],
     }
 }
