@@ -219,8 +219,17 @@ fn prepare_held_play_shuts_down_on_framing_and_pressure_but_not_encode_or_phase(
     assert_eq!(session.hold_incarnation().map(|(_, g)| g), Some(generation));
 
     // Transport framing refusal takes the terminal writer-error path, matching Session::send.
-    let oversized_frame = play::Serverbound::RenameItem(play::RenameItem {
-        name: "x".repeat(sunrise_protocol::frame::MAX_FRAME + 1),
+    let mut item = sunrise_protocol::item::Stack::new(1, 1);
+    item.added.push((
+        sunrise_protocol::item::component::CUSTOM_DATA,
+        sunrise_protocol::item::Component::Nbt(sunrise_core::nbt::Tag::compound([(
+            "bytes",
+            sunrise_core::nbt::Tag::ByteArray(vec![0; sunrise_protocol::frame::MAX_FRAME]),
+        )])),
+    ));
+    let oversized_frame = play::Serverbound::SetCreativeModeSlot(play::SetCreativeModeSlot {
+        slot: 1,
+        item: Some(item),
     });
     assert!(matches!(
         session.prepare_held_play(oversized_frame, generation),
