@@ -7,6 +7,10 @@ use sunrise_mod_package::{Package, manifest};
 /// Return the validated native project, if this directory has a package manifest.
 /// A present but invalid manifest is reported by the canonical package reader.
 pub fn read(dir: &Path) -> Result<Option<Bundle>, String> {
+    read_with(dir, crate::host::tr)
+}
+
+fn read_with(dir: &Path, tr: for<'a> fn(&'a str) -> &'a str) -> Result<Option<Bundle>, String> {
     let path = dir.join(manifest::MANIFEST);
     match fs::symlink_metadata(&path) {
         Ok(_) => {}
@@ -20,7 +24,7 @@ pub fn read(dir: &Path) -> Result<Option<Bundle>, String> {
         }
         Err(e) => return Err(format!("{}: {e}", path.display())),
     }
-    let package = Package::read(dir)?;
+    let package = read_package(dir, tr)?;
     if !package.is_native() {
         return Ok(None);
     }
@@ -29,6 +33,17 @@ pub fn read(dir: &Path) -> Result<Option<Bundle>, String> {
         manifest: package.manifest,
         dir: dir.to_owned(),
     }))
+}
+
+fn read_package(dir: &Path, tr: for<'a> fn(&'a str) -> &'a str) -> Result<Package, String> {
+    Package::read_detailed(dir).map_err(|error| match error {
+        manifest::PackageReadError::NativeStateLayout { mod_id, row } => crate::host::trf_with(
+            tr,
+            "E_MIXIN_STATE_LAYOUT: {mod}:{state}: native state changes the prebuilt game's layout; use an attachment instead",
+            &[("mod", &mod_id), ("state", &row)],
+        ),
+        other => other.to_string(),
+    })
 }
 
 /// Generate tool input in the build's incoming copy, never in a modder's project.
@@ -71,7 +86,7 @@ pub fn tool_manifest(bundle: &Bundle) -> Result<(), String> {
 }
 
 fn checked_files(bundle: &Bundle) -> Result<std::collections::BTreeMap<String, Vec<u8>>, String> {
-    Package::read(&bundle.dir)?.directory_files(&bundle.dir)
+    read_package(&bundle.dir, crate::host::tr)?.directory_files(&bundle.dir)
 }
 
 pub fn files(bundle: &Bundle) -> Result<Vec<(String, std::path::PathBuf)>, String> {
@@ -150,6 +165,15 @@ mod tests {
 
     #[test]
     fn native_state_is_refused_by_the_package_reader_before_staging() {
+        fn localized(en: &str) -> &str {
+            match en {
+                "E_MIXIN_STATE_LAYOUT: {mod}:{state}: native state changes the prebuilt game's layout; use an attachment instead" => {
+                    "E_MIXIN_STATE_LAYOUT: localized {mod}/{state}"
+                }
+                other => other,
+            }
+        }
+
         let dir = tempfile::tempdir().unwrap();
         write_bundle(dir.path(), "stateful", "");
         let path = dir.path().join(manifest::MANIFEST);
@@ -167,6 +191,10 @@ mod tests {
             );
             assert_eq!(Package::read(dir.path()).err().unwrap(), error);
             assert_eq!(read(dir.path()).unwrap_err(), error);
+            assert_eq!(
+                read_with(dir.path(), localized).unwrap_err(),
+                format!("E_MIXIN_STATE_LAYOUT: localized stateful/{row}")
+            );
         }
     }
 }

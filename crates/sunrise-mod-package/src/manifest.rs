@@ -481,32 +481,96 @@ fn edit_distance(a: &str, b: &str) -> usize {
     row[b.len()]
 }
 
+/// Stable diagnostic code for refused `[[native.state]]` declarations.
+pub const E_MIXIN_STATE_LAYOUT: &str = "E_MIXIN_STATE_LAYOUT";
+
+/// Why reading a manifest or package failed, carrying structured refusals so callers can inspect
+/// or localize them at their presentation boundary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PackageReadError {
+    /// A manifest declared `[[native.state]]` (or `[native] state = ...`), refused because adding
+    /// fields changes the prebuilt game's layout.
+    NativeStateLayout { mod_id: String, row: String },
+    /// Any other manifest or package refusal.
+    Message(String),
+}
+
+impl PackageReadError {
+    /// The stable diagnostic code when this refusal has one.
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::NativeStateLayout { .. } => Some(E_MIXIN_STATE_LAYOUT),
+            Self::Message(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for PackageReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NativeStateLayout { mod_id, row } => write!(
+                f,
+                "{E_MIXIN_STATE_LAYOUT}: {mod_id}:{row}: native state changes the prebuilt game's layout; use an attachment instead"
+            ),
+            Self::Message(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for PackageReadError {}
+
+impl From<String> for PackageReadError {
+    fn from(message: String) -> Self {
+        Self::Message(message)
+    }
+}
+
+impl From<&str> for PackageReadError {
+    fn from(message: &str) -> Self {
+        Self::Message(message.to_owned())
+    }
+}
+
 impl Manifest {
     /// Read the package manifest. Native state declarations are refused with
     /// `E_MIXIN_STATE_LAYOUT`; they cannot enter the parsed native tables.
     pub fn parse(text: &str) -> Result<Self, String> {
-        let document = toml::de::DeTable::parse(text).map_err(|e| toml_error(text, &e))?;
+        Self::parse_detailed(text).map_err(|error| error.to_string())
+    }
+
+    /// Read the package manifest, preserving structured refusals (such as
+    /// [`PackageReadError::NativeStateLayout`]) for callers that inspect or localize them at
+    /// their presentation boundary.
+    pub fn parse_detailed(text: &str) -> Result<Self, PackageReadError> {
+        let document = toml::de::DeTable::parse(text)
+            .map_err(|e| PackageReadError::Message(toml_error(text, &e)))?;
         let root = document.get_ref();
         if let Some(state) = root
             .get("native")
             .and_then(|native| native.get_ref().get("state"))
         {
-            let id = root
+            let mod_id = root
                 .get("id")
                 .and_then(|id| id.get_ref().as_str())
-                .unwrap_or(MANIFEST);
+                .unwrap_or(MANIFEST)
+                .to_owned();
             let row = state
                 .get_ref()
                 .get(0usize)
                 .and_then(|row| row.get_ref().get("id"))
                 .and_then(|id| id.get_ref().as_str())
-                .unwrap_or("native.state");
-            return Err(format!(
-                "E_MIXIN_STATE_LAYOUT: {id}:{row}: native state changes the prebuilt game's layout; use an attachment instead"
-            ));
+                .unwrap_or("native.state")
+                .to_owned();
+            return Err(PackageReadError::NativeStateLayout { mod_id, row });
         }
         let m = Self::deserialize(toml::de::Deserializer::from(document))
-            .map_err(|e| toml_error(text, &e))?;
+            .map_err(|e| PackageReadError::Message(toml_error(text, &e)))?;
+        m.validate().map_err(PackageReadError::Message)
+    }
+
+    fn validate(self) -> Result<Self, String> {
+        let m = self;
         Internal::check_all(&m.internals)?;
         if !m.internals.is_empty() && m.native.is_none() {
             return Err(format!("{MANIFEST}: internals need a [native] mod"));
@@ -818,6 +882,13 @@ impl Package {
     /// Read a flat `.smod` or project folder, without executing native code.
     /// A folder is read by its package paths, not by the names of unrelated files beside them.
     pub fn read(path: &Path) -> Result<Self, String> {
+        Self::read_detailed(path).map_err(|error| error.to_string())
+    }
+
+    /// Read a flat `.smod` or project folder, preserving structured refusals (such as
+    /// [`PackageReadError::NativeStateLayout`]) for callers that inspect or localize them at
+    /// their presentation boundary.
+    pub fn read_detailed(path: &Path) -> Result<Self, PackageReadError> {
         let metadata = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
         let mut icon = None;
         let mut has_cargo = false;
@@ -849,7 +920,7 @@ impl Package {
                     icon = Some(crate::icon::Icon::parse(bytes)?);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("icon.png: {e}")),
+                Err(e) => return Err(format!("icon.png: {e}").into()),
             }
             check_folder_file(path, MANIFEST)?;
             for (name, _) in crate::content::folder_files(path)? {
@@ -862,19 +933,18 @@ impl Package {
                 .read_to_string(&mut text)
                 .map_err(|e| format!("{MANIFEST}: {e}"))?;
             if text.len() as u64 > MAX_MANIFEST {
-                return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
+                return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20).into());
             }
             text
         } else {
             if !metadata.is_file() {
-                return Err(format!(
-                    "{}: unsupported file type in a content mod",
-                    path.display()
-                ));
+                return Err(
+                    format!("{}: unsupported file type in a content mod", path.display()).into(),
+                );
             }
             let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
             let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-            return Self::read_zip(&mut zip);
+            return Self::read_zip_detailed(&mut zip);
         };
         let package = Self::from_parts(&toml, icon, has_cargo, has_source)?;
         package.check_runtime_layout(&crate::content::runtime_folder_files(path)?)?;
@@ -883,6 +953,15 @@ impl Package {
 
     /// Read and validate an archive, including all selected source and resource entries.
     pub fn read_zip<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<Self, String> {
+        Self::read_zip_detailed(zip).map_err(|error| error.to_string())
+    }
+
+    /// Read and validate an archive, preserving structured refusals (such as
+    /// [`PackageReadError::NativeStateLayout`]) for callers that inspect or localize them at
+    /// their presentation boundary.
+    pub fn read_zip_detailed<R: Read + std::io::Seek>(
+        zip: &mut zip::ZipArchive<R>,
+    ) -> Result<Self, PackageReadError> {
         let mut icon = None;
         let mut has_cargo = false;
         let mut has_source = false;
@@ -905,17 +984,17 @@ impl Package {
             {
                 // Any file type, but a file: its bytes are checked against `[runtime]` below.
                 if !matches!(mode & 0o170000, 0 | 0o100000) {
-                    return Err(format!("{name}: unsupported file type"));
+                    return Err(format!("{name}: unsupported file type").into());
                 }
                 runtime.push((below.to_owned(), entry.size()));
                 continue;
             }
             if name == USES_FILE && matches!(mode & 0o170000, 0 | 0o100000) {
                 if uses {
-                    return Err(format!("duplicate {USES_FILE}"));
+                    return Err(format!("duplicate {USES_FILE}").into());
                 }
                 if entry.size() > MAX_USES {
-                    return Err(format!("{USES_FILE} exceeds {} MiB", MAX_USES >> 20));
+                    return Err(format!("{USES_FILE} exceeds {} MiB", MAX_USES >> 20).into());
                 }
                 uses = true;
                 continue;
@@ -945,11 +1024,11 @@ impl Package {
             .read_to_string(&mut toml)
             .map_err(|e| format!("{MANIFEST}: {e}"))?;
         if toml.len() as u64 > MAX_MANIFEST {
-            return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
+            return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20).into());
         }
         let package = Self::from_parts(&toml, icon, has_cargo, has_source)?;
         if uses && !package.is_native() {
-            return Err(format!("a content mod has no code, so no {USES_FILE}"));
+            return Err(format!("a content mod has no code, so no {USES_FILE}").into());
         }
         package.check_runtime_layout(&runtime)?;
         if package.is_native() {
@@ -965,7 +1044,7 @@ impl Package {
                     &name
                 };
                 if !plain_path(path) || !names.insert(name.clone()) {
-                    return Err(format!("invalid or duplicate package path: {name}"));
+                    return Err(format!("invalid or duplicate package path: {name}").into());
                 }
                 if !directory {
                     if name != MANIFEST
@@ -976,7 +1055,7 @@ impl Package {
                         && !name.starts_with("data/")
                         && !source_file(&name)
                     {
-                        return Err(format!("unexpected package path: {name}"));
+                        return Err(format!("unexpected package path: {name}").into());
                     }
                     if source_file(&name) {
                         source_count += 1;
@@ -987,7 +1066,9 @@ impl Package {
                         crate::content::check_path(&name)?;
                         crate::content::check_namespace(&name, &package.manifest)?;
                         if size > crate::content::MAX_FILE {
-                            return Err(format!("{name} exceeds the content file size limit"));
+                            return Err(
+                                format!("{name} exceeds the content file size limit").into()
+                            );
                         }
                         resource_count += 1;
                         resource_bytes = resource_bytes
@@ -1068,8 +1149,8 @@ impl Package {
         icon: Option<crate::icon::Icon>,
         has_cargo: bool,
         has_source: bool,
-    ) -> Result<Self, String> {
-        let manifest = Manifest::parse(text)?;
+    ) -> Result<Self, PackageReadError> {
+        let manifest = Manifest::parse_detailed(text)?;
         if has_cargo != manifest.native.is_some() || has_source != has_cargo {
             return Err("[native] and Rust source must be declared together".into());
         }
@@ -1971,6 +2052,39 @@ capabilities = ["registries"]
                 .collect::<Vec<_>>(),
             [MANIFEST],
         );
+    }
+
+    #[test]
+    fn native_state_refusal_preserves_structured_code_and_arguments() {
+        let native = format!(
+            "[native]\ngame = '26.3'\nsunrise = '{}'\nmixins = '{}'\n",
+            "a".repeat(40),
+            "b".repeat(40)
+        );
+        for (expected_row, state) in [
+            (
+                "autosave",
+                "[[native.state]]\nid = 'autosave'\nowner = 'game::Game'\nfield = 'count'\ntype = 'u32'\n",
+            ),
+            ("native.state", "state = []\n"),
+        ] {
+            let text = format!("{EXAMPLE}{native}{state}");
+            let error = Manifest::parse_detailed(&text).unwrap_err();
+            assert_eq!(error.code(), Some(E_MIXIN_STATE_LAYOUT));
+            assert_eq!(
+                error,
+                PackageReadError::NativeStateLayout {
+                    mod_id: "ruby".into(),
+                    row: expected_row.into(),
+                }
+            );
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "{E_MIXIN_STATE_LAYOUT}: ruby:{expected_row}: native state changes the prebuilt game's layout; use an attachment instead"
+                )
+            );
+        }
     }
 
     #[test]
