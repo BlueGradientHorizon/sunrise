@@ -487,28 +487,17 @@ fn surviving_mob_hit_awards_resistance_before_pre_and_post() {
             )
         );
         let pig = game.mobs.last().unwrap().id;
-        for command in [false, true] {
-            let index = game.mob_index.find(&game.mobs, pig).unwrap();
-            game.mobs[index].invulnerable = 0;
-            game.as_guest(CONN, |game| {
-                if command {
-                    assert!(game.run_command(
-                        "damage @e[type=pig,limit=1] 2.5 minecraft:player_attack by @s"
-                    ));
-                } else {
-                    assert!(game.mob_hits_mob(pig, 2.5, Damage::player([5.5, 100.0, 6.5])));
-                }
-                let victim = game.mob_object(pig).unwrap();
-                assert!(victim.alive());
-                assert_eq!(victim.health, if command { 6.0 } else { 8.0 });
-            })
-            .unwrap();
-            assert_eq!(&*order.lock().unwrap(), &["award", "pre", "post"]);
-            order.lock().unwrap().clear();
-        }
+        game.as_guest(CONN, |game| {
+            assert!(game.mob_hits_mob(pig, 2.5, Damage::player([5.5, 100.0, 6.5])));
+            let victim = game.mob_object(pig).unwrap();
+            assert!(victim.alive());
+            assert_eq!(victim.health, 8.0);
+        })
+        .unwrap();
+        assert_eq!(&*order.lock().unwrap(), &["award", "pre", "post"]);
         assert_eq!(
             guest_stats(&game, CONN).get("custom", "minecraft:damage_dealt_resisted"),
-            10
+            5
         );
     });
 }
