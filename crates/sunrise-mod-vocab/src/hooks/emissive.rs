@@ -1,5 +1,4 @@
 //! The `emissive` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
-// catalog-order: 0002
 
 pub trait Hooks {
     /// Register emissive overlay sprite pairs (`EmissiveSpriteRegistration`) at client startup
