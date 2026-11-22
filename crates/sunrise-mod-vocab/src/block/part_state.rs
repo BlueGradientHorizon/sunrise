@@ -489,7 +489,9 @@ pub fn edit_part_state<H: PartStateHolder, T: Clone + Send + Sync + 'static, R>(
     }) {
         Ok(answer) => Ok(answer),
         Err(crate::TransactionError::Aborted(error)) => Err(error),
-        Err(crate::TransactionError::Unavailable) => Err(PartStateError::Unavailable),
+        Err(crate::TransactionError::InvalidContext | crate::TransactionError::Unavailable) => {
+            Err(PartStateError::Unavailable)
+        }
         Err(crate::TransactionError::CommitRefused) => Err(PartStateError::CommitRefused),
     }
 }

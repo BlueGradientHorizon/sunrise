@@ -118,6 +118,8 @@ impl std::error::Error for TransactionScopeError {}
 /// Why [`HostTransaction::transaction`] did not commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransactionError<E> {
+    /// The supplied context does not identify the innermost open transaction on this host.
+    InvalidContext,
     /// The host could not open a transaction. The closure was not called.
     Unavailable,
     /// The closure returned `Ok`, but the host refused the commit and rolled back its writes.
@@ -138,6 +140,7 @@ impl<E> From<TransactionScopeError> for TransactionError<E> {
 impl<E> TransactionError<TransactionError<E>> {
     pub(crate) fn flatten(self) -> TransactionError<E> {
         match self {
+            Self::InvalidContext => TransactionError::InvalidContext,
             Self::Unavailable => TransactionError::Unavailable,
             Self::CommitRefused => TransactionError::CommitRefused,
             Self::Aborted(inner) => inner,
@@ -148,6 +151,7 @@ impl<E> TransactionError<TransactionError<E>> {
 impl<E: fmt::Display> fmt::Display for TransactionError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InvalidContext => f.write_str("invalid transaction context"),
             Self::Unavailable => TransactionScopeError::Unavailable.fmt(f),
             Self::CommitRefused => TransactionScopeError::CommitRefused.fmt(f),
             Self::Aborted(error) => error.fmt(f),
@@ -158,7 +162,7 @@ impl<E: fmt::Display> fmt::Display for TransactionError<E> {
 impl<E: std::error::Error + 'static> std::error::Error for TransactionError<E> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Unavailable | Self::CommitRefused => None,
+            Self::InvalidContext | Self::Unavailable | Self::CommitRefused => None,
             Self::Aborted(error) => Some(error),
         }
     }
@@ -225,26 +229,6 @@ impl<E: std::error::Error + 'static> std::error::Error for ScratchError<E> {
             Self::Unavailable | Self::CommitRefused | Self::Stack(_) => None,
             Self::Aborted(error) => Some(error),
         }
-    }
-}
-
-/// Asserts that `expected` matches the innermost open transaction on `host` (`None` requiring no
-/// open transaction), panicking as NeoForge's `TransactionManager.validateCurrentTransaction`
-/// throws `IllegalStateException` on a mismatched, foreign, or ancestor context.
-#[track_caller]
-pub(crate) fn assert_transaction_matches(
-    host: &dyn ServerHost,
-    expected: Option<&TransactionContext>,
-) {
-    if host.transaction_matches(expected) {
-        return;
-    }
-    match expected {
-        Some(tx) => panic!(
-            "transaction context at depth {} does not match the host's innermost open transaction",
-            tx.depth()
-        ),
-        None => panic!("expected no open transaction on this host, but a transaction is open"),
     }
 }
 
@@ -440,7 +424,8 @@ mod tests {
     use super::*;
     use crate::testing::FakeHost;
     use crate::{
-        Host, ITEMS, Identifier, ItemResource, ItemStack, ResourceHandler, prelude::ItemsHost,
+        Host, ITEMS, Identifier, ItemResource, ItemStack, ResourceHandler,
+        prelude::{BlockEntitiesHost, ItemsHost},
     };
 
     const AT: [i32; 3] = [0, 64, 0];
@@ -464,18 +449,28 @@ mod tests {
     struct NoTx;
     impl Host for NoTx {}
     crate::impl_host_areas!(NoTx);
-    impl ServerHost for NoTx {}
+    impl ServerHost for NoTx {
+        fn backend_mut(&mut self) -> Option<crate::BackendMutRef<'_>> {
+            panic!("an invalid context must be refused before backend lookup");
+        }
+    }
     crate::impl_server_host_areas!(NoTx);
 
     #[test]
-    #[should_panic(expected = "does not match the host's innermost open transaction")]
-    fn generated_handle_checks_a_foreign_context_before_backend_lookup() {
-        let mut owner = FakeHost::new();
+    fn generated_writes_refuse_a_foreign_context_before_backend_lookup() {
+        let (mut owner, _) = fake_with_stone();
         let level = owner.level.level();
-        let _ = owner.transaction(|_, tx| {
-            let _ = level.pickup_fluid(&mut NoTx, AT, None, tx);
-            Ok::<_, ()>(())
-        });
+        let block = owner.block_entity(level, AT).unwrap();
+        owner
+            .transaction(|_, tx| {
+                assert_eq!(level.pickup_fluid(&mut NoTx, AT, None, tx), None);
+                assert_eq!(
+                    block.set_item_slot(&mut NoTx, tx, 0, None),
+                    Err(crate::BlockEntityItemError::InvalidContext)
+                );
+                Ok::<_, ()>(())
+            })
+            .unwrap();
     }
 
     #[test]
@@ -499,8 +494,7 @@ mod tests {
     }
 
     #[test]
-    fn a_live_context_from_another_host_panics_on_write_and_leaves_state_unchanged() {
-        use std::panic::{AssertUnwindSafe, catch_unwind};
+    fn a_live_context_from_another_host_is_refused_and_leaves_state_unchanged() {
         let (mut owner, resource) = fake_with_stone();
         let mut other = owner.clone();
         let level = owner.level.level();
@@ -513,10 +507,11 @@ mod tests {
                         assert_eq!((foreign.depth(), own.depth()), (0, 0));
                         assert!(!host.transaction_matches(Some(foreign)));
                         assert!(host.transaction_matches(Some(own)));
-                        let caught = catch_unwind(AssertUnwindSafe(|| {
-                            items.extract_at(host, foreign, 0, &resource, 1)
-                        }));
-                        assert!(caught.is_err());
+                        assert_eq!(items.extract_at(host, foreign, 0, &resource, 1), 0);
+                        assert_eq!(
+                            items.extract(host, foreign, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
                         assert_eq!(items.amount(host, 0), 1);
                         assert_eq!(items.extract_at(host, own, 0, &resource, 1), 1);
                         Ok::<_, ()>(())
@@ -533,21 +528,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "does not match the host's innermost open transaction")]
-    fn an_ancestor_context_panics_while_a_nested_transaction_is_open() {
+    fn an_ancestor_or_closed_context_is_refused_in_a_new_scope() {
         let (mut fake, resource) = fake_with_stone();
         let level = fake.level.level();
         let items = level.capability(&mut fake, &ITEMS, AT, None).unwrap();
 
-        let _ = fake.transaction(|host, outer| {
-            let _ = host.transaction(|host, inner| {
-                assert_eq!((outer.depth(), inner.depth()), (0, 1));
-                assert!(!host.transaction_matches(Some(outer)));
-                assert!(host.transaction_matches(Some(inner)));
-                items.extract_at(host, outer, 0, &resource, 1);
+        let closed = fake
+            .transaction(|host, outer| {
+                host.transaction(|host, inner| {
+                    assert_eq!((outer.depth(), inner.depth()), (0, 1));
+                    assert_eq!(
+                        items.extract(host, outer, &resource, 1),
+                        Err(TransactionError::InvalidContext)
+                    );
+                    Ok::<_, ()>(())
+                })
+                .unwrap();
+                Ok::<_, ()>(outer.frame)
+            })
+            .unwrap();
+        closed.lend(|stale| {
+            assert_eq!(
+                items.extract(&mut fake, stale, &resource, 1),
+                Err(TransactionError::InvalidContext)
+            );
+            fake.transaction(|host, own| {
+                assert_eq!(own.depth(), stale.depth());
+                assert_eq!(
+                    items.extract(host, stale, &resource, 1),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(items.amount(host, 0), 1);
                 Ok::<_, ()>(())
-            });
-            Ok::<_, ()>(())
+            })
+            .unwrap();
         });
     }
 

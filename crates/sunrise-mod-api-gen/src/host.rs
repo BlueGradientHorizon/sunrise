@@ -941,7 +941,7 @@ fn handle_method(
     };
     let mut args = String::new();
     let mut rest = vec![syn::parse_quote!(self), host];
-    let mut check_transaction = String::new();
+    let mut transaction_arg = None;
     for arg in entry.sig.inputs.iter().skip(2) {
         let mut arg = arg.clone();
         let FnArg::Typed(typed) = &mut arg else {
@@ -960,10 +960,7 @@ fn handle_method(
                     "{name}: transaction loans require a mutable server host"
                 ));
             }
-            check_transaction = format!(
-                "crate::item::transaction::assert_transaction_matches(host, Some({})); ",
-                pat.ident
-            );
+            transaction_arg = Some(pat.ident.clone());
         }
         rest.push(arg);
     }
@@ -982,6 +979,20 @@ fn handle_method(
     let returns = |ident: &str| {
         matches!(&sig.output, syn::ReturnType::Type(_, ty) if matches!(&**ty, syn::Type::Path(path)
             if path.path.segments.last().is_some_and(|seg| seg.ident == ident)))
+    };
+    let check_transaction = if let Some(tx) = transaction_arg {
+        let refusal = if let Some(error) = result_error(&sig.output) {
+            format!("Err(<{}>::InvalidContext)", error.to_token_stream())
+        } else if returns("Option") {
+            "None".into()
+        } else if returns("bool") {
+            "false".into()
+        } else {
+            return Err(format!("{name}: a transaction write needs a typed refusal"));
+        };
+        format!("if !host.transaction_matches(Some({tx})) {{ return {refusal}; }} ")
+    } else {
+        String::new()
     };
     let call = format!("{name}(self{args})");
     let body = if returns("Option") {

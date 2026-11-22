@@ -364,7 +364,9 @@ impl Game<'_> {
         ) -> Result<Option<(P, GearEdits)>, ItemPlaceEditError>,
         apply: impl FnOnce(&mut ItemStack, P),
     ) -> Result<(), ItemPlaceEditError> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return Err(ItemPlaceEditError::InvalidContext);
+        }
         if !self.places_simulated() {
             return Err(ItemPlaceEditError::Unavailable);
         }
@@ -534,7 +536,9 @@ impl Game<'_> {
         tx: &TransactionContext,
         amount: i32,
     ) -> Result<(), CraftedByError> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return Err(CraftedByError::InvalidContext);
+        }
         let (menu, slot) = match *place {
             ItemPlace::MenuSlot { menu, slot } => (menu, Some(slot)),
             ItemPlace::PlayerCursor { menu } => (menu, None),
@@ -630,7 +634,9 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> u32 {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return 0;
+        }
         let stack = ItemStack {
             count: amount,
             ..resource.clone()
@@ -777,7 +783,9 @@ impl Game<'_> {
         amount: u32,
         tx: &TransactionContext,
     ) -> u32 {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return 0;
+        }
         if !self.places_simulated() {
             return 0;
         }

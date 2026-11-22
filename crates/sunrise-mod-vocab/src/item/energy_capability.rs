@@ -10,7 +10,8 @@ use std::marker::PhantomData;
 
 /// A block's energy (NeoForge's `EnergyHandler`): stateless, given the host, and written only in
 /// a transaction, as a [`ResourceHandler`](crate::ResourceHandler) is. Pass the context for the
-/// innermost open transaction to a write.
+/// innermost open transaction to a write. The capability refuses a mismatched context without
+/// calling the provider; these count-only writes return zero.
 pub trait EnergyHandler: Send + Sync {
     /// How much it holds.
     fn amount(&self, host: &mut dyn ServerHost) -> u32;
@@ -20,6 +21,27 @@ pub trait EnergyHandler: Send + Sync {
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32;
     /// Takes up to `amount` out, in transaction `tx`: how much came. Never more than `amount`.
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32;
+}
+
+impl EnergyHandler for Capability<dyn EnergyHandler> {
+    fn amount(&self, host: &mut dyn ServerHost) -> u32 {
+        self.handler.amount(host)
+    }
+    fn capacity(&self, host: &mut dyn ServerHost) -> u32 {
+        self.handler.capacity(host)
+    }
+    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
+        self.handler.insert(host, tx, amount)
+    }
+    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
+        self.handler.extract(host, tx, amount)
+    }
 }
 
 /// Energy, as NeoForge 26.3's `Capabilities.Energy.BLOCK`: a block entity's energy as one side
@@ -56,13 +78,17 @@ impl EnergyHandler for GameEnergy {
         crate::backend_of(host).map_or(0, |backend| backend.energy_capacity(self.0))
     }
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         crate::backend_mut_of(host)
             .map_or(0, |backend| backend.energy_insert(self.0, amount, tx))
             .min(amount)
     }
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         crate::backend_mut_of(host)
             .map_or(0, |backend| backend.energy_extract(self.0, amount, tx))
             .min(amount)
@@ -73,7 +99,8 @@ impl EnergyHandler for GameEnergy {
 /// transaction `tx`: how much moved. Extract from `from` first, then offer the extracted amount
 /// to `to` in the same journal. If `to` takes only part, roll back and retry once with that amount.
 /// An overanswer rolls back the move with `TransactionError::Aborted(Overanswered)`. If the
-/// host refuses a savepoint, the move returns `TransactionError::Unavailable`.
+/// host refuses a savepoint, the move returns `TransactionError::Unavailable`. A mismatched
+/// loan returns `TransactionError::InvalidContext` before querying either handler.
 pub fn move_energy(
     host: &mut dyn ServerHost,
     from: &Capability<dyn EnergyHandler>,
@@ -81,7 +108,9 @@ pub fn move_energy(
     max: u32,
     tx: &TransactionContext,
 ) -> Result<u32, TransactionError<Overanswered>> {
-    crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    if !host.transaction_matches(Some(tx)) {
+        return Err(TransactionError::InvalidContext);
+    }
     let want = max.min(from.amount(host));
     if want == 0 {
         return Ok(0);
@@ -131,12 +160,10 @@ impl EnergyHandler for EmptyEnergyHandler {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         0
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, _: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    fn insert(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
         0
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, _: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    fn extract(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
         0
     }
 }
@@ -154,12 +181,13 @@ impl EnergyHandler for InfiniteEnergyHandler {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         u32::MAX
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, _: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    fn insert(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
         0
     }
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         amount
     }
 }
@@ -177,11 +205,12 @@ impl EnergyHandler for VoidingEnergyHandler {
         u32::MAX
     }
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         amount
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, _: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    fn extract(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
         0
     }
 }
@@ -214,11 +243,15 @@ impl EnergyHandler for LimitingEnergyHandler {
         self.inner.capacity(host)
     }
     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         self.inner.insert(host, tx, amount.min(self.max_insert))
     }
     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         self.inner.extract(host, tx, amount.min(self.max_extract))
     }
 }

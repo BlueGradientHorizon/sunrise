@@ -193,14 +193,16 @@ with `Wire`. It cannot outlive the closure, and only the scope ends the transact
 
 Writes must use the context for the **innermost** open transaction on that host.
 An ancestor context (even from the same host), a context from another host, or a
-context passed to a host with no open transaction is a programming error: the
-operation panics rather than reporting that nothing moved, even for a zero-amount
-write. This follows NeoForge's `TransactionManager.validateCurrentTransaction`.
-When opening a nested transaction, use its new `tx` until that closure returns.
+context passed to a host with no open transaction is refused without calling the
+handler or panicking, even for a zero-amount write. The innermost-frame rule follows
+NeoForge's `TransactionManager.validateCurrentTransaction`. Use the inner `tx` until
+that closure returns.
 
+Result-bearing writes report `InvalidContext` in their own error type. Count-only
+and boolean writes return zero or false, and world-fluid pickup returns `None`.
 Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` for
-that same innermost frame or `None` when opening a root transaction. They also panic
-on a mismatch, including `None` while a transaction is already open.
+that same innermost frame or `None` when opening a root transaction. A mismatch,
+including `None` while one is open, returns `TransactionError::InvalidContext`.
 
 ## Inspecting a transaction
 

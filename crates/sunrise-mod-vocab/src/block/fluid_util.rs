@@ -356,7 +356,11 @@ fn move_first(
         );
         match moved {
             Ok(moved) if moved > 0 => return Ok(Some(fluid.to_stack(moved))),
-            Err(error @ (TransactionError::Unavailable | TransactionError::CommitRefused)) => {
+            Err(
+                error @ (TransactionError::InvalidContext
+                | TransactionError::Unavailable
+                | TransactionError::CommitRefused),
+            ) => {
                 log::warn!(
                     "Fluid transfer from {} to {}: {error}",
                     from.owner(),

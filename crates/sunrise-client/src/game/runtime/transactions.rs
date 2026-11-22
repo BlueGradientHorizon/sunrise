@@ -1031,27 +1031,10 @@ impl<'g> Game<'g> {
     pub(in crate::game) fn current_storage_frame(&self) -> Option<TransactionFrame> {
         self.transactions.last().and_then(|level| level.frame)
     }
-    /// Asserts that `tx` is the live loan for this game's innermost open transaction, matching
-    /// NeoForge's `TransactionManager.validateCurrentTransaction`.
-    #[track_caller]
-    pub(in crate::game) fn assert_current_transaction(&self, tx: &TransactionContext) {
-        if self
-            .current_storage_frame()
+    /// Whether `tx` is the live loan for this game's innermost open transaction.
+    pub(super) fn transaction_context_is_current(&self, tx: &TransactionContext) -> bool {
+        self.current_storage_frame()
             .is_some_and(|frame| frame.matches(tx))
-        {
-            return;
-        }
-        match self.current_storage_frame() {
-            Some(current) => panic!(
-                "transaction context at depth {} does not match the innermost open transaction at depth {}",
-                tx.depth(),
-                current.depth(),
-            ),
-            None => panic!(
-                "transaction context at depth {} used with no open transaction",
-                tx.depth(),
-            ),
-        }
     }
     /// `transaction_lifecycle`: the close running, else whether one is open.
     pub(in crate::game) fn transaction_lifecycle(&self) -> TransactionLifecycle {
@@ -3011,7 +2994,7 @@ mod tests {
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
             let before = level.block_state(game, AT);
-            let stone = game.block_state_id("minecraft:stone").unwrap();
+            let stone = BlockStatesHost::block_state_id(game, "minecraft:stone").unwrap();
             let (send, receive) = mpsc::channel();
             // A real bounded LAN sender with no room left to reserve another packet.
             let sender = PlayerSender::new(send, Arc::new(AtomicUsize::new(usize::MAX)));

@@ -606,42 +606,43 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
 
 #[test]
 fn optional_tokens_must_name_the_current_transaction() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
     let (mut fake, r) = items_host(&["minecraft:stone"]);
     let stone = &r[0];
     chest(&mut fake, A, &[Some((stone, 5))]);
     let items = items_at(&mut fake, A);
-    let assert_panics = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                insert_stacking(host, &items, stone, 1, token)
-            }))
-            .is_err()
+    let assert_refused = |host: &mut dyn ServerHost, token: Option<&TransactionContext>| {
+        assert_eq!(
+            insert_stacking(host, &items, stone, 1, token),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                extract_first(host, &items, |_| true, 1, token)
-            }))
-            .is_err()
+        assert_eq!(
+            extract_first(
+                host,
+                &items,
+                |_| panic!("invalid context reached the filter"),
+                1,
+                token
+            ),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                find_extractable_resource(host, &items, |_| true, token)
-            }))
-            .is_err()
+        assert_eq!(
+            find_extractable_resource(host, &items, |_| true, token),
+            Err(TransactionError::InvalidContext)
         );
-        assert!(
-            catch_unwind(AssertUnwindSafe(|| {
-                move_resources(host, &items, &items, |_| true, 1, token)
-            }))
-            .is_err()
+        assert_eq!(
+            move_resources(host, &items, &items, |_| true, 1, token),
+            Err(TransactionError::InvalidContext)
+        );
+        assert_eq!(
+            move_first(host, &items, &items, |_| true, 0, token),
+            Err(TransactionError::InvalidContext)
         );
     };
     let host: &mut dyn ServerHost = &mut fake;
     host.transaction(|host, parent| {
-        assert_panics(host, None);
+        assert_refused(host, None);
         host.transaction(|host, _| {
-            assert_panics(host, Some(parent));
+            assert_refused(host, Some(parent));
             Ok::<_, ()>(())
         })
         .unwrap();

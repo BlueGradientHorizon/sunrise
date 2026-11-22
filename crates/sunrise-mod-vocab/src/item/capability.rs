@@ -172,7 +172,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         tx: &TransactionContext,
         limit: u32,
     ) -> bool {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return false;
+        }
         self.handler.set_max_stack_size(host, tx, limit)
     }
 
@@ -212,7 +214,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let answer = self.handler.insert_at(host, tx, index, resource, amount);
         // Keep the raw answer so the caller knows to abort; this boundary knows whom to warn about.
         let _ = self.checked(answer, amount, &index);
@@ -227,7 +231,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let answer = self.handler.extract_at(host, tx, index, resource, amount);
         let _ = self.checked(answer, amount, &index);
         answer
@@ -240,7 +246,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, TransactionError<Overanswered>> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         self.check_resource_transfer(
             self.handler.insert(host, tx, resource, amount),
             amount,
@@ -255,7 +263,9 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         resource: &R,
         amount: u32,
     ) -> Result<u32, TransactionError<Overanswered>> {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
         self.check_resource_transfer(
             self.handler.extract(host, tx, resource, amount),
             amount,
@@ -278,7 +288,9 @@ impl<R> Capability<dyn ResourceHandler<R>> {
             })
             .map_err(|mut error| {
                 match &mut error {
-                    TransactionError::Unavailable | TransactionError::CommitRefused => {
+                    TransactionError::InvalidContext
+                    | TransactionError::Unavailable
+                    | TransactionError::CommitRefused => {
                         let owner = self.owner.unwrap_or("the game");
                         log::warn!("Resource handler from {owner}: {operation}: {error}");
                     }
@@ -334,7 +346,9 @@ impl ResourceHandler<ItemResource> for GameItems {
         tx: &TransactionContext,
         limit: u32,
     ) -> bool {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return false;
+        }
         backend_mut_of(host)
             .is_some_and(|backend| backend.container_set_stack_limit(self.0, limit, tx))
     }
@@ -371,7 +385,9 @@ impl ResourceHandler<ItemResource> for GameItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         if amount == 0 {
             return 0;
         }
@@ -391,7 +407,9 @@ impl ResourceHandler<ItemResource> for GameItems {
         resource: &ItemResource,
         amount: u32,
     ) -> u32 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let held = backend_of(&*host).and_then(|backend| backend.container_stack(self.0, index));
         if !held.is_some_and(|held| resource.matches(&held)) {
             return 0;

@@ -75,6 +75,8 @@ mod item {
             #[allow(dead_code)]
             Unavailable,
             #[allow(dead_code)]
+            InvalidContext,
+            #[allow(dead_code)]
             CommitRefused,
         }
 

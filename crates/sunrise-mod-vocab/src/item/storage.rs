@@ -31,6 +31,8 @@ use std::{collections::HashSet, marker::PhantomData, ops::ControlFlow};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StorageError {
+    /// The supplied context does not identify this host's innermost open transaction.
+    InvalidContext,
     /// A total or an amount does not fit in 64 bits.
     Overflow,
     /// A handler answered more than it was asked: a mod bug, warned once naming the mod. The
@@ -172,6 +174,54 @@ pub const STORAGE: CapabilityKey<dyn ItemStorage> = CapabilityKey {
 /// pass over the slots `.side` reaches, in the game, by the rules hoppers follow.
 struct GameStorage(BlockSide);
 
+impl ItemStorage for Capability<dyn ItemStorage> {
+    fn amount(
+        &self,
+        host: &mut dyn ServerHost,
+        resource: &ItemResource,
+    ) -> Result<u64, StorageError> {
+        self.handler.amount(host, resource)
+    }
+    fn space_for(
+        &self,
+        host: &mut dyn ServerHost,
+        resource: &ItemResource,
+    ) -> Result<u64, StorageError> {
+        self.handler.space_for(host, resource)
+    }
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        resource: &ItemResource,
+        amount: u64,
+    ) -> u64 {
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
+        self.handler.insert(host, tx, resource, amount)
+    }
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        resource: &ItemResource,
+        amount: u64,
+    ) -> u64 {
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
+        self.handler.extract(host, tx, resource, amount)
+    }
+    fn visit_entries(
+        &self,
+        host: &mut dyn ServerHost,
+        visitor: &mut dyn FnMut(&ItemResource, u64) -> ControlFlow<()>,
+    ) -> Result<(), StorageError> {
+        self.handler.visit_entries(host, visitor)
+    }
+}
+
 impl ItemStorage for GameStorage {
     fn amount(
         &self,
@@ -198,7 +248,9 @@ impl ItemStorage for GameStorage {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         crate::backend_mut_of(host)
             .map_or(0, |b| b.container_insert_kind(self.0, resource, amount, tx))
             .min(amount)
@@ -210,7 +262,9 @@ impl ItemStorage for GameStorage {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         crate::backend_mut_of(host)
             .map_or(0, |b| {
                 b.container_extract_kind(self.0, resource, amount, tx)
@@ -308,7 +362,9 @@ impl ItemStorage for Slots {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let mut left = amount;
         self.fill(host, tx, resource, &mut left, |host, index| {
             self.holds(host, index, resource)
@@ -325,7 +381,9 @@ impl ItemStorage for Slots {
         resource: &ItemResource,
         amount: u64,
     ) -> u64 {
-        crate::item::transaction::assert_transaction_matches(host, Some(tx));
+        if !host.transaction_matches(Some(tx)) {
+            return 0;
+        }
         let mut left = amount;
         for index in 0..self.0.size(host) {
             if left == 0 {
@@ -360,7 +418,8 @@ impl ItemStorage for Slots {
 /// `to` takes only part, roll back and retry once with that amount. A handler that answers more
 /// than it was asked rolls back the move with [`StorageError::Overanswered`]. If `from` has none
 /// or `to` has no room, neither is asked to transfer anything. A refused transfer savepoint
-/// returns [`StorageError::TransactionUnavailable`].
+/// returns [`StorageError::TransactionUnavailable`]. An invalid loan returns
+/// [`StorageError::InvalidContext`] before querying either provider.
 pub fn transfer(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
@@ -369,7 +428,9 @@ pub fn transfer(
     max: u64,
     tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
-    crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    if !host.transaction_matches(Some(tx)) {
+        return Err(StorageError::InvalidContext);
+    }
     let want = max
         .min(from.amount(host, resource)?)
         .min(to.space_for(host, resource)?);
@@ -389,6 +450,7 @@ pub fn transfer(
     )
     .map_err(|error| match error {
         TransactionError::Aborted(over) => over.into(),
+        TransactionError::InvalidContext => StorageError::InvalidContext,
         TransactionError::Unavailable => StorageError::TransactionUnavailable,
         TransactionError::CommitRefused => StorageError::CommitRefused,
     })
@@ -408,7 +470,9 @@ pub fn transfer_matching(
     max: u64,
     tx: &TransactionContext,
 ) -> Result<u64, StorageError> {
-    crate::item::transaction::assert_transaction_matches(host, Some(tx));
+    if !host.transaction_matches(Some(tx)) {
+        return Err(StorageError::InvalidContext);
+    }
     if max == 0 {
         return Ok(0);
     }
@@ -541,6 +605,30 @@ mod tests {
             owner: None,
         };
         (store, handler)
+    }
+
+    #[test]
+    fn wrong_context_does_not_reach_storage_providers() {
+        let (mut host, items) = host_with(&["minecraft:stone"]);
+        let stone = &items[0];
+        let (source, from) = bulk(64, &[(stone, 5)]);
+        let (target, to) = bulk(64, &[]);
+        host.transaction(|host, parent| {
+            host.transaction(|host, _| {
+                assert_eq!(from.extract(host, parent, stone, 1), 0);
+                assert_eq!(to.insert(host, parent, stone, 1), 0);
+                assert_eq!(
+                    transfer(host, &from, &to, stone, 1, parent),
+                    Err(StorageError::InvalidContext)
+                );
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+        assert_eq!(source.calls.get(), 0);
+        assert_eq!(target.calls.get(), 0);
     }
 
     #[test]

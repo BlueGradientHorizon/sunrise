@@ -86,13 +86,25 @@ fn the_comparator_reads_0_empty_15_full_and_vanillas_steps_between() {
 }
 
 #[test]
-#[should_panic(expected = "does not match the host's innermost open transaction")]
-fn move_energy_panics_with_an_ancestor_transaction_context() {
+fn an_ancestor_context_does_not_reach_energy_providers() {
     let source = capability(InfiniteEnergyHandler);
-    let target = capability(VoidingEnergyHandler);
+    let buffer = Buffer::new(0, 64);
+    let target = capability(buffer.clone());
     let mut fake = FakeHost::new();
-    let _ = fake.transaction(|host, outer| {
-        let _ = host.transaction(|host, _| move_energy(host, &source, &target, 16, outer));
+    fake.transaction(|host, outer| {
+        host.transaction(|host, inner| {
+            assert_eq!(
+                move_energy(host, &source, &target, 16, outer),
+                Err(TransactionError::InvalidContext)
+            );
+            assert_eq!(target.insert(host, outer, 32), 0);
+            assert_eq!(buffer.held(), 0);
+            assert_eq!(target.insert(host, inner, 16), 16);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
         Ok::<_, ()>(())
-    });
+    })
+    .unwrap();
+    assert_eq!(buffer.held(), 16);
 }

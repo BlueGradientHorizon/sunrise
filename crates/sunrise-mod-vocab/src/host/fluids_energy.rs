@@ -77,7 +77,7 @@ pub trait FluidsEnergyBackendMut {
     /// picking it up when given (only a creative player drains a barrier). What came out, a
     /// bucket of it. None, with nothing done, where the block gives no fluid (a flowing fluid,
     /// powder snow, any other block), in another level, or in a chunk that isn't loaded.
-    /// Panics unless `tx` is the innermost open transaction on this host.
+    /// None, with nothing done, for a context other than this host's innermost open transaction.
     ///
     /// Kept by transaction `tx`: the block is decided and written at the call, so later reads
     /// in the transaction see it drained and a second pickup there gets nothing; its updates, a
@@ -100,7 +100,7 @@ pub trait FluidsEnergyBackendMut {
     /// false placement answer fails instead of emptying the bucket (NeoForge's `validatePlaced`). True
     /// when it was placed or hissed away; false, with nothing done, for a fluid with no world
     /// form, where it can't be placed, in another level, or in a chunk that isn't loaded.
-    /// Panics unless `tx` is the innermost open transaction on this host.
+    /// False, with nothing done, for a context other than this host's innermost open transaction.
     ///
     /// Kept by transaction `tx` as [`level_pickup_fluid`](Self::level_pickup_fluid) is: the
     /// block written at the call, its updates, the fluid tick, a replaced block's drops, a doused
@@ -121,7 +121,7 @@ pub trait FluidsEnergyBackendMut {
     /// `minecraft:fluid_pickup`, else the empty sound and `minecraft:fluid_place`; a tank-only
     /// fluid has no sound), from `player` when given, at the outermost commit of transaction
     /// `tx`: nothing if it aborts. False, with nothing queued, in another level or for a
-    /// transaction that isn't open.
+    /// context other than this host's innermost open transaction.
     fn level_play_fluid_effects(
         &mut self,
         level: LevelRef,

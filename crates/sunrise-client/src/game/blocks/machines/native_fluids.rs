@@ -353,7 +353,9 @@ impl Game<'_> {
         fluid: FluidStack,
         tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return Some(fluid);
+        }
         if fluid.amount == 0 {
             return None;
         }
@@ -413,7 +415,9 @@ impl Game<'_> {
         max: u32,
         tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        self.assert_current_transaction(tx);
+        if !self.transaction_context_is_current(tx) {
+            return None;
+        }
         let max = mb(max);
         match self.capability_tanks(at)? {
             FluidAt::Mod(tanks) => {

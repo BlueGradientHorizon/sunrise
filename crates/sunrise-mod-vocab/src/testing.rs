@@ -974,7 +974,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         amount: u32,
         tx: &TransactionContext,
     ) -> Result<Option<ItemStack>, crate::StackWriteError> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Ok(resource.to_stack(amount));
+        }
         let max_stack = self.max_stack(resource);
         if max_stack == 0 {
             return Err(crate::StackWriteError::InvalidMaximum);
@@ -993,7 +995,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         max: u32,
         tx: &TransactionContext,
     ) -> Option<ItemStack> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return None;
+        }
         let standing = self.level.standing_mut(at.level, at.pos)?;
         standing.items.as_mut()?.extract(slot, max)
     }
@@ -1005,7 +1009,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         tx: &TransactionContext,
     ) -> u64 {
         use crate::prelude::ItemsBackend;
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return 0;
+        }
         let size = self.container_size(at).unwrap_or(0);
         let mut left = amount;
         for holding in [true, false] {
@@ -1040,7 +1046,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         tx: &TransactionContext,
     ) -> u64 {
         use crate::prelude::ItemsBackend;
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return 0;
+        }
         let mut left = amount;
         for slot in 0..self.container_size(at).unwrap_or(0) {
             if left == 0 {
@@ -1078,7 +1086,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         tx: &TransactionContext,
         edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
     ) -> Result<(), ItemPlaceEditError> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Err(ItemPlaceEditError::InvalidContext);
+        }
         let (player, slot) = self
             .players
             .place(place)
@@ -1098,7 +1108,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         tx: &TransactionContext,
         _: i32,
     ) -> Result<(), crate::CraftedByError> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Err(crate::CraftedByError::InvalidContext);
+        }
         Err(crate::CraftedByError::Unavailable)
     }
     fn game_insert(
@@ -1108,7 +1120,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         amount: u32,
         tx: &TransactionContext,
     ) -> Result<u32, crate::StackWriteError> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Ok(0);
+        }
         let max_stack = self.max_stack(resource);
         if max_stack == 0 {
             return Err(crate::StackWriteError::InvalidMaximum);
@@ -1128,7 +1142,9 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         amount: u32,
         tx: &TransactionContext,
     ) -> Result<u32, crate::StackWriteError> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Ok(0);
+        }
         if let ItemPlace::Scratch(slot) = place {
             return Ok(self.scratch.extract(*slot, resource, amount));
         }
@@ -1146,7 +1162,9 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         fluid: FluidStack,
         tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return Some(fluid);
+        }
         let standing = self.level.standing_mut(at.level, at.pos);
         match standing.and_then(|standing| standing.tanks.get_mut(tank)) {
             Some(tank) => tank.insert(fluid),
@@ -1160,19 +1178,25 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         max: u32,
         tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return None;
+        }
         let standing = self.level.standing_mut(at.level, at.pos)?;
         standing.tanks.get_mut(tank)?.extract(max)
     }
     fn energy_insert(&mut self, at: BlockSide, amount: u32, tx: &TransactionContext) -> u32 {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return 0;
+        }
         let standing = self.level.standing_mut(at.level, at.pos);
         standing
             .and_then(|standing| standing.energy.as_mut())
             .map_or(0, |energy| energy.insert(amount))
     }
     fn energy_extract(&mut self, at: BlockSide, amount: u32, tx: &TransactionContext) -> u32 {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return 0;
+        }
         let standing = self.level.standing_mut(at.level, at.pos);
         standing
             .and_then(|standing| standing.energy.as_mut())
@@ -1187,7 +1211,9 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         _: Option<PlayerRef>,
         tx: &TransactionContext,
     ) -> Option<FluidStack> {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return None;
+        }
         let fluid = self.level.take_source(level, pos)?;
         Some(FluidStack::new(fluid, 1000))
     }
@@ -1201,7 +1227,9 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         _: bool,
         tx: &TransactionContext,
     ) -> bool {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return false;
+        }
         self.level.put_source(level, pos, fluid)
     }
     /// Queued with the level for the outermost commit, which plays it as the game does.
@@ -1214,7 +1242,9 @@ impl crate::prelude::FluidsEnergyBackendMut for FakeHost {
         player: Option<PlayerRef>,
         tx: &TransactionContext,
     ) -> bool {
-        self.journal.assert_current(tx);
+        if !self.journal.matches(Some(tx)) {
+            return false;
+        }
         let Some(id) = crate::content::registry_keys::fluid_id(fluid) else {
             return false;
         };
