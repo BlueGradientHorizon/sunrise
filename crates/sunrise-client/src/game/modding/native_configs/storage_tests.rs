@@ -35,29 +35,130 @@ fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
 #[test]
 fn config_dir_is_available_in_setup_and_config_phases_without_refusal() {
     use mod_api::{
-        __private::{ModPhase, PhaseOwner},
-        Host,
+        __private::{
+            ModPhase, PhaseOwner, RegistrationData, WorldgenReader, game::RegistrationContextNew,
+        },
+        ChunkDiskContext, ChunkDiskKind, ChunkDiskPhase, Dist, Identifier, OwningChunkDisk,
+        OwningWorldgen, RegistrationContext, RuntimeEnvironment, WorldEpoch,
         prelude::{ConfigHost, EntitiesHost},
     };
-    Game::initialize_mod_runtime_for_tests();
-    struct EmptyHost;
-    impl Host for EmptyHost {}
-    mod_api::impl_host_areas!(EmptyHost);
+    use std::collections::BTreeMap;
 
-    for phase in [ModPhase::Setup, ModPhase::Config] {
-        let _guard = PhaseOwner::scope(phase);
-        let unimplemented = std::panic::catch_unwind(|| {
-            let _ = EmptyHost.config_dir();
-        })
-        .unwrap_err();
-        let message = panic_text(unimplemented);
-        assert!(message.contains("Host::config_dir"), "{message}");
+    struct NoWorldgen;
+    impl WorldgenReader for NoWorldgen {
+        fn registry(&self, _: &str) -> Option<&[String]> {
+            None
+        }
+        fn setting(&self, _: &str, _: &str) -> Option<&str> {
+            None
+        }
     }
 
-    let _config = PhaseOwner::scope(ModPhase::Config);
-    let refused = std::panic::catch_unwind(|| EmptyHost.entity(1)).unwrap_err();
-    let message = panic_text(refused);
-    assert!(message.contains("Config"), "{message}");
+    Game::initialize_mod_runtime_for_tests();
+    let root = ScratchDir::new("startup-host-config-dir");
+    let expected = root.0.join("config");
+    let data = RegistrationData::new(
+        BTreeMap::new(),
+        BTreeMap::new(),
+        root.0.clone(),
+        RuntimeEnvironment::new(Dist::Client, "26.3".into(), "test".into(), false),
+    );
+
+    mod_platform::__private::with_test_registration_data(data, || {
+        assert_eq!(
+            RegistrationContext::new()
+                .instance_dir()
+                .unwrap()
+                .join("config"),
+            expected
+        );
+
+        let startup = crate::game::client_reload::StartupClientHost::new();
+        let discovery = crate::game::pack_finders::DiscoveryHost::new();
+        let captured = ChunkDiskContext::new(
+            WorldEpoch::new(1),
+            Identifier::parse("minecraft:overworld").unwrap(),
+            [0, 0],
+            ChunkDiskKind::Full,
+            ChunkDiskPhase::Save,
+        );
+        let resources = OwningWorldgen::new(&NoWorldgen, &|_, _, _| None);
+        let chunk_disk = OwningChunkDisk::new(&captured, &resources);
+
+        for phase in [
+            ModPhase::Setup,
+            ModPhase::Config,
+            ModPhase::Reloading,
+            ModPhase::World,
+        ] {
+            let _guard = PhaseOwner::scope(phase);
+            assert_eq!(startup.config_dir(), expected.as_path());
+            assert_eq!(discovery.config_dir(), expected.as_path());
+            assert_eq!(chunk_disk.config_dir(), expected.as_path());
+        }
+
+        let _config = PhaseOwner::scope(ModPhase::Config);
+        let refused = std::panic::catch_unwind(|| startup.entity(1)).unwrap_err();
+        let message = panic_text(refused);
+        assert!(message.contains("Config"), "{message}");
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn dangling_serverconfig_override_symlink_falls_through_to_base_config() {
+    let root = ScratchDir::new("dangling-override");
+    let config = root.0.join("config");
+    let world = root.0.join("saves/W");
+    let base_dangling = config.join("alpha/dangling.toml");
+    let base_working = config.join("alpha/working.toml");
+    let override_dangling = world.join("serverconfig/alpha/dangling.toml");
+    let override_working = world.join("serverconfig/alpha/working.toml");
+    let working_target = root.0.join("working-override.toml");
+
+    fs::create_dir_all(base_dangling.parent().unwrap()).unwrap();
+    fs::create_dir_all(override_dangling.parent().unwrap()).unwrap();
+    fs::write(&base_dangling, "base = 1\n").unwrap();
+    fs::write(&base_working, "base_working = 0\n").unwrap();
+    fs::write(&working_target, "override = 1\n").unwrap();
+    std::os::unix::fs::symlink(root.0.join("missing-target.toml"), &override_dangling).unwrap();
+    std::os::unix::fs::symlink(&working_target, &override_working).unwrap();
+
+    super::tests::with_registered_configs(
+        &[(
+            "alpha",
+            &[
+                (
+                    ConfigKind::Server,
+                    Some("alpha/dangling.toml"),
+                    "default = 0\n",
+                ),
+                (
+                    ConfigKind::Server,
+                    Some("alpha/working.toml"),
+                    "default = 0\n",
+                ),
+            ],
+        )],
+        |registered| {
+            let mut configs = NativeConfigs::default();
+            let loaded = configs.load(registered, &[ConfigKind::Server], &config, Some(&world));
+            assert_eq!(loaded.len(), 2);
+            assert_eq!(loaded[0].1.path, base_dangling);
+            assert_eq!(loaded[0].1.text, "base = 1\n");
+            assert_eq!(loaded[1].1.path, override_working);
+            assert_eq!(loaded[1].1.text, "override = 1\n");
+
+            fs::write(&base_dangling, "base = 2\n").unwrap();
+            fs::write(&working_target, "override = 2\n").unwrap();
+            let reloaded = configs.changed();
+            assert_eq!(reloaded.len(), 2);
+            assert_eq!(reloaded[0].1.path, base_dangling);
+            assert_eq!(reloaded[0].1.text, "base = 2\n");
+            assert_eq!(reloaded[1].1.path, override_working);
+            assert_eq!(reloaded[1].1.text, "override = 2\n");
+        },
+    );
 }
 
 #[test]

@@ -48,7 +48,9 @@ fn locate(
         && let Some(world) = world
     {
         let own = world.join("serverconfig").join(&config.file);
-        match fs::symlink_metadata(&own) {
+        // FML ConfigTracker.resolveBasePath uses Files.exists, which follows
+        // symlinks so a dangling override falls through to the base config.
+        match fs::metadata(&own) {
             Ok(_) => return Ok(own),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err((own, error)),

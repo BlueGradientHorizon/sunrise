@@ -22,12 +22,27 @@ use sunrise_client::datapack::DataPack;
 /// listener's prepared apply.
 pub(super) type PreparedClientReload = PreparedStep<()>;
 
-/// The registration host of the first load: no game exists yet, so it reads
-/// nothing — a host read during registration panics, as its contract forbids
-/// one. The reload itself reads through the game's host.
-pub(super) struct StartupClientHost;
+/// The registration host of the first load: no game exists yet, so world reads
+/// panic as their contract forbids them, while immutable instance paths such as
+/// `Host::config_dir` remain available from the startup capture. The reload
+/// itself reads through the game's host.
+pub(super) struct StartupClientHost {
+    config_root: std::path::PathBuf,
+}
+impl StartupClientHost {
+    pub(super) fn new() -> Self {
+        Self {
+            config_root: mod_api::__private::RegistrationData::resolved_config_dir(),
+        }
+    }
+}
 impl Host for StartupClientHost {}
-mod_api::impl_host_areas!(StartupClientHost);
+mod_api::impl_host_areas!(StartupClientHost, except(config));
+impl mod_api::prelude::ConfigHost for StartupClientHost {
+    fn config_dir(&self) -> &std::path::Path {
+        &self.config_root
+    }
+}
 impl ClientHost for StartupClientHost {}
 mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render));
 impl mod_api::prelude::ClientRenderClientHost for StartupClientHost {
@@ -92,7 +107,8 @@ pub(super) fn register_startup_client_reload_listeners() -> mod_api::ClientListe
     let _reload = phase.reloading().expect("initial client registration");
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     if mod_api::__private::listened(HookId::AddClientReloadListeners) {
-        mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, &mut listeners);
+        let host = StartupClientHost::new();
+        mod_api::dispatch_add_client_reload_listeners(&host, &mut listeners);
     }
     listeners
 }

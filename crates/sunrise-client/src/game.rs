@@ -13696,7 +13696,7 @@ impl<'a> Game<'a> {
             resident_entities: Default::default(),
             lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
-            config_root: Self::game_dir().join("config"),
+            config_root: mod_api::__private::RegistrationData::resolved_config_dir(),
             native_configs: Default::default(),
             mod_phase,
             native_net: Default::default(),
@@ -13979,10 +13979,15 @@ pub(crate) fn run_with(
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
-    if let Err(error) = native_hooks::config_dir(&Game::game_dir()) {
+    let instance_dir = Game::game_dir();
+    if let Err(error) = native_hooks::config_dir(&instance_dir) {
         log::warn!("Sunrise: config folder: {error}");
     }
-    mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
+    mods::install_registration_data(
+        &vanilla_root,
+        instance_dir,
+        mods::runtime_files::sources(&options.mods),
+    )?;
     mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
     crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
     // The structure types those mods registered, handed to the engine before

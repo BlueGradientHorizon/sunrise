@@ -195,10 +195,28 @@ struct PlayerMoveState {
 }
 
 /// The Host used while the entity's world view is borrowed. It answers only
-/// reads from the current write; other operations retain their typed refusal.
-struct LiveSectionHost(Option<SectionWriter>);
+/// reads from the current write and immutable startup paths; other operations
+/// retain their typed refusal.
+struct LiveSectionHost {
+    writer: Option<SectionWriter>,
+    config_root: std::path::PathBuf,
+}
 
-mod_api::impl_host_areas!(LiveSectionHost);
+impl LiveSectionHost {
+    fn new(writer: Option<SectionWriter>) -> Self {
+        Self {
+            writer,
+            config_root: mod_api::__private::RegistrationData::resolved_config_dir(),
+        }
+    }
+}
+
+mod_api::impl_host_areas!(LiveSectionHost, except(config));
+impl mod_api::prelude::ConfigHost for LiveSectionHost {
+    fn config_dir(&self) -> &std::path::Path {
+        &self.config_root
+    }
+}
 mod_api::impl_server_host_areas!(LiveSectionHost);
 mod_api::impl_client_host_areas!(LiveSectionHost, except(client_render, menus));
 mod_api::impl_backend_areas!(
@@ -218,7 +236,7 @@ impl mod_api::prelude::ClientRenderClientHost for LiveSectionHost {
 
 impl mod_api::prelude::MenusClientHost for LiveSectionHost {
     fn local_player(&self) -> Option<mod_api::PlayerRef> {
-        self.0?.player?.local_player
+        self.writer?.player?.local_player
     }
 }
 
@@ -226,17 +244,23 @@ impl mod_api::prelude::MenusClientHost for LiveSectionHost {
 // standard no-backend result for reads that would need the borrowed world.
 impl LiveSectionHost {
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let writer = self.0.filter(|writer| writer.entity == entity)?;
+        let writer = self.writer.filter(|writer| writer.entity == entity)?;
         Some(writer.position)
     }
 
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
-        let player = self.0.filter(|writer| writer.entity == entity)?.player?;
+        let player = self
+            .writer
+            .filter(|writer| writer.entity == entity)?
+            .player?;
         Some(player.on_ground)
     }
 
     fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let player = self.0.filter(|writer| writer.entity == entity)?.player?;
+        let player = self
+            .writer
+            .filter(|writer| writer.entity == entity)?
+            .player?;
         Some(player.velocity)
     }
 }
@@ -258,7 +282,7 @@ fn tell_live(sections: &std::cell::RefCell<EntitySections>, writer: SectionWrite
     };
     for crossing in &batch {
         let entity = EntityRef::new(writer.entity.epoch(), crossing.id);
-        let mut host = LiveSectionHost((entity == writer.entity).then_some(writer));
+        let mut host = LiveSectionHost::new((entity == writer.entity).then_some(writer));
         let host = if server {
             mod_api::HostSide::Server(&mut host)
         } else {

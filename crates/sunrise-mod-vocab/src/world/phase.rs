@@ -451,6 +451,7 @@ impl PackageInfo {
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct RegistrationData {
     instance_dir: Arc<Path>,
+    config_dir: Arc<Path>,
     runtime: crate::RuntimeEnvironment,
     /// Built-in registry names in ID order, by registry name.
     pub(crate) registries: Arc<[(String, Arc<[String]>)]>,
@@ -472,8 +473,10 @@ impl RegistrationData {
         instance_dir: PathBuf,
         runtime: crate::RuntimeEnvironment,
     ) -> Self {
+        let config_dir: Arc<Path> = instance_dir.join("config").into();
         Self {
             instance_dir: instance_dir.into(),
+            config_dir,
             runtime,
             capability_coverage: None,
             block_entity_coverage: None,
@@ -493,6 +496,17 @@ impl RegistrationData {
     /// Without a registration publication, the load owns a fresh capture.
     pub fn initial_settings_snapshot() -> Option<Arc<[(String, Arc<[(String, String)]>)]>> {
         registration_data().map(|data| data.settings)
+    }
+    /// The startup `config/` path derived from the published registration
+    /// instance directory (`FMLPaths.CONFIGDIR`), when installed.
+    pub fn initial_config_dir() -> Option<PathBuf> {
+        registration_data().map(|data| data.config_dir.to_path_buf())
+    }
+    /// The startup `config/` directory from the published registration snapshot,
+    /// falling back to `<current_dir>/config` in isolated tests with no snapshot.
+    pub fn resolved_config_dir() -> PathBuf {
+        Self::initial_config_dir()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default().join("config"))
     }
     /// Bind each package's checked runtime files, by mod ID: what
     /// [`RegistrationContext::runtime_files`] serves the mod being dispatched.

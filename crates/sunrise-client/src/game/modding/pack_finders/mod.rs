@@ -103,10 +103,25 @@ impl PackFinders for Registry {
 }
 
 /// A repository may be discovered before Game exists. As with startup reload
-/// listeners, registration has no world reads; only the supplied builder is live.
-struct DiscoveryHost;
+/// listeners, registration has no world reads; the supplied builder and
+/// immutable startup paths such as `Host::config_dir` remain live.
+pub(super) struct DiscoveryHost {
+    config_root: std::path::PathBuf,
+}
+impl DiscoveryHost {
+    pub(super) fn new() -> Self {
+        Self {
+            config_root: mod_api::__private::RegistrationData::resolved_config_dir(),
+        }
+    }
+}
 impl Host for DiscoveryHost {}
-mod_api::impl_host_areas!(DiscoveryHost, except(text));
+mod_api::impl_host_areas!(DiscoveryHost, except(config, text));
+impl mod_api::prelude::ConfigHost for DiscoveryHost {
+    fn config_dir(&self) -> &std::path::Path {
+        &self.config_root
+    }
+}
 impl mod_api::prelude::TextHost for DiscoveryHost {
     fn text_string(&self, _: &mod_api::Text) -> Result<String, mod_api::text::TextFormError> {
         Err(mod_api::text::TextFormError::Unavailable)
@@ -171,7 +186,7 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
         return Vec::new();
     }
     let mut registry = Registry::new(kind, mods.clone());
-    let mut host = DiscoveryHost;
+    let mut host = DiscoveryHost::new();
     let host = match kind {
         PackType::ClientResources => HostSide::Client(&mut host),
         PackType::ServerData => HostSide::Server(&mut host),

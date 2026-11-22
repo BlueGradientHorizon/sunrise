@@ -785,7 +785,7 @@ fn disabled_native_mods_skip_add_pack_finders_at_startup_and_after_toggle() {
             assert_eq!(server_packs.len(), 1);
 
             let mut registry = Registry::new(PackType::ClientResources, sources.clone());
-            let mut host = DiscoveryHost;
+            let mut host = DiscoveryHost::new();
             mod_api::dispatch_add_pack_finders(HostSide::Client(&mut host), &mut registry);
             assert_eq!(disabled_calls.load(Ordering::SeqCst), 0);
             assert_eq!(enabled_calls.load(Ordering::SeqCst), 5);

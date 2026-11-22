@@ -223,10 +223,10 @@ fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String
 /// Capture registration's stable registries, settings and stock capability type owners.
 pub(super) fn install_registration_data(
     root: &Path,
+    directory: PathBuf,
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = Game::game_dir();
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
