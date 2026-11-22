@@ -2523,6 +2523,7 @@ mod tests {
         Pass,
         SkipFinalize,
         StopSpawn,
+        SkipAndStop,
     }
     struct FinalizeMod(FinalizeAnswer);
     #[mod_api::__subscriptions]
@@ -2536,9 +2537,189 @@ mod tests {
                 FinalizeAnswer::Pass => {}
                 FinalizeAnswer::SkipFinalize => return mod_api::Flow::Cancel,
                 FinalizeAnswer::StopSpawn => event.spawn_cancelled = true,
+                FinalizeAnswer::SkipAndStop => {
+                    event.spawn_cancelled = true;
+                    return mod_api::Flow::Cancel;
+                }
             }
             mod_api::Flow::Continue
         }
+    }
+
+    /// On spawners, `spawn_cancelled` vetoes admission after vanilla finalization
+    /// (when unconfigured and not cancelled with `Flow::Cancel`), trial persistence,
+    /// and any configured equipment table roll (NeoForge's
+    /// `EventHooks.finalizeMobSpawnSpawner`, `BaseSpawner.serverTick`,
+    /// `TrialSpawner.spawnMob`, and `NeoForgeEventHandler.builtinMobSpawnBlocker`).
+    #[test]
+    #[ignore = "daily"]
+    fn configured_spawner_veto_rolls_equipment_without_joining() {
+        use super::super::native_entity_refs::tests::with_game;
+        use sunrise_client::chunk::block_entity::Next;
+        use sunrise_client::mobs::spawner::{SpawnData, SpawnDataExt, Spawner};
+        use sunrise_client::mobs::trial_spawner::{TrialSpawner, TrialState};
+        use sunrise_client::random_sequences::RandomSequences;
+
+        with_game(|game| {
+            spawn_check_world(game, Vec3::new(0.5, 70.0, 0.5));
+            game.load_server_loot();
+            game.level.seed = 42;
+            let key = (2, 70, 2);
+            let equipment = Tag::compound([
+                (
+                    "loot_table",
+                    Tag::String("minecraft:equipment/trial_chamber_melee".into()),
+                ),
+                ("slot_drop_chances", Tag::Float(0.0f32.to_bits())),
+            ]);
+            let empty_sequences = RandomSequences::default().to_nbt();
+
+            let run_block = |game: &mut Game<'_>,
+                             configured: bool,
+                             with_equipment: bool,
+                             answer: Option<FinalizeAnswer>| {
+                let (mobs, entities, tracked) =
+                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
+                game.rand_sequences = RandomSequences::default();
+                game.world.random.set_seed(7);
+                let mut entity = Compound::default();
+                entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
+                if configured {
+                    entity.insert("Health".into(), Tag::Float(5.0f32.to_bits()));
+                }
+                let mut spawner = Spawner {
+                    spawn_delay: 0,
+                    spawn_count: 1,
+                    next: Some(Next::Own(SpawnData::new(
+                        entity,
+                        None,
+                        with_equipment.then(|| equipment.clone()),
+                    ))),
+                    ..Default::default()
+                };
+                let go = |game: &mut Game<'_>| {
+                    game.server_tick_spawner_of(key, &mut spawner, None)
+                        .unwrap();
+                };
+                match answer {
+                    None => go(game),
+                    Some(a) => mod_platform::testing::with_mods(
+                        vec![mod_api::ModEntry::new("finalize", Box::new(FinalizeMod(a)))].into(),
+                        || go(game),
+                    ),
+                }
+                let out = (
+                    game.mobs.len() - mobs,
+                    game.next_entity - entities,
+                    game.persist.uuids.len() - tracked,
+                    game.rand_sequences.to_nbt(),
+                    game.world.random.next_int(),
+                );
+                for m in game.mobs.drain(mobs..) {
+                    game.persist.uuids.remove(&m.id);
+                }
+                game.next_entity = entities;
+                out
+            };
+
+            let joined = run_block(game, true, true, None);
+            assert_eq!(joined.0, 1, "configured block spawner spawns one mob");
+            assert_ne!(
+                joined.3, empty_sequences,
+                "configured equipment table rolled its random sequence"
+            );
+            let vetoed = run_block(game, true, true, Some(FinalizeAnswer::StopSpawn));
+            assert_eq!(
+                (vetoed.0, vetoed.1, vetoed.2),
+                (0, 0, 0),
+                "spawn_cancelled vetoes admission"
+            );
+            assert_eq!(
+                vetoed.3, joined.3,
+                "spawn_cancelled preserves the configured equipment table roll"
+            );
+
+            // Unconfigured block spawner: `spawn_cancelled` alone still runs vanilla
+            // finalization before admission veto; `Flow::Cancel` skips finalization.
+            let plain_joined = run_block(game, false, false, None);
+            assert_eq!(plain_joined.0, 1);
+            let plain_vetoed = run_block(game, false, false, Some(FinalizeAnswer::StopSpawn));
+            assert_eq!((plain_vetoed.0, plain_vetoed.1, plain_vetoed.2), (0, 0, 0));
+            assert_eq!(
+                plain_vetoed.4, plain_joined.4,
+                "spawn_cancelled without Flow::Cancel preserves vanilla finalization draws"
+            );
+            let plain_skipped = run_block(game, false, false, Some(FinalizeAnswer::SkipAndStop));
+            assert_eq!(
+                (plain_skipped.0, plain_skipped.1, plain_skipped.2),
+                (0, 0, 0)
+            );
+            assert_ne!(
+                plain_skipped.4, plain_joined.4,
+                "Flow::Cancel skips vanilla finalization draws"
+            );
+
+            let run_trial = |game: &mut Game<'_>, answer: Option<FinalizeAnswer>| {
+                let (mobs, entities, tracked) =
+                    (game.mobs.len(), game.next_entity, game.persist.uuids.len());
+                game.rand_sequences = RandomSequences::default();
+                game.world.random.set_seed(9);
+                let mut entity = Compound::default();
+                entity.insert("id".into(), Tag::String(SULFUR_CUBE.into()));
+                entity.insert("Health".into(), Tag::Float(5.0f32.to_bits()));
+                let mut spawner = TrialSpawner {
+                    next_spawn_data: Some(SpawnData::new(entity, None, Some(equipment.clone()))),
+                    ..Default::default()
+                };
+                let go = |game: &mut Game<'_>| {
+                    game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
+                        .unwrap();
+                };
+                match answer {
+                    None => go(game),
+                    Some(a) => mod_platform::testing::with_mods(
+                        vec![mod_api::ModEntry::new("finalize", Box::new(FinalizeMod(a)))].into(),
+                        || go(game),
+                    ),
+                }
+                let out = (
+                    game.mobs.len() - mobs,
+                    game.next_entity - entities,
+                    game.persist.uuids.len() - tracked,
+                    spawner.total_mobs_spawned,
+                    spawner.current_mobs.len(),
+                    game.rand_sequences.to_nbt(),
+                );
+                for m in game.mobs.drain(mobs..) {
+                    game.persist.uuids.remove(&m.id);
+                }
+                game.next_entity = entities;
+                out
+            };
+
+            let trial_joined = run_trial(game, None);
+            assert_eq!((trial_joined.0, trial_joined.3, trial_joined.4), (1, 1, 1));
+            assert_ne!(
+                trial_joined.5, empty_sequences,
+                "trial spawner equipment table rolled its random sequence"
+            );
+            let trial_vetoed = run_trial(game, Some(FinalizeAnswer::StopSpawn));
+            assert_eq!(
+                (
+                    trial_vetoed.0,
+                    trial_vetoed.1,
+                    trial_vetoed.2,
+                    trial_vetoed.3,
+                    trial_vetoed.4,
+                ),
+                (0, 0, 0, 0, 0),
+                "trial spawner spawn_cancelled vetoes admission"
+            );
+            assert_eq!(
+                trial_vetoed.5, trial_joined.5,
+                "trial spawner spawn_cancelled preserves the configured equipment table roll"
+            );
+        });
     }
 
     /// No listener and a listener that changes nothing finalize and draw as vanilla; a cancel

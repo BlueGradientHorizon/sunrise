@@ -153,6 +153,76 @@ fn bare_level_feature_enables_host_query_and_general_spawn() {
 
 #[test]
 #[ignore = "daily"]
+fn bare_pack_feature_enables_host_query_and_general_spawn_on_first_open() {
+    use mod_api::{EntitySpawn, FeatureFlag, SpawnBody};
+    use sunrise_client::{chunk::Chunk, title::WorldOptions};
+
+    let pack_root = tempfile::tempdir().unwrap();
+    let pack = pack_root.path().join("redstone_bare");
+    std::fs::create_dir_all(&pack).unwrap();
+    let format = sunrise_core::version::DATA_PACK_FORMAT;
+    std::fs::write(
+        pack.join("pack.mcmeta"),
+        serde_json::json!({
+            "pack": {
+                "description": "Bare redstone feature pack",
+                "pack_format": format.0,
+                "min_format": [format.0, format.1],
+                "max_format": [format.0, format.1],
+            },
+            "features": {
+                "enabled": ["redstone_experiments"],
+            },
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let save_root = tempfile::tempdir().unwrap();
+
+    with_types(|game| {
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        let mut create = WorldOptions::default();
+        create.pack_dir = Some(pack_root.path().to_path_buf());
+        create.data_packs = vec!["vanilla".into(), "file/redstone_bare".into()];
+        let mut request = crate::game::world_loading::WorldRequest::new(
+            "bare_pack_feature",
+            Some("bare_pack_feature"),
+            Some(1),
+            true,
+            Some(&create),
+            game.level.rule_registry.clone(),
+        )
+        .unwrap();
+        request.save_root = save_root.path().to_owned();
+        game.load_world(request).unwrap();
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+
+        let level = game.level(game.dim.id()).unwrap();
+        let flags = level.enabled_features(game).unwrap();
+        assert!(flags.contains_flag(FeatureFlag::RedstoneExperiments));
+        assert!(flags.contains_flag(FeatureFlag::Vanilla));
+        assert_eq!(
+            flags.iter().collect::<Vec<_>>(),
+            ["minecraft:redstone_experiments", "minecraft:vanilla"]
+        );
+
+        let at = [0.5, 64.0, 0.5];
+        let entity = level
+            .spawn_entity(
+                game,
+                "mymod:experimental",
+                at,
+                &EntitySpawn::new(SpawnBody::General),
+            )
+            .unwrap();
+        assert_eq!(entity.position(game), Some(at));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn feature_disabled_saved_branches_do_not_enter_summon_uuid_admission() {
     use crate::game::commands::Target;
     use sunrise_client::snbt::to_snbt;

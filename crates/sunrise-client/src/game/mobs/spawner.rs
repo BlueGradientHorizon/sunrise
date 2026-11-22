@@ -2,10 +2,7 @@
 //! `clientTick` for every spawner (`mobs::spawner`), the mobs they add, a
 //! spawn egg used on one (`SpawnEggItem.useOn`), their events and the mob
 //! spinning inside (`SpawnerRenderer`).
-use super::{
-    Game,
-    creatures::{Finalized, SpawnReason},
-};
+use super::{Game, creatures::SpawnReason};
 use std::collections::{HashMap, HashSet};
 use sunrise_client::{
     Result,
@@ -28,12 +25,13 @@ type Pos = (i32, i32, i32);
 
 /// What a spawner tick decided to add, created once the level is free.
 pub(super) enum Planned {
-    /// `finalizeSpawn` ran on a fresh mob (its provisional id in `Mob::id`);
-    /// the spawn data's `equipment`.
-    Finalized(Mob, Option<Tag>),
-    /// The configured mob lent to `finalize_spawn`, its UUID, its raw record (including
-    /// passengers), and the spawn data's `equipment`.
-    Loaded(Mob, [i32; 4], Tag, Option<Tag>),
+    /// `finalizeSpawn` (and any spawner `equipment` roll) ran on a fresh mob
+    /// (its provisional id in `Mob::id`).
+    Finalized(Mob),
+    /// The configured mob lent to `finalize_spawn` (and equipped from any
+    /// spawner `equipment` table), its UUID, and its raw record (including
+    /// passengers).
+    Loaded(Mob, [i32; 4], Tag),
 }
 
 /// What the spawner code keeps between ticks.
@@ -149,6 +147,7 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
+        let mut sequences = std::mem::take(&mut self.rand_sequences);
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
         // `BaseSpawner` belongs either to a monster spawner block (`SpawnerBlockEntity`) or to a
@@ -168,7 +167,8 @@ impl Game<'_> {
             let mut spawn = |l: &super::natural_spawning::GameLevel,
                              rng: &mut LevelRandom,
                              r: &SpawnerSpawn| {
-                l.game.plan_spawner_mob(l, r, source, &mut planned, rng)
+                l.game
+                    .plan_spawner_mob(l, r, source, &mut planned, rng, &mut sequences)
             };
             spawner.server_tick(&level, &mut random, pos, &mut spawn, &mut events);
             (
@@ -182,11 +182,11 @@ impl Game<'_> {
             plan(self)
         };
         self.world.random = random;
+        self.rand_sequences = sequences;
         let ids = self.add_planned(planned, created, rides);
         self.apply_spawner_events(key, events, &ids, cart)
     }
     /// Creates the mobs a spawner tick planned; their provisional ids
-    /// (counting down from u32::MAX) map to the mobs' ids.
     /// (counting down from `u32::MAX`) map to the mobs' ids.
     pub(super) fn add_planned(
         &mut self,
@@ -196,47 +196,32 @@ impl Game<'_> {
     ) -> HashMap<u32, u32> {
         let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
         let mut finalized: Vec<Mob> = Vec::new();
-        let mut gears: Vec<Option<Tag>> = Vec::new();
         let mut loads = Vec::new();
         for plan in planned {
             match plan {
-                Planned::Finalized(mob, equipment) => {
-                    finalized.push(mob);
-                    gears.push(equipment);
-                }
-                Planned::Loaded(mob, uuid, tag, equipment) => {
-                    loads.push((mob, uuid, tag, equipment))
-                }
+                Planned::Finalized(mob) => finalized.push(mob),
+                Planned::Loaded(mob, uuid, tag) => loads.push((mob, uuid, tag)),
             }
         }
         // Real ids for finalizeSpawn's provisional mobs, in spawn order, the
         // links that ride by id rewritten after them: the map the spawner's
         // events resolve their provisional ids with.
         let mut ids = self.resolve_spawn_ids([&mut finalized, &mut created], &rides);
-        for (mob, equipment) in finalized.into_iter().zip(gears) {
-            let id = mob.id;
+        for mob in finalized {
             let i = self.mobs.len();
             self.mobs.push(mob);
             self.native_mobs_joined(i, false);
-            // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
-            if let Some(table) = equipment {
-                self.equip_from_table(id, &table);
-            }
         }
         for mob in created {
             let i = self.mobs.len();
             self.mobs.push(mob);
             self.native_mobs_joined(i, false);
         }
-        for (mut mob, uuid, tag, equipment) in loads {
+        for (mut mob, uuid, tag) in loads {
             let key = mob.id;
             self.next_entity += 1;
             mob.id = self.next_entity;
             let id = self.publish_loaded_mob(mob, uuid, tag, None, None);
-            // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
-            if let Some(table) = equipment {
-                self.equip_from_table(id, &table);
-            }
             ids.insert(key, id);
         }
         ids
@@ -250,6 +235,7 @@ impl Game<'_> {
         source: Option<mod_api::Spawner>,
         planned: &mut Vec<Planned>,
         random: &mut sunrise_core::random::LegacyRandom,
+        sequences: &mut sunrise_client::random_sequences::RandomSequences,
     ) -> Option<SpawnerAdded> {
         let kind = self.res.mob_types().get(r.id)?.clone();
         let [x, y, z] = r.position;
@@ -305,27 +291,30 @@ impl Game<'_> {
             mob.extra.spawn_tags.clone_from(given);
         }
         let mut group = None;
-        let (outcome, difficulty) = self.finalize_spawn_event(&mut mob, reason, source, &mut group);
-        if outcome == Finalized::Cancelled {
-            return None;
-        }
-        // NeoForge always posts FinalizeSpawnEvent for spawners. Its `def`
-        // (vanilla's `hasNoConfiguration`) controls only Mob.finalizeSpawn.
-        if r.finalize && outcome == Finalized::Done {
+        let decision = self.finalize_spawn_decision(&mut mob, reason, source, &mut group);
+        // NeoForge's EventHooks.finalizeMobSpawnSpawner always posts FinalizeSpawnEvent
+        // for spawners, runs Mob.finalizeSpawn iff !event.isCanceled() && def
+        // (vanilla's hasNoConfiguration), and leaves spawn_cancelled to be enforced at
+        // admission (NeoForgeEventHandler.builtinMobSpawnBlocker).
+        if r.finalize && !decision.skip_finalize {
             let mut level = super::natural_spawning::PassLevel::new(l);
             let mut cx = sunrise_client::mobs::finalize::Ctx {
                 level: &mut level,
                 random,
-                difficulty,
+                difficulty: decision.difficulty,
                 created: Vec::new(),
                 jockey_rider: None,
             };
             sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
-            for m in cx.created {
-                let bounds = m.bounds();
-                l.pending.borrow_mut().push(bounds);
-                l.pending_ids.borrow_mut().push((m.kind.id.clone(), bounds));
-                l.spawned.borrow_mut().push(m);
+            if decision.spawn_cancelled {
+                l.rides.borrow_mut().retain(|&(_, rider)| rider != mob.id);
+            } else {
+                for m in cx.created {
+                    let bounds = m.bounds();
+                    l.pending.borrow_mut().push(bounds);
+                    l.pending_ids.borrow_mut().push((m.kind.id.clone(), bounds));
+                    l.spawned.borrow_mut().push(m);
+                }
             }
             // Shulker.finalizeSpawn faces it south.
             if mob.species() == sunrise_client::mobs::Species::Shulker {
@@ -341,11 +330,20 @@ impl Game<'_> {
         if r.trial {
             mob.persistent = true;
         }
+        // BaseSpawner.serverTick and TrialSpawner.spawnMob roll `nextSpawnData.getEquipment()`
+        // on the mob before `tryAddFreshEntityWithPassengers`, even when `spawn_cancelled`
+        // will veto admission.
+        if let Some(table) = r.equipment {
+            self.equip_mob_from_table(&mut mob, table, random, sequences);
+        }
+        // NeoForgeEventHandler.builtinMobSpawnBlocker vetoes admission on spawn_cancelled.
+        if decision.spawn_cancelled {
+            return None;
+        }
         let bounds = mob.bounds();
         let key = mob.id;
-        let equipment = r.equipment.cloned();
         if let Some((mut tag, uuid)) = loaded {
-            // BaseSpawner attempts admission only after the finalize event.
+            // BaseSpawner attempts admission only after finalization and equipment.
             if self.uuid_admission_refused(Some(uuid)) {
                 return None;
             }
@@ -379,9 +377,9 @@ impl Game<'_> {
                     }
                 }
             }
-            planned.push(Planned::Loaded(mob, uuid, tag, equipment));
+            planned.push(Planned::Loaded(mob, uuid, tag));
         } else {
-            planned.push(Planned::Finalized(mob, equipment));
+            planned.push(Planned::Finalized(mob));
         }
         l.pending.borrow_mut().push(bounds);
         l.pending_ids.borrow_mut().push((r.id.to_owned(), bounds));

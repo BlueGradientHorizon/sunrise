@@ -274,8 +274,9 @@ fn finalize_spawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::FinalizeSpa
 
 `finalize_spawn` version 2 also fires when a monster spawner block, spawner minecart, or trial spawner uses
 configured mob NBT. Its `mob` and `edits` reach the loaded mob. Vanilla finalization does not run on that mob,
-regardless of the returned `Flow`; use `spawn_cancelled` to reject the attempt. Trial-spawner persistence and
-any configured equipment table are applied after the hook. Outside spawners, the hook fires only where
+regardless of the returned `Flow`; use `spawn_cancelled` to reject the attempt. On spawners, vanilla finalization
+(when unconfigured and not cancelled with `Flow::Cancel`), trial-spawner persistence, and any configured equipment
+table roll still run before `spawn_cancelled` vetoes admission. Outside spawners, the hook fires only where
 vanilla calls `finalizeSpawn`: breeding, an infested block's silverfish and a thrown egg's chick do not fire it.
 
 For `/summon minecraft:ender_dragon` without NBT, command placement starts at zero

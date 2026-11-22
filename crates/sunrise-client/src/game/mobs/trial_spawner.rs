@@ -180,7 +180,7 @@ impl Game<'_> {
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut sequences = std::mem::take(&mut self.rand_sequences);
+        let sequences = std::cell::RefCell::new(std::mem::take(&mut self.rand_sequences));
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
         let source = Some(mod_api::Spawner::Trial {
@@ -194,9 +194,12 @@ impl Game<'_> {
             let loot = self.server_loot.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, rng: &mut LevelRandom, r: &SpawnerSpawn| {
-                let added = l.game.plan_spawner_mob(l, r, source, &mut planned, rng)?;
+                let mut sequences = sequences.borrow_mut();
+                let added =
+                    l.game
+                        .plan_spawner_mob(l, r, source, &mut planned, rng, &mut sequences)?;
                 let uuid = match planned.last() {
-                    Some(Planned::Loaded(_, uuid, _, _)) => *uuid,
+                    Some(Planned::Loaded(_, uuid, _)) => *uuid,
                     _ => sunrise_client::save::random_uuid(),
                 };
                 uuids.push((added.id, uuid));
@@ -209,7 +212,10 @@ impl Game<'_> {
                     return false;
                 };
                 let drops = match loot.random_sequence(table) {
-                    Some(s) => loot.roll_split(table, sequences.get(s, seed)),
+                    Some(s) => {
+                        let mut sequences = sequences.borrow_mut();
+                        loot.roll_split(table, sequences.get(s, seed))
+                    }
                     None => loot.roll_split(table, random),
                 };
                 for stack in &drops {
@@ -245,7 +251,7 @@ impl Game<'_> {
             state
         };
         self.world.random = random;
-        self.rand_sequences = sequences;
+        self.rand_sequences = sequences.into_inner();
         let (created, rides) = extras;
         let ids = self.add_planned(planned, created, rides);
         let mut by_uuid = HashMap::new();
