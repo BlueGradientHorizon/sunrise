@@ -31,6 +31,10 @@ sunrise-stage uses MADE_FOR_SURFACE MOD_DIR --json uses.json --made-for BUILD
 sunrise-stage fits uses.json TARGET_SURFACE
 ```
 
+`uses` reads [`sunrise-mod.toml`](../../reference/manifest.md) with the package reader when the file is
+present, including the default `registries` capability when the manifest leaves `capabilities` out.
+With no manifest, it scans the Rust sources alone.
+
 `uses` prints each API item the mod uses with the place that brought it in, then how the mod builds each struct
 it builds with a literal. The table it writes records, per item, its hash at the made-for build. It also records
 the type's trait impls and the public paths the mod writes it by. For each struct the mod names, it records

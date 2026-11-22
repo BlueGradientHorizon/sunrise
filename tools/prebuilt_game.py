@@ -239,7 +239,7 @@ def stage(target_dir: Path, stage_tool: Path | None = None, *, sdk_dylibs: bool 
             # Build the tool from a stable copy of the unmodified commit, not the disposable rewrite tree.
             source = target_dir / "stage-in"
             sync_stage(scratch, source)
-            command = ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen",
+            command = ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-stage",
                        "--bin", "sunrise-stage", "--"]
             env = {**os.environ, "CARGO_TARGET_DIR": str(target_dir / "tools")}
             label = "Stage release build and execution"
@@ -1073,7 +1073,7 @@ def pack(out: Path, dist: Path, stage_tool: Path | None = None, with_tool: bool 
     if failures:
         sys.exit("SDK archive compression failed: " + "; ".join(failures))
     command = ([str(stage_tool.resolve())] if stage_tool is not None else
-               ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage", "--"])
+               ["cargo", "run", "--locked", "--release", "-q", "-p", "sunrise-stage", "--bin", "sunrise-stage", "--"])
     run(command + ["surface", str(ROOT), str(dist / SURFACE)], cwd=ROOT)
     for asset in sorted(dist.iterdir()):
         print(f"{asset.name}: {asset.stat().st_size} bytes")
