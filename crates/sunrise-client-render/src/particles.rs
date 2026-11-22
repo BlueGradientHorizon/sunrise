@@ -982,6 +982,7 @@ pub struct TrackingBody {
 
 struct TrackingEmitter {
     options: ParticleOptions,
+    mod_options: Option<mod_api::ParticleOptions>,
     target: Option<TrackingTarget>,
     body: TrackingBody,
     remaining: u32,
@@ -1588,6 +1589,10 @@ impl ParticleEngine {
         self.elder_guardians.clear();
         self.pending.clear();
     }
+    /// Discard debris awaiting the old `ClientLevel`'s `ClientExplosionTracker.tick`.
+    pub fn discard_level_explosions(&mut self) {
+        self.tracked_explosions.clear();
+    }
     /// `VibrationSignalParticle`'s body: the signal leaves `from` aimed at the
     /// listener at `to` and lands there in `ticks`.
     fn vibration_particle(from: [f64; 3], to: [f64; 3], ticks: i32) -> Particle {
@@ -1680,6 +1685,7 @@ impl ParticleEngine {
     }
     /// `ClientLevel.addParticle`: dropped beyond 32 blocks of the camera unless
     /// the type overrides the limiter, and thinned by the Particles option.
+    /// Built-ins do not need a level loan. Use [`Self::add_with`] with a live level for native types.
     pub fn add(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
         self.add_with(
             options,
@@ -1823,8 +1829,9 @@ impl ParticleEngine {
     ) {
         self.tracking_emitter_for(options, target, body, 3, scope);
     }
-    /// `createTrackingEmitter(entity, type, lifetime)`: the first burst uses vanilla options
-    /// and runs immediately; later bursts borrow the ticking level.
+    /// `createTrackingEmitter(entity, type, lifetime)`: the first burst uses the caller's level
+    /// immediately; later bursts borrow the ticking level. Original typed options, if supplied,
+    /// are retained for subsequent bursts.
     pub fn tracking_emitter_for(
         &mut self,
         options: ParticleOptions,
@@ -1837,6 +1844,7 @@ impl ParticleEngine {
         if life > 1 {
             self.emitters.push(TrackingEmitter {
                 options,
+                mod_options: scope.mod_options.cloned(),
                 target: Some(target),
                 body,
                 remaining: life - 1,
@@ -1930,7 +1938,7 @@ impl ParticleEngine {
         seed: i64,
         level: &ParticleLevel,
     ) -> Option<Particle> {
-        let mut particle = self.make(options, p, v, seed, SpawnScope::BARE)?;
+        let mut particle = self.make(options, p, v, seed, SpawnScope::with_level(level, None))?;
         if particle.pre_tick {
             particle.pre_tick = false;
             self.tick_particle(&mut particle, level);
@@ -3662,10 +3670,6 @@ impl ParticleEngine {
         }
         self.tick_starters();
         self.tick_explosions(level);
-        let scope = SpawnScope {
-            level: Some(level),
-            ..SpawnScope::BARE
-        };
         let mut emitters = std::mem::take(&mut self.emitters);
         emitters.retain_mut(|emitter| {
             if let Some(target) = emitter.target {
@@ -3674,7 +3678,11 @@ impl ParticleEngine {
                     None => emitter.target = None,
                 }
             }
-            self.emit(&emitter.options, emitter.body, scope);
+            self.emit(
+                &emitter.options,
+                emitter.body,
+                SpawnScope::with_level(level, emitter.mod_options.as_ref()),
+            );
             emitter.remaining -= 1;
             emitter.remaining > 0
         });

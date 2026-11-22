@@ -3,12 +3,14 @@
 pub trait Hooks {
     /// Register sprite-set factories at client startup (NeoForge's `RegisterParticleProvidersEvent`).
     /// Call [`RegisterParticleProvidersEvent::register_sprite_set`] with the ID used for
-    /// `Registrar::particle_key`. The accepted factory binds when that type's sprites load,
+    /// `Registrar::declare_particle`. The accepted factory binds when that type's sprites load,
     /// and its `ParticleProvider` creates one owned `CustomParticle` per successful spawn.
     #[notes = r#"## Particle providers
 
 Use `event.register_sprite_set(id, factory)` at client startup with the ID registered through
-`Registrar::particle_key` and the matching `assets/<namespace>/particles/<path>.json`.
+`Registrar::declare_particle` and the matching `assets/<namespace>/particles/<path>.json`.
+Type declaration is independent of client resources; the description is required only to bind the
+client sprite-set factory.
 The last accepted factory for an ID binds once per sprite load on the logical client. The
 `ParticleSpriteSet` uses the atlas missing sprite in each unresolved frame, or in one frame if
 the description is empty. A missing description or failed bind is reported and refuses native
@@ -19,7 +21,8 @@ Once the applicable distance and Particles-setting checks pass, `ParticleProvide
 receives `ParticleSpawn` (typed options, raw position and velocity slots, live level and random)
 and a mutable `ParticleTickView` seeded with the declared spawn values. Return `None` to decline
 just this spawn without an error. A returned `Box<dyn CustomParticle>` is queued for ordinary
-FIFO group admission. The options and their network encoding are unchanged.
+FIFO group admission. Local calls retain their typed option fields. The unchanged named
+network encoding carries only the registered particle ID, so clients reconstruct default fields.
 
 An instance holds its state in its own fields. On its owning thread, `CustomParticle::tick` can
 use `tick_base` for vanilla motion and expiry, or `advance_age` to record the previous position and
@@ -43,6 +46,7 @@ discards existing native instances and binds new providers."#]
         context = "registration",
         answered_by = "mod",
         registration_append = "custom",
+        event_per_listener = true,
         neoforge = "RegisterParticleProvidersEvent",
         version = 2
     )]

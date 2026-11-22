@@ -359,6 +359,10 @@ pub(super) fn emit<'a>(
         } else {
             None
         };
+        // A per-listener answered registration can use the engine-attributed owner even before
+        // dispatch accepts the batch. In particular, a discarded entry can dispose of its code.
+        let attributed_registration =
+            hook.event_per_listener && answered && registration_append.is_some() && args.is_empty();
         if !is_render {
             hook_ids.push_str(&format!("{hook_id},\n"));
             hook_constants.push_str(&format!(
@@ -554,6 +558,10 @@ pub(super) fn emit<'a>(
             } else {
                 inits.push(name.clone());
             }
+        }
+        if attributed_registration {
+            fields.push_str("pub(super) registering_mod: &'static str,\n");
+            inits.push("registering_mod: mod_id".into());
         }
         if mod_cancel {
             if args.iter().any(|(arg, _)| arg == "cancelled") {
@@ -930,23 +938,23 @@ pub(super) fn emit<'a>(
         if declaration_only {
             continue;
         }
+        let constructor = format!("let mut {event} = {event_type} {{ {} }};", inits.join(", "));
+        let staging = if answered && contract == Contract::Collect && !isolated_collect {
+            format!("let mut {batch} = Vec::new(); ")
+        } else {
+            String::new()
+        };
         let build = if declaration.is_some() {
             String::new()
         } else {
-            format!(
-                "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
-                if answered && contract == Contract::Collect && !isolated_collect {
-                    format!("let mut {batch} = Vec::new(); ")
-                } else {
-                    String::new()
-                },
-                inits.join(", "),
-            )
+            format!("{stack_snapshots}{staging}{constructor}")
         };
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener || isolated_collect {
+        let (build, local_event) = if attributed_registration {
+            (staging, constructor)
+        } else if hook.event_per_listener || isolated_collect {
             // A replace answer is returned outside the event. A regular collect
             // output borrows one slot, reborrowed for each listener above. Answered
             // collect batches and cancellation do not use this mode. An isolated collector's
@@ -1067,8 +1075,8 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
-        let report = if event_type == "RegisterConfigurationTasksEvent" {
-            // A refusal from task_type also unwinds to this listener's checkpoint.
+        let report = if attributed_registration || event_type == "RegisterConfigurationTasksEvent" {
+            // Report each refusal of a retained registration without disabling the listener.
             "report_each"
         } else {
             "report"

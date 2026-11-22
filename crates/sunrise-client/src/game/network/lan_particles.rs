@@ -508,7 +508,6 @@ impl Game<'_> {
         if self.pvp_hides_particle(options.ty) {
             return;
         }
-        let (d, s) = (p.dist.map(f64::from), p.max_speed.map(f64::from));
         // ClientLevel.addParticle: the camera's 32 blocks and the Particles
         // option, unless the packet or the type overrides the limiter.
         let flags = ParticleSpawnFlags {
@@ -523,13 +522,15 @@ impl Game<'_> {
             add(
                 &mut self.particles,
                 p.pos,
-                [s[0] * d[0], s[1] * d[1], s[2] * d[2]],
+                // The packet fields are floats; vanilla only widens the products.
+                std::array::from_fn(|i| f64::from(p.max_speed[i] * p.dist[i])),
             );
             return;
         }
         let Some(remote) = self.remote.as_mut() else {
             return;
         };
+        let (d, s) = (p.dist.map(f64::from), p.max_speed.map(f64::from));
         for _ in 0..p.count {
             let (at, v) = spread(&mut remote.particle_random, p.randomization, p.pos, d, s);
             add(&mut self.particles, at, v);

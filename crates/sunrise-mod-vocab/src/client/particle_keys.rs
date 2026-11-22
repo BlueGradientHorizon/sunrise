@@ -2,7 +2,7 @@
 use std::sync::OnceLock;
 use sunrise_mod_runtime::registry_keys::{ParticleKind, Particles};
 
-/// A particle requested at registration, resolved once when providers load.
+/// A particle type declared or requested at registration, resolved once when content loads.
 // no wire: decoding validates the u32 slot with ParticleKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the load-owned table creates keys
@@ -45,9 +45,11 @@ pub fn resolve_particles<'a>(
     ids: impl IntoIterator<Item = &'a str>,
     resolve: impl FnMut(&str) -> Option<ParticleKind>,
 ) -> Result<(), Vec<String>> {
+    let keys = crate::parts::requested_keys();
     let particles = sunrise_mod_runtime::registry_keys::resolve_particles(
-        &crate::parts::requested_keys().particles,
-        ids,
+        &keys.particles,
+        ids.into_iter()
+            .chain(keys.declared_particles.iter().map(String::as_str)),
         resolve,
     )?;
     resolved()

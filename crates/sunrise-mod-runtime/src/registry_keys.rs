@@ -1,5 +1,5 @@
 //! Load-owned declarations and resolved mappings for registration-slot keys.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{LazyLock, RwLock};
 
 #[derive(Clone, Default)]
@@ -11,6 +11,7 @@ pub struct Requests {
     pub items: Names,
     pub effects: Names,
     pub particles: Names,
+    pub declared_particles: BTreeSet<String>,
     pub block_entity_types: Names,
     pub entity_types: Names,
     pub game_events: Names,

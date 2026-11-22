@@ -10,10 +10,10 @@ and render-group admission still apply. A native provider can also decline the s
 This method is not available on `ServerHost`.
 
 Particle options carry a `ParticleKey`, not an engine particle enum or a provider name.
-Request the key with `Registrar::particle_key` during registration and retain it. The game resolves
-provider identities once when content loads. `ParticleOptions::simple(key)` handles both vanilla
-and custom sprite providers; custom providers require an `assets/<namespace>/particles/<path>.json`
-sprite set. All option constructors take the resolved key, including `dust`, `item`, `trail`,
+Request an existing type's key with `Registrar::particle_key` during registration, or use
+`Registrar::declare_particle` for a new native type. Retain the returned key. The game resolves
+type identities once when content loads. `ParticleOptions::simple(key)` handles both vanilla
+and custom types. All option constructors take the resolved key, including `dust`, `item`, `trail`,
 `vibration`, `shriek`, `sculk_charge` and `dust_transition`. Use the corresponding vanilla key
 for these parameter families. Sending an option performs no string parsing or registry scan.
 
@@ -45,11 +45,16 @@ velocity and the level's light.
 
 ### Particle providers
 
-A native provider constructs one owned instance per spawn of a registered particle type. Give
-`Registrar::particle_key("mymod:spark")` the same ID you pass to `register_sprite_set`, and
-supply the sprite set in `assets/mymod/particles/spark.json`. Spawn with
-`ParticleOptions::simple(spark_key)`. The same registered key, typed options, Wire encoding
-and network packets work whether the type uses declarative motion or native code.
+A native provider constructs one owned instance per spawn of a registered particle type.
+Declare the type in `Hooks::register` with `Registrar::declare_particle(&id)` on both logical
+sides, and pass that ID to `register_sprite_set` on the client. Supply the sprite description in
+`assets/mymod/particles/spark.json`. Spawn with `ParticleOptions::simple(spark_key)` using the key
+returned by the declaration. The type is registered even if the client lacks that file; a
+missing description prevents the factory from binding, not the game from starting.
+
+Local spawns retain their original typed option fields. The named network particle codec carries
+only the registered ID, so network spawns reconstruct `ParticleOptions::simple(key)` with default
+fields. The `Wire` representation of `ParticleOptions` is separate and unchanged.
 
 This spark rises at the speed supplied by the caller. It starts on the first sprite, switches
 to the last sprite halfway through its life, and grows in its first rendered tick without
@@ -59,7 +64,7 @@ changing its stored size.
 use mod_api::{
     CustomParticle, Hooks, Identifier, ParticleLevelView, ParticleProvider, ParticleQuad,
     ParticleSpawn, ParticleTickView, ParticleView, RegisterParticleProvidersEvent,
-    RegistrationContext, sunrise_mod,
+    Registrar, RegistrationContext, sunrise_mod,
 };
 
 struct SparkProvider {
@@ -108,6 +113,11 @@ struct SparkMod;
 
 #[sunrise_mod]
 impl Hooks for SparkMod {
+    fn register(&self, registrar: &mut dyn Registrar, _context: &RegistrationContext) {
+        let id = Identifier::parse_namespaced("mymod:spark").unwrap();
+        let _spark_key = registrar.declare_particle(&id); // Retain this key to spawn it later.
+    }
+
     fn register_particle_providers(
         &self,
         _context: &RegistrationContext,

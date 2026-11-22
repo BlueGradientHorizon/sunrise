@@ -1945,10 +1945,11 @@ whole behaviour object with a log warning, falling back to the existing particle
 the sprite set still loads. Vanilla particle JSONs are unaffected. Sprite reload applies new
 declarations to future declarative spawns; existing declarative particles keep their spawn values.
 The engine copies fixed-size numeric data at spawn and performs no new allocations per declarative
-tick. For native behavior, call `event.register_sprite_set(id, factory)` in
-`register_particle_providers` ("Particle providers"). The bound provider receives the same
-registered options whether the request came from the client or a packet. The declaration seeds
-its spawn defaults, and the returned instance owns its subsequent tick and quad extraction.
+tick. For native behavior, declare the type with `Registrar::declare_particle(&id)` on both
+logical sides and call `event.register_sprite_set(id, factory)` in `register_particle_providers`
+("Particle providers") on the client. A local provider receives the original typed fields; a
+named network spawn carries only the ID and reconstructs default fields. The sprite description
+seeds spawn defaults, and the returned instance owns its subsequent tick and quad extraction.
 Sprite reload discards those native instances and rebinds their providers.
 
 `register_particle_groups(context, event)` binds a namespaced `Identifier` to a factory with

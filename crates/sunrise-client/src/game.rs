@@ -9119,7 +9119,7 @@ impl Game<'_> {
         self.tridents.clear();
         self.rockets.clear();
         self.bolts.clear();
-        self.clear_client_particles();
+        self.clear_client_level_particles();
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();

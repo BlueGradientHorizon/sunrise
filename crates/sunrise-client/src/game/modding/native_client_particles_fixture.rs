@@ -218,6 +218,7 @@ mod tests {
     use crate::game::{
         api_values::TryIntoApi,
         mods::{register_particles, resolve_particle_providers},
+        native_client_session::tests::logged_client,
         native_entity_refs::tests::{run_fresh_cases, run_with_game_stack, with_client_game},
     };
     use mod_api::{
@@ -228,17 +229,20 @@ mod tests {
     use std::{
         sync::{
             Arc, Mutex,
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
         thread,
     };
     use sunrise_assets::resource_source::{Resource, ResourceSource};
-    use sunrise_client::chunk::Chunk;
+    use sunrise_client::{
+        chunk::Chunk,
+        particles::{ExplosionParticle, SpawnScope},
+    };
     use sunrise_core::random::{LegacyRandom, RandomSource};
     use sunrise_protocol::{
         connection::Pipe,
         entity_data::{MOD_PARTICLE_ID, Particle, ParticleData},
-        packets::play::LevelParticles,
+        packets::play::{Clientbound, LevelParticles, Respawn, SpawnInfo},
     };
 
     const TYPE: &str = "fixture:encoded";
@@ -256,6 +260,7 @@ mod tests {
     struct Provider {
         observed: Arc<Mutex<Vec<ObservedSpawn>>>,
         draw: Arc<AtomicBool>,
+        binds: Arc<AtomicUsize>,
     }
 
     struct Instance;
@@ -264,7 +269,7 @@ mod tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Provider {
         fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-            registrar.particle_key(TYPE);
+            registrar.declare_particle(&Identifier::parse_namespaced(TYPE).unwrap());
         }
 
         fn register_particle_providers(
@@ -273,7 +278,10 @@ mod tests {
             event: &mut RegisterParticleProvidersEvent<'_>,
         ) {
             let provider = self.clone();
-            event.register_sprite_set(Identifier::parse(TYPE).unwrap(), move |_| provider.clone());
+            event.register_sprite_set(Identifier::parse(TYPE).unwrap(), move |_| {
+                provider.binds.fetch_add(1, Ordering::Relaxed);
+                provider.clone()
+            });
         }
     }
 
@@ -294,6 +302,42 @@ mod tests {
             });
             Some(Box::new(Instance))
         }
+    }
+
+    fn sprite_description() -> ResourceSource {
+        ResourceSource::indexed(
+            [(
+                "assets/fixture/particles/encoded.json".into(),
+                Resource::bytes(br#"{"textures":["fixture:encoded"]}"#.to_vec()),
+            )]
+            .into(),
+        )
+    }
+
+    fn fixture_engine(source: &ResourceSource) -> ParticleEngine {
+        let mut factories = Vec::new();
+        {
+            let _registration = PhaseOwner::scope(ModPhase::Registration);
+            Game::native_register_particle_providers(&RegistrationContext::new(), &mut factories);
+        }
+        assert_eq!(factories.len(), 1);
+        let mut engine = ParticleEngine::with_test_providers(
+            source,
+            &HashMap::from([(
+                "fixture:particle/encoded".into(),
+                Rect {
+                    u0: 0.0,
+                    v0: 0.0,
+                    u1: 1.0,
+                    v1: 1.0,
+                    w: 16,
+                    h: 16,
+                },
+            )]),
+            factories,
+        );
+        configure_particle_inputs(&mut engine);
+        engine
     }
 
     #[test]
@@ -324,36 +368,10 @@ mod tests {
                             mod_api::__private::mods(),
                         )
                         .unwrap();
-                        let source = ResourceSource::indexed(
-                            [(
-                                "assets/fixture/particles/encoded.json".into(),
-                                Resource::bytes(br#"{"textures":["fixture:encoded"]}"#.to_vec()),
-                            )]
-                            .into(),
-                        );
+                        let source = sprite_description();
                         resolve_particle_providers(&source).unwrap();
                         let ty = mod_api::__private::particle_named_key(TYPE).unwrap();
-                        let mut factories = Vec::new();
-                        Game::native_register_particle_providers(
-                            &RegistrationContext::new(),
-                            &mut factories,
-                        );
-                        game.particles = ParticleEngine::with_test_providers(
-                            &source,
-                            &HashMap::from([(
-                                "fixture:particle/encoded".into(),
-                                Rect {
-                                    u0: 0.0,
-                                    v0: 0.0,
-                                    u1: 1.0,
-                                    v1: 1.0,
-                                    w: 16,
-                                    h: 16,
-                                },
-                            )]),
-                            factories,
-                        );
-                        configure_particle_inputs(&mut game.particles);
+                        game.particles = fixture_engine(&source);
 
                         let at = [5.5, 101.0, 4.5];
                         let velocity = [f64::from(0xff12ab), 7.0, -2.0];
@@ -379,8 +397,8 @@ mod tests {
                             override_limiter: false,
                             always_show: false,
                             pos: [6.5, 101.25, 4.5],
-                            dist: [0.5, -2.0, 4.0],
-                            max_speed: [4.0, 3.0, 0.25],
+                            dist: [0.1, -0.2, 0.3],
+                            max_speed: [0.1, 0.1, -0.2],
                             count: 0,
                             randomization: 0,
                         };
@@ -398,6 +416,19 @@ mod tests {
                         assert!(host.add_particle(&options, at, velocity));
                         game.remote_level_particles(&packet);
 
+                        // ClientPacketListener.handleParticleEvent multiplies the float fields
+                        // before widening. These double bits differ from products in f64.
+                        let packet_velocity_bits = [
+                            0x3f84_7ae1_6000_0000,
+                            0xbf94_7ae1_6000_0000,
+                            0xbfae_b852_0000_0000,
+                        ];
+                        assert_eq!(
+                            provider.observed.lock().unwrap()[1]
+                                .velocity
+                                .map(f64::to_bits),
+                            packet_velocity_bits,
+                        );
                         assert_eq!(
                             *provider.observed.lock().unwrap(),
                             [
@@ -410,11 +441,11 @@ mod tests {
                                 ObservedSpawn {
                                     options: mod_api::ParticleOptions::simple(ty),
                                     position: [6.5, 101.25, 4.5],
-                                    velocity: [2.0, -6.0, 1.0],
+                                    velocity: packet_velocity_bits.map(f64::from_bits),
                                     block: dirt_api,
                                 },
                             ],
-                            "only admitted requests construct, with their original typed options and the live level",
+                            "only admitted requests construct; locals retain fields and packets rebuild defaults",
                         );
                         assert!(game.particles.is_empty());
                         game.particle_fixture_tick();
@@ -444,6 +475,96 @@ mod tests {
                             "engine draws cannot shift packet spread"
                         );
                     });
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn declared_native_particle_cold_loads_without_a_sprite_description() {
+        run_with_game_stack(|| {
+            let provider = Provider::default();
+            let mods = vec![ModEntry::new("fixture", Box::new(provider.clone()))];
+            mod_platform::testing::with_mods(mods.into(), || {
+                // with_client_game completes the fresh Parts epoch using the same registry
+                // resolver as content_root; the prepared base has no sprite JSON for this ID.
+                with_client_game(|game| {
+                    assert!(
+                        game.pack
+                            .source
+                            .read("assets/fixture/particles/encoded.json")
+                            .is_err()
+                    );
+                    let key = mod_api::__private::particle_named_key(TYPE).unwrap();
+                    assert_eq!(
+                        mod_api::__private::particle_kind(key),
+                        Some(mod_api::__private::ParticleKind::Custom)
+                    );
+                    let mut engine = fixture_engine(&game.pack.source);
+                    let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
+                    engine.create(
+                        &ParticleOptions::named(TYPE),
+                        [0.0; 3],
+                        [0.0; 3],
+                        SpawnScope::with_level(&level, None),
+                    );
+                    engine.tick(&level);
+                    assert_eq!(provider.binds.load(Ordering::Relaxed), 0);
+                    assert!(provider.observed.lock().unwrap().is_empty());
+                    assert!(engine.is_empty());
+                });
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn changing_dimension_discards_queued_named_explosion_debris() {
+        run_with_game_stack(|| {
+            let provider = Provider::default();
+            let mods = vec![ModEntry::new("fixture", Box::new(provider.clone()))];
+            mod_platform::testing::with_mods(mods.into(), || {
+                with_client_game(|game| {
+                    let _server = logged_client(game);
+                    game.particles = fixture_engine(&sprite_description());
+                    let _world = PhaseOwner::scope(ModPhase::World);
+                    let at = [0.0, 100.0, 0.0];
+                    let debris = [ExplosionParticle {
+                        options: ParticleOptions::named(TYPE),
+                        scaling: 1.0,
+                        speed: 1.0,
+                        weight: 1,
+                    }];
+                    game.particles.camera = at;
+                    game.particles.track_explosion(at, 1.0, 1, &debris);
+                    game.particle_fixture_tick();
+                    assert_eq!(provider.observed.lock().unwrap().len(), 1);
+                    provider.observed.lock().unwrap().clear();
+
+                    game.particles.track_explosion(at, 1.0, 1, &debris);
+                    game.handle_packet(Clientbound::Respawn(Respawn {
+                        spawn: SpawnInfo {
+                            dimension_type: 0,
+                            dimension: "minecraft:the_nether".into(),
+                            seed: 0,
+                            game_type: 0,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: false,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 32,
+                        },
+                        keep: 0,
+                    }))
+                    .unwrap();
+                    assert_eq!(game.dim.id(), "minecraft:the_nether");
+                    game.particles.camera = at;
+                    game.particles.particle_level = 0;
+                    game.particle_fixture_tick();
+                    assert!(provider.observed.lock().unwrap().is_empty());
+                    assert!(game.particles.is_empty());
                 });
             });
         });

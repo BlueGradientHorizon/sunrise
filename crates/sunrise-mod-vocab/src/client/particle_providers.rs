@@ -5,7 +5,7 @@
 //! particle for each admitted spawn request, before the particle engine considers its group quota.
 use crate::{
     BlockState, Identifier, LightLayer, ParticleOptions, RandomSource,
-    RegisterParticleProvidersEvent,
+    RegisterParticleProvidersEvent, callback_owner::CallbackOwner,
 };
 
 /// How a provider's particle quad is oriented (`SingleQuadParticle.FacingCameraMode`).
@@ -45,7 +45,8 @@ pub trait ParticleLevelView {
 // no wire: holds live options, level and random loans for the duration of the call.
 #[non_exhaustive]
 pub struct ParticleSpawn<'a> {
-    /// The registered request and its typed options, before construction.
+    /// The registered request and its typed options, before construction. Local spawns retain
+    /// their supplied fields; named network particles rebuild the options from the ID and defaults.
     pub options: &'a ParticleOptions,
     /// The raw position the caller requested, in world coordinates.
     pub position: [f64; 3],
@@ -231,7 +232,7 @@ pub fn particle_sprite_set(frame_count: usize) -> ParticleSpriteSet {
 
 impl RegisterParticleProvidersEvent<'_> {
     /// Stage a factory for a particle type's `assets/<namespace>/particles/<path>.json` sprite set
-    /// (NeoForge's `registerSpriteSet`). Use the ID passed to `Registrar::particle_key`.
+    /// (NeoForge's `registerSpriteSet`). Use the ID passed to `Registrar::declare_particle`.
     /// A phase-refused listener's entries are discarded. For each ID, only the last accepted
     /// factory runs, once per sprite load on the logical client. Unresolved textures use the
     /// atlas missing sprite in their declared slots; an empty description uses one missing sprite.
@@ -244,10 +245,14 @@ impl RegisterParticleProvidersEvent<'_> {
     ) {
         self.providers.push(ParticleProviderRegistration {
             id,
-            factory: Box::new(move |sprites| Box::new(factory(sprites))),
+            owner: CallbackOwner::for_mod(self.registering_mod),
+            factory: Some(Box::new(move |sprites| Box::new(factory(sprites)))),
         });
     }
 }
+
+// Kept in its owner-aware registration record from staging to final disposal.
+type ProviderFactory = dyn Fn(ParticleSpriteSet) -> Box<dyn ParticleProvider> + Send + Sync;
 
 /// A staged sprite-set factory; dispatch attributes it to the registering mod.
 // no wire: registration retains executable native code.
@@ -255,6 +260,42 @@ impl RegisterParticleProvidersEvent<'_> {
 pub struct ParticleProviderRegistration {
     /// The registered particle type's ID.
     pub id: Identifier,
-    /// Constructs the provider for the loaded nonempty sprite set.
-    pub factory: Box<dyn Fn(ParticleSpriteSet) -> Box<dyn ParticleProvider> + Send + Sync>,
+    owner: CallbackOwner,
+    factory: Option<Box<ProviderFactory>>,
+}
+
+impl ParticleProviderRegistration {
+    /// The mod that staged the factory.
+    pub fn mod_id(&self) -> &'static str {
+        self.owner.id()
+    }
+
+    /// Bind the factory under its owner's panic boundary. The caller retains any value produced
+    /// despite a phase refusal, so it can dispose of that mod value under the same policy.
+    pub fn bind(
+        &self,
+        sprites: ParticleSpriteSet,
+        provider: &mut Option<Box<dyn ParticleProvider>>,
+    ) -> Result<(), String> {
+        let factory = self
+            .factory
+            .as_ref()
+            .expect("live particle provider factory");
+        self.owner
+            .call("particle provider", "bind_particle_provider", || {
+                *provider = Some(factory(sprites));
+            })
+    }
+}
+
+impl Drop for ParticleProviderRegistration {
+    fn drop(&mut self) {
+        if let Some(factory) = self.factory.take() {
+            self.owner.dispose(
+                "particle provider",
+                "drop_particle_provider_factory",
+                factory,
+            );
+        }
+    }
 }

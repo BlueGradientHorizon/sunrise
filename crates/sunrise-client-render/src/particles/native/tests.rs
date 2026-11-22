@@ -552,6 +552,105 @@ fn lit_chunk() -> Chunk {
     Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(Box::new([0xB4; 4096]));
     chunk
 }
+#[derive(Clone, Default)]
+struct SpawnLightProbe(Arc<Mutex<Vec<(f32, u8)>>>);
+impl ParticleProvider for SpawnLightProbe {
+    fn create_particle(
+        &self,
+        spawn: &mut ParticleSpawn<'_>,
+        _: &mut dyn ParticleTickView,
+    ) -> Option<Box<dyn CustomParticle>> {
+        self.0.lock().unwrap().push((
+            spawn.options.scale,
+            spawn.level.brightness(LightLayer::Block, [1, 64, 3]),
+        ));
+        Some(Box::new(self.clone()))
+    }
+}
+impl CustomParticle for SpawnLightProbe {}
+
+#[test]
+fn direct_create_lends_the_level_without_the_add_particle_limiters() {
+    let provider = SpawnLightProbe::default();
+    let mut engine = fixture_engine(provider_factories([(
+        "example:orbit",
+        Arc::new(provider.clone()),
+    )]));
+    let mut scene = Scene::new();
+    scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+    let level = scene.level();
+    let typed = fixture_options();
+    engine.particle_level = 2;
+    engine.create(
+        &ParticleOptions::named("example:orbit"),
+        [100.0, 64.0, 3.0],
+        [0.0; 3],
+        SpawnScope::with_level(&level, Some(&typed)),
+    );
+    assert_eq!(*provider.0.lock().unwrap(), [(1.0, 4)]);
+    engine.tick(&level);
+    assert_eq!(engine.len(), 1);
+}
+
+#[test]
+fn named_local_sends_lend_the_level_for_single_and_spread_spawns() {
+    let provider = SpawnLightProbe::default();
+    let mut engine = fixture_engine(provider_factories([(
+        "example:orbit",
+        Arc::new(provider.clone()),
+    )]));
+    let mut scene = Scene::new();
+    scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+    let level = scene.level();
+    let typed = fixture_options();
+    for count in [0, 2] {
+        engine.send_particles(
+            &ParticleOptions::named("example:orbit"),
+            [0.0; 3],
+            [0.0; 3],
+            0.0,
+            count,
+            SpawnScope::with_level(&level, Some(&typed)),
+        );
+    }
+    assert_eq!(*provider.0.lock().unwrap(), [(1.0, 4); 3]);
+}
+
+#[test]
+fn named_tracking_emitter_lends_the_level_on_its_constructor_tick() {
+    let provider = SpawnLightProbe::default();
+    let mut engine = fixture_engine(provider_factories([(
+        "example:orbit",
+        Arc::new(provider.clone()),
+    )]));
+    let mut scene = Scene::new();
+    scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+    let body = TrackingBody {
+        feet: [0.0; 3],
+        width: 1.0,
+        height: 2.0,
+    };
+    engine.seed_randoms(0, 0, 0);
+    {
+        let level = scene.level();
+        let mut typed = fixture_options();
+        typed.scale = 2.5;
+        engine.tracking_emitter_for(
+            ParticleOptions::named("example:orbit"),
+            TrackingTarget::Entity(7),
+            body,
+            2,
+            SpawnScope::with_level(&level, Some(&typed)),
+        );
+    }
+    // Vanilla's 16 attempts with Java Random(0) admit seven per burst here.
+    assert_eq!(*provider.0.lock().unwrap(), [(2.5, 4); 7]);
+    provider.0.lock().unwrap().clear();
+    scene.world.chunks.clear();
+    engine.tick_tracking(&scene.level(), |_| Some(body));
+    assert_eq!(*provider.0.lock().unwrap(), [(2.5, 0); 7]);
+}
+
 fn lights(view: &super::ProviderLevel, pos: [i32; 3]) -> (u8, u8) {
     (
         view.brightness(LightLayer::Sky, pos),
@@ -1006,6 +1105,91 @@ fn a_phase_refused_tick_does_not_poison_or_retire_the_particle() {
         assert_eq!(particle.age, 1);
     });
     assert!(notices.is_empty());
+}
+
+#[test]
+fn a_refused_factory_capture_is_disposed_under_its_owner() {
+    use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+
+    struct PanickingCapture(Arc<AtomicBool>);
+    impl Drop for PanickingCapture {
+        fn drop(&mut self) {
+            self.0.store(true, Relaxed);
+            panic!("staged factory capture drop");
+        }
+    }
+    struct Refused(Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Refused {
+        fn register_particle_providers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
+        ) {
+            let capture = PanickingCapture(Arc::clone(&self.0));
+            event.register_sprite_set(Identifier::parse("example:orbit").unwrap(), move |_| {
+                std::hint::black_box(&capture);
+                SpawnLightProbe::default()
+            });
+            check_access("fixture_provider_world_access", LoadAccess::WorldOnly);
+        }
+    }
+    struct Later {
+        capture_dropped: Arc<AtomicBool>,
+        binds: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Later {
+        fn register_particle_providers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
+        ) {
+            assert!(self.capture_dropped.load(Relaxed));
+            let binds = Arc::clone(&self.binds);
+            event.register_sprite_set(Identifier::parse("example:peer").unwrap(), move |_| {
+                binds.fetch_add(1, Relaxed);
+                SpawnLightProbe::default()
+            });
+        }
+    }
+
+    let capture_dropped = Arc::new(AtomicBool::new(false));
+    let binds = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        mod_api::ModEntry::new(
+            "first_refused",
+            Box::new(Refused(Arc::clone(&capture_dropped))),
+        ),
+        mod_api::ModEntry::new(
+            "later",
+            Box::new(Later {
+                capture_dropped,
+                binds: Arc::clone(&binds),
+            }),
+        ),
+    ];
+    let (_, notices) = capture_callback_panic_notices(|| {
+        mod_platform::testing::with_mods(mods.into(), || {
+            let _phase = PhaseOwner::scope(ModPhase::Registration);
+            let mut staged = Vec::new();
+            mod_api::dispatch_register_particle_providers(&RegistrationContext::new(), &mut staged);
+            let [registration] = staged.as_slice() else {
+                panic!("only the later listener may publish a factory");
+            };
+            assert_eq!(registration.mod_id, "later");
+            assert_eq!(binds.load(Relaxed), 0);
+            let _engine = fixture_engine(Arc::new(native::freeze(staged)));
+            assert_eq!(binds.load(Relaxed), 1);
+        });
+    });
+    let [notice] = notices.as_slice() else {
+        panic!("expected one toast, got {notices:?}");
+    };
+    assert_eq!(notice.mod_id, "first_refused");
+    assert_eq!(notice.operation, "drop_particle_provider_factory");
+    assert_eq!(notice.message, "staged factory capture drop");
 }
 
 #[test]

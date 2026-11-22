@@ -1017,7 +1017,8 @@ pub(in crate::game) fn resolve_particle_providers(
     if mod_api::__private::particles_resolved() {
         return Ok(());
     }
-    // Resolve all particle providers once, alongside the other load-owned registries.
+    // Complete vanilla and asset-defined types alongside native declarations. Client sprite
+    // binding is separate: a registered native identity does not depend on a description.
     let mut particles: Vec<String> = sunrise_client::particles::ParticleType::ALL
         .iter()
         .map(|ty| format!("minecraft:{}", ty.name()))
@@ -1044,11 +1045,12 @@ pub(in crate::game) fn resolve_particle_providers(
             }),
     );
     mod_api::__private::resolve_particles(particles.iter().map(String::as_str), |id| {
-        sunrise_client::particles::ParticleType::from_name(id)
-            .map(|ty| mod_api::__private::ParticleKind::Vanilla(ty as u32))
-            .or_else(|| {
-                (!id.starts_with("minecraft:")).then_some(mod_api::__private::ParticleKind::Custom)
-            })
+        Some(
+            sunrise_client::particles::ParticleType::from_name(id)
+                .map_or(mod_api::__private::ParticleKind::Custom, |ty| {
+                    mod_api::__private::ParticleKind::Vanilla(ty as u32)
+                }),
+        )
     })
     .map_err(|errors| errors.join("\n"))?;
     Ok(())

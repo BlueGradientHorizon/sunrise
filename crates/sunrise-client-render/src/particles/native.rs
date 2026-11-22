@@ -71,18 +71,6 @@ pub(super) fn registered() -> Arc<Factories> {
 pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> Factories {
     let mut factories = BTreeMap::new();
     for Answered { answer, mod_id, .. } in providers {
-        let Some(owner) = CallbackOwner::new(mod_id) else {
-            log::warn!(
-                "Particle provider {} has no installed owner {mod_id}",
-                answer.id
-            );
-            CallbackOwner::for_mod(mod_id).dispose(
-                "particle provider",
-                "drop_particle_provider_factory",
-                answer,
-            );
-            continue;
-        };
         let key = answer.id.to_string();
         let callbacks = Arc::new(ProviderCallbacks {
             id: answer.id.clone(),
@@ -94,16 +82,14 @@ pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> 
         if let Some(previous) = factories.insert(
             key,
             Factory {
-                registration: Some(answer),
-                owner,
+                registration: answer,
                 callbacks,
             },
         ) {
-            let registration = previous.registration.as_ref().expect("frozen factory");
             log::warn!(
                 "Particle provider {} from mod {} was replaced by mod {mod_id}",
-                registration.id,
-                previous.owner.id(),
+                previous.registration.id,
+                previous.mod_id(),
             );
         }
     }
@@ -111,28 +97,20 @@ pub(super) fn freeze(providers: Vec<Answered<ParticleProviderRegistration>>) -> 
 }
 
 pub(super) struct Factory {
-    registration: Option<ParticleProviderRegistration>,
-    owner: CallbackOwner,
+    registration: ParticleProviderRegistration,
     callbacks: Arc<ProviderCallbacks>,
 }
 
 impl Factory {
     pub(super) fn bind(&self, sprites: ParticleSpriteSet) -> Binding {
-        let registration = self.registration.as_ref().expect("frozen factory");
         let mut binding = BoundProvider {
             callbacks: Arc::clone(&self.callbacks),
             provider: None,
         };
-        // If a factory catches its own phase unwind, a returned provider is still disposed
-        // under its owner instead of being dropped by the refusal boundary.
-        match self
-            .owner
-            .call("particle provider", "bind_particle_provider", || {
-                binding.provider = Some((registration.factory)(sprites));
-            }) {
+        match self.registration.bind(sprites, &mut binding.provider) {
             Ok(()) => Binding::Bound(binding),
             Err(error) => {
-                log::warn!("Particle provider {}: {error}", registration.id);
+                log::warn!("Particle provider {}: {error}", self.registration.id);
                 Binding::Unavailable {
                     mod_id: self.mod_id(),
                 }
@@ -141,17 +119,7 @@ impl Factory {
     }
 
     pub(super) fn mod_id(&self) -> &'static str {
-        self.owner.id()
-    }
-}
-
-impl Drop for Factory {
-    fn drop(&mut self) {
-        self.callbacks.dispose.dispose(
-            "particle provider",
-            "drop_particle_provider_factory",
-            self.registration.take(),
-        );
+        self.registration.mod_id()
     }
 }
 

@@ -2,7 +2,8 @@
 use super::*;
 
 impl ParticleEngine {
-    /// `ClientPacketListener.handleParticleEvent` for `ServerLevel.sendParticles`.
+    /// Local emission of a `ServerLevel.sendParticles` effect. Named providers require a live
+    /// level loan in `scope`, just as they do in [`Self::add_with`].
     pub fn send_particles(
         &mut self,
         options: &ParticleOptions,
@@ -34,6 +35,7 @@ impl ParticleEngine {
     }
     /// `ParticleEngine.createParticle`: bypass the level's distance and settings
     /// checks, but still apply `ParticleLimit.SPORE_BLOSSOM` when queuing the result.
+    /// Lend the live level in `scope` when creating a named particle.
     pub fn create(
         &mut self,
         options: &ParticleOptions,

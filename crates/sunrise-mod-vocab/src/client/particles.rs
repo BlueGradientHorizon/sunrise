@@ -22,7 +22,8 @@ pub enum PositionSource {
 #[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods use the constructors
 pub struct ParticleOptions {
-    /// Provider identity issued by `Registrar::particle_key`, never an engine enum.
+    /// Particle type issued by `Registrar::particle_key` or `Registrar::declare_particle`,
+    /// never an engine enum.
     pub ty: ParticleKey,
     /// `BlockParticleOption`: the block's particle sprite and terrain tint.
     pub block: Option<(String, u32)>,
