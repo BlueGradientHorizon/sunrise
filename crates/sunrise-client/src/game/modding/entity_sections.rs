@@ -290,7 +290,7 @@ impl LiveSectionHost {
     }
 
     fn entity_residency(&self, entity: EntityRef) -> EntityResidency {
-        self.0
+        self.writer
             .filter(|writer| writer.entity == entity)
             .map_or(EntityResidency::Gone, |writer| writer.residency)
     }
