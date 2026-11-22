@@ -2749,8 +2749,7 @@ impl Game<'_> {
                         Lid::Shulker(shulker),
                         Vec3::new(delta[0], delta[1], delta[2]),
                     );
-                    // A client of a server pushes only its own player, as
-                    // the shulker box's lid does.
+                    // Use the same client push as a shulker box's lid.
                     if self.remote.is_some() {
                         self.lid_push_local(lid, area, delta);
                     } else {
