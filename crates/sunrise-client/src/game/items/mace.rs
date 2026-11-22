@@ -328,7 +328,11 @@ impl Game<'_> {
         let held = self.held().cloned();
         let aim = self.attacker_aim(source.attacker);
         let kind = self.mobs[index].kind.id.clone();
-        let (id, old_health) = (self.mobs[index].id, self.mobs[index].health);
+        let (id, join, old_health) = (
+            self.mobs[index].id,
+            self.mobs[index].join,
+            self.mobs[index].health,
+        );
         // The causing entity's aim, for what turns a blow by where it points
         // (`SulfurCube.knockback`).
         self.mobs[index].creative_attacker = self.creative;
