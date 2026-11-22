@@ -393,12 +393,15 @@ impl Opt {
                 2.0,
                 crate::options_file::MAX_RENDER_DISTANCE as f64,
             ),
-            // OptionInstance clamps a value outside its range for display; the saved one stays.
-            Opt::VanillaRenderDistance => unit(
-                s.render_distance.min(VANILLA_MAX_RENDER_DISTANCE) as f64,
-                2.0,
-                VANILLA_MAX_RENDER_DISTANCE as f64,
-            ),
+            // `IntRange(2, 32).toSliderValue`: the ends at 0 and 1, every value between them at
+            // its bin's centre. A Sunrise Graphics distance past 32 shows as 32 and stays saved.
+            Opt::VanillaRenderDistance => {
+                Kind::Slider(match s.render_distance.min(VANILLA_MAX_RENDER_DISTANCE) {
+                    d if d <= 2 => 0.0,
+                    VANILLA_MAX_RENDER_DISTANCE => 1.0,
+                    d => (f64::from(d) - 1.5) / f64::from(VANILLA_MAX_RENDER_DISTANCE - 1),
+                })
+            }
             Opt::SimulationDistance => unit(s.simulation_distance as f64, 5.0, 32.0),
             Opt::Sensitivity => Kind::Slider(s.sensitivity),
             Opt::WheelSensitivity => wheel::kind(s.mouse_wheel_sensitivity),
@@ -971,7 +974,16 @@ impl Opt {
                     step(2.0, crate::options_file::MAX_RENDER_DISTANCE as f64) as i32
             }
             Opt::VanillaRenderDistance => {
-                s.render_distance = step(2.0, VANILLA_MAX_RENDER_DISTANCE as f64) as i32
+                // `IntRange(2, 32).fromSliderValue`: floor into the inclusive bins, the top
+                // position read as 0.99999F. `AbstractSliderButton.setValue` applies only a
+                // changed value, so a saved distance past 32 stays until the slider moves.
+                let v = if v >= 1.0 { f64::from(0.99999_f32) } else { v };
+                let distance =
+                    (2.0 + v * f64::from(VANILLA_MAX_RENDER_DISTANCE - 1)).floor() as i32;
+                if distance == s.render_distance.min(VANILLA_MAX_RENDER_DISTANCE) {
+                    return;
+                }
+                s.render_distance = distance;
             }
             Opt::SimulationDistance => s.simulation_distance = step(5.0, 32.0) as i32,
             Opt::Sensitivity => s.sensitivity = v,
@@ -5234,7 +5246,8 @@ mod tests {
         // Sunrise Graphics' slider still reaches the extended range.
         set_slider(Opt::RenderDistance, &mut s, 1.0);
         assert_eq!(s.render_distance, crate::options_file::MAX_RENDER_DISTANCE);
-        // The classic page's slider stops at 32.
+        // The classic page's slider stops at 32, reached from inside its range.
+        s.render_distance = 10;
         set_slider(Opt::VanillaRenderDistance, &mut s, 1.0);
         assert_eq!(s.render_distance, 32);
         set_slider(Opt::VanillaRenderDistance, &mut s, 0.0);
@@ -5251,9 +5264,29 @@ mod tests {
             })
         };
         assert!(has(Opt::VanillaRenderDistance) && !has(Opt::RenderDistance));
-        // A saved 64 shows clamped to 32 and is not rewritten by looking at it.
+        // Vanilla's integer bins: 5.2% of the track is 3 chunks, shown at its bin's centre.
+        set_slider(Opt::VanillaRenderDistance, &mut s, 0.052);
+        assert_eq!(s.render_distance, 3);
+        assert_eq!(
+            Opt::VanillaRenderDistance.slider_position(&s),
+            Some(1.5 / 31.0)
+        );
+        // Stepping walks every distance from 2 to 32 and back.
+        s.render_distance = 2;
+        for distance in 3..=32 {
+            Opt::VanillaRenderDistance.step_slider(&mut s, true, 150.0);
+            assert_eq!(s.render_distance, distance);
+        }
+        for distance in (2..32).rev() {
+            Opt::VanillaRenderDistance.step_slider(&mut s, false, 150.0);
+            assert_eq!(s.render_distance, distance);
+        }
+        // A saved 64 shows as 32. Input that leaves the displayed 32 keeps it; a real move writes.
         s.render_distance = 64;
         assert_eq!(Opt::VanillaRenderDistance.slider_position(&s), Some(1.0));
+        set_slider(Opt::VanillaRenderDistance, &mut s, 1.0);
+        Opt::VanillaRenderDistance.step_slider(&mut s, true, 150.0);
+        assert_eq!(s.render_distance, 64);
         assert_eq!(
             Opt::VanillaRenderDistance.label(&s).plain(),
             Opt::VanillaRenderDistance
@@ -5266,6 +5299,8 @@ mod tests {
         let _ = ui.list_rows(&s);
         assert_eq!(s.render_distance, 64);
         assert!(Opt::RenderDistance.slider_position(&s).unwrap() > 0.4);
+        set_slider(Opt::VanillaRenderDistance, &mut s, 0.5);
+        assert_eq!(s.render_distance, 17);
     }
 
     #[test]
