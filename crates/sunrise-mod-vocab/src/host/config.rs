@@ -85,7 +85,7 @@ pub trait ConfigServerHost {
     #[access(Metadata)]
     fn game_tests_enabled(&self) -> bool;
     /// Side: server.
-    /// The server's tick rate (20 unless `/tick rate` changed it) and the
+    /// The server's tick rate (20 by default) and the
     /// milliseconds its ticks took on average lately, as `/tick query`
     /// reports them. The ticks a second it keeps up is the rate, or
     /// 1000 / milliseconds when that is lower.
@@ -126,13 +126,13 @@ pub trait ConfigServerHost {
     #[access(WorldOnly)]
     fn server_set_simulation_distance(&mut self, distance: i32) -> bool;
     /// Side: server.
-    /// Sets the server's tick rate, as `/tick rate` does (`ServerTickRateManager.setTickRate`):
-    /// the game ticks `rate` times a second from the next tick on, an autosave wait already
-    /// running is shortened when the new rate asks for less, and `server_tick_rate_changed`
-    /// fires. The players' clients follow on the next sync. False, with nothing changed, for a
-    /// rate outside 1 to 10000 (the command's range), one that isn't finite, a call from
-    /// inside `server_tick_rate_changed` (which would hear itself again without end), or on a
-    /// client.
+    /// Sets the logical server's tick rate (`ServerTickRateManager.setTickRate`).
+    /// `TickRateManager.setTickRate` raises finite values below 1 to 1; `/tick rate`'s upper
+    /// bound is only a command argument limit. Every accepted write, even an equal one, fires
+    /// `server_tick_rate_changed`, shortens the autosave wait if needed, then sends the final
+    /// rate and freeze state to clients. A nested write succeeds but skips already running
+    /// callbacks. A non-finite rate or a call off the logical server returns false and is logged
+    /// without changing the clock.
     #[access(WorldOnly)]
     fn set_tick_rate(&mut self, rate: f32) -> bool;
     /// Side: server.

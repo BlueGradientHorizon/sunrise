@@ -176,6 +176,14 @@ read the distances in chunks; `host.server_set_view_distance(d)` and
 dedicated server and return `false` otherwise. `server.properties` is not
 written.
 
+`host.set_tick_rate(tps)` uses the integrated or dedicated server's clock setter, not
+`/tick rate`'s parser. Finite rates below 1 become 1; non-finite rates are refused and
+logged. Even an equal write fires `server_tick_rate_changed` before the server can
+shorten its autosave countdown and sends the final rate and freeze state to clients.
+A listener can retune the clock: the nested write notifies other listeners but skips
+callbacks already running on this thread. The hook also runs when a server sprint ends,
+not when a client receives the server's rate.
+
 `host.tick_rate_is_frozen()` is `TickRateManager.isFrozen` (`/tick freeze`): `Some(true)` while the server's
 ticking is frozen, `None` on a client. A frozen server still runs the ticks `/tick step` asks for, so
 `server_tick_start`'s `world_running` can be true while it is frozen; read this to tell a frozen server from a

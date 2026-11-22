@@ -846,8 +846,6 @@ mod launch_timeout;
 mod leads;
 #[path = "game/blocks/level_access.rs"]
 mod level_access;
-#[path = "game/modding/level_control_hooks.rs"]
-mod level_control_hooks;
 #[path = "game/interface/level_particles.rs"]
 mod level_particles;
 #[path = "game/interface/level_sounds.rs"]

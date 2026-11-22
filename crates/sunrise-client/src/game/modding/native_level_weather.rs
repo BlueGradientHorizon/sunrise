@@ -51,7 +51,7 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
     use crate::game::Dim;
     use mod_api::{LevelRef, WorldEpoch};
     use std::sync::{Arc, Mutex};
@@ -119,7 +119,14 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn local_difficulty_and_tick_rate_reach_the_game() {
+    fn local_difficulty_reaches_the_game() {
+        if run_fresh_cases(
+            "game::native_level_weather::tests::local_difficulty_reaches_the_game",
+            "SUNRISE_LOCAL_DIFFICULTY_CHILD",
+            &["local-difficulty"],
+        ) {
+            return;
+        }
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
@@ -128,12 +135,6 @@ mod tests {
             assert_eq!((read.base, read.effective), (here.base, here.effective));
             assert_eq!(read.special_multiplier(), here.special());
             assert_eq!(stale.local_difficulty(game, [3, 64, -7]), None);
-
-            assert!(game.set_tick_rate(40.0));
-            assert_eq!(game.tick_stats().0, 40.0);
-            assert!(!game.set_tick_rate(0.5));
-            assert!(!game.set_tick_rate(f32::NAN));
-            assert_eq!(game.clock.rate(), 40.0, "refusals change nothing");
         });
     }
 

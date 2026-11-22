@@ -2769,12 +2769,18 @@ impl Hub {
         }
     }
 
+    /// `ServerTickRateManager.updateStateToClients`: send the current ticking state
+    /// and remember it for the next tick's synchronization.
+    pub fn send_ticking_state(&mut self, rate: f32, frozen: bool) {
+        self.ticking = (rate, frozen);
+        self.broadcast(&ticking_state(rate, frozen));
+    }
+
     /// `ServerTickRateManager.updateStepTicks` / `updateStateToClients`:
     /// send clock changes before the block events caused by their ticks.
     pub fn sync_ticking(&mut self, rate: f32, frozen: bool, steps: crate::clock::StepState) {
         if (rate, frozen) != self.ticking {
-            self.ticking = (rate, frozen);
-            self.broadcast(&ticking_state(rate, frozen));
+            self.send_ticking_state(rate, frozen);
         }
         // ServerTickRateManager.updateStepTicks: a step started or stopped.
         if steps.revision != self.stepping {
