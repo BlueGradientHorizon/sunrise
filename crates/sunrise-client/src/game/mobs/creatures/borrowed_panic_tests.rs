@@ -803,12 +803,17 @@ fn run_fixture(family: Family, output: Output, dim: Dim) {
             );
             assert_eq!(game.last_hurt_by_player.get(&71).map(|c| c.0), Some(99));
             assert_eq!(game.world.attachment_syncs, syncs);
-            if output == Output::Quiet {
-                let mut random = LegacyRandom::new(LEVEL_SEED);
-                let draw = (expected_value == 314).then(|| random.next_long());
-                assert_eq!(*probe.draw.lock().unwrap(), draw);
-                assert_eq!(game.world.random.clone().next_long(), random.next_long());
-            }
+            let mut random = LegacyRandom::new(LEVEL_SEED);
+            let draw = (expected_value == 314).then(|| random.next_long());
+            assert_eq!(*probe.draw.lock().unwrap(), draw, "seeded callback draw");
+            // The completed outputs don't advance this stream: egg loot uses its named
+            // sequence, entity motion and sound pitches use their own streams, and the
+            // directed guest hits and pig pushes need no random direction.
+            assert_eq!(
+                game.world.random.clone().next_long(),
+                random.next_long(),
+                "level RNG position after the first tick"
+            );
             let mut table = EntityTable::new(journal);
             for &(id, join) in &rows {
                 let found = table.entity_lookup(&owner.dimension, id, |at| {
