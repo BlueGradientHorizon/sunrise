@@ -7,6 +7,7 @@ use super::api_values::TryIntoApi;
 use super::level_sounds::LevelSound;
 use super::{Game, item_abilities::ability};
 use mod_api::SoundSource;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     collisions::SceneCollisions,
@@ -200,7 +201,8 @@ impl Game<'_> {
                         sy * pow + r.next_gaussian() * 0.01,
                         sz * pow + r.next_gaussian() * 0.01,
                     ];
-                    self.particles.add(&ParticleOptions::simple(particle), p, v);
+                    self.particles
+                        .add(&ParticleOptions::simple(particle), p, v, SpawnScope::BARE);
                 }
             }
             _ => {}
@@ -2143,8 +2145,12 @@ impl Game<'_> {
                 f64::from(pos.1 + 1),
                 f64::from(pos.2) + r.next_double(),
             ];
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Splash), p, [0.0; 3]);
+            self.particles.add(
+                &ParticleOptions::simple(ParticleType::Splash),
+                p,
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
         }
         self.audio.play(
             "minecraft:item.bottle.empty",

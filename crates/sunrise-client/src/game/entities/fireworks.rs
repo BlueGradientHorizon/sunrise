@@ -4,6 +4,7 @@
 //! damage with line of sight, and the client explosion (`createFireworks`).
 use super::{Game, Hit, dragon::FightWho, item_draw::owner_at, view_vector};
 use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_render::vertex_light,
     collisions::SceneCollisions,
@@ -594,8 +595,12 @@ impl Game<'_> {
             g(&mut self.world.random),
         ];
         let at = [r.position.x, r.position.y, r.position.z];
-        self.particles
-            .add(&ParticleOptions::simple(ParticleType::Firework), at, v);
+        self.particles.add(
+            &ParticleOptions::simple(ParticleType::Firework),
+            at,
+            v,
+            SpawnScope::BARE,
+        );
     }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
     /// rocket attached to the player.

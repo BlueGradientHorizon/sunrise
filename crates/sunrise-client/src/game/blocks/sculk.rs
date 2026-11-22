@@ -8,6 +8,7 @@ use mod_api::client::particles::PositionSource;
 use std::collections::HashSet;
 use sunrise_client::actions::Action;
 use sunrise_client::join_seq::ListStamp;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     containers::BlockEntity,
     effects::{EffectInstance, PlayerEffects},
@@ -1730,7 +1731,7 @@ impl Game<'_> {
                 c[1] + 0.65,
                 c[2] + r.next_gaussian() * 0.2,
             ];
-            self.particles.add(&options, p, [0.0; 3]);
+            self.particles.add(&options, p, [0.0; 3], SpawnScope::BARE);
         }
         let pitch = 0.6 + self.world.random.next_float() * 0.4;
         self.audio
@@ -1821,7 +1822,7 @@ impl Game<'_> {
                     f64::from(v[1] * 0.07),
                     f64::from(v[2] * 0.07),
                 ];
-                self.particles.add(&options, at, speed);
+                self.particles.add(&options, at, speed, SpawnScope::BARE);
             }
         }
     }
@@ -1846,8 +1847,12 @@ impl Game<'_> {
             let s = (r.next_double() * 2.0 - 1.0) * f64::from(0.005f32);
             speed[i] = if step[i] == 0 { s } else { 0.0 };
         }
-        self.particles
-            .add(&ParticleOptions::sculk_charge(roll), at, speed);
+        self.particles.add(
+            &ParticleOptions::sculk_charge(roll),
+            at,
+            speed,
+            SpawnScope::BARE,
+        );
     }
     /// `LevelEventHandler.levelEvent` 3007: ten shrieks and a local sound.
     pub(super) fn shriek_event(&mut self, pos: BlockPos) {
@@ -1857,6 +1862,7 @@ impl Game<'_> {
                 &ParticleOptions::shriek(i * 5),
                 [f64::from(pos.x) + 0.5, top, f64::from(pos.z) + 0.5],
                 [0.0; 3],
+                SpawnScope::BARE,
             );
         }
         let state = self.world.block(pos.x, pos.y, pos.z);
@@ -2178,6 +2184,7 @@ impl Game<'_> {
                     f64::from(pos[2]) + at[2],
                 ],
                 [0.0; 3],
+                SpawnScope::BARE,
             );
         }
     }

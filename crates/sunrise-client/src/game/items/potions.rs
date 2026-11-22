@@ -12,6 +12,7 @@ use super::{
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::health::{Attack, DamageLevel};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
@@ -900,7 +901,7 @@ impl Game<'_> {
                 f64::from(pos[2]) + r.next_double(),
             ];
             let options = ParticleOptions::simple(ParticleType::Splash);
-            self.particles.add(&options, at, [0.0; 3]);
+            self.particles.add(&options, at, [0.0; 3], SpawnScope::BARE);
             self.lan_send_particles(super::lan_particles::QueuedParticle {
                 dimension: self.dim.id(),
                 options,

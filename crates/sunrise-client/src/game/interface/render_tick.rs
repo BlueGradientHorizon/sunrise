@@ -8,6 +8,7 @@ use mod_api::{
 use sunrise_client::assets::Properties;
 use sunrise_client::camera::NearPlane;
 use sunrise_client::fog::{FogData, FogInputs, FogType, settle_rain_fog, update_rain_fog};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     animate_tick::{AnimateContext, AnimateSampling, campfire_particles, marker_particle_target},
     biome::Biomes,
@@ -857,8 +858,12 @@ impl Game<'_> {
                             f64::from(below) + block_top.max(fluid_top),
                             f64::from(z) + bz,
                         ];
-                        self.particles
-                            .add(&ParticleOptions::simple(ty), p, [0.0; 3]);
+                        self.particles.add(
+                            &ParticleOptions::simple(ty),
+                            p,
+                            [0.0; 3],
+                            SpawnScope::BARE,
+                        );
                     }
                     // The last rain column of the tick makes the sound, more often the
                     // longer it has been quiet; indoors it is the quieter one.

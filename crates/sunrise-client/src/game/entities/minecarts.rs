@@ -18,6 +18,7 @@ use sunrise_client::actions::Action;
 use sunrise_client::entity_rules::EntityRules;
 use sunrise_client::join_seq::{JoinList, ListStamp};
 use sunrise_client::mobs::{Mob, seen_grid::SeenGrid};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     blocks::Fluid,
     containers::BlockEntity,
@@ -1471,6 +1472,7 @@ impl Game<'_> {
                         &ParticleOptions::simple(ParticleType::LargeSmoke),
                         at,
                         [0.0; 3],
+                        SpawnScope::BARE,
                     );
                 }
             }
@@ -1485,8 +1487,12 @@ impl Game<'_> {
                 if c.fuse > 0 {
                     c.fuse -= 1;
                     let at = [c.position.x, c.position.y + 0.5, c.position.z];
-                    self.particles
-                        .add(&ParticleOptions::simple(ParticleType::Smoke), at, [0.0; 3]);
+                    self.particles.add(
+                        &ParticleOptions::simple(ParticleType::Smoke),
+                        at,
+                        [0.0; 3],
+                        SpawnScope::BARE,
+                    );
                 } else if c.fuse == 0 {
                     // explode(horizontalDistanceSqr()): a rising cart's
                     // vertical speed adds nothing.

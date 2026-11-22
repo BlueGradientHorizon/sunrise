@@ -3,6 +3,7 @@
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
 use super::{Dim, Game};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -1455,15 +1456,17 @@ impl Game<'_> {
                 r.next_double() * 0.2,
                 r.next_gaussian() * 0.15,
             ];
-            self.particles.add(&crumbs, [x, y, z], v);
+            self.particles.add(&crumbs, [x, y, z], v, SpawnScope::BARE);
         }
         let portal = ParticleOptions::simple(ParticleType::Portal);
         let mut angle = 0.0f64;
         while angle < std::f64::consts::PI * 2.0 {
             let (c, s) = (angle.cos(), angle.sin());
             let at = [x + c * 5.0, y - 0.4, z + s * 5.0];
-            self.particles.add(&portal, at, [c * -5.0, 0.0, s * -5.0]);
-            self.particles.add(&portal, at, [c * -7.0, 0.0, s * -7.0]);
+            self.particles
+                .add(&portal, at, [c * -5.0, 0.0, s * -5.0], SpawnScope::BARE);
+            self.particles
+                .add(&portal, at, [c * -7.0, 0.0, s * -7.0], SpawnScope::BARE);
             angle += std::f64::consts::PI / 20.0;
         }
     }
@@ -1485,7 +1488,8 @@ impl Game<'_> {
             if water {
                 let bubble = ParticleOptions::simple(ParticleType::Bubble);
                 for _ in 0..4 {
-                    self.particles.add(&bubble, origin, movement);
+                    self.particles
+                        .add(&bubble, origin, movement, SpawnScope::BARE);
                 }
             } else {
                 let r = self.particles.random();
@@ -1493,7 +1497,7 @@ impl Game<'_> {
                 let z = origin[2] + r.next_double() * 0.6 - 0.3;
                 let portal = ParticleOptions::simple(ParticleType::Portal);
                 self.particles
-                    .add(&portal, [x, origin[1] - 0.5, z], movement);
+                    .add(&portal, [x, origin[1] - 0.5, z], movement, SpawnScope::BARE);
             }
         }
     }

@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use sunrise_client::advancements::EntityView;
 use sunrise_client::chunk::LevelShape;
 use sunrise_client::join_seq::Joined as _;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     items::ItemStack,
@@ -786,8 +787,12 @@ impl Game<'_> {
         } else {
             ParticleType::GustEmitterLarge
         };
-        self.particles
-            .add(&ParticleOptions::simple(ty), center, [1.0, 0.0, 0.0]);
+        self.particles.add(
+            &ParticleOptions::simple(ty),
+            center,
+            [1.0, 0.0, 0.0],
+            SpawnScope::BARE,
+        );
         self.lan_wind_burst(center, radius, src.sound, block_count, &pushed);
         Ok(())
     }

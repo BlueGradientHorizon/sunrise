@@ -1,6 +1,7 @@
 //! The dying ender dragon (`EnderDragon.tickDeath` and its die event), in its
 //! own module so `dragon.rs` keeps its size.
 use super::*;
+use sunrise_client::particles::SpawnScope;
 impl Game<'_> {
     /// `tickDeath`: rising for 200 ticks, explosions, experience, then the
     /// exit portal, the egg and a gateway.
@@ -25,6 +26,7 @@ impl Game<'_> {
                 &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                 [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                 [0.0; 3],
+                SpawnScope::BARE,
             );
         }
         // Only the fight's own dragon has a fight (`dragonFight`): elsewhere

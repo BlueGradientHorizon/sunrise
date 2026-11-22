@@ -1,4 +1,5 @@
 use super::*;
+use crate::particles::SpawnScope;
 use crate::particles::polytone_gpu::GLUE;
 use glam::Mat4;
 use sunrise_polytone::gpu_particle::{GPU_PARTICLE_GLSL, GPU_PARTICLE_INCLUDE, HeightmapArea};
@@ -652,7 +653,12 @@ fn the_quads_drawn_on_the_cpu_fit_the_device() {
     let at = [0.5, 64.0, 0.5];
     engine.camera = at;
     for name in ["test:big", "test:small"] {
-        engine.add(&ParticleOptions::named(name), at, [0.0; 3]);
+        engine.add(
+            &ParticleOptions::named(name),
+            at,
+            [0.0; 3],
+            SpawnScope::BARE,
+        );
     }
     assert_eq!(engine.polytone_gpu_records(), 2);
     let mut particles = CoreParticles::new(&device, &queue, (FORMAT, false));

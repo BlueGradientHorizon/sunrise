@@ -6,6 +6,7 @@ use super::{
     Game,
     pickups::{Collector, Taken},
 };
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     items::ItemStack,
     mobs::{Species, panda},
@@ -196,12 +197,12 @@ impl Game<'_> {
         for (item, crumbs) in bites {
             let options = self.item_particle(&ItemStack::new(&item, 1));
             for (at, velocity) in crumbs {
-                self.particles.add(&options, at, velocity);
+                self.particles.add(&options, at, velocity, SpawnScope::BARE);
             }
         }
         let options = ParticleOptions::simple(ParticleType::Sneeze);
         for (at, velocity) in sneezes {
-            self.particles.add(&options, at, velocity);
+            self.particles.add(&options, at, velocity, SpawnScope::BARE);
         }
     }
 }

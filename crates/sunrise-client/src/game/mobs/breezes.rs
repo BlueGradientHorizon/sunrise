@@ -1,6 +1,7 @@
 //! Breeze particles (`Breeze.tick`): block dust at its feet while it stands,
 //! a burst of twenty while it slides and a short trail along a long jump.
 use super::{BlockStateId, Game};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     blocks::RenderShape,
     mobs::{Mob, Species, breeze},
@@ -58,7 +59,7 @@ impl Game<'_> {
             // the block's sprite it shows, never the level's random.
             let options = ParticleOptions::block(ParticleType::Block, sprite, tint);
             for _ in 0..amount {
-                self.particles.add(&options, at, [0.0; 3]);
+                self.particles.add(&options, at, [0.0; 3], SpawnScope::BARE);
             }
         }
     }

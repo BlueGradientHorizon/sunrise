@@ -81,7 +81,12 @@ fn each_loaded_pick_is_told_to_the_block_parts_after_its_vanilla_effects() {
             "the torch's own effects come first"
         );
         let at = pos.map(|v| f64::from(v) + 0.5);
-        stepped.add(&ParticleOptions::simple(T::Heart), at, [0.0; 3]);
+        stepped.add(
+            &ParticleOptions::simple(T::Heart),
+            at,
+            [0.0; 3],
+            SpawnScope::BARE,
+        );
         stops += 1;
     }
     assert!(stops > 0, "the tick picked a torch");

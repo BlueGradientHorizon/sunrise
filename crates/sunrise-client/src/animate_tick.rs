@@ -587,7 +587,7 @@ impl AnimateContext<'_> {
 }
 
 fn add(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
-    engine.add(&ParticleOptions::simple(ty), p, v);
+    engine.add(&ParticleOptions::simple(ty), p, v, SpawnScope::BARE);
 }
 /// `Level.addAlwaysVisibleParticle`: still shown under the Minimal option now and then.
 fn add_visible(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
@@ -606,7 +606,12 @@ fn sound(engine: &mut ParticleEngine, name: &'static str, p: [f64; 3], volume: f
     engine.sounds.push((name, p, volume, pitch, false));
 }
 fn redstone(engine: &mut ParticleEngine, p: [f64; 3]) {
-    engine.add(&ParticleOptions::dust([1.0, 0.0, 0.0], 1.0), p, [0.0; 3]);
+    engine.add(
+        &ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
+        p,
+        [0.0; 3],
+        SpawnScope::BARE,
+    );
 }
 
 /// `ClientLevel.animateTick` around the player's block position. A pick whose block has a part
@@ -814,7 +819,12 @@ fn animate_rest(
         && ctx.registry.state(state).is_some_and(|s| s.name == block)
         && let Some(options) = options(state)
     {
-        engine.add(&options, pos.map(|v| f64::from(v) + 0.5), [0.0; 3]);
+        engine.add(
+            &options,
+            pos.map(|v| f64::from(v) + 0.5),
+            [0.0; 3],
+            SpawnScope::BARE,
+        );
     }
     if !facts.full_collision {
         let biome = ctx
@@ -1181,7 +1191,7 @@ fn block_animate_tick(
                 } else {
                     ParticleOptions::simple(ty)
                 };
-                engine.add(&options, p, [0.0; 3]);
+                engine.add(&options, p, [0.0; 3], SpawnScope::BARE);
             }
         }
         Animate::NetherPortal => {
@@ -1568,7 +1578,12 @@ fn block_animate_tick(
                     base + 0.5 + 0.1 * f64::from(-facing[i]) + 0.2 * f64::from(-connected[i])
                 };
                 let p = [at(fx, 0), at(fy, 1), at(fz, 2)];
-                engine.add(&ParticleOptions::dust([1.0, 0.0, 0.0], 0.5), p, [0.0; 3]);
+                engine.add(
+                    &ParticleOptions::dust([1.0, 0.0, 0.0], 0.5),
+                    p,
+                    [0.0; 3],
+                    SpawnScope::BARE,
+                );
             }
         }
         Animate::Repeater { facing, delay } => {
@@ -1649,7 +1664,7 @@ fn block_animate_tick(
                 });
                 let options = ParticleOptions::simple(T::ElectricSpark);
                 for (p, v) in sparks {
-                    engine.add(&options, p, v);
+                    engine.add(&options, p, v, SpawnScope::BARE);
                 }
             }
         }
@@ -1687,6 +1702,7 @@ fn block_animate_tick(
                         &ParticleOptions::block(T::FallingDust, String::new(), color),
                         p,
                         [0.0; 3],
+                        SpawnScope::BARE,
                     );
                 }
             }
@@ -1753,6 +1769,7 @@ fn block_animate_tick(
                         &ParticleOptions::dust(color, 1.0),
                         [fx + c(0), fy + c(1), fz + c(2)],
                         [0.0; 3],
+                        SpawnScope::BARE,
                     );
                 }
             };
@@ -1795,6 +1812,7 @@ fn block_animate_tick(
                     &crate::particles::ParticleOptions::sculk_to_redstone(),
                     [x, fy + 0.25, z],
                     [0.0, ya, 0.0],
+                    SpawnScope::BARE,
                 );
             }
         }

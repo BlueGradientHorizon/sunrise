@@ -59,7 +59,7 @@ fn spawn_tick(engine: &mut ParticleEngine, rng: &mut Lcg, types: &[Emitter], roc
                 rng.signed() * speed,
                 rng.signed() * speed,
             ];
-            engine.add(&options, p, v);
+            engine.add(&options, p, v, SpawnScope::BARE);
         }
     }
 }

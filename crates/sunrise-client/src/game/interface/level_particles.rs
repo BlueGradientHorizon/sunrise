@@ -6,7 +6,7 @@
 //! and 3009.
 use super::Game;
 use sunrise_client::items::ItemStack;
-use sunrise_client::particles::{self, ParticleOptions, ParticleType};
+use sunrise_client::particles::{self, ParticleOptions, ParticleType, SpawnScope};
 use sunrise_core::{geometry::trig, position::BlockPos, random::RandomSource};
 use sunrise_world::level::LevelEvent;
 use sunrise_world::registry::BlockStateId;
@@ -52,7 +52,7 @@ impl Game<'_> {
         }
         let options = ParticleOptions::simple(ty);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `BoneMealItem.addGrowthParticles` (event 1505, `count` the data):
@@ -141,7 +141,7 @@ impl Game<'_> {
                     .facts()
                     .is_air(self.world.block(below[0], below[1], below[2]))
             {
-                self.particles.add(&options, [x, y, z], v);
+                self.particles.add(&options, [x, y, z], v, SpawnScope::BARE);
             }
         }
     }
@@ -166,7 +166,7 @@ impl Game<'_> {
         );
         let options = ParticleOptions::simple(ParticleType::EggCrack);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `LevelEventHandler` 1501 (lava put out) and 2009 (a wet sponge dried):
@@ -177,8 +177,12 @@ impl Game<'_> {
             let r = self.particles.level_random();
             let x = f64::from(pos.x) + r.next_double();
             let z = f64::from(pos.z) + r.next_double();
-            self.particles
-                .add(&options, [x, f64::from(pos.y) + 1.2, z], [0.0; 3]);
+            self.particles.add(
+                &options,
+                [x, f64::from(pos.y) + 1.2, z],
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
         }
     }
     /// `LevelEventHandler` 1502 (a redstone torch burning out): five smoke
@@ -190,7 +194,8 @@ impl Game<'_> {
             let x = f64::from(pos.x) + r.next_double() * 0.6 + 0.2;
             let y = f64::from(pos.y) + r.next_double() * 0.6 + 0.2;
             let z = f64::from(pos.z) + r.next_double() * 0.6 + 0.2;
-            self.particles.add(&options, [x, y, z], [0.0; 3]);
+            self.particles
+                .add(&options, [x, y, z], [0.0; 3], SpawnScope::BARE);
         }
     }
     /// `LevelEventHandler` 1503: smoke on the inserted eye.
@@ -200,8 +205,12 @@ impl Game<'_> {
             let r = self.particles.level_random();
             let x = f64::from(pos.x) + (5.0 + r.next_double() * 6.0) / 16.0;
             let z = f64::from(pos.z) + (5.0 + r.next_double() * 6.0) / 16.0;
-            self.particles
-                .add(&options, [x, f64::from(pos.y) + 0.8125, z], [0.0; 3]);
+            self.particles.add(
+                &options,
+                [x, f64::from(pos.y) + 0.8125, z],
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
         }
     }
     /// `LevelEventHandler` 2006 (`DragonFireball.onHit`): 200 dragon breath
@@ -226,6 +235,7 @@ impl Game<'_> {
                     f64::from(pos.z) + vz * 0.1,
                 ],
                 [vx, vy, vz],
+                SpawnScope::BARE,
             );
         }
         if data == 1 {
@@ -314,6 +324,7 @@ impl Game<'_> {
                 f64::from(pos.z) + 0.5 + offset[2],
             ],
             [0.0; 3],
+            SpawnScope::BARE,
         );
     }
     /// `ServerLevel.globalLevelEvent`: heard by every player on the server
@@ -406,7 +417,7 @@ impl Game<'_> {
             })
             .collect();
         for v in crumbs {
-            self.particles.add(&crumb, at, v);
+            self.particles.add(&crumb, at, v, SpawnScope::BARE);
         }
         let channel = |shift: i32| ((data >> shift) & 0xFF) as f32 / 255.0;
         let color = [channel(16), channel(8), channel(0)];
@@ -438,6 +449,7 @@ impl Game<'_> {
                     at[2] + velocity[2] * 0.1,
                 ],
                 velocity,
+                SpawnScope::BARE,
             );
         }
     }

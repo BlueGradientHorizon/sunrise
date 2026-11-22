@@ -6,7 +6,7 @@ use super::Game;
 use std::sync::Arc;
 use sunrise_client::entities::{ArmorStand, Cushion, ItemFrame, Painting};
 use sunrise_client::mobs::leash::Holder;
-use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_client::particles::{ParticleOptions, ParticleType, SpawnScope};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::entity_data::Value;
@@ -416,6 +416,7 @@ impl Game<'_> {
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
             if kind == super::minecarts::CartKind::Furnace
@@ -426,6 +427,7 @@ impl Game<'_> {
                     &ParticleOptions::simple(ParticleType::LargeSmoke),
                     [to.x, to.y + 0.8, to.z],
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
             // MinecartTNT.tick: a primed cart counts its fuse down and sheds smoke.
@@ -434,6 +436,7 @@ impl Game<'_> {
                     &ParticleOptions::simple(ParticleType::Smoke),
                     [to.x, to.y + 0.5, to.z],
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
             if from != to {

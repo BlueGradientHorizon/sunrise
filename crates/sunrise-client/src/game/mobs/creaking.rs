@@ -3,6 +3,7 @@
 //! and this applies what it reports to the world, the mobs and the speakers.
 use super::{Game, creatures::seen, persist::EntityUuids};
 use std::sync::Arc;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     chunk_map::{ChunkMap, ChunkMembershipDelta},
@@ -178,6 +179,7 @@ impl Game<'_> {
                     &ParticleOptions::trail(target, color, duration),
                     at,
                     [0.0; 3],
+                    SpawnScope::BARE,
                 ),
                 HeartEvent::OutputChanged(at) => self.container_changed((at[0], at[1], at[2])),
                 HeartEvent::BlockGameEvent(event, at, state) => {
@@ -241,6 +243,7 @@ impl Game<'_> {
                     &ParticleOptions::block(ParticleType::BlockCrumble, sprite.clone(), tint),
                     p,
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
         };

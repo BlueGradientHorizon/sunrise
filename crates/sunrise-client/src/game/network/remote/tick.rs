@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::particles::SpawnScope;
 
 impl Game<'_> {
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
@@ -1084,6 +1085,7 @@ impl Game<'_> {
                         &ParticleOptions::simple(kind),
                         [position.x, position.y, position.z],
                         [velocity.x, velocity.y, velocity.z],
+                        SpawnScope::BARE,
                     );
                 }
                 sunrise_client::motion::MotionEvent::Chime { volume, pitch } => {

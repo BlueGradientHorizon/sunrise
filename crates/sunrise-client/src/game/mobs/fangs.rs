@@ -3,7 +3,7 @@
 use super::Game;
 use std::sync::Arc;
 use sunrise_client::mobs::{Part, Species, anim::Poses};
-use sunrise_client::particles::{ParticleOptions, ParticleType};
+use sunrise_client::particles::{ParticleOptions, ParticleType, SpawnScope};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
@@ -141,7 +141,7 @@ impl Game<'_> {
         let crit = ParticleOptions::simple(ParticleType::Crit);
         for crits in bursts {
             for (at, velocity) in crits {
-                self.particles.add(&crit, at, velocity);
+                self.particles.add(&crit, at, velocity, SpawnScope::BARE);
             }
         }
     }

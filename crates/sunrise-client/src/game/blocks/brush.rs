@@ -6,6 +6,7 @@ use super::{
     item_draw::{BlockItemDraw, block_entity_pose},
     view_vector,
 };
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_render::vertex_light,
     camera::rotate_degrees,
@@ -118,7 +119,8 @@ impl Game<'_> {
                 0.0,
                 dz * flip * 3.0 * random.next_double(),
             ];
-            self.particles.add(&options, [x, hit.point[1], z], v);
+            self.particles
+                .add(&options, [x, hit.point[1], z], v, SpawnScope::BARE);
         }
     }
 

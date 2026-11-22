@@ -3,6 +3,7 @@
 use super::Game;
 use serde_json::Value;
 use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     item_render::stack_view,
     items::ItemStack,
@@ -44,7 +45,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `LivingEntity.handleEntityEvent` 47 to 52, 65 and 68 from a server:
@@ -95,7 +96,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `LivingEntity.breakItem`'s sound: the stack's `break_sound` (none when

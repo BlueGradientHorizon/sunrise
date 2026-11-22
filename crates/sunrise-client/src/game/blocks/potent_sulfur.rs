@@ -5,6 +5,7 @@
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
 use super::{Game, potions::mob_effect_id};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     block_entities::Pos,
@@ -401,6 +402,7 @@ impl Game<'_> {
                 f64::from(source[2]) + 0.5,
             ],
             [0.0; 3],
+            SpawnScope::BARE,
         );
     }
 
@@ -411,6 +413,7 @@ impl Game<'_> {
             &ParticleOptions::simple(T::NoxiousGasCloud),
             source.map(|c| f64::from(c) + 0.5),
             [0.0; 3],
+            SpawnScope::BARE,
         );
     }
 

@@ -4,6 +4,7 @@
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use super::Game;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     enchant::EffectContext,
     health::ArmorWeapon,
@@ -787,7 +788,8 @@ impl Game<'_> {
                 r.next_gaussian() * near,
                 r.next_gaussian() * near,
             ];
-            self.particles.add(&options, [x, center[1], z], v);
+            self.particles
+                .add(&options, [x, center[1], z], v, SpawnScope::BARE);
             i += 1;
         }
         let far = f64::from(0.05f32);
@@ -802,7 +804,8 @@ impl Game<'_> {
                 r.next_gaussian() * far,
                 r.next_gaussian() * far,
             ];
-            self.particles.add(&options, [x, center[1], z], v);
+            self.particles
+                .add(&options, [x, center[1], z], v, SpawnScope::BARE);
             i += 1;
         }
     }

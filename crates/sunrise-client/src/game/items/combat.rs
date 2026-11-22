@@ -1,6 +1,7 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 use super::{Game, commands::Target};
+use sunrise_client::particles::SpawnScope;
 
 #[cfg(test)]
 #[path = "tests/infested_roll_tests.rs"]
@@ -284,7 +285,7 @@ impl Game<'_> {
                 r.next_double() - r.next_double()
             };
             let p = [at[0] + triangle(), at[1] + triangle(), at[2] + triangle()];
-            self.particles.add(&bubble, p, velocity);
+            self.particles.add(&bubble, p, velocity, SpawnScope::BARE);
         }
     }
     /// Entity event 67 from a server, for this client's own player or an

@@ -78,7 +78,12 @@ impl Game<'_> {
         let arc = sunrise_client::particles::ParticleOptions::simple(
             sunrise_client::particles::ParticleType::SweepAttack,
         );
-        self.particles.add(&arc, at, [0.0; 3]);
+        self.particles.add(
+            &arc,
+            at,
+            [0.0; 3],
+            sunrise_client::particles::SpawnScope::BARE,
+        );
         // Player.sweepAttack's `sendParticles(SWEEP_ATTACK, ..., 0, dx, 0, dz, 0)`:
         // the offset is the one from the player to the particle.
         let origin = from.unwrap_or(at);

@@ -9,7 +9,7 @@ use sunrise_client::blocks::RenderShape;
 use sunrise_client::effects::effect_particle;
 use sunrise_client::mobs::MobEvent;
 use sunrise_client::motion::{LAVA, WATER};
-use sunrise_client::particles::{ParticleEngine, ParticleOptions, ParticleType};
+use sunrise_client::particles::{ParticleEngine, ParticleOptions, ParticleType, SpawnScope};
 use sunrise_client::pose::Pose;
 use sunrise_client_gameplay::mob_ambient as ambient;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
@@ -37,14 +37,22 @@ impl Game<'_> {
             match event {
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.particles
-                            .add(&ParticleOptions::simple(ty), at, velocity);
+                        self.particles.add(
+                            &ParticleOptions::simple(ty),
+                            at,
+                            velocity,
+                            SpawnScope::BARE,
+                        );
                     }
                 }
                 MobEvent::Particles { kind, at, count: 0 } => {
                     if let Some(ty) = ParticleType::from_name(kind) {
-                        self.particles
-                            .add(&ParticleOptions::simple(ty), at, [0.0; 3]);
+                        self.particles.add(
+                            &ParticleOptions::simple(ty),
+                            at,
+                            [0.0; 3],
+                            SpawnScope::BARE,
+                        );
                     }
                 }
                 MobEvent::ParticleColored {
@@ -55,6 +63,7 @@ impl Game<'_> {
                         &ParticleOptions::colored(ParticleType::EntityEffect, [r, g, b, 1.0]),
                         at,
                         [0.0; 3],
+                        SpawnScope::BARE,
                     );
                 }
                 // Each guest of a LAN host makes its own.
@@ -251,6 +260,7 @@ impl Game<'_> {
                 .with_source(&self.res.facts().get(state).name),
             [x, position.y + 0.1, z],
             [movement.x * -4.0, 1.5, movement.z * -4.0],
+            SpawnScope::BARE,
         );
     }
 
@@ -353,7 +363,7 @@ fn swirl(
     let x = feet.x + size.0 * (2.0 * r.next_double() - 1.0) * 0.5;
     let y = feet.y + size.1 * r.next_double();
     let z = feet.z + size.0 * (2.0 * r.next_double() - 1.0) * 0.5;
-    particles.add(&list[pick], [x, y, z], [1.0; 3]);
+    particles.add(&list[pick], [x, y, z], [1.0; 3], SpawnScope::BARE);
 }
 
 #[cfg(test)]

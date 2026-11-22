@@ -6,6 +6,7 @@ use super::{FallStep, FallingBlock, Game, fireworks::fireworks_of};
 use crate::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_client::items::ItemStack;
 use sunrise_client::join_seq::{JoinList, RestoreOrder};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_client::{
     collisions::SceneCollisions,
@@ -51,7 +52,8 @@ impl Game<'_> {
             if p.is_spectral_arrow() {
                 if !p.stuck {
                     let options = ParticleOptions::simple(ParticleType::Effect);
-                    self.particles.add(&options, [at.x, at.y, at.z], [0.0; 3]);
+                    self.particles
+                        .add(&options, [at.x, at.y, at.z], [0.0; 3], SpawnScope::BARE);
                 }
                 continue;
             }
@@ -87,7 +89,8 @@ impl Game<'_> {
             let x = at.x + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
             let y = at.y + SIZE * r.next_double();
             let z = at.z + SIZE * (2.0 * r.next_double() - 1.0) * 0.5;
-            self.particles.add(&options, [x, y, z], [0.0; 3]);
+            self.particles
+                .add(&options, [x, y, z], [0.0; 3], SpawnScope::BARE);
         }
     }
 
@@ -112,7 +115,8 @@ impl Game<'_> {
     pub(super) fn smoke_trails(&mut self, at: impl IntoIterator<Item = Vec3>) {
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in at {
-            self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3], SpawnScope::BARE);
         }
     }
 
@@ -128,7 +132,8 @@ impl Game<'_> {
             .map(|p| p.position)
             .collect();
         for p in at {
-            self.particles.add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .add(&trail, [p.x, p.y + 0.5, p.z], [0.0; 3], SpawnScope::BARE);
         }
     }
 
@@ -136,7 +141,8 @@ impl Game<'_> {
         let bubble = ParticleOptions::simple(ParticleType::Bubble);
         for (position, speed) in at {
             for _ in 0..4 {
-                self.particles.add(&bubble, position, speed);
+                self.particles
+                    .add(&bubble, position, speed, SpawnScope::BARE);
             }
         }
     }
@@ -155,7 +161,7 @@ impl Game<'_> {
         for at in bullets {
             for _ in 0..2 {
                 let p = shulker_bullet_trail_at(at, self.particles.random());
-                self.particles.add(&options, p, [0.0; 3]);
+                self.particles.add(&options, p, [0.0; 3], SpawnScope::BARE);
             }
         }
     }
@@ -600,7 +606,8 @@ impl Game<'_> {
         let smoking: Vec<Vec3> = self.tnts.iter().map(|t| t.position).collect();
         let smoke = ParticleOptions::simple(ParticleType::Smoke);
         for p in smoking {
-            self.particles.add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3]);
+            self.particles
+                .add(&smoke, [p.x, p.y + 0.5, p.z], [0.0; 3], SpawnScope::BARE);
         }
         // FallingBlockEntity.tick runs on a client too: the block falls by
         // itself between the server's updates (every 20 ticks), then waits

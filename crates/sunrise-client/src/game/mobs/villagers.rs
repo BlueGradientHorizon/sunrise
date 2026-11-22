@@ -2,6 +2,7 @@
 //! reputation, sharing food and wares, picking up dropped items, making
 //! babies, calling iron golems and the prices they ask.
 use super::Game;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     gossip::{self, GossipType},
     items::ItemStack,
@@ -289,7 +290,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
 

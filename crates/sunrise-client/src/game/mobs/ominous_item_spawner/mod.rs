@@ -4,6 +4,7 @@
 //! projectile (`spawnItem`). Saved with its chunk's entities (persist.rs).
 use super::Game;
 use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_render::vertex_light,
     item_render,
@@ -231,7 +232,7 @@ impl Game<'_> {
             flights.push([from[0] - at[0], from[1] - at[1], from[2] - at[2]]);
         }
         for v in flights {
-            self.particles.add(&options, at, v);
+            self.particles.add(&options, at, v, SpawnScope::BARE);
         }
     }
     /// `OminousItemSpawnerRenderer`: the item, full bright, growing over its

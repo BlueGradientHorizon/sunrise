@@ -34,8 +34,12 @@ fn orb(at: Vec3) -> ExperienceOrb {
 pub(in crate::game) fn fill(game: &mut super::Game<'_>) {
     let at = game.particles.camera;
     for _ in 0..3 {
-        game.particles
-            .add(&ParticleOptions::simple(ParticleType::Flame), at, [0.0; 3]);
+        game.particles.add(
+            &ParticleOptions::simple(ParticleType::Flame),
+            at,
+            [0.0; 3],
+            sunrise_client::particles::SpawnScope::BARE,
+        );
     }
     let bursts = vec![FireworkExplosion::default(); 4];
     game.particles.fireworks(at, [0.0; 3], bursts, at, true);
@@ -362,6 +366,7 @@ fn add_frame_particles(game: &mut super::Game<'_>) {
             &ParticleOptions::simple(ParticleType::Flame),
             game.particles.camera,
             [0.0; 3],
+            sunrise_client::particles::SpawnScope::BARE,
         );
     }
     game.spawn_item(

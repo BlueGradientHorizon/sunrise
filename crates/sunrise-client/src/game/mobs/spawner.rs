@@ -7,6 +7,7 @@ use super::{
     creatures::{Finalized, SpawnReason},
 };
 use std::collections::{HashMap, HashSet};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     Result,
     containers::BlockEntity,
@@ -415,7 +416,8 @@ impl Game<'_> {
             let x = at.x + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at.y + h * r.next_double() - ya * 10.0;
             let z = at.z + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
+            self.particles
+                .add(&options, [x, y, z], [xa, ya, za], SpawnScope::BARE);
         }
     }
     /// `LevelEventHandler` 2004: twenty smoke and flame pairs around the spawner.
@@ -429,8 +431,10 @@ impl Game<'_> {
             let x = f64::from(pos[0]) + 0.5 + (r.next_double() - 0.5) * 2.0;
             let y = f64::from(pos[1]) + 0.5 + (r.next_double() - 0.5) * 2.0;
             let z = f64::from(pos[2]) + 0.5 + (r.next_double() - 0.5) * 2.0;
-            self.particles.add(&smoke, [x, y, z], [0.0; 3]);
-            self.particles.add(&flame, [x, y, z], [0.0; 3]);
+            self.particles
+                .add(&smoke, [x, y, z], [0.0; 3], SpawnScope::BARE);
+            self.particles
+                .add(&flame, [x, y, z], [0.0; 3], SpawnScope::BARE);
         }
     }
     /// The client copy's tick: particles and the spin while a player is near.
@@ -459,10 +463,18 @@ impl Game<'_> {
             return;
         };
         if let Some(p) = s.client_tick(near, display, random, pos) {
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Smoke), p, [0.0; 3]);
-            self.particles
-                .add(&ParticleOptions::simple(ParticleType::Flame), p, [0.0; 3]);
+            self.particles.add(
+                &ParticleOptions::simple(ParticleType::Smoke),
+                p,
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
+            self.particles.add(
+                &ParticleOptions::simple(ParticleType::Flame),
+                p,
+                [0.0; 3],
+                SpawnScope::BARE,
+            );
         }
     }
     /// `getOrCreateDisplayEntity`: the mob shown in the spawner, made again

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::hud::Rect;
 use sunrise_client::particles::polytone::Registry;
-use sunrise_client::particles::{ParticleEngine, ParticleOptions};
+use sunrise_client::particles::{ParticleEngine, ParticleOptions, SpawnScope};
 
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): `server_game`, not the mod fixture's `with_game`.
@@ -62,8 +62,12 @@ fn a_frame_of_gpu_records_only_draws_their_quads() {
     with_game(|game| {
         let at = [0.5, 80.0, 0.5];
         rain_particles(game, &rain_pack(false), at);
-        game.particles
-            .add(&ParticleOptions::named("test:rain"), at, [0.0; 3]);
+        game.particles.add(
+            &ParticleOptions::named("test:rain"),
+            at,
+            [0.0; 3],
+            SpawnScope::BARE,
+        );
         assert_eq!(game.client_particle_count(), 0, "not in the native count");
         assert_eq!(game.particles.polytone_gpu_records(), 1);
         let camera = glam::DVec3::new(at[0], at[1] + 2.0, at[2]);
@@ -86,9 +90,9 @@ fn rain_under_the_surface_is_hidden_from_its_first_frame() {
         rain_particles(game, &rain_pack(true), camera);
         let rain = ParticleOptions::named("test:rain");
         game.particles
-            .add(&rain, [0.5, bottom + 2.0, 0.5], [0.0; 3]);
+            .add(&rain, [0.5, bottom + 2.0, 0.5], [0.0; 3], SpawnScope::BARE);
         game.particles
-            .add(&rain, [0.5, bottom - 2.0, 0.5], [0.0; 3]);
+            .add(&rain, [0.5, bottom - 2.0, 0.5], [0.0; 3], SpawnScope::BARE);
         assert_eq!(game.particles.polytone_gpu_records(), 2);
         let camera = glam::DVec3::from_array(camera);
         game.polytone_gpu_decide(camera);
@@ -111,6 +115,7 @@ fn a_pending_clear_goes_before_the_heightmap_is_read() {
             &ParticleOptions::named("test:rain"),
             [0.5, bottom + 2.0, 0.5],
             [0.0; 3],
+            SpawnScope::BARE,
         );
         game.mod_clear_particles.set(true);
         game.polytone_gpu_decide(glam::DVec3::from_array(camera));

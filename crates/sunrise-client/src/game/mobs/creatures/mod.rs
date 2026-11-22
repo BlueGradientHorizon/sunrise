@@ -1742,7 +1742,12 @@ impl Game<'_> {
             let x = at[0] + width * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at[1] + height * r.next_double() - ya * 10.0;
             let z = at[2] + width * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.particles.add(&options, [x, y, z], [xa, ya, za]);
+            self.particles.add(
+                &options,
+                [x, y, z],
+                [xa, ya, za],
+                sunrise_client::particles::SpawnScope::BARE,
+            );
         }
     }
     /// LivingEntity.die / dropAllDeathLoot.
@@ -3510,7 +3515,12 @@ impl Game<'_> {
                         }
                         // Count 0: one particle exactly there, at rest.
                         if count == 0 {
-                            self.particles.add(&options, at, [0.0; 3]);
+                            self.particles.add(
+                                &options,
+                                at,
+                                [0.0; 3],
+                                sunrise_client::particles::SpawnScope::BARE,
+                            );
                         }
                         for _ in 0..count {
                             let r = &mut self.world.random;
@@ -3524,7 +3534,12 @@ impl Game<'_> {
                                 r.next_gaussian() * 0.02,
                                 r.next_gaussian() * 0.02,
                             ];
-                            self.particles.add(&options, p, v);
+                            self.particles.add(
+                                &options,
+                                p,
+                                v,
+                                sunrise_client::particles::SpawnScope::BARE,
+                            );
                         }
                     }
                 }
@@ -3543,7 +3558,12 @@ impl Game<'_> {
                 MobEvent::ParticleAt { kind, at, velocity } => {
                     if let Some(ty) = sunrise_client::particles::ParticleType::from_name(kind) {
                         let options = sunrise_client::particles::ParticleOptions::simple(ty);
-                        self.particles.add(&options, at, velocity);
+                        self.particles.add(
+                            &options,
+                            at,
+                            velocity,
+                            sunrise_client::particles::SpawnScope::BARE,
+                        );
                     }
                 }
                 MobEvent::ParticleColored {
@@ -3554,7 +3574,12 @@ impl Game<'_> {
                         sunrise_client::particles::ParticleType::EntityEffect,
                         [r, g, b, 1.0],
                     );
-                    self.particles.add(&options, at, [0.0; 3]);
+                    self.particles.add(
+                        &options,
+                        at,
+                        [0.0; 3],
+                        sunrise_client::particles::SpawnScope::BARE,
+                    );
                 }
                 MobEvent::Experience { at, amount } => self.add_orb(at, amount),
                 MobEvent::AxolotlSupportPlayer { mob } => {
@@ -5416,6 +5441,7 @@ impl Game<'_> {
                 &ParticleOptions::simple(kind(k)),
                 [position.x, position.y, position.z],
                 [velocity.x, velocity.y, velocity.z],
+                sunrise_client::particles::SpawnScope::BARE,
             ),
             // Arrow.tick: `broadcastEntityEvent(this, 0)`. The window and the
             // guests burst the particles themselves (`remote_arrow_puff`).
@@ -6648,7 +6674,12 @@ impl Game<'_> {
                             atp[1] + r.next_gaussian() * 0.2,
                             atp[2] + r.next_gaussian() * 0.2,
                         ];
-                        self.particles.add(&options, at, [0.0; 3]);
+                        self.particles.add(
+                            &options,
+                            at,
+                            [0.0; 3],
+                            sunrise_client::particles::SpawnScope::BARE,
+                        );
                     }
                 }
             }
@@ -6680,7 +6711,8 @@ impl Game<'_> {
             } else {
                 [0.0; 3]
             };
-            self.particles.add(&options, at, v);
+            self.particles
+                .add(&options, at, v, sunrise_client::particles::SpawnScope::BARE);
         }
     }
     /// `AgeableMob.mobInteract`: whether a click with `item` on `m` gets to
@@ -8134,7 +8166,12 @@ impl Game<'_> {
                     at[1] + height * y - view[1] * 1.5,
                     at[2] + width * (2.0 * z - 1.0) * 0.5 - view[2] * 1.5,
                 ];
-                self.particles.add(&bubble, p, [0.0; 3]);
+                self.particles.add(
+                    &bubble,
+                    p,
+                    [0.0; 3],
+                    sunrise_client::particles::SpawnScope::BARE,
+                );
             }
         }
         for (eye, target, scale) in beams {
@@ -8149,7 +8186,12 @@ impl Game<'_> {
                 dist += 1.8 - scale + r.next_double() * (1.7 - scale);
                 let f = dist / length;
                 let p = [eye[0] + d[0] * f, eye[1] + d[1] * f, eye[2] + d[2] * f];
-                self.particles.add(&bubble, p, [0.0; 3]);
+                self.particles.add(
+                    &bubble,
+                    p,
+                    [0.0; 3],
+                    sunrise_client::particles::SpawnScope::BARE,
+                );
             }
         }
     }

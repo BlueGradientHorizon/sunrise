@@ -6,6 +6,7 @@ use super::{
     Game,
     commands::{Target, compute::ComputeContext},
 };
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     items::ItemStack,
     mobs::villager,
@@ -346,7 +347,7 @@ impl Game<'_> {
                 f64::from(pos.y) + height + f64::from(r.next_float()) * (1.0 - height),
                 f64::from(pos.z) + 0.1875 + 0.625 * f64::from(r.next_float()),
             ];
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
 }

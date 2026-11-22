@@ -4,6 +4,7 @@
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
 use super::Game;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_anim::{
         BellEntity, ConduitServer, ConduitTarget, EndGateway, Shulker, ShulkerStatus, Ticker,
@@ -343,7 +344,7 @@ impl Game<'_> {
                     color: [channel(16), channel(8), channel(0), channel(24)],
                     ..ParticleOptions::simple(ParticleType::EntityEffect)
                 };
-                self.particles.add(&options, p, [0.0; 3]);
+                self.particles.add(&options, p, [0.0; 3], SpawnScope::BARE);
             }
             // makeRaidersGlow (the server's effect).
             for m in self.mobs.iter_mut().filter(|_| self.remote.is_none()) {
@@ -474,7 +475,7 @@ impl Game<'_> {
                     );
                     let nautilus = ParticleOptions::simple(ParticleType::Nautilus);
                     for (p, v) in particles {
-                        self.particles.add(&nautilus, p, v);
+                        self.particles.add(&nautilus, p, v, SpawnScope::BARE);
                     }
                 }
                 Ticker::Pot => {}

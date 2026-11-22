@@ -1,6 +1,7 @@
 //! Block particles: the sprite and tint of a block's faces and particle material, honey slides,
 //! and the burst a destroyed block leaves (`ClientLevel.addDestroyBlockEffect`).
 use super::*;
+use sunrise_client::particles::SpawnScope;
 
 impl Game<'_> {
     /// `TerrainParticle` at `pos`: the model's particle sprite and tint source
@@ -36,6 +37,7 @@ impl Game<'_> {
                     &ParticleOptions::block(ParticleType::Block, sprite.clone(), tint),
                     at,
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
         }

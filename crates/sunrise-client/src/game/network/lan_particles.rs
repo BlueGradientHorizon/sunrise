@@ -369,7 +369,7 @@ impl Game<'_> {
     pub(super) fn snowflake_particle(&mut self, at: [f64; 3], velocity: [f64; 3]) {
         let options = ParticleOptions::simple(ParticleType::Snowflake);
         if self.options.execution_role.is_client() {
-            self.particles.add(&options, at, velocity);
+            self.particles.add(&options, at, velocity, SpawnScope::BARE);
         }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),
@@ -726,7 +726,7 @@ impl Game<'_> {
                 at[1] + r.next_double(),
                 at[2] + r.next_double(),
             ];
-            self.particles.add(&options, p, [0.0; 3]);
+            self.particles.add(&options, p, [0.0; 3], SpawnScope::BARE);
         }
         self.lan_send_particles(QueuedParticle {
             dimension: self.dim.id(),

@@ -4948,6 +4948,7 @@ impl Game<'_> {
                     &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                     [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                     [0.0; 3],
+                    SpawnScope::BARE,
                 );
             }
             if let Some(d) = self.dragon.as_mut() {
@@ -4991,6 +4992,7 @@ impl Game<'_> {
                 &ParticleOptions::simple(ParticleType::Explosion),
                 [p.x + o[0], p.y + 2.0 + o[1], p.z + o[2]],
                 [0.0; 3],
+                SpawnScope::BARE,
             );
             return;
         }
@@ -5084,13 +5086,14 @@ impl Game<'_> {
         }
         let breath = ParticleOptions::simple(ParticleType::DragonBreath);
         for (p, v) in puffs {
-            self.particles.add(&breath, p, v);
+            self.particles.add(&breath, p, v, SpawnScope::BARE);
         }
         if let Some(p) = emitter {
             self.particles.add(
                 &ParticleOptions::simple(ParticleType::ExplosionEmitter),
                 p,
                 [0.0; 3],
+                SpawnScope::BARE,
             );
         }
         if let Some(pitch) = growl {

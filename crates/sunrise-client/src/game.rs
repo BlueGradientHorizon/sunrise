@@ -5144,8 +5144,12 @@ impl Game<'_> {
                 } else {
                     ParticleType::Splash
                 };
-                self.particles
-                    .add(&ParticleOptions::simple(kind), at, velocity);
+                self.particles.add(
+                    &ParticleOptions::simple(kind),
+                    at,
+                    velocity,
+                    SpawnScope::BARE,
+                );
             }
             _ => {}
         }
@@ -5560,6 +5564,7 @@ impl Game<'_> {
                 ],
                 // AbstractCandleBlock.extinguish: ySpeed 0.1F, widened.
                 [0.0, f64::from(0.1_f32), 0.0],
+                SpawnScope::BARE,
             );
         }
     }
@@ -5599,6 +5604,7 @@ impl Game<'_> {
             &sunrise_client::particles::ParticleOptions::dust([1.0, 0.0, 0.0], 1.0),
             p,
             [0.0; 3],
+            SpawnScope::BARE,
         );
     }
     /// `DistanceManager`'s tickets of the level in place, from every player in
@@ -6285,6 +6291,7 @@ impl Game<'_> {
                             f64::from(pos.z) + 0.5,
                         ],
                         [note / 24.0, 0.0, 0.0],
+                        SpawnScope::BARE,
                     );
                 }
                 // NoteBlock.getCustomSoundId: the skull above's note block sound,

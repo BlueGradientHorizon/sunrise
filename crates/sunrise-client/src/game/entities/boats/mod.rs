@@ -15,6 +15,7 @@ use super::{Game, InteractTarget, entity::Entity, entity_culling::at, view_vecto
 use std::{collections::HashMap, f32::consts::PI, sync::Arc};
 use sunrise_client::actions::Action;
 use sunrise_client::entity_rules::EntityRules;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions},
@@ -1365,6 +1366,7 @@ impl Game<'_> {
             &ParticleOptions::simple(ParticleType::Splash),
             [x, p.y + 0.7, z],
             [0.0; 3],
+            SpawnScope::BARE,
         );
     }
     /// `AbstractBoat.onAboveBubbleColumn`: on the server (this window

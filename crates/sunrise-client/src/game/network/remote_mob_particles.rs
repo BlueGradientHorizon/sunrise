@@ -1,6 +1,7 @@
 //! Particles a client of a server draws for a mob's entity event, which the
 //! server does not send as a particle packet.
 use super::Game;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     items::ItemStack,
     mobs::Species,
@@ -54,7 +55,7 @@ impl Game<'_> {
         }
         let options = self.item_particle(&ItemStack::new(&item, 1));
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `Witch.handleEntityEvent(15)`: `nextInt(35) + 10` purple puffs about
@@ -83,7 +84,8 @@ impl Game<'_> {
         }
         let options = ParticleOptions::simple(ParticleType::Witch);
         for p in spawned {
-            self.particles.add(&options, p, [0.0, 0.0, 0.0]);
+            self.particles
+                .add(&options, p, [0.0, 0.0, 0.0], SpawnScope::BARE);
         }
     }
     /// `Ravager.handleEntityEvent(69)`: forty puffs of smoke from the middle
@@ -110,7 +112,7 @@ impl Game<'_> {
                 r.next_gaussian() * 0.2,
                 r.next_gaussian() * 0.2,
             ];
-            self.particles.add(&options, center, v);
+            self.particles.add(&options, center, v, SpawnScope::BARE);
         }
         if let Some(view) = self.player_view()
             && view.alive

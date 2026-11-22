@@ -1,5 +1,6 @@
 use super::*;
 use mod_api::ModBlockEntity;
+use sunrise_client::particles::SpawnScope;
 impl GameLevel<'_> {
     /// Initial saved data for a declared block entity (`EntityBlock.newBlockEntity`),
     /// fired inside the write that creates it (`LevelChunk.setBlockState`), on
@@ -4189,8 +4190,12 @@ impl Game<'_> {
         } else {
             ParticleType::Flame
         };
-        self.particles
-            .add(&ParticleOptions::simple(kind), at, [0.0, 0.01, 0.0]);
+        self.particles.add(
+            &ParticleOptions::simple(kind),
+            at,
+            [0.0, 0.01, 0.0],
+            SpawnScope::BARE,
+        );
     }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the

@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::particles::SpawnScope;
 
 impl Game<'_> {
     /// `EnderDragon.checkWalls` over the head, neck and body. A block that is
@@ -71,6 +72,7 @@ impl Game<'_> {
                 &ParticleOptions::simple(ParticleType::Explosion),
                 [p.x, p.y, p.z],
                 [0.0; 3],
+                SpawnScope::BARE,
             );
         }
         if let Some(d) = self.dragon.as_mut() {

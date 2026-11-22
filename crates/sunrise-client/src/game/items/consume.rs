@@ -6,6 +6,7 @@ use super::{Dim, Game};
 use crate::game::api_values::TryIntoApi;
 use crate::game::collision_source::Mover;
 use std::convert::Infallible;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     items::{ConsumeEffect, ItemInfo, ItemStack},
     mobs::Who,
@@ -513,7 +514,7 @@ impl Game<'_> {
         };
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     fn emit_living_teleport(&mut self, from: [f64; 3], to: [f64; 3], width: f64, height: f64) {
@@ -528,7 +529,7 @@ impl Game<'_> {
         );
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
     /// `LivingEntity.stopRiding`.

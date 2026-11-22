@@ -1685,15 +1685,15 @@ impl ParticleEngine {
     }
     /// `ClientLevel.addParticle`: dropped beyond 32 blocks of the camera unless
     /// the type overrides the limiter, and thinned by the Particles option.
-    /// Built-ins do not need a level loan. Use [`Self::add_with`] with a live level for native types.
-    pub fn add(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
-        self.add_with(
-            options,
-            p,
-            v,
-            ParticleSpawnFlags::default(),
-            SpawnScope::BARE,
-        );
+    /// Lend the live level for named providers; built-ins can use [`SpawnScope::BARE`].
+    pub fn add(
+        &mut self,
+        options: &ParticleOptions,
+        p: [f64; 3],
+        v: [f64; 3],
+        scope: SpawnScope<'_, '_>,
+    ) {
+        self.add_with(options, p, v, ParticleSpawnFlags::default(), scope);
     }
     /// `ClientLevel.doAddParticle`: apply level admission and construct synchronously,
     /// lending the live level and original mod options when the caller has them.
@@ -1766,7 +1766,7 @@ impl ParticleEngine {
                 to[1] + t * (from[1] - to[1]) + r.next_double() - 0.5,
                 to[2] + t * (from[2] - to[2]) + (r.next_double() - 0.5) + 0.5,
             ];
-            self.add(&options, position, velocity);
+            self.add(&options, position, velocity, SpawnScope::BARE);
         }
     }
     /// `LevelEventHandler.levelEvent` 2018: an enderman's portal trail from
@@ -1802,7 +1802,7 @@ impl ParticleEngine {
                 _ => false,
             };
             if !limited {
-                self.add(&options, position, velocity);
+                self.add(&options, position, velocity, SpawnScope::BARE);
             }
         }
     }
@@ -1815,6 +1815,7 @@ impl ParticleEngine {
                 &ParticleOptions::simple(ParticleType::Spit),
                 at,
                 [movement[0] * k, movement[1], movement[2] * k],
+                SpawnScope::BARE,
             );
         }
     }
@@ -3486,6 +3487,7 @@ impl ParticleEngine {
                     &ParticleOptions::simple(ParticleType::Poof),
                     at,
                     [vx, 0.005, vz],
+                    SpawnScope::BARE,
                 );
             }
             return;
@@ -3784,7 +3786,7 @@ impl ParticleEngine {
                         later.extend(update.spawned);
                     } else {
                         for (options, pos, velocity) in update.spawned {
-                            self.add(&options, pos, velocity);
+                            self.add(&options, pos, velocity, SpawnScope::BARE);
                         }
                     }
                 } else {
@@ -3798,6 +3800,7 @@ impl ParticleEngine {
                         &ParticleOptions::simple(ParticleType::Smoke),
                         p.position,
                         p.velocity,
+                        SpawnScope::BARE,
                     );
                 }
             }
@@ -3821,7 +3824,12 @@ impl ParticleEngine {
                     if matches!(stage, DripStage::Hang | DripStage::CoolingHang)
                         && let Some(next) = next
                     {
-                        self.add(&ParticleOptions::simple(next), p.position, p.velocity);
+                        self.add(
+                            &ParticleOptions::simple(next),
+                            p.position,
+                            p.velocity,
+                            SpawnScope::BARE,
+                        );
                     }
                 }
                 if p.removed {
@@ -3840,7 +3848,12 @@ impl ParticleEngine {
                     DripStage::FallAndLand if p.on_ground => {
                         p.removed = true;
                         if let Some(next) = next {
-                            self.add(&ParticleOptions::simple(next), p.position, [0.0; 3]);
+                            self.add(
+                                &ParticleOptions::simple(next),
+                                p.position,
+                                [0.0; 3],
+                                SpawnScope::BARE,
+                            );
                         }
                         if let Some(sound) = sound {
                             let volume = p.random.next_float() * 0.7 + 0.3;
@@ -3970,6 +3983,7 @@ impl ParticleEngine {
                             ),
                             p.position,
                             aux,
+                            SpawnScope::BARE,
                         );
                     }
                 }
@@ -3978,6 +3992,7 @@ impl ParticleEngine {
                         &ParticleOptions::geyser(ParticleType::GeyserPlume, water_blocks),
                         p.position,
                         aux,
+                        SpawnScope::BARE,
                     );
                 }
                 if p.age % 10 == 0 {
@@ -3990,6 +4005,7 @@ impl ParticleEngine {
                             ),
                             p.position,
                             aux,
+                            SpawnScope::BARE,
                         );
                     }
                 }
@@ -4211,6 +4227,7 @@ impl ParticleEngine {
                             &ParticleOptions::simple(ParticleType::Gust),
                             at,
                             [f, 0.0, 0.0],
+                            SpawnScope::BARE,
                         );
                     }
                 }
@@ -4233,6 +4250,7 @@ impl ParticleEngine {
                         &ParticleOptions::simple(ParticleType::Explosion),
                         at,
                         [f, 0.0, 0.0],
+                        SpawnScope::BARE,
                     );
                 }
                 p.age += 1;
@@ -6221,7 +6239,7 @@ mod tests {
             20,
         );
         // Within the camera's 32 blocks, so only the provider decides.
-        engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3]);
+        engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3], SpawnScope::BARE);
         assert_eq!(engine.made().get("vibration"), Some(&1));
         let q = engine
             .pending
@@ -6272,7 +6290,7 @@ mod tests {
         // The renderer consumes the resolved point, not the entity id or offset.
         // Options remain reusable; making a signal does not consume its source.
         for _ in 0..2 {
-            engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3]);
+            engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3], SpawnScope::BARE);
         }
         assert_eq!(engine.made().get("vibration"), Some(&2));
         assert_eq!(engine.pending.len(), 2);

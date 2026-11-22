@@ -3,6 +3,7 @@
 //! "Now Playing" overlay, note particles every second, the redstone
 //! signal while playing, the comparator output, and saving.
 use super::Game;
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     block_entity_item,
     containers::{BlockEntity, Jukebox},
@@ -458,6 +459,7 @@ impl Game<'_> {
                 &ParticleOptions::simple(ParticleType::Note),
                 at,
                 [color, 0.0, 0.0],
+                SpawnScope::BARE,
             );
         }
         if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key) {

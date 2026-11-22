@@ -4,6 +4,7 @@
 //! flames, the connection particles towards the player, the ambient sound).
 //! Every draw comes from the client level's random.
 use super::{Game, vault::TakenVault};
+use sunrise_client::particles::SpawnScope;
 use sunrise_client::{
     containers::BlockEntity,
     mobs::trial_spawner::TrialState,
@@ -42,7 +43,8 @@ fn flame(ominous: bool) -> T {
 
 impl Game<'_> {
     fn particle(&mut self, ty: T, p: [f64; 3], v: [f64; 3]) {
-        self.particles.add(&ParticleOptions::simple(ty), p, v);
+        self.particles
+            .add(&ParticleOptions::simple(ty), p, v, SpawnScope::BARE);
     }
     /// `ClientLevel.playLocalSound`: the sound's seed is the level random's next long, drawn
     /// in turn with the particles' (`Particles::level_random`).

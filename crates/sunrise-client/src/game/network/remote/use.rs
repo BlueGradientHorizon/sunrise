@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_client::particles::SpawnScope;
 
 impl Game<'_> {
     /// `Consumable.onConsumeTick` for another player using a consumable: the
@@ -39,7 +40,7 @@ impl Game<'_> {
             |p, v| spawned.push((p, v)),
         );
         for (p, v) in spawned {
-            self.particles.add(&options, p, v);
+            self.particles.add(&options, p, v, SpawnScope::BARE);
         }
     }
 
