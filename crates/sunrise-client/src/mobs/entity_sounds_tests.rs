@@ -284,60 +284,64 @@ fn played(events: &[MobEvent]) -> Vec<(String, f32, f32)> {
         })
         .collect()
 }
-/// A cow whose type carries the `sounds` declaration, as a content row's would.
-fn declared(sounds: serde_json::Value) -> Mob {
-    let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-    kind.sound_overrides =
-        Sounds::load("bird:vulture", &serde_json::json!({"sounds":sounds})).unwrap();
-    Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
-}
-
 #[test]
 fn entity_sounds_declared_step_plays_at_its_volume_and_pitch() {
-    let step = |sounds| declared_step(&declared(sounds).kind.sound_overrides);
-    // An override of `playStepSound` calling `playSound(step, volume, pitch)`.
-    assert_eq!(
-        step(serde_json::json!({"step":{"sound":"bird:step","volume":1.0,"pitch":0.8}})),
-        Some(Some((Cow::Borrowed("bird:step"), 1.0, 0.8)))
-    );
+    let mut sounds = Sounds::default();
+    // An omitted step is the template's, from the block under the mob.
+    assert_eq!(declared_step(&sounds), None);
+    sounds.step = Selection::Mute;
+    assert_eq!(declared_step(&sounds), Some(None));
     // The plain id keeps the block step's `soundType.getVolume() * 0.15F` and pitch.
+    sounds.step = Selection::Id("bird:step");
     assert_eq!(
-        step(serde_json::json!({"step":"bird:step"})),
+        declared_step(&sounds),
         Some(Some((Cow::Borrowed("bird:step"), 0.15, 1.0)))
     );
-    assert_eq!(step(serde_json::json!({"step":"none"})), Some(None));
-    // An omitted step is the template's, from the block under the mob.
-    assert_eq!(step(serde_json::json!({"volume":1.0})), None);
+    // An override of `playStepSound` calling `playSound(step, volume, pitch)`.
+    sounds.step_volume_pitch = Some((1.0, 0.8));
+    assert_eq!(
+        declared_step(&sounds),
+        Some(Some((Cow::Borrowed("bird:step"), 1.0, 0.8)))
+    );
 }
 
 #[test]
 fn entity_sounds_declared_volume_and_voice_pitch_reach_ambient_hurt_and_death() {
     use sunrise_core::random::{LegacyRandom, RandomSource};
-    // `getVoicePitch`: two floats from the mob's random, spread around the base.
-    let pitch = |seed: i64, base: f32| {
-        let mut random = LegacyRandom::new(seed);
-        (random.next_float() - random.next_float()) * 0.2 + base
+    let declared = |sounds| {
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.sound_overrides = sounds;
+        Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
     };
     // `Mob.playAmbientSound` is `makeSound(getAmbientSound())`: `getSoundVolume`, `getVoicePitch`.
     let ambient = |m: &mut Mob| {
         m.random = LegacyRandom::new(7);
         let mut events = vec![];
         m.voice("bird:ambient", &mut events);
-        played(&events)
+        (played(&events), m.random.next_int())
     };
-    let sounds = serde_json::json!({"hurt":"bird:hurt","death":"bird:death","volume":0.25,"voice_pitch":0.5});
-    let mut adult = declared(sounds.clone());
+    let sounds = Sounds {
+        hurt: Selection::Id("bird:hurt"),
+        death: Selection::Id("bird:death"),
+        volume: Some(0.25),
+        voice_pitch: Some(0.5),
+        ..Sounds::default()
+    };
+    // Java Random(7): spread from two nextFloat() draws, then nextInt().
+    let expected = |volume, pitch| {
+        (
+            vec![("bird:ambient".to_owned(), volume, f32::from_bits(pitch))],
+            0xbfc9_945a_u32 as i32,
+        )
+    };
     assert_eq!(
-        ambient(&mut adult),
-        [("bird:ambient".to_owned(), 0.25, pitch(7, 0.5))]
+        ambient(&mut declared(sounds.clone())),
+        expected(0.25, 0x3f04_b7fa)
     );
     // A baby's raised pitch is the base times vanilla's 1.5.
     let mut baby = declared(sounds.clone());
     baby.extra.age = -24000;
-    assert_eq!(
-        ambient(&mut baby),
-        [("bird:ambient".to_owned(), 0.25, pitch(7, 1.5 * 0.5))]
-    );
+    assert_eq!(ambient(&mut baby), expected(0.25, 0x3f44_b7fa));
     // `playHurtSound` and the death sound, from real hits.
     for (amount, id) in [(1.0, "bird:hurt"), (1000.0, "bird:death")] {
         let mut m = declared(sounds.clone());
@@ -348,10 +352,9 @@ fn entity_sounds_declared_volume_and_voice_pitch_reach_ambient_hurt_and_death() 
         assert_eq!((heard[0].0.as_str(), heard[0].1), (id, 0.25));
     }
     // Omitted keys keep the template's: a cow's `getSoundVolume` 0.4 and a pitch around 1.0.
-    let mut omitted = declared(serde_json::json!({}));
     assert_eq!(
-        ambient(&mut omitted),
-        [("bird:ambient".to_owned(), 0.4, pitch(7, 1.0))]
+        ambient(&mut declared(Sounds::default())),
+        expected(0.4, 0x3f82_5bfd)
     );
 }
 
