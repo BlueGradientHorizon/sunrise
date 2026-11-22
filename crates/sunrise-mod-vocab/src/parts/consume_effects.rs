@@ -123,13 +123,14 @@ pub trait ConsumeEffectsRegistrar {
 }
 
 // no wire: engine-owned collection entry with process-local callbacks.
-// exhaustive: its private fields can only be supplied by the Parts registrar.
+// exhaustive: its private owner and codecs are supplied by the Parts registrar.
 /// An attributed consume-effect registration, not exposed to mods.
 // hidden: the Parts registrar attaches the runtime owner after validating the declaration.
 #[doc(hidden)]
 pub struct RegisteredConsumeEffect {
     owner: &'static str,
-    id: Identifier,
+    /// Canonical dispatch key, read by the registrar to reject duplicates.
+    pub id: Identifier,
     ty: ConsumeEffectType,
 }
 
