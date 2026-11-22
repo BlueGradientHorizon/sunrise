@@ -1197,6 +1197,9 @@ fn discarding_a_parent_in_the_birth_listener_refuses_the_baby() {
             Flow::Continue
         },
         |game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let (parent, partner, child) = breed_pair(game, "minecraft:cow");
             assert_eq!(child, None);
             assert!(take_hook_panics().is_empty());
@@ -1264,6 +1267,9 @@ fn a_deferred_join_can_remove_a_parent_only_after_the_baby_is_applied() {
     mod_platform::testing::with_mods(mods.into(), || {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let (parent, _, child) = breed_pair(game, "minecraft:cow");
             assert_eq!(child, Some(parent + 2));
             assert!(take_hook_panics().is_empty());
