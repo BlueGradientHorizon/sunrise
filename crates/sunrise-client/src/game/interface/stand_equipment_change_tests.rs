@@ -95,8 +95,8 @@ fn a_stands_body_and_saddle_writes_are_told_once_each() {
 
 struct Rewriter {
     heard: Arc<Mutex<Heard>>,
-    restore_head: mod_api::ItemStack,
-    equip_chest: mod_api::ItemStack,
+    restore_head: ItemStack,
+    equip_chest: ItemStack,
 }
 #[mod_api::__subscriptions]
 impl Hooks for Rewriter {
@@ -112,15 +112,18 @@ impl Hooks for Rewriter {
             event.to.as_ref().and_then(|stack| stack.project()),
         ));
         if event.slot == EquipmentSlot::MainHand {
+            // with_game resolves the fixture's item keys before dispatching this hook.
+            let restore_head = self.restore_head.try_into_api().unwrap();
+            let equip_chest = self.equip_chest.try_into_api().unwrap();
             // Undo the pending Head change back to what enchantment_equipment holds
             // and write a previously untouched Chest slot in the same pass.
             event
                 .entity
-                .set_equipment(host, EquipmentSlot::Head, Some(self.restore_head.clone()))
+                .set_equipment(host, EquipmentSlot::Head, Some(restore_head))
                 .unwrap();
             event
                 .entity
-                .set_equipment(host, EquipmentSlot::Chest, Some(self.equip_chest.clone()))
+                .set_equipment(host, EquipmentSlot::Chest, Some(equip_chest))
                 .unwrap();
         }
     }
@@ -136,8 +139,8 @@ fn listener_edits_to_later_slots_take_effect_in_the_same_pass() {
     let chestplate = ItemStack::new("minecraft:iron_chestplate", 1);
     let rewriter = Rewriter {
         heard: heard.clone(),
-        restore_head: old_helmet.try_into_api().unwrap(),
-        equip_chest: chestplate.try_into_api().unwrap(),
+        restore_head: old_helmet.clone(),
+        equip_chest: chestplate.clone(),
     };
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("rewriter", Box::new(rewriter))].into();
     mod_platform::testing::with_mods(mods, || {
