@@ -19,7 +19,7 @@ use sunrise_world::registry::BlockStateId;
 /// makes them).
 const COMMITTED: &str = include_str!("../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
-const TYPES: [&str; 11] = [
+const TYPES: [&str; 12] = [
     "minecraft:mob_spawner",
     "minecraft:trial_spawner",
     "minecraft:vault",
@@ -31,6 +31,7 @@ const TYPES: [&str; 11] = [
     "minecraft:shulker_box",
     "minecraft:bell",
     "minecraft:enchanting_table",
+    "minecraft:decorated_pot",
 ];
 const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 
@@ -721,46 +722,104 @@ fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
     });
 }
 
-/// `DecoratedPotBlockEntity` has no ticker: the wobble a block event starts is kept for the
-/// pot's life, tick after tick, and drawn.
+/// `DecoratedPotBlockEntity.triggerEvent`: wobble survives ticks, state changes and update
+/// tags, but a new pot (`LevelChunk.setBlockState` or `replaceWithPacketData`) cannot inherit it.
 #[test]
 #[ignore = "daily"]
 fn a_decorated_pots_wobble_survives_the_client_ticks() {
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
+
     with_remote_game(|game| {
         let pos = [8, 64, 8];
-        let case = case_of(
-            1000,
-            [6.5, 64.0, 2.5],
-            serde_json::json!([]),
-            serde_json::json!([]),
-        );
+        let fills = serde_json::json!([{
+            "from": pos, "to": pos, "block": "minecraft:decorated_pot",
+        }]);
+        let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([]), fills);
         start_case(game, &case, &mut false);
-        game.streaming
-            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
-        let pot = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:decorated_pot")
-            .unwrap();
-        game.world.set(pos[0], pos[1], pos[2], pot).unwrap();
-        game.block_entity_event(pos, 1, 0);
+        send_column(game, &[], (0, 0), &[], &case["fills"]);
+        let remote = game.remote.as_mut().unwrap();
+        Arc::make_mut(&mut remote.builtin).registries.insert(
+            "minecraft:block".into(),
+            sunrise_protocol::registry::Ids::from_names(vec!["minecraft:decorated_pot".into()]),
+        );
+        let event = || {
+            C::BlockEvent(play::BlockEvent {
+                pos,
+                b0: 1,
+                b1: 0,
+                block: 0,
+            })
+        };
+        game.apply_packet(event()).unwrap();
         for _ in 0..3 {
             tick_phase(game);
         }
-        let time = game.world.game_time;
-        let anim = game.be_anims.block_anim(pos, time, 0.5, Default::default());
+        let wobble = game.block_anim(pos, 0.5).wobble;
         assert!(
-            anim.wobble.is_some_and(|(_, progress)| progress > 0.0),
-            "{:?}",
-            anim.wobble
+            wobble.is_some_and(|(_, progress)| progress > 0.0),
+            "{wobble:?}"
         );
-        // Its block gone, so is the wobble.
-        game.world
-            .set(pos[0], pos[1], pos[2], game.world.air)
+
+        let registry = game.pack.assets.registry;
+        let pot = registry.default_state("minecraft:decorated_pot").unwrap();
+        let mut wet = registry.state(pot).unwrap().clone();
+        wet.properties.insert("waterlogged".into(), "true".into());
+        for state in [registry.id(&wet).unwrap(), pot] {
+            game.apply_packet(C::BlockUpdate(play::BlockUpdate {
+                pos,
+                state: state.0 as i32,
+            }))
             .unwrap();
-        tick_phase(game);
-        assert!(game.be_anims.pots.is_empty());
+            assert_eq!(game.block_anim(pos, 0.5).wobble, wobble);
+        }
+        game.apply_packet(C::BlockEntityData(play::BlockEntityData {
+            pos,
+            kind: TYPES
+                .iter()
+                .position(|&t| t == "minecraft:decorated_pot")
+                .unwrap() as i32,
+            tag: Tag::Compound(
+                [(
+                    "sherds".into(),
+                    Tag::Compound(
+                        [(
+                            "back".into(),
+                            Tag::String("minecraft:angler_pottery_sherd".into()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+        }))
+        .unwrap();
+        let anim = game.block_anim(pos, 0.5);
+        assert_eq!(
+            anim.sherds[0].as_deref(),
+            Some("minecraft:angler_pottery_sherd")
+        );
+        assert_eq!(anim.wobble, wobble);
+
+        for state in [game.world.air, pot] {
+            game.apply_packet(C::BlockUpdate(play::BlockUpdate {
+                pos,
+                state: state.0 as i32,
+            }))
+            .unwrap();
+        }
+        assert_eq!(game.block_anim(pos, 0.5).wobble, None);
+        for forget in [false, true] {
+            game.apply_packet(event()).unwrap();
+            assert!(game.block_anim(pos, 0.5).wobble.is_some());
+            if forget {
+                game.apply_packet(C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [0, 0] }))
+                    .unwrap();
+            }
+            send_column(game, &[], (0, 0), &[], &case["fills"]);
+            assert_eq!(game.block_anim(pos, 0.5).wobble, None);
+        }
     });
 }
 
