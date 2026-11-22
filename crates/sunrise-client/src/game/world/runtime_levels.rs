@@ -17,9 +17,9 @@ use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex};
 use sunrise_client::{
     chunk::{ExtraLevel, LevelShape},
-    vanillagen::{TerrainResources, shared_resource_data},
+    vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data},
 };
-use sunrise_core::LevelKey;
+use sunrise_core::{LevelKey, identifier::Identifier};
 use sunrise_world::{
     dimension_type::DimensionFacts,
     worldgen::{
@@ -248,8 +248,14 @@ impl RuntimeTable {
     }
 }
 
+/// Parse a registry identifier like `BiomeSourceCatalog`, requiring a non-empty path.
+fn parse_identifier(name: &str) -> Option<String> {
+    let id = Identifier::parse(name).ok()?;
+    (!id.path().is_empty()).then(|| id.to_string())
+}
+
 /// Convert a [`RuntimeBiomeSource`] into the level stem JSON `biome_source` object.
-fn runtime_biome_source_json(
+pub(super) fn runtime_biome_source_json(
     source: &RuntimeBiomeSource,
 ) -> Result<serde_json::Value, RuntimeLevelError> {
     Ok(match source {
@@ -260,7 +266,7 @@ fn runtime_biome_source_json(
             let holders = match biomes.as_slice() {
                 [tag] if tag.starts_with('#') => serde_json::json!(tag),
                 entries if entries.iter().any(|entry| entry.starts_with('#')) => {
-                    serde_json::json!({"type": "neoforge:or", "values": entries})
+                    return Err(RuntimeLevelError::InvalidBiomeSource);
                 }
                 entries => serde_json::json!(entries),
             };
@@ -292,9 +298,43 @@ fn runtime_biome_source_json(
                 .collect();
             serde_json::json!({"type": "minecraft:multi_noise", "biomes": biomes})
         }
-        RuntimeBiomeSource::Registered(id) => serde_json::json!({"type": id}),
+        RuntimeBiomeSource::Registered(id) => {
+            let canonical = parse_identifier(id).ok_or(RuntimeLevelError::InvalidBiomeSource)?;
+            if matches!(
+                canonical.as_str(),
+                "minecraft:fixed"
+                    | "minecraft:checkerboard"
+                    | "minecraft:multi_noise"
+                    | "minecraft:the_end"
+            ) {
+                return Err(RuntimeLevelError::UnknownBiomeSource);
+            }
+            serde_json::json!({"type": canonical})
+        }
         _ => return Err(RuntimeLevelError::InvalidBiomeSource),
     })
+}
+
+/// Map a bound biome-source codec error to `UnknownBiomeSource` (missing registry entry) or
+/// `InvalidBiomeSource` (malformed identifier, bounds, holder set or empty source).
+pub(super) fn classify_biome_source_error(error: BiomeSourceError) -> RuntimeLevelError {
+    match error {
+        BiomeSourceError::Decode(DecodeError::Field(
+            "unknown biome"
+            | "unknown biome tag"
+            | "missing End biome"
+            | "unknown biome preset holder"
+            | "unknown built-in biome preset",
+        ))
+        | BiomeSourceError::MissingPreset => RuntimeLevelError::UnknownBiomeSource,
+        BiomeSourceError::Decode(DecodeError::Registry(msg))
+        | BiomeSourceError::Registered(msg)
+            if msg.starts_with("unknown biome") || msg.contains("names the unknown biome ") =>
+        {
+            RuntimeLevelError::UnknownBiomeSource
+        }
+        _ => RuntimeLevelError::InvalidBiomeSource,
+    }
 }
 
 /// The JSON of the stem a runtime level is generated from, as a mod's registered level has one:
@@ -657,32 +697,37 @@ impl Game<'_> {
         match &level.generator {
             RuntimeGenerator::Flat | RuntimeGenerator::Void => {
                 let flat = matches!(level.generator, RuntimeGenerator::Flat);
-                let name = match &level.biome_source {
-                    Some(RuntimeBiomeSource::Fixed(name)) if name.is_empty() => {
-                        return Err(RuntimeLevelError::InvalidBiomeSource);
+                let canonical = match &level.biome_source {
+                    Some(RuntimeBiomeSource::Fixed(name)) => {
+                        parse_identifier(name).ok_or(RuntimeLevelError::InvalidBiomeSource)?
                     }
-                    Some(RuntimeBiomeSource::Fixed(name)) => name,
                     Some(_) => return Err(RuntimeLevelError::IncompatibleBiomeSource),
-                    None if flat => "minecraft:plains",
-                    None => "minecraft:the_void",
+                    None if flat => "minecraft:plains".to_owned(),
+                    None => "minecraft:the_void".to_owned(),
                 };
-                if !biomes.contains(name) {
+                if !biomes.contains(&canonical) {
                     return Err(RuntimeLevelError::UnknownBiomeSource);
                 }
                 Ok(Generate::Layers {
                     flat,
-                    biome: biomes.id(name),
+                    biome: biomes.id(&canonical),
                 })
             }
             RuntimeGenerator::Mod(name) => {
                 let generator = generators
                     .get(name)
                     .ok_or(RuntimeLevelError::UnknownGenerator)?;
+                if let Some(source) = &level.biome_source
+                    && source.invalid_field().is_some()
+                {
+                    return Err(RuntimeLevelError::InvalidBiomeSource);
+                }
+                let runs_stages = generator.vanilla_stages().any();
                 let json = mod_stem(
                     &level.dimension_type,
                     name,
                     level.biome_source.as_ref(),
-                    generator.vanilla_stages().any(),
+                    runs_stages,
                 )?;
                 let resources = &self.options.resources;
                 let dir = resources.join("worldgen");
@@ -693,39 +738,41 @@ impl Game<'_> {
                     &self.level.enabled_features,
                     &self.pack.additional_data,
                 );
-                let data = shared_resource_data(
-                    TerrainResources {
-                        data: Some(&self.pack.data_changes),
-                        dir: &dir,
-                        registry: self.pack.assets.registry,
-                        biomes,
-                        item_data: &self.res.core.item_data,
-                    },
-                    &overrides,
-                )
-                .map_err(|e| {
-                    log::warn!("runtime level worldgen registries are unavailable: {e}");
+                let biome_data = shared_biome_source_data(&dir, &overrides).map_err(|e| {
+                    log::warn!("runtime level biome registries are unavailable: {e}");
                     RuntimeLevelError::Unavailable
                 })?;
-                let stem =
-                    ModStem::bind(data, json, generator.clone(), level.seed).map_err(|error| {
-                        match error {
-                            BiomeSourceError::Decode(
-                                DecodeError::Field(
-                                    "unknown biome"
-                                    | "unknown biome tag"
-                                    | "missing End biome"
-                                    | "unknown biome preset holder",
-                                )
-                                | DecodeError::Registry(_),
-                            ) => RuntimeLevelError::UnknownBiomeSource,
-                            _ => RuntimeLevelError::InvalidBiomeSource,
-                        }
-                    })?;
+                let mut stem = ModStem::bind(&biome_data, json, generator.clone(), level.seed)
+                    .map_err(classify_biome_source_error)?;
                 if matches!(level.biome_source, Some(RuntimeBiomeSource::Registered(_)))
                     && !matches!(stem.source.as_ref(), ResolvedBiomeSource::Registered(_))
                 {
                     return Err(RuntimeLevelError::UnknownBiomeSource);
+                }
+                if !stem
+                    .source
+                    .possible_biomes()
+                    .into_iter()
+                    .all(|name| biomes.contains(name))
+                {
+                    return Err(RuntimeLevelError::UnknownBiomeSource);
+                }
+                if runs_stages {
+                    let data = shared_resource_data(
+                        TerrainResources {
+                            data: Some(&self.pack.data_changes),
+                            dir: &dir,
+                            registry: self.pack.assets.registry,
+                            biomes,
+                            item_data: &self.res.core.item_data,
+                        },
+                        &overrides,
+                    )
+                    .map_err(|e| {
+                        log::warn!("runtime level worldgen registries are unavailable: {e}");
+                        RuntimeLevelError::Unavailable
+                    })?;
+                    stem = stem.with_stage_data(data);
                 }
                 Ok(Generate::Stem(stem))
             }

@@ -42,7 +42,7 @@ pub struct ModTerrain {
 }
 
 impl ModTerrain {
-    /// A generator paired with a source already bound by `GeneratorData::resolve_mod_biome_source`.
+    /// A generator paired with a source already bound by `BiomeSourceData::resolve_mod_biome_source`.
     /// Translate its possible holders to the client biome table once, before any chunk fills.
     pub fn new(
         level: &str,

@@ -1,9 +1,11 @@
 //! Prepare local worlds without blocking the window's event loop.
 use super::*;
-use sunrise_client::vanillagen::{TerrainResources, shared_resource_data};
+use sunrise_client::vanillagen::{
+    TerrainResources, shared_biome_source_data, shared_resource_data,
+};
 use sunrise_world::worldgen::{
     biome_source::{BiomeSourceError, ResolvedBiomeSource},
-    generator::GeneratorData,
+    generator::{BiomeSourceData, GeneratorData},
     mod_generators::{ModChunkGenerator, ModChunkGenerators, mod_chunk_generators},
 };
 
@@ -860,7 +862,8 @@ fn set_level_types(
 
 /// A registered generator paired with a biome source bound to the world's registries.
 pub(in crate::game) struct ModStem {
-    data: Arc<GeneratorData>,
+    /// Full terrain-stage worldgen resources, loaded only when `generator.vanilla_stages().any()`.
+    data: Option<Arc<GeneratorData>>,
     json: serde_json::Value,
     generator: Arc<dyn ModChunkGenerator>,
     pub(super) source: Arc<ResolvedBiomeSource>,
@@ -868,19 +871,24 @@ pub(in crate::game) struct ModStem {
 
 impl ModStem {
     pub(super) fn bind(
-        data: Arc<GeneratorData>,
+        biomes: &BiomeSourceData,
         json: serde_json::Value,
         generator: Arc<dyn ModChunkGenerator>,
         seed: i64,
     ) -> std::result::Result<Self, BiomeSourceError> {
-        let source =
-            data.resolve_mod_biome_source(&json["generator"]["biome_source"].to_string(), seed)?;
+        let source = biomes
+            .resolve_mod_biome_source(&json["generator"]["biome_source"].to_string(), seed)?;
         Ok(Self {
-            data,
+            data: None,
             json,
             generator,
             source: Arc::new(source),
         })
+    }
+
+    pub(super) fn with_stage_data(mut self, data: Arc<GeneratorData>) -> Self {
+        self.data = Some(data);
+        self
     }
 }
 
@@ -927,11 +935,20 @@ fn mod_terrain(
             .and_then(|(_, stem)| serde_json::from_str(stem).ok())
             .or_else(|| saved_stem.map(sunrise_client::scoreboard::tag_to_json))?;
         let generator = generators.get(json["generator"]["type"].as_str()?)?;
-        let result = shared_resource_data(terrain_resources, &overrides)
+        let result = shared_biome_source_data(terrain_resources.dir, &overrides)
             .map_err(|e| e.to_string())
-            .and_then(|data| {
-                ModStem::bind(data, json, generator.clone(), seed)
+            .and_then(|biomes| {
+                ModStem::bind(&biomes, json, generator.clone(), seed)
                     .map_err(|e| format!("biome source: {e}"))
+            })
+            .and_then(|stem| {
+                if generator.vanilla_stages().any() {
+                    let data = shared_resource_data(terrain_resources, &overrides)
+                        .map_err(|e| e.to_string())?;
+                    Ok(stem.with_stage_data(data))
+                } else {
+                    Ok(stem)
+                }
             });
         bound = match result {
             Ok(stem) => stem,
@@ -940,10 +957,16 @@ fn mod_terrain(
         &bound
     };
     if stem.generator.vanilla_stages().any() {
+        let Some(data) = stem.data.clone() else {
+            return Some(Err(format!(
+                "{}: missing worldgen data for vanilla stages",
+                dim.id()
+            )));
+        };
         Some(
             VanillaTerrain::for_mod(
                 terrain_resources,
-                stem.data.clone(),
+                data,
                 seed,
                 dim.id(),
                 &stem.json,
@@ -1989,6 +2012,135 @@ mod tests {
         );
         assert_eq!(biomes.name(chunk.biome(0, 0, 0)), "minecraft:forest");
         assert!(open(Dim::Overworld).is_none());
+    }
+
+    /// A no-stage checkerboard stem opens when only biome and biome-tag data exist, without
+    /// loading terrain-stage bundles (`settings.json`, `noises.json`, `block_flags.json`).
+    #[test]
+    fn no_stage_checkerboard_opens_without_noise_settings_bundle() {
+        use std::fs;
+        use sunrise_client::streaming::ChunkGenerator as _;
+        use sunrise_world::{
+            native_load_context::{DataLoadOrigin, LoadContext, LoadInputs},
+            registry::BlockRegistry,
+            worldgen::{
+                generator::GeneratorData, mod_generators::ChunkAccess, overrides::WorldgenOverrides,
+            },
+        };
+        struct Floor;
+        impl ModChunkGenerator for Floor {
+            fn build_terrain(&self, chunk: &mut dyn ChunkAccess) {
+                let stone = chunk.state("stone");
+                chunk.set_block([0, chunk.min_y(), 0], stone);
+            }
+        }
+        let generators = ModChunkGenerators::from([(
+            "test:floor".to_owned(),
+            Arc::new(Floor) as Arc<dyn ModChunkGenerator>,
+        )]);
+        let scratch = tempfile::tempdir().unwrap();
+        let resources_root = scratch.path().join("resources");
+        let biome_dir = resources_root.join("data/minecraft/worldgen/biome");
+        let worldgen_dir = resources_root.join("worldgen");
+        fs::create_dir_all(&biome_dir).unwrap();
+        fs::create_dir_all(&worldgen_dir).unwrap();
+        fs::write(resources_root.join("items.json"), "{}").unwrap();
+        fs::write(biome_dir.join("plains.json"), "{}").unwrap();
+        fs::write(biome_dir.join("desert.json"), "{}").unwrap();
+        fs::write(
+            worldgen_dir.join("biomes.json"),
+            r#"{"minecraft:plains":"{}","minecraft:desert":"{}"}"#,
+        )
+        .unwrap();
+        fs::write(
+            worldgen_dir.join("biome_tags.json"),
+            r#"{"minecraft:is_dry":"{\"values\":[\"minecraft:desert\",\"minecraft:plains\"]}"}"#,
+        )
+        .unwrap();
+        let registry: &'static BlockRegistry = Box::leak(Box::new(
+            BlockRegistry::from_facts_json(
+                &br#"{"states":[["minecraft:air",true,false,"","minecraft:air"],["minecraft:stone",false,false,"","minecraft:stone"]],"defaults":{"minecraft:air":0,"minecraft:stone":1}}"#[..],
+            )
+            .unwrap(),
+        ));
+        assert!(
+            GeneratorData::load_with(&worldgen_dir, registry, &WorldgenOverrides::default())
+                .is_err(),
+            "no noise-settings or terrain-stage bundles exist in this fixture"
+        );
+        let biomes = sunrise_client::biome::Biomes::load_for_server(
+            &sunrise_assets::resource_source::ResourceRoot::directory(resources_root.clone()),
+        )
+        .unwrap();
+        let inputs = LoadInputs::new(Default::default(), resources_root.join("settings"));
+        let item_data = Arc::new(
+            sunrise_world::item_defaults::ItemData::load(
+                &resources_root,
+                LoadContext::new(DataLoadOrigin::ServerDataLoad, Arc::new(inputs), []),
+            )
+            .unwrap(),
+        );
+        let world = scratch.path().join("world");
+        let pack = world.join("datapacks/checkerboard");
+        let dimensions = pack.join("data/test/dimension");
+        fs::create_dir_all(&dimensions).unwrap();
+        fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"Checkerboard test","min_format":[121,0],"max_format":[121,0]}}"#,
+        )
+        .unwrap();
+        fs::write(
+            world.join("datapacks.json"),
+            r#"{"enabled":["vanilla","file/checkerboard"],"disabled":[]}"#,
+        )
+        .unwrap();
+        fs::write(
+            dimensions.join("pocket.json"),
+            r##"{
+                "type":"minecraft:overworld",
+                "generator":{
+                    "type":"test:floor",
+                    "biome_source":{
+                        "type":"minecraft:checkerboard",
+                        "biomes":"#minecraft:is_dry",
+                        "scale":0
+                    }
+                }
+            }"##,
+        )
+        .unwrap();
+        let resources = TerrainResources {
+            data: None,
+            dir: &worldgen_dir,
+            registry,
+            biomes: &biomes,
+            item_data: &item_data,
+        };
+        let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
+        let Some(Ok(ModLevel::Terrain(terrain))) = mod_terrain(
+            &world,
+            &resources_root,
+            &[],
+            &[],
+            resources,
+            &generators,
+            pocket,
+            sunrise_client::chunk::LevelShape::OVERWORLD,
+            0,
+            true,
+            None,
+            None,
+        ) else {
+            panic!("no-stage checkerboard must open without noise-settings bundle");
+        };
+        let chunk0 = terrain.finish(terrain.proto(&mut (), 0, 0));
+        assert_eq!(
+            chunk0.block(0, -64, 0),
+            registry.default_state("minecraft:stone").unwrap()
+        );
+        assert_eq!(biomes.name(chunk0.biome(0, 0, 0)), "minecraft:desert");
+        let chunk1 = terrain.finish(terrain.proto(&mut (), 1, 0));
+        assert_eq!(biomes.name(chunk1.biome(0, 0, 0)), "minecraft:plains");
     }
 
     #[test]

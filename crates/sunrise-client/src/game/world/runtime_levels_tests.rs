@@ -1,7 +1,9 @@
 //! Levels a mod opens at run time: the table's rules, and a mod's calls against a game.
 
 use super::native_entity_refs::tests::with_game;
-use super::runtime_levels::{Generate, OpenLevel, RuntimeTable};
+use super::runtime_levels::{
+    Generate, OpenLevel, RuntimeTable, classify_biome_source_error, runtime_biome_source_json,
+};
 use mod_api::{
     BiomePoint, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent, LevelUnloadEvent,
     ModEntry, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, RuntimeLevelError,
@@ -73,6 +75,30 @@ fn runtime_biome_source_validates_local_fields() {
         .invalid_field(),
         None
     );
+    assert_eq!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_forest".into()],
+            scale: 0,
+        }
+        .invalid_field(),
+        None
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "#minecraft:is_forest".into()],
+            scale: 0,
+        }
+        .invalid_field()
+        .is_some()
+    );
+    assert!(
+        RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_forest".into(), "#minecraft:is_ocean".into()],
+            scale: 0,
+        }
+        .invalid_field()
+        .is_some()
+    );
     assert!(
         RuntimeBiomeSource::MultiNoise(String::new())
             .invalid_field()
@@ -107,6 +133,116 @@ fn runtime_biome_source_validates_local_fields() {
         RuntimeBiomeSource::Registered("mymod:rings".into()).invalid_field(),
         None
     );
+}
+
+#[test]
+fn biome_source_admission_errors_separate_invalid_from_unknown() {
+    use std::collections::{BTreeMap, BTreeSet};
+    use sunrise_world::worldgen::{
+        DecodeError,
+        biome_source::{BiomeSourceCatalog, BiomeSourceError},
+    };
+    let biomes = BTreeSet::from(["minecraft:plains".into(), "minecraft:desert".into()]);
+    let tags = BTreeMap::from([(
+        "minecraft:is_dry".into(),
+        vec!["minecraft:desert".into(), "minecraft:plains".into()],
+    )]);
+    let presets = BTreeSet::from(["minecraft:overworld".into()]);
+    let catalog = BiomeSourceCatalog::new(&biomes, &tags, &presets).unwrap();
+    let bind_err = |json: &str| {
+        classify_biome_source_error(
+            catalog
+                .bind_custom_source(json, &BTreeMap::new(), 0)
+                .unwrap_err(),
+        )
+    };
+    for invalid in [
+        r#"{"type":"minecraft:fixed","biome":"BAD!ID"}"#,
+        r#"{"type":"minecraft:fixed","biome":""}"#,
+        r##"{"type":"minecraft:checkerboard","biomes":"#BAD!TAG","scale":0}"##,
+        r#"{"type":"minecraft:checkerboard","biomes":[],"scale":0}"#,
+        r#"{"type":"minecraft:checkerboard","biomes":["minecraft:plains"],"scale":63}"#,
+        r#"{"type":"minecraft:checkerboard","biomes":{"type":"neoforge:or"},"scale":0}"#,
+        r#"{"type":"minecraft:multi_noise","preset":"BAD!ID"}"#,
+    ] {
+        assert_eq!(
+            bind_err(invalid),
+            RuntimeLevelError::InvalidBiomeSource,
+            "{invalid}"
+        );
+    }
+    for unknown in [
+        r#"{"type":"minecraft:fixed","biome":"mymod:missing"}"#,
+        r##"{"type":"minecraft:checkerboard","biomes":"#mymod:missing","scale":0}"##,
+        r#"{"type":"minecraft:multi_noise","preset":"mymod:missing"}"#,
+        r#"{"type":"minecraft:the_end"}"#,
+        r#"{"type":"mymod:missing_source"}"#,
+    ] {
+        assert_eq!(
+            bind_err(unknown),
+            RuntimeLevelError::UnknownBiomeSource,
+            "{unknown}"
+        );
+    }
+    assert_eq!(
+        classify_biome_source_error(BiomeSourceError::Decode(DecodeError::Registry(
+            "biome source test:empty lists no biome".into(),
+        ))),
+        RuntimeLevelError::InvalidBiomeSource
+    );
+    assert_eq!(
+        classify_biome_source_error(BiomeSourceError::Decode(DecodeError::Registry(
+            "biome source test:bad names the unknown biome test:missing".into(),
+        ))),
+        RuntimeLevelError::UnknownBiomeSource
+    );
+    assert_eq!(
+        classify_biome_source_error(BiomeSourceError::MissingPreset),
+        RuntimeLevelError::UnknownBiomeSource
+    );
+
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["minecraft:plains".into(), "#minecraft:is_dry".into()],
+            scale: 0,
+        }),
+        Err(RuntimeLevelError::InvalidBiomeSource)
+    );
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_dry".into(), "#minecraft:is_forest".into()],
+            scale: 0,
+        }),
+        Err(RuntimeLevelError::InvalidBiomeSource)
+    );
+    assert_eq!(
+        runtime_biome_source_json(&RuntimeBiomeSource::Checkerboard {
+            biomes: vec!["#minecraft:is_dry".into()],
+            scale: 0,
+        })
+        .unwrap()["biomes"],
+        serde_json::json!("#minecraft:is_dry")
+    );
+    for builtin in [
+        "minecraft:fixed",
+        "fixed",
+        "minecraft:checkerboard",
+        "minecraft:multi_noise",
+        "minecraft:the_end",
+    ] {
+        assert_eq!(
+            runtime_biome_source_json(&RuntimeBiomeSource::Registered(builtin.into())),
+            Err(RuntimeLevelError::UnknownBiomeSource),
+            "{builtin}"
+        );
+    }
+    for invalid in ["", "BAD!ID"] {
+        assert_eq!(
+            runtime_biome_source_json(&RuntimeBiomeSource::Registered(invalid.into())),
+            Err(RuntimeLevelError::InvalidBiomeSource),
+            "{invalid}"
+        );
+    }
 }
 
 #[test]
@@ -146,6 +282,27 @@ fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes()
                 level(vec!["plains".into(), "#checker:absent".into()]),
                 &generators,
             ),
+            Err(RuntimeLevelError::InvalidBiomeSource)
+        );
+        assert_eq!(
+            game.runtime_level_queue_open(
+                "checker:level",
+                level(vec!["BAD!ID".into()]),
+                &generators,
+            ),
+            Err(RuntimeLevelError::InvalidBiomeSource)
+        );
+        assert_eq!(
+            game.runtime_level_queue_open(
+                "checker:level",
+                RuntimeLevel::new(
+                    "minecraft:overworld",
+                    RuntimeGenerator::Mod("checker:test".into()),
+                    0,
+                )
+                .with_biome_source(RuntimeBiomeSource::Registered("minecraft:fixed".into())),
+                &generators,
+            ),
             Err(RuntimeLevelError::UnknownBiomeSource)
         );
         assert_eq!(
@@ -155,12 +312,32 @@ fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes()
             ),
             Err(RuntimeLevelError::IncompatibleBiomeSource)
         );
-        game.runtime_level_queue_open(
+        // A no-stage runtime checkerboard opens with only biome and tag data, without any
+        // noise-settings or terrain-stage bundle.
+        let minimal_resources = tempfile::tempdir().unwrap();
+        let minimal_worldgen = minimal_resources.path().join("worldgen");
+        std::fs::create_dir_all(&minimal_worldgen).unwrap();
+        std::fs::write(
+            minimal_worldgen.join("biomes.json"),
+            r#"{"minecraft:forest":"{}","minecraft:flower_forest":"{}"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            minimal_worldgen.join("biome_tags.json"),
+            r#"{"minecraft:is_forest":"{\"values\":[\"minecraft:forest\",\"minecraft:flower_forest\"]}"}"#,
+        )
+        .unwrap();
+        let original_resources = std::mem::replace(
+            &mut game.options.resources,
+            minimal_resources.path().to_owned(),
+        );
+        let queued = game.runtime_level_queue_open(
             "checker:level",
             level(vec!["#minecraft:is_forest".into()]),
             &generators,
-        )
-        .unwrap();
+        );
+        game.options.resources = original_resources;
+        queued.unwrap();
         assert!(!game.runtime_level_is_open("checker:level"));
         game.apply_runtime_levels();
         assert!(game.runtime_level_is_open("checker:level"));

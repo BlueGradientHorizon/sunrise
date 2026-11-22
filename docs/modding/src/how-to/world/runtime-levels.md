@@ -39,10 +39,11 @@ event.commands.push(Command::op("openarena", 2).executes(|host, _, _| {
   non-fixed sources with `IncompatibleBiomeSource`. `Mod(name)` accepts any valid biome source.
   `None` takes the dimension type's registered stem source, or plains if there is no registered
   stem. A custom generator without vanilla stages uses the non-noise sampling context, not
-  the Overworld's climate router. A checkerboard takes biome ids and `#namespace:tag` references;
-  a mixed list is a NeoForge `or` holder set. A missing biome, tag, preset or registered source
-  returns `UnknownBiomeSource`; an empty checkerboard holder set or invalid scale returns
-  `InvalidBiomeSource`.
+  the Overworld's climate router. A checkerboard takes either a single `#namespace:tag` reference
+  or a list of biome ids, matching vanilla `HolderSetCodec`; mixing `#tag` references with other
+  entries is refused as `InvalidBiomeSource`. A missing biome, tag, preset or registered source
+  returns `UnknownBiomeSource`; an empty checkerboard holder set, mixed list, invalid identifier
+  or invalid scale returns `InvalidBiomeSource`.
 - **`seed`** is the level's own. It reaches the mod generator (`ChunkAccess::seed`), the level's
   block-tick and level randoms and the hashed seed clients are sent. `ChunkAccess::level` tells a
   generator which level it fills, so one generator serves every instance and looks its plan up by

@@ -32,9 +32,9 @@ pub enum RuntimeBiomeSource {
     /// `CheckerboardColumnBiomeSource` shifts quart coordinates right by `scale + 2`, with
     /// Java's masked shift distance.
     Checkerboard {
-        /// Biome ids or `#namespace:tag` references. A list with tags and other entries is
-        /// a NeoForge `or` holder set, in input order and without duplicates. The resolved
-        /// holder set must contain a biome.
+        /// Either a single `#namespace:tag` reference or one or more biome ids (vanilla
+        /// `HolderSetCodec` direct list); mixing `#tag` references with other entries is
+        /// refused. The resolved holder set must contain a biome.
         biomes: Vec<String>,
         /// Square size exponent (`0..=62`).
         scale: u32,
@@ -59,6 +59,11 @@ impl RuntimeBiomeSource {
             Self::Fixed(biome) if biome.is_empty() => "a fixed biome source needs a biome id",
             Self::Checkerboard { biomes, .. } if biomes.is_empty() => {
                 "a checkerboard needs at least one biome"
+            }
+            Self::Checkerboard { biomes, .. }
+                if biomes.len() > 1 && biomes.iter().any(|entry| entry.starts_with('#')) =>
+            {
+                "a checkerboard holds either a single #tag reference or a list of biome ids"
             }
             Self::Checkerboard { scale, .. } if *scale > 62 => "biome_scale must be 0 to 62",
             Self::Points(points) if points.is_empty() => {

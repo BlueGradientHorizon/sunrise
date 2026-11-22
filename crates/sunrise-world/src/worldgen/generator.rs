@@ -146,7 +146,7 @@ impl TerrainBlockStates for GenBlockStates {
 
 /// The seed-independent resources, at the path the internals list names.
 pub mod data;
-pub use data::GeneratorData;
+pub use data::{BiomeSourceData, GeneratorData};
 #[cfg(test)]
 use data::{RING_CACHE_LIMIT, build_tags};
 mod noise_settings;
