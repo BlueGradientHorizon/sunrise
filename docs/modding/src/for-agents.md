@@ -76,6 +76,7 @@ the hooks use. A build server uses the plan contract in
 - [Writing hooks](start/writing-hooks.md) gives the crate's shape, [Hooks and the Host](concepts/hooks-and-the-host.md)
   the model, [Parts](concepts/parts.md) per-object behaviour and [Attachments](concepts/attachments.md) per-object
   data.
-- The hook catalog in the mod API source says what each hook does and which NeoForge event it matches.
+- [Hook notes](reference/hook-notes.md) and [NeoForge counterparts](reference/neoforge-counterparts.md) say what each
+  hook does and which NeoForge event it matches.
 - [The manifest and the package](reference/manifest.md) lists every manifest field.
 - A plain-text index of the book for a model's context is [llms.txt](llms.txt).

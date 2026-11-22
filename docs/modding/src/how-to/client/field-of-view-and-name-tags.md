@@ -58,11 +58,11 @@ background opacity (0.25 when the background is for chat only), and the faded te
 A label is 0.025 blocks a font pixel, so it shrinks with distance; scale by distance yourself for a constant size.
 Its quads share the view's 4,096 with `quads`. A position that is not finite, text deeper than 512 component nodes
 and a label past the quads left are refused by name (`DrawError`) and draw nothing. The
-hook notes give the details.
+[hook notes](../../reference/hook-notes.md#custom-world-geometry) give the details.
 
 ## The client session
 
 For a HUD that shows session information, read `ClientHost::client_session()`, and the local `PlayerRef`'s
 `block_breaking` and `ambient_mood`. Values that may be missing (a session, an external display name) are
-`Option`s, and every counter stays on the client. The hook notes
+`Option`s, and every counter stays on the client. The [hook notes](../../reference/hook-notes.md#client-session-and-local-player-status)
 give their exact availability and timing.
