@@ -1390,12 +1390,14 @@ impl Game<'_> {
                 "raid_omen" if t == 1 => self.omen_tick(&e),
                 id if brewing::is_mod_effect(id) => {
                     let Some((holder_id, health, max_health, food)) =
-                        self.player.as_ref().map(|player| {
+                        self.player.as_mut().map(|player| {
+                            let max_health =
+                                player.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
                             let food = &player.health.food;
                             (
                                 player.entity_id as u32,
                                 player.health.health(),
-                                player.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                                max_health,
                                 Some(PlayerFood::from(mod_api::__private::built::PlayerFood {
                                     level: food.food,
                                     saturation: food.saturation,

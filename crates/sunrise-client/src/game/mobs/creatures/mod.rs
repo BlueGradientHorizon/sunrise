@@ -2332,7 +2332,7 @@ impl Game<'_> {
             return;
         };
         let join = mob.join;
-        let same_mob = |game: &Self| {
+        let same_mob = |game: &mut Self| {
             game.mob_index
                 .find(&game.mobs, id)
                 .filter(|&i| game.mobs[i].join == join && !game.mobs[i].removed)

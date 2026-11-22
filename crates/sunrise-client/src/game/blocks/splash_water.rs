@@ -173,7 +173,7 @@ impl Game<'_> {
                     let plan = self.prepare_knockback_credit(mob_id as i32, attacker, &attack);
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
                     let m = &mut self.mobs[index];
-                    let hurt = m.damage(
+                    m.damage(
                         crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                         1.0,
                         source,

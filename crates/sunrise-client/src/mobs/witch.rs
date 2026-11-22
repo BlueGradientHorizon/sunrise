@@ -423,7 +423,6 @@ mod tests {
                 &mut m,
                 crate::test_resources::server_loop_context(),
                 &mut events,
-                true,
             );
         }
         events
