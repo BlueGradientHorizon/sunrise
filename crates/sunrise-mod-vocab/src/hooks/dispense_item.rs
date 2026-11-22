@@ -11,6 +11,8 @@ pub trait Hooks {
     /// owns consumption: no extra item is removed afterwards). `event` is the
     /// level event the dispenser plays with its smoke: 1000 the click, 1001 the
     /// fail sound (`OptionalDispenseItemBehavior` without success), or 0 for no sound or smoke.
+    /// In an open transaction in the dispenser's level, sound and smoke follow the behaviour's
+    /// published effects at the outermost commit and are discarded on abort.
     /// The remainder is detached until the dispenser writes its slot. An invalid remainder is
     /// reported without writing or notifying the slot, and no other behaviour runs. To drop one
     /// normally, answer with `host.dispense_default`'s remainder and 1000.
@@ -23,7 +25,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         neoforge = "none (vanilla DispenserBlock.getDispenseMethod; NeoForge adds no event or extension for it)",
-        version = 3
+        version = 4
     )]
     fn dispense_item(
         dimension: &str,

@@ -590,6 +590,12 @@ pub(super) enum After {
         spawn: Box<super::spill::Spawn>,
         play_events: bool,
     },
+    /// Sound and smoke for a mod's accepted dispense reply, after its behaviour's effects.
+    DispenserFeedback {
+        pos: Pos,
+        facing: sunrise_core::geometry::Direction,
+        event: i32,
+    },
     /// `BlockEntity.setChanged`.
     Changed(Pos),
     /// `BlockEntity.setChanged` dirty/comparator updates without reentering `contents_changed`.
@@ -693,6 +699,7 @@ impl After {
                 | Self::FluidWrite(_)
                 | Self::FluidEffects(_)
                 | Self::DispenserDrop { .. }
+                | Self::DispenserFeedback { .. }
                 | Self::BlockGameEvent(..)
                 | Self::Drop(..)
                 | Self::Spawn(..)
@@ -2102,6 +2109,9 @@ impl<'g> Game<'g> {
                 play_events,
             } => {
                 self.commit_dispensed(pos, facing, *spawn, play_events);
+            }
+            After::DispenserFeedback { pos, facing, event } => {
+                self.commit_dispense_feedback(pos, facing, event);
             }
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::BlockGameEvent(id, pos, who, state) => {

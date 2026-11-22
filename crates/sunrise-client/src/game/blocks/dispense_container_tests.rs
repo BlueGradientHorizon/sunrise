@@ -1126,7 +1126,7 @@ fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back
     ) {
         return;
     }
-    with_dispenser(|game, _| {
+    with_dispenser(|game, level| {
         let pos = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
 
         // 1. Actual final first slot (`4 -> 2`, not `stack - 1 = 3`) plus `OneByOne`-capped
@@ -1212,56 +1212,53 @@ fn dispense_container_preserves_first_slot_caps_one_by_one_insert_and_rolls_back
             "aborted tx must publish no events: {lines:?}"
         );
 
-        // 4. Aborting an enclosing transaction on a full dispenser (overflow drop path) defers
-        //    and discards both the dropped remainder and its click/smoke/pickup events; committing
-        //    publishes them.
+        // 4. Exercise the full tick, including the behaviour reply's own click and smoke.
+        //    Every slot holds empty buckets so the new filled one must be dropped regardless
+        //    of which slot the dispenser draws.
         for cell in game.world.block_entities.get_mut(&pos).unwrap().slots_mut() {
-            *cell = Some(ItemStack::new("minecraft:stone", 64));
+            *cell = Some(ItemStack::new("minecraft:bucket", 3));
         }
-        dispense_fixture::start_recording();
-        let aborted_drop = game.storage_transaction(|game, _| {
-            let mut answer = None;
-            let dim = game.dim.id();
-            let stack = ItemStack::new("minecraft:bucket", 3);
-            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
-            assert!(answer.is_some());
-            assert!(game.dropped.is_empty(), "drop must wait for root commit");
-            Err::<(), _>(())
-        });
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(aborted_drop, Err(()));
-        assert_eq!(front(game), state(game, "minecraft:water"));
-        assert!(game.dropped.is_empty());
-        assert!(
-            lines.is_empty(),
-            "aborted overflow must publish no events: {lines:?}"
-        );
-
-        dispense_fixture::start_recording();
-        let committed_drop = game.storage_transaction(|game, _| {
-            let mut answer = None;
-            let dim = game.dim.id();
-            let stack = ItemStack::new("minecraft:bucket", 3);
-            game.native_dispense_item(dim, DISPENSER, Direction::East, &stack, &mut answer);
-            assert!(answer.is_some());
-            assert!(game.dropped.is_empty(), "drop waits until root commit");
-            Ok::<_, ()>(())
-        });
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(committed_drop, Ok(()));
-        assert_eq!(front(game), state(game, "minecraft:air"));
-        assert_eq!(game.dropped.len(), 1);
-        assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
-        assert!(
-            lines
+        for commit in [false, true] {
+            dispense_fixture::start_recording();
+            let outcome = game.storage_transaction(|game, _| {
+                assert!(level.block_tick(game, DISPENSER));
+                assert_eq!(front(game), state(game, "minecraft:air"));
+                assert!(game.dropped.is_empty(), "drop must wait for root commit");
+                commit.then_some(()).ok_or(())
+            });
+            let lines = dispense_fixture::stop_recording();
+            assert_eq!(outcome, commit.then_some(()).ok_or(()));
+            if commit {
+                assert_eq!(front(game), state(game, "minecraft:air"));
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(&*game.dropped[0].stack.item, "minecraft:water_bucket");
+                assert_eq!(
+                    lines,
+                    [
+                        "G 6,64,5 minecraft:fluid_pickup",
+                        "L 1000 5,64,5 0", // overflow sound
+                        "L 2000 5,64,5 5", // overflow smoke
+                        "L 1000 5,64,5 0", // reply sound
+                        "L 2000 5,64,5 5", // reply smoke
+                    ]
+                );
+            } else {
+                assert_eq!(front(game), state(game, "minecraft:water"));
+                assert!(game.dropped.is_empty());
+                assert!(lines.is_empty(), "abort must be quiet: {lines:?}");
+            }
+            let count: u32 = game
+                .world
+                .block_entities
+                .get(&pos)
+                .unwrap()
+                .slots()
                 .iter()
-                .any(|line| line.ends_with("minecraft:fluid_pickup")),
-            "{lines:?}"
-        );
-        assert!(
-            lines.iter().any(|line| line.starts_with("L 1000 ")),
-            "{lines:?}"
-        );
-        assert_eq!(game.live_scratch_count(), 0);
+                .flatten()
+                .map(|stack| stack.count)
+                .sum();
+            assert_eq!(count, 27 - u32::from(commit));
+            assert_eq!(game.live_scratch_count(), 0);
+        }
     });
 }

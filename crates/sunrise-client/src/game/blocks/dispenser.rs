@@ -298,10 +298,15 @@ impl Game<'_> {
             spawn.random,
         );
         if play_events {
-            self.dispenser_event(CLICK, pos, 0);
-            self.dispenser_event(2000, pos, data_value(facing));
+            self.commit_dispense_feedback(pos, facing, CLICK);
         }
     }
+
+    pub(super) fn commit_dispense_feedback(&mut self, pos: Pos, facing: Direction, event: i32) {
+        self.dispenser_event(event, pos, 0);
+        self.dispenser_event(2000, pos, data_value(facing));
+    }
+
     /// `DefaultDispenseItemBehavior.execute`: drop one item.
     fn default_execute(
         &mut self,
@@ -539,11 +544,14 @@ impl Game<'_> {
                     &stack.item,
                 );
             }
-            // DefaultDispenseItemBehavior.dispense: playSound, then playAnimation;
-            // a NOOP behaviour (event 0) plays neither.
+            // Feedback follows the behaviour's effects. Event 0 still replaces the slot,
+            // but plays neither sound nor smoke.
             if event != 0 {
-                self.dispenser_event(event, pos, 0);
-                self.dispenser_event(2000, pos, data_value(facing));
+                self.after_commit(super::transactions::After::DispenserFeedback {
+                    pos,
+                    facing,
+                    event,
+                });
             }
             return Ok(ControlFlow::Continue(left));
         }
