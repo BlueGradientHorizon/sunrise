@@ -2,13 +2,6 @@ ids = [
     "method:prelude::EntitiesServerHost::spawn_falling_block",
     "handle:LevelRef::spawn_falling_block",
     "hook:entity_join_level",
-    "hook:entities_load",
-    "method:prelude::EntitiesHost::entity",
-    "method:prelude::EntitiesServerHost::entity_by_uuid",
-    "handle:LevelRef::visit_all_entities",
-    "handle:LevelRef::visit_entities_in",
-    "handle:LevelRef::ray_trace_entities",
-    "handle:LevelRef::ray_trace_nearest_entity",
 ]
 why = """
 Vanilla 26.3 `FallingBlockEntity.fall` replaces the source with its legacy fluid

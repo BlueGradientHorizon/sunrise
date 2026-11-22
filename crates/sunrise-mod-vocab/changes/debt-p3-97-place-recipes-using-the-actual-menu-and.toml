@@ -9,17 +9,9 @@ ids = [
     "type:RecipeBookPlaceEvent.ghost",
     "type:RecipeBookPlaceEvent.placement",
     "type:RecipeBookPlacement",
-    "type:RecipeBookLayout.Mod",
     "trait:ServerHost",
     "trait:prelude::RecipesServerHost",
     "method:prelude::RecipesServerHost::place_recipe_in_grid",
-    "handle:MenuRef::place_recipe_in_grid",
-    "type:RecipePlaceError",
-    "method:RecipeBooksRegistrar::recipe_book_type",
-    "method:RecipeBooksRegistrar::recipe_book_type_with_fields",
-    "method:RecipeBooksRegistrar::recipe_book_filter_look",
-    "method:MenusRegistrar::menu_recipe_book",
-    "handle:PlayerRef::set_recipe_book_settings",
 ]
 why = """
 Recipe-book clicks follow vanilla 26.3 ServerGamePacketListenerImpl.handlePlaceRecipe and RecipeBookMenu.handlePlacement: the general event observes both vanilla and mod books, before the live menu acts. ServerPlaceRecipe.testClearGrid preflights only inputs, while clearGrid clears the separate list, as AbstractFurnaceMenu.handlePlacement demonstrates. An unsuccessful placement sends the selected server display, and the client resolves each ghost slot independently as CraftingRecipeBookComponent.fillGhostRecipe, FurnaceRecipeBookComponent.fillGhostRecipe and GhostSlots.setSlot do. Recipe sources and linked containers resolve in order without truncation.

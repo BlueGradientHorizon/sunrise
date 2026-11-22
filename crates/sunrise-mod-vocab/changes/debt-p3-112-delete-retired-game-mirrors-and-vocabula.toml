@@ -11,7 +11,6 @@ ids = [
     "type:ServerPlayer.pitch",
     "type:ServerPlayer.entity_id",
     "type:ServerPlayer.address",
-    "handle:ItemResource::bar",
 ]
 why = "Remove the unproduced ServerPlayer snapshot, its hidden builder and the remaining direct Game adapters superseded by typed handles. Remove the unused hidden TooltipDisplay transport constructor; the tooltip hook still lends its display. Keep the checks at the stack boundary and read the resolved stack directly for item bars, as vanilla ItemStack.isBarVisible, Item.getBarWidth/getBarColor and BundleItem.isBarVisible/getBarWidth/getBarColor do. NeoForge leaves that bar path on the stack; its ItemStackResourceHandler.getResource likewise reads the backing stack. The retired Sunrise-only adapters have no vanilla counterparts."
 migrate = """

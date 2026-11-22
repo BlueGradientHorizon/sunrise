@@ -1,7 +1,5 @@
 ids = [
     "method:GeneralTypesRegistrar::declare_general_entity",
-    "type:GeneralEntityTypeDeclaration",
-    "type:GeneralEntityTypeDeclaration.required_features",
     "type:GeneralEntityRegistrationError",
     "type:GeneralEntityRegistrationError.UnknownDependency",
     "type:FeatureFlag",

@@ -1,7 +1,4 @@
 ids = [
-    # Play packet observation hooks, their changed packet argument/event-field records,
-    # and borrowed packet/payload views (Hooks::client_packet, Hooks::client_packet_send,
-    # ClientPacketEvent, and ClientPacketSendEvent keep their existing signatures/generics).
     "hook:client_packet",
     "hook:client_packet.packet",
     "type:ClientPacketEvent.packet",
@@ -16,8 +13,6 @@ ids = [
     "type:ClientPayload.channel",
     "type:ClientPayload.data",
     "handle:ClientPayload::new",
-
-    # Removed portable ServerboundPlayPacket constructors (replaced by host-owned encoder).
     "handle:ServerboundPlayPacket::use_item",
     "handle:ServerboundPlayPacket::use_item_on",
     "handle:ServerboundPlayPacket::player_action",
@@ -30,8 +25,6 @@ ids = [
     "handle:ServerboundPlayPacket::move_player_pos_rot",
     "handle:ServerboundPlayPacket::move_player_rot",
     "handle:ServerboundPlayPacket::move_player_status_only",
-
-    # Host-owned protocol play packet encoder, typed request enum, and updated packet field errors.
     "method:prelude::NetworkClientHost::build_play_packet",
     "type:PlayPacketRequest",
     "type:PlayPacketRequest.UseItem",
@@ -46,7 +39,6 @@ ids = [
     "type:PlayPacketRequest.MovePlayerPosRot",
     "type:PlayPacketRequest.MovePlayerRot",
     "type:PlayPacketRequest.MovePlayerStatusOnly",
-    "type:PacketBuildError",
 ]
 why = """
 Borrow decoded play packets synchronously instead of cloning packet IDs, plugin channel names,

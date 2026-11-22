@@ -5,8 +5,6 @@ ids = [
     "hook:living_equipment_change.slot",
     "hook:living_equipment_change.from",
     "hook:living_equipment_change.to",
-    "method:Hooks::living_equipment_change",
-    "type:LivingEquipmentChangeEvent",
     "type:LivingEquipmentChangeEvent.entity",
     "type:LivingEquipmentChangeEvent.kind",
     "type:LivingEquipmentChangeEvent.slot",

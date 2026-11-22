@@ -1,6 +1,5 @@
 ids = [
     "behaviour:play_packet_holds",
-    "type:HoldError",
     "type:HoldError.NoOwner",
     "type:HoldError.WrongOwner",
     "type:HoldError.Limit",

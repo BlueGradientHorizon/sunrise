@@ -1,7 +1,6 @@
 ids = [
     "trait:BlockEntityTransform",
     "method:BlockEntityTransform::transform",
-    "method:BlockEntityTypeBuilder::transform",
     "type:StructureTransform",
     "type:TransformRefusal",
 ]

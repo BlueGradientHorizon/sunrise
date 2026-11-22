@@ -3,8 +3,6 @@ ids = [
     "method:Hooks::client_disconnecting",
     "type:ClientDisconnectingEvent",
     "hook:client_player_logging_out",
-    "method:Hooks::client_player_logging_out",
-    "type:ClientPlayerLoggingOutEvent",
     "hook:client_player_logging_out.player_id",
     "hook:client_player_logging_out.uuid",
     "hook:client_player_logging_out.player",

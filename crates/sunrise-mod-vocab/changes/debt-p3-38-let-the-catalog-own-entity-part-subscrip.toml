@@ -9,7 +9,6 @@ ids = [
     "method:EntityPart::register_behaviors",
     "method:EntityPart::register_goals",
     "method:EntityPart::spawn_cluster_size",
-    "trait:EntityPart",
     "type:IsShearableEvent",
     "type:OnShearedEvent",
     "type:RegisterBehaviorsEvent",

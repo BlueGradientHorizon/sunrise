@@ -4,8 +4,6 @@ ids = [
     "type:BiomeKeyError",
     "type:BiomeKeyError.InvalidIdentifier",
     "type:BiomeKeyError.UnknownBiome",
-    "type:BiomeKeyError.WrongGeneration",
-    "type:BiomeKeyError.Unavailable",
     "type:BiomeId",
     "method:prelude::KeysHost::biome_key",
     "method:prelude::KeysHost::biome",
@@ -26,7 +24,6 @@ ids = [
     "handle:BiomeView::data",
     "method:BiomeSource::possible_biomes",
     "method:GenerationContext::noise_biome",
-    "type:SectionVisibilityInput",
     "handle:SectionVisibilityInput::biome",
     "hook:section_visibility",
 ]

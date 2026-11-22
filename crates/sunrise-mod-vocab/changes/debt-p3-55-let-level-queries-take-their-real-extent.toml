@@ -1,8 +1,6 @@
 ids = [
     "handle:BiomeSearch::MAX_SAMPLES",
     "handle:StructureSearch::MAX_RADIUS",
-    "handle:LevelRef::find_closest_biome",
-    "handle:LevelRef::find_nearest_structure",
     "handle:LevelRef::visit_surface_heights",
     "handle:LevelRef::visit_columns",
     "handle:LevelRef::visit_terrain_surface",
@@ -16,14 +14,10 @@ ids = [
     "type:ColumnSlice.blocks",
     "type:ColumnSlice.water_color",
     "handle:ColumnSlice::new",
-    "method:prelude::ClientViewClientHost::raycast",
-    "method:prelude::ClientViewClientHost::view_hit",
     "method:prelude::ClientViewClientHost::client_surface_heights",
     "method:prelude::WorldEditServerHost::surface_heights",
     "method:prelude::WorldEditServerHost::terrain_surface",
     "method:prelude::WorldEditServerHost::read_columns",
-    # The surface generator has no records for free constants (MAX_TERRAIN_COLUMNS);
-    # its removal is covered in the migration notes below.
 ]
 why = "Remove arbitrary Sunrise-only extent caps and flat guest batch limits that vanilla 26.3 does not impose on biome searches (`ServerLevel.findClosestBiome3d`), structure searches (`ServerLevel.findNearestMapStructure`), client view raycasts (`BlockGetter.clip`, `VoxelShape.clip`), and column height/block/terrain reads (`LevelReader.getHeight`, `LevelHeightAccessor.getHeight`). `BiomeSearch::MAX_SAMPLES` (65,536) refused vanilla's own `/locate biome` default search (`radius = 6400, horizontal_step = 32, vertical_step = 64`); `StructureSearch::MAX_RADIUS` refused radii above 100; `ClientHost::raycast` / `view_hit` clamped hits at 1024 blocks and shifted endpoints instead of passing the caller's original `(from, to)` endpoints through `traverse_blocks` and `clip_with_interaction`; and `ServerHost::{surface_heights, terrain_surface, read_columns}` plus `ClientHost::client_surface_heights` enforced fixed 65,536 / 4,096 (`MAX_TERRAIN_COLUMNS`) / 1,048,576-block caps and string-dimension flat vectors instead of streaming through `LevelRef`."
 migrate = '''

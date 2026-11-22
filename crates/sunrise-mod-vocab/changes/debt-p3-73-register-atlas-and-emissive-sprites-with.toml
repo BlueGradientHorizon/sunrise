@@ -1,10 +1,8 @@
 ids = [
     "hook:register_texture_atlases",
-    "hook:register_texture_atlases.atlases",
     "hook:emissive",
     "hook:emissive.layers",
     "method:Hooks::emissive",
-    "type:EmissiveEvent",
     "type:EmissiveEvent.layers",
     "handle:EmissiveEvent::register",
     "type:EmissiveSpriteRegistration",

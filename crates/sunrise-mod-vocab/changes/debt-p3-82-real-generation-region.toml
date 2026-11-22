@@ -1,13 +1,12 @@
 ids = [
-  "type:FeatureError",
-  "type:FeatureError.0",
-  "handle:FeatureError::new",
-  "type:StructureError",
-  "type:StructureError.0",
-  "handle:StructureError::new",
-  "type:BlockStateError",
-  "trait:FeatureContext",
-  "method:FeatureContext::ensure_can_write",
+    "type:FeatureError",
+    "type:FeatureError.0",
+    "handle:FeatureError::new",
+    "type:StructureError",
+    "type:StructureError.0",
+    "handle:StructureError::new",
+    "trait:FeatureContext",
+    "method:FeatureContext::ensure_can_write",
 ]
 why = """
 Native feature and structure callbacks now run directly against the real generation region (or

@@ -12,7 +12,6 @@ ids = [
     "type:RecipePropertySetsEvent.additions",
     "handle:RecipePropertySetsEvent::register",
     "hook:register_render_pipelines",
-    "handle:RegisterRenderPipelinesEvent::register",
 ]
 why = """
 NeoForge's `ModMismatchEvent.markResolved`, `wasResolved`, and `getResolver` anchor scoped mismatch resolution: a listener records its own marker without editing earlier resolutions. `ModMismatchResolution` therefore no longer implements `From<String>` for unattributed markers.

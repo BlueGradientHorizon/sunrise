@@ -2,7 +2,6 @@ ids = [
     "hook:sound_type",
     "hook:play_level_sound_at_position",
     "hook:play_level_sound_at_entity",
-    "handle:BlockStates::sound",
     "type:BlockSoundType",
     "type:BlockSoundType.identity",
     "type:BlockSoundTypeIdentity",

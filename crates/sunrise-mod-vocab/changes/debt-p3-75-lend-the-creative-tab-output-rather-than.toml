@@ -1,6 +1,5 @@
 ids = [
     "hook:build_creative_mode_tab_contents",
-    "method:Hooks::build_creative_mode_tab_contents",
     "type:BuildCreativeModeTabContentsEvent.features",
     "type:BuildCreativeModeTabContentsEvent.edit",
     "type:BuildCreativeModeTabContentsEvent.output",

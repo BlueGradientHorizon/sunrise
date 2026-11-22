@@ -7,11 +7,7 @@ ids = [
     "method:Hooks::player_turn",
     "type:PlayerTurnEvent",
     "hook:compute_fov_modifier",
-    "method:Hooks::compute_fov_modifier",
-    "type:ComputeFovModifierEvent",
     "hook:compute_fov",
-    "method:Hooks::compute_fov",
-    "type:ComputeFovEvent",
 ]
 why = """
 The dedicated zoom hook, its types and its zoom-factor and turn-scale caps are gone. Compose zoom from regular client input and camera hooks instead.

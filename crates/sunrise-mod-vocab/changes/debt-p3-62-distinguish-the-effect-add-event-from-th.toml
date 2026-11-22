@@ -18,7 +18,6 @@ ids = [
     "type:MobEffectAddedEvent.new_effect",
     "type:MobEffectAddedEvent.old_effect",
     "type:MobEffectAddedEvent.source",
-    "type:OnEffectAddedEvent",
     "type:OnEffectAddedEvent.entity",
 ]
 why = "Vanilla 26.3 LivingEntity.addEffect and MobEffect.onEffectAdded, and NeoForge 26.3 MobEffectEvent.Added (LivingEntity.java.patch): separate the global bus event from the effect-owned first-insertion callback. Hooks::mob_effect_added (version 2) now models MobEffectEvent.Added for every eligible vanilla and mod effect after canBeAffected / mob_effect_applicable and before active-effect mutation, carrying entity: LivingRef, old_effect: Option<&ActiveEffect>, new_effect: &ActiveEffect, and source: Option<EntityRef>, including reapplications and unchanged updates (non-cancellable; never on forceAddEffect, load, or client sync). MobEffect.onEffectAdded moves to MobEffectPart::on_effect_added (version 2, scope = effect, key = effect) taking (effect: EffectKey, entity: LivingRef, amplifier: i32) and runs only on first insertion after the active map and attribute modifiers update and vanilla's added sound plays (before onEffectStarted). Server-side mob and player addEffect paths share add_player_effect_from and add_mob_effect."
