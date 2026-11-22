@@ -41,7 +41,7 @@ pub(crate) fn loot_params(facts: engine::LootContext<'_>) -> mod_api::LootParams
 fn encode_loot_name(
     text: &mod_api::text::Text,
 ) -> Result<serde_json::Value, mod_api::TextFormError> {
-    sunrise_client_lib::api_text::to_engine(text).map(|text| text.component())
+    sunrise_client_lib::api_text::to_serialized_engine(text).map(|text| text.component())
 }
 
 /// Borrow one raw loot candidate without converting it to an owned API stack.
