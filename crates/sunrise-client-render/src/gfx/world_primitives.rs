@@ -221,12 +221,12 @@ pub type Upload<'u> = &'u mut dyn FnMut(&wgpu::Buffer, &[u8]);
 /// Four vertices are a quad record. A line's instance is one record.
 #[derive(Default)]
 pub(super) struct VertexPages {
-    buffers: Vec<wgpu::Buffer>,
+    pub(super) buffers: Vec<wgpu::Buffer>,
     records: u32,
 }
 
 impl VertexPages {
-    fn limit(bytes: u64, stride: u64) -> u32 {
+    pub(super) fn limit(bytes: u64, stride: u64) -> u32 {
         // Even a very large GPU allocation must fit one draw's u32 ranges (six indices per quad).
         (bytes / stride).min(u64::from(u32::MAX / 6)) as u32
     }
@@ -238,18 +238,17 @@ impl VertexPages {
         page: usize,
         bytes: u64,
     ) {
+        let limit = super::upload::legal_buffer_limit(device);
         if self
             .buffers
             .get(page)
-            .is_some_and(|buffer| buffer.size() >= bytes)
+            .is_some_and(|buffer| buffer.size() >= bytes && buffer.size() <= limit)
         {
             return;
         }
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
-            size: bytes
-                .next_power_of_two()
-                .min(device.limits().max_buffer_size),
+            size: super::upload::legal_buffer_size(bytes, limit),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -269,7 +268,7 @@ impl VertexPages {
         stride: u64,
         first_page: usize,
     ) -> usize {
-        self.records = Self::limit(device.limits().max_buffer_size, stride);
+        self.records = Self::limit(super::upload::legal_buffer_limit(device), stride);
         if bytes.is_empty() {
             return first_page;
         }
@@ -616,7 +615,7 @@ impl WorldPrimitives {
             .reserve((quads as usize * 4).saturating_sub(self.quad_vertices.len()));
         self.line_instances
             .reserve((lines as usize).saturating_sub(self.line_instances.len()));
-        let max = device.limits().max_buffer_size;
+        let max = super::upload::legal_buffer_limit(device);
         let quads = quads.min(VertexPages::limit(max, QUAD_STRIDE));
         let lines = lines.min(VertexPages::limit(max, LINE_STRIDE));
         if quads > 0 {
@@ -641,7 +640,7 @@ impl WorldPrimitives {
     /// Reserves the shared quad indices for `quads` quads; growth uploads the full array.
     fn reserve_indices(&mut self, device: &wgpu::Device, upload: Upload<'_>, quads: u32) {
         if quads > self.index_quads {
-            let max = device.limits().max_buffer_size;
+            let max = super::upload::legal_buffer_limit(device);
             let capacity = quads.next_power_of_two().min(VertexPages::limit(max, 24));
             self.index_data.extend(
                 (self.index_quads..capacity).flat_map(|q| [0, 1, 2, 0, 2, 3].map(|i| q * 4 + i)),
@@ -651,7 +650,7 @@ impl WorldPrimitives {
             if self.indices.size() < bytes.len() as u64 {
                 self.indices = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("World primitives"),
-                    size: (bytes.len() as u64).next_power_of_two().min(max),
+                    size: super::upload::legal_buffer_size(bytes.len() as u64, max),
                     usage: self.indices.usage(),
                     mapped_at_creation: false,
                 });
@@ -1604,5 +1603,211 @@ mod tests {
         );
         // The line is its width (4 pixels) thick, not more. Unselected geometry stays undrawn.
         assert_eq!(at(48, 52), black);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn chunked_uploads_respect_small_max_buffer_size_and_preserve_stage_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        // A non-power-of-two limit that still fits the 64 × 64 RGBA readback.
+        let limit = 20 * 1024;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_buffer_size: limit,
+                max_uniform_buffer_binding_size: limit as u32,
+                max_storage_buffer_binding_size: limit as u32,
+                ..wgpu::Limits::default()
+            },
+            ..Default::default()
+        }))
+        .expect("GPU device with small max_buffer_size");
+        let atlas = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            atlas.as_image_copy(),
+            &[255, 255, 255, 255],
+            wgpu::TexelCopyBufferLayout::default(),
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        let atlas_view = atlas.create_view(&Default::default());
+        let mut primitives =
+            WorldPrimitives::new(&device, (wgpu::TextureFormat::Rgba8Unorm, false));
+        let view_proj =
+            Mat4::perspective_infinite_reverse_rh(std::f32::consts::FRAC_PI_2, 1.0, 0.1);
+        let quad_bytes = 4 * std::mem::size_of::<Vertex>() as u64;
+        let max_quads = VertexPages::limit(limit, quad_bytes);
+        assert!(max_quads > 0);
+        // Exact-fit upload (whose power-of-two would exceed `limit`) stays within `limit`.
+        let exact_fit: Vec<Vertex> = (0..max_quads)
+            .flat_map(|_| quad(view_proj, [0.0, 0.0, 32.0, 32.0], 2.0, RED))
+            .collect();
+        assert!(
+            (exact_fit.len() * std::mem::size_of::<Vertex>()).next_power_of_two() as u64 > limit
+        );
+        assert!(primitives.prepare(
+            &device,
+            &mut |buffer, bytes| {
+                assert!(
+                    buffer.size() <= limit,
+                    "buffer {} > limit {limit}",
+                    buffer.size()
+                );
+                assert!(bytes.len() as u64 <= buffer.size());
+                queue.write_buffer(buffer, 0, bytes);
+            },
+            &Batch {
+                quads: &exact_fit,
+                ..Default::default()
+            },
+            view_proj,
+            [SIZE, SIZE],
+            &atlas_view,
+        ));
+        assert_eq!(primitives.quads.buffers.len(), 1);
+
+        // Multi-page upload exceeding `limit`: first pages draw RED in stage 0, last page
+        // draws GREEN over the right half in the final stage.
+        let total = max_quads as usize * 2 + 5;
+        let mut multi_quads = Vec::with_capacity(total * 4);
+        for i in 0..total {
+            let color = if i + 1 == total { GREEN } else { RED };
+            let left = if i + 1 == total { 32.0 } else { 0.0 };
+            multi_quads.extend_from_slice(&quad(view_proj, [left, 0.0, 64.0, 64.0], 2.0, color));
+        }
+        let mut stage_ends = [[0u32; 4]; STAGES - 1];
+        for end in &mut stage_ends {
+            end[0] = (total - 1) as u32;
+        }
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let mut uploads = crate::gfx::upload::Uploads::with_chunk(&device, 1024);
+        assert!(primitives.prepare(
+            &device,
+            &mut |buffer, bytes| {
+                assert!(
+                    buffer.size() <= limit,
+                    "buffer {} > limit {limit}",
+                    buffer.size()
+                );
+                assert!(bytes.len() as u64 <= buffer.size());
+                uploads.buffer(&mut encoder, buffer, 0, bytes);
+            },
+            &Batch {
+                quads: &multi_quads,
+                stage_ends,
+                ..Default::default()
+            },
+            view_proj,
+            [SIZE, SIZE],
+            &atlas_view,
+        ));
+        assert_eq!(primitives.quads.buffers.len(), 3);
+        assert!(primitives.indices.size() <= limit);
+
+        let colour = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let depth = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let readback = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: (SIZE * SIZE * 4) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &colour.create_view(&Default::default()),
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &depth.create_view(&Default::default()),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            let mut next = 0;
+            primitives.draw_through(&mut pass, &mut next, 0);
+            primitives.draw_through(&mut pass, &mut next, STAGES - 1);
+        }
+        encoder.copy_texture_to_buffer(
+            colour.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &readback,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(SIZE * 4),
+                    rows_per_image: Some(SIZE),
+                },
+            },
+            wgpu::Extent3d {
+                width: SIZE,
+                height: SIZE,
+                depth_or_array_layers: 1,
+            },
+        );
+        uploads.finish(&encoder);
+        queue.submit([encoder.finish()]);
+        readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let texels = readback.slice(..).get_mapped_range().unwrap().to_vec();
+        let pixel = |x| {
+            let i = ((32 * SIZE + x) * 4) as usize;
+            &texels[i..i + 4]
+        };
+        assert_eq!(pixel(16), [255, 0, 0, 255]);
+        assert_eq!(pixel(48), [0, 255, 0, 255]);
     }
 }

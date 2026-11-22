@@ -1166,4 +1166,162 @@ mod tests {
         assert_near(pixel(40, 24), green, 1.0, "the sprite repeated");
         assert_near(pixel(8, 40), [255.0; 4], 1.0, "the untextured pipeline");
     }
+
+    #[test]
+    #[ignore = "daily"]
+    fn shared_id_required_and_optional_pipelines_both_resolve_and_draw_in_either_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(gpu) = device() else {
+            eprintln!("no GPU adapter: skipped");
+            return;
+        };
+        let red_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(1.0, 0.0, 0.0, 1.0); }";
+        let green_shader = "fn pipeline_fragment(input: PipelineInput) -> vec4<f32> { return vec4<f32>(0.0, 1.0, 0.0, 1.0); }";
+        let shared = Identifier::parse("test:shared").unwrap();
+        let req_frag = Identifier::parse("test:red").unwrap();
+        let opt_frag = Identifier::parse("test:green").unwrap();
+        let required = RenderPipeline::new(
+            shared.clone(),
+            req_frag,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
+        );
+        let optional = RenderPipeline::new(
+            shared.clone(),
+            opt_frag,
+            PipelineBlend::Translucent,
+            WorldDepth::Tested,
+        )
+        .optional();
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let vertices = [
+            quad([0.0, 0.0, 32.0, 64.0], 2.0, [255; 4]),
+            quad([32.0, 0.0, 64.0, 64.0], 2.0, [255; 4]),
+        ]
+        .concat();
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        for (generation, registered) in [
+            (101, [required.clone(), optional.clone()]),
+            (102, [optional, required]),
+        ] {
+            let set = Pipelines::build(&registered, generation, |file| {
+                Ok(if file.ends_with("red.wgsl") {
+                    red_shader
+                } else {
+                    green_shader
+                }
+                .to_owned())
+            })
+            .unwrap();
+            let req_handle = set
+                .resolve(&shared, mod_api::PipelineKind::Required)
+                .unwrap();
+            let opt_handle = set
+                .resolve(&shared, mod_api::PipelineKind::Optional)
+                .unwrap();
+            assert_ne!(req_handle, opt_handle);
+            let runs = [
+                PipelineRun {
+                    slot: set.slot(req_handle).unwrap(),
+                    stage: (STAGES - 1) as u8,
+                    quads: 1,
+                },
+                PipelineRun {
+                    slot: set.slot(opt_handle).unwrap(),
+                    stage: (STAGES - 1) as u8,
+                    quads: 1,
+                },
+            ];
+            let at = render(
+                &gpu,
+                &mut primitives,
+                format,
+                Batch {
+                    set: Some(&set),
+                    vertices: &vertices,
+                    runs: &runs,
+                    time: 0.0,
+                },
+                STAGES - 1,
+            );
+            assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "required pipeline");
+            assert_eq!(at(48, 32), [0.0, 255.0, 0.0, 255.0], "optional pipeline");
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn pipeline_quads_chunk_across_small_max_buffer_size_and_preserve_order() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        // A non-power-of-two limit that still fits the 64 × 64 RGBA readback.
+        let limit = 20 * 1024;
+        let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_buffer_size: limit,
+                max_uniform_buffer_binding_size: limit as u32,
+                max_storage_buffer_binding_size: limit as u32,
+                ..wgpu::Limits::default()
+            },
+            ..Default::default()
+        }))
+        .expect("GPU device with small max_buffer_size");
+        let set = load(
+            77,
+            &[(PASS, PipelineBlend::Translucent, WorldDepth::Tested)],
+        );
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        let mut primitives = WorldPrimitives::new(&gpu.0, (format, false));
+        let quad_bytes = 4 * std::mem::size_of::<PipelineVertex>() as u64;
+        let max_quads = world_primitives::VertexPages::limit(limit, quad_bytes);
+        assert!(max_quads > 0);
+        // More than one full page in a single run, followed by a second run at a later stage.
+        let first_count = max_quads + 20;
+        let mut vertices = Vec::with_capacity((first_count as usize + 1) * 4);
+        for _ in 0..first_count {
+            vertices.extend_from_slice(&quad([0.0, 0.0, 64.0, 64.0], 2.0, [255, 0, 0, 255]));
+        }
+        vertices.extend_from_slice(&quad([32.0, 0.0, 64.0, 64.0], 2.0, [0, 255, 0, 255]));
+        let runs = [
+            PipelineRun {
+                slot: 0,
+                stage: 0,
+                quads: first_count,
+            },
+            PipelineRun {
+                slot: 0,
+                stage: (STAGES - 1) as u8,
+                quads: 1,
+            },
+        ];
+        let at = render(
+            &gpu,
+            &mut primitives,
+            format,
+            Batch {
+                set: Some(&set),
+                vertices: &vertices,
+                runs: &runs,
+                time: 0.0,
+            },
+            STAGES - 1,
+        );
+        assert!(primitives.pipelines.vertices.buffers.len() >= 2);
+        assert!(
+            primitives
+                .pipelines
+                .vertices
+                .buffers
+                .iter()
+                .all(|buffer| buffer.size() <= limit)
+        );
+        assert_eq!(at(16, 32), [255.0, 0.0, 0.0, 255.0], "earlier stage");
+        assert_eq!(
+            at(48, 32),
+            [0.0, 255.0, 0.0, 255.0],
+            "later stage over earlier stage"
+        );
+    }
 }
