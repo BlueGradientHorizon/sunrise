@@ -168,6 +168,29 @@ Temporarily held-out or removed entities cannot be delivered. An unbounded
 selector can reach other loaded dimensions; handle lookup uses the entity's own
 dimension. There is no extra count cap. A very large `@e` is the caller's cost.
 
+## Game profiles, including offline players
+
+Use `Command::new("inspect <targets:game_profile>")` for commands that can reach
+offline players. The executor receives `CommandArgumentValue::GameProfiles`:
+a list of `(uuid, name)` pairs, not player handles. A plain name matches an
+online player or an unexpired user-cache entry, case-insensitively. Selectors
+select online players in vanilla order and use the same permission rules as
+other selectors. The client receives vanilla's `minecraft:game_profile` parser
+for player-name and selector completion. Unknown names report
+`argument.player.unknown`; empty selectors report `argument.entity.notfound.player`.
+
+On the server, `host.players().profile_by_name(name)` and
+`host.players().profile_by_uuid(uuid)` return the same borrowed `GameProfile<'_>`
+as `player.profile(host)`. They check online players first, then the unexpired
+user cache. Cached profiles have no login properties. Neither read contacts
+Mojang or invents an offline identity. For a UUID, use `profile_by_uuid`:
+vanilla's command argument takes a name or a selector, not a UUID literal.
+
+`host.players().profile_permission_level(uuid, name)` works in `player_login`,
+before a `PlayerRef` exists, and for offline profiles. Dedicated servers read
+the op list by UUID. Integrated servers also account for the owner's name and
+world and guest command access. `PermissionLevel::All` is level 0.
+
 ## Custom argument types
 
 Register a value kind once from `Hooks::register`, then use its namespaced id as an

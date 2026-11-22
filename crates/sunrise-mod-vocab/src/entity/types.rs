@@ -1324,9 +1324,9 @@ pub struct PlayerFood {
     pub exhaustion: f32,
 }
 
-// no wire: borrows the connected player's profile from the host.
+// no wire: borrows a profile from the host.
 /// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
-/// properties, such as `textures` (the skin). A custom test host can lend one using
+/// properties, such as `textures` (the skin) when available. A custom test host can lend one using
 /// `mod_api::testing::GameProfileFixture` with the `testing` feature enabled.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1340,7 +1340,7 @@ pub struct GameProfile<'a> {
 
 impl<'a> GameProfile<'a> {
     /// Read the profile's properties in login order without copying the text.
-    /// An offline-mode player has no properties.
+    /// Offline-mode players and profiles from the user cache have no properties.
     pub fn properties(&self) -> impl ExactSizeIterator<Item = ProfileProperty<'a>> + use<'a> {
         self.properties.iter().map(|property| ProfileProperty {
             name: &property.name,

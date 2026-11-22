@@ -14,13 +14,14 @@ use sunrise_client::command::{
 
 /// The argument kinds a native usage may name, each with a [`parser`]; `resource:<registry>`
 /// and `mod_id` come on top.
-pub(super) const KINDS: [&str; 18] = [
+pub(super) const KINDS: [&str; 19] = [
     "word",
     "text",
     "integer",
     "number",
     "boolean",
     "player",
+    "game_profile",
     "entity",
     "entities",
     "players",
@@ -163,6 +164,7 @@ pub(super) fn parser(kind: &str) -> Option<(&'static str, Value, ArgType)> {
             },
         ),
         "boolean" => ("brigadier:bool", Value::Null, ArgType::Bool),
+        "game_profile" => ("minecraft:game_profile", Value::Null, ArgType::GameProfile),
         "entity" | "entities" | "player" | "players" => {
             let single = matches!(kind, "entity" | "player");
             let players = matches!(kind, "player" | "players");

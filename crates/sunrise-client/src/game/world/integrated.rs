@@ -942,8 +942,15 @@ impl Game<'_> {
         ready: &Sender<Ready>,
         opening: Opening,
     ) -> Result<()> {
-        // The mods' server configs, read before the server starts.
+        // Minecraft creates Services in the game directory, shared by all its worlds.
         if let Ok(dir) = std::env::current_dir() {
+            let (cache, warnings) =
+                sunrise_client::server::user_cache::UserCache::load(dir.join("usercache.json"));
+            for warning in warnings {
+                log::warn!("{warning}");
+            }
+            self.user_cache = Some(cache);
+            // The mods' server configs, read before the server starts.
             self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
         }
         let prepared = self.prepare_early_game_rules(opening.world?)?;

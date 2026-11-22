@@ -2227,20 +2227,21 @@ impl Game<'_> {
                     }
                     self.lan_guest_joined(conn, entities, spawn);
                     let host = self.lan.as_ref()?;
+                    let guest = host.hub.guest(conn);
                     super::cauldron_prediction::publish_registrations(
                         &super::cauldron_interactions::snapshot(),
-                        host.hub.guest(conn),
+                        guest,
                     );
+                    // PlayerList.placeNewPlayer remembers the joined identity on either server.
+                    if let (Some(cache), Some(g)) = (self.user_cache.as_mut(), guest) {
+                        cache.add(NameAndId {
+                            id: g.uuid,
+                            name: g.name.clone(),
+                        });
+                    }
                     if self.is_dedicated_server()
-                        && let Some(g) = host.hub.guest(conn)
+                        && let Some(g) = guest
                     {
-                        // PlayerList.placeNewPlayer, then the broadcast join message.
-                        if let Some(cache) = self.user_cache.as_mut() {
-                            cache.add(NameAndId {
-                                id: g.uuid,
-                                name: g.name.clone(),
-                            });
-                        }
                         super::dedicated::events::record(
                             "join",
                             &g.name,

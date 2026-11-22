@@ -165,6 +165,27 @@ pub trait Players {
         unimplemented!("Players::player_by_name")
     }
     /// Side: server.
+    /// An online player's profile by UUID, else an unexpired user-cache entry without login
+    /// properties. Does not contact the profile service or synthesize an offline identity.
+    fn profile_by_uuid(&self, uuid: u128) -> Option<GameProfile<'_>> {
+        unimplemented!("Players::profile_by_uuid")
+    }
+    /// Side: server.
+    /// An online player's profile by account name (case-insensitive), else an unexpired
+    /// user-cache entry without login properties. Does not contact the profile service or
+    /// synthesize an offline identity.
+    fn profile_by_name(&self, name: &str) -> Option<GameProfile<'_>> {
+        unimplemented!("Players::profile_by_name")
+    }
+    /// Side: server.
+    /// The permission set for a profile (`MinecraftServer.getProfilePermissions`), even before
+    /// the player joins. Dedicated servers look up the UUID in the op list. Integrated servers
+    /// check the owner's name case-insensitively and account for world and guest command access.
+    /// An ordinary player has [`PermissionLevel::All`] (level 0).
+    fn profile_permission_level(&self, uuid: u128, name: &str) -> PermissionLevel {
+        unimplemented!("Players::profile_permission_level")
+    }
+    /// Side: server.
     /// The player whose action or command a hook hears, as their state is
     /// swapped in (a command executor, `right_click_block`,
     /// `native_use_on`, `break_block`...): None outside such a

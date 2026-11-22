@@ -2,6 +2,10 @@
 use crate::game::{Game, api_values::TryIntoEngine};
 use mod_api::*;
 use std::sync::Arc;
+use sunrise_client::{
+    lan::guest::Guest,
+    server::{user_cache::UserCache, user_lists::NameAndId},
+};
 
 impl ClientSession for Game<'_> {
     fn client_server(&self) -> Option<ClientServer<'_>> {
@@ -53,8 +57,68 @@ impl Players for Game<'_> {
     fn player_by_name(&self, name: &str) -> Option<PlayerRef> {
         self.native_player_by_name(name)
     }
+    fn profile_by_uuid(&self, uuid: u128) -> Option<GameProfile<'_>> {
+        self.lookup_profile(|player| player.uuid == uuid, |cache| cache.find_by_id(uuid))
+    }
+    fn profile_by_name(&self, name: &str) -> Option<GameProfile<'_>> {
+        self.lookup_profile(
+            |player| player.name.eq_ignore_ascii_case(name),
+            |cache| cache.find_by_name(name),
+        )
+    }
+    fn profile_permission_level(&self, uuid: u128, name: &str) -> PermissionLevel {
+        if let Some(lists) = &self.server_lists {
+            let lists = lists.lock().unwrap_or_else(|e| e.into_inner());
+            return lists
+                .ops
+                .permission_level(uuid)
+                .map_or(PermissionLevel::All, PermissionLevel::from_level);
+        }
+        // IntegratedServer.getProfilePermissions and PlayerList.isOp: the owner
+        // is an op when the world allows commands. LAN publishing separately
+        // sets guestCommandAccess, which grants guests the game master's level.
+        if self.allow_commands()
+            && let Some(host) = &self.lan
+            && let Some((owner, _)) = &host.hub.lan.shared.config.singleplayer_profile
+        {
+            if owner.eq_ignore_ascii_case(name) {
+                return PermissionLevel::Owners;
+            }
+            if host.settings.guest_commands {
+                return PermissionLevel::Gamemasters;
+            }
+        }
+        PermissionLevel::All
+    }
     fn acting_player(&self) -> Option<PlayerRef> {
         self.native_acting_player()
+    }
+}
+impl Game<'_> {
+    /// Borrow from the online records before consulting the offline cache.
+    fn lookup_profile(
+        &self,
+        matches: impl Fn(&Guest) -> bool,
+        cached: impl FnOnce(&UserCache) -> Option<&NameAndId>,
+    ) -> Option<GameProfile<'_>> {
+        if let Some(online) = self
+            .lan
+            .iter()
+            .flat_map(|host| host.hub.online_players())
+            .find(|player| matches(player))
+        {
+            return Some(mod_api::__private::game::game_profile(
+                online.uuid,
+                &online.name,
+                &online.properties,
+            ));
+        }
+        let cached = cached(self.user_cache.as_ref()?)?;
+        Some(mod_api::__private::game::game_profile(
+            cached.id,
+            &cached.name,
+            &[],
+        ))
     }
 }
 impl RuntimeLevels for Game<'_> {
