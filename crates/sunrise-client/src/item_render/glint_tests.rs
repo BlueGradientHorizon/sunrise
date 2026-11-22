@@ -1221,6 +1221,75 @@ fn translucent_standard_and_special_foil_emit_translucent_glint_overlay_with_dis
         );
     }
 
+    // Both foil variants submitted alongside another translucent surface in one combined stream.
+    let mut combined = Vec::new();
+    let other_translucent = state(
+        "minecraft:item/translucent_crystal",
+        FoilType::None,
+        DisplayContext::Ground,
+    );
+    let std_translucent = state(
+        "minecraft:item/translucent_crystal",
+        FoilType::Standard,
+        DisplayContext::Ground,
+    );
+    let spec_translucent = state(
+        "minecraft:item/translucent_crystal",
+        FoilType::Special,
+        DisplayContext::Ground,
+    );
+    for (st, z) in [
+        (&other_translucent, -3.0_f32),
+        (&std_translucent, -2.0_f32),
+        (&spec_translucent, -2.0_f32),
+    ] {
+        st.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            Mat4::from_translation(Vec3::new(0.0, 0.0, z)),
+            &mut WorldSink {
+                out: &mut combined,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(glint),
+                tier: 0,
+            },
+        );
+    }
+    assert_eq!(combined.len(), 12);
+    assert!(
+        combined[0..4]
+            .iter()
+            .all(|v| (v.layer & 0xFFFF) == crate::gfx::TRANSLUCENT_ITEM_OVERLAY),
+        "overlapping unglinted translucent surface uses TRANSLUCENT_ITEM_OVERLAY"
+    );
+    assert!(
+        combined[4..8]
+            .iter()
+            .all(|v| (v.layer & 0xFFFF) == crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY),
+        "standard foil overlapping translucent surface uses TRANSLUCENT_GLINT_ITEM_OVERLAY"
+    );
+    assert!(
+        combined[8..12]
+            .iter()
+            .all(|v| (v.layer & 0xFFFF) == crate::gfx::TRANSLUCENT_GLINT_ITEM_OVERLAY),
+        "special foil overlapping translucent surface uses TRANSLUCENT_GLINT_ITEM_OVERLAY"
+    );
+    let std_guv: [[u32; 2]; 4] =
+        std::array::from_fn(|i| combined[4 + i].glint_uv.map(f32::to_bits));
+    let spec_guv: [[u32; 2]; 4] =
+        std::array::from_fn(|i| combined[8 + i].glint_uv.map(f32::to_bits));
+    assert_eq!(
+        std_guv,
+        expected_atlas_uv.map(|p| glint.uv(p).map(f32::to_bits)),
+        "standard foil in combined stream must use glint-atlas UV0"
+    );
+    assert_ne!(
+        spec_guv, std_guv,
+        "special foil in combined stream must use distinct decal UV3"
+    );
+
     fs::remove_dir_all(root).ok();
 }
 
@@ -2802,6 +2871,304 @@ fn shield_banner_pattern_blends_low_alpha_without_depth_write_26_3() {
         [src_rgba[3], 0, 0, 255],
         "banner_pattern must blend alpha 8/255 without writing depth, rejecting equal-depth glint"
     );
+}
+
+/// 26.3 parity: both translucent foil variants (`OIT_ITEM_GLINT` standard UV0 and
+/// `OIT_ITEM_GLINT_SPECIAL` decal UV3) composite with an overlapping translucent surface in OIT
+/// without leaking `GlintAlpha` into the `OIT_ALPHA_ONLY` bounds/transmittance stages.
+#[test]
+#[ignore = "daily"]
+fn translucent_foil_variants_composite_with_overlapping_translucent_surface_in_oit_26_3() {
+    use crate::gfx::entity_pixel_test::{
+        EntityWorldDraw, render_entity_world, test_world_projection,
+    };
+
+    // 1. Verify vanilla 26.3's OIT stage shader defines from the oracle.
+    let witness = glint_witness_26_3();
+    let oit_sets = &witness["oit_item_glint"];
+    let has_flag = |stage: &Value, flag: &str| {
+        stage["define_flags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v.as_str() == Some(flag))
+    };
+    for key in ["oit_item", "oit_item_glint", "oit_item_glint_special"] {
+        let set = &oit_sets[key];
+        for alpha_stage in ["depth_bounds", "transmittance"] {
+            assert_eq!(set[alpha_stage]["depth_write"].as_bool(), Some(false));
+            assert_eq!(set[alpha_stage]["alpha_cutout"].as_str(), Some("0.1"));
+            assert!(has_flag(&set[alpha_stage], "OIT_ALPHA_ONLY"));
+            assert!(
+                !has_flag(&set[alpha_stage], "GLINT"),
+                "{key}.{alpha_stage} must not enable GLINT in OIT_ALPHA_ONLY"
+            );
+            assert!(
+                !has_flag(&set[alpha_stage], "GLINT_SPECIAL"),
+                "{key}.{alpha_stage} must not enable GLINT_SPECIAL in OIT_ALPHA_ONLY"
+            );
+        }
+        assert_eq!(set["accumulate"]["depth_write"].as_bool(), Some(false));
+        assert_eq!(set["accumulate"]["alpha_cutout"].as_str(), Some("0.1"));
+        assert!(!has_flag(&set["accumulate"], "OIT_ALPHA_ONLY"));
+    }
+    assert!(!has_flag(&oit_sets["oit_item"]["accumulate"], "GLINT"));
+    assert!(has_flag(&oit_sets["oit_item_glint"]["accumulate"], "GLINT"));
+    assert!(!has_flag(
+        &oit_sets["oit_item_glint"]["accumulate"],
+        "GLINT_SPECIAL"
+    ));
+    assert!(has_flag(
+        &oit_sets["oit_item_glint_special"]["accumulate"],
+        "GLINT"
+    ));
+    assert!(has_flag(
+        &oit_sets["oit_item_glint_special"]["accumulate"],
+        "GLINT_SPECIAL"
+    ));
+
+    // 2. Render both translucent foil variants overlapping another translucent surface through OIT.
+    let root = fixture("translucent-glint-oit-gpu");
+    png(
+        &root.join("assets/minecraft/textures/item/translucent_crystal.png"),
+        16,
+        16,
+        [40, 40, 40, 128],
+    );
+    png(
+        &root.join("assets/minecraft/textures/item/translucent_pane.png"),
+        16,
+        16,
+        [20, 40, 220, 128],
+    );
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        &data,
+    )
+    .unwrap();
+    renderer.prepare_glint_atlas(16384, (0, 2)).unwrap();
+
+    // 2x1 atlas: texel 0 = neutral translucent item (alpha 128/255), texel 1 = blue translucent surface.
+    let atlas: [u8; 8] = [40, 40, 40, 128, 20, 40, 220, 128];
+    let sprites = HashMap::from([
+        (
+            "item/translucent_crystal".to_owned(),
+            Rect {
+                u0: 0.1,
+                v0: 0.1,
+                u1: 0.4,
+                v1: 0.9,
+                w: 1,
+                h: 1,
+            },
+        ),
+        (
+            "item/translucent_pane".to_owned(),
+            Rect {
+                u0: 0.6,
+                v0: 0.1,
+                u1: 0.9,
+                v1: 0.9,
+                w: 1,
+                h: 1,
+            },
+        ),
+    ]);
+    let glint = Glint {
+        millis: 123_456,
+        speed: 0.5,
+        alpha: 1.0,
+        scale: Glint::ITEM_SCALE,
+    };
+    let front_pose = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0))
+        * Mat4::from_scale(Vec3::new(2.0, 2.0, 1.0));
+    let back_pose = Mat4::from_translation(Vec3::new(0.0, 0.0, -4.0))
+        * Mat4::from_scale(Vec3::new(4.0, 4.0, 1.0));
+
+    let submit_one = |sprite: &str, foil: FoilType, pose: Mat4| -> Vec<Vertex> {
+        let mut out = Vec::new();
+        state(sprite, foil, DisplayContext::Ground).submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            pose,
+            &mut WorldSink {
+                out: &mut out,
+                light: 0xF0F0,
+                lights: None,
+                glint: Some(glint),
+                tier: 0,
+            },
+        );
+        out
+    };
+    let center_glint_uv = |verts: &[Vertex]| -> [f32; 2] {
+        [
+            ((verts[0].glint_uv[0] + verts[2].glint_uv[0]) * 0.5).rem_euclid(1.0),
+            ((verts[0].glint_uv[1] + verts[2].glint_uv[1]) * 0.5).rem_euclid(1.0),
+        ]
+    };
+    let torus_dist_sq = |a: [f32; 2], b: [f32; 2]| -> f32 {
+        let dx = (a[0] - b[0]).abs();
+        let dy = (a[1] - b[1]).abs();
+        let dx = dx.min(1.0 - dx);
+        let dy = dy.min(1.0 - dy);
+        dx * dx + dy * dy
+    };
+
+    let std_front = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::Standard,
+        front_pose,
+    );
+    let std_back = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::Standard,
+        back_pose,
+    );
+    let spec_front = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::Special,
+        front_pose,
+    );
+    let spec_back = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::Special,
+        back_pose,
+    );
+    let plain_front = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::None,
+        front_pose,
+    );
+    let plain_back = submit_one(
+        "minecraft:item/translucent_crystal",
+        FoilType::None,
+        back_pose,
+    );
+    let blue_front = submit_one(
+        "minecraft:item/translucent_pane",
+        FoilType::None,
+        front_pose,
+    );
+    let blue_back = submit_one("minecraft:item/translucent_pane", FoilType::None, back_pose);
+
+    let std_uv = center_glint_uv(&std_front);
+    let spec_uv = center_glint_uv(&spec_front);
+    assert!(
+        torus_dist_sq(std_uv, spec_uv) > 0.01,
+        "standard ({std_uv:?}) and special ({spec_uv:?}) center glint UVs must be distinct"
+    );
+
+    // 64x64 glint texture: green near standard UV0, red near special decal UV3.
+    let mut glint_tex = Vec::with_capacity(64 * 64 * 4);
+    for y in 0..64 {
+        for x in 0..64 {
+            let uv = [(x as f32 + 0.5) / 64.0, (y as f32 + 0.5) / 64.0];
+            let texel = if torus_dist_sq(uv, std_uv) <= torus_dist_sq(uv, spec_uv) {
+                [0u8, 220, 0, 255]
+            } else {
+                [220u8, 0, 0, 255]
+            };
+            glint_tex.extend_from_slice(&texel);
+        }
+    }
+    let view_proj = test_world_projection(70.0, 1.0, 512.0);
+    let render_center = |slices: &[&[Vertex]]| -> [u8; 4] {
+        let mut verts = Vec::new();
+        for s in slices {
+            verts.extend_from_slice(s);
+        }
+        let img = render_entity_world(EntityWorldDraw {
+            vertices: &verts,
+            atlas_size: [2, 1],
+            atlas: &atlas,
+            glint_size: [64, 64],
+            glint: &glint_tex,
+            view_proj,
+            glint_alpha: 1.0,
+            oit: true,
+        })
+        .expect("OIT translucent foil overlap GPU render");
+        let at = (32 * 64 + 32) * 4;
+        [img[at], img[at + 1], img[at + 2], img[at + 3]]
+    };
+
+    let unglinted_front = render_center(&[&plain_front, &blue_back]);
+    let unglinted_back = render_center(&[&blue_front, &plain_back]);
+
+    // Standard foil: front over blue, behind blue, solo, and reversed submission order.
+    let std_only = render_center(&[&std_front]);
+    let std_over_blue_ab = render_center(&[&std_front, &blue_back]);
+    let std_over_blue_ba = render_center(&[&blue_back, &std_front]);
+    let blue_over_std_ab = render_center(&[&blue_front, &std_back]);
+    let blue_over_std_ba = render_center(&[&std_back, &blue_front]);
+    assert_eq!(
+        std_over_blue_ab, std_over_blue_ba,
+        "OIT standard foil over blue must be order-independent"
+    );
+    assert_eq!(
+        blue_over_std_ab, blue_over_std_ba,
+        "OIT blue over standard foil must be order-independent"
+    );
+    assert!(
+        std_over_blue_ab[2] > std_only[2] + 20,
+        "blue behind alpha=128/255 standard foil (glint_alpha=1.0) must not be culled: over={std_over_blue_ab:?} solo={std_only:?}"
+    );
+    assert!(
+        std_over_blue_ab[1] > unglinted_front[1] + 50,
+        "standard foil must add green glint over blue: foil={std_over_blue_ab:?} plain={unglinted_front:?}"
+    );
+    assert!(
+        blue_over_std_ab[1] > unglinted_back[1] + 30,
+        "standard foil behind blue must still show green glint: foil={blue_over_std_ab:?} plain={unglinted_back:?}"
+    );
+    assert!(
+        blue_over_std_ab[2] > std_over_blue_ab[2] + 10,
+        "blue in front must be bluer than blue behind standard foil: front={blue_over_std_ab:?} back={std_over_blue_ab:?}"
+    );
+
+    // Special foil: front over blue, behind blue, solo, and reversed submission order.
+    let spec_only = render_center(&[&spec_front]);
+    let spec_over_blue_ab = render_center(&[&spec_front, &blue_back]);
+    let spec_over_blue_ba = render_center(&[&blue_back, &spec_front]);
+    let blue_over_spec_ab = render_center(&[&blue_front, &spec_back]);
+    let blue_over_spec_ba = render_center(&[&spec_back, &blue_front]);
+    assert_eq!(
+        spec_over_blue_ab, spec_over_blue_ba,
+        "OIT special foil over blue must be order-independent"
+    );
+    assert_eq!(
+        blue_over_spec_ab, blue_over_spec_ba,
+        "OIT blue over special foil must be order-independent"
+    );
+    assert!(
+        spec_over_blue_ab[2] > spec_only[2] + 20,
+        "blue behind alpha=128/255 special foil (glint_alpha=1.0) must not be culled: over={spec_over_blue_ab:?} solo={spec_only:?}"
+    );
+    assert!(
+        spec_over_blue_ab[0] > unglinted_front[0] + 50,
+        "special foil must add red glint over blue: foil={spec_over_blue_ab:?} plain={unglinted_front:?}"
+    );
+    assert!(
+        blue_over_spec_ab[0] > unglinted_back[0] + 30,
+        "special foil behind blue must still show red glint: foil={blue_over_spec_ab:?} plain={unglinted_back:?}"
+    );
+    assert!(
+        blue_over_spec_ab[2] > spec_over_blue_ab[2] + 10,
+        "blue in front must be bluer than blue behind special foil: front={blue_over_spec_ab:?} back={spec_over_blue_ab:?}"
+    );
+
+    // Standard and Special must produce distinct composited pixels in both depth orders.
+    assert_ne!(std_over_blue_ab, spec_over_blue_ab);
+    assert_ne!(blue_over_std_ab, blue_over_spec_ab);
+
+    fs::remove_dir_all(root).ok();
 }
 
 /// 26.3 parity: `prepare_glint_atlas_with_mips` matches vanilla `SpriteLoader.stitch` bit-for-bit

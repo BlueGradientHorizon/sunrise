@@ -26,6 +26,7 @@ LIB_TESTS = [
     'item_render::glint_tests::compass_special_foil_uses_decal_uv_26_3',
     'item_render::glint_tests::shield_banner_pattern_blends_low_alpha_without_depth_write_26_3',
     'item_render::glint_tests::special_model_trident_and_shield_glint_uses_entity_scale_26_3',
+    'item_render::glint_tests::translucent_foil_variants_composite_with_overlapping_translucent_surface_in_oit_26_3',
     'item_render::glint_tests::glint_atlases_match_vanilla_26_3_mip_and_aniso',
 ]
 
