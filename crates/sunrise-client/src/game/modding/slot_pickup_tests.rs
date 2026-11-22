@@ -108,7 +108,12 @@ impl BlockEntityPart for PotBlock {
             let source = event.stack.as_mut().unwrap();
             QUICK_MOVE_SOURCE.set(Some(source.count()));
             if let Some(slot) = QUICK_MOVE_CONSUME.take() {
-                event.entity.items[slot] = None;
+                assert_eq!(
+                    event
+                        .subject
+                        .with_view(|mut view| view.set_item_slot(slot as u32, None)),
+                    Some(Ok(true))
+                );
             }
             if left == 0 {
                 *event.stack = None;

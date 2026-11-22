@@ -1001,6 +1001,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
             None,
             None,
             true,
+            None,
         ),
         (
             HEALTHY_MENU.into(),
@@ -1012,6 +1013,7 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
             None,
             None,
             true,
+            None,
         ),
     ];
     sunrise_client::containers::with_mod_menu_types(menus, || {
@@ -1465,6 +1467,8 @@ impl mod_api::BlockPart for QuickMoveObserver {
             source_slots: [0, 1, 2].map(|slot| items.amount(host, slot)),
         });
         if at == [2, 64, 1] && SCRIPT.with(|s| s.borrow().notify_destination) {
+            use mod_api::HostTransaction;
+
             let items = event.level.capability(host, &ITEMS, at, None).unwrap();
             let stone = mod_api::ItemStack::new(
                 mod_api::__private::item_key("minecraft:stone").unwrap(),
