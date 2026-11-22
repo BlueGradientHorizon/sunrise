@@ -108,11 +108,6 @@ impl FeatureCatalog {
             .map(|source| source.get())
             .ok_or_else(|| DecodeError::Registry(format!("unknown placed feature {id}")))
     }
-    pub(super) fn placed_in_tag(&self, name: &str, tag: &str) -> bool {
-        self.tags
-            .get(tag)
-            .is_some_and(|members| members.iter().any(|member| member == name))
-    }
     /// `PlacedFeature.LIST_OF_LISTS_CODEC`: each step is a tag or a list of
     /// placed-feature holders, not a single compact holder.
     pub(super) fn biome_steps(

@@ -622,13 +622,23 @@ fn generic_worldgen_entries_use_published_decoded_owner_without_terrain_locator(
             "registry_entry_test:rejected",
             r#"{"type":"registry_entry_test:unknown"}"#.into(),
         );
-        for kind in ["feature_tags", "placed_feature_tags"] {
-            overrides.set(
-                kind,
-                "registry_entry_test:accepted",
-                r#"{"values":["registry_entry_test:accepted"]}"#.into(),
-            );
-        }
+        overrides.set(
+            "feature_tags",
+            "registry_entry_test:accepted",
+            r#"{"values":["registry_entry_test:accepted"]}"#.into(),
+        );
+        overrides.add_tag(
+            "placed_feature_tags",
+            "registry_entry_test:accepted",
+            "fixture",
+            r#"{"values":["registry_entry_test:accepted"]}"#.into(),
+        );
+        overrides.add_tag(
+            "placed_feature_tags",
+            "registry_entry_test:mixed",
+            "fixture",
+            r#"{"values":["registry_entry_test:accepted","registry_entry_test:rejected"]}"#.into(),
+        );
         overrides.set("carvers", "registry_entry_test:accepted",
             r#"{"type":"minecraft:cave","probability":1.0,"y":{"absolute":0},"count":1,"thickness":1.0,"room_vertical_radius_multiplier":1.0,"horizontal_radius_multiplier":1.0,"vertical_radius_multiplier":1.0,"floor_level":-0.7}"#.into());
         overrides.set(
@@ -712,7 +722,15 @@ fn generic_worldgen_entries_use_published_decoded_owner_without_terrain_locator(
             ) {
                 assert_eq!(
                     host(game).registry_entry_in_tag(&accepted, "registry_entry_test:accepted"),
-                    Some(true)
+                    Some(true),
+                    "{registry}: an admitted member of the registry's own tag"
+                );
+            }
+            if registry == "minecraft:worldgen/placed_feature" {
+                assert_eq!(
+                    host(game).registry_entry_in_tag(&accepted, "registry_entry_test:mixed"),
+                    Some(false),
+                    "a required placed feature rejected by its codec cannot bind the tag"
                 );
             }
         }

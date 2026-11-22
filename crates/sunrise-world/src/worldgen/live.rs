@@ -15,7 +15,7 @@ use super::{
 };
 use serde_json::Value;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     sync::{Arc, Mutex, OnceLock},
 };
 use sunrise_core::random::RandomSource;
@@ -32,7 +32,8 @@ pub struct LiveFeatures {
     configured_ids: OnceLock<BTreeSet<String>>,
     placed_ids: OnceLock<BTreeSet<String>>,
     provider_ids: OnceLock<BTreeSet<String>>,
-    configured_tags: OnceLock<std::collections::BTreeMap<String, Vec<String>>>,
+    configured_tags: OnceLock<BTreeMap<String, Vec<String>>>,
+    placed_tags: OnceLock<BTreeMap<String, Vec<String>>>,
     /// `BiomeGenerationSettings.getBoneMealFeatures` per biome, in vanilla order.
     bone_meal: Vec<Vec<String>>,
     /// Temperature settings per biome (`Biome.getTemperature`).
@@ -165,6 +166,7 @@ impl LiveFeatures {
             placed_ids: OnceLock::new(),
             provider_ids: OnceLock::new(),
             configured_tags: OnceLock::new(),
+            placed_tags: OnceLock::new(),
             bone_meal,
         }))
     }
@@ -210,31 +212,34 @@ impl LiveFeatures {
         Some(self.registry_ids(registry)?.contains(id))
     }
     pub fn registry_tag_contains(&self, registry: &str, id: &str, tag: &str) -> Option<bool> {
-        if !self.registry_contains(registry, id)? {
+        let ids = self.registry_ids(registry)?;
+        if !ids.contains(id) {
             return None;
         }
-        if registry == "minecraft:worldgen/placed_feature" {
-            return Some(self.catalog.placed_in_tag(id, tag));
-        }
-        if registry != "minecraft:worldgen/feature" {
-            return Some(false);
-        }
-        let tags = self.configured_tags.get_or_init(|| {
-            let mut definitions = TagDefinitions::default();
-            if let Some(resources) = &self.data.feature_resources {
+        let resources = self
+            .data
+            .feature_resources
+            .as_ref()
+            .expect("live features have feature resources");
+        let lookup = |name: &str, _| ids.contains(name).then(|| name.to_owned());
+        let tags = match registry {
+            "minecraft:worldgen/placed_feature" => self.placed_tags.get_or_init(|| {
+                // The catalog uses source references to decode features. Only the
+                // decoded holders may bind the tag exposed by the registry owner.
+                resources.placed_tags.bind(lookup).tags
+            }),
+            "minecraft:worldgen/feature" => self.configured_tags.get_or_init(|| {
+                let mut definitions = TagDefinitions::default();
                 for (name, json) in &resources.feature_tags {
                     let _ = definitions.apply_json(name, "live features", json);
                 }
-            }
-            definitions
-                .build(|name, _| {
-                    self.registry_contains(registry, name)
-                        .filter(|accepted| *accepted)
-                        .map(|_| name.to_owned())
-                })
-                .map(|built| built.tags)
-                .unwrap_or_default()
-        });
+                definitions
+                    .build(lookup)
+                    .map(|built| built.tags)
+                    .unwrap_or_default()
+            }),
+            _ => return Some(false),
+        };
         Some(
             tags.get(tag)
                 .is_some_and(|members| members.iter().any(|member| member == id)),
