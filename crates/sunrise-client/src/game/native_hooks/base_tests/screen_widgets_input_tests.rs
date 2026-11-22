@@ -217,7 +217,7 @@ impl Hooks for Observe {
             .push(Seen::ScreenWheelPost(event.scroll));
     }
 
-    fn mouse_scrolling(&self, _: &mut dyn ClientHost, event: &mut MouseScrollingEvent<'_>) -> Flow {
+    fn mouse_scrolling(&self, _: &mut dyn ClientHost, event: &mut MouseScrollingEvent) -> Flow {
         let mut state = self.0.lock().unwrap();
         state.seen.push(Seen::GameWheel(
             event.scroll,

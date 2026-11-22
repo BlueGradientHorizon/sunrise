@@ -587,7 +587,7 @@ impl Game<'_> {
             let [left, top] = quantize_tooltip_anchor((bx + x, by + y));
             [left, top, 22, 22]
         };
-        let is_hovered = |[left, top, width, height]| {
+        let is_hovered = |[left, top, width, height]: [i32; 4]| {
             (left..left + width).contains(&anchor[0]) && (top..top + height).contains(&anchor[1])
         };
         let focused = if self.key_focus_driving() {

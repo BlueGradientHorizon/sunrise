@@ -18,7 +18,7 @@
 use super::event_loop::EventLoopCtl;
 use super::{
     Game, Screen,
-    key_focus::{self, Act},
+    key_focus::{self, Act, Nav},
 };
 use std::time::Instant;
 use sunrise_client::actions::Action;
