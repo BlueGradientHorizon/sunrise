@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let input: serde_json::Value = serde_json::from_str(line)?;
         let result = match input["packet"].as_str().unwrap() {
             "registry" => serde_json::json!({"count": DEBUG_SUBSCRIPTION_COUNT}),
-            // Sunrise decodes what vanilla's codec (and, for a sample, the logger) took or refused.
+            // Compare the stream decoders independently of client handler validation.
             "decode_request" => {
                 let body = unhex(input["body"].as_str().unwrap());
                 let result = match DebugSubscriptionRequest::read(&mut Reader::new(&body)) {

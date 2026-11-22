@@ -295,7 +295,16 @@ impl Game<'_> {
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
-                    self.handle_remote_event(event, turn)?;
+                    // The bundle is one PacketProcessor task. A handler failure leaves its
+                    // prefix applied, skips its suffix, and disconnects via onPacketError.
+                    if let Err(error) = self.handle_remote_event(event, turn) {
+                        log::warn!("Sunrise: bundle packet handler failed: {error}");
+                        if let Some(remote) = &self.remote {
+                            remote.session.close_after_pending();
+                        }
+                        turn.end.get_or_insert_with(|| io.packet_error());
+                        break;
+                    }
                 }
                 BundleStep::Payload(payload) => {
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
@@ -613,6 +622,58 @@ mod tests {
             .into();
             mod_platform::testing::with_mods(mods, || game.poll_remote().unwrap());
             assert_eq!(calls.try_recv(), Ok(None));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        if run_fresh_cases(
+            "game::remote::raw_ingress::tests::a_bundled_long_debug_sample_applies_only_the_prefix_before_packet_error",
+            "SUNRISE_DEBUG_SAMPLE_BUNDLE_CHILD",
+            &["debug-sample"],
+        ) {
+            return;
+        }
+        with_client_game(|game| {
+            let (_reader, mut writer) = connect_play_test(game, |_, _| {});
+            spawn_menu_test(game);
+            let delimiter = C::BundleDelimiter(sunrise_protocol::packets::Empty);
+            game.selected = 0;
+            for packet in [
+                delimiter.clone(),
+                C::SetHeldSlot(play::SetHeldSlot { slot: 1 }),
+                C::DebugSample(play::DebugSample {
+                    sample: vec![0; 5],
+                    kind: play::DEBUG_SAMPLE_TICK_TIME,
+                }),
+                C::SetHeldSlot(play::SetHeldSlot { slot: 2 }),
+                delimiter,
+            ] {
+                writer.send(&packet.encode()).unwrap();
+            }
+            let outcome =
+                |event: &Event| matches!(event, Event::Bundle(_) | Event::Disconnected { .. });
+            game.wait_for_test_remote_event(outcome);
+            let backlog = &mut game.remote.as_mut().unwrap().backlog;
+            let pos = backlog
+                .iter()
+                .position(|item| matches!(item, Received::Event(event, _) if outcome(event)))
+                .unwrap();
+            let Some(Received::Event(Event::Bundle(bundle), _credit)) = backlog.remove(pos) else {
+                panic!("the receiver closed before handing the completed bundle to main");
+            };
+            assert_eq!(game.selected, 0, "no member applied on the reader");
+            let mut turn = ListenerTurn::default();
+            game.handle_play_bundle(*bundle, &mut turn).unwrap();
+            assert_eq!(
+                game.selected, 1,
+                "the prefix applied but the suffix did not"
+            );
+            assert!(
+                matches!(turn.end, Some(Event::Disconnected { key: Some(key), from_server: false, .. }) if key == "disconnect.packetError")
+            );
         });
     }
 

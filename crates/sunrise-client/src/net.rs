@@ -1539,8 +1539,8 @@ fn receive_play(
         ) {
             Ok(p) => p,
             Err(err) => {
-                // Vanilla Connection.exceptionCaught closes on an invalid sample ordinal or
-                // a sample longer than AbstractSampleLogger's buffer.
+                // The enum is decoded before the bundle packer. Connection.exceptionCaught
+                // handles an invalid sample ordinal inside or outside a bundle.
                 if id == sunrise_protocol::ids::play::clientbound::DEBUG_SAMPLE {
                     return Err(Reason::plain(connection_lost(err, lang)));
                 }
@@ -1613,6 +1613,17 @@ fn receive_play(
             continue;
         }
         match packet {
+            // Vanilla runs standalone handleDebugSample on the receive thread, so a
+            // logger fault follows Connection.exceptionCaught. Bundled samples reach
+            // this same check in the actual logger, after the earlier members run.
+            play::Clientbound::DebugSample(p) if p.sample.len() > play::DEBUG_SAMPLE_DIMENSIONS => {
+                let error = sunrise_protocol::Error::new(format!(
+                    "debug sample of {} values, at most {}",
+                    p.sample.len(),
+                    play::DEBUG_SAMPLE_DIMENSIONS
+                ));
+                return Err(Reason::plain(connection_lost(error, lang)));
+            }
             play::Clientbound::KeepAlive(k) => io.handle(PlayIoAction::KeepAlive(k)),
             // Outside a bundle, these two handlers run on the receive thread.
             play::Clientbound::ChunkBatchStart(_) => io.handle(PlayIoAction::ChunkBatchStart),
