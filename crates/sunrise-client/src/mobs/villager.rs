@@ -338,6 +338,18 @@ pub const RAID_VICTORY: u8 = 3;
 /// The raid there was lost (still found by `getRaidAt` until it stops).
 pub const RAID_LOSS: u8 = 4;
 
+/// The owner of this hit publishes the response before another hit can land.
+#[derive(Clone, Copy, Debug)]
+pub struct PlayerHurt {
+    pub uuid: [i32; 4],
+    pub angry: bool,
+    pub trade_pitch: Option<f32>,
+}
+
+/// Sound requests kept with the accepted hit, not in the tick's mob outbox.
+#[derive(Clone, Copy, Debug)]
+pub struct HurtSound(pub &'static str, pub [f64; 3], pub f32, pub f32);
+
 /// Villager state beyond `Extra`'s scratch fields.
 #[derive(Clone, Debug, Default)]
 pub struct Ext {
@@ -349,6 +361,10 @@ pub struct Ext {
     pub raid_wave: bool,
     /// What the villager remembers of players (`gossips`).
     pub gossips: crate::gossip::Gossips,
+    pub pending_hurt_player: Option<PlayerHurt>,
+    /// `LivingEntity.hurtServer`'s damage broadcast for a full, unblocked hit.
+    pub pending_hurt_damage: Option<(super::Damage, Option<i32>)>,
+    pub pending_hurt_sounds: [Option<HurtSound>; 2],
     /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
     /// next customServerAiStep. This is runtime state, not saved gossip.
     pub last_traded_player: Option<[i32; 4]>,
@@ -381,29 +397,27 @@ pub struct Ext {
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
 }
-/// `Villager.setLastHurtByMob` of an accepted hit by `source`'s attacker (`uuid`, made up for
-/// this hit if `minted`): its gossip lands now, and the angry event, the hitting player's offers
-/// and a made-up UUID follow as a mob event.
-pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4], minted: bool) {
+/// `Villager.setLastHurtByMob`: gossip names the accepted hit's causing entity.
+/// The anger and the hitting player's offers are delivered by the owning game.
+pub fn hurt_by(m: &mut Mob, source: &super::Damage, uuid: [i32; 4]) {
     let Some(who) = source.attacker else { return };
     if m.species() != Species::Villager || source.kind.no_anger() {
         return;
     }
-    ext_mut(m).gossips.add(
+    let alive = m.alive();
+    let ext = ext_mut(m);
+    ext.gossips.add(
         uuid,
         crate::gossip::GossipType::MinorNegative,
         crate::gossip::REPUTATION_CHANGE_PER_EVENT,
     );
-    let player = (who == super::Who::Player).then_some(uuid);
-    m.outbox.push(MobEvent::VillagerHurt {
-        mob: m.id,
-        angry: m.alive() && player.is_some(),
-        player,
-        attacker_uuid: match who {
-            super::Who::Mob(id) if minted => Some((id, uuid)),
-            _ => None,
-        },
-    });
+    if who == super::Who::Player {
+        ext.pending_hurt_player = Some(PlayerHurt {
+            uuid,
+            angry: alive,
+            trade_pitch: None,
+        });
+    }
 }
 pub fn ext_mut(m: &mut Mob) -> &mut Ext {
     m.extra.villager.get_or_insert_with(Box::default)

@@ -1967,15 +1967,6 @@ pub enum MobEvent {
         mob: u32,
         slot: sunrise_core::equipment_slot::EquipmentSlot,
     },
-    /// `Villager.setLastHurtByMob`, its gossip already added at the hit: the angry
-    /// event (13), a player's open offers refreshed, and the UUID the gossip made up
-    /// for an attacker that had none.
-    VillagerHurt {
-        mob: u32,
-        angry: bool,
-        player: Option<[i32; 4]>,
-        attacker_uuid: Option<(u32, [i32; 4])>,
-    },
     /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)
     /// slot if it is empty, as a guaranteed drop.
     Gift {
@@ -2759,7 +2750,11 @@ include!("mobs/seen.rs");
 
 impl Mob {
     pub(crate) fn hurt_needs_owner(&self) -> bool {
-        self.damage_completion.is_some() || creaking::has_pending_hurt(self)
+        self.damage_completion.is_some()
+            || creaking::has_pending_hurt(self)
+            || villager::ext(self).is_some_and(|ext| {
+                ext.pending_hurt_player.is_some() || ext.pending_hurt_damage.is_some()
+            })
     }
 
     /// The name used by command replies: CustomName takes precedence over the type.
@@ -3274,6 +3269,7 @@ pub fn apply_brain_events_until_hurt(
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
+                    attacker_uuid: level.mob_uuid(mob),
                     held: [held, None],
                     ..Default::default()
                 };
@@ -4227,6 +4223,7 @@ impl Mob {
         // LivingEntity.applyItemBlocking: no mob raises a blocking item, but a native
         // mod may block for it.
         let mut blocked = 0.0;
+        let mut blocked_hit = false;
         if amount > 0.0
             && let Some(b) = level.shield_block(
                 crate::health::Hurting::Mob(self, &source),
@@ -4235,6 +4232,7 @@ impl Mob {
             )
         {
             blocked = b.blocked_damage;
+            blocked_hit = b.blocked;
             if b.blocked {
                 container.record_shield_damage(b.shield_damage.max(0) as f32);
             }
@@ -4434,6 +4432,15 @@ impl Mob {
         self.last_direct = None;
         hurt_by::resolve(self, &source);
         level.accepted_mob_hit(self, &source);
+        if knock && !blocked_hit && self.species() == Species::Villager {
+            let attacker = level.attack().attacker;
+            let cause = match source.attacker {
+                Some(Who::Mob(id)) => Some(id as i32),
+                Some(Who::Player) if attacker != 0 => Some(attacker),
+                _ => None,
+            };
+            villager::ext_mut(self).pending_hurt_damage = Some((source, cause));
+        }
         // dealDefaultKnockback, unless the damage type is tagged no_knockback or
         // the hit was blocked whole; a source without a position knocks in a
         // random direction.
@@ -4469,20 +4476,30 @@ impl Mob {
             if !dead {
                 self.ambient_timer = -self.ambient_interval();
             }
-            if !sound.is_empty() {
+            let at = self.position.components();
+            let voice = if sound.is_empty() {
+                None
+            } else {
                 let pitch = self.voice_pitch();
-                if !self.silent {
-                    let at = [self.position.x, self.position.y, self.position.z];
-                    self.outbox
-                        .push(MobEvent::Sound(sound, at, ai::sound_volume(self), pitch));
-                }
-            }
+                (!self.silent)
+                    .then(|| villager::HurtSound(sound, at, ai::sound_volume(self), pitch))
+            };
             // playSecondaryHurtSound: a thorns hit sounds where the mob
             // stands, silent or not.
-            if source.kind == DamageKind::Thorns {
-                let at = [self.position.x, self.position.y, self.position.z];
-                self.outbox
-                    .push(MobEvent::Sound("enchant.thorns.hit", at, 1.0, 1.0));
+            let thorns = (source.kind == DamageKind::Thorns).then_some(villager::HurtSound(
+                "enchant.thorns.hit",
+                at,
+                1.0,
+                1.0,
+            ));
+            if self.species() == Species::Villager {
+                villager::ext_mut(self).pending_hurt_sounds = [voice, thorns];
+            } else {
+                for villager::HurtSound(name, at, volume, pitch) in
+                    [voice, thorns].into_iter().flatten()
+                {
+                    self.outbox.push(MobEvent::Sound(name, at, volume, pitch));
+                }
             }
         }
         // IronGolem.hurtServer: a new crack level plays the damage sound.

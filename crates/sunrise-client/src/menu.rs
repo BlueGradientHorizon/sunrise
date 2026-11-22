@@ -2978,34 +2978,33 @@ impl Menu {
 
     /// Update a detached menu after an accepted edit of its live offer.
     pub fn merchant_update_result(&mut self, items: &Items) {
+        self.merchant_update_with_feedback(items, crate::merchant::TradeFeedback::Current);
+    }
+
+    pub fn merchant_update_with_feedback(
+        &mut self,
+        items: &Items,
+        feedback: crate::merchant::TradeFeedback,
+    ) {
         self.touch();
-        let Some(m) = self.state.merchant.as_mut() else {
-            return;
-        };
-        let (a, b) = (
-            self.state.containers[MAIN][0].as_ref(),
-            self.state.containers[MAIN][1].as_ref(),
-        );
-        let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
-        m.active = None;
-        if a.is_none() {
-            self.state.containers[RESULT][0] = None;
-            m.future_xp = 0;
-            return;
+        if let Some(merchant) = &mut self.state.merchant {
+            let [payment, result] = self
+                .state
+                .containers
+                .get_disjoint_mut([MAIN, RESULT])
+                .expect("separate merchant inputs and result");
+            if let Some((yes, pitch)) = merchant.update_sell_item(
+                items,
+                payment[0].as_ref(),
+                payment[1].as_ref(),
+                &mut result[0],
+                feedback,
+            ) {
+                merchant
+                    .events
+                    .push(crate::merchant::Event::TradeUpdated(yes, pitch));
+            }
         }
-        if !m.offers.is_empty() {
-            let (active, result) =
-                crate::merchant::sell_item(&m.offers, items, a, b, Some(m.selection_hint));
-            m.active = active;
-            m.future_xp = if result.is_some() {
-                active.map_or(0, |i| m.offers[i].xp)
-            } else {
-                0
-            };
-            self.state.containers[RESULT][0] = result;
-        }
-        let has = self.state.containers[RESULT][0].is_some();
-        m.notify_trade_updated(has);
     }
     /// `MerchantResultSlot.checkTakeAchievements`: award the tallied count, then reset it.
     fn merchant_check_take_achievements(&mut self, stack: &ItemStack) {
