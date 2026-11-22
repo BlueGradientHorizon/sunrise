@@ -1,6 +1,6 @@
-//! The debug charts (26.3 `debugchart`): F3+2 shows the frame times and, in
-//! single player, the integrated server's tick times; F3+3 the ping and, on a
-//! remote server, the bandwidth. Each chart keeps the last 240 samples
+//! The debug charts (26.3 `debugchart`): F3+2 shows the frame times and the server's tick times
+//! (the integrated server's own, or on a remote server the samples it streams to a client that
+//! asked for them); F3+3 the ping and, on a remote server, the bandwidth. Each chart keeps the last 240 samples
 //! (`LocalSampleLogger`) and draws one bar per sample over a 60 pixel high
 //! box (`AbstractDebugChart`).
 use crate::{
@@ -81,6 +81,9 @@ pub struct DebugCharts {
     pub packet_rates: [f32; 2],
     packet_totals: [i64; 2],
     packet_tick: u8,
+    /// `ClientDebugSubscriber.remoteSubscriptions`: whether the server was last asked for
+    /// `dedicated_server_tick_time`.
+    tick_time_requested: bool,
     previous_tick: Option<Instant>,
     bytes_seen: Option<i64>,
 }
@@ -112,6 +115,31 @@ impl DebugCharts {
             self.network = false;
         }
     }
+    /// `ClientDebugSubscriber.tick`: the request to send when the wanted subscriptions differ
+    /// from the last sent ones (`showFpsCharts` asks for the tick time).
+    pub fn subscription_request(&mut self, overlay: bool) -> Option<bool> {
+        let wanted = overlay && self.fps;
+        (wanted != std::mem::replace(&mut self.tick_time_requested, wanted)).then_some(wanted)
+    }
+    /// `ClientDebugSubscriber.clear`: a new login asks again.
+    pub fn clear_subscriptions(&mut self) {
+        self.tick_time_requested = false;
+    }
+    /// `DebugScreenOverlay.logRemoteSample`: a full tick sample from the server; the logger holds
+    /// four values, a short sample leaves zeros and a longer one (`System.arraycopy` throws) is a
+    /// packet error that adds no row.
+    pub fn log_remote_sample(&mut self, sample: &[i64]) -> sunrise_protocol::Result<()> {
+        if sample.len() > 4 {
+            return Err(sunrise_protocol::Error::new(format!(
+                "debug sample of {} values, at most 4",
+                sample.len()
+            )));
+        }
+        let mut full = [0; 4];
+        full[..sample.len()].copy_from_slice(sample);
+        self.tick_times.log_full(full);
+        Ok(())
+    }
     /// `reset`: leaving a world.
     pub fn reset(&mut self) {
         self.tick_times.reset();
@@ -123,6 +151,7 @@ impl DebugCharts {
         self.packet_rates = [0.0; 2];
         self.packet_totals = [0; 2];
         self.packet_tick = 0;
+        self.clear_subscriptions();
     }
     /// One integrated server tick that started at `started` and ran its
     /// tick method for `method` (`MinecraftServer.logFullTickTime` and
@@ -288,7 +317,7 @@ impl Chart {
             let value = self.aggregated(samples, index);
             min = min.min(value);
             max = max.max(value);
-            sum += value;
+            sum = sum.wrapping_add(value);
             self.bars(&mut out, samples, bottom, x, index);
         }
         horizontal_line(
@@ -329,29 +358,47 @@ impl Chart {
         x: i32,
         index: usize,
     ) {
+        // Java `int`/`long` arithmetic: a server's samples can be any value, and wrap.
         let value = samples.get(index, 0);
         let height = self.height(value as f64);
-        out.push(fill(x, bottom - height, x + 1, bottom, self.color(value)));
+        out.push(fill(
+            x,
+            bottom.wrapping_sub(height),
+            x + 1,
+            bottom,
+            self.color(value),
+        ));
         if let Chart::Tps { .. } = self {
             let method = samples.get(index, TICK_SERVER_METHOD);
             let method_h = self.height(method as f64);
-            out.push(fill(x, bottom - method_h, x + 1, bottom, TICK_METHOD_COLOR));
+            out.push(fill(
+                x,
+                bottom.wrapping_sub(method_h),
+                x + 1,
+                bottom,
+                TICK_METHOD_COLOR,
+            ));
             let tasks = samples.get(index, SCHEDULED_TASKS);
             let tasks_h = self.height(tasks as f64);
+            let above_method = bottom.wrapping_sub(method_h);
             out.push(fill(
                 x,
-                bottom - method_h - tasks_h,
+                above_method.wrapping_sub(tasks_h),
                 x + 1,
-                bottom - method_h,
+                above_method,
                 TASK_COLOR,
             ));
-            let other = value - samples.get(index, IDLE) - method - tasks;
+            let other = value
+                .wrapping_sub(samples.get(index, IDLE))
+                .wrapping_sub(method)
+                .wrapping_sub(tasks);
             let other_h = self.height(other as f64);
+            let above_tasks = above_method.wrapping_sub(tasks_h);
             out.push(fill(
                 x,
-                bottom - other_h - tasks_h - method_h,
+                above_tasks.wrapping_sub(other_h),
                 x + 1,
-                bottom - tasks_h - method_h,
+                above_tasks,
                 OTHER_COLOR,
             ));
         }
@@ -359,7 +406,7 @@ impl Chart {
     /// `getValueForAggregation`: a tick's time without its idle part.
     fn aggregated(self, samples: &SampleLogger, index: usize) -> i64 {
         match self {
-            Chart::Tps { .. } => samples.get(index, 0) - samples.get(index, IDLE),
+            Chart::Tps { .. } => samples.get(index, 0).wrapping_sub(samples.get(index, IDLE)),
             _ => samples.get(index, 0),
         }
     }
@@ -602,6 +649,96 @@ mod tests {
         c.log_bandwidth(1600);
         assert_eq!(c.bandwidth.len(), 1);
         assert_eq!(c.bandwidth.get(0, 0), 600);
+    }
+
+    #[test]
+    fn the_subscription_request_goes_out_on_change_and_after_a_login() {
+        let mut c = DebugCharts::default();
+        assert_eq!(c.subscription_request(true), None);
+        c.fps = true;
+        assert_eq!(c.subscription_request(false), None);
+        assert_eq!(c.subscription_request(true), Some(true));
+        assert_eq!(c.subscription_request(true), None);
+        c.clear_subscriptions();
+        assert_eq!(c.subscription_request(true), Some(true));
+        assert_eq!(c.subscription_request(false), Some(false));
+        assert_eq!(c.subscription_request(false), None);
+    }
+
+    #[test]
+    fn a_remote_sample_lands_in_the_tick_chart() {
+        let mut c = DebugCharts::default();
+        c.log_remote_sample(&[9, 8, 7]).unwrap();
+        c.log_remote_sample(&[1, 2, 3, 4]).unwrap();
+        assert!(c.log_remote_sample(&[1, 2, 3, 4, 5]).is_err());
+        assert_eq!(
+            c.tick_times.samples.len(),
+            2,
+            "the oversized sample adds no row"
+        );
+        assert_eq!(c.tick_times.samples[0], [9, 8, 7, 0]);
+        assert_eq!(c.tick_times.samples[1], [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn a_tick_chart_of_extreme_network_samples_wraps_like_java() {
+        use crate::hud::Rect;
+        let rect = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 1,
+            h: 1,
+        };
+        // The missing-glyph metrics let this run without game assets.
+        let font = Font::load(
+            &sunrise_assets::resource_source::ResourceSource::default(),
+            &std::collections::HashMap::new(),
+            &[],
+            (1, 1),
+            (0, 0),
+            rect,
+        );
+        let mut c = DebugCharts::default();
+        // Overflowing sums, differences and heights, in every dimension, for a full chart.
+        // A tick time whose bar height is `i32::MIN + 100`: `bottom - height` wraps, so the bar's
+        // span overflows an `int` where the painter subtracts its corners.
+        let tall = -1_789_569_666_666_667;
+        assert_eq!(
+            Chart::Tps { mspt: 50.0 }.height(tall as f64),
+            -2_147_483_600
+        );
+        for _ in 0..CAPACITY {
+            c.log_remote_sample(&[tall]).unwrap();
+            c.log_remote_sample(&[i64::MAX, i64::MIN, i64::MAX, i64::MIN])
+                .unwrap();
+            c.log_remote_sample(&[i64::MIN, i64::MAX, i64::MIN, i64::MAX])
+                .unwrap();
+        }
+        let width = Chart::width(i32::MAX);
+        let atlas =
+            crate::hud::HudAtlas::build(&crate::resource_source::ResourceSource::directory(
+                "/nonexistent/sunrise-test-assets".into(),
+            ))
+            .unwrap();
+        // A NaN tick rate makes the clock's milliseconds per tick 0 (`millisecondsPerTick`).
+        let mut manager = crate::clock::TickRateManager::default();
+        manager.set_tick_rate(f32::NAN);
+        for mspt in [50.0, manager.milliseconds_per_tick()] {
+            let draws = Chart::Tps { mspt }.draw(&font, &c.tick_times, 0, width, 100);
+            assert!(!draws.is_empty());
+            // The painter takes the wrapped bar ends (`bottom - height` overflows an `int`).
+            let mut batch = crate::hud::HudBatch::scratch([854, 480]);
+            crate::hud_layout::paint(&mut batch, &atlas, &draws);
+        }
+        let tps = Chart::Tps { mspt: 50.0 };
+        // `sum` of 240 `Long.MIN_VALUE - Long.MAX_VALUE` wraps: 240 * 1 mod 2^64.
+        let index = CAPACITY - 1;
+        assert_eq!(
+            tps.aggregated(&c.tick_times, index),
+            i64::MIN.wrapping_sub(i64::MAX)
+        );
     }
 
     #[test]

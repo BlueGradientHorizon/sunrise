@@ -47,11 +47,8 @@ pub(super) mod hotbar_slot_tests {
         packets
     }
 
-    /// A window logged in to the overworld at (0.5, 65, 0.5), its player made by the server's
-    /// position packet, with everything the login sent already drained.
-    pub(in crate::game) fn logged_in(game: &mut Game<'_>) -> ConnReader {
-        let (mut reader, _writer) = connect_menu_test(game);
-        game.handle_packet(C::Login(play::Login {
+    fn login_packet() -> play::Login {
+        play::Login {
             player_id: 7,
             hardcore: false,
             levels: vec!["minecraft:overworld".into()],
@@ -75,8 +72,14 @@ pub(super) mod hotbar_slot_tests {
             },
             online_mode: false,
             enforces_secure_chat: false,
-        }))
-        .unwrap();
+        }
+    }
+
+    /// A window logged in to the overworld at (0.5, 65, 0.5), its player made by the server's
+    /// position packet, with everything the login sent already drained.
+    pub(in crate::game) fn logged_in(game: &mut Game<'_>) -> ConnReader {
+        let (mut reader, _writer) = connect_menu_test(game);
+        game.handle_packet(C::Login(login_packet())).unwrap();
         game.handle_packet(C::PlayerPosition(play::PlayerPosition {
             teleport: 1,
             position: [0.5, 65.0, 0.5],
@@ -175,6 +178,77 @@ pub(super) mod hotbar_slot_tests {
                 carried(&sent(&mut reader)),
                 [2],
                 "only the earlier change goes out"
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order() {
+        // The game fixture replaces process-wide registries: a child of its own.
+        const MODE: &str = "SUNRISE_HOTBAR_SLOT_THE_DEBUG_REQUESTS_FOLLOW_THE_CARRIED_SLOT_IN_THE_PING_THEN_SUBSCRIPTION_ORDER";
+        if std::env::var_os(MODE).is_none() {
+            crate::game::mods::tests::run_in_child(
+                "game::native_hotbar_slot::hotbar_slot_tests::the_debug_requests_follow_the_carried_slot_in_the_ping_then_subscription_order",
+                MODE,
+            );
+            return;
+        }
+        with_client_game(|game| {
+            let mut reader = logged_in(game);
+            game.debug = true;
+            game.debug_charts.fps = true;
+            game.debug_charts.network = true;
+            assert_eq!(game.select_hotbar_slot(4), Ok(()));
+            game.tick_remote_level().unwrap();
+            let names: Vec<_> = sent(&mut reader)
+                .iter()
+                .filter_map(|p| match p {
+                    S::SetCarriedItem(_) => Some("carried"),
+                    S::PingRequest(_) => Some("ping"),
+                    S::DebugSubscriptionRequest(r) if r.subscriptions == [0] => Some("subscribe"),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(names, ["carried", "ping", "subscribe"]);
+            // Unchanged, no second request; a new login asks again, the chart still on.
+            game.tick_remote_level().unwrap();
+            assert!(
+                !sent(&mut reader)
+                    .iter()
+                    .any(|p| matches!(p, S::DebugSubscriptionRequest(_)))
+            );
+            game.handle_packet(C::Login(login_packet())).unwrap();
+            game.tick_remote_level().unwrap();
+            assert!(
+                sent(&mut reader)
+                    .iter()
+                    .any(|p| matches!(p, S::DebugSubscriptionRequest(r) if r.subscriptions == [0]))
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn no_debug_request_goes_out_before_the_login() {
+        // The game fixture replaces process-wide registries: a child of its own.
+        const MODE: &str = "SUNRISE_HOTBAR_SLOT_NO_DEBUG_REQUEST_GOES_OUT_BEFORE_THE_LOGIN";
+        if std::env::var_os(MODE).is_none() {
+            crate::game::mods::tests::run_in_child(
+                "game::native_hotbar_slot::hotbar_slot_tests::no_debug_request_goes_out_before_the_login",
+                MODE,
+            );
+            return;
+        }
+        with_client_game(|game| {
+            let (mut reader, _writer) = connect_menu_test(game);
+            game.debug = true;
+            game.debug_charts.fps = true;
+            game.tick_remote_level().unwrap();
+            assert!(
+                !sent(&mut reader)
+                    .iter()
+                    .any(|p| matches!(p, S::DebugSubscriptionRequest(_)))
             );
         });
     }

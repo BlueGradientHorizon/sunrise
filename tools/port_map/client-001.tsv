@@ -54,9 +54,9 @@ ClientConfigurationPacketListenerImpl.runWithResources	skip:data		resource loadi
 ClientConfigurationPacketListenerImpl.handleCodeOfConduct	port	crates/sunrise-client/src/net.rs::configure	the screen shows the text with the not-again box, Acknowledge and Disconnect before the connection continues (game/interface/code_of_conduct.rs)
 ClientConfigurationPacketListenerImpl.handleConfigurationFinished	port	crates/sunrise-client/src/net.rs::configure	gap: minor: no registry filter for an integrated server (see filterRegistries)
 ClientConfigurationPacketListenerImpl.filterRegistries	skip:data		Sunrise's registries come from its own data; nothing to filter
-ClientDebugSubscriber.requestedSubscriptions	missing		minor: Sunrise never requests debug subscriptions; vanilla asks for server tick time while the F3+2 chart is on
-ClientDebugSubscriber.tick	missing		minor: no subscriptions to purge
-ClientDebugSubscriber.onSubscriptionsChanged	missing		minor: no ServerboundDebugSubscriptionRequest is sent
+ClientDebugSubscriber.requestedSubscriptions	port	crates/sunrise-client/src/debug_chart.rs::DebugCharts::subscription_request	only the tick time while the F3+2 charts show
+ClientDebugSubscriber.tick	port	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::tick_debug_charts	sends the request when the set changes; no other subscriptions to purge
+ClientDebugSubscriber.onSubscriptionsChanged	port	crates/sunrise-client/src/game/interface/debug_keys.rs::Game::tick_debug_charts	sends ServerboundDebugSubscriptionRequest
 ClientDebugSubscriber.initializeSubscriptions	skip:java		creates empty value maps per subscription
 ClientDebugSubscriber.getValueMap	skip:java		map accessor for debug values
 ClientDebugSubscriber.getValue	skip:java		value accessor for debug values
