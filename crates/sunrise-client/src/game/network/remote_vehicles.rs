@@ -750,7 +750,7 @@ impl Game<'_> {
             }
             if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id) {
                 m.velocity = velocity;
-                m.on_ground = on_ground;
+                m.ground.on_ground = on_ground;
             }
             if far && let Some(report) = self.remote_vehicle_packets().into_iter().next() {
                 self.send(report);
@@ -1033,7 +1033,7 @@ fn mount_move(m: &Mob, at: PosRot) -> S {
         position: at.position,
         yaw: at.yaw,
         pitch: at.pitch,
-        on_ground: m.on_ground,
+        on_ground: m.ground.on_ground,
     })
 }
 
@@ -1435,7 +1435,7 @@ mod tests {
         let Some(mut m) = mob("minecraft:horse") else {
             return;
         };
-        (m.yaw, m.head_pitch, m.on_ground) = (90.0, 10.0, true);
+        (m.yaw, m.head_pitch, m.ground.on_ground) = (90.0, 10.0, true);
         let at = PosRot {
             position: [m.position.x, m.position.y, m.position.z],
             yaw: m.yaw,
