@@ -201,6 +201,7 @@ impl<'a> ItemStackView<'a> {
             StackProjection::ResidentComponents(_, read) => component.decode(&read(id)?),
             StackProjection::Resident(_)
             | StackProjection::Slot(..)
+            | StackProjection::Loot(..)
             | StackProjection::PreparedDrop(..) => self.project()?.get(component),
         }
     }
