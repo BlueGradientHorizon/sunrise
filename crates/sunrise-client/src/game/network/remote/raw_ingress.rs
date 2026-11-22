@@ -292,7 +292,7 @@ impl Game<'_> {
                 })
                 .collect::<Option<Vec<_>>>()
             else {
-                return self.refuse_play_payload("connection groups: unexpected packet in bundle");
+                return self.refuse_remote_input("connection groups: unexpected packet in bundle");
             };
             self.route_connection_group_bundle(&group_packets, negotiated)?;
             return Ok(());
