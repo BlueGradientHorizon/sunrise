@@ -627,7 +627,7 @@ impl Game<'_> {
                         rgba(255, 255, 255, 128),
                     );
                 }
-                let name = self.stack_hover_name(&stack);
+                let name = self.pack.names.display_item(&stack.item);
                 sunrise_client::widgets::record_as(
                     &format!("{name} {i}:{k}"),
                     [x + sx + 1.0, y + sy + 1.0, 16.0, 16.0],
@@ -734,7 +734,7 @@ impl Game<'_> {
                     rgba(255, 255, 255, 128),
                 );
             }
-            let name = self.stack_hover_name(&stack);
+            let name = self.pack.names.display_item(&stack.item);
             let rect = [x + 1.0, y + 1.0, 16.0, 16.0];
             let kind = sunrise_client::widgets::Kind::Tab(i == selected);
             sunrise_client::widgets::record_as(&format!("{name} tab"), rect, true, kind);

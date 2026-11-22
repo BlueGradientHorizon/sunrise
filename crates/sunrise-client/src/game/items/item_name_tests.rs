@@ -158,6 +158,55 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert!(refusal.message.plain().contains(KEY), "{message}");
             game.inventory[game.selected] = None;
 
+            // ItemEntity.getName through real commands: the summon and kill feedback name a dropped
+            // stack of two by the Part, and a `name=` selector matches that name, not "Paper".
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
+            let run = |game: &mut super::Game<'_>, line: &str| {
+                game.execute_line(line, game.player_source())
+                    .unwrap_or_else(|e| panic!("{line}: {}", e.message.plain()));
+                game.ui.chat.recent_lines(1).concat()
+            };
+            let summoned = run(
+                game,
+                r#"summon minecraft:item 4.5 200 4.5 {Item:{id:"minecraft:paper",count:2}}"#,
+            );
+            assert!(summoned.contains(KEY), "{summoned}");
+            run(
+                game,
+                r#"summon minecraft:item 6.5 200 4.5 {Item:{id:"minecraft:paper",count:1}}"#,
+            );
+            assert_eq!(game.dropped.len(), 2);
+            let killed = run(game, &format!(r#"kill @e[type=item,name="{KEY}"]"#));
+            assert!(killed.contains(KEY), "{killed}");
+            assert_eq!(game.dropped.len(), 1);
+            assert_eq!(game.dropped[0].stack.count, 1);
+            let killed = run(game, r#"kill @e[type=item,name="Paper"]"#);
+            assert!(killed.contains("Paper"), "{killed}");
+            assert!(game.dropped.is_empty());
+
+            // EnchantCommand on a mob: its main-hand stack's getHoverName().getString(), the
+            // Part's name for the stack of two it holds.
+            run(game, "summon minecraft:zombie 4.5 200 4.5 {NoAI:1b}");
+            let zombie = game
+                .mobs
+                .iter_mut()
+                .find(|m| m.kind.id == "minecraft:zombie")
+                .expect("the summoned zombie");
+            zombie.extra.set_main_hand_stack(Some(named.clone()));
+            let refusal = game
+                .execute_line(
+                    "enchant @e[type=zombie,limit=1] minecraft:sharpness",
+                    game.player_source(),
+                )
+                .unwrap_err();
+            let message = refusal.message.component();
+            assert_eq!(message["translate"], "commands.enchant.failed.incompatible");
+            assert!(refusal.message.plain().contains(KEY), "{message}");
+            run(game, "kill @e[type=zombie]");
+
             // The screen uses the same comparison before sending the rename packet.
             let mut station = super::stations::Station::new(super::stations::Kind::Anvil, [0; 3]);
             station.inputs[0] = Some(named);
