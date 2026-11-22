@@ -23,7 +23,7 @@ use super::{
 };
 use mod_api::DragonPhase;
 use sunrise_client::{
-    health::{DamageContainer, DamageLevel, HurtSource, Reduction},
+    health::{DamageContainer, DamageLevel, HurtSource, Hurting, Knock, Reduction},
     hud::HudBatch,
     hud_layout, hud_overlays,
     mesher::Vertex,
@@ -931,10 +931,13 @@ impl Dragon {
         if full && let Some(from) = from {
             self.knockback(
                 level,
-                f64::from(0.4_f32),
-                from.x - self.position.x,
-                from.z - self.position.z,
+                Knock {
+                    strength: f64::from(0.4_f32),
+                    x: from.x - self.position.x,
+                    z: from.z - self.position.z,
+                },
                 source,
+                0.0,
             );
         }
         // The last of `LivingEntity.hurtServer` (`reallyHurt`'s `super.hurtServer`):
@@ -955,48 +958,17 @@ impl Dragon {
         Hurt::Landed { full }
     }
     /// `EnderDragon.knockback`: `LivingEntity.knockback` only when the phase
-    /// is not sitting. `(xd, zd)` points at the hit (`dealDefaultKnockback`:
-    /// the source position minus this position). Knockback resistance is the
-    /// mob default, 0. `noPhysics` never sets `onGround`, so the vertical
-    /// component stays.
-    fn knockback(
+    /// is not sitting. `noPhysics` never sets `onGround`, so the vertical component stays.
+    pub(super) fn knockback(
         &mut self,
         level: &mut DamageLevel<'_>,
-        power: f64,
-        xd: f64,
-        zd: f64,
+        mut knock: Knock,
         source: HurtSource<'_>,
-    ) {
-        if self.phase.sitting() {
-            return;
-        }
-        let mut knock = sunrise_client::health::Knock {
-            strength: power,
-            x: xd,
-            z: zd,
-        };
-        if level.knockback_canceled(
-            sunrise_client::health::Hurting::Dragon(self.id as i32, source),
-            &mut knock,
-        ) {
-            return;
-        }
-        let sunrise_client::health::Knock {
-            strength: power,
-            x: mut xd,
-            z: mut zd,
-        } = knock;
-        if power <= 0.0 {
-            return;
-        }
-        while xd * xd + zd * zd < f64::from(1.0e-5_f32) {
-            xd = (self.random.next_double() - self.random.next_double()) * 0.01;
-            zd = (self.random.next_double() - self.random.next_double()) * 0.01;
-        }
-        let len = (xd * xd + zd * zd).sqrt();
-        let (kx, kz) = (xd / len * power, zd / len * power);
-        let v = self.velocity;
-        self.velocity = Vec3::new(v.x / 2.0 - kx, v.y, v.z / 2.0 - kz);
+        resistance: f64,
+    ) -> bool {
+        !self.phase.sitting()
+            && !level.knockback_canceled(Hurting::Dragon(self.id as i32, source), &mut knock)
+            && knock.apply(&mut self.velocity, resistance, false, &mut self.random)
     }
     /// `ServerExplosion.hurtEntities` on the dragon: the dragon itself (its
     /// body takes it), then each part, in `Level.getEntities` order, each by

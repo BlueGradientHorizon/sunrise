@@ -9129,7 +9129,7 @@ mod leash_without_item_postbaseline_controls;
 #[path = "../tests/revenge_home_tests.rs"]
 mod revenge_home_tests;
 
-mod knockback;
+pub(super) mod knockback;
 
 #[cfg(test)]
 mod death_loot_context_tests;

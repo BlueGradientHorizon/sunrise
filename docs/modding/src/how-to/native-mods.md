@@ -23,6 +23,13 @@ and 0.8 for `Full`. There is no second hook dispatch. Two non-commuting listener
 in dispatch order, each completing its rewrites before the next; this does not simulate
 two separate passes over the listener list. Cancellation still leaves motion unchanged.
 
+On the server, `living.knockback(host, strength, [x, z])` enters the short overload. The
+entity moves away from `[x, z]`, and a player's own client gets the resulting velocity.
+It returns `false` if the handle is unavailable, the input isn't finite, the hook cancels,
+or no push remains after resistance. This call deals no damage and adds no kill credit:
+its source is unattributed `minecraft:generic`, so any attacker fallback and kill credit
+come only from the victim's existing hurt memory.
+
 Version 2 also supplies `kill_credit` and `kill_credit_main`: the pushed living entity's
 kill credit and that entity's current main-hand stack, read after accepted-hit memories
 are committed and before the push. A remembered player takes precedence over the last

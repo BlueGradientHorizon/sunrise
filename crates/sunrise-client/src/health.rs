@@ -803,6 +803,50 @@ pub struct Knock {
     pub x: f64,
     pub z: f64,
 }
+
+impl Knock {
+    /// The movement write shared by the living knockback paths, after the hook returns.
+    pub fn apply(
+        self,
+        velocity: &mut sunrise_core::geometry::Vec3,
+        resistance: f64,
+        on_ground: bool,
+        random: &mut impl sunrise_core::random::RandomSource,
+    ) -> bool {
+        use sunrise_core::geometry::Vec3;
+
+        let Self {
+            strength,
+            mut x,
+            mut z,
+        } = self;
+        let power = strength * (1.0 - resistance);
+        if power <= 0.0 {
+            return false;
+        }
+        while x * x + z * z < f64::from(1.0e-5_f32) {
+            x = (random.next_double() - random.next_double()) * 0.01;
+            z = (random.next_double() - random.next_double()) * 0.01;
+        }
+        let length = (x * x + z * z).sqrt();
+        let next = Vec3::new(
+            velocity.x / 2.0 - x / length * power,
+            if on_ground {
+                (velocity.y / 2.0 + power).min(0.4)
+            } else {
+                velocity.y
+            },
+            velocity.z / 2.0 - z / length * power,
+        );
+        // Entity.setDeltaMovement refuses a result that isn't finite.
+        if !next.is_finite() {
+            return false;
+        }
+        *velocity = next;
+        true
+    }
+}
+
 /// `CombatRules.getDamageAfterAbsorb`'s weapon: the stack
 /// `DamageSource.getWeaponItem` names, the registry its `armor_effectiveness`
 /// enchantments (Breach) are read from, and the entity that swung it.

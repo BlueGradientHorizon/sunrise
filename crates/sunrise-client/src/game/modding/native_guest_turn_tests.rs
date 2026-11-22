@@ -637,6 +637,106 @@ fn another_guests_menu_and_push_work_during_a_turn() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
+    use std::sync::mpsc;
+    use sunrise_client::lan::Out;
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+
+    if super::native_entity_refs::tests::run_fresh_cases(
+        "game::native_guest_turn_tests::velocity_writes_send_only_the_owning_player_the_replacement_motion",
+        "SUNRISE_PLAYER_VELOCITY_CHILD",
+        &["players"],
+    ) {
+        return;
+    }
+    with_guests(|game| {
+        let [a_packets, b_packets] = [12, 13].map(|conn| {
+            let (tx, rx) = mpsc::channel();
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(conn, |guest| {
+                    guest.sender = PlayerSender::new(tx, Arc::default());
+                })
+                .unwrap();
+            game.as_guest(conn, |game| {
+                let body = game.player.as_mut().unwrap();
+                body.velocity = Vec3::new(4.0, 8.0, 16.0);
+                body.ground.on_ground = false;
+            })
+            .unwrap();
+            rx
+        });
+        let take_motion = |rx: &mpsc::Receiver<Out>| -> Vec<_> {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    Out::Disconnect(_) => Vec::new(),
+                })
+                .filter_map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    match Clientbound::decode(id, reader.rest()).unwrap() {
+                        Clientbound::SetEntityMotion(packet) => Some((packet.id, packet.velocity)),
+                        _ => None,
+                    }
+                })
+                .collect()
+        };
+        let a = game.player(12).unwrap().entity();
+        let b = game.player(13).unwrap().entity();
+        let stale = mod_api::EntityRef::new(mod_api::WorldEpoch::new(a.epoch().get() + 1), a.id());
+        game.as_guest(12, |game| {
+            assert!(!a.set_velocity(game, [0.0, f64::INFINITY, 0.0]));
+            assert!(!stale.set_velocity(game, [0.0; 3]));
+            assert_eq!(
+                game.player.as_ref().unwrap().velocity,
+                Vec3::new(4.0, 8.0, 16.0)
+            );
+            assert!(a.set_velocity(game, [1.0, 0.0, -1.0]));
+            assert!(a.push(game, [0.0, 1.0, 0.0]));
+            assert!(b.set_velocity(game, [-2.0, 0.0, 2.0]));
+            assert_eq!(
+                game.player.as_ref().unwrap().velocity,
+                Vec3::new(1.0, 1.0, -1.0)
+            );
+            game.as_guest(13, |game| {
+                assert_eq!(
+                    game.player.as_ref().unwrap().velocity,
+                    Vec3::new(-2.0, 0.0, 2.0)
+                );
+                assert!(!a.set_velocity(game, [0.0; 3]));
+            })
+            .unwrap();
+            assert_eq!(
+                game.player.as_ref().unwrap().velocity,
+                Vec3::new(1.0, 1.0, -1.0)
+            );
+        })
+        .unwrap();
+        // The player's own level can be parked while the mod runs in another one.
+        game.enter_level(super::Dim::Nether).unwrap();
+        let living = game.living(b).unwrap();
+        assert!(living.knockback(game, 1.0, [0.0, 1.0]));
+        let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
+        assert_eq!(b_body.velocity, Vec3::new(-1.0, 0.0, 0.0));
+        assert_eq!(game.dim, super::Dim::Nether);
+
+        assert_eq!(
+            take_motion(&a_packets),
+            [(12, [1.0, 0.0, -1.0]), (12, [1.0, 1.0, -1.0])]
+        );
+        assert_eq!(
+            take_motion(&b_packets),
+            [(13, [-2.0, 0.0, 2.0]), (13, [-1.0, 0.0, 0.0])]
+        );
+    });
+}
+
 /// Native services can reach B during A's turn without exposing displaced
 /// inventories or changing ordinary command resolution during nested turns.
 #[test]
