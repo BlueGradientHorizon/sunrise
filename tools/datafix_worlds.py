@@ -371,7 +371,7 @@ def block_states(jar, java_exe):
     """Every block state of a server jar, as setblock arguments, from the jar's own data generator report."""
     with tempfile.TemporaryDirectory() as scratch:   # the generator writes its own logs/ into its working folder
         subprocess.run([java_exe, '-cp', str(jar), 'net.minecraft.data.Main', '--reports', '--output', 'out'],
-                       cwd=scratch, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                       cwd=scratch, check=True, stderr=subprocess.STDOUT)
         report = json.loads((Path(scratch) / 'out' / 'reports' / 'blocks.json').read_text())
     states = []
     for block, info in report.items():
