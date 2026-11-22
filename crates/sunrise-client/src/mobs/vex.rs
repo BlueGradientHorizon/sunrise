@@ -445,6 +445,12 @@ mod owner_save_tests {
         fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
             self.0.get(&uuid).copied()
         }
+
+        fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
+            self.0
+                .iter()
+                .find_map(|(&uuid, &who)| (who == Who::Mob(id)).then_some(uuid))
+        }
     }
 
     /// `Vex.addAdditionalSaveData` stores its owner reference's UUID

@@ -61,9 +61,6 @@ impl KnockbackCredit for CreditLoan<'_> {
         assert_eq!(mob.id as i32, self.plan.victim);
         let updated = self.plan.responsibility.is_some();
         self.accepted_mob_hit(mob);
-        if mob.ai.last_hurt_by_player <= 0 {
-            return false;
-        }
         if updated {
             self.plan.responsibility_live
         } else {

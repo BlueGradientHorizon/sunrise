@@ -265,7 +265,7 @@ pub(super) fn drowned_travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelTrample> {
+) -> Result<(), super::living::TravelPause> {
     m.move_relative(0.01, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);

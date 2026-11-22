@@ -26,16 +26,22 @@ The launcher asks, for each enabled native mod of an instance, in this order:
 
    And each piece of game code the mod declares must be, in this build's build data (`functions.json`,
    `internals.json`, `loops.json`, each checked to describe this build), what the list records:
-   - a `[[native.mixin]]` row's target function has the same signature and the same body (a replacement written
+   - a `[[native.mixin]]` row's target function has the same declaration and body (a replacement written
      for an old body could undo what the game changed in it);
-   - an `internals` entry has the same signature, and a function or method among them the same body too;
+   - an `internals` entry has the same signature; for functions and methods both the declaration and the body
+     must be unchanged;
    - a `[[native.loop]]` row's loop is published the same way, its entry and its generic function have the same
-     signature and body, and its slot trait the same signature.
+     declaration and body, and its slot trait the same signature.
 
-   What changed is named: the function, type or loop. A list with no record of something the mod declares cannot
-   show a fit. Nor can anything show a fit for a function the build data holds no body for (it indexes the
-   functions a mixin may target): a mod that declares such a function as an internal works on the build it was
-   made for only. A body is compared byte for byte, so a change to a comment inside a declared function counts.
+   When both the uses list and the target build have split digests, the report names the function and says
+   `body changed` or `declaration changed`. The declaration includes the signature, visibility, attributes and
+   enclosing `impl` context. These digests compare tokens, so whitespace and normal comments do not count.
+   Both kinds of change mean the mod does not fit; it is left out rather than rebuilt. If either side has only
+   the older hashes, the report says `changed` and a byte change inside the source span counts.
+
+   A list with no record of something the mod declares cannot show a fit. Nor can anything show a fit for a
+   function the build data holds no body for (it indexes the functions a mixin may target): a mod that declares
+   such a function as an internal works on the build it was made for only.
 
    The mod's `[native] mixins` pin, when it has one, must be the horizon-mixins revision this build's tool builds
    with.
@@ -72,9 +78,10 @@ reads source, and what it leaves to the compile, is in
 
 | Field | What it is |
 |---|---|
-| `schema` | The table's schema number (3). A reader also takes schemas 1 and 2 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
+| `schema` | The table's schema number: 4 when an entry has `game_code`, otherwise 3, which the tools of earlier builds read. A reader also takes schemas 1 and 2 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
 | `made_for` | The build id the hashes come from: the mod's pin. |
 | `entries[].id`, `entries[].hash` | A record the mod uses, and its hash at `made_for`. |
+| `entries[].game_code` | Where the pinned `functions.json` provides split digests: `functions` maps each declared function path to `declaration` and `body` SHA-256 digests. For a loop, `loop_contract` also records how the loop is published and its slot trait's hash. |
 | `entries[].impls` | A type's trait impls at `made_for`. |
 | `entries[].built` | How the mod builds a struct it names: `full` (some literal or pattern lists its fields with no `..`), `base` (every one ends in `..`) or `none`. |
 | `entries[].fields_hash`, `entries[].fields` | With `full`: the struct's field set at `made_for`, and its field names, to name what a build gained. |
@@ -100,6 +107,9 @@ the mod was written for, whatever the target's version is: when nothing else cha
 naming the hooks, never "fits". `native-check` reports it as `no-list` with `why: "hook-versions"`.
 
 ### Lists an older tool wrote
+
+Schemas 1–3 do not have split digests for game functions. The fit check still compares their original
+fingerprints, but cannot tell a body-only change from a declaration change.
 
 Schemas 1 and 2 were written by the older scan, which could attribute a mod's own name to the API. The fit check
 accepts the older hashes for unchanged signatures. For those lists only, absent API records and lost impls that

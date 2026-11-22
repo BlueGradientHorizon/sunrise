@@ -7,7 +7,7 @@
 use crate::entity_rules::EntityRules;
 use crate::{
     blocks::{BlockFacts, Fluid},
-    collisions::SceneCollisions,
+    collisions::{EntityCollisions, SceneCollisions},
     items::ItemStack,
     motion::block_friction,
     world::World,
@@ -1940,6 +1940,7 @@ impl ArmorStand {
         if let Some(step) = self.tick_move(
             scene,
             facts,
+            None,
             climbing,
             in_water,
             border,
@@ -2262,7 +2263,7 @@ impl ArmorStand {
             .as_ref()
             .is_some_and(|s| &*s.item == "minecraft:leather_boots")
     }
-    /// The stand's live collision context for `Level.findSupportingBlock`.
+    /// The stand's live context for `Entity.collide` and `Level.findSupportingBlock`.
     pub fn support_collision(
         &self,
     ) -> (
@@ -2300,6 +2301,34 @@ impl ArmorStand {
         );
         (context, subject)
     }
+    fn collide(
+        &self,
+        gate: &mut sunrise_world::move_gate::MoveGate,
+        scene: &SceneCollisions<'_, '_>,
+        delta: Vec3,
+        border: Option<&BorderGeometry>,
+        entities: &[Aabb],
+    ) -> crate::Result<Vec3> {
+        let (context, subject) = self.support_collision();
+        let mut collisions = EntityCollisions {
+            blocks: SceneCollisions {
+                world: scene.world,
+                binding: scene.binding,
+                subject: Some(subject),
+            },
+            entities,
+            border: border.map(|b| (b, [self.position.x, self.position.z])),
+        };
+        crate::move_gate::entities_resolve_with_context(
+            gate,
+            &mut collisions,
+            self.bounds(),
+            delta,
+            0.0,
+            self.ground.on_ground,
+            context,
+        )
+    }
     /// LivingEntity.travel (armor stands have no other movement): clamp tiny
     /// velocity components (`LivingEntity.aiStep`), move by the velocity (a
     /// landing stops the fall, `Block.updateEntityMovementAfterFallOn`, and a
@@ -2318,8 +2347,9 @@ impl ArmorStand {
     /// not travel.
     pub fn tick_move(
         &mut self,
-        scene: &mut crate::collisions::SceneCollisions,
+        scene: &SceneCollisions<'_, '_>,
         facts: &BlockFacts,
+        movement: Option<&BoundMovementProperties>,
         climbing: &sunrise_world::climbing::ClimbingRegistry<'_>,
         in_water: bool,
         border: Option<&BorderGeometry>,
@@ -2332,12 +2362,6 @@ impl ArmorStand {
         if self.marker {
             return None;
         }
-        scene.subject =
-            self.feet_are_leather_boots()
-                .then_some(crate::collisions::PowderSnowSubject {
-                    leather_boots: true,
-                    ..Default::default()
-                });
         let v = self.velocity;
         let mut wanted = Vec3::new(
             if v.x.abs() < 0.003 { 0.0 } else { v.x },
@@ -2353,8 +2377,13 @@ impl ArmorStand {
         // `travelInAir` reads ground friction before the move.
         let falling = wanted.y <= 0.0;
         let friction = if !in_water && self.ground.on_ground {
-            let below =
-                BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.500_001, 0.0)));
+            let below = crate::motion::block_support_at(
+                scene.world,
+                movement,
+                self.position,
+                self.ground.supporting_block,
+                sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET,
+            );
             let kind = "minecraft:armor_stand";
             block_friction(
                 context,
@@ -2402,21 +2431,7 @@ impl ArmorStand {
         let wanted = gate.delta();
         // Entity.collide: the world border's walls and the entities that
         // `canBeCollidedWith` the stand stop it too.
-        let moved = crate::move_gate::scene_resolve_in_border_with(
-            &mut gate,
-            SceneCollisions {
-                world: scene.world,
-                binding: scene.binding,
-                subject: scene.subject,
-            },
-            self.bounds(),
-            wanted,
-            0.0,
-            self.ground.on_ground,
-            border.map(|b| (b, [self.position.x, self.position.z])),
-            entities,
-        );
-        if let Ok(moved) = moved {
+        if let Ok(moved) = self.collide(&mut gate, scene, wanted, border, entities) {
             self.position = Vec3::new(
                 self.position.x + moved.x,
                 self.position.y + moved.y,
@@ -2452,25 +2467,11 @@ impl ArmorStand {
     /// (`restituteMovementAfterCollisions`: a stand does not bounce, so the
     /// speed becomes `-speed * 0`).
     ///
-    /// The stand has already travelled this tick (stands tick before mobs
-    /// here). `travels_after` says vanilla ticks it after the shulker (it
-    /// joined the level later, as a stand placed on the shell does), so
-    /// there the push comes first and its own travel follows:
-    /// - a push nothing stops leaves `on_ground` and the speed as that
-    ///   travel left them (it lands the stand again on the risen lid);
-    /// - a push down that something stops: the travel that follows starts
-    ///   with no vertical speed, moves nothing vertically (`on_ground`
-    ///   false) and ends with gravity's speed only, which the stand's own
-    ///   travel, stopped by the same floor, already gave it;
-    /// - a push up that a ceiling stops loses the vertical speed, so the
-    ///   stand stays pinned on the next tick as vanilla's does (vanilla
-    ///   shows gravity's speed by then, and once the lid stops, the stand
-    ///   falls through it one tick later than vanilla's).
-    ///
-    /// Otherwise vanilla ticks it before the shulker, as here, and the push
-    /// sets `on_ground` and the block under the feet itself. Left out: the
-    /// block speed factor on the horizontal speed, the fall distance a push
-    /// down through the air adds, and a slime or bed bounce.
+    /// Ground and terrain support are updated during the move, independently of
+    /// tick order. `travels_after` affects only the stand's settled vertical
+    /// velocity: Sunrise ticks stands before mobs, so a downward shove after
+    /// a stand's travel leaves the gravity already applied by that travel when
+    /// vanilla would tick the stand after the shulker.
     pub fn shove(
         &mut self,
         scene: SceneCollisions,
@@ -2478,37 +2479,16 @@ impl ArmorStand {
         border: Option<&BorderGeometry>,
         entities: &[Aabb],
         travels_after: bool,
+        authoritative: bool,
         mover: sunrise_world::entity_move::MoverType,
         context: &sunrise_world::native_load_context::LoopContext,
     ) {
-        let scene = SceneCollisions {
-            subject: self.feet_are_leather_boots().then_some(
-                crate::collisions::PowderSnowSubject {
-                    leather_boots: true,
-                    ..Default::default()
-                },
-            ),
-            ..scene
-        };
         // The lid's `Entity.move(mover, delta)` goes through the
         // move gate (#2414); PR 1a records the movement unchanged.
         let mut gate =
             crate::move_gate::armed(context, self.id, "minecraft:armor_stand", mover, delta);
         let delta = gate.delta();
-        let Ok(moved) = crate::move_gate::scene_resolve_in_border_with(
-            &mut gate,
-            SceneCollisions {
-                world: scene.world,
-                binding: scene.binding,
-                subject: scene.subject,
-            },
-            self.bounds(),
-            delta,
-            0.0,
-            self.ground.on_ground,
-            border.map(|b| (b, [self.position.x, self.position.z])),
-            entities,
-        ) else {
+        let Ok(moved) = self.collide(&mut gate, &scene, delta, border, entities) else {
             return;
         };
         let length = moved.length_squared();
@@ -2526,18 +2506,10 @@ impl ArmorStand {
             self.velocity.z = -self.velocity.z * 0.0;
         }
         let vertical = moved.y != delta.y;
-        if travels_after {
-            if vertical {
-                self.ground.on_ground = false;
-                if delta.y > 0.0 {
-                    self.velocity.y = -self.velocity.y * 0.0;
-                }
-                self.ground_support(&scene, moved);
-            }
-        } else {
-            if vertical && delta.y != 0.0 {
-                self.velocity.y = -self.velocity.y * 0.0;
-            }
+        if vertical && (delta.y > 0.0 || delta.y < 0.0 && !travels_after) {
+            self.velocity.y = -self.velocity.y * 0.0;
+        }
+        if authoritative || delta.y.abs() > 0.0 {
             self.ground.on_ground = vertical && delta.y < 0.0;
             self.ground_support(&scene, moved);
         }
@@ -4411,14 +4383,15 @@ mod armor_stand_motion_tests {
         let context = crate::test_resources::server_loop_context();
         let run = |stand: &mut ArmorStand, boxes: &[Aabb], ticks: usize| {
             for _ in 0..ticks {
-                let mut scene = SceneCollisions {
+                let scene = SceneCollisions {
                     world: &world,
                     binding: collision,
                     subject: None,
                 };
                 if let Some(step) = stand.tick_move(
-                    &mut scene,
+                    &scene,
                     facts,
+                    Some(&v.motion.blocks),
                     &climbing,
                     false,
                     None,
@@ -4596,6 +4569,39 @@ mod armor_stand_motion_tests {
             booted.ground.supporting_block,
             Some(BlockPos::new(20, 10, 20))
         );
+
+        // Even without boots, an existing fall beyond 2.5 meets powder snow's
+        // 0.9F-high falling collision shape on both collided move paths.
+        for shoved in [false, true] {
+            let mut falling = ArmorStand::new(3, Vec3::new(20.5, 11.125, 20.5), 0.0);
+            let delta = Vec3::new(0.0, -0.5, 0.0);
+            falling.enchantment_fall_distance = 3.0;
+            if shoved {
+                falling.shove(
+                    SceneCollisions {
+                        world: &world,
+                        binding: collision,
+                        subject: None,
+                    },
+                    delta,
+                    None,
+                    &[],
+                    false,
+                    true,
+                    sunrise_world::entity_move::MoverType::ShulkerBox,
+                    crate::test_resources::server_loop_context(),
+                );
+            } else {
+                falling.velocity = delta;
+                tick_stand(&mut falling, &world, facts, collision);
+            }
+            assert_eq!(falling.position.y, 10.0 + f64::from(0.9_f32));
+            assert!(falling.ground.on_ground);
+            assert_eq!(
+                falling.ground.supporting_block,
+                Some(BlockPos::new(20, 10, 20))
+            );
+        }
     }
 }
 

@@ -707,7 +707,7 @@ impl Game<'_> {
                 let mut effect =
                     EffectInstance::new("hero_of_the_village", raid::HERO_DURATION, amplifier);
                 effect.visible = false;
-                g.potions.effects.add(effect);
+                g.apply_player_effect(effect);
                 g.award_custom_stat("raid_win", 1);
                 g.trigger_player("minecraft:hero_of_the_village");
             }),
@@ -1418,7 +1418,7 @@ impl Game<'_> {
             sunrise_client::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
         effect.visible = false;
         let new = self.potions.effects.get("bad_omen").is_none();
-        self.potions.effects.add(effect);
+        self.apply_player_effect(effect);
         // MobEffect.onEffectAdded: Bad Omen's sound when it is new, at the
         // player's feet.
         if new && let Some(p) = self.player.as_ref() {

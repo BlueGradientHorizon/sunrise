@@ -219,7 +219,7 @@ impl Game<'_> {
             } else {
                 mobs[index].ai.goals = selector;
             }
-            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0);
+            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0, &w.teams);
             removed
         };
         drop(w);
