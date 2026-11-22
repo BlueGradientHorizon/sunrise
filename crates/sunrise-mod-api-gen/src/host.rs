@@ -532,6 +532,22 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
             ));
                 for entry in entries {
                     let name = &entry.name;
+                    // A shared published read bypasses Game's conversions and uses the same
+                    // non-unwinding answer as the area trait default.
+                    if let Some(published) =
+                        entry.attrs.iter().find(|a| a.path().is_ident("published"))
+                    {
+                        let read = published
+                            .parse_args::<syn::Path>()
+                            .map_err(|e| format!("{name}: {e}"))?;
+                        let sig = entry.sig.to_token_stream();
+                        let args = signature_args(&entry.sig, name)?;
+                        code.push_str(&format!(
+                            "{sig} {{ mod_api::__private::{}({args}) }}\n",
+                            read.to_token_stream()
+                        ));
+                        continue;
+                    }
                     let keeps_api_inputs = entry
                         .attrs
                         .iter()

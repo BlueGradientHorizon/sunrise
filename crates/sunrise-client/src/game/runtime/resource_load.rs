@@ -415,6 +415,8 @@ pub(super) fn gameplay_tables(
                     modifications,
                 )?);
             }
+            // #3944: the finished suppliers, for `entity_type_default_attribute` on every host.
+            publish_entity_type_defaults(&motion.attributes);
             Ok::<_, Box<dyn std::error::Error>>(motion)
         })
         .map_err(|e| e.to_string());
@@ -427,6 +429,21 @@ pub(super) fn gameplay_tables(
         facts,
         gameplay_projection,
     })
+}
+
+/// Publishes `catalog`'s entity type suppliers, the ones mods declared and added to included,
+/// as `ItemsHost::entity_type_default_attribute` reads them (#3944): each attribute's supplier
+/// value (`AttributeSupplier.getValue`, the base inside its range; the spawn and reset bases
+/// stay the raw ones). The read answers only a registered entity type's: a declaration for a
+/// type no mod registered stays unread.
+pub(in crate::game) fn publish_entity_type_defaults(
+    catalog: &sunrise_world::attributes::entity::Catalog,
+) {
+    mod_api::__private::publish_entity_type_defaults(
+        catalog
+            .entities()
+            .filter_map(|entity| Some((entity.to_owned(), catalog.supplier_values(entity)?))),
+    );
 }
 
 /// The catalog with the attribute types mods declared (#812,
