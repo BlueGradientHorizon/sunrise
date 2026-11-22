@@ -158,8 +158,8 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert!(refusal.message.plain().contains(KEY), "{message}");
             game.inventory[game.selected] = None;
 
-            // ItemEntity.getName through real commands: the summon and kill feedback name a dropped
-            // stack of two by the Part, and a `name=` selector matches that name, not "Paper".
+            // ItemEntity.getName: the dropped item takes its name from the Part, not the
+            // stack's custom hover name. Command feedback and `name=` selectors agree.
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
@@ -171,9 +171,13 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             };
             let summoned = run(
                 game,
-                r#"summon minecraft:item 4.5 200 4.5 {Item:{id:"minecraft:paper",count:2}}"#,
+                r#"summon minecraft:item 4.5 200 4.5 {Item:{id:"minecraft:paper",count:2,components:{"minecraft:custom_name":{text:"Diary"}}}}"#,
             );
             assert!(summoned.contains(KEY), "{summoned}");
+            assert_eq!(
+                game.dropped[0].stack.custom_name().as_deref(),
+                Some("Diary")
+            );
             run(
                 game,
                 r#"summon minecraft:item 6.5 200 4.5 {Item:{id:"minecraft:paper",count:1}}"#,
@@ -185,6 +189,16 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             assert_eq!(game.dropped[0].stack.count, 1);
             let killed = run(game, r#"kill @e[type=item,name="Paper"]"#);
             assert!(killed.contains("Paper"), "{killed}");
+            assert!(game.dropped.is_empty());
+
+            // An entity's own custom name takes precedence over the item name.
+            let summoned = run(
+                game,
+                r#"summon minecraft:item 4.5 200 4.5 {CustomName:{text:"Loose Notes"},Item:{id:"minecraft:paper",count:2,components:{"minecraft:custom_name":{text:"Diary"}}}}"#,
+            );
+            assert!(summoned.contains("Loose Notes"), "{summoned}");
+            let killed = run(game, r#"kill @e[type=item,name="Loose Notes"]"#);
+            assert!(killed.contains("Loose Notes"), "{killed}");
             assert!(game.dropped.is_empty());
 
             // EnchantCommand on a mob: its main-hand stack's getHoverName().getString(), the
