@@ -55,8 +55,12 @@ It ends when that entity copy is discarded.
 `EntityRef::is_under_water(host)` reads `Entity.isUnderWater` for players and mobs on either side:
 the previous eye-in-water sample AND current water contact. The local client player follows the
 `LocalPlayer.isUnderWater` override instead: its saved eye sample alone, even when current water
-contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
-`None` for unsupported kinds or stale handles.
+contact is false. It is deliberately not equivalent to checking the current `eye_fluid` sample.
+`entity.eye_fluid(host)` returns `Some(Some(id))` with an `&'static str` in fluid and
+`Some(None)` in air. Both reads return `None` for unsupported kinds or stale handles.
+`entity.visit_fluid_heights(host, &mut visit)` lends each body contact's ID and depth,
+deepest first, with water before lava on a tie. No contacts is a successful empty visit;
+a stale or unreadable body returns `EntityReadError`.
 
 `PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
 `CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
@@ -66,6 +70,15 @@ in the player's own level. It does not eat, update inventory, or award a used st
 `TriggerCriterionError::Stack` before firing; clients return `NotServer`, and stale, offline or
 nested-turn displaced players return `PlayerUnavailable`. The generic `trigger_criterion` still
 refuses `minecraft:` trigger identifiers.
+
+## Active effects and attributes
+
+`living.visit_effects(host, &mut visit)` passes each `ActiveEffect` by value.
+`living.visit_attributes(host, &mut visit)` lends attribute IDs in registry order, and
+`living.visit_attribute_modifiers(host, id, &mut visit)` lends an `AttributeModifierView`
+for each modifier in addition order. Return `ControlFlow::Break(())` to stop and copy a
+borrowed ID only to retain it. An attribute with no modifiers is a successful empty visit;
+an unknown or unreadable attribute returns `EntityReadError::Unavailable` instead.
 
 ## Portals and leashes
 

@@ -52,6 +52,7 @@ Ask the host for the objective by name again to get a handle to the new one.
 order (vanilla leaves the order unspecified). Each row lends its holder key as `&str` and gives
 its `i32` value. Zero scores are included; a holder without a score has no row. The visit does not
 filter offline or hidden holders. To keep a row, copy the key inside the callback.
+For a later write, keep `ScoreHolder::Name(row.holder.to_owned())`.
 
 ```rust,ignore
 use core::ops::ControlFlow::{Break, Continue};

@@ -126,7 +126,14 @@ not a lost handle or a guessed replacement state. Update flags retain their vani
 
 ## Registry lookup and enumeration
 
-Walking a whole registry uses the typed keys, never names: `host.block_keys()` and
+Use `host.visit_registry_entries(registry, &mut visit)` to read canonical names for a
+registry named at runtime. The callback borrows each ID in the registry's existing
+order: numeric for protocol tables, lexical for name-keyed tables. Return
+`ControlFlow::Break(())` to stop. Parse a borrowed name with `Identifier::parse` only
+if you need to retain a typed identifier. See [load phases](load-phases.md#ordinary-host-reads)
+for which registry generation is visible and how refusals are reported.
+
+When you need typed keys for a whole registry, `host.block_keys()` and
 `host.item_keys()` return every entry in the registry's registration order (vanilla's
 entries first, then mods' in the order they registered); `host.entity_type_keys()`,
 `host.menu_keys()` do the same for the built-in entity-type and menu registries.

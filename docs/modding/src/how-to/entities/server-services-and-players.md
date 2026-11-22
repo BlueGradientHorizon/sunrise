@@ -10,7 +10,7 @@ players.
 | `host.commands()` | `run_command(line)` runs through the console command path with permission level 4. `feedback(text)` answers the command source. |
 | `host.messages()` | `broadcast(text)` fires the broadcast hook and writes to the server log. |
 | `host.players()` | `server_players()` returns `Vec<PlayerRef>` in join order. `acting_player()` returns the optional player whose state is active in the hook. `player_by_name(name)` finds a connected real player by case-insensitive account name, not nickname. |
-| `host.levels()` | `visit_levels(&mut visit)` visits loaded server levels, Overworld, Nether and End first, then the active extra level and parked extra levels. Before a world opens it completes without calling the visitor. |
+| `host.levels()` | `visit_levels(&mut visit)` visits loaded server levels, Overworld, Nether and End first, then the active extra level and parked extra levels. Before a world opens it completes without calling the visitor; an unreadable phase returns `ServerReadError::Unavailable`. |
 
 The players list and name lookup include the single-player owner, even before
 opening the world to LAN. The owner joins the integrated server through memory

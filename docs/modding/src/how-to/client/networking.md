@@ -159,7 +159,9 @@ fn register(r: &mut dyn Registrar) {
   channel, gone since the list was read, backpressure) is skipped and not counted; only a
   stale token or an encode failure is an `Err`, before anything is sent. `send_in_level` and
   `send_near` use the level's online-player visit and return `Ok(0)` for a stale or
-  unavailable level, after the same token and encoding checks.
+  unavailable level, after the same token and encoding checks. `send_tracking_chunk`
+  uses `chunk.visit_watchers(host, &mut visit)` and likewise returns `Ok(0)` when
+  the chunk watchers cannot be read.
 - **To the players tracking an entity.** `send_tracking_entity(host, entity, and_self, &value)`
   sends to the entity's trackers (`ChunkMap.TrackedEntity.seenBy`, NeoForge's
   `sendToPlayersTrackingEntity`; `entity.visit_trackers(host, &mut visit)` visits those

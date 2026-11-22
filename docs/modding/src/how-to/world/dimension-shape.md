@@ -25,7 +25,18 @@ gameplay attributes) as a `LevelDimensionType`: the build range, `coordinate_sca
 level on a vanilla type returns that type's values, a registered dimension returns what its
 `DimensionSettings` set, and a data pack's dimension type counts the same way. It returns `None` for
 a stale handle. On a client, it reads the displayed level's received dimension type,
-including custom types sent by another server.
+including custom types sent by another server. Text fields and the timeline slice borrow
+the type while scalar settings are values. Copy a string or use `timelines.to_vec()`
+only if you need the data after the host borrow ends.
+
+## Reading saved maps
+
+`level.visit_map_data(host, id, &mut visit)` reads a world map through any current server
+level, including a parked one. On `Ok(Some(()))` the callback ran once with a
+`MapState<'_>`; its dimension ID and colour bytes are borrowed for that call. Read them
+in place, or use `map.dimension.to_owned()` and `map.colors.to_vec()` if retaining them.
+A missing map returns `Ok(None)`. A stale handle or unavailable side, phase or backend
+returns `LevelReadError`. Neither a missing map nor a refusal calls the visitor.
 
 ## Registering a dimension
 

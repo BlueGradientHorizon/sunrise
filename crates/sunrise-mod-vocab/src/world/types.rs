@@ -337,7 +337,7 @@ impl LevelRef {
             .expect("the game's table made the key")
     }
     /// Side: both.
-    /// Property `key` of the block state at `pos` (`BlockState.getValue`):
+    /// Property `key` of the block state at `pos` (`StateHolder.getValue`):
     /// `east` for `facing`. None for a block without it, or as for
     /// `block_state`. API 381.
     /// The value borrows `host`, not `key`.
