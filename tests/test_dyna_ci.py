@@ -723,16 +723,32 @@ class ParityWorkflowTests(unittest.TestCase):
         self.initialise()
         (self.slot / "parity.log").write_text("private mismatch")
         keep = self.root / "keep"
-        stale = keep / "parity-failed-logs/70-1-bucket-0"
-        stale.mkdir(parents=True)
-        os.utime(stale, (0, 0))
         self.env["DYNA_CI_KEEP"] = str(keep)
         result = self.step("Keep a failed share's logs beyond this slot")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((keep / "parity-failed-logs/77-2-bucket-0/parity.log").read_text(), "private mismatch")
-        self.assertFalse(stale.exists())
         self.assertEqual([path.name for path in (keep / "parity-failed-logs").iterdir()], ["77-2-bucket-0"])
         self.assertNotIn("private", result.stdout)
+
+    def test_every_share_prunes_expired_kept_logs_and_keeps_fresh_ones(self):
+        cleanup = self.steps["Delete this job's vanilla-derived scratch"]
+        self.assertEqual(cleanup["if"], "always()")
+        keep = self.root / "keep"
+        stale, fresh = keep / "parity-failed-logs/70-1-bucket-0", keep / "parity-failed-logs/77-2-bucket-0"
+        for path in (stale, fresh):
+            path.mkdir(parents=True)
+        os.utime(stale, (0, 0))
+        # A green share: nothing captured, the expired copy still goes.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(keep)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists())
+        self.assertTrue(fresh.exists())
+        # A host whose keep holds no captured logs is left as it is.
+        result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=self.root, capture_output=True, text=True,
+                                env=dict(self.env, DYNA_CI_KEEP=str(self.root / "empty-keep")))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / "empty-keep").exists())
 
     def test_an_early_failure_cannot_report_a_previous_slots_result(self):
         # Both an older attempt and stale state in the current directory survive until the first workflow step.
