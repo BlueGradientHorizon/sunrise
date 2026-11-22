@@ -726,17 +726,7 @@ impl Game<'_> {
         let id = self
             .guest_combat_record(conn)?
             .kill_credit(self.world.game_time)?;
-        let in_place = self.lan_acting.is_none()
-            && self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.entity_id as u32 == id);
-        if in_place
-            || self
-                .lan
-                .as_ref()
-                .is_some_and(|host| host.hub.guests.iter().any(|g| g.entity_id as u32 == id))
-        {
+        if self.combat_player(id).is_some() {
             return Some("minecraft:player".into());
         }
         if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
@@ -772,41 +762,46 @@ impl Game<'_> {
     }
 
     /// The entity behind a combat record's id, as `trigger`'s predicates see
-    /// it: the player in place, a guest, or a mob.
+    /// it: an installed, displaced or parked player, or a mob.
     pub(super) fn guest_entity_view(
         &self,
         id: u32,
         trigger: &str,
     ) -> Option<sunrise_client::advancements::EntityView> {
-        if self.lan_acting.is_none()
-            && self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.entity_id as u32 == id)
-        {
+        use sunrise_client::{advancements::EntityView, pose::Pose};
+        match self.combat_player(id) {
             // `player_entity_for` takes `&mut self` (the compound for `nbt`);
             // this view of the killer has the player's records without it.
-            return Some(self.player_entity_for_any(&[trigger]));
-        }
-        self.lan
-            .as_ref()?
-            .hub
-            .guests
-            .iter()
-            .find(|g| g.entity_id as u32 == id)
-            .map(|g| sunrise_client::advancements::EntityView {
+            Some(CombatPlayer::InPlace) => Some(self.player_entity_for_any(&[trigger])),
+            Some(CombatPlayer::Displaced(depth, body)) => {
+                let frame = &self.lan_displaced_players[depth];
+                Some(EntityView {
+                    kind: "minecraft:player".into(),
+                    position: [body.position.x, body.position.y, body.position.z],
+                    on_fire: body.is_on_fire(),
+                    sneaking: body.pose == Pose::Crouching,
+                    input_sneak: frame.input_sneak,
+                    sprinting: body.sprinting,
+                    swimming: body.pose == Pose::Swimming,
+                    flying: body.flying,
+                    on_ground: body.ground.on_ground,
+                    gamemode: Some(frame.mode.name().to_owned()),
+                    ..Default::default()
+                })
+            }
+            Some(CombatPlayer::Parked(g)) => Some(EntityView {
                 kind: "minecraft:player".into(),
                 position: g.position,
                 sneaking: g.sneaking,
                 input_sneak: g.input & 32 != 0,
                 ..Default::default()
-            })
-            .or_else(|| {
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id)
-                    .map(|m| self.mob_entity(m))
-            })
+            }),
+            None => self
+                .mobs
+                .iter()
+                .find(|m| m.id == id)
+                .map(|m| self.mob_entity(m)),
+        }
     }
 
     /// The scalar death-tail/death-message source. `living_death` uses the
