@@ -639,7 +639,11 @@ impl Goal for CrossbowAttack {
     }
 }
 /// `CrossbowAttackMob.performCrossbowAttack` at power 1.6: one arrow aimed a
-/// third of the way up the target, lifted by a fifth of the distance.
+/// third of the way up the target, lifted by a fifth of the distance: the shot of
+/// `Pillager.performRangedAttack`, and of `Piglin.performRangedAttack`. A native mod takes the
+/// shot here through `[[native.mixin]]`, where a Java mod's mixin on
+/// `Pillager.performRangedAttack` cancels or delays it (#4678).
+#[sunrise_mod_api_macros::replaceable]
 fn shoot_crossbow(m: &mut Mob, who: Who, cx: &mut Cx) {
     let Some(t) = cx.w.target_info(who) else {
         return;

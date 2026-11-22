@@ -282,7 +282,10 @@ fn ranged_attack_uncertainty(difficulty: u8) -> f32 {
 /// The trident throw of `Drowned.performRangedAttack`: a `ThrownTrident` of
 /// the held trident (a plain one when it holds none), owned by the drowned,
 /// which cannot be picked up and does not return (`AbstractArrow` constructor:
-/// only a player's projectile is `Pickup.ALLOWED`).
+/// only a player's projectile is `Pickup.ALLOWED`). A native mod takes the throw here
+/// through `[[native.mixin]]`, where a Java mod's mixin on `Drowned.performRangedAttack`
+/// cancels or delays it (#4678).
+#[sunrise_mod_api_macros::replaceable]
 fn drowned_throw(m: &mut Mob, who: Who, _power: f32, cx: &mut Cx) {
     let Some(t) = cx.w.target_info(who) else {
         return;
@@ -929,7 +932,10 @@ pub fn bow_power(ticks: i32) -> f32 {
     ((t * t + t * 2.0) / 3.0).min(1.0)
 }
 /// AbstractSkeleton.performRangedAttack: aim 20% above the target's lower
-/// third, speed 1.6, uncertainty 14 - 4 * difficulty.
+/// third, speed 1.6, uncertainty 14 - 4 * difficulty. A native mod takes the shot here
+/// through `[[native.mixin]]`, where a Java mod's mixin on
+/// `AbstractSkeleton.performRangedAttack` cancels or delays it (#4678).
+#[sunrise_mod_api_macros::replaceable]
 pub fn perform_ranged_attack(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
     let Some(t) = cx.w.target_info(who) else {
         return;
