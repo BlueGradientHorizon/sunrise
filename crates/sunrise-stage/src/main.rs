@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use sunrise_mod_api_gen::staging::{self, Mode};
 use sunrise_mod_api_gen::surface::{ExportOptions, engine_catalogs, export_with};
 use sunrise_mod_package::manifest::{MANIFEST, Manifest};
+use sunrise_mod_package::native_route;
 
 fn surface(args: &[PathBuf]) {
     let [root, out, flags @ ..] = args else {
@@ -147,15 +148,7 @@ fn read_manifest_facts(dir: &Path) -> Result<ManifestFacts, String> {
     }
     let file = std::fs::File::open(path).map_err(|e| format!("{MANIFEST}: {e}"))?;
     let manifest = Manifest::read(file)?;
-    if !manifest.internals.is_empty()
-        || manifest.native.as_ref().is_some_and(|native| {
-            !native.mixin.is_empty()
-                || !native.module.is_empty()
-                || !native.bridge.is_empty()
-                || !native.state.is_empty()
-                || !native.r#loop.is_empty()
-        })
-    {
+    if native_route::manifest_game_code(&manifest).is_some() {
         return Err(
             "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`".into(),
         );
