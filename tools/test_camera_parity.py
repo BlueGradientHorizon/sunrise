@@ -635,11 +635,16 @@ def main():
         assert expected_render in render_log.read_text(encoding='utf-8'), f'expected "{expected_render}" in {render_log}'
 
         client_bin = build_test_binary(build, 'sunrise-client', 'sunrise_client', env)
-        client_log = run_logged(
-            [client_bin, '--ignored', '--exact', *CLIENT_WITNESS_TESTS], build, 'client-tests', cwd=scratch, env=env,
-        )
-        expected_client = f'{len(CLIENT_WITNESS_TESTS)} passed; 0 failed'
-        assert expected_client in client_log.read_text(encoding='utf-8'), f'expected "{expected_client}" in {client_log}'
+        # Game fixtures register process-global keys and providers. Don't let another test replace them.
+        for index, test in enumerate(CLIENT_WITNESS_TESTS):
+            client_root = scratch / f'client-{index}'
+            client_root.mkdir()
+            client_env = dict(env, **{key: str(client_root / key) for key in homes})
+            client_log = run_logged(
+                [client_bin, '--ignored', '--exact', test], build, f'client-test-{index}',
+                cwd=client_root, env=client_env,
+            )
+            assert '1 passed; 0 failed' in client_log.read_text(encoding='utf-8'), f'{test} did not pass: {client_log}'
 
     total = len(RENDER_WITNESS_TESTS) + len(CLIENT_WITNESS_TESTS)
     print(f'Camera entity parity passed ({total} witness tests against .local/witness/{lock["minecraft"]["version"]}/camera)')

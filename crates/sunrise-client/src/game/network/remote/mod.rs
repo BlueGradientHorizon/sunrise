@@ -2502,6 +2502,9 @@ pub(crate) mod tests {
     mod hanging_entity_age_tests {
         include!("hanging_entity_age_tests.rs");
     }
+    mod main_hand_tests {
+        include!("main_hand_tests.rs");
+    }
     mod menu_click_order_tests {
         include!("menu_click_order_tests.rs");
     }

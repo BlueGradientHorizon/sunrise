@@ -100,7 +100,7 @@ fn pin_pose(game: &mut Game<'_>, id: i32) {
     });
 }
 
-/// The rider's frame as `Camera.setup` runs it for the spectated entity.
+/// The spectated rider's view as set by `Camera.alignWithEntity`.
 fn frame(game: &Game<'_>, partial: f32, camera_type: CameraType) -> (String, String, f32) {
     let e = game
         .spectated_camera_snapshot()

@@ -227,7 +227,7 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         if is_player {
             mob.extra.avatar_pose = sunrise_client::pose::Pose::Sleeping;
         }
-        // Villager.sleeping: the bed's facing code (1 north, 2 south, 3 west, 4 east) from Direction.get2DDataValue.
+        // Convert the witness's bed facing (`Direction.get2DDataValue`) to the mob's stored facing.
         mob.extra.ints[1] = [2, 3, 1, 4][case["bed"][3].as_u64().unwrap() as usize];
         let entity = mob_camera_entity(&mob, (1.0, 4.0));
         let mut camera = Camera::default();

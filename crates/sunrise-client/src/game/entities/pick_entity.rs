@@ -128,9 +128,10 @@ impl Game<'_> {
         };
         self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
-            let seal = self.transaction_open();
-            self.client_pick.rider_candidates = pick.dispatch(self);
-            self.transaction_close(&seal, true);
+            self.storage_scope(|game, _| {
+                game.client_pick.rider_candidates = pick.dispatch(game);
+                ((), true)
+            });
         }
         let hit = pick.hovered?;
         Some(CrosshairTarget::Entity {

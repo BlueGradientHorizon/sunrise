@@ -1542,7 +1542,7 @@ impl Game<'_> {
         (scale, value("minecraft:camera_distance", 4.0))
     }
 
-    /// The scale and camera distance `Camera.setup` reads from an armor stand.
+    /// The scale and camera distance `Camera.alignWithEntity` reads from an armor stand.
     fn stand_camera_values(&self, a: &ArmorStand) -> (f32, f64) {
         self.remote_entity_living_values(a.id as i32)
     }
