@@ -1,5 +1,4 @@
 ids = [
-    "type:ItemPlace",
     "type:ItemPlace.Scratch",
     "type:ItemPlace.ScratchSlots",
     "hook:dispense_item",
