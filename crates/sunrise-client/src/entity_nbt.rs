@@ -2952,7 +2952,10 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         // Entity.load: getDoubleOr, any number widened.
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
         age: i32::from(short("Age", 0)),
-        lifespan: number(tag.get("Lifespan")).map_or(ItemEntity::LIFETIME, |v| v as i32),
+        lifespan: tag
+            .get("Lifespan")
+            .and_then(int_value)
+            .unwrap_or(ItemEntity::LIFETIME),
         pickup_delay: i64::from(short("PickupDelay", 0)),
         bob_offset,
         ticks: 0,
@@ -5904,6 +5907,15 @@ mod tests {
         let reset_tag =
             item_entity_to_nbt(&e, [1, 2, 3, 4], Some(&extended_tag), &Default::default());
         assert!(reset_tag.get("Lifespan").is_none());
+
+        let mut float_tag = extended_tag;
+        put(
+            &mut float_tag,
+            "Lifespan",
+            Tag::Double(1234.9_f64.to_bits()),
+        );
+        let from_float = item_entity_from_nbt(&float_tag, 14, 0.0).unwrap();
+        assert_eq!(from_float.lifespan, 1234);
     }
     #[test]
     fn nbt_numeric_flags_decode_and_save_modeled_values_without_raw() {

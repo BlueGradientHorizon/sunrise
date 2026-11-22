@@ -224,17 +224,31 @@ impl Game<'_> {
                     && items[i].age >= items[i].lifespan
                     && items[i].position.y >= void
                 {
+                    // NeoForge `ItemEntity.tick` evaluates the left-hand `this.lifespan`
+                    // before calling `EventHooks.onItemExpire(this)`.
+                    let lifespan = items[i].lifespan;
                     let mut extra_life = 0;
                     if mod_api::__private::listened(mod_api::HookId::ItemExpire) {
-                        let id = items[i].id;
-                        let given = self.give_items_back(items, &mut pass, i, round, |game, _| {
-                            if let Some(at) =
-                                native_ticks::place(&game.dropped, i, |item| item.id == id)
-                            {
-                                let stack = game.dropped[at].stack.clone();
-                                game.native_item_expire(id, &stack, &mut extra_life);
-                            }
-                        });
+                        let (id, join) = (items[i].id, items[i].join);
+                        let given =
+                            self.give_items_back(items, &mut pass, i, round, |game, round| {
+                                if let Some(at) =
+                                    native_ticks::place(&game.dropped, i, |item| item.id == id)
+                                {
+                                    let stack = game.dropped[at].stack.clone();
+                                    game.native_item_expire(id, &stack, &mut extra_life);
+                                }
+                                if alone {
+                                    game.native_item_removals_flush(|item| {
+                                        if item.join > join {
+                                            round.not_ticked(item.id);
+                                        }
+                                    });
+                                    if !game.dropped.iter().any(|item| item.id == id) {
+                                        game.native_tick_post_one(round, id, native_ticks::ITEM);
+                                    }
+                                }
+                            });
                         (items, next) = (given.items, given.next);
                         let Some(at) = given.at else {
                             continue;
@@ -244,8 +258,7 @@ impl Game<'_> {
                     let item = &mut items[i];
                     // NeoForge `ItemEntity.tick`: Java int addition, then clamp to
                     // `0..=Short.MAX_VALUE - 1`, without rewinding `age`.
-                    item.lifespan = item
-                        .lifespan
+                    item.lifespan = lifespan
                         .wrapping_add(extra_life)
                         .clamp(0, ItemEntity::MAX_LIFESPAN);
                     alive =
@@ -1212,7 +1225,11 @@ mod escape_tests {
 mod expire_tests {
     use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
     use crate::game::{Dim, Game};
-    use mod_api::{EntityLeaveLevelEvent, HostTransaction, ItemExpireEvent, ModEntry, ServerHost};
+    use mod_api::{
+        Compound, EntityLeaveLevelEvent, EntityTickListenedEvent, EntityTickPostEvent,
+        EntityTickPreEvent, HostSide, HostTransaction, ItemExpireEvent, ModEntry, Registrar,
+        RegistrationContext, ServerHost, Tag,
+    };
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicI32, AtomicU32, Ordering},
@@ -1562,6 +1579,159 @@ mod expire_tests {
                     game.native_leaves_flush();
                     assert_eq!(log.lock().unwrap().leaves, drops, "{commit:?}");
                 }
+            });
+        });
+    }
+
+    #[derive(Default)]
+    struct AloneDiscardLog {
+        drops: [u32; 2],
+        commit: Option<bool>,
+        events: Vec<(&'static str, u32)>,
+    }
+
+    struct AloneDiscardListener(Arc<Mutex<AloneDiscardLog>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for AloneDiscardListener {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            r.entity_tick_each("minecraft:item");
+        }
+
+        fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut EntityTickListenedEvent) {
+            event.listened = true;
+        }
+
+        fn entity_tick_pre(&self, _: HostSide<'_>, event: &mut EntityTickPreEvent<'_>) {
+            let mut log = self.0.lock().unwrap();
+            for &id in event.entities {
+                log.events.push(("pre", id));
+            }
+        }
+
+        fn entity_tick_post(&self, _: HostSide<'_>, event: &mut EntityTickPostEvent<'_>) {
+            let mut log = self.0.lock().unwrap();
+            for &id in event.entities {
+                log.events.push(("post", id));
+            }
+        }
+
+        fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>) {
+            let (drops, commit) = {
+                let mut log = self.0.lock().unwrap();
+                log.events.push(("expire", event.entity));
+                (log.drops, log.commit)
+            };
+            event.extra_life = 20;
+            if event.entity != drops[0] {
+                return;
+            }
+            let discard = |host: &mut dyn ServerHost| {
+                for id in drops {
+                    assert!(host.entity(id).is_some_and(|entity| entity.discard(host)));
+                }
+            };
+            if let Some(commit) = commit {
+                let _ = host.transaction(|host, _| {
+                    discard(host);
+                    if commit { Ok(()) } else { Err(()) }
+                });
+            } else {
+                discard(host);
+            }
+        }
+
+        fn entity_leave_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityLeaveLevelEvent<'_>,
+        ) {
+            self.0.lock().unwrap().events.push(("leave", event.entity));
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn expiry_listener_discards_under_entity_tick_each_still_deliver_post_once() {
+        let log = Arc::new(Mutex::new(AloneDiscardLog::default()));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "alone-discard-on-expiry",
+            Box::new(AloneDiscardListener(log.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                expiry_level(game);
+                for commit in [None, Some(true)] {
+                    let drops = [
+                        drop_at_age(game, "minecraft:apple", 5999),
+                        drop_at_age(game, "minecraft:diamond", 5999),
+                    ];
+                    *log.lock().unwrap() = AloneDiscardLog {
+                        drops,
+                        commit,
+                        events: Vec::new(),
+                    };
+
+                    game.tick_items();
+                    assert!(game.dropped.is_empty(), "{commit:?}");
+                    assert_eq!(
+                        log.lock().unwrap().events,
+                        [
+                            ("pre", drops[0]),
+                            ("expire", drops[0]),
+                            ("leave", drops[0]),
+                            ("leave", drops[1]),
+                            ("post", drops[0]),
+                        ],
+                        "{commit:?}"
+                    );
+                    game.native_leaves_flush();
+                    assert_eq!(log.lock().unwrap().events.len(), 5, "{commit:?}");
+                }
+            });
+        });
+    }
+
+    struct LifespanEditListener(Arc<Mutex<Option<bool>>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for LifespanEditListener {
+        fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>) {
+            let edited = host.entity(event.entity).is_some_and(|entity| {
+                entity.merge_nbt(host, Compound::from([("Lifespan".into(), Tag::Int(12000))]))
+            });
+            *self.0.lock().unwrap() = Some(edited);
+            event.extra_life = 1;
+        }
+    }
+
+    /// NeoForge `ItemEntity.tick` evaluates `this.lifespan` before calling
+    /// `EventHooks.onItemExpire(this)`: editing `Lifespan` during dispatch does not
+    /// shift the base of `lifespan + extra_life`.
+    #[test]
+    #[ignore = "daily"]
+    fn item_expire_adds_extra_life_to_pre_dispatch_lifespan() {
+        let edited = Arc::new(Mutex::new(None));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "lifespan-edit-on-expiry",
+            Box::new(LifespanEditListener(edited.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                expiry_level(game);
+                let id = drop_at_age(game, "minecraft:stone", 5999);
+
+                game.tick_items();
+                assert_eq!(*edited.lock().unwrap(), Some(true));
+                let item = game
+                    .dropped
+                    .iter()
+                    .find(|item| item.id == id)
+                    .expect("item survives at age 6000 < 6001");
+                assert_eq!(item.age, 6000);
+                assert_eq!(item.lifespan, 6001);
             });
         });
     }
