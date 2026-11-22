@@ -1441,6 +1441,8 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
                     .is_none()
             );
 
+            // The fixture has a server role but no live server. Install one for Level.setBlock.
+            let _serving = super::integrated::tests::install_serving(game, false);
             // Removing the backing block and opening a new menu through the Host keeps the new
             // menu open instead of closing it on post-hook resend.
             let window = setup(game);
@@ -1457,11 +1459,13 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
                 ..Script::default()
             });
             game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert_eq!(DISPATCHES.get(), 1);
             assert!(game.world.block_entities.get(&POS).is_none());
             let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
-            assert!(
-                guest.menu.is_some(),
-                "post-hook resend must not close a newly opened menu"
+            assert_eq!(
+                guest.menu.as_ref().map(|menu| menu.slots),
+                Some(Slots::Native),
+                "post-hook resend must not close the newly opened menu"
             );
             assert_ne!(guest.menu_generation, old_generation);
         });
@@ -1894,6 +1898,7 @@ fn an_untaken_quick_move_keeps_live_writes_and_falls_through_to_routing() {
             second_block(game);
             let seal = game.transaction_open();
             game.lan_guest_packet(12, container_click(window, 0, 1));
+            assert_eq!(stone_everywhere(game), (0, 4, inv + 10));
             game.transaction_close(&seal, false);
             assert_eq!(stone_everywhere(game), (10, 0, inv));
         });
