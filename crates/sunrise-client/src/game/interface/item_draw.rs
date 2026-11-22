@@ -743,6 +743,30 @@ impl Game<'_> {
         let lights = diffuse_lights(self.nether_lighting());
         self.submit_item_lit(state, pose, light, lights, out);
     }
+    /// [`Self::submit_item_world`] preserving JOML `Matrix4f` rounding through baked quads.
+    pub(super) fn submit_item_world_joml(
+        &self,
+        state: &ItemRenderState,
+        pose: sunrise_client::camera::joml::Mat4,
+        light: u32,
+        out: &mut Vec<Vertex>,
+    ) {
+        let lights = diffuse_lights(self.nether_lighting());
+        let mut sink = WorldSink {
+            out,
+            light: item_hdr_light(state, light),
+            lights: (state.hdr_light == 0).then_some(lights),
+            glint: self.glint(),
+            tier: state.hdr_tier,
+        };
+        state.submit_joml(
+            &self.pack.item_renderer,
+            &self.gui.atlas.sprites,
+            &self.item_host(),
+            pose,
+            &mut sink,
+        );
+    }
     /// [`Self::submit_item_world`] shaded by other diffuse lights (a
     /// `Lighting.Entry` other than the level's), in the pose's output space.
     pub(super) fn submit_item_lit(

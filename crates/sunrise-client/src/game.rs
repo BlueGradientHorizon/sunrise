@@ -3893,7 +3893,12 @@ struct Game<'a> {
     /// Map textures waiting for the next HUD batch to upload them.
     map_patches: Vec<sunrise_client::font::Patch>,
     name_tag_layouts: names::NameTagLayouts,
-    text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
+    text_displays: indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>,
+    see_through_collector: text_displays::SeeThroughCollector,
+    translucent_display_collector: text_displays::TranslucentDisplayCollector,
+    display_visible_scratch: Vec<(i32, f64)>,
+    block_display_parts_scratch: Vec<u32>,
+    display_inline_profiles_scratch: Vec<std::sync::Arc<serde_json::Value>>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).
@@ -8235,10 +8240,14 @@ impl Game<'_> {
         laps.lap("eg_displays");
         let mut see_through = std::mem::take(&mut self.see_through_vertices);
         see_through.clear();
-        self.name_tag_geometry(camera, alpha, &mut out, &mut see_through);
-        self.test_instance_marker_geometry(camera, &mut out, &mut see_through);
+        let mut st_collector = std::mem::take(&mut self.see_through_collector);
+        st_collector.clear();
+        self.name_tag_geometry(camera, alpha, &mut out, &mut st_collector);
+        self.test_instance_marker_geometry(camera, &mut out, &mut st_collector);
         self.debug_renderer_geometry(camera, &mut out);
-        self.text_display_geometry(camera, alpha, &mut out, &mut see_through);
+        self.text_display_geometry(camera, alpha, &mut out, &mut st_collector);
+        st_collector.flush(&mut see_through);
+        self.see_through_collector = st_collector;
         self.see_through_vertices = see_through;
         laps.lap("eg_name_tags");
         // Entity shadows (EntityRenderer.extractShadow); a native pack's sun shadows replace them.
@@ -8261,34 +8270,54 @@ impl Game<'_> {
                     p.z + (q.z - p.z) * a,
                 )
             };
-            let mut casters: Vec<(glam::DVec3, f32, f32)> =
-                sunrise_client::shadows::mob_casters(&self.mobs, a).collect();
+            // Each caster carries (interpolated placement pos, current distance pos, radius, strength).
+            let mut casters: Vec<(glam::DVec3, glam::DVec3, f32, f32)> =
+                sunrise_client::shadows::mob_casters(&self.mobs, a)
+                    .map(|(pos, r, s)| (pos, pos, r, s))
+                    .collect();
             let item = sunrise_client::shadows::shadow_params("minecraft:item");
-            casters.extend(
-                self.dropped
-                    .iter()
-                    .map(|i| (lerp(i.previous, i.position), item.0, item.1)),
-            );
+            casters.extend(self.dropped.iter().map(|i| {
+                let p = lerp(i.previous, i.position);
+                (p, p, item.0, item.1)
+            }));
             let orb = sunrise_client::shadows::shadow_params("minecraft:experience_orb");
-            casters.extend(
-                self.orbs
-                    .iter()
-                    .map(|o| (lerp(o.previous, o.position), orb.0, orb.1)),
-            );
-            // Text, block and item displays (DisplayRenderer's shadow radius).
-            casters.extend(self.text_displays.values().filter_map(|d| d.shadow(a)));
+            casters.extend(self.orbs.iter().map(|o| {
+                let p = lerp(o.previous, o.position);
+                (p, p, orb.0, orb.1)
+            }));
+            // Text, block and item displays: same visibility gate, per-entity partial tick,
+            // and current-position distance fade as `EntityRenderer.extractShadow`.
+            let display_scale = self.view_scale();
+            let display_now = std::time::Instant::now();
+            casters.extend(self.text_displays.iter().filter_map(|(&id, d)| {
+                let entity_partial = self.display_partial(id, a);
+                if !self.display_visible(
+                    id,
+                    d,
+                    camera,
+                    entity_partial as f32,
+                    display_scale,
+                    display_now,
+                ) {
+                    return None;
+                }
+                let (pos, r, s) = d.shadow(entity_partial)?;
+                Some((pos, d.position(), r, s))
+            }));
             // Packs may move vertices or draw from another view.
             let shadow_view = self
                 .view_frustum
                 .as_ref()
                 .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
-            for (pos, radius, strength) in casters {
+            for (pos, dist_pos, radius, strength) in casters {
                 if let Some(view) = shadow_view
-                    && !sunrise_client::shadows::in_view(view, camera, pos, radius, strength)
+                    && !sunrise_client::shadows::in_view_from(
+                        view, camera, pos, dist_pos, radius, strength,
+                    )
                 {
                     continue;
                 }
-                sunrise_client::shadows::shadow(
+                sunrise_client::shadows::shadow_from(
                     &self.world,
                     self.res.facts(),
                     &|state| {
@@ -8303,6 +8332,7 @@ impl Game<'_> {
                     sprite,
                     camera,
                     pos,
+                    dist_pos,
                     radius,
                     strength,
                     ambient,
@@ -11343,8 +11373,14 @@ impl Game<'_> {
         let core_globals = self.reads_poly_globals().then(poly_globals);
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
-        self.view_frustum =
-            self.world_view_frustum(camera, [fov_degrees, yaw, pitch], bob * spin, depth_far);
+        // Camera.createProjectionMatrixForCulling: max(fov, configuredFov), without bob or spin.
+        let cull_fov = fov_degrees.max(self.settings.fov);
+        self.view_frustum = self.world_view_frustum(
+            camera,
+            [cull_fov, yaw, pitch],
+            glam::Mat4::IDENTITY,
+            depth_far,
+        );
         let billboard_frustum = if self.settings.sunrise.taa {
             self.renderer.as_ref().map(|r| {
                 r.camera_frustum_with_jitter(fov_degrees, yaw, pitch, bob * spin, depth_far)
@@ -13924,6 +13960,11 @@ impl<'a> Game<'a> {
             map_patches: Vec::new(),
             name_tag_layouts: Default::default(),
             text_displays: Default::default(),
+            see_through_collector: Default::default(),
+            translucent_display_collector: Default::default(),
+            display_visible_scratch: Vec::new(),
+            block_display_parts_scratch: Vec::new(),
+            display_inline_profiles_scratch: Vec::new(),
             interactions: Default::default(),
             remote_knots: Default::default(),
             knot_ids: Default::default(),
