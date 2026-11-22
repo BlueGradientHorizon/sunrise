@@ -532,6 +532,11 @@ impl GeneralTypeCatalog {
         &self.entries[slot].id
     }
 
+    /// The range and update interval of the already-resolved type.
+    pub(in crate::game) fn tracking(&self, slot: usize) -> sunrise_client::lan::tracking::General {
+        (&self.entries[slot]).into()
+    }
+
     pub(in crate::game) fn keys(&self) -> impl Iterator<Item = &str> {
         self.entries.iter().map(|entry| entry.id.as_str())
     }
