@@ -387,6 +387,11 @@ mod tests {
             native_entity_refs::tests::{run_fresh_cases, with_game},
         };
         use std::path::Path;
+        use sunrise_protocol::{
+            buf::{Codec, Reader},
+            item::Stack,
+            packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
+        };
         use sunrise_world::{level::classes::is_generated_tag, loot::LootTags};
 
         if run_fresh_cases(
@@ -443,6 +448,10 @@ mod tests {
         write(
             &pack.join("data/tag_reload/loot_table/check.json"),
             br##"{"pools":[{"rolls":1,"entries":[{"type":"minecraft:tag","items":"#tag_reload:probe","expand":false}]}]}"##,
+        );
+        write(
+            &pack.join("data/tag_reload/recipe/retained.json"),
+            br##"{"type":"minecraft:stonecutting","ingredient":"#tag_reload:probe","result":{"id":"minecraft:diamond"}}"##,
         );
         let key =
             |name: &str| mod_api::__private::tag_key(&Identifier::parse(name).unwrap()).unwrap();
@@ -564,6 +573,20 @@ mod tests {
                     &game.pack_files(),
                 )
                 .unwrap();
+                if !expect_empty {
+                    let recipe = UpdateRecipes::read(&mut Reader::new(&wire.recipes)).unwrap();
+                    let diamond = wire.id("minecraft:item", "minecraft:diamond").unwrap();
+                    assert!(recipe.stonecutter.contains(&(
+                        HolderSet::Tag("tag_reload:probe".into()),
+                        SlotDisplay::ItemStack(Stack::new(diamond, 1)),
+                    )));
+                    for item in members[0].1 {
+                        assert_eq!(
+                            wire.stonecutter_buttons.recipe(item, 0),
+                            Some("tag_reload:retained")
+                        );
+                    }
+                }
                 snapshots.push(wire);
             }
         });
