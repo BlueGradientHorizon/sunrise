@@ -52,10 +52,7 @@ impl Game<'_> {
     /// one level random. A mod one is told only while a part has a client tick and there is a
     /// client level.
     pub(in crate::game) fn tick_client_block_entities(&mut self) {
-        if !self.world.block_entities.has_states() {
-            let states = self.client_ticking_states();
-            self.world.block_entities.set_states(states);
-        }
+        self.ensure_client_ticking_states();
         let level = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick)
             .then(|| self.native_client_level())
             .flatten();
@@ -66,14 +63,19 @@ impl Game<'_> {
             Some(_) => self.world.block_entities.take_client_snapshots(),
             None => Default::default(),
         };
-        let mut anim = self.begin_block_entity_anims(&tickers);
+        let mut anim = self.begin_block_entity_anims();
         for &ticker in tickers.iter() {
             let key @ (x, y, z) = ticker.0;
             // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`).
             if !self.world.block_entities.is_live(ticker) {
                 continue;
             }
-            let animated = self.be_anims.ticker(self.world.block(x, y, z).0);
+            // A mod's block entity ticks by its own type, whatever its block is named
+            // (`BlockEntityTicker` of the registered type): never a vanilla animation.
+            let animated = match self.world.block_entities.get(&key) {
+                Some(BlockEntity::Mod(_)) => None,
+                _ => self.be_anims.ticker(self.world.block(x, y, z).0),
+            };
             // One outside the border waits (`LevelChunk.isTicking`).
             if !self.border.contains(f64::from(x), f64::from(z)) {
                 continue;
@@ -98,7 +100,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        self.finish_block_entity_anims(anim);
+        self.finish_block_entity_anims();
         if level.is_some() {
             self.world.block_entities.keep_client_snapshots(snapshots);
         }
@@ -165,6 +167,14 @@ impl Game<'_> {
         let state = self.world.block(x, y, z);
         let handle = mod_api::__private::game::block_entity_ref(level, [x, y, z], generation);
         self.native_block_entity_client_tick([x, y, z], handle, state, entity);
+    }
+    /// Builds the table of the states that tick on the client (once), so a block entity's
+    /// ticker is decided when its block changes (`LevelChunk.updateBlockEntityTicker`).
+    pub(in crate::game) fn ensure_client_ticking_states(&mut self) {
+        if !self.world.block_entities.has_states() {
+            let states = self.client_ticking_states();
+            self.world.block_entities.set_states(states);
+        }
     }
     /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
     /// spawners and vaults always, a mod block's states when a part with a client tick says so

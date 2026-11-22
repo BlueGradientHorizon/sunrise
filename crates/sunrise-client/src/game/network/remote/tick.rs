@@ -44,7 +44,7 @@ impl Game<'_> {
         self.tick_remote_guardian_eyes(running);
         self.tick_hand();
         if running {
-            self.tick_particles();
+            self.tick_particle_sources();
         } else if self.clock.still() {
             self.settle_rain_fog();
         }
@@ -75,6 +75,8 @@ impl Game<'_> {
         let sent = self.tick_remote_own_player();
         if running {
             self.tick_remote_block_entities();
+            // Minecraft.tick: the particle engine ticks after Level.tickBlockEntities.
+            self.tick_particle_engine();
         }
         if let Some(input) = sent? {
             self.remote_send_state(input);

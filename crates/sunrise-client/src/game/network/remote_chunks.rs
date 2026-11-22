@@ -91,6 +91,9 @@ impl Game<'_> {
         } else {
             self.streaming.insert_remote(&mut self.world, chunk);
         }
+        // Before any block entity joins: a state change before the first ticker pass (a campfire
+        // lit) must find which states tick, to join the list at that moment, not at its place.
+        self.ensure_client_ticking_states();
         self.world.block_entities.unload_column((x, z));
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
