@@ -262,8 +262,11 @@ pub(crate) fn stack_effects(
                 *entry = (*effect.saved).clone();
                 effect.saved.clone()
             } else {
-                // Unregistered gameplay-only effects retain their existing JSON projection.
-                let json = sunrise_client_core::scoreboard::tag_to_json(entry);
+                // Unregistered gameplay-only effects retain their existing JSON projection:
+                // NbtOps to JsonOps, which keeps bytes as numbers (the scoreboard
+                // text projection turns every byte into a boolean, so 15 became 1).
+                let json = sunrise_core::json_nbt::tag_to_json(entry)
+                    .map_err(|error| error.to_string())?;
                 let data = sunrise_core::json_nbt::json_to_tag(&json)
                     .map_err(|error| error.to_string())?;
                 Arc::new(data)
@@ -3713,6 +3716,37 @@ mod consume_effect_tests {
         // An unknown minecraft: kind and a missing type are dropped.
         assert!(parse_consume_effect(&v(r#"{"type":"minecraft:future"}"#)).is_none());
         assert!(parse_consume_effect(&v(r#"{"amount":42}"#)).is_none());
+    }
+
+    #[test]
+    fn unregistered_native_effect_keeps_small_numbers_in_item_prototype() {
+        // The item loader's path: JSON components -> NBT -> decoded stack data.
+        let components = serde_json::json!({"minecraft:consumable": {"on_consume_effects": [
+            {"type": "mymod:set_fire", "seconds": 15},
+            {"type": "mymod:give_item", "item": "mymod:cheese_ingot", "count": 3},
+            {"type": "mymod:wide", "short": 300, "flag": false},
+        ]}});
+        let prototype = sunrise_core::json_nbt::json_to_tag(&components).unwrap();
+        let (damage, extra) = crate::item_data::decode_components(Some(&prototype));
+        let stack = ItemStack {
+            item: "mymod:magma_bottle".into(),
+            count: 1,
+            damage,
+            extra,
+        };
+        let consumable = stack.consumable(None).expect("consumable");
+        let field = |i: usize, key: &str| match &consumable.effects[i] {
+            ConsumeEffect::Native { data, .. } => data.get(key).cloned(),
+            other => panic!("expected a native effect, got {other:?}"),
+        };
+        assert_eq!(field(0, "seconds"), Some(Tag::Byte(15)));
+        assert_eq!(field(1, "count"), Some(Tag::Byte(3)));
+        assert_eq!(
+            field(1, "item"),
+            Some(Tag::String("mymod:cheese_ingot".into()))
+        );
+        assert_eq!(field(2, "short"), Some(Tag::Short(300)));
+        assert_eq!(field(2, "flag"), Some(Tag::Byte(0)));
     }
 }
 
