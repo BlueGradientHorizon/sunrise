@@ -887,7 +887,6 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                 // Blaze powder goes to its fuel slot, the one slot it takes.
                 ("minecraft:brewing_stand", None, "minecraft:blaze_powder"),
             ];
-            let mut answered = Vec::new();
             for (block, side, item) in kinds {
                 // Placed as the game places it, so each gets its own block entity.
                 for name in ["minecraft:air", block] {
@@ -896,10 +895,9 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                         .unwrap();
                 }
                 game.hoppers.remove(&pos);
-                let Some(storage) = level.capability(game, &mod_api::STORAGE, [3, 64, 1], side)
-                else {
-                    continue;
-                };
+                let storage = level
+                    .capability(game, &mod_api::STORAGE, [3, 64, 1], side)
+                    .unwrap_or_else(|| panic!("{block} must answer STORAGE"));
                 let resource = of(item);
                 let before = whole_state(game, pos);
                 let aborted: Result<(), ()> =
@@ -924,25 +922,7 @@ fn storage_writes_abort_to_the_exact_state_of_every_container_kind() {
                     assert_eq!(storage.insert(host, tx, &resource, 1), 1, "{block}")
                 });
                 assert_eq!(storage.amount(game, &resource), Ok(1), "{block}");
-                answered.push(block);
             }
-            eprintln!("STORAGE answered for: {answered:?}");
-            for block in [
-                "minecraft:chest",
-                "minecraft:barrel",
-                "minecraft:shulker_box",
-                "minecraft:dispenser",
-                "minecraft:hopper",
-                "minecraft:furnace",
-                "minecraft:jukebox",
-                "minecraft:brewing_stand",
-            ] {
-                assert!(answered.contains(&block), "{block} answers STORAGE");
-            }
-            assert!(
-                !answered.contains(&"minecraft:decorated_pot"),
-                "a pot takes items from hoppers only, never through the capability"
-            );
             assert!(game.transactions.is_empty());
         });
     });

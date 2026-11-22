@@ -14,6 +14,9 @@ on the level in place.
   `level_event`. Nothing is written. The game resolves the state's number itself, so a mod never
   handles one; prefer it to `level_event` with id 2001.
 
+  The client dispatches the destroyed state's [`add_destroy_effects` Part](../../concepts/parts/block-parts.md#hit-and-destroy-particles)
+  before producing debris. A handled callback replaces the debris, not the break sound or any block state.
+
 Both `level_event` and `global_level_event` return `false` without playing anything for an event that carries a block state (2001, 2014, 3008)
 when `data` is not one, for a parked level, for a stale handle and on a client.
 

@@ -355,21 +355,13 @@ impl Game<'_> {
         }
     }
     pub(super) fn reload_packs(&mut self) {
-        // Pack reload updates tail-owned mob metadata. Keep menus responsive
-        // until those resources exist, then apply the latest selection once.
-        // A reload already under its overlay finishes first (vanilla's
-        // `pendingReload`, which `runTick` starts once the overlay is gone).
-        if reload_waits(self.rest_loader.is_some(), self.pack_reload.is_some()) {
-            self.pending_pack_reload = true;
-            return;
-        }
         if let Err(e) = self.spawn_pack_reload(ReloadKind::Selection) {
             self.selection_reload_failed(&format!("could not start the pack reload: {e}"));
         }
     }
     /// NeoForge's `Minecraft.rollbackResourcePacks`: reset the selection and
     /// reload only if an optional pack was selected; otherwise show the error.
-    fn selection_reload_failed(&mut self, error: &str) {
+    pub(super) fn selection_reload_failed(&mut self, error: &str) {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.vanilla_root(), &packs_dir());
         all.extend(self.discover_mod_packs(mod_api::PackType::ClientResources));
@@ -402,6 +394,14 @@ impl Game<'_> {
     /// progress meanwhile, and the overlay takes no input (`LoadingOverlay`),
     /// so what is held is released (`KeyMapping.releaseAll`).
     pub(super) fn spawn_pack_reload(&mut self, kind: ReloadKind) -> std::io::Result<()> {
+        // A selection reload, including startup rollback, needs tail-owned mob metadata.
+        // An in-flight reload finishes first (vanilla's `pendingReload`).
+        if kind == ReloadKind::Selection
+            && reload_waits(self.rest_loader.is_some(), self.pack_reload.is_some())
+        {
+            self.pending_pack_reload = true;
+            return Ok(());
+        }
         self.clear_device_keys();
         self.physical_keys.clear();
         self.set_mapping_held("key.attack", false);
@@ -571,6 +571,10 @@ impl Game<'_> {
                         self.settings.file.int("maxAnisotropyBit"),
                     ),
                 )
+                .and_then(|(renderer, clouds)| {
+                    clouds?;
+                    Ok(renderer)
+                })
             })
             .transpose()
         {
@@ -804,7 +808,8 @@ pub(super) fn stage_pack(
             let block_entity_shapes = res.block_entity_render().shapes_for(&source);
             let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
             let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
-            let frame_models = super::frames::bake_frames(&source);
+            let frame_models =
+                super::frames::bake_frames(pack.render.model_library.as_deref().ok());
             progress.set(3);
             Ok(move |client_applies| StagedPack {
                 root,

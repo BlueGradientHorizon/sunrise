@@ -89,6 +89,11 @@ impl Game<'_> {
                 return None;
             }
         } else {
+            // Plain hub routing writes the parked guest's inventory and cursor directly.
+            // A surrounding transaction must keep that storage before the hub takes it.
+            if !self.transactions.is_empty() {
+                self.journal_parked_player(self.guest_index(conn)?);
+            }
             for key in blocks {
                 self.journal_block_entity(key);
             }

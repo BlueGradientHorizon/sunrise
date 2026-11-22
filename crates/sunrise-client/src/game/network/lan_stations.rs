@@ -974,6 +974,15 @@ impl Game<'_> {
     /// back to the inventory, what doesn't fit is dropped. False when no such
     /// window is open.
     pub(super) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
+        self.lan_station_removed(conn, window, super::lan_crafting::MenuRemoval::Live)
+    }
+
+    pub(super) fn lan_station_removed(
+        &mut self,
+        conn: u32,
+        window: Option<i32>,
+        removal: super::lan_crafting::MenuRemoval,
+    ) -> bool {
         // A lectern's menu keeps nothing of its own (the book is the block entity's).
         let Some(host) = self.lan.as_mut() else {
             return false;
@@ -1010,7 +1019,9 @@ impl Game<'_> {
         };
         let carried = self.close_guest_menu_cursor(gi, gs.window);
         let inputs = station_inputs(&gs);
-        if gs.kind == StationKind::Beacon {
+        if removal.drops_items() {
+            self.drop_guest_items(gi, inputs);
+        } else if gs.kind == StationKind::Beacon {
             // BeaconMenu.removed drops the payment (player.drop).
             self.lan_place_back(gi, carried.into_iter().collect());
             self.drop_guest_items(gi, inputs);

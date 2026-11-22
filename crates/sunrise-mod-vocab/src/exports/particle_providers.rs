@@ -1,6 +1,7 @@
 pub use client::particle_providers::{
-    ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView, ParticleProvider,
-    ParticleProviderRegistry, ParticleProviders,
+    ModParticle, ParticleBatch, ParticleExtractView, ParticleFacing, ParticleLevelView,
+    ParticleProvider, ParticleProviderRegistry, ParticleProviders, ParticleQuad,
+    QuadParticleRenderState,
 };
 pub mod __private {
     pub use crate::client::particle_providers::{

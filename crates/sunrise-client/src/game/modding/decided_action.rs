@@ -191,11 +191,6 @@ impl Game<'_> {
         let entity = self.lan.as_ref()?.hub.guest(conn)?.entity_id;
         Some(EntityRef::new(epoch, u32::try_from(entity).ok()?))
     }
-
-    /// The decision's menu id for the guest `conn`'s hub menus.
-    pub(in crate::game) fn guest_route(&mut self, conn: u32) -> Option<MenuId> {
-        Some(self.lan.as_mut()?.menus.entry(conn).or_default().hub.id())
-    }
 }
 
 impl Game<'_> {

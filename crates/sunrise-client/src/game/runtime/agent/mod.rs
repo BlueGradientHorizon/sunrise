@@ -685,8 +685,8 @@ impl Game<'_> {
                 "biome": buffet.biome(),
                 "query": buffet.query(),
             }),
-            Mode::CreatePreset { editor, .. } => json!({
-                "mode": "world-preset-editor", "preset": editor.preset, "editor": editor.screen,
+            Mode::CreatePreset { session, .. } => json!({
+                "mode": "world-preset-editor", "preset": session.preset,
             }),
             Mode::Edit {
                 world,
@@ -1736,6 +1736,7 @@ impl Game<'_> {
                         break;
                     }
                 }
+                let editing_preset = self.preset_editor_title().is_some();
                 let title = self.title.as_mut().ok_or("no title screen")?;
                 if let Some(field) = &field {
                     match &mut title.mode {
@@ -1767,6 +1768,12 @@ impl Game<'_> {
                             );
                         }
                     }
+                }
+                if editing_preset {
+                    if text != "\\b" {
+                        self.screen_chars_typed(Some(text));
+                    }
+                    return ok(json!({ "ok": true, "menu": self.title_value() }));
                 }
                 if replace {
                     for _ in 0..64 {

@@ -1,8 +1,10 @@
 # Block parts
 
 `BlockPart::clone_item_stack` answers on the server when a player picks the block. It receives the
-level, position, block state and `include_data`, true when a creative player picks with Ctrl. Return
-`None` to keep the game's item.
+level, position, block state, and `include_data`, true when a creative player picks with Ctrl.
+`event.player` is the player who sent the pick request. Use it with the read-only host for
+player reads such as `event.player.food(host).map(|food| food.level)`. The request does not include
+a client hit face. Return `None` to keep the game's item.
 
 ## Breaking-crack display
 
@@ -80,8 +82,8 @@ the server only, and no mob is supplied. The same state may answer differently b
 Queries on the supplied level (such as `level.block_state(pos)` or looking up a block entity via
 `level.block_entity(pos)` and `level.block_entity_data(entity)`) are strictly read-only: they never
 perform writes, random draws, chunk loads or lazy loot generation. `level.block_entity(pos)`
-returns `None` when no block entity is present, the chunk is unloaded, `pos` is outside the build
-height, or the block entity is temporarily out of the world for its own tick.
+returns `None` when no block entity is present, the chunk is unloaded, or `pos` is outside the build
+height.
 `level.block_entity_data(entity)` returns validated saved data without identity metadata, or
 `None` for stale generations and handles from another level or world.
 
@@ -177,14 +179,18 @@ Non-finite edits are ignored; there is no veto. Keep movement answers consistent
 on replay.
 
 `LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
-lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { damage_type, amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+For a magma-like Part, check `level.entity_type_is_living(event.kind) == Some(true)` and
+`!event.stepping_carefully` before requesting damage. The entity-type read is available on both
+sides and includes living mod types. Damage itself is not limited to living bodies: other Parts
+can still hurt dropped items.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
 only if the block still holds the contacted state. An invalid state or non-finite movement or damage
 refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
 
-Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
-([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
+Boats and minecarts ([#4177](https://github.com/sunrise-org/sunrise/issues/4177)), armor stands and
+projectiles ignore `EntityWrite::Hurt` from both callbacks. Experience orbs accept it only from `step_on`.
 
 ## Landing writes
 
@@ -226,8 +232,14 @@ preserves the requested resource-drop flag.
 
 `BlockPart::entity_inside` runs on the server as the entity's sweep reaches the block.
 Use `event.run_before` or `event.run_after` to schedule an `EntityWrite` around an
-`InsideEffect`. `EntityWrite::Hurt { amount }` requests `minecraft:generic` damage without a causing or direct entity.
-The write applies to players, mobs, and dropped items; projectiles ignore it.
+`InsideEffect`. Both `entity_inside` and `step_on` accept
+`EntityWrite::Hurt { damage_type, amount }`. Request the key once in `register`,
+for example `r.damage_type_key("minecraft:hot_floor")`. The level supplies the
+registered damage type, including data-pack types and tags, without a causing
+or direct entity. If the type is absent in that world, the hurt does not apply.
+Players, mobs and dropped items accept hurt from both callbacks. Experience
+orbs accept hurt from `step_on` only. Neither callback adds a hurt path for
+armor stands, projectiles or vehicles.
 
 ## Storage changes
 
@@ -253,16 +265,20 @@ state, never saved. Unloading the source does not cancel watches of its position
 
 The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
-for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
-notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
-it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
+inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
+it finishes without one). If the original backing container was removed or replaced, neither
+its replacement nor watchers receive that notice. Explicit `BlockEntityRef::set_changed`
+notifies immediately, even inside a transaction and for unchanged contents; abort does not
+retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
 a successful nested transaction merges into the Part's frame, but a panic in that Part discards
 its writes without undoing the backing change that raised the notice. The next Part can still
 run, and only the panicking callback is disabled for the session.
 Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides itself
 do not synthesize notifications; neither do rollback restores. A double container notifies
-each component, not again for the other half's comparator refresh. A listener's writes still apply,
-but its backing block does not re-enter; another block notifies normally.
+each component, not again for the other half's comparator refresh. A listener's same-block writes
+still apply and mark storage dirty and refresh comparators, but do not re-enter or queue a second
+notice, even during a quick move. Another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:
 
 ```rust,ignore
@@ -316,3 +332,24 @@ of vanilla's `HalfTransparentBlock` class (glass among them) or `LeavesBlock` cl
 template's class. A fluid with no overlay sprite, such as lava, draws its flowing sprite whatever the answer.
 
 With no part answering either method, nothing is asked, the tables are empty and fluids draw exactly as vanilla's.
+
+## Hit and destroy particles
+
+`add_hit_effects` and `add_destroy_effects` are client `BlockPart` methods, like NeoForge's
+`IClientBlockExtensions` methods of the same names. Return `Flow::Cancel` if your part handled
+these particles (including choosing to add none). `Flow::Continue` permits the usual effect.
+With no part answering, the block state's normal terrain-particle flag decides.
+
+A hit callback sees a non-air block with a visible render shape, after the optional mining sound.
+It gets the hit face, position and state. A destroy callback receives the non-air state that was
+destroyed, even when the position is already air or contains another block. An invisible block
+can still handle destruction. Both callbacks receive the client level's random; neither controls
+sounds.
+
+Use `event.level.add_breaking_particles(host, pos, state, face)` for a normal hit crumb from an
+explicit state and position, or `event.level.add_terrain_particle(host, state, source_pos, at,
+velocity)` for an individual piece of debris. The debris uses the supplied state's material and
+samples its tint at `source_pos`, which can differ from the spawn point. These helpers don't
+redispatch the hit or destroy Part or play a sound, but can ask block tint sources. Read the
+supplied state's outline with `event.level.block_shape` if you need to sample it. The hit helper
+uses the same random stream as `event.random`.
