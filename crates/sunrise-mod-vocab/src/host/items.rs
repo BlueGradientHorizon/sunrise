@@ -497,8 +497,11 @@ pub trait ItemsBackendMut {
         tx: &Transaction,
     ) -> Result<u32, StackWriteError>;
     /// Side: server.
-    /// `ItemAccess.extract` at those places: up to `amount` of `resource`, how many came out. An item entity emptied stays, empty, until the root commit
-    /// removes it. A creative player's hand gives without losing any (`forInfiniteMaterials`).
+    /// `ItemAccess.extract` at those places: match the item and components of `resource`,
+    /// without checking write limits, and take up to `amount`. An item entity emptied stays,
+    /// empty, until the root commit removes it. A creative player's hand gives without losing
+    /// any (`forInfiniteMaterials`).
+    #[read_stack]
     fn game_extract(
         &mut self,
         place: &ItemPlace,
