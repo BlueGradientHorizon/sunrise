@@ -81,7 +81,14 @@ pub trait EntityPartState: EntityPart + Sized {
 
 /// Where the entity an [`EntityRef`] names is now, as its Part state checks it
 /// ([`EntitiesHost::entity_residency`]).
-// no wire: residency is a momentary observation in the current host.
+///
+/// This is a process-local residency snapshot, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::EntityResidency>();
+/// ```
+// no wire: local handle residency state for EntityPartState.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EntityResidency {
@@ -113,7 +120,14 @@ impl PartStateHolder for EntityRef {
 }
 
 /// An entity Part with state could not be attached: its state declaration was refused.
-// no wire: reports a local entity Part-state registration failure.
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::EntityPartStateError>();
+/// ```
+// no wire: local entity Part state registration error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum EntityPartStateError {
@@ -159,7 +173,7 @@ impl std::error::Error for EntityPartStateError {}
 
 /// One entity Part state declaration as registration kept it, for the game to check its
 /// entity type once every type is known.
-// no wire: registration metadata kept by the local game.
+// no wire: internal startup registration record embedding PartStateDeclaration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct EntityPartStateDeclaration {

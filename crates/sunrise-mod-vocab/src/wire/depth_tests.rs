@@ -1,7 +1,7 @@
 use super::*;
 use crate::item::crafting::Shape;
 use crate::world::snapshots::LootEntity;
-use crate::{ItemPlace, RecipeSlotDisplay, Tag, Text};
+use crate::{RecipeSlotDisplay, Tag, Text};
 
 fn round<T: Wire>(value: &T, initial: u16) {
     let mut out = Writer::new();
@@ -28,19 +28,13 @@ fn structural_families_fit_a_small_stack() {
                 display = RecipeSlotDisplay::Composite(vec![display]);
             }
             round(&display, 0);
-            let mut place = ItemPlace::ItemEntity { id: 1 };
             let mut entity = LootEntity::default();
             for _ in 0..15 {
-                place = ItemPlace::Nested {
-                    parent: Box::new(place),
-                    slot: 0,
-                };
                 entity = LootEntity {
                     vehicle: Some(Box::new(entity)),
                     ..Default::default()
                 };
             }
-            round(&Box::new(place), 0);
             round(&Box::new(entity), 0);
             // These public SCC members no longer recurse structurally: every Text
             // edge crosses through the stack-independent iterative codec. Their own

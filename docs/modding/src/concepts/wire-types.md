@@ -22,6 +22,12 @@ record its name.
 Likewise, keep [attachment queries and write tokens](attachments/querying.md) in process; an
 attachment's own codec handles saving and syncing its value.
 
+Local Part, capability, item-place, resource-identity, and Part-state values and
+errors (`BlockSide`, `ItemPlace`, `ItemResource`, `FluidResource`, `PartStateError`,
+`BlockEntityPartError`, and their sibling registration and refusal types) also stay in process;
+convert to `ItemStack` or `FluidStack`, or copy the fields you need into your own
+`#[derive(mod_api::Wire)]` schema when sending across a boundary.
+
 ```rust,ignore
 #[derive(mod_api::Wire)]
 pub struct ChemicalAmount {
@@ -42,7 +48,7 @@ variants and `Box`/`Arc` values (`MAX_DEPTH`). Collection iteration, `Option`
 and tuples do not consume a level. The reader returns `WireError::Depth` before
 entering level 33; the writer records the same error. Always check `Writer::error`
 before sending its bytes. This is a transport budget for unbounded mod-defined
-trees, including ingredients, item places, loot vehicles and recipe slot displays.
+trees, including ingredients, loot vehicles and recipe slot displays.
 
 Typed payloads use the same encoding with their own limits. They count lists, present
 options, boxes, shared pointers, NBT containers and explicit recursion, not derived record

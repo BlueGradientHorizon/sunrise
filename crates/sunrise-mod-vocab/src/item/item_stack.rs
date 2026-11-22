@@ -575,9 +575,17 @@ impl crate::NoBackend for StackWriteError {
 }
 
 /// Why an [`ItemPlace`](crate::ItemPlace) could not run the item's crafted-by processing.
+///
+/// This is a local refusal returned by [`ItemPlace::on_crafted_by`](crate::ItemPlace::on_crafted_by),
+/// not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::CraftedByError>();
+/// ```
+// no wire: local refusal returned by ItemPlace::on_crafted_by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum CraftedByError {
     /// The place is not a menu slot or the carried stack, or it no longer holds a stack.
     NotHeld,
