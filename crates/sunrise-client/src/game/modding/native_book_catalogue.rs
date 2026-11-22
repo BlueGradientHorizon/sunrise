@@ -135,7 +135,7 @@ impl Game<'_> {
         };
         guest.menu_generation == instance
             && open.window == window
-            && open.registry_id == menu
+            && open.registry_id.as_ref() == menu
             && open.mod_type.is_some_and(|kind| kind.id == menu)
     }
 
@@ -184,7 +184,7 @@ impl Game<'_> {
                 return Err(Refusal::Unavailable);
             }
             let open = guest.menu.as_ref().ok_or(Refusal::Unavailable)?;
-            if open.window != window || open.registry_id != menu.as_str() {
+            if open.window != window || open.registry_id.as_ref() != menu.as_str() {
                 return Err(Refusal::Stale);
             }
             if open.mod_type.is_none_or(|kind| kind.id != menu.as_str()) {

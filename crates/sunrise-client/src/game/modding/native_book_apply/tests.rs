@@ -798,7 +798,7 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                         let host: &mut dyn ServerHost = game;
                         assert_eq!(
                             host.transaction(|host, tx| {
-                                if ItemPlace::MenuSlot { menu, slot: 1 }
+                                if (ItemPlace::MenuSlot { menu, slot: 1 })
                                     .insert(host, tx, &coal_res, 2)
                                     == 2
                                 {

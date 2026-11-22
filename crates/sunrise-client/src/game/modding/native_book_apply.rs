@@ -145,7 +145,7 @@ impl Game<'_> {
         let open = guest.menu.as_ref().ok_or(R::Unavailable)?;
         if guest.menu_generation != catalog.instance
             || open.window != catalog.window
-            || open.registry_id != catalog.menu.as_str()
+            || open.registry_id.as_ref() != catalog.menu.as_str()
         {
             return Err(R::Stale);
         }

@@ -984,7 +984,7 @@ fn furnace_ghost_uses_independent_packet_slots_and_the_specific_fuel() {
         fuel_component,
         &Some(Tag::compound([
             ("burn_time", Tag::Int(1)),
-            ("speed_multiplier", Tag::Float(1.0)),
+            ("speed_multiplier", Tag::Float(1.0_f32.to_bits())),
         ])),
     );
     for fuel_empty in [false, true] {
