@@ -477,56 +477,61 @@ mod tests {
         thread_local! {
             static HITS: Cell<u32> = const { Cell::new(0) };
         }
-        with_game(|game| {
-            open_to_lan(game);
-            game.streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
-            let magma = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:magma_block")
-                .unwrap();
-            game.world.set(1, 63, 1, magma).unwrap();
-            let at = Vec3::new(1.5, 64.0, 1.5);
-            let mut guest = guest(1);
-            guest.position = [at.x, at.y, at.z];
-            guest.on_ground = true;
-            guest.loaded = true;
-            let mut body = PlayerMotion::new(game.motion, at).unwrap();
-            body.entity_id = guest.entity_id;
-            guest.motion = Some(Box::new(body));
-            let uuid = guest.uuid;
-            game.lan.as_mut().unwrap().hub.guests.push(guest);
-            let player = game.player(uuid).unwrap();
-            game.damage_hooks = DamageHooks {
-                post: Some(|_, _, _| HITS.with(|hits| hits.set(hits.get() + 1))),
-                ..DamageHooks::NONE
-            };
-            let preview = |game: &mut Game<'_>| {
-                let mut falling = input(0.0, 0.0);
-                falling.velocity = Some([0.0, -0.08, 0.0]);
-                let preview = game.player_simulate_move(player, falling).unwrap();
-                assert!(preview.on_ground);
-                HITS.replace(0)
-            };
-            assert_eq!(preview(game), 1, "magma hurts the unprotected preview");
+        crate::game::in_own_process(
+            "game::native_bots::tests::guest_movement_preview_uses_the_guests_damage_immunity",
+            || {
+                with_game(|game| {
+                    open_to_lan(game);
+                    game.streaming
+                        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                    let magma = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:magma_block")
+                        .unwrap();
+                    game.world.set(1, 63, 1, magma).unwrap();
+                    let at = Vec3::new(1.5, 64.0, 1.5);
+                    let mut guest = guest(1);
+                    guest.position = [at.x, at.y, at.z];
+                    guest.on_ground = true;
+                    guest.loaded = true;
+                    let mut body = PlayerMotion::new(game.motion, at).unwrap();
+                    body.entity_id = guest.entity_id;
+                    guest.motion = Some(Box::new(body));
+                    let uuid = guest.uuid;
+                    game.lan.as_mut().unwrap().hub.guests.push(guest);
+                    let player = game.player(uuid).unwrap();
+                    game.damage_hooks = DamageHooks {
+                        post: Some(|_, _, _| HITS.with(|hits| hits.set(hits.get() + 1))),
+                        ..DamageHooks::NONE
+                    };
+                    let preview = |game: &mut Game<'_>| {
+                        let mut falling = input(0.0, 0.0);
+                        falling.velocity = Some([0.0, -0.08, 0.0]);
+                        let preview = game.player_simulate_move(player, falling).unwrap();
+                        assert!(preview.on_ground);
+                        HITS.replace(0)
+                    };
+                    assert_eq!(preview(game), 1, "magma hurts the unprotected preview");
 
-            let mut boots = ItemStack::new("minecraft:leather_boots", 1);
-            boots.enchant("minecraft:frost_walker", 1);
-            game.lan
-                .as_mut()
-                .unwrap()
-                .hub
-                .update_guest(1, |guest| guest.armor[0] = Some(boots))
-                .unwrap();
-            assert_eq!(game.lan_acting, None);
-            assert_eq!(
-                preview(game),
-                0,
-                "only the unswapped guest wears Frost Walker"
-            );
-        });
+                    let mut boots = ItemStack::new("minecraft:leather_boots", 1);
+                    boots.enchant("minecraft:frost_walker", 1);
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(1, |guest| guest.armor[0] = Some(boots))
+                        .unwrap();
+                    assert_eq!(game.lan_acting, None);
+                    assert_eq!(
+                        preview(game),
+                        0,
+                        "only the unswapped guest wears Frost Walker"
+                    );
+                })
+            },
+        );
     }
 
     #[test]
