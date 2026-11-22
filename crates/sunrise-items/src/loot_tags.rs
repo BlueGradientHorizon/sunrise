@@ -1,15 +1,20 @@
 //! Borrow the item engine's authoritative merged tags during custom loot evaluation.
-use crate::items::Items;
+use crate::items::{Items, TagRegistry};
+use std::collections::HashMap;
 
 impl sunrise_world::loot::LootTags for Items {
     fn members(&self, registry: &str, tag: &str) -> Option<Vec<String>> {
         let registry = match registry {
-            "item" => crate::items::TagRegistry::Item,
-            "block" => crate::items::TagRegistry::Block,
-            "fluid" => crate::items::TagRegistry::Fluid,
+            "item" => TagRegistry::Item,
+            "block" => TagRegistry::Block,
+            "fluid" => TagRegistry::Fluid,
             _ => return None,
         };
         self.tag_members(registry, tag).map(<[_]>::to_vec)
+    }
+    fn item_tag_entries(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.tags_loaded(TagRegistry::Item)
+            .then_some(&self.item_tag_order)
     }
     fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
         match registry {
@@ -26,8 +31,6 @@ impl sunrise_world::loot::LootTags for Items {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::items::TagRegistry;
-    use std::collections::HashMap;
     use sunrise_world::loot::LootTags;
 
     #[test]

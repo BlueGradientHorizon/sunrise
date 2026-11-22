@@ -10,6 +10,8 @@ pub(super) type BoundTags = HashMap<String, HashMap<String, Vec<String>>>;
 pub trait LootTags {
     /// Members of a loaded tag in its resolved order, or `None` if absent.
     fn members(&self, registry: &str, tag: &str) -> Option<Vec<String>>;
+    /// The bound item tags, including empty tags, or `None` before the registry binds.
+    fn item_tag_entries(&self) -> Option<&HashMap<String, Vec<String>>>;
     /// Whether one registry value belongs to a tag.
     fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {
         self.members(registry, tag)
@@ -20,6 +22,10 @@ pub trait LootTags {
 impl LootTags for super::LootData {
     fn members(&self, registry: &str, tag: &str) -> Option<Vec<String>> {
         self.tags.get(registry)?.get(tag).cloned()
+    }
+
+    fn item_tag_entries(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.tags.get("item")
     }
 
     fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {

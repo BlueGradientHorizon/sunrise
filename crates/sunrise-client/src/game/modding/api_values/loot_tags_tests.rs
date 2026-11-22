@@ -3,6 +3,9 @@ impl engine::LootTags for TestTags {
     fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
         None
     }
+    fn item_tag_entries(&self) -> Option<&std::collections::HashMap<String, Vec<String>>> {
+        None
+    }
 }
 struct TagReader;
 #[mod_api::__subscriptions]
@@ -66,6 +69,18 @@ impl mod_api::ModLootCondition for TagReader {
             .unwrap();
         assert_eq!(tags.is_in_tag(stick, missing), Some(false));
         assert_eq!(tags.items(missing), mod_api::TagMembers::Missing);
+        assert_eq!(
+            tags.item_tags(stick),
+            Some(if holds { vec![tag] } else { Vec::new() })
+        );
+        assert_eq!(
+            tags.item_tag_keys(),
+            Some(if tags.items(tag) == mod_api::TagMembers::Missing {
+                Vec::new()
+            } else {
+                vec![tag]
+            })
+        );
         Ok(holds)
     }
 }

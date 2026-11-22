@@ -10,6 +10,17 @@ use crate::{BlockKey, FluidKey, Identifier, ItemKey};
 pub struct TagKey(pub(crate) u32);
 
 impl TagKey {
+    /// The canonical identifier of this process-lifetime tag name.
+    pub fn id(self) -> Identifier {
+        with_tag_name(self, |name| {
+            let (namespace, path) = name
+                .expect("an issued TagKey keeps its name for the life of the process")
+                .split_once(':')
+                .expect("interned tag names include their namespace");
+            Identifier::from_parts(namespace, path).expect("interned tag names are validated")
+        })
+    }
+
     pub(crate) fn from_slot(slot: u32) -> Result<Self, &'static str> {
         sunrise_mod_runtime::registry_keys::with_tag_name(slot, |id| {
             id.map(|_| Self(slot)).ok_or("unknown TagKey slot")
@@ -45,6 +56,18 @@ pub trait Tags {
     /// unavailable authoritative tags or item mappings answer None.
     fn is_in_tag(&self, _item: ItemKey, _tag: TagKey) -> Option<bool> {
         unimplemented!("Tags::is_in_tag")
+    }
+    /// The tags that currently contain `item`, each once, in no specified order.
+    /// `None` means the authoritative item tags, item mapping or a tag key is unavailable.
+    /// A known item with no tags returns an empty list.
+    fn item_tags(&self, _item: ItemKey) -> Option<Vec<TagKey>> {
+        unimplemented!("Tags::item_tags")
+    }
+    /// Every currently bound item tag, including empty tags, each once in no specified order.
+    /// `None` means the authoritative item tags or a tag key is unavailable.
+    /// A loaded item registry with no bound tags returns an empty list.
+    fn item_tag_keys(&self) -> Option<Vec<TagKey>> {
+        unimplemented!("Tags::item_tag_keys")
     }
     /// Read the current item tag in vanilla's order, including unrequested vanilla items.
     fn items(&self, _tag: TagKey) -> TagMembers<ItemKey> {
