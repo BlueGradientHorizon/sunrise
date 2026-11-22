@@ -332,6 +332,7 @@ impl Game<'_> {
             let leather_boots = super::super::worn_boots::leather_boots(&game.armor);
             let freeze_immune = game.wears_freeze_immune();
             let boat = game.riding_boat_fluid_box();
+            let swim_listener = game.has_swim_eligibility_listener();
             let Some(player) = game.player.as_mut() else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
@@ -340,9 +341,18 @@ impl Game<'_> {
             let mut side = game_side!(game);
             let mut w = motion_world!(game, side, player);
             w.player.health.advance_body_clock();
-            if w.fluid_and_burn_tick().is_ok() {
-                settle_guest_hit!(game, side, w, id);
-                w.finish_fluid_base_tick();
+            if w.begin_fluid_tick().is_ok() {
+                let decision = if swim_listener { w.swim_entry() } else { None };
+                let answer = game.ask_swim_entry(decision);
+                let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                    return (Vec::new(), None, ServerTravel::Continue);
+                };
+                side = game_side!(game);
+                w = motion_world!(game, side, player);
+                if w.swim_and_burn_tick(answer).is_ok() {
+                    settle_guest_hit!(game, side, w, id);
+                    w.finish_fluid_base_tick();
+                }
             }
             // Player.aiStep: a flying player that isn't riding starts every tick
             // with no fall distance, so flying down in creative and switching to
