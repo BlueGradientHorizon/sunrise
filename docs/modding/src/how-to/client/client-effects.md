@@ -173,7 +173,9 @@ log (without affecting later tooltips). A failed measurement or component draw a
 whole tooltip, including the background and any earlier component paint. Pre listener paint
 stays visible. A panic in a factory, component callback, or destructor for retained tooltip data,
 renderer, or factory captures disables the owning callback for the session, with a log entry
-and error toast naming the mod.
+and error toast naming the mod. The first publisher owns a retained payload: a Gather listener
+or an item-image provider. Reordering or cloning someone else's component does not transfer
+its ownership or disable a healthy provider when that payload panics on drop.
 
 ## Drawing a second world camera
 

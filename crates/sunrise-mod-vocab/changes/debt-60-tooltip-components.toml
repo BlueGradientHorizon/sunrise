@@ -73,7 +73,10 @@ Replace `ItemPart::tooltip_component` and `ItemPart::tooltip_component_draw` wit
 3. On your `ItemPart`, replace `tooltip_component` and `tooltip_component_draw` with `ItemPart::tooltip_image(&self, host, event) -> Option<TooltipComponent>`, returning `Some(TooltipComponent::custom(my_data))` (or `Some(TooltipComponent::bundle(stack))`), or `None` to keep vanilla's tooltip image. To keep a bundle's built-in contents tooltip AND add a custom component beside it, leave `tooltip_image` returning `None` (so vanilla inserts the bundle component) and insert your custom `TooltipElement::Component(TooltipComponent::custom(my_data))` in `render_tooltip_gather_components` without removing the bundle element.
 4. To supply an item-owned tooltip font used for Gather wrapping and as `render_tooltip_pre`'s initial font (`IClientItemExtensions.getFont`), override `ClientItemExtensions::tooltip_font(&self, host, stack) -> Option<Identifier>`.
 
-Update `Hooks::render_tooltip_gather_components` (version 3):
+Update `ItemPart::tooltip_image` (version 2): a callback or retained payload destructor panic disables only the publishing item-part registration, not other image providers from that mod.
+
+Update `Hooks::render_tooltip_gather_components` (version 4):
+- A panic dropping retained custom data disables the listener that first published it. Reordering or cloning data in another listener does not transfer ownership.
 - Replace `TooltipElement::Image(TooltipImage { source: TooltipImageSource::Bundle(stack), .. })` with `TooltipElement::Component(TooltipComponent::bundle(stack))` and `TooltipElement::Image(TooltipImage { source: TooltipImageSource::ItemPart(..), .. })` with `TooltipElement::Component(TooltipComponent::custom(data))`. Remove all references to `TooltipImage` and `TooltipImageSource`. `TooltipElement` is no longer `Wire`.
 - Text lines now wrap using NeoForge's screen-edge wrapping logic in the item's tooltip font before preparation. To tighten that width, assign a positive value with `event.max_width = width`.
 - Every custom `TooltipComponent` remaining after Gather must have a factory registered in `register_client_tooltip_component_factories`; an unregistered custom type aborts that tooltip before `render_tooltip_pre`, `render_tooltip_texture`, or painting with an error log.

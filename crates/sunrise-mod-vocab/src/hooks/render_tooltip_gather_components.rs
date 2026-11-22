@@ -14,6 +14,8 @@ pub trait Hooks {
     /// GUI-pixel width to `event.max_width` to further constrain wrapping (`-1` by
     /// default). Return `Flow::Cancel` and nothing is drawn; neither
     /// `render_tooltip_pre` nor `render_tooltip_texture` is asked.
+    /// A panicking destructor of custom data published here disables this listener
+    /// for the session without disabling other listeners.
     /// Asked each frame the tooltip shows, never for one the stack hides.
     /// Text is used in memory without serialized component limits. Client-side.
     #[hook(
@@ -24,7 +26,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "RenderTooltipEvent.GatherComponents",
         cancellable = true,
-        version = 3
+        version = 4
     )]
     fn render_tooltip_gather_components(
         stack: &ItemStack,

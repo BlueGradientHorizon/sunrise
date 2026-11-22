@@ -3,13 +3,15 @@
 //! and NeoForge's `RegisterClientTooltipComponentFactoriesEvent`).
 
 use crate::{
-    DrawContext, Identifier, ItemStack, Text, TextFormError,
+    Attached, DrawContext, HookId, Identifier, ItemPart, ItemStack, Text, TextFormError,
+    TooltipElement,
     callback_owner::{CallbackOwner, contain_unwind},
+    runtime::{self, TooltipProducer},
 };
 use std::{
     any::{Any, TypeId},
     fmt,
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 /// Marker trait for typed tooltip component data (vanilla `TooltipComponent`).
@@ -21,17 +23,19 @@ pub trait TooltipComponentData: Any + Send + Sync + 'static {}
 
 struct OwnedTooltipData {
     data: Option<Box<dyn Any + Send + Sync>>,
-    owner: Option<CallbackOwner>,
+    creator: Option<&'static str>,
+    producer: OnceLock<TooltipProducer>,
 }
 
 impl Drop for OwnedTooltipData {
     fn drop(&mut self) {
         if let Some(data) = self.data.take() {
-            match self.owner.as_ref() {
-                Some(owner) => owner.dispose("tooltip_component", "data_drop", data),
-                None => {
-                    let _ = contain_unwind(move || drop(data));
-                }
+            if let Some(producer) = self.producer.get() {
+                producer.dispose(data);
+            } else if let Some(creator) = self.creator {
+                CallbackOwner::for_mod(creator).dispose("tooltip_component", "data_drop", data);
+            } else {
+                let _ = contain_unwind(move || drop(data));
             }
         }
     }
@@ -66,14 +70,14 @@ impl TooltipComponent {
     /// Wrap mod-defined [`TooltipComponentData`] for resolution by a factory registered in
     /// `register_client_tooltip_component_factories`.
     pub fn custom<T: TooltipComponentData>(data: T) -> Self {
-        let owner = crate::content::crash::current_native_mod().map(CallbackOwner::for_mod);
         Self {
             repr: Repr::Custom {
                 type_id: TypeId::of::<T>(),
                 type_name: std::any::type_name::<T>(),
                 data: Arc::new(OwnedTooltipData {
                     data: Some(Box::new(data)),
-                    owner,
+                    creator: crate::content::crash::current_native_mod(),
+                    producer: OnceLock::new(),
                 }),
             },
         }
@@ -121,15 +125,50 @@ impl TooltipComponent {
         }
     }
 
-    /// The owning mod that created this custom payload, if constructed inside native mod dispatch.
+    /// The publisher, or the native mod that constructed an unpublished custom payload.
     // hidden: engine diagnostics attribute preparation errors to the payload producer.
     #[doc(hidden)]
     pub fn __owner_id(&self) -> Option<&'static str> {
         match &self.repr {
-            Repr::Custom { data, .. } => data.owner.as_ref().map(CallbackOwner::id),
+            Repr::Custom { data, .. } => data.producer.get().map(|p| p.mod_id).or(data.creator),
             Repr::Bundle(_) => None,
         }
     }
+    fn bind_producer(&self, producer: TooltipProducer) {
+        if let Repr::Custom { data, .. } = &self.repr {
+            // Moving or cloning an existing payload in Gather does not change its publisher.
+            data.producer.get_or_init(|| producer);
+        }
+    }
+}
+
+pub(crate) fn retain_gather_tooltip_payloads(mod_id: &'static str, elements: &[TooltipElement]) {
+    let producer = TooltipProducer::new(HookId::RenderTooltipGatherComponents, mod_id);
+    for element in elements {
+        if let TooltipElement::Component(component) = element {
+            component.bind_producer(producer);
+        }
+    }
+}
+
+pub(crate) fn invoke_tooltip_image(
+    attached: &Attached<dyn ItemPart>,
+    call: impl FnOnce(&dyn ItemPart) -> Option<TooltipComponent>,
+) -> Option<TooltipComponent> {
+    let callback = runtime::Callback::TooltipImage(attached.order);
+    if !runtime::mod_index_on(attached.mod_index) || runtime::poisoned(callback, attached.mod_id) {
+        return None;
+    }
+    let _guard = crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
+        id: attached.mod_id,
+        hook: "tooltip_image",
+        part: Some(attached.type_name),
+    });
+    let component = runtime::invoke(callback, "tooltip_image", attached.mod_id, || {
+        call(&*attached.part)
+    })??;
+    component.bind_producer(TooltipProducer::new(callback, attached.mod_id));
+    Some(component)
 }
 
 impl PartialEq for TooltipComponent {
@@ -822,26 +861,25 @@ mod tests {
             .into(),
             || {
                 let _ = crate::__private::take_hook_panics();
-                let owner = CallbackOwner::for_mod("test_payload_drop_owner");
-                let component = TooltipComponent {
-                    repr: Repr::Custom {
-                        type_id: TypeId::of::<PanicDrop>(),
-                        type_name: std::any::type_name::<PanicDrop>(),
-                        data: Arc::new(OwnedTooltipData {
-                            data: Some(Box::new(PanicDrop(drops.clone()))),
-                            owner: Some(owner.clone()),
-                        }),
-                    },
-                };
+                let component = TooltipComponent::custom(PanicDrop(drops.clone()));
                 let clone = component.clone();
-                drop(clone);
+                retain_gather_tooltip_payloads(
+                    "test_payload_drop_owner",
+                    &[TooltipElement::Component(clone)],
+                );
                 assert_eq!(drops.load(Ordering::Relaxed), 0);
-                assert!(owner.is_enabled());
+                assert!(!runtime::poisoned(
+                    HookId::RenderTooltipGatherComponents,
+                    "test_payload_drop_owner"
+                ));
 
-                // Last Arc release runs OwnedTooltipData::drop through CallbackOwner::dispose.
+                // Last Arc release disables the same producer that bound the payload.
                 drop(component);
                 assert_eq!(drops.load(Ordering::Relaxed), 1);
-                assert!(!owner.is_enabled());
+                assert!(runtime::poisoned(
+                    HookId::RenderTooltipGatherComponents,
+                    "test_payload_drop_owner"
+                ));
                 let notices = crate::__private::take_hook_panics();
                 assert!(
                     notices
