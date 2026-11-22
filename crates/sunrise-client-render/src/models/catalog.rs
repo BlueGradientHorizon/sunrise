@@ -648,6 +648,12 @@ impl StateModels {
     pub fn standalone_slot(&self, name: &str) -> Option<u32> {
         self.standalone.get(name).copied()
     }
+    /// Whether this baked slot is the one published under its standalone model name.
+    pub(crate) fn is_standalone_slot(&self, slot: u32) -> bool {
+        self.baked
+            .get(slot as usize)
+            .is_some_and(|(variant, _)| self.standalone_slot(&variant.model) == Some(slot))
+    }
     /// Slots of registered standalone models, including models shared with block states.
     pub fn standalone_slots(&self) -> impl Iterator<Item = u32> + '_ {
         self.standalone.values().copied()
@@ -722,8 +728,9 @@ impl StateModels {
         seed: i64,
     ) -> Result<Vec<(&Variant, &BakedModel)>> {
         let mut models = Vec::new();
-        self.each_seeded(state, seed, |(variant, model)| {
-            models.push((variant, model))
+        self.each_seeded(state, seed, |slot| {
+            let (variant, model) = &self.baked[slot as usize];
+            models.push((variant, model));
         })?;
         Ok(models)
     }
@@ -736,22 +743,40 @@ impl StateModels {
         out: &mut Vec<&'a BakedModel>,
     ) -> Result<()> {
         out.clear();
+        self.each_at(state, position, |slot| {
+            out.push(&self.baked[slot as usize].1)
+        })
+    }
+
+    /// The same model choices, stored as slots so mesh scratch can outlive the catalog.
+    pub(crate) fn slots_at(
+        &self,
+        state: BlockStateId,
+        position: BlockPos,
+        out: &mut Vec<u32>,
+    ) -> Result<()> {
+        out.clear();
+        self.each_at(state, position, |slot| out.push(slot))
+    }
+
+    fn each_at(
+        &self,
+        state: BlockStateId,
+        position: BlockPos,
+        mut f: impl FnMut(u32),
+    ) -> Result<()> {
         if let Some(Some(model)) = self.single_models.get(state.0 as usize) {
-            out.push(&self.baked[*model as usize].1);
+            f(*model);
             return Ok(());
         }
-        self.each_seeded(state, position_seed(position), |(_, model)| out.push(model))
+        self.each_seeded(state, position_seed(position), f)
     }
-    fn each_seeded<'a>(
-        &'a self,
-        state: BlockStateId,
-        seed: i64,
-        mut f: impl FnMut(&'a (Variant, BakedModel)),
-    ) -> Result<()> {
+
+    fn each_seeded(&self, state: BlockStateId, seed: i64, mut f: impl FnMut(u32)) -> Result<()> {
         let (choice, selected) = self.state(state).ok_or("unbound gallery block state")?;
         let mut random = LegacyRandom::new(seed);
         self.choices[*choice].for_each(selected, &mut random, |&model| {
-            f(&self.baked[model as usize]);
+            f(model);
         })?;
         Ok(())
     }

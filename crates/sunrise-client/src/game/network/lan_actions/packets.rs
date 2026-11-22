@@ -1146,14 +1146,16 @@ impl Game<'_> {
                     let stack = g.clone_stack(p.pos, include_data);
                     let state = g.world.block(p.pos[0], p.pos[1], p.pos[2]);
                     let mut replacement = None;
-                    g.native_clone_item_stack(
-                        g.dim.level(),
-                        sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
-                        &g.res.facts().get(state).name,
-                        state,
-                        include_data,
-                        &mut replacement,
-                    );
+                    if let Some(player) = g.native_acting_player() {
+                        g.native_clone_item_stack(
+                            g.dim.level(),
+                            sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
+                            state,
+                            include_data,
+                            player,
+                            &mut replacement,
+                        );
+                    }
                     let mut stack = replacement.or(stack)?;
                     if include_data {
                         g.add_block_data(p.pos, &mut stack);

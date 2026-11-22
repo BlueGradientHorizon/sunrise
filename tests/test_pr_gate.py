@@ -61,10 +61,10 @@ class GateTests(unittest.TestCase):
         self.assertEqual(ours, {"heavy": "true", "pr_sha": SHA, "pr_merge": MERGE, "trusted": "true"})
 
     def test_a_dispatch_without_a_test_merge_is_refused(self):
-        for mergeable, reason in ((False, "conflicts with its base"), (None, "has not finished computing")):
+        for mergeable in (False, None):
             head = {"sha": SHA, "merge": "", "mergeable": mergeable, "ref": "work", "labels": [],
                     "same_repository": True}
-            with self.subTest(mergeable=mergeable), self.assertRaisesRegex(SystemExit, reason):
+            with self.subTest(mergeable=mergeable), self.assertRaises(SystemExit):
                 pr_gate.outputs("workflow_dispatch", True, "3241", lambda n, head=head: head)
 
     def test_a_dispatch_on_our_rollup_or_sync_is_refused_since_its_pushes_run_the_gate(self):

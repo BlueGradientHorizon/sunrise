@@ -1102,16 +1102,16 @@ impl ItemPlace {
         let mut game = None;
         let table = host.capability_providers();
         let provided = table.provided(crate::ProvidedBy::Item, key.name);
+        let mut index = 0;
         crate::answered(
             crate::ask_providers(
                 host,
-                |index| {
+                || {
                     provided
-                        .then(|| table.item_provider(key.name, item, index))
+                        .then(|| table.item_provider(key.name, item, &mut index))
                         .flatten()
                 },
-                crate::ItemProviderOf::get::<T>,
-                |provider, host| provider.provide(host, self),
+                |provider, host| provider.get::<T>()?.provide(host, self),
                 |host| {
                     game = match &key.default {
                         Some(ItemCapabilityDefault::Item(default)) => default(host, self, item),

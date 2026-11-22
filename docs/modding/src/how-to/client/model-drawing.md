@@ -295,6 +295,59 @@ draw.terrain_model(self.belt, options)?;
   missing sprite, a pose that flattens the model, a ratio out of range, and a shift
   whose numbers aren't finite, whose sprites are unknown or whose source sprite no face uses.
 
+## Extra models in a block's mesh
+
+A block whose look depends on data a block state can't hold (a cable showing each side's
+channel count) gives the chunk mesher extra models to draw as part of it. On the client,
+`host.set_block_extra_models(pos, &models)` sets the resolved standalone models drawn at `pos`:
+
+```rust,ignore
+let parts = [self.core, self.side_counts[count]];
+host.set_block_extra_models(pos, &parts)?;
+```
+
+- The models are drawn after the block's own, unturned from its lower north-west corner (with its
+  offset), in its light and tints. Each quad keeps its render layer (solid, cut out,
+  translucent). A face with a cull direction is hidden by the neighbour there, as the block's
+  own faces are. On air they draw nothing.
+- A list replaces the position's last one; an empty list clears it. The section is meshed again
+  only when the list changes, so set it when the data changes, not each frame.
+- Native client mods set the list through the live client Host. `NotLoaded` means the position
+  is outside a resident column or the level height; `Model` means the handle is stale or is not a
+  registered standalone model. A refused call changes nothing.
+- After the block geometry, extra faces are drawn in block and list order. Drawing stops before
+  the next face whose worst-case expansion cannot fit the section's upload budget, so the last
+  model may be partially drawn.
+- The list is the client's own, never saved or sent. A resend of a resident column preserves
+  attachments at unchanged cells; unloading the column clears them. A block state or level
+  change also clears the affected lists. Set the list again from block entity data or the mod's
+  own client map, on `client_block_changed`, `client_chunk_load` or a payload. No block entity
+  is required.
+- Mod tint providers are asked before the mesh is scheduled, not by the attachment pass on the
+  worker. A provider that panics supplies white. A handle a resource reload made stale draws
+  nothing until you set the lists again from the new handles.
+
+The reload and setup contexts do not expose this setter. Resolve new handles in
+`client_resources_reloaded`, then set the lists again from a live client callback such as
+`client_tick_pre`:
+
+```rust,ignore
+fn client_resources_reloaded(&self, context: &dyn ClientReloadHost, _: &mut ClientResourcesReloadedEvent) {
+    let mut parts = self.parts.lock().unwrap();
+    parts.core = context.render_assets().model(&self.core_id).ok();
+    parts.reapply = true;
+}
+
+fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+    let mut parts = self.parts.lock().unwrap();
+    if std::mem::take(&mut parts.reapply) {
+        for (&pos, cable) in &self.cables.lock().unwrap() {
+            let _ = host.set_block_extra_models(pos, &parts.models_for(cable));
+        }
+    }
+}
+```
+
 ## Persistent groups
 
 - `host.create_group(model, capacity)` reserves up to 16,384 copies of a model.
