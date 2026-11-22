@@ -255,7 +255,8 @@ impl ParticleCallback {
     ) -> Result<T, String> {
         self.0
             .call("particle", operation, invoke)
-            .and_then(|value| value)
+            // A codec's own error names its mod; a panic or disablement already does.
+            .and_then(|value| value.map_err(|error| format!("{}: {error}", self.0.id())))
             .map_err(|error| {
                 let name =
                     super::particle_keys::particle_name(key).unwrap_or("unresolved particle type");
