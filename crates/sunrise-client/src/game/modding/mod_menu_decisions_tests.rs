@@ -336,7 +336,7 @@ impl mod_api::MenuPart for Part {
             menu.slot_backing(host, 0),
             Some(mod_api::MenuSlotBacking::BlockEntity { .. })
         ));
-        assert!(!host.transaction_matches(None));
+        assert!(host.transaction_matches(None));
         if s.write_other_block || s.write_clicked_block {
             let level = host.level("minecraft:overworld").unwrap();
             let (pos, id) = if s.write_clicked_block {

@@ -1010,28 +1010,30 @@ impl<'g> Game<'g> {
 
     /// Opens a transaction and gives back its frame identity.
     pub(in crate::game) fn open_storage_transaction(&mut self) -> TransactionFrame {
-        let frame = self.transactions.next_frame();
-        if !self.world.block_entities.defers_retirement() {
-            self.world.block_entities.defer_retirement();
-        }
-        let lifetimes = self.entity_journal_open();
-        let parent_attachment_query_scope = self.transactions.attachment_query_scopes.enter();
-        self.transactions.push(Level {
-            frame: Some(frame),
-            parent_attachment_query_scope,
-            dimension: Some(self.dim),
-            packets: sunrise_client::lan::conn::transaction_packets::Scope::nested(),
-            lifetimes,
-            ..Level::default()
-        });
-        for slot in &self.transactions.retained_original_attachments {
-            slot.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .open_frame(frame);
-        }
-        #[cfg(test)]
-        self.trace_storage_attempt("open".into());
-        frame
+        mod_api::__private::game::CallbackOwner::call_host(|| {
+            let frame = self.transactions.next_frame();
+            if !self.world.block_entities.defers_retirement() {
+                self.world.block_entities.defer_retirement();
+            }
+            let lifetimes = self.entity_journal_open();
+            let parent_attachment_query_scope = self.transactions.attachment_query_scopes.enter();
+            self.transactions.push(Level {
+                frame: Some(frame),
+                parent_attachment_query_scope,
+                dimension: Some(self.dim),
+                packets: sunrise_client::lan::conn::transaction_packets::Scope::nested(),
+                lifetimes,
+                ..Level::default()
+            });
+            for slot in &self.transactions.retained_original_attachments {
+                slot.lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .open_frame(frame);
+            }
+            #[cfg(test)]
+            self.trace_storage_attempt("open".into());
+            frame
+        })
     }
     /// Closes `frame`, first aborting every transaction opened inside it and left open, so a
     /// scope closing its own is never stranded behind an abandoned child.
@@ -1040,17 +1042,19 @@ impl<'g> Game<'g> {
         frame: TransactionFrame,
         commit: bool,
     ) -> Option<StorageSettlement> {
-        let at = self
-            .transactions
-            .iter()
-            .rposition(|level| level.frame == Some(frame))?;
-        if self.transactions.len() > at + 1 {
-            log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
-        }
-        while self.transactions.len() > at + 1 {
-            let _ = self.close_storage_transaction(false);
-        }
-        self.close_storage_transaction(commit)
+        mod_api::__private::game::CallbackOwner::close_host_transaction(commit, |commit| {
+            let at = self
+                .transactions
+                .iter()
+                .rposition(|level| level.frame == Some(frame))?;
+            if self.transactions.len() > at + 1 {
+                log::warn!("Sunrise: aborted a transaction left open inside the one being closed");
+            }
+            while self.transactions.len() > at + 1 {
+                let _ = self.close_storage_transaction(false);
+            }
+            self.close_storage_transaction(commit)
+        })
     }
     /// An engine batch opens a frame only when it has a callback to journal.
     pub(super) fn storage_scope_guard(&mut self, open: bool) -> StorageScope<'_, 'g> {

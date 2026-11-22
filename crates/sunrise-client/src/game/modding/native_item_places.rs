@@ -3534,6 +3534,9 @@ pub(super) mod tests {
                 )
                 .unwrap();
 
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
                 pig(game, 700, 64.0);
                 let entity = game.entity(700).unwrap();
                 MAP_SLOT

@@ -852,7 +852,14 @@ impl Hooks for CatchesEngineRelay {
             assert!(relay.is_err());
             if commit { Ok(()) } else { Err(()) }
         });
-        assert_eq!(result.is_ok(), commit);
+        assert_eq!(
+            result,
+            Err(if commit {
+                mod_api::TransactionError::CommitRefused
+            } else {
+                mod_api::TransactionError::Aborted(())
+            })
+        );
         self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

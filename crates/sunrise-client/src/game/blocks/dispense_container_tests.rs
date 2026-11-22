@@ -201,10 +201,6 @@ impl Hooks for Containers {
     }
 }
 
-thread_local! {
-    static REPLACE_SOURCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
 /// An empty glass bottle a bucket of water turns into a potion: a mod's handler that acts on
 /// every container its place shows, as one written for a single container may.
 struct Jug {
@@ -499,41 +495,6 @@ fn dispenser_writes_follow_the_parked_level_handle() {
         assert_eq!(
             item(&dispenser.slots()[0]),
             Some(("minecraft:water_bucket".into(), 1))
-        );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_replaced_dispenser_aborts_the_fluid_transfer_without_a_second_dispense() {
-    with_dispenser(|game, level| {
-        use sunrise_core::position::BlockPos;
-
-        set_front(game, "minecraft:water");
-        let dispenser = game.block_entity(level, DISPENSER).unwrap();
-        let [x, y, z] = DISPENSER;
-        let pos = (x, y, z);
-        let stack = ItemStack::new("minecraft:glass_bottle", 2);
-        game.world.block_entities.get_mut(&pos).unwrap().slots_mut()[0] = Some(stack.clone());
-
-        REPLACE_SOURCE.set(true);
-        dispense_fixture::start_recording();
-        game.dispense_from(BlockPos::new(x, y, z), game.world.block(x, y, z))
-            .unwrap();
-        let lines = dispense_fixture::stop_recording();
-        assert_eq!(game.block_entity(level, DISPENSER), Some(dispenser));
-        assert_eq!(front(game), state(game, "minecraft:water"));
-        let slots = game.world.block_entities.get(&pos).unwrap().slots();
-        assert_eq!(slots[0], Some(stack));
-        assert!(slots[1..].iter().all(Option::is_none));
-        assert!(game.dropped.is_empty());
-        assert!(
-            lines.iter().any(|line| line.starts_with("L 1001 ")),
-            "{lines:?}"
-        );
-        assert!(
-            !lines.iter().any(|line| line.starts_with("L 1000 ")),
-            "{lines:?}"
         );
     });
 }

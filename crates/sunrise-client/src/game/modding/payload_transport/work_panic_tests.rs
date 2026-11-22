@@ -144,7 +144,7 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
 
             // The client drains the shared queue, not the server action that aborted.
             game.options.dedicated = None;
-            game.draw_pack_toasts(&mut HudBatch::scratch([640, 480]), false, false);
+            game.draw_pack_toasts(&mut HudBatch::scratch([640, 480]), true, true);
             let [(Some(toast), _)] = game.server_packs.hook_panics.as_slice() else {
                 panic!("expected exactly one shared panic toast");
             };

@@ -648,12 +648,8 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         call
                     };
                     let call = match name.as_str() {
-                        // Closing a journal must still abort after a retained callback catches
-                        // the engine-panic relay. The scheduler splits delegation at the sites
-                        // where it takes or gives back ownership of a task's captures.
-                        "transaction_close" => format!(
-                            "mod_api::__private::game::CallbackOwner::close_host_transaction(commit, |commit| {{ {call} }})"
-                        ),
+                        // The scheduler splits delegation at the sites where it takes or gives
+                        // back ownership of a task's captures.
                         "schedule_task" | "cancel_task" => call,
                         _ if is_service || borrows_caller_callback(&entry.sig) => call,
                         _ => format!(

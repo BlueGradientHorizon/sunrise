@@ -394,9 +394,9 @@ impl CallbackOwner {
 
     /// Let the existing journal close on exit even if the callback caught a delegated
     /// engine-panic relay. That frame must abort, and the original fault stays pending.
-    pub fn close_host_transaction(commit: bool, close: impl FnOnce(bool)) {
+    pub fn close_host_transaction<R>(commit: bool, close: impl FnOnce(bool) -> R) -> R {
         let commit = commit && !engine_panic_pending();
-        Self::call_delegated(false, true, || close(commit));
+        Self::call_delegated(false, true, || close(commit))
     }
 
     fn call_delegated<T>(
