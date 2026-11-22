@@ -2342,7 +2342,11 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                     game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.carried = None;
                     });
-                    depot_container(game);
+                    let Some(BlockEntity::Mod(depot)) = game.world.block_entities.get_mut(&POS)
+                    else {
+                        panic!("missing depot at {POS:?}");
+                    };
+                    depot.items[0] = Some(ItemStack::new("minecraft:stone", 10));
 
                     // A refused default quick-move keeps prior unrelated `menu_clicked` writes.
                     script(Script {

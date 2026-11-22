@@ -271,6 +271,7 @@ fn with_pot_mod(
             // The block's container shows its slots to the menu.
             let container = Arc::new(ModContainer {
                 slots: SLOTS,
+                inputs: vec![0],
                 ..Default::default()
             });
             let state = game.world.block(POS.0, POS.1, POS.2).0;
