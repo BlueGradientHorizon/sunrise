@@ -346,7 +346,7 @@ impl Game<'_> {
                             saved
                                 .get_mut(&name)
                                 .and_then(|tags| tags.pop_front())
-                                .unwrap_or_else(|| Tag::String(name.into()))
+                                .unwrap_or_else(|| Tag::String(name.as_str().into()))
                         })
                         .collect();
                     if !tags.is_empty() {
