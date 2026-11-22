@@ -334,8 +334,8 @@ fn code_links(
     Ok((declared, resolution))
 }
 
-/// Type-check a developer's staged native projects through the build's generated Cargo
-/// workspace and SDK bindings, without producing or installing native libraries.
+/// Type-check a developer's staged native projects through the build's own route and SDK
+/// bindings, without producing or installing native libraries.
 pub fn check_rust(plan: &Plan) -> Result<(), String> {
     let work = crate::root();
     let mods = native_projects(plan)?;
@@ -348,22 +348,20 @@ pub fn check_rust(plan: &Plan) -> Result<(), String> {
     if let Some(reason) = prebuilt::refusal(&projects) {
         return Err(reason.to_string());
     }
-    let mixins = crate::MixinsIdentity::resolve(&mods, None)?;
-    let game = plan.package.whole(&work.join("prebuilt-package"))?;
-    crate::registry_compile::check(
+    prebuilt::compile(
         &plan.toolchain,
-        &game,
-        &work.join("check-workspace"),
-        &work.join("check-target"),
+        &plan.package,
+        &work.join("prebuilt-check"),
+        &plan.mods,
+        Route::of(&projects),
         &projects,
         &declared,
         &resolution,
-        crate::registry_compile::Options {
-            consent: Some(&|_| plan.registry == Some(true)),
-            adapter: &std::env::current_exe().map_err(|e| e.to_string())?,
-            mixins: &mixins,
-        },
+        Some(&|_| plan.registry == Some(true)),
+        &|_, _, _| {},
+        true,
     )
+    .map(drop)
 }
 
 fn compile(
@@ -417,7 +415,9 @@ fn compile(
                 total,
             });
         },
-    )?;
+        false,
+    )?
+    .expect("build mode returns artifacts");
     let catalog = crate::internals::Catalog::read(&plan.package.api)?;
     let mut internals = BTreeMap::new();
     for &index in &resolution.order {

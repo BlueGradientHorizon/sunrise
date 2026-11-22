@@ -50,41 +50,7 @@ fn check_log_template(template: &str, native_log: bool) -> Result<(), String> {
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
-pub fn compile(
-    rust: &dyn Toolchain,
-    game: &Path,
-    out: &Path,
-    target_dir: &Path,
-    projects: &[api::Project<'_>],
-    declared: &[Vec<dependencies::Dependency>],
-    resolution: &dependencies::Resolution,
-    options: Options<'_>,
-) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    stage_and_cargo(
-        rust, game, out, target_dir, projects, declared, resolution, options, false,
-    )
-    .map(|artifacts| artifacts.expect("build mode returns artifacts"))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn check(
-    rust: &dyn Toolchain,
-    game: &Path,
-    out: &Path,
-    target_dir: &Path,
-    projects: &[api::Project<'_>],
-    declared: &[Vec<dependencies::Dependency>],
-    resolution: &dependencies::Resolution,
-    options: Options<'_>,
-) -> Result<(), String> {
-    stage_and_cargo(
-        rust, game, out, target_dir, projects, declared, resolution, options, true,
-    )
-    .map(drop)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn stage_and_cargo(
+pub(super) fn stage_and_cargo(
     rust: &dyn Toolchain,
     game: &Path,
     out: &Path,
@@ -244,18 +210,11 @@ fn stage_and_cargo(
                     "crate-type".into(),
                     vec![toml::Value::String("dylib".into())].into(),
                 );
-                let root = dest.join(
-                    lib.get("path")
-                        .and_then(toml::Value::as_str)
-                        .unwrap_or("src/lib.rs"),
-                );
-                let entry = root
-                    .parent()
-                    .ok_or(tr("Invalid library root"))?
-                    .join("__sunrise_entry.rs");
-                fs::write(
-                    &entry,
-                    prebuilt::library_entry(
+                let root = prebuilt::stage_entry(
+                    &dest,
+                    &manifest,
+                    id,
+                    &prebuilt::library_entry(
                         &template,
                         &[&bundle.manifest],
                         sdk.commit(),
@@ -263,14 +222,11 @@ fn stage_and_cargo(
                         &bundle.manifest.version.to_string(),
                         &[],
                     ),
-                )
-                .map_err(|e| e.to_string())?;
-                let mut source = fs::read_to_string(&root).map_err(|e| e.to_string())?;
-                prebuilt::check_entry_root(&source, id)?;
-                source.push_str("\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n");
-                fs::write(&root, source).map_err(|e| e.to_string())?;
+                )?;
+                // Give Cargo the same normalized path that was checked and edited above.
+                manifest["lib"]["path"] = root.display().to_string().into();
                 mod_dirs.insert(id.clone(), dest.clone());
-                mod_roots.insert(id.clone(), root);
+                mod_roots.insert(id.clone(), dest.join(root));
             }
             fs::write(path, manifest.to_string()).map_err(|e| e.to_string())?;
         }
@@ -1017,7 +973,7 @@ mod tests {
         let resolution = dependencies::resolve(&inputs).unwrap();
         let rust = crate::rust::tests::system(required("SUNRISE_TEST_REGISTRY_RUST"));
         let approve = std::env::var_os("SUNRISE_TEST_REGISTRY_DECLINE").is_none();
-        let result = compile(
+        let result = stage_and_cargo(
             &rust,
             &game,
             &out,
@@ -1033,9 +989,10 @@ mod tests {
                 adapter: &adapter,
                 mixins: &crate::MixinsIdentity::resolve([&bundle], None).unwrap(),
             },
+            false,
         );
         if approve {
-            let (binary, _) = result.unwrap();
+            let (binary, _) = result.unwrap().unwrap();
             assert!(binary.is_file());
             eprintln!("compiled wrapper {}", binary.display());
         } else {
