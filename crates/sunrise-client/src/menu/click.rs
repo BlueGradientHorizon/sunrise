@@ -59,6 +59,257 @@ enum ClickStep {
 #[derive(Clone, Debug)]
 pub(super) struct TakeTracker(Option<SlotTake>);
 
+/// Validate a direct `Slot.set` write for `StackedEditPolicy::Part` against `old` and `kind`.
+fn part_set_allowed(
+    target: &impl StackedSlotTarget,
+    kind: StackedSlotKind,
+    old: &Option<ItemStack>,
+    clicked: &Option<ItemStack>,
+) -> bool {
+    if clicked == old {
+        return true;
+    }
+    if kind == StackedSlotKind::Inert {
+        return false;
+    }
+    let output_like = matches!(
+        kind,
+        StackedSlotKind::Output | StackedSlotKind::Result | StackedSlotKind::Potion
+    );
+    match (old, clicked) {
+        (Some(_), None) => target.may_pickup(),
+        (Some(_), Some(new_stack)) if output_like => {
+            let limit = if kind == StackedSlotKind::Potion {
+                1
+            } else {
+                target.item_max_stack(new_stack)
+            };
+            target.may_pickup() && new_stack.count <= limit
+        }
+        (None, Some(new_stack)) => {
+            target.may_place(new_stack) && new_stack.count <= target.slot_max(new_stack)
+        }
+        (Some(_), Some(new_stack)) => {
+            target.may_pickup()
+                && target.may_place(new_stack)
+                && new_stack.count <= target.slot_max(new_stack)
+        }
+        (None, None) => true,
+    }
+}
+
+/// Apply one `ClickedStackResult::Take(amount)` on `target` for `StackedEditPolicy::Part`.
+fn part_take(target: &mut impl StackedSlotTarget, kind: StackedSlotKind, amount: u32) -> bool {
+    if kind == StackedSlotKind::Inert || amount == 0 {
+        return false;
+    }
+    let Some(orig) = target.current_clicked() else {
+        return false;
+    };
+    if amount > orig.count {
+        return false;
+    }
+    if amount == orig.count {
+        target.safe_take(orig.count, orig.count).is_some()
+    } else {
+        if kind == StackedSlotKind::Result || !target.may_pickup() {
+            return false;
+        }
+        target.take_partial(amount).is_some()
+    }
+}
+
+/// Apply cursor and clicked-slot edits from `outcome` to `target`, enforcing the clicked slot's
+/// rules and take side effects (`safe_take` / `on_take`).
+///
+/// Shared by both local/client [`Menu::pickup`] and hosted LAN `lan::menu::pickup`. Returns `true`
+/// when the caller should proceed according to `outcome.resume`, or `false` when the slot refused
+/// the edit (`outcome.refused` is set and nothing was mutated).
+pub fn apply_stacked_outcome(
+    target: &mut impl StackedSlotTarget,
+    outcome: &StackedOutcome,
+) -> bool {
+    let apply_edits = match outcome.policy {
+        StackedEditPolicy::Global => outcome.canceled && outcome.handled,
+        StackedEditPolicy::Part => outcome.carried.is_some() || outcome.clicked.is_some(),
+    };
+    if !apply_edits {
+        return true;
+    }
+    let kind = target.slot_kind();
+    let old = target.current_clicked();
+    match outcome.policy {
+        StackedEditPolicy::Global => {
+            // The replacement goes through the clicked slot's rules: a result slot's or filled
+            // potion slot's `onTake` would not run; `mayPickup` and `mayPlace` still answer, and
+            // the stack fits `Slot.getMaxStackSize`. A replacement they refuse changes nothing.
+            let clicked_set = match &outcome.clicked {
+                None => None,
+                Some(StackedClickedEdit::Set(clicked)) => Some(clicked),
+                Some(_) => {
+                    outcome.refused.set(true);
+                    return false;
+                }
+            };
+            if let Some(clicked) = clicked_set
+                && clicked != &old
+            {
+                let held = old.is_some();
+                let result = matches!(
+                    kind,
+                    StackedSlotKind::Output | StackedSlotKind::Result | StackedSlotKind::Inert
+                );
+                if result
+                    || (held && (kind == StackedSlotKind::Potion || !target.may_pickup()))
+                    || clicked.as_ref().is_some_and(|stack| {
+                        !target.may_place(stack) || stack.count > target.slot_max(stack)
+                    })
+                {
+                    outcome.refused.set(true);
+                    return false;
+                }
+            }
+            if let Some(carried) = outcome.carried.clone() {
+                target.set_carried(carried);
+            }
+            if let Some(clicked) = clicked_set.cloned() {
+                target.set_clicked(clicked);
+            }
+        }
+        StackedEditPolicy::Part => {
+            if let Some(edit) = &outcome.clicked {
+                let applied = match edit {
+                    StackedClickedEdit::Set(clicked) => {
+                        if !part_set_allowed(target, kind, &old, clicked) {
+                            false
+                        } else {
+                            if clicked != &old {
+                                target.set_clicked(clicked.clone());
+                            }
+                            true
+                        }
+                    }
+                    StackedClickedEdit::Take(amount) => part_take(target, kind, *amount),
+                    StackedClickedEdit::TakeThenSet { take, then } => {
+                        let Some(orig) = &old else {
+                            outcome.refused.set(true);
+                            return false;
+                        };
+                        if kind == StackedSlotKind::Inert
+                            || kind == StackedSlotKind::Result
+                            || *take == 0
+                            || *take >= orig.count
+                        {
+                            false
+                        } else {
+                            let mut after_take = orig.clone();
+                            after_take.count -= *take;
+                            let remaining = Some(after_take);
+                            if !target.may_pickup()
+                                || !part_set_allowed(target, kind, &remaining, then)
+                                || target.take_partial(*take).is_none()
+                            {
+                                false
+                            } else {
+                                if then != &remaining {
+                                    target.set_clicked(then.clone());
+                                }
+                                true
+                            }
+                        }
+                    }
+                    StackedClickedEdit::SetThenTake { set, take } => {
+                        let set_opt = Some(set.clone());
+                        if *take == 0
+                            || *take > set.count
+                            || (*take < set.count && kind == StackedSlotKind::Result)
+                            || !part_set_allowed(target, kind, &old, &set_opt)
+                        {
+                            false
+                        } else {
+                            if set_opt != old {
+                                target.set_clicked(set_opt);
+                            }
+                            part_take(target, kind, *take)
+                        }
+                    }
+                };
+                if !applied {
+                    outcome.refused.set(true);
+                    return false;
+                }
+            }
+            if let Some(carried) = outcome.carried.clone() {
+                target.set_carried(carried);
+            }
+        }
+    }
+    true
+}
+
+struct MenuSlotTarget<'a, 'e> {
+    menu: &'a mut Menu,
+    env: &'a Env<'e>,
+    slot: usize,
+}
+
+impl StackedSlotTarget for MenuSlotTarget<'_, '_> {
+    fn slot_kind(&self) -> StackedSlotKind {
+        match self.menu.state.slots[self.slot].role {
+            Role::Inert | Role::Hidden => StackedSlotKind::Inert,
+            Role::Output => StackedSlotKind::Output,
+            Role::Potion => StackedSlotKind::Potion,
+            Role::CraftResult
+            | Role::LoomResult
+            | Role::MerchantResult
+            | Role::StoneResult
+            | Role::GrindResult
+            | Role::CombineResult
+            | Role::CartoResult
+            | Role::ModResult => StackedSlotKind::Result,
+            _ => StackedSlotKind::Ordinary,
+        }
+    }
+
+    fn current_clicked(&self) -> Option<ItemStack> {
+        self.menu.slot(self.slot).cloned()
+    }
+
+    fn may_pickup(&self) -> bool {
+        self.menu.may_pickup(self.env, self.slot)
+    }
+
+    fn may_place(&self, stack: &ItemStack) -> bool {
+        self.menu.may_place(self.env, self.slot, stack)
+    }
+
+    fn slot_max(&self, stack: &ItemStack) -> u32 {
+        self.menu.slot_max(self.env, self.slot, stack)
+    }
+
+    fn item_max_stack(&self, stack: &ItemStack) -> u32 {
+        Menu::max_stack(self.env, stack)
+    }
+
+    fn set_carried(&mut self, carried: Option<ItemStack>) {
+        self.menu.state.carried = carried;
+    }
+
+    fn set_clicked(&mut self, clicked: Option<ItemStack>) {
+        self.menu.set_by_player(self.env, self.slot, clicked);
+    }
+
+    fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack> {
+        self.menu.safe_take(self.env, self.slot, amount, max_amount)
+    }
+
+    fn take_partial(&mut self, amount: u32) -> Option<ItemStack> {
+        let mut taken = self.menu.remove(self.env, self.slot, amount)?;
+        self.menu.on_take(self.env, self.slot, &mut taken);
+        Some(taken)
+    }
+}
+
 impl Menu {
     pub(super) fn quick_replace(&self, s: usize, stack: &ItemStack, env: &Env) -> bool {
         match self.slot(s) {
@@ -76,15 +327,39 @@ impl Menu {
         self.state.quick_status != 0
     }
 
+    /// Snapshot the menu's quick-craft drag state so a hosted menu rebuilt per packet can preserve
+    /// it across clicks.
+    pub fn quick_craft_state(&self) -> QuickCraftDrag {
+        QuickCraftDrag {
+            status: self.state.quick_status,
+            ty: self.state.quick_type,
+            slots: self.state.quick_slots.clone(),
+        }
+    }
+
+    /// Restore a previously captured quick-craft drag state onto this menu.
+    pub fn set_quick_craft_state(&mut self, drag: QuickCraftDrag) {
+        self.touch();
+        self.state.quick_status = drag.status;
+        self.state.quick_type = drag.ty;
+        self.state.quick_slots = drag.slots;
+    }
+
     pub(super) fn reset_quick_craft(&mut self) {
         self.touch();
         self.state.quick_status = 0;
         self.state.quick_slots.clear();
     }
 
-    /// The pickup click `click` would run on `slot_index` with `button`, as `item_stacked_on_other`
-    /// is asked about it: the stacks it finds. `None` for a click that never asks (not a pickup
-    /// button, not a slot, a hidden slot, or a drag in progress, which the click only ends).
+    /// The resolved pickup click `click` would run for `(slot_index, button, input)`, as
+    /// `item_stacked_on_other` is asked about it: the stacks it finds.
+    ///
+    /// Resolves both a direct left/right `Input::Pickup` when no drag is active (`quick_status ==
+    /// 0`) and a one-slot left/right `Input::QuickCraft` drag release (`header == 2`,
+    /// `quick_status == 1`, `quick_slots.len() == 1`, `quick_type` in `0..=1`), matching vanilla
+    /// 26.3 `AbstractContainerMenu.doClick`. Returns `None` for active-drag resets, multi-slot
+    /// drags, middle-button (`quick_type == 2`) drags, out-of-range or hidden slots, and other
+    /// inputs.
     pub fn stacked_click(
         &self,
         env: &Env,
@@ -92,13 +367,29 @@ impl Menu {
         button: i32,
         input: Input,
     ) -> Option<StackedClick> {
-        let s = usize::try_from(slot_index).ok()?;
-        if input != Input::Pickup
-            || !(0..=1).contains(&button)
-            || self.state.quick_status != 0
-            || s >= self.state.slots.len()
-            || self.state.slots[s].role == Role::Hidden
-        {
+        let (s, primary) = match input {
+            Input::Pickup => {
+                let s = usize::try_from(slot_index).ok()?;
+                if !(0..=1).contains(&button) || self.state.quick_status != 0 {
+                    return None;
+                }
+                (s, button == 0)
+            }
+            Input::QuickCraft => {
+                let header = button & 3;
+                if header != 2
+                    || self.state.quick_status != 1
+                    || self.state.carried.is_none()
+                    || self.state.quick_slots.len() != 1
+                    || !(0..=1).contains(&self.state.quick_type)
+                {
+                    return None;
+                }
+                (self.state.quick_slots[0], self.state.quick_type == 0)
+            }
+            _ => return None,
+        };
+        if s >= self.state.slots.len() || self.state.slots[s].role == Role::Hidden {
             return None;
         }
         let slot = self.state.slots[s];
@@ -108,7 +399,7 @@ impl Menu {
             slot: s,
             container: slot.container,
             container_slot: slot.index,
-            primary: button == 0,
+            primary,
             carried: self.state.carried.clone(),
             clicked: self.slot(s).cloned(),
         })
@@ -485,59 +776,36 @@ impl Menu {
     /// plain click, ending with `slot.setChanged()`.
     pub(super) fn pickup(&mut self, env: &Env, s: usize, primary: bool) {
         self.touch();
-        let (mut canceled, mut handled) = (false, false);
+        let mut resume = StackedResume::VanillaAll;
         if let Some(outcome) = env.stacked {
-            (canceled, handled) = (outcome.canceled, outcome.handled);
-            if canceled && handled {
-                // The replacement goes through the clicked slot's rules: a result slot's or
-                // filled potion slot's `onTake` would not run; `mayPickup` and `mayPlace` still
-                // answer, and the stack fits
-                // `Slot.getMaxStackSize`. A replacement they refuse changes nothing.
-                if let Some(clicked) = &outcome.clicked
-                    && clicked.as_ref() != self.slot(s)
-                {
-                    let held = self.slot(s).is_some();
-                    let result = matches!(
-                        self.state.slots[s].role,
-                        Role::Output
-                            | Role::CraftResult
-                            | Role::Inert
-                            | Role::LoomResult
-                            | Role::MerchantResult
-                            | Role::StoneResult
-                            | Role::GrindResult
-                            | Role::CombineResult
-                            | Role::CartoResult
-                            | Role::ModResult
-                    );
-                    if result
-                        || (held
-                            && (self.state.slots[s].role == Role::Potion
-                                || !self.may_pickup(env, s)))
-                        || clicked.as_ref().is_some_and(|stack| {
-                            if self.state.slots[s].role == Role::Hidden {
-                                return true;
-                            }
-                            !self.may_place(env, s, stack)
-                                || stack.count > self.slot_max(env, s, stack)
-                        })
-                    {
-                        outcome.refused.set(true);
-                        return;
-                    }
-                }
-                if let Some(carried) = outcome.carried.clone() {
-                    self.state.carried = carried;
-                }
-                if let Some(clicked) = outcome.clicked.clone() {
-                    self.set_by_player(env, s, clicked);
-                }
+            resume = outcome.resume;
+            let mut target = MenuSlotTarget {
+                menu: self,
+                env,
+                slot: s,
+            };
+            if !apply_stacked_outcome(&mut target, outcome) {
+                return;
             }
         }
-        let handled = if canceled {
-            handled
-        } else {
-            self.bundle_click(env, s, primary)
+        let handled = match resume {
+            StackedResume::Done => true,
+            StackedResume::Plain => false,
+            StackedResume::VanillaAll => self.bundle_click(env, s, primary),
+            StackedResume::VanillaCarried => {
+                let took = self.carried_bundle_click(env, s, primary);
+                if took {
+                    self.inventory_slots_changed(env);
+                }
+                took
+            }
+            StackedResume::VanillaClicked => {
+                let took = self.clicked_bundle_click(env, s, primary);
+                if took {
+                    self.inventory_slots_changed(env);
+                }
+                took
+            }
         };
         if !handled {
             self.pickup_inner(env, s, primary);

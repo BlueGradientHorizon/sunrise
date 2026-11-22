@@ -7,7 +7,6 @@
 mod backing;
 use super::guest::Guest;
 use crate::{
-    bundle::{Contents, toggle_selected},
     containers::{BlockEntity, ModContainerInsertRule},
     enchant::Enchantments,
     items::{ItemStack, Items},
@@ -1119,8 +1118,11 @@ pub fn click(
     let before: Vec<Option<ItemStack>> = (0..view.len()).map(|i| view.get(i)).collect();
     if mode == input::QUICK_CRAFT {
         quick_craft(view, drag, slot, button, rules);
-    } else {
+    } else if drag.is_some() {
+        // `AbstractContainerMenu.doClick`: any non-QUICK_CRAFT click while a drag is in progress
+        // only resets the drag and does not perform a pickup or other click.
         *drag = None;
+    } else {
         match mode {
             // Invalid container click buttons must not move the slot or cursor.
             input::PICKUP | input::QUICK_MOVE if !is_container_click_button(button) => {}
@@ -1205,6 +1207,91 @@ pub fn click(
     (drops, changed)
 }
 
+struct HostedSlotTarget<'a, 'v> {
+    view: &'a mut View<'v>,
+    slot: usize,
+    rules: &'a dyn Rules,
+}
+
+impl crate::menu::StackedSlotTarget for HostedSlotTarget<'_, '_> {
+    fn slot_kind(&self) -> crate::menu::StackedSlotKind {
+        let is_result = (self.view.container.is_none() && self.slot == 0)
+            || (self.view.container.is_some()
+                && self
+                    .view
+                    .guest
+                    .menu
+                    .as_ref()
+                    .and_then(|menu| menu.mod_type)
+                    .is_some_and(|mod_type| {
+                        mod_type.results.contains(&self.slot)
+                            || mod_type
+                                .crafting
+                                .is_some_and(|crafting| crafting.result == self.slot)
+                    }));
+        if is_result {
+            crate::menu::StackedSlotKind::Result
+        } else {
+            crate::menu::StackedSlotKind::Ordinary
+        }
+    }
+
+    fn current_clicked(&self) -> Option<ItemStack> {
+        self.view.get(self.slot)
+    }
+
+    fn may_pickup(&self) -> bool {
+        self.view.may_pickup(self.slot, self.rules)
+    }
+
+    fn may_place(&self, stack: &ItemStack) -> bool {
+        self.view.may_place(self.slot, stack, self.rules)
+    }
+
+    fn slot_max(&self, stack: &ItemStack) -> u32 {
+        self.view.slot_max(self.slot, stack, self.rules)
+    }
+
+    fn item_max_stack(&self, stack: &ItemStack) -> u32 {
+        self.rules.max_stack(&stack.item).max(1)
+    }
+
+    fn set_carried(&mut self, carried: Option<ItemStack>) {
+        self.view.guest.carried = carried;
+    }
+
+    fn set_clicked(&mut self, clicked: Option<ItemStack>) {
+        self.view.set(self.slot, clicked);
+    }
+
+    fn safe_take(&mut self, amount: u32, max_amount: u32) -> Option<ItemStack> {
+        let mut slot = HostedSlotView {
+            view: self.view,
+            slot: self.slot,
+            rules: self.rules,
+            staged: None,
+        };
+        crate::menu::SlotView::safe_take(&mut slot, amount, max_amount)
+    }
+
+    fn take_partial(&mut self, amount: u32) -> Option<ItemStack> {
+        if !self.may_pickup() {
+            return None;
+        }
+        let mut current = self.view.get(self.slot)?;
+        let moved = amount.min(current.count);
+        if moved == 0 {
+            return None;
+        }
+        let mut taken = current.clone();
+        taken.count = moved;
+        current.count -= moved;
+        self.view
+            .set(self.slot, (current.count > 0).then_some(current));
+        Some(taken)
+    }
+}
+
 fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     let Ok(i) = usize::try_from(slot) else {
         return;
@@ -1213,35 +1300,24 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
         return;
     }
     let right = button == 1;
-    let (mut canceled, mut handled) = (false, false);
+    let mut resume = crate::menu::StackedResume::VanillaAll;
     if let Some(outcome) = rules.stacked() {
-        (canceled, handled) = (outcome.canceled, outcome.handled);
-        if canceled && handled {
-            // The replacement goes through the clicked slot's rules (`mayPickup`, `mayPlace`, its
-            // size); one they refuse changes nothing.
-            if let Some(clicked) = &outcome.clicked
-                && clicked.as_ref() != view.get(i).as_ref()
-                && (view.get(i).is_some() && !view.may_pickup(i, rules)
-                    || clicked.as_ref().is_some_and(|stack| {
-                        !view.may_place(i, stack, rules)
-                            || stack.count > view.slot_max(i, stack, rules)
-                    }))
-            {
-                outcome.refused.set(true);
-                return;
-            }
-            if let Some(carried) = outcome.carried.clone() {
-                view.guest.carried = carried;
-            }
-            if let Some(clicked) = outcome.clicked.clone() {
-                view.set(i, clicked);
-            }
+        resume = outcome.resume;
+        let mut target = HostedSlotTarget {
+            view,
+            slot: i,
+            rules,
+        };
+        if !crate::menu::apply_stacked_outcome(&mut target, outcome) {
+            return;
         }
     }
-    let handled = if canceled {
-        handled
-    } else {
-        bundle_click(view, i, right, rules)
+    let handled = match resume {
+        crate::menu::StackedResume::Done => true,
+        crate::menu::StackedResume::Plain => false,
+        crate::menu::StackedResume::VanillaAll => bundle_click(view, i, right, rules),
+        crate::menu::StackedResume::VanillaCarried => carried_bundle_click(view, i, !right, rules),
+        crate::menu::StackedResume::VanillaClicked => clicked_bundle_click(view, i, !right, rules),
     };
     if handled {
         return;
@@ -1316,95 +1392,87 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
     }
 }
 
-/// `tryItemClickBehaviourOverride`: the carried stack's
-/// `BundleItem.overrideStackedOnOther`, then the clicked one's
-/// `overrideOtherStackedOnMe`. True when a bundle took the click.
+/// `tryItemClickBehaviourOverride`: the carried stack's `overrideStackedOnOther`, then the
+/// clicked stack's `overrideOtherStackedOnMe`.
 fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bool {
-    use crate::menu::container_items::{can_be_in_bundle, fits_inside_container_items};
-    let items = rules.items();
-    let context = view.loop_context;
-    let other = view.get(i);
-    if let Some(mut carried) = view.guest.carried.clone()
-        && let Some(mut contents) = Contents::of(items, &carried)
-        && other.is_some() != right
-    {
-        match other {
-            // tryTransfer: as much as fits, through `safeTake`.
-            Some(other) => {
-                if can_be_in_bundle(context, &other) {
-                    let amount = other.count.min(contents.room_for(items, &other));
-                    let mut slot = HostedSlotView {
-                        view,
-                        slot: i,
-                        rules,
-                        staged: None,
-                    };
-                    if let Some(mut taken) =
-                        crate::menu::SlotView::safe_take(&mut slot, other.count, amount)
-                    {
-                        // `tryInsert` asks `canItemBeInBundle` again: the answer above.
-                        contents.try_insert(items, &mut taken, true);
-                    }
-                }
-            }
-            // removeOne into the empty slot (`safeInsert`); the rest goes back.
-            None => {
-                if let Some(mut stack) = contents.remove_one(items) {
-                    if view.may_place(i, &stack, rules) {
-                        let amount = stack.count.min(view.slot_max(i, &stack, rules));
-                        view.set(
-                            i,
-                            Some(ItemStack {
-                                count: amount,
-                                ..stack.clone()
-                            }),
-                        );
-                        stack.count -= amount;
-                    }
-                    if stack.count > 0 {
-                        let fits = fits_inside_container_items(context, &stack);
-                        contents.try_insert(items, &mut stack, fits);
-                    }
-                }
-            }
-        }
-        contents.store(&mut carried);
-        view.guest.carried = Some(carried);
-        return true;
-    }
-    let Some(mut bundle) = other else {
-        return false;
+    carried_bundle_click(view, i, !right, rules) || clicked_bundle_click(view, i, !right, rules)
+}
+
+/// `tryItemClickBehaviourOverride`: the carried stack's vanilla `overrideStackedOnOther`,
+/// delegating to the single shared implementation in `crate::menu::vanilla_carried_override`.
+fn carried_bundle_click(view: &mut View, i: usize, primary: bool, rules: &dyn Rules) -> bool {
+    let loop_context = view.loop_context;
+    let mut carried = view.guest.carried.clone();
+    let mut sounds = Vec::new();
+    let took = {
+        let mut slot = HostedSlotView {
+            view,
+            slot: i,
+            rules,
+            staged: None,
+        };
+        crate::menu::vanilla_carried_override(
+            rules.items(),
+            &mut carried,
+            &mut slot,
+            loop_context,
+            primary,
+            &mut sounds,
+        )
     };
-    let Some(mut contents) = Contents::of(items, &bundle) else {
-        return false;
-    };
-    // `Slot.allowModification`: `mayPickup` and `mayPlace` of the stack it
-    // holds. A slot that withholds the bundle keeps what is inside it.
-    let allowed = view.may_pickup(i, rules) && view.may_place(i, &bundle, rules);
-    match (view.guest.carried.take(), right) {
-        (Some(mut carried), false) => {
-            if allowed {
-                let fits = fits_inside_container_items(context, &carried);
-                contents.try_insert(items, &mut carried, fits);
-            }
-            view.guest.carried = (carried.count > 0).then_some(carried);
-        }
-        (None, true) => {
-            if allowed {
-                view.guest.carried = contents.remove_one(items);
-            }
-        }
-        (carried, _) => {
-            // toggleSelectedItem(-1), then the click goes on.
-            view.guest.carried = carried;
-            toggle_selected(&mut bundle, -1);
-            view.set(i, Some(bundle));
-            return false;
-        }
+    if took {
+        view.guest.carried = carried;
     }
-    contents.store(&mut bundle);
-    view.set(i, Some(bundle));
-    true
+    took
+}
+
+/// `tryItemClickBehaviourOverride`: the clicked stack's vanilla `overrideOtherStackedOnMe`,
+/// delegating to the single shared implementation in `crate::menu::vanilla_clicked_override`.
+fn clicked_bundle_click(view: &mut View, i: usize, primary: bool, rules: &dyn Rules) -> bool {
+    let loop_context = view.loop_context;
+    let mut carried = view.guest.carried.clone();
+    let mut sounds = Vec::new();
+    let (took, updated) = {
+        let slot = HostedSlotView {
+            view,
+            slot: i,
+            rules,
+            staged: None,
+        };
+        crate::menu::vanilla_clicked_override(
+            rules.items(),
+            &mut carried,
+            &slot,
+            loop_context,
+            primary,
+            &mut sounds,
+        )
+    };
+    if let Some(bundle) = updated {
+        view.set(i, Some(bundle));
+    }
+    if took {
+        view.guest.carried = carried;
+    }
+    took
+}
+
+/// Probe the shared vanilla carried override (`crate::menu::vanilla_carried_override`) on `view`
+/// with `(carried, clicked)` staged into the cursor and menu slot `i`. Caller restores `view`.
+pub(super) fn probe_carried_vanilla_override(
+    view: &mut View,
+    i: usize,
+    primary: bool,
+    carried: Option<ItemStack>,
+    clicked: Option<ItemStack>,
+    rules: &dyn Rules,
+) -> bool {
+    if i >= view.len() || !view.enabled(i) {
+        return false;
+    }
+    view.guest.carried = carried;
+    view.set(i, clicked);
+    carried_bundle_click(view, i, primary, rules)
 }
 
 fn swap(view: &mut View, slot: i32, button: i32, rules: &dyn Rules, drops: &mut Vec<ItemStack>) {
@@ -1606,7 +1674,7 @@ fn quick_craft(
                 slots.push(i);
             }
         }
-        _ => {
+        2 => {
             let Some((kind, slots)) = drag.take() else {
                 return;
             };
@@ -1659,6 +1727,7 @@ fn quick_craft(
             carried.count = remaining.max(0) as u32;
             view.guest.carried = (carried.count > 0).then_some(carried);
         }
+        _ => *drag = None,
     }
 }
 
@@ -3455,6 +3524,276 @@ pub(crate) mod tests {
         assert_eq!(
             view.guest.carried,
             Some(ItemStack::new("minecraft:stone", 2))
+        );
+    }
+
+    #[test]
+    fn hosted_stacked_outcome_shares_result_slot_and_safe_take_rules() {
+        use crate::menu::{StackedClickedEdit, StackedEditPolicy, StackedOutcome, StackedResume};
+        struct OutcomeRules<'a> {
+            items: Items,
+            may_pickup: bool,
+            outcome: &'a StackedOutcome,
+        }
+        impl Rules for OutcomeRules<'_> {
+            fn items(&self) -> &Items {
+                &self.items
+            }
+            fn enchantments(&self) -> &Enchantments {
+                enchantments()
+            }
+            fn max_stack(&self, item: &str) -> u32 {
+                if item == "minecraft:snowball" { 16 } else { 64 }
+            }
+            fn may_pickup(&self, _slot: usize, _stack: &ItemStack) -> bool {
+                self.may_pickup
+            }
+            fn stacked(&self) -> Option<&StackedOutcome> {
+                Some(self.outcome)
+            }
+            fn mod_container_insert_rule(
+                &self,
+                slot: usize,
+                _current: Option<&ItemStack>,
+                _offered: &ItemStack,
+            ) -> bool {
+                slot != 0
+            }
+        }
+        static RESULT_MENU: std::sync::OnceLock<crate::containers::ModMenuType> =
+            std::sync::OnceLock::new();
+        let mod_type = RESULT_MENU.get_or_init(|| crate::containers::ModMenuType {
+            id: "test:result_menu",
+            owner: "test",
+            slots: 1,
+            player_inventory: true,
+            data_slots: 0,
+            owned_slots: None,
+            results: vec![0],
+            inputs: Vec::new(),
+            crafting: None,
+            links: None,
+        });
+        let make_guest = || {
+            let mut g = guest();
+            g.menu = Some(Menu {
+                window: 1,
+                kind: 0,
+                pos: Some((0, 0, 0)),
+                slots: Slots::Block((0, 0, 0)),
+                size: 1,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                blockless_data: Vec::new(),
+                reported_unsent_data_len: None,
+                mod_type: Some(mod_type),
+                registry_id: "test:result_menu".into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: false,
+                opening_item: None,
+            });
+            g
+        };
+        let context = crate::test_resources::loop_context(
+            sunrise_world::native_load_context::LoopSide::Server,
+        );
+
+        // 1. Global policy refuses modifying a hosted result slot, matching `Menu::pickup`.
+        let mut g = make_guest();
+        g.carried = Some(ItemStack::new("minecraft:stick", 1));
+        let mut chest = vec![Some(ItemStack::new("minecraft:iron_ingot", 4))];
+        let global_outcome = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Global,
+            resume: StackedResume::Done,
+            carried: Some(Some(ItemStack::new("minecraft:stick", 2))),
+            clicked: Some(StackedClickedEdit::Set(None)),
+            refused: std::cell::Cell::new(false),
+        };
+        let rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &global_outcome,
+        };
+        let mut view = View {
+            guest: &mut g,
+            container: Some(&mut chest),
+            shulker: false,
+            container_limits: Vec::new(),
+            loop_context: &context,
+        };
+        let mut drag = None;
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert!(global_outcome.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stick", 1))
+        );
+
+        // 2. Part policy explicit full take (`Take(4)`) runs through `HostedSlotView::safe_take`
+        //    even when `may_place` is false, is refused when `may_pickup` is false, and partial
+        //    `Take(2)` is refused on a Result slot.
+        let part_take = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: Some(Some(ItemStack::new("minecraft:stick", 5))),
+            clicked: Some(StackedClickedEdit::Take(4)),
+            refused: std::cell::Cell::new(false),
+        };
+        let blocked_rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: false,
+            outcome: &part_take,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &blocked_rules);
+        assert!(part_take.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        let partial_result_take = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: None,
+            clicked: Some(StackedClickedEdit::Take(2)),
+            refused: std::cell::Cell::new(false),
+        };
+        let partial_rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &partial_result_take,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &partial_rules);
+        assert!(partial_result_take.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        part_take.refused.set(false);
+        let allow_rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &part_take,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &allow_rules);
+        assert!(!part_take.refused.get());
+        assert_eq!(view.get(0), None);
+        assert_eq!(
+            view.guest.carried,
+            Some(ItemStack::new("minecraft:stick", 5))
+        );
+
+        // 2b. Part policy direct clear (`Set(None)`) clears an occupied result slot directly when
+        //     `may_pickup` allows it, and is refused when `may_pickup` is false.
+        view.set(0, Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        let part_clear = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: Some(Some(ItemStack::new("minecraft:stick", 1))),
+            clicked: Some(StackedClickedEdit::Set(None)),
+            refused: std::cell::Cell::new(false),
+        };
+        let clear_blocked = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: false,
+            outcome: &part_clear,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &clear_blocked);
+        assert!(part_clear.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+
+        part_clear.refused.set(false);
+        let clear_allowed = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &part_clear,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &clear_allowed);
+        assert!(!part_clear.refused.get());
+        assert_eq!(view.get(0), None);
+
+        // 3. Part policy occupied result-slot edit respects `item_max_stack`.
+        view.set(0, Some(ItemStack::new("minecraft:iron_ingot", 4)));
+        let oversize = StackedOutcome {
+            canceled: true,
+            handled: true,
+            policy: StackedEditPolicy::Part,
+            resume: StackedResume::Done,
+            carried: None,
+            clicked: Some(StackedClickedEdit::Set(Some(ItemStack::new(
+                "minecraft:snowball",
+                17,
+            )))),
+            refused: std::cell::Cell::new(false),
+        };
+        let oversize_rules = OutcomeRules {
+            items: Items::for_tests(Default::default()),
+            may_pickup: true,
+            outcome: &oversize,
+        };
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &oversize_rules);
+        assert!(oversize.refused.get());
+        assert_eq!(view.get(0), Some(ItemStack::new("minecraft:iron_ingot", 4)));
+    }
+
+    #[test]
+    fn non_bundle_item_with_bundle_contents_default_skips_vanilla_bundle_override() {
+        let Some(mut rules) = rules() else { return };
+        let mut pouch = rules.0.items["minecraft:stick"].clone();
+        pouch.id = "test:pouch".into();
+        pouch.bundle = true;
+        pouch.template = None;
+        assert!(!pouch.is_bundle_item());
+        rules.0.items.insert("test:pouch".into(), pouch);
+
+        let context = crate::test_resources::loop_context(
+            sunrise_world::native_load_context::LoopSide::Server,
+        );
+        let mut g = guest();
+        let mut pouch_stack = ItemStack::new("test:pouch", 1);
+        pouch_stack.data_mut().bundle_contents = vec![ItemStack::new("minecraft:dirt", 1)];
+        g.carried = Some(pouch_stack.clone());
+        let mut chest = vec![Some(ItemStack::new("minecraft:stone", 1))];
+        let mut view = View {
+            guest: &mut g,
+            container: Some(&mut chest),
+            shulker: false,
+            container_limits: Vec::new(),
+            loop_context: &context,
+        };
+        let mut drag = None;
+        // Carried non-BundleItem with `info.bundle == true` runs plain swap, NOT BundleItem insert.
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert_eq!(view.get(0).as_ref().map(|s| &*s.item), Some("test:pouch"));
+        assert_eq!(
+            view.guest.carried.as_ref().map(|s| &*s.item),
+            Some("minecraft:stone")
+        );
+        assert_eq!(contents(&view.get(0)), [("minecraft:dirt".to_owned(), 1)]);
+        // Clicked non-BundleItem with `info.bundle == true` also runs plain swap.
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert_eq!(
+            view.get(0).as_ref().map(|s| &*s.item),
+            Some("minecraft:stone")
+        );
+        assert_eq!(
+            view.guest.carried.as_ref().map(|s| &*s.item),
+            Some("test:pouch")
+        );
+        // Real dyed `BundleItem` (`minecraft:red_bundle`) DOES run BundleItem insert.
+        view.guest.carried = Some(ItemStack::new("minecraft:red_bundle", 1));
+        click(&mut view, &mut drag, 0, 0, input::PICKUP, &rules);
+        assert_eq!(view.get(0), None);
+        assert_eq!(
+            contents(&view.guest.carried),
+            [("minecraft:stone".to_owned(), 1)]
         );
     }
 
