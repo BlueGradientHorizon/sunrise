@@ -723,8 +723,8 @@ mod tests {
     fn a_tick_chart_of_extreme_network_samples_wraps_like_java() {
         let font = chart_test_font();
         let mut c = DebugCharts::default();
-        // Overflowing sums, differences and heights, in every dimension, for a full chart.
-        // A tick time whose bar height is `i32::MIN + 100`: `bottom - height` wraps, so the bar's
+        // A full chart with overflowing differences and heights in every dimension.
+        // A tick time whose bar height is `i32::MIN + 48`: `bottom - height` wraps, so the bar's
         // span overflows an `int` where the painter subtracts its corners.
         let tall = -1_789_569_666_666_667;
         assert_eq!(
@@ -749,11 +749,22 @@ mod tests {
         // The painter takes the wrapped bar ends (`bottom - height` overflows an `int`).
         let mut batch = crate::hud::HudBatch::scratch([854, 480]);
         crate::hud_layout::paint(&mut batch, &atlas, &draws);
-        // `sum` of 240 `Long.MIN_VALUE - Long.MAX_VALUE` wraps: 240 * 1 mod 2^64.
-        let index = CAPACITY - 1;
-        assert_eq!(
-            tps.aggregated(&c.tick_times, index),
-            i64::MIN.wrapping_sub(i64::MAX)
+        // The last sample's total time minus its idle time wraps to 1.
+        assert_eq!(tps.aggregated(&c.tick_times, CAPACITY - 1), 1);
+    }
+
+    #[test]
+    fn a_tick_chart_average_uses_the_wrapped_sum() {
+        let mut samples = SampleLogger::default();
+        for value in [i64::MAX - 1, i64::MAX - 1, 6_000_004] {
+            samples.log(value);
+        }
+        // Java long addition leaves a sum of 6,000,000 ns and an average of 2 ms.
+        let draws = Chart::Tps { mspt: 50.0 }.draw(&chart_test_font(), &samples, 0, 242, 100);
+        assert!(
+            draws.iter().any(
+                |draw| matches!(draw, GuiDraw::Text { text, .. } if text.plain() == "2 ms avg")
+            )
         );
     }
 
