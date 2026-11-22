@@ -678,8 +678,7 @@ mod tests {
         }
         std::os::unix::fs::symlink(root.join("src"), root.join("linked")).unwrap();
         // A selected name that is not a regular file is not opened, so it cannot block the scan.
-        let fifo = std::ffi::CString::new(root.join("src/pipe.rs").as_os_str().as_bytes()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0);
+        let _socket = std::os::unix::net::UnixListener::bind(root.join("src/sock.rs")).unwrap();
         let input = read(root, &[]).unwrap();
         assert_eq!(
             input.sources,

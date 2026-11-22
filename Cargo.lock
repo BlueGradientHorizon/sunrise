@@ -4903,7 +4903,6 @@ dependencies = [
 name = "sunrise-mod-source"
 version = "0.1.0"
 dependencies = [
- "libc",
  "proc-macro2",
  "quote",
  "sunrise-mod-surface",
