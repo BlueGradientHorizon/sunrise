@@ -931,7 +931,7 @@ impl mod_api::Hooks for FillListener {
     fn container_loot_filled(
         &self,
         _: &dyn mod_api::LevelHost,
-        event: &mut mod_api::ContainerLootFilledEvent<'_>,
+        event: &mut mod_api::ContainerLootFilledEvent<'_, '_>,
     ) {
         self.seen.lock().unwrap().push((
             event.context.table.into(),
@@ -1231,7 +1231,7 @@ impl mod_api::Hooks for DurableStickListener {
     fn container_loot_filled(
         &self,
         _: &dyn mod_api::LevelHost,
-        event: &mut mod_api::ContainerLootFilledEvent<'_>,
+        event: &mut mod_api::ContainerLootFilledEvent<'_, '_>,
     ) {
         let key = mod_api::__private::item_key("minecraft:stick").unwrap();
         let mut stick = mod_api::ItemStack::new(key, 1).unwrap();
@@ -1246,7 +1246,7 @@ impl mod_api::Hooks for DurableStickListener {
             .unwrap();
         stick.set_damage(self.0);
         event.drops.clear();
-        event.drops.push(stick);
+        event.drops.push(stick).unwrap();
     }
 }
 

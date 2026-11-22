@@ -250,13 +250,16 @@ impl mod_api::Hooks for ErasingCompletion {
     fn tab_complete(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::TabCompleteEvent<'_>,
+        event: &mut mod_api::TabCompleteEvent<'_, '_>,
     ) {
         event.suggestions.clear();
-        event.suggestions.push(mod_api::Suggestion::new(
-            (event.range[0], event.range[1]),
-            "erased",
-        ));
+        event
+            .suggestions
+            .push(mod_api::Suggestion::new(
+                (event.range[0], event.range[1]),
+                "erased",
+            ))
+            .unwrap();
     }
 }
 
@@ -396,13 +399,14 @@ impl mod_api::Hooks for IdentifierCompletion {
     fn tab_complete(
         &self,
         _: &mut dyn mod_api::ServerHost,
-        event: &mut mod_api::TabCompleteEvent<'_>,
+        event: &mut mod_api::TabCompleteEvent<'_, '_>,
     ) {
         if event.command == "probe ex" {
             assert_eq!(event.range, [6, 8]);
             event
                 .suggestions
-                .push(mod_api::Suggestion::new((6, 8), "example:stone"));
+                .push(mod_api::Suggestion::new((6, 8), "example:stone"))
+                .unwrap();
         }
     }
 }

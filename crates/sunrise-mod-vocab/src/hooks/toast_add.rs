@@ -22,7 +22,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "ToastAddEvent",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn toast_add(
         kind: mod_api::ToastKind,

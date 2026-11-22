@@ -184,7 +184,11 @@ impl Hooks for Probe {
         self.observed.leaves.lock().unwrap().push(event.entity);
     }
 
-    fn item_fished(&self, _: &mut dyn ServerHost, _: &mut mod_api::ItemFishedEvent<'_>) -> Flow {
+    fn item_fished(
+        &self,
+        _: &mut dyn ServerHost,
+        _: &mut mod_api::ItemFishedEvent<'_, '_>,
+    ) -> Flow {
         self.observed.catches.fetch_add(1, Ordering::Relaxed);
         Flow::Continue
     }
@@ -196,7 +200,11 @@ struct UnsubscribedProbe {
 
 #[mod_api::__subscriptions]
 impl Hooks for UnsubscribedProbe {
-    fn item_fished(&self, _: &mut dyn ServerHost, _: &mut mod_api::ItemFishedEvent<'_>) -> Flow {
+    fn item_fished(
+        &self,
+        _: &mut dyn ServerHost,
+        _: &mut mod_api::ItemFishedEvent<'_, '_>,
+    ) -> Flow {
         self.observed.catches.fetch_add(1, Ordering::Relaxed);
         Flow::Continue
     }

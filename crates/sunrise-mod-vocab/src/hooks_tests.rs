@@ -1387,7 +1387,7 @@ fn world_phase_cloned_event_fields_roll_back_on_panic() {
             let host = FakeHost::new();
             let mut line = Text::literal("hello");
             let mut cancel = false;
-            dispatch_broadcast_message(&host, &mut line, &mut cancel);
+            dispatch_broadcast_message(&host, &mut line, &mut cancel, &mut |_| Ok(()));
             assert_eq!(
                 observed.lock().unwrap().as_ref(),
                 Some(&Text::literal("hello"))

@@ -15,7 +15,7 @@ pub trait Hooks {
         out = "cancel",
         neoforge = "PotionBrewEvent.Pre",
         cancellable = true,
-        version = 2
+        version = 3
     )]
     fn potion_brew_pre(pos: [i32; 3], stacks: &mut [Option<ItemStack>; 5], cancel: &mut bool);
 }

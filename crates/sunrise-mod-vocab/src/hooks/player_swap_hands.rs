@@ -16,7 +16,7 @@ pub trait Hooks {
         side = "server",
         contract = "cancel",
         out = "cancel",
-        version = 3,
+        version = 4,
         neoforge = "LivingSwapItemsEvent.Hands"
     )]
     fn player_swap_hands(

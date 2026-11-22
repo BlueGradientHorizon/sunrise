@@ -60,7 +60,7 @@ before returning it: `setPlacedBy` does not recheck its companion cell.
         receiver = "read",
         dispatch = "flat",
         side = "both",
-        version = 3,
+        version = 4,
         contract = "replace",
         out = "answer",
         scope = "block",

@@ -12,7 +12,8 @@ pub trait Hooks {
         out = "cancel",
         host = "read",
         neoforge = "none (NeoForge has no such event; Bukkit's BroadcastMessageEvent)",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn broadcast_message(line: &mut Text, cancel: &mut bool);
 }

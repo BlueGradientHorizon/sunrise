@@ -28,7 +28,7 @@ retaining the initial data remainder; native panics retain normal Part attributi
         scope = "item",
         key = "stack",
         neoforge = "IItemExtension.getCraftingRemainder(ItemStack)",
-        version = 2
+        version = 3
     )]
     fn crafting_remainder(stack: &ItemStack, remainder: &mut Option<ItemStack>);
 }

@@ -123,7 +123,7 @@ impl Hooks for Deathwatch {
         Flow::Continue
     }
 
-    fn loot_drops(&self, _: &mut dyn ServerHost, event: &mut LootDropsEvent<'_>) {
+    fn loot_drops(&self, _: &mut dyn ServerHost, event: &mut LootDropsEvent<'_, '_>) {
         if event.context.entity == Some((41, "minecraft:zombie")) {
             self.0
                 .lock()

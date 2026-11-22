@@ -648,7 +648,11 @@ fn mob_block_drops_lend_the_original_entity_after_a_loot_listener_replaces_it() 
     struct Replace(Arc<Mutex<Option<mod_api::BlockEntityRef>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Replace {
-        fn loot_drops(&self, host: &mut dyn ServerHost, event: &mut mod_api::LootDropsEvent<'_>) {
+        fn loot_drops(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut mod_api::LootDropsEvent<'_, '_>,
+        ) {
             let Some((pos, _)) = event.context.block else {
                 return;
             };
