@@ -225,7 +225,12 @@ fn overload_warning(behind: Duration, tick: Duration) -> String {
 /// method, the scheduled tasks (the wait minus its idle time) and the idle time.
 fn tick_time_sample(full: Duration, method: Duration, wait: Duration, idle: Duration) -> [i64; 4] {
     let nanos = |d: Duration| d.as_nanos() as i64;
-    [nanos(full), nanos(method), nanos(wait.saturating_sub(idle)), nanos(idle)]
+    [
+        nanos(full),
+        nanos(method),
+        nanos(wait.saturating_sub(idle)),
+        nanos(idle),
+    ]
 }
 
 /// `ServerGamePacketListenerImpl.tick`'s idle kick: a player whose last action is more than
