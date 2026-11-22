@@ -20,6 +20,8 @@ pub trait Hooks {
     /// `draw`'s own: turning it moves what you draw, `render`'s pose moves
     /// the default geometry, and player render state is not exposed.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         version = 3,
         contract = "cancel",
@@ -27,5 +29,9 @@ pub trait Hooks {
         neoforge = "RenderHandEvent",
         cancellable = true
     )]
-    fn render_hand();
+    fn render_hand(
+        render: &mut HandRender<'_>,
+        draw: &mut dyn HandDrawContext,
+        canceled: &mut bool,
+    );
 }

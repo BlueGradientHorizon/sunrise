@@ -154,7 +154,7 @@ impl Game<'_> {
         true
     }
     fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3], tx: &Transaction) -> bool {
-        self.transaction_holds(tx)
+        self.transaction_holds_here(tx)
             && self.level_in_place(level)
             && self.native_level_write_allowed(level, pos)
     }
@@ -217,7 +217,7 @@ impl Game<'_> {
         player: Option<PlayerRef>,
         tx: &Transaction,
     ) -> bool {
-        if !self.transaction_holds(tx) || !self.level_in_place(level) {
+        if !self.transaction_holds_here(tx) || !self.level_in_place(level) {
             return false;
         }
         let Some(id) = mod_api::__private::fluid_id(fluid) else {
