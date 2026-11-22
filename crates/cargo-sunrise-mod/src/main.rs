@@ -573,8 +573,10 @@ fn build(
     mixins: Option<&str>,
 ) -> Result<PathBuf, String> {
     let root = Path::new(".");
-    let uses = if package.is_native() && sdk_fetch::game_tree(root)?.is_none() {
-        let sdk = sdk_fetch::ensure_sdk(root)?;
+    let uses = if let Some(native) = &package.manifest.native
+        && sdk_fetch::game_tree(root)?.is_none()
+    {
+        let sdk = sdk_fetch::fetch_pinned(root, &native.sunrise)?;
         let surface = uses_table::surface_of(&sdk)?;
         let scanned = uses_table::scan(entry, root, &package.manifest, &surface)?;
         match scanned {
