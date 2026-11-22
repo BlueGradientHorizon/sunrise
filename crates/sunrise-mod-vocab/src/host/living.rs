@@ -109,7 +109,9 @@ pub trait LivingBackend {
     /// Side: server.
     /// `LivingEntity.getKillCredit`: the remembered player takes precedence,
     /// even if the player cannot be resolved; otherwise the last hurting mob,
-    /// as [`Self::living_last_attacker`] finds it.
+    /// as [`Self::living_last_attacker`] finds it. A mob's death does not clear
+    /// the player reference: it can still resolve during the death animation,
+    /// until the `LivingEntity.baseTick` timer expires or the mob is removed.
     fn living_kill_credit(&self, living: LivingRef) -> Option<EntityRef>;
     /// Side: server.
     /// `LivingEntity.getLastHurtByMob`: the entity that last hurt this one,
