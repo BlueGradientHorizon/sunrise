@@ -41,7 +41,7 @@ struct Shared<'p> {
     current: Current<'p>,
     perform: RefCell<Option<Perform<'p>>>,
     answer: RefCell<Option<StackedOutcome>>,
-    /// The click found its slot's rules refusing the mods' replacement (`StackedOutcome::refused`).
+    /// A slot rule or a stale input refused the mods' edit (`StackedOutcome::refused`).
     refused: Cell<bool>,
 }
 
@@ -226,9 +226,7 @@ impl Game<'_> {
         match outcome {
             Ok(Outcome::Applied) if ran => Pickup::Ran,
             Ok(Outcome::Applied) => {
-                log::warn!(
-                    "item_stacked_on_other: the slot refused the replacement; nothing changed"
-                );
+                log::warn!("item_stacked_on_other: the menu refused the edit; nothing changed");
                 Pickup::Refused
             }
             Ok(other) => {
@@ -308,7 +306,9 @@ fn fire(
 
     let mut working_carried = frozen.carried.clone();
     let mut working_clicked = frozen.clicked.clone();
-    let mut carried_edited = false;
+    let mut carried_part_cursor = None;
+    let mut carried_part_took = false;
+    let mut clicked_part_cursor = None;
     let mut clicked_edit: Option<StackedClickedEdit> = None;
     let mut any_part_ran = false;
 
@@ -333,8 +333,11 @@ fn fire(
                     }
                 }
                 *edit = match edit.take() {
-                    Some(StackedClickedEdit::Take(prev)) => {
-                        Some(StackedClickedEdit::Take(prev.saturating_add(count)))
+                    Some(StackedClickedEdit::Take(first)) => {
+                        Some(StackedClickedEdit::TakeThenTake {
+                            first,
+                            second: count,
+                        })
                     }
                     Some(StackedClickedEdit::Set(Some(set))) => {
                         Some(StackedClickedEdit::SetThenTake { set, take: count })
@@ -369,11 +372,12 @@ fn fire(
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
         };
-        if let Some(next_carried) = part.carried {
-            working_carried = next_carried;
-            carried_edited = true;
+        carried_part_cursor = part.carried;
+        if let Some(next_carried) = &carried_part_cursor {
+            working_carried = next_carried.clone();
         }
         if let Some(next_clicked) = part.clicked {
+            carried_part_took = matches!(next_clicked, PartClickedEdit::Take(_));
             apply_clicked_part(&mut working_clicked, &mut clicked_edit, next_clicked);
         }
         if part.handled {
@@ -384,7 +388,8 @@ fn fire(
                     handled: true,
                     policy: StackedEditPolicy::Part,
                     resume: StackedResume::Done,
-                    carried: carried_edited.then_some(working_carried),
+                    carried_part_cursor,
+                    carried_part_took,
                     clicked: clicked_edit,
                     ..StackedOutcome::default()
                 },
@@ -406,7 +411,8 @@ fn fire(
                     StackedEditPolicy::Global
                 },
                 resume: StackedResume::VanillaCarried,
-                carried: carried_edited.then_some(working_carried),
+                carried_part_cursor,
+                carried_part_took,
                 clicked: clicked_edit,
                 ..StackedOutcome::default()
             },
@@ -436,10 +442,7 @@ fn fire(
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
         };
-        if let Some(next_carried) = part.carried {
-            working_carried = next_carried;
-            carried_edited = true;
-        }
+        clicked_part_cursor = part.carried;
         if let Some(next_clicked) = part.clicked {
             apply_clicked_part(&mut working_clicked, &mut clicked_edit, next_clicked);
         }
@@ -451,7 +454,9 @@ fn fire(
                     handled: true,
                     policy: StackedEditPolicy::Part,
                     resume: StackedResume::Done,
-                    carried: carried_edited.then_some(working_carried),
+                    carried: clicked_part_cursor,
+                    carried_part_cursor,
+                    carried_part_took,
                     clicked: clicked_edit,
                     ..StackedOutcome::default()
                 },
@@ -468,7 +473,9 @@ fn fire(
                 StackedEditPolicy::Global
             },
             resume: StackedResume::VanillaClicked,
-            carried: carried_edited.then_some(working_carried),
+            carried: clicked_part_cursor,
+            carried_part_cursor,
+            carried_part_took,
             clicked: clicked_edit,
             ..StackedOutcome::default()
         },

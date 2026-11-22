@@ -163,9 +163,8 @@ pub struct State {
     pub(super) takes: Option<super::click::TakeTracker>,
     /// `FurnaceResultSlot.removeCount`.
     pub(super) output_removed: u32,
-    /// Stacks extracted from a furnace's output slot via `Slot.onTake` / `onQuickCraft`
-    /// (`FurnaceResultSlot.checkTakeAchievements`), independent of whether `item_smelted` has a
-    /// listener. Direct `Slot.set` edits never record an extraction here.
+    /// Stacks transferred out of a furnace by a take, shift-click or hotbar swap, independent of
+    /// whether `item_smelted` has a listener. Direct `Slot.set` edits never record an extraction.
     pub furnace_extracted: Vec<(ItemStack, u32)>,
     /// `LivingEntity.onEquipItem` calls that change the item: the
     /// `EquipmentSlot` name and the new stack, in order, for the caller.
