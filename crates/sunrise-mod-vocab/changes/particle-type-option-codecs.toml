@@ -9,7 +9,7 @@ ids = [
     "type:SceneParticle",
     "type:Scene",
     "trait:ParticleProvider",
-    "trait:ParticleProviders",
+    "handle:ParticleProviderRegistry::into_providers",
     "method:ParticleProvider::create_particle",
     "method:ParticleProviders::register",
     "handle:ParticleProviders::register_sprite_set",
