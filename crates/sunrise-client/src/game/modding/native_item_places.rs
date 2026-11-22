@@ -3655,6 +3655,14 @@ pub(super) mod tests {
         use std::sync::{atomic::AtomicUsize, mpsc};
         use sunrise_client::lan::{PlayerSender, conn::transaction_packets::Scope};
 
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_item_places::tests::crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat",
+            "SUNRISE_CRAFTED_BY_PACKET_REFUSAL_CASE",
+            &["run"],
+        ) {
+            return;
+        }
+
         let (send, receive) = mpsc::channel();
         // A real bounded LAN sender with no room left to reserve another packet.
         let sender = PlayerSender::new(send, Arc::new(AtomicUsize::new(usize::MAX)));
