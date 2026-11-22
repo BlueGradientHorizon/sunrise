@@ -911,7 +911,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         // Per-submit sorting keeps each display's background quad immediately before its glyph quad.
         let st_quads = see_through.as_chunks::<4>().0;
         assert_eq!(st_quads.len(), 8);
-        for pair in st_quads.chunks_exact(2) {
+        for pair in st_quads.as_chunks::<2>().0 {
             assert_ne!(pair[0][0].color, 0xFFFF_FFFF, "background precedes glyph");
             assert_eq!(
                 pair[1][0].color, 0xFFFF_FFFF,
