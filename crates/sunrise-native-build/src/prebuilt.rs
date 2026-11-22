@@ -537,6 +537,15 @@ fn rustc(rust: &dyn Toolchain, game: &Path, out: &Path, edition: &str) -> Comman
     cmd
 }
 
+/// Find runtime dependencies beside the dylib, not relative to the executable. On Linux keep
+/// DT_RPATH rather than DT_RUNPATH so the search path also applies to transitive dependencies.
+/// The SDK release smoke build also reads this list.
+pub(super) fn dylib_rpath_args(os: &str) -> impl Iterator<Item = &'static str> + '_ {
+    include_str!("dylib-link-args.txt")
+        .lines()
+        .filter_map(move |line| line.strip_prefix(os)?.strip_prefix(' '))
+}
+
 /// rustc with the prebuilt game's settings and only `search` as dependency search paths.
 pub fn rustc_with(rust: &dyn Toolchain, search: &[&Path], edition: &str) -> Command {
     let mut cmd = rust.command(&rust.rustc());
@@ -549,12 +558,8 @@ pub fn rustc_with(rust: &dyn Toolchain, search: &[&Path], edition: &str) -> Comm
         "-C",
         OPT_LEVEL,
     ]);
-    if let Some(origin) = match std::env::consts::OS {
-        "linux" => Some("-Wl,-rpath,$ORIGIN"),
-        "macos" => Some("-Wl,-rpath,@loader_path"),
-        _ => None,
-    } {
-        cmd.arg("-C").arg(format!("link-arg={origin}"));
+    for arg in dylib_rpath_args(std::env::consts::OS) {
+        cmd.arg("-C").arg(format!("link-arg={arg}"));
     }
     for folder in search {
         cmd.arg("-L")
@@ -1093,7 +1098,7 @@ pub fn compiling(id: &str) -> String {
 
 /// The launcher's settings for a kept registry build: bumped whenever the launcher changes the
 /// cargo arguments, the compiler plan or how it stages, so a build made the old way is not reused.
-const KEPT_BUILD_FLAGS: u32 = 2;
+const KEPT_BUILD_FLAGS: u32 = 3;
 
 /// The folder a registry build's cargo output is kept in, under `native/prebuilt-build`: one per
 /// game build, Rust toolchain and launcher settings ([`KEPT_BUILD_FLAGS`]). Inside one, cargo's
@@ -1523,13 +1528,22 @@ mod tests {
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect();
         assert!(args.iter().any(|arg| arg == "prefer-dynamic"), "{args:?}");
-        let rpath = match std::env::consts::OS {
-            "linux" => Some("link-arg=-Wl,-rpath,$ORIGIN"),
-            "macos" => Some("link-arg=-Wl,-rpath,@loader_path"),
-            _ => None,
-        };
-        if let Some(rpath) = rpath {
-            assert!(args.iter().any(|arg| arg == rpath), "{args:?}");
+        let link_args: Vec<_> = args
+            .iter()
+            .filter_map(|arg| arg.strip_prefix("link-arg="))
+            .collect();
+        for (os, expected) in [
+            (
+                "linux",
+                &["-Wl,--disable-new-dtags", "-Wl,-rpath,$ORIGIN"][..],
+            ),
+            ("macos", &["-Wl,-rpath,@loader_path"][..]),
+            ("windows", &[][..]),
+        ] {
+            assert!(dylib_rpath_args(os).eq(expected.iter().copied()), "{os}");
+            if os == std::env::consts::OS {
+                assert_eq!(link_args.as_slice(), expected, "{args:?}");
+            }
         }
     }
 
