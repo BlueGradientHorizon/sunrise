@@ -224,8 +224,7 @@ pub(super) fn travel(
         }
     })
 }
-/// `Guardian.aiStep`'s `clientSideTailAnimation` and
-/// `clientSideSpikesAnimation` (the server's and a client's).
+/// `Guardian.aiStep`'s client-only tail and spikes animation update.
 pub fn tail_and_spikes(m: &mut Mob) {
     let moving = m.extra.flag2;
     let in_water = m.fluids.in_water;
