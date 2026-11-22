@@ -1,0 +1,2 @@
+sunrise-client game::entity_sizes::tests::a_client_copy_asks_once_when_its_synched_pose_changes_to_sleeping lib daily resources
+sunrise-client game::entity_sizes::tests::a_client_copys_box_and_hitbox_outline_take_the_answer lib daily resources

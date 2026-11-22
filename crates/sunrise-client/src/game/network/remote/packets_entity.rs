@@ -333,6 +333,10 @@ impl Game<'_> {
         self.remote_object_data(id, single);
         self.remote_projectile_data(id, single);
         self.remote_dragon_data(id, single);
+        // `EntityEvent.Size` when this value changed the mob's pose or size
+        // (`onSyncedDataUpdated(DATA_POSE)` → `refreshDimensions`, and the
+        // values a species' size follows).
+        self.native_remote_mob_size(id as u32);
     }
 
     /// `C::SetEquipment`: its arms of `apply_packet`, guard and order kept.

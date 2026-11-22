@@ -82,6 +82,8 @@ impl Game<'_> {
                 },
             );
         }
+        // `EntityEvent.Size` from the copy's constructor (`refreshDimensions`).
+        self.native_remote_mob_size(id as u32);
     }
 
     pub(in crate::game) fn detach_remote_tracking_entity(&mut self, id: i32) {
