@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real locator packets for player effect refreshes and saved effect promotion."""
 import argparse
+from os import pathsep
 from pathlib import Path
 import subprocess
 
@@ -46,10 +47,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path)
     parser.add_argument('--work-dir', type=Path)
-    parser.add_argument('--reference-only', action='store_true')
     args = parser.parse_args()
-    if args.reference_only and args.binary is None:
-        parser.error('--reference-only needs --binary to skip the game build')
     name = args.work_dir.resolve() if args.work_dir else NAME
     binary = args.binary.resolve() if args.binary else None
     lock, build, java, native, client = locator.sides(name, binary)
@@ -57,11 +55,11 @@ def main():
     # Two servers load the identical synthetic save through PlayerDataStorage.
     playerdata = world / 'players' / 'data'
     playerdata.mkdir(parents=True, exist_ok=True)
+    classpath = java[java.index('-cp') + 1]
     with (build / 'write-player-fixture.log').open('w') as log:
         source = locator.lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/WaypointEffectSave.java'
-        subprocess.run(['java', '-cp', java[java.index('-cp') + 1], source, playerdata],
-                       stdout=log, stderr=subprocess.STDOUT, check=True)
-    server_jar = Path(java[java.index('-cp') + 1].split(locator.os.pathsep)[0])
+        subprocess.run(['java', '-cp', classpath, source, playerdata], stdout=log, stderr=subprocess.STDOUT, check=True)
+    server_jar = Path(classpath.split(pathsep)[0])
     commands.install_datapack_fixtures(world, {}, FUNCTION, server_jar)
 
     def run(label, server):
@@ -84,9 +82,6 @@ def main():
         ('step=same-tick-refresh', 'track'),
     ]
     assert [tuple(line.split()[1:3]) for line in reference] == expected, reference
-    if args.reference_only:
-        print(f'Effect waypoint packets: real {lock["minecraft"]["version"]} reference guards passed')
-        return 0
     actual, native_promoted = run('sunrise', native)
     passed = native_promoted and actual == reference
     locator.lab.write_json(build / 'report.json', {'minecraft': lock['minecraft']['version'],
