@@ -851,7 +851,7 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
         }
         fn key_pressed(
             &mut self,
-            _host: &mut dyn ClientHost,
+            host: &mut dyn ClientHost,
             key: &str,
             repeat: bool,
             _modifiers: u32,
@@ -860,6 +860,9 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 .lock()
                 .unwrap()
                 .push(format!("key_down:{key}:{repeat}"));
+            if key == "key.keyboard.x" {
+                host.close_screen();
+            }
             true
         }
         fn key_released(&mut self, _host: &mut dyn ClientHost, key: &str, _modifiers: u32) -> bool {
@@ -994,6 +997,20 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 events.iter().any(|e| e == "render:55,30:true:true"),
                 "{events:?}"
             );
+
+            // The focused custom child is blurred on close, including when it is
+            // temporarily extracted and closes the screen from its own callback.
+            assert!(game.close_screen());
+            assert_eq!(take_log(&log), ["focus:false"]);
+            assert!(game.mod_screen_open("panic_mod"));
+            game.sync_mounted_focus(game.mounted_widget_targets()[0]);
+            assert!(game.mounted_widget_key_pressed(KeyCode::KeyX, false, 0));
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(
+                take_log(&log),
+                ["focus:true", "key_down:key.keyboard.x:false", "focus:false"]
+            );
+            assert!(game.mod_screen_open("panic_mod"));
 
             // 1) Panic in Button on_press disables only the button and queues a panic notice.
             move_mouse(game, win_id, 40.0, 60.0);

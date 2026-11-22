@@ -110,12 +110,14 @@ impl MountedScreenWidgets {
     /// Bump the screen-widget generation, clear focus/drag state, and dispose all entries.
     pub(super) fn clear(&self) {
         self.generation.set(self.generation.get().wrapping_add(1));
-        let entries = {
+        let (mut entries, focused) = {
             let mut inner = self.inner.borrow_mut();
-            inner.focused = None;
             inner.dragging = None;
-            std::mem::take(&mut inner.entries)
+            (std::mem::take(&mut inner.entries), inner.focused.take())
         };
+        if let Some(entry) = focused.and_then(|idx| entries.get_mut(idx)?.as_mut()) {
+            entry.apply_focus(false);
+        }
         for entry in entries.into_iter().flatten() {
             entry.dispose();
         }
@@ -536,9 +538,12 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
     ) -> Option<R> {
         let generation = self.screen_state.widgets.generation();
-        let mut entry = {
+        let (mut entry, focused) = {
             let mut inner = self.screen_state.widgets.inner.borrow_mut();
-            inner.entries.get_mut(idx)?.take()?
+            (
+                inner.entries.get_mut(idx)?.take()?,
+                inner.focused == Some(idx),
+            )
         };
         if entry.disabled || !entry.owner.is_enabled() {
             entry.disabled = true;
@@ -565,6 +570,10 @@ impl Game<'_> {
                 entry.dispose();
             }
         } else {
+            // Teardown could not blur this entry while it was out of the table.
+            if focused {
+                entry.apply_focus(false);
+            }
             entry.dispose();
         }
         Some(result)
