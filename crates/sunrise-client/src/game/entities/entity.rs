@@ -832,6 +832,43 @@ macro_rules! stored_motion {
     };
 }
 
+/// Apply the common non-damage `Entity` writes to the state the mover actually owns.
+/// An absent field means this mover does not track that effect.
+pub(super) fn apply_contact_writes(
+    writes: Vec<mod_api::EntityWrite>,
+    velocity: &mut Vec3,
+    mut fall_distance: Option<&mut f64>,
+    mut stuck: Option<&mut Vec3>,
+    mut fire_ticks: Option<&mut i32>,
+) {
+    use mod_api::EntityWrite;
+    for write in writes {
+        match write {
+            EntityWrite::Push([x, y, z]) => *velocity = velocity.add_vector(Vec3::new(x, y, z)),
+            EntityWrite::SetMovement([x, y, z]) => *velocity = Vec3::new(x, y, z),
+            EntityWrite::StuckIn([x, y, z]) => {
+                if let Some(stuck) = stuck.as_deref_mut() {
+                    *stuck = Vec3::new(x, y, z);
+                }
+                if let Some(fall) = fall_distance.as_deref_mut() {
+                    *fall = 0.0;
+                }
+            }
+            EntityWrite::ResetFallDistance => {
+                if let Some(fall) = fall_distance.as_deref_mut() {
+                    *fall = 0.0;
+                }
+            }
+            EntityWrite::SetFireTicks(ticks) => {
+                if let Some(fire) = fire_ticks.as_deref_mut() {
+                    *fire = ticks;
+                }
+            }
+            EntityWrite::AddEffect { .. } | EntityWrite::Hurt { .. } => {}
+        }
+    }
+}
+
 impl Game<'_> {
     /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
     pub(super) fn nonliving_fall_on(
@@ -960,10 +997,8 @@ impl Game<'_> {
         }
     }
 
-    /// A typed entity write an `entity_inside` part queued for an item, applied
-    /// in its own tick. An item takes no effects and keeps no stuck multiplier
-    /// (its tick's friction reads none): `StuckIn` scales the movement once,
-    /// `AddEffect` is skipped, as vanilla's items keep no effect list.
+    /// Apply a contact Part's write to the moving item. Items hold a multiplier
+    /// for the next move (`makeStuckInBlock`), but keep no active effects.
     fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
@@ -972,11 +1007,8 @@ impl Game<'_> {
             }
             mod_api::EntityWrite::SetMovement(v) => item.velocity = triple(v),
             mod_api::EntityWrite::StuckIn(v) => {
-                item.velocity = Vec3::new(
-                    item.velocity.x * v[0],
-                    item.velocity.y * v[1],
-                    item.velocity.z * v[2],
-                );
+                item.stuck = triple(v);
+                item.fall_distance = 0.0;
             }
             mod_api::EntityWrite::Hurt { amount } => {
                 self.hurt_moving_item(item, amount);
@@ -1126,6 +1158,38 @@ impl Game<'_> {
         }
     }
 
+    /// Step on the retained block before the simulating body's inside scan.
+    /// Client copies edit motion only; the server hands the writes to the body owner.
+    pub(super) fn body_step_on(
+        &mut self,
+        entity: (u32, &str),
+        footprint: (Vec3, Aabb),
+        ground: &sunrise_world::ground_support::GroundState,
+        velocity: &mut Vec3,
+    ) -> Vec<mod_api::EntityWrite> {
+        use sunrise_client::block_contact::{StepLevel, step_listens, step_on};
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        if self.options.execution_role.is_client() || self.remote.is_some() {
+            motion.step_on(entity, footprint, ground, velocity);
+            return Vec::new();
+        }
+        let Some(step) = motion.step_contact(entity, footprint, ground, velocity) else {
+            return Vec::new();
+        };
+        if !step_listens(step.contact.state) {
+            return Vec::new();
+        }
+        let mut level = sunrise_client::health::DamageLevel::of(
+            &mut self.world,
+            self.pack.assets.registry,
+            Some(world_items!(self)),
+            Some(&self.pack.block_registries),
+            &self.damage_hooks,
+        );
+        step_on(StepLevel::Server(&mut level), step, velocity)
+    }
+
     pub(super) fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
@@ -1164,13 +1228,6 @@ impl Game<'_> {
             item.velocity =
                 self.finish_body_restitution((item.id, "minecraft:item"), item.position, response);
         }
-        if !client {
-            // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
-            self.sweep_item_inside(item);
-            if item.health <= 0 {
-                return (false, true);
-            }
-        }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);
             let position = item.position;
@@ -1201,14 +1258,27 @@ impl Game<'_> {
                 return (false, true);
             }
         }
-        item.finish_move_block_effects(
-            &self.world,
-            self.res.facts(),
-            no_physics,
-            Some(&self.res.motion().blocks),
-            step,
-            &self.loop_context,
-        );
+        if !no_physics {
+            item.apply_move_speed(self.body_motion(&game_side!(self)), step);
+            for write in self.body_step_on(
+                (item.id, "minecraft:item"),
+                (item.position, item.bounds()),
+                &item.ground,
+                &mut item.velocity,
+            ) {
+                self.apply_item_write(item, write);
+                if item.health <= 0 {
+                    return (false, true);
+                }
+            }
+            if !client {
+                self.sweep_item_inside(item);
+                if item.health <= 0 {
+                    return (false, true);
+                }
+            }
+        }
+        item.finish_move_block_effects(&self.world, self.res.facts(), step);
         item.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1219,7 +1289,6 @@ impl Game<'_> {
             &self.world,
             self.pack.assets.registry,
             self.res.facts(),
-            no_physics,
             step,
             &self.loop_context,
             self,
