@@ -187,7 +187,7 @@ mod generated {
         // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
-            ClientCommandRegistration, Command, CommandRegistration, Dispensed, InteractionResult,
+            ClientCommandRegistration, CommandRegistration, Dispensed, InteractionResult,
             MapDecoration, MapInfo,
         };
         #[derive(Clone)]
