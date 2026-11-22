@@ -169,8 +169,36 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
     });
 }
 
+#[derive(Clone, Default)]
+struct GiveJoin(std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
+
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for GiveJoin {
+    fn item_toss(&self, _: &mut dyn ServerHost, _: &mut mod_api::ItemTossEvent) -> mod_api::Flow {
+        mod_api::Flow::Cancel
+    }
+
+    fn entity_join_level(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::EntityJoinLevelEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.kind == "minecraft:item" && !event.loaded_from_disk {
+            assert_eq!(event.dimension, NETHER);
+            let item = host
+                .item_entity(host.entity(event.entity).unwrap())
+                .unwrap();
+            assert_eq!(item.pickup_delay(host), Some(0));
+            assert_eq!(item.target(host), Some(13));
+            self.0.lock().unwrap().push(event.entity);
+        }
+        mod_api::Flow::Continue
+    }
+}
+
 /// A guest borrowed into an Overworld turn while they are in the Nether gets a give's
-/// overflow in the Nether and cannot throw a stack in the Overworld.
+/// overflow in the Nether, even when a mod vetoes player tosses. The item joins with
+/// its pickup metadata already set. The guest cannot throw a stack in the Overworld.
 #[test]
 #[ignore = "daily"]
 fn a_give_to_a_borrowed_player_drops_in_their_level() {
@@ -193,18 +221,32 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
             .unwrap();
         let player = game.player(13).unwrap();
         let before = dropped(game);
-        let (given, thrown) = game
-            .as_guest(13, |game| {
-                let host: &mut dyn ServerHost = game;
-                let given = player.give_stack(host, diamond.clone());
-                let thrown = player.drop_stack(host, diamond.clone(), true);
-                (given, thrown)
-            })
-            .unwrap();
-        assert_eq!(given, Ok(None));
-        assert_eq!(thrown, Ok(Some(diamond)));
-        assert_eq!(game.dim, Dim::Overworld);
-        assert_eq!(dropped(game), [before[0], before[1] + 1]);
+        let joined = GiveJoin::default();
+        let mods = vec![mod_api::ModEntry::new(
+            "give_join",
+            Box::new(joined.clone()),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let (given, thrown) = game
+                .as_guest(13, |game| {
+                    let host: &mut dyn ServerHost = game;
+                    let given = player.give_stack(host, diamond.clone());
+                    let thrown = player.drop_stack(host, diamond.clone(), true);
+                    (given, thrown)
+                })
+                .unwrap();
+            assert_eq!(given, Ok(None));
+            assert_eq!(thrown, Ok(Some(diamond)));
+            assert_eq!(game.dim, Dim::Overworld);
+            assert_eq!(dropped(game), [before[0], before[1] + 1]);
+        });
+        game.enter_level(Dim::Nether).unwrap();
+        let item = game.dropped.last().unwrap();
+        assert_eq!(
+            (&*item.stack.item, item.stack.count),
+            ("minecraft:diamond", 1)
+        );
+        assert_eq!(*joined.0.lock().unwrap(), [item.id]);
     });
 }
 
