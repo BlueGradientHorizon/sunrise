@@ -1,6 +1,7 @@
 //! Client-only surfaces: screens, input, sound, drawing and options.
 
 pub(crate) mod audio_stream;
+pub(crate) mod block_extra_models;
 pub(crate) mod block_state_definition;
 pub(crate) mod client_executor;
 // hidden: a module of game-side types; mods use their re-exports
