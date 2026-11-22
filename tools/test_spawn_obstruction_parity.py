@@ -36,11 +36,16 @@ def main():
     with inputs.open("w", encoding="utf-8") as stream:
         for i, (name, installation, kind, dx, nbt, _, _) in enumerate(cases):
             z = 8.5 + 16 * i
-            mode = "obstruction_batch" if installation == "batch" else "obstruction"
-            player = f" p0=4.5,64,{z}" if installation == "batch" else ""
+            if installation.startswith("admission-"):
+                mode = "obstruction_admission"
+                nbt = nbt.replace('id:"spawn_fixture:relay"', 'id:"minecraft:item_display"')
+            else:
+                mode = "obstruction_batch" if installation == "batch" else "obstruction"
+            player = f" p0=4.5,64,{z}" if mode != "obstruction" else ""
             stream.write(f"{name} mode={mode} installation={installation} type={kind} dx={dx} "
                          f"entity_data={nbt} z={z}{player}\n")
-    names_and_modes = [(name, "batch" if installation == "batch" else "obstruction")
+    names_and_modes = [(name, "admission" if installation.startswith("admission-") else
+                        "batch" if installation == "batch" else "obstruction")
                        for name, installation, *_ in cases]
     lock, jars, libraries = base.verify_artifacts()
     sourcepath = lab.ROOT / "mods/sunrise/src/test/java"
@@ -64,8 +69,7 @@ def main():
             raise SystemExit(f"missing recording {file.name}; see the private logs")
         rows = [line.split() for line in file.read_text(encoding="utf-8").splitlines()]
         if [tuple(row[:2]) for row in rows] != names_and_modes or any(
-            len(row) != 4 or any(value not in (("true", "false") if row[1] == "obstruction" else ("0", "1", "2"))
-                                 for value in row[2:]) for row in rows
+            len(row) != 4 for row in rows
         ):
             raise SystemExit(f"incomplete or invalid recording {file.name}; see the private logs")
         return [row[2:] for row in rows]
@@ -87,10 +91,14 @@ def main():
                        SUNRISE_SPAWN_OBSTRUCTION_RECORDING=work / "rust.txt")
     status = run("rust", [args.test_binary.resolve(), FIXTURE, "--exact", "--ignored"], env)
     rust = read_recording(work / "rust.txt")
-    differences = {metric: [] for metric in ("collision", "obstruction", "accepted", "yaw")}
+    columns = {
+        "batch": ("accepted", "yaw"),
+        "obstruction": ("collision", "obstruction"),
+        "admission": ("tick_and_residents", "preview_and_installed_queries"),
+    }
+    differences = {metric: [] for pair in columns.values() for metric in pair}
     for (name, mode), ref, got in zip(names_and_modes, vanilla, rust):
-        metrics = ("accepted", "yaw") if mode == "batch" else ("collision", "obstruction")
-        for metric, want, actual in zip(metrics, ref, got):
+        for metric, want, actual in zip(columns[mode], ref, got):
             if want != actual:
                 differences[metric].append(name)
     lab.write_json(work / "report.json", dict(minecraft=version, cases=len(cases), **differences, test_exit=status))

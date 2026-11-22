@@ -2,13 +2,14 @@ use super::*;
 use std::fmt::Write;
 use sunrise_client::mobs::{
     finalize::FinalizeLevel as _,
-    spawner::{Spawner, SpawnerExt, SpawnerSpawn},
+    spawner::{Spawner, SpawnerEvent, SpawnerExt, SpawnerLevel, SpawnerSpawn},
 };
 use sunrise_core::nbt::parse_snbt;
 use sunrise_core::random::{InvalidBound, PositionalRandom};
 
 /// Two attempts at y=64 with a common z and a specified x displacement.
 /// No other draws should occur with this configured spawner and fixed delay.
+#[derive(Clone)]
 struct Attempts {
     doubles: std::array::IntoIter<f64, 8>,
     heights: usize,
@@ -68,7 +69,65 @@ impl PositionalRandom for Attempts {
     }
 }
 
-fn spawner_batch(game: &mut Game<'_>, z: f64, dx: f64, id: &str, nbt: &str) -> (usize, usize) {
+/// A registered, non-colliding relay with vanilla's item display as the
+/// oracle's equivalent. Scope the declarations to this child fixture.
+struct DeclareRelay;
+
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for DeclareRelay {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.declare_general_entity(
+            "relay",
+            mod_api::GeneralEntityCategory::Misc,
+            0.1,
+            0.1,
+            None,
+            mod_api::GeneralSavePolicy::Save,
+            false,
+            false,
+            None,
+            8,
+            3,
+            1,
+            &[],
+        )
+        .unwrap();
+    }
+}
+
+fn admission_queries(level: &GameLevel<'_, '_>, z: f64) -> String {
+    // Beyond the root zombie's box, but inside a shulker's box. Count all
+    // shulkers in the two-attempt area (not the distant resident control).
+    let pig = level.game.res.mob_types().get("minecraft:pig").unwrap();
+    let probe = spawn_selection::spawn_aabb(
+        Species::Pig,
+        9.35,
+        64.0,
+        z,
+        pig.width as f32,
+        pig.height as f32,
+    );
+    let nearby = Aabb::new(
+        Vec3::new(7.0, 63.0, z - 1.0),
+        Vec3::new(11.0, 66.0, z + 1.0),
+    );
+    let clear = level.no_collision(probe);
+    assert_eq!(PassLevel::new(level).no_collision(probe), clear);
+    format!(
+        "{clear}:{}:{}",
+        level.unobstructed(probe),
+        level.count_entities("minecraft:shulker", nearby)
+    )
+}
+
+fn spawner_batch(
+    game: &mut Game<'_>,
+    z: f64,
+    dx: f64,
+    id: &str,
+    nbt: &str,
+    installation: &str,
+) -> (String, String) {
     let (Tag::Compound(mut entity), _) = parse_snbt(nbt).unwrap() else {
         panic!("expected a compound");
     };
@@ -78,6 +137,16 @@ fn spawner_batch(game: &mut Game<'_>, z: f64, dx: f64, id: &str, nbt: &str) -> (
         "MinSpawnDelay:20s,MaxSpawnDelay:20s,SpawnPotentials:[],SpawnData:{custom_spawn_rules:{},entity:{id:\"minecraft:pig\"}}}"
     )).unwrap().0);
     spawner.next_data_mut().unwrap().entity = entity;
+    if installation == "admission-resident" {
+        assert!(
+            game.summon_with_nbt("minecraft:shulker", [2.5, 64.0, z], "{UUID:[I;0,0,0,101]}")
+                .unwrap()
+                .is_some()
+        );
+    }
+    if installation == "admission-intra" {
+        spawner.spawn_count = 1;
+    }
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, z)).unwrap(),
     );
@@ -93,16 +162,93 @@ fn spawner_batch(game: &mut Game<'_>, z: f64, dx: f64, id: &str, nbt: &str) -> (
         assert!(!r.finalize);
         game.plan_spawner_mob(l, r, None, &mut planned, &mut own)
     };
+    let mut events = Vec::new();
     spawner.server_tick(
         &level,
         &mut random,
         [8, 64, z as i32],
         &mut spawn,
-        &mut Vec::new(),
+        &mut events,
     );
-    assert_eq!(random.doubles.len(), 0);
-    assert_eq!(random.heights, 2);
-    (planned.len(), random.yaws)
+    assert_eq!(random.doubles.len(), 8 - 4 * random.heights);
+    if installation == "batch" {
+        assert_eq!(random.heights, 2);
+        return (planned.len().to_string(), random.yaws.to_string());
+    }
+    let preview = admission_queries(&level, z);
+    let created = level.spawned.take();
+    let rides = level.rides.take();
+    drop(level);
+    let mob_start = game.mobs.len();
+    let general_start = game.resident_entities.general.rows.len();
+    let roots = game.add_planned(planned, created, rides);
+    let mut installed: Vec<_> = game
+        .mobs
+        .iter()
+        .skip(mob_start)
+        .map(|mob| (mob.id, mob.kind.id.strip_prefix("minecraft:").unwrap()))
+        .chain(
+            game.resident_entities
+                .general
+                .rows
+                .iter()
+                .skip(general_start)
+                .map(|row| (row.id, "relay")),
+        )
+        .collect();
+    installed.sort_unstable_by_key(|&(id, _)| id);
+    let installed = if installed.is_empty() {
+        "-".into()
+    } else {
+        installed
+            .iter()
+            .map(|&(_, kind)| kind)
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let mut effects = [0; 4];
+    for event in events {
+        match event {
+            SpawnerEvent::LevelEvent(2004) => effects[0] += 1,
+            SpawnerEvent::EntityPlace(key, _) => {
+                assert!(roots.contains_key(&key));
+                effects[1] += 1;
+            }
+            SpawnerEvent::SpawnAnim(key) => {
+                assert!(roots.contains_key(&key));
+                effects[2] += 1;
+            }
+            SpawnerEvent::BlockEvent(1) => effects[3] += 1,
+            _ => {}
+        }
+    }
+    let actual = admission_queries(&game.natural_level(), z);
+    (
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}:{}:{installed}",
+            roots.len(),
+            random.heights,
+            random.yaws,
+            spawner.spawn_delay,
+            effects[0],
+            effects[1],
+            effects[2],
+            effects[3]
+        ),
+        format!("{preview}/{actual}"),
+    )
+}
+
+fn with_relay(test: impl FnOnce(&mut Game<'_>)) {
+    mod_platform::__private::initialize().unwrap();
+    let _phase = mod_platform::__private::RegistrationGuard::open();
+    let mods = vec![mod_api::ModEntry::new(
+        "spawn_fixture",
+        Box::new(DeclareRelay),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        crate::game::native_entity_refs::tests::with_game(test);
+    });
 }
 
 #[test]
@@ -111,7 +257,7 @@ fn spawn_entity_obstruction() {
     crate::game::in_own_process(
         "game::natural_spawning::spawn_obstruction_fixture::spawn_entity_obstruction",
         || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
+            with_relay(|game| {
                 let cases = include_str!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/../../tests/fixtures/spawn_obstruction.tsv"
@@ -135,12 +281,15 @@ fn spawn_entity_obstruction() {
                         (0, i as i32),
                         std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, i as i32)),
                     );
-                    if installation == "batch" {
-                        let (accepted, yaws) = spawner_batch(game, z, dx, id, data);
-                        writeln!(output, "{name} batch {accepted} {yaws}").unwrap();
-                        if (accepted, yaws)
-                            != (clear.parse().unwrap(), unobstructed.parse().unwrap())
-                        {
+                    if installation == "batch" || installation.starts_with("admission-") {
+                        let (first, second) = spawner_batch(game, z, dx, id, data, installation);
+                        let mode = if installation == "batch" {
+                            "batch"
+                        } else {
+                            "admission"
+                        };
+                        writeln!(output, "{name} {mode} {first} {second}").unwrap();
+                        if (first.as_str(), second.as_str()) != (clear, unobstructed) {
                             failures.push(name);
                         }
                         continue;

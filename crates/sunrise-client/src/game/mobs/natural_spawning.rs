@@ -337,6 +337,8 @@ pub(super) struct GameLevel<'g, 'a> {
     pub(super) player_squares: std::cell::OnceCell<PlayerSquares>,
     /// Mobs accepted during this pass, not yet inserted in the game's lists.
     pending: std::cell::RefCell<Vec<PendingMob>>,
+    /// UUIDs reserved by configured spawner trees in this pass (both families).
+    pending_uuids: std::cell::RefCell<sunrise_core::fast_hash::FxHashSet<[i32; 4]>>,
     /// The mobs this pass's finalizeSpawn calls made (jockeys and mounts),
     /// and the chicken-jockey links on mobs already in the game's list, both
     /// applied by [`Game::add_spawned`].
@@ -448,24 +450,31 @@ impl GameLevel<'_, '_> {
             });
         }
     }
-    /// `EntityType.loadPassengersRecursive`: each mob riding the accepted
-    /// NBT tree is visible to the next attempt, including indirect riders.
-    /// The geometry-only copy does not run construction hooks or consume the
-    /// level's random; the actual passenger is constructed on insertion.
-    pub(super) fn record_pending_mob_passengers(&self, vehicle: &Tag) {
-        if let Some(Tag::List(passengers)) = vehicle.get("Passengers") {
-            for tag in passengers {
-                if let Some(mob) = sunrise_client::entity_nbt::mob_from_nbt_remote(
-                    tag,
-                    self.game.res.mob_types(),
-                    0,
-                    Some(self.game.pack.assets.registry),
-                ) {
-                    self.record_pending(&mob);
-                    self.record_pending_mob_passengers(tag);
+    pub(super) fn admit_pending_tree(&self, tree: &mut super::persist::SpawnTree) -> bool {
+        if !tree.admit(&mut self.pending_uuids.borrow_mut(), |uuid| {
+            use sunrise_client::join_seq::residency::table::EntityLookup;
+            let game = self.game;
+            let mut after = None;
+            loop {
+                // Release the table before resolving the candidate's owner.
+                let next = game
+                    .resident_entities
+                    .table
+                    .borrow_mut()
+                    .level_uuid_candidate(game.dim.key(), uuid, after);
+                let Some(id) = next else { return false };
+                if !matches!(game.server_resident_entity(id.get()), EntityLookup::Missing) {
+                    return true;
                 }
+                after = Some(id);
             }
+        }) {
+            return false;
         }
+        for mob in tree.resident_mobs() {
+            self.record_pending(mob);
+        }
+        true
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
         Some(world_biomes!(self.game).get(self.game.world.noise_biome(x, y, z)?))
@@ -1059,6 +1068,7 @@ impl<'a> Game<'a> {
             nearest,
             player_squares: Default::default(),
             pending: Default::default(),
+            pending_uuids: Default::default(),
             spawned: Default::default(),
             rides: Default::default(),
             provisional: Default::default(),
