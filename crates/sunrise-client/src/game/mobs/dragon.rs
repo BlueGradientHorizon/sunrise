@@ -882,9 +882,10 @@ impl Dragon {
         } else {
             damage
         };
-        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects, so
-        // Armor still runs at its enclosing site with a 0.0 starting reduction before Pre.
-        dealt = container.reduce(Reduction::Armor, dealt, dealt - dealt, dealt);
+        // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects.
+        // NeoForge still subtracts the armor-stage answer from the live container amount before Pre.
+        let before_armor = container.new_damage();
+        dealt = container.reduce(Reduction::Armor, before_armor, before_armor - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
         container.record_new_damage(dealt);
         level.damage_pre(hurting, &mut container);
