@@ -237,7 +237,7 @@ pub struct SystemToastLayout {
 }
 
 impl SystemToastLayout {
-    /// `Toast.occupiedSlotCount`: one slot per 32 pixels of height, rounding up.
+    /// `Toast.occcupiedSlotCount`: one slot per 32 pixels of height, rounding up.
     pub fn slots(&self) -> usize {
         self.height.div_ceil(32)
     }
