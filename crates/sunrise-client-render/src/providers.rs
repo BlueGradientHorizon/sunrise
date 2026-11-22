@@ -2,7 +2,7 @@
 //! fuel times, brewing times), evaluated from the data pack's JSON.
 mod evaluation;
 
-pub use evaluation::Evaluation;
+pub use evaluation::{ConditionContext, Evaluation};
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path};
 
@@ -49,6 +49,29 @@ impl Providers {
             );
         }
         Self { ints, floats }
+    }
+    /// The world's registry definitions: the enabled pack winner replaces
+    /// each resource-root entry before the world publishes its tables.
+    pub fn load_with(
+        root: &Path,
+        overlay: &sunrise_world::loot::PackOverlay<'_>,
+    ) -> Result<Self, String> {
+        let mut providers = Self::load(root);
+        for (kind, table) in [
+            ("context_int_provider", &mut providers.ints),
+            ("context_float_provider", &mut providers.floats),
+        ] {
+            for (id, files) in overlay.kind(kind) {
+                let value = serde_json::from_slice(sunrise_world::loot::PackOverlay::top(files))
+                    .map_err(|error| format!("{kind} {id}: {error}"))?;
+                if overlay.conditions.allows_id(&value, kind, id) {
+                    table.insert(id.to_owned(), value);
+                } else {
+                    table.remove(id);
+                }
+            }
+        }
+        Ok(providers)
     }
     /// The accepted definitions used by provider evaluation, never a resource-file inventory.
     pub fn registry(&self, registry: &str) -> Option<&HashMap<String, Value>> {

@@ -141,6 +141,9 @@ public final class VanillaFurnaceOracle {
             sb.append(id).append('=').append(String.format(Locale.ROOT, "%08x",
                     Float.floatToRawIntBits(experience.getOrDefault(id, 0.0f))));
         }
+        if (f.length > 14 && f[14].equals("rng")) {
+            sb.append(" rng=").append(w.getRandom().nextInt());
+        }
         return sb.toString();
     }
 

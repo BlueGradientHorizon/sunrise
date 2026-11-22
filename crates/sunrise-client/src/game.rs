@@ -718,7 +718,7 @@ struct WorldRest {
     transformers: sunrise_client::block_transform::Transformers,
     mob_types: HashMap<String, Arc<MobType>>,
     mob_data: sunrise_client::mobs::MobData,
-    providers: Providers,
+    providers: Arc<Providers>,
     block_entity_render: BlockEntityRenderer,
     animate: sunrise_client::animate_tick::AnimateTables,
     fog: sunrise_client::fog::FogTables,
@@ -751,6 +751,7 @@ struct WorldTables {
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
+    providers: Arc<Providers>,
     loot: Arc<sunrise_world::loot::LootData>,
     loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     recipes: Recipes,

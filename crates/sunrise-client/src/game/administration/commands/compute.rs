@@ -3,13 +3,13 @@
 //! context of the source, optionally with a block or a target entity.
 use super::{Arg, Context, Game, R, Target, err};
 use serde_json::Value;
+use sunrise_client::providers::Evaluation;
 use sunrise_client::{
     advancements::{self as adv, EntityView},
     command::CommandError,
     text::Text,
 };
 use sunrise_core::java_number::float_to_string;
-use sunrise_core::random::{LevelRandom, RandomSource};
 
 /// The loot context parameters of `LootContextSources`.
 #[derive(Clone, Copy, Default)]
@@ -131,7 +131,7 @@ impl Game<'_> {
             ),
         };
         if integer {
-            let result = self.provider_int(&provider, &c, 0).map_err(invalid)?;
+            let result = self.provider_int(&provider, &c).map_err(invalid)?;
             self.feedback(exact(result));
             return Ok(result);
         }
@@ -139,7 +139,7 @@ impl Game<'_> {
             Some(Arg::Float(s)) => *s,
             _ => 1.0,
         };
-        let original = self.provider_float(&provider, &c, 0).map_err(invalid)?;
+        let original = self.provider_float(&provider, &c).map_err(invalid)?;
         if !original.is_finite() {
             return Err(invalid(float_to_string(original)));
         }
@@ -174,18 +174,13 @@ impl Game<'_> {
         &mut self,
         v: &Value,
         c: &ComputeContext,
-        depth: u32,
     ) -> Result<i32, Arith> {
-        let resources = self.res.clone();
+        let providers = self.active_providers().clone();
         let mut random = self.world.random.clone();
-        let result = sunrise_client::providers::Evaluation {
-            providers: resources.providers(),
-            random: &mut random,
-            condition: |condition: &Value, random: &mut LevelRandom| {
-                self.compute_condition(condition, c, random)
-            },
-        }
-        .int(v, depth);
+        let mut condition = |condition: &Value, evaluation: &mut Evaluation<'_>| {
+            self.compute_condition(condition, c, evaluation)
+        };
+        let result = Evaluation::new(&providers, &mut random).int(v, &mut condition);
         self.world.random = random;
         result
     }
@@ -194,18 +189,15 @@ impl Game<'_> {
         &mut self,
         v: &Value,
         c: &ComputeContext,
-        depth: u32,
     ) -> Result<f32, Arith> {
-        let resources = self.res.clone();
+        let providers = self.active_providers().clone();
         let mut random = self.world.random.clone();
-        let result = sunrise_client::providers::Evaluation {
-            providers: resources.providers(),
-            random: &mut random,
-            condition: |condition: &Value, random: &mut LevelRandom| {
-                self.compute_condition(condition, c, random)
+        let result = Evaluation::new(&providers, &mut random).float(
+            v,
+            &mut |condition: &Value, evaluation: &mut Evaluation<'_>| {
+                self.compute_condition(condition, c, evaluation)
             },
-        }
-        .float(v, depth);
+        );
         self.world.random = random;
         result
     }
@@ -215,14 +207,16 @@ impl Game<'_> {
         &mut self,
         cond: &Value,
         c: &ComputeContext,
-        random: &mut LevelRandom,
+        evaluation: &mut Evaluation<'_>,
     ) -> bool {
         match cond {
             Value::String(id) => match self.provider_file("minecraft:predicate", id) {
-                Some(def) => self.compute_condition(&def, c, random),
+                Some(def) => self.compute_condition(&def, c, evaluation),
                 None => false,
             },
-            Value::Array(list) => list.iter().all(|x| self.compute_condition(x, c, random)),
+            Value::Array(list) => list
+                .iter()
+                .all(|x| self.compute_condition(x, c, evaluation)),
             Value::Object(o) => {
                 let ty = o
                     .get("type")
@@ -233,19 +227,19 @@ impl Game<'_> {
                 match ty {
                     "inverted" => !o
                         .get("term")
-                        .is_some_and(|x| self.compute_condition(x, c, random)),
+                        .is_some_and(|x| self.compute_condition(x, c, evaluation)),
                     "all_of" => o
                         .get("terms")
                         .and_then(Value::as_array)
                         .into_iter()
                         .flatten()
-                        .all(|x| self.compute_condition(x, c, random)),
+                        .all(|x| self.compute_condition(x, c, evaluation)),
                     "any_of" => o
                         .get("terms")
                         .and_then(Value::as_array)
                         .into_iter()
                         .flatten()
-                        .any(|x| self.compute_condition(x, c, random)),
+                        .any(|x| self.compute_condition(x, c, evaluation)),
                     "match_block" | "block_state_property" => {
                         let Some(p) = c.block else {
                             return false;
@@ -282,10 +276,12 @@ impl Game<'_> {
                             .all(|(k, v)| s.properties.get(k).map(String::as_str) == v.as_str());
                         blocks_ok && props_ok
                     }
-                    "random_chance" => {
-                        let chance = o.get("chance").and_then(Value::as_f64).unwrap_or(0.0) as f32;
-                        random.next_float() < chance
-                    }
+                    "random_chance" => evaluation.random_chance(
+                        o.get("chance").unwrap_or(&Value::Null),
+                        &mut |condition: &Value, evaluation: &mut Evaluation<'_>| {
+                            self.compute_condition(condition, c, evaluation)
+                        },
+                    ),
                     _ => {
                         let source = self.command_source.unwrap_or_else(|| self.player_source());
                         // Scores are read from the holder's board only where
@@ -483,7 +479,7 @@ mod tests {
             .rest
             .get_mut()
             .unwrap()
-            .providers = sunrise_client::providers::Providers::load(&fixture);
+            .providers = sunrise_client::providers::Providers::load(&fixture).into();
         std::fs::remove_dir_all(&fixture).unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
@@ -507,16 +503,14 @@ mod tests {
             assert_eq!(
                 game.provider_int(
                     &json!({"type": "minecraft:add", "inputs": [id, 3]}),
-                    &context,
-                    0
+                    &context
                 ),
                 Ok(20),
             );
             assert_eq!(
                 game.provider_float(
                     &json!({"type": "minecraft:add", "inputs": [id, 0.5]}),
-                    &context,
-                    0
+                    &context
                 ),
                 Ok(3.0),
             );
@@ -528,8 +522,7 @@ mod tests {
                         "type": "minecraft:conditional", "condition": predicate,
                         "on_true": "nested/value", "on_false": -1
                     }),
-                    &context,
-                    0,
+                    &context
                 ),
                 Ok(17),
             );
@@ -540,8 +533,7 @@ mod tests {
                         "cases": [{"condition": predicate, "value": "nested/value"}],
                         "default": -1
                     }),
-                    &context,
-                    0,
+                    &context
                 ),
                 Ok(2.5),
             );
@@ -574,19 +566,15 @@ mod tests {
             ..ComputeContext::default()
         };
         assert_eq!(
-            game.provider_int(&on_target("minecraft:player"), &entity, 0),
+            game.provider_int(&on_target("minecraft:player"), &entity),
             Ok(1)
         );
         assert_eq!(
-            game.provider_int(&on_target("minecraft:cow"), &entity, 0),
+            game.provider_int(&on_target("minecraft:cow"), &entity),
             Ok(0)
         );
         assert_eq!(
-            game.provider_int(
-                &on_target("minecraft:player"),
-                &ComputeContext::default(),
-                0
-            ),
+            game.provider_int(&on_target("minecraft:player"), &ComputeContext::default()),
             Ok(0)
         );
         // `entity_scores` reads the selected holder's live scoreboard value.
@@ -598,7 +586,7 @@ mod tests {
                 "on_true": 1, "on_false": 0
             })
         };
-        assert_eq!(game.provider_int(&scored(5), &entity, 0), Ok(1));
-        assert_eq!(game.provider_int(&scored(4), &entity, 0), Ok(0));
+        assert_eq!(game.provider_int(&scored(5), &entity), Ok(1));
+        assert_eq!(game.provider_int(&scored(4), &entity), Ok(0));
     }
 }

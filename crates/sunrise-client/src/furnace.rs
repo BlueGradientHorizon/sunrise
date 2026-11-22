@@ -234,49 +234,50 @@ impl FurnaceTick<'_> {
     }
 }
 
-/// Test a provider's loot condition in `BaseContainerBlockEntity.getLootContext`.
-/// `world` exposes the live furnace state and block entity (including its slots)
-/// at `pos`. The origin is its centre and the container process has no entity or tool.
-pub fn provider_condition(
-    condition: &serde_json::Value,
-    world: &dyn crate::advancements::World,
-    pos: [i32; 3],
-    random: &mut sunrise_core::random::LevelRandom,
-) -> bool {
-    use crate::advancements as adv;
-    use sunrise_core::random::RandomSource as _;
-    let context = adv::Entities {
-        this: None,
-        target: None,
-        interacting: None,
-        tool: None,
-        block_pos: Some(pos),
-        origin: pos.map(|axis| f64::from(axis) + 0.5),
-    };
-    fn evaluate(
-        v: &serde_json::Value,
-        context: &adv::Entities,
-        world: &dyn adv::World,
-        random: &mut sunrise_core::random::LevelRandom,
+/// Loot conditions in `BaseContainerBlockEntity.getLootContext`: the live
+/// furnace's block state and container, its centre as origin, no entity or tool.
+pub struct FurnaceConditions<'a> {
+    pub world: &'a dyn crate::advancements::World,
+    pub pos: [i32; 3],
+}
+
+impl crate::providers::ConditionContext for FurnaceConditions<'_> {
+    fn test(
+        &mut self,
+        condition: &serde_json::Value,
+        evaluation: &mut crate::providers::Evaluation<'_>,
     ) -> bool {
-        adv::conditions_with(v, context, &mut |leaf, ctx| {
-            if let Some(id) = leaf.as_str() {
-                return world
-                    .predicate(&adv::full(id))
-                    .is_some_and(|v| evaluate(v, ctx, world, random));
-            }
-            adv::literal_random_chance(leaf, &mut || random.next_float())
-                .unwrap_or_else(|| adv::condition_leaf(leaf, ctx, world))
-        })
+        use crate::advancements as adv;
+        let world = self.world;
+        let context = adv::Entities {
+            this: None,
+            target: None,
+            interacting: None,
+            tool: None,
+            block_pos: Some(self.pos),
+            origin: self.pos.map(|axis| f64::from(axis) + 0.5),
+        };
+        adv::references_valid(condition, world)
+            && adv::conditions_with(condition, &context, &mut |leaf, ctx| {
+                if let Some(id) = leaf.as_str() {
+                    return world
+                        .predicate(&adv::full(id))
+                        .is_some_and(|v| self.test(v, evaluation));
+                }
+                // `LootItemRandomChanceCondition.test`: the holder can itself draw
+                // randomness; obtain its safe float before taking the comparison draw.
+                if leaf
+                    .get("condition")
+                    .or_else(|| leaf.get("type"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|kind| adv::full(kind) == "minecraft:random_chance")
+                    && let Some(chance) = leaf.get("chance")
+                {
+                    return evaluation.random_chance(chance, self);
+                }
+                adv::condition_leaf(leaf, ctx, world)
+            })
     }
-    let condition = match condition.as_str() {
-        Some(name) => match world.predicate(&adv::full(name)) {
-            Some(loaded) => loaded,
-            None => return false,
-        },
-        None => condition,
-    };
-    adv::references_valid(condition, world) && evaluate(condition, &context, world, random)
 }
 
 fn total_time(time: u32, speed: f32) -> i32 {
@@ -308,12 +309,11 @@ mod tests {
     ) -> Option<bool> {
         let was_lit = furnace.count_down_burn();
         let plan = furnace.prepare_tick(context, recipes, items, was_lit, |fuel| {
-            Evaluation {
-                providers,
-                random: &mut LevelRandom::for_level(LegacyRandom::new(0)),
-                condition: |_: &serde_json::Value, _: &mut LevelRandom| false,
-            }
-            .cooking_fuel(fuel)
+            Evaluation::new(providers, &mut LevelRandom::for_level(LegacyRandom::new(0)))
+                .cooking_fuel(
+                    fuel,
+                    &mut |_: &serde_json::Value, _: &mut Evaluation<'_>| false,
+                )
         });
         plan.apply(furnace, drops, remainder).lit
     }

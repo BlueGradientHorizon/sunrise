@@ -3,8 +3,8 @@
 
 The Java oracle loads the vanilla data pack's real RecipeManager, puts a
 furnace, blast furnace or smoker in a block-update level and calls the real
-AbstractFurnaceBlockEntity.serverTick. The Rust probe runs FurnaceCooking::tick
-on the chunk's Furnace. Cases cover the burn table (every cooking_fuel item),
+AbstractFurnaceBlockEntity.serverTick. The Rust probe runs the same furnace
+plan and apply steps used by the game. Cases cover the burn table (every cooking_fuel item),
 stack component additions, overrides and removals, including provider references,
 the three kinds' 200/100/100 cook times, fuel stacks and the LIT state, the
 RecipesUsed experience, full output slots, timer decay, and an input changed
@@ -109,6 +109,44 @@ def make_cases(build):
     patch = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:conditional"}}'
     cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=patch),
                        timer=20, total=200, lit=1, littotal=80) + ' fixture')
+    int_fixture = fixture.with_name('context_int_provider')
+    int_fixture.mkdir(exist_ok=True)
+    for n, (left, right) in enumerate([(-(2**31), -1), (-5, 3), (5, -3), (-5, -3)]):
+        (int_fixture / f'floor_mod_{n}.json').write_text(json.dumps(
+            {'type': 'minecraft:floor_mod', 'left': left, 'right': right}))
+        patch = '{"minecraft:cooking_fuel":{burn_time:"test:floor_mod_%d",speed_multiplier:1.25f}}' % n
+        cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=patch), total=200)
+                     + ' fixture')
+
+    # Each file is a valid direct provider definition, referring to the next holder.
+    for folder, terminal in [(int_fixture, 29), (fixture, 1.75)]:
+        deep = folder / 'deep'
+        deep.mkdir(exist_ok=True)
+        for n in range(80):
+            value = terminal if n == 79 else f'test:deep/{n + 1}'
+            (deep / f'{n}.json').write_text(json.dumps({'type': 'minecraft:add', 'inputs': [value]}))
+    patch = '{"minecraft:cooking_fuel":{burn_time:"test:deep/0",speed_multiplier:"test:deep/0"}}'
+    cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=patch), total=200)
+                 + ' fixture')
+
+    # For seed zero, the first uniform probability is smaller than the next
+    # draw. Swapping their order changes the selected branch; omitting either
+    # draw changes the subsequent RNG sample. A condition within the chance
+    # holder also needs the same furnace block context.
+    (fixture / 'chance.json').write_text(json.dumps({
+        'type': 'minecraft:conditional',
+        'condition': {'type': 'minecraft:match_block', 'blocks': 'minecraft:furnace'},
+        'on_true': {'type': 'minecraft:uniform', 'min': 0, 'max': 1},
+        'on_false': 1,
+    }))
+    (fixture / 'rng_order.json').write_text(json.dumps({
+        'type': 'minecraft:conditional',
+        'condition': {'type': 'minecraft:random_chance', 'chance': 'test:chance'},
+        'on_true': 1.25, 'on_false': 2.5,
+    }))
+    patch = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:rng_order"}}'
+    cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=patch), total=200)
+                 + ' fixture rng')
     missing = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:absent"}}'
     cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=missing), total=200))
 
@@ -179,6 +217,8 @@ if __name__ == '__main__':
         'timer decay, and input changed mid-cook. --no-change leaves out the change family.',
         sources=[lab.ROOT / 'crates/sunrise-client-render/src/chunk/block_entity.rs',
                  lab.ROOT / 'crates/sunrise-client-render/src/providers.rs',
+                 lab.ROOT / 'crates/sunrise-client-render/src/providers/evaluation.rs',
+                 lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv',
                  lab.ROOT / 'crates/sunrise-items/src/item_data/cooking_fuel.rs',
                  lab.ROOT / 'crates/sunrise-items/src/properties/resolvable.rs',
                  lab.ROOT / 'crates/sunrise-client/src/furnace.rs',

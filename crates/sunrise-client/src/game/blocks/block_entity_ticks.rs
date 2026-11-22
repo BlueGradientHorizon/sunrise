@@ -603,12 +603,12 @@ impl Game<'_> {
     /// its block's `lit` following it.
     pub(super) fn tick_furnace(&mut self, pos: Pos) -> Result<()> {
         // What the hooks need from before the tick, without cloning stacks: the
-        // fuel's id only while the furnace is out (it can light this tick), the
+        // fuel's id if the furnace can be out after this tick's countdown, the
         // input's id (a last item is gone after it smelts) and the result count.
         let before = match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Furnace(f)) => (
                 f.cooking_timer,
-                (f.lit_remaining <= 0)
+                (f.lit_remaining <= 1)
                     .then(|| f.items[1].as_ref().map(|s| s.item.clone()))
                     .flatten(),
                 f.items[0].as_ref().map(|s| s.item.clone()),
@@ -633,14 +633,19 @@ impl Game<'_> {
             let items = world_items!(self);
             let mut random = self.world.random.clone();
             let plan = furnace.prepare_tick(
-                &self.loop_context, world_recipes!(self), items, was_lit, |fuel| {
-                    sunrise_client::providers::Evaluation {
-                        providers: self.res.providers(),
-                        random: &mut random,
-                        condition: |cond: &serde_json::Value, random: &mut sunrise_core::random::LevelRandom| {
-                            sunrise_client::furnace::provider_condition(cond, &super::advancements::View(self), [pos.0, pos.1, pos.2], random)
-                        },
-                    }.cooking_fuel(fuel)
+                &self.loop_context,
+                world_recipes!(self),
+                items,
+                was_lit,
+                |fuel| {
+                    sunrise_client::providers::Evaluation::new(self.active_providers(), &mut random)
+                        .cooking_fuel(
+                            fuel,
+                            &mut sunrise_client::furnace::FurnaceConditions {
+                                world: &super::advancements::View(self),
+                                pos: [pos.0, pos.1, pos.2],
+                            },
+                        )
                 },
             );
             self.world.random = random;
@@ -1108,12 +1113,39 @@ mod add_blocks_tests {
 
 #[cfg(test)]
 mod furnace_changed_tests {
-    use crate::game::game_tests::tests::server_game;
-    use std::collections::HashMap;
+    use crate::game::{game_tests::tests::server_game, native_entity_refs::tests::run_fresh_cases};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
     use sunrise_client::{
         containers::{BlockEntity, Furnace, FurnaceKind},
         items::ItemStack,
     };
+
+    type Burn = ([i32; 3], String);
+    struct Burns(Arc<Mutex<Vec<Burn>>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Burns {
+        fn furnace_burn(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::FurnaceBurnEvent<'_>,
+        ) {
+            self.0.lock().unwrap().push((event.pos, event.fuel.into()));
+        }
+    }
+
+    fn with_burns(test: impl FnOnce(&Mutex<Vec<Burn>>)) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "furnace_burn_probe",
+            Box::new(Burns(seen.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || test(&seen));
+    }
 
     /// `AbstractFurnaceBlockEntity.serverTick`'s changed flag: `burn` sets it,
     /// and the old furnace calls `setChanged` at the end of the tick. A smelt
@@ -1170,75 +1202,85 @@ mod furnace_changed_tests {
     #[test]
     #[ignore = "daily"]
     fn a_refuel_while_lit_marks_the_chunk() {
+        if run_fresh_cases(
+            "game::block_entity_ticks::furnace_changed_tests::a_refuel_while_lit_marks_the_chunk",
+            "SUNRISE_FURNACE_CHANGED_CASE",
+            &["refuel"],
+        ) {
+            return;
+        }
         // litTimeRemaining goes 1 -> 0 and the furnace takes new fuel in the
         // same tick: it stays LIT, and consuming the fuel sets changed.
-        let mut game_resources = None;
-        let mut game = server_game(&mut game_resources);
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:furnace")
-            .unwrap();
-        let pos = (8, 64, 8);
-        game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-        game.world.block_entities.insert(
-            pos,
-            BlockEntity::Furnace(Furnace {
-                kind: FurnaceKind::Furnace,
-                items: [
-                    Some(ItemStack::new("minecraft:raw_iron", 1)),
-                    Some(ItemStack::new("minecraft:coal", 2)),
-                    None,
-                ],
-                lit_remaining: 1,
-                lit_total: 1600,
-                cooking_timer: 10,
-                cooking_total: 200,
-                speed: 1.0,
-                recipes_used: HashMap::new(),
-            }),
-        );
-        game.world.modified.clear();
+        with_burns(|seen| {
+            let mut game_resources = None;
+            let mut game = server_game(&mut game_resources);
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:furnace")
+                .unwrap();
+            let pos = (8, 64, 8);
+            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+            game.world.block_entities.insert(
+                pos,
+                BlockEntity::Furnace(Furnace {
+                    kind: FurnaceKind::Furnace,
+                    items: [
+                        Some(ItemStack::new("minecraft:raw_iron", 1)),
+                        Some(ItemStack::new("minecraft:coal", 2)),
+                        None,
+                    ],
+                    lit_remaining: 1,
+                    lit_total: 1600,
+                    cooking_timer: 10,
+                    cooking_total: 200,
+                    speed: 1.0,
+                    recipes_used: HashMap::new(),
+                }),
+            );
+            game.world.modified.clear();
 
-        game.tick_furnace(pos).expect("the furnace ticks");
+            game.tick_furnace(pos).expect("the furnace ticks");
 
-        let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&pos) else {
-            panic!("no furnace");
-        };
-        assert_eq!(f.items[1].as_ref().map(|s| s.count), Some(1), "fuel used");
-        assert!(f.items[2].is_none(), "nothing smelted");
-        assert!(
-            game.world.modified.contains(&(0, 0)),
-            "a refuel left the chunk unmarked"
-        );
+            let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&pos) else {
+                panic!("no furnace");
+            };
+            assert_eq!(f.items[1].as_ref().map(|s| s.count), Some(1), "fuel used");
+            assert!(f.items[2].is_none(), "nothing smelted");
+            assert!(
+                game.world.modified.contains(&(0, 0)),
+                "a refuel left the chunk unmarked"
+            );
+            let expected = [([8, 64, 8], "minecraft:coal".to_owned())];
+            assert_eq!(
+                &*seen.lock().unwrap(),
+                &expected,
+                "the refuel fires the hook"
+            );
+
+            game.tick_furnace(pos).expect("the furnace keeps burning");
+            assert_eq!(
+                &*seen.lock().unwrap(),
+                &expected,
+                "continued burning does not fire the hook again"
+            );
+        });
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition() {
-        use std::sync::{Arc, Mutex};
-        struct Burns(Arc<Mutex<Vec<([i32; 3], String)>>>);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Burns {
-            fn furnace_burn(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::FurnaceBurnEvent<'_>,
-            ) {
-                self.0.lock().unwrap().push((event.pos, event.fuel.into()));
-            }
+        if run_fresh_cases(
+            "game::block_entity_ticks::furnace_changed_tests::a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition",
+            "SUNRISE_FURNACE_CHANGED_CASE",
+            &["nonpositive"],
+        ) {
+            return;
         }
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "furnace_burn_probe",
-            Box::new(Burns(seen.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
+        with_burns(|seen| {
             let mut resources = None;
-            let (_published, mut game) =
-                crate::game::game_tests::tests::isolated_server_game(&mut resources);
+            let mut game = server_game(&mut resources);
             let pos = (8, 64, 8);
             let state = game
                 .pack
@@ -1300,6 +1342,116 @@ mod furnace_changed_tests {
                 &[([8, 64, 8], "minecraft:coal".to_owned())]
             );
         });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_world_pack_supplies_and_replaces_furnace_providers() {
+        use crate::game::world_loading::WorldRequest;
+        use sunrise_client::item_data::parse_stack;
+
+        if run_fresh_cases(
+            "game::block_entity_ticks::furnace_changed_tests::a_world_pack_supplies_and_replaces_furnace_providers",
+            "SUNRISE_WORLD_FURNACE_PROVIDERS",
+            &["enabled"],
+        ) {
+            return;
+        }
+        let save = tempfile::tempdir().unwrap();
+        let root = save.path();
+        for (path, body) in [
+            (
+                "datapacks.json",
+                r#"{"enabled":["file/furnace"],"disabled":[]}"#,
+            ),
+            (
+                "datapacks/furnace/pack.mcmeta",
+                r#"{"pack":{"description":"furnace provider fixture"}}"#,
+            ),
+            (
+                "datapacks/furnace/data/test/context_int_provider/pack_only.json",
+                "37",
+            ),
+            (
+                "datapacks/furnace/data/test/context_float_provider/pack_only.json",
+                "1.75",
+            ),
+            (
+                "datapacks/furnace/data/minecraft/context_int_provider/cooking/time_coal.json",
+                "53",
+            ),
+            (
+                "datapacks/furnace/data/minecraft/context_float_provider/cooking/speed_default.json",
+                "1.5",
+            ),
+        ] {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let mut resources = None;
+        let mut game = server_game(&mut resources);
+        let mut request = WorldRequest::new(
+            "furnace",
+            Some("furnace"),
+            Some(1),
+            true,
+            None,
+            Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        )
+        .unwrap();
+        request.save_root = root.to_owned();
+        game.load_world(request).unwrap();
+        assert!(game.fns.enabled().iter().any(|name| name == "file/furnace"));
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        let state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:furnace")
+            .unwrap();
+        for (x, burn, speed, duration, multiplier) in [
+            (
+                8,
+                "test:pack_only",
+                "minecraft:cooking/speed_default",
+                37,
+                1.5_f32,
+            ),
+            (
+                9,
+                "minecraft:cooking/time_coal",
+                "test:pack_only",
+                53,
+                1.75_f32,
+            ),
+        ] {
+            let pos = (x, 64, 8);
+            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+            let fuel = parse_stack(&format!(r#"{{id:"minecraft:diamond",count:1,components:{{"minecraft:cooking_fuel":{{burn_time:"{burn}",speed_multiplier:"{speed}"}}}}}}"#)).unwrap();
+            game.world.block_entities.insert(
+                pos,
+                BlockEntity::Furnace(Furnace {
+                    kind: FurnaceKind::Furnace,
+                    items: [Some(ItemStack::new("minecraft:raw_iron", 1)), fuel, None],
+                    lit_remaining: 0,
+                    lit_total: 0,
+                    cooking_timer: 0,
+                    cooking_total: 200,
+                    speed: 1.0,
+                    recipes_used: HashMap::new(),
+                }),
+            );
+            game.tick_furnace(pos).unwrap();
+            let Some(BlockEntity::Furnace(furnace)) = game.world.block_entities.get(&pos) else {
+                panic!("no furnace");
+            };
+            assert!(furnace.items[1].is_none());
+            assert_eq!(furnace.lit_remaining, duration);
+            assert_eq!(furnace.speed.to_bits(), multiplier.to_bits());
+        }
     }
 }
 

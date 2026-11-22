@@ -303,7 +303,7 @@ pub(super) fn load_world_rest(
         items: Arc::new(items),
         recipes,
         transformers,
-        providers,
+        providers: Arc::new(providers),
         block_entity_render: block_entity_render?,
         animate,
         fog,

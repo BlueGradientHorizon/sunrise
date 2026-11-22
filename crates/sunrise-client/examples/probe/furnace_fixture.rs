@@ -12,7 +12,7 @@ use std::{
 use sunrise_client::{
     advancements,
     crafting::Recipes,
-    furnace::{FurnaceCooking, provider_condition},
+    furnace::{FurnaceConditions, FurnaceCooking},
     item_data::{canon_stack, parse_stack},
     items::Items,
     save::block_entity_encode::{DataFields, data_with},
@@ -23,7 +23,7 @@ use sunrise_client_render::{
 };
 use sunrise_core::{
     nbt::Tag,
-    random::{LegacyRandom, LevelRandom},
+    random::{LegacyRandom, LevelRandom, RandomSource},
 };
 use sunrise_world::{
     chunk::BlockState,
@@ -183,14 +183,13 @@ pub fn main() -> sunrise_client::Result<()> {
                         items: &items,
                         predicates: &predicates,
                     };
-                    Evaluation {
-                        providers,
-                        random: &mut random,
-                        condition: |cond: &serde_json::Value, random: &mut LevelRandom| {
-                            provider_condition(cond, &world, [0; 3], random)
+                    Evaluation::new(providers, &mut random).cooking_fuel(
+                        fuel,
+                        &mut FurnaceConditions {
+                            world: &world,
+                            pos: [0; 3],
                         },
-                    }
-                    .cooking_fuel(fuel)
+                    )
                 },
             );
             if let Some(lit) = plan
@@ -241,6 +240,9 @@ pub fn main() -> sunrise_client::Result<()> {
                 out.push(',');
             }
             write!(out, "{id}={:08x}", recipes.cooking_experience(id).to_bits())?;
+        }
+        if f.get(14) == Some(&"rng") {
+            write!(out, " rng={}", random.next_int())?;
         }
         writeln!(out)?;
     }

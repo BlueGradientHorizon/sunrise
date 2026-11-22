@@ -2363,15 +2363,22 @@ mod brewing_fuel_transfer_tests {
 #[cfg(test)]
 mod furnace_fuel_transfer_tests {
     use super::*;
-    use crate::game::game_tests::tests::isolated_server_game;
+    use crate::game::{game_tests::tests::server_game, native_entity_refs::tests::run_fresh_cases};
     use sunrise_client::containers::{Furnace, FurnaceKind};
     use sunrise_client::item_data::parse_stack;
 
     #[test]
     #[ignore = "daily"]
     fn a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule() {
+        if run_fresh_cases(
+            "game::machines::furnace_fuel_transfer_tests::a_side_hopper_respects_the_furnace_fuel_patch_and_bucket_rule",
+            "SUNRISE_FURNACE_HOPPER_CASE",
+            &["side"],
+        ) {
+            return;
+        }
         let mut resources = None;
-        let (_published, mut game) = isolated_server_game(&mut resources);
+        let mut game = server_game(&mut resources);
         let hopper = (8, 64, 8);
         let furnace = (9, 64, 8);
         let registry = &game.pack.assets.registry;

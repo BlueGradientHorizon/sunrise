@@ -65,7 +65,7 @@ impl Resources {
     pub(super) fn mob_data(&self) -> &sunrise_client::mobs::MobData {
         &self.rest().mob_data
     }
-    pub(super) fn providers(&self) -> &Providers {
+    pub(super) fn providers(&self) -> &Arc<Providers> {
         &self.rest().providers
     }
     pub(super) fn block_entity_render(&self) -> &BlockEntityRenderer {

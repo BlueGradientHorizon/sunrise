@@ -1079,6 +1079,13 @@ mod crafting_remainder_tests {
     #[test]
     #[ignore = "daily"]
     fn crafting_remainder_part_override_and_default() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default",
+            "SUNRISE_FURNACE_CRAFTING_REMAINDER_CASE",
+            &["override"],
+        ) {
+            return;
+        }
         let mods: mod_api::Mods =
             vec![mod_api::ModEntry::new("remainder", Box::new(RemainderMod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
