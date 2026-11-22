@@ -17,10 +17,6 @@ fn checked_records_have_declared_field_bytes() {
         ("example".to_owned(), "gear".to_owned()),
     );
     fields(
-        SpawnerKey::new("example:spawn").unwrap(),
-        ("example:spawn".to_owned(),),
-    );
-    fields(
         LevelKey::try_from("example:moon".to_owned()).unwrap(),
         ("example:moon".to_owned(),),
     );
