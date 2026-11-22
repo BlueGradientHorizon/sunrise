@@ -75,8 +75,7 @@ pub trait LevelEntitiesBackend {
     ///
     /// Unresolved handles, including held-out server entities, and entities in hidden
     /// server sections are skipped. Eyes of ender and leash knots are not visited. The projectile
-    /// list is temporarily absent during `hears_projectile_impacts`; it is visible again
-    /// during `projectile_impact`, including the live owners of hits that would consume them.
+    /// list is visible during `projectile_impact`, including live owners of hits that would consume them.
     fn level_visit_entities_in(
         &self,
         level: LevelRef,
