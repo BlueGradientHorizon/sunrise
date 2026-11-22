@@ -191,6 +191,8 @@ impl Game<'_> {
         self.streaming
             .extra
             .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
+        // `Level.getChunk`'s tickets keep their columns until they expire.
+        self.streaming.hold_unknown_tickets();
         self.streaming.upload_backlog = self.pending_uploads.len();
         let plan = sunrise_client::spans::time("streaming_plan", || {
             let mut step = self.streaming.begin_plan_update(&mut self.world);
