@@ -1276,6 +1276,7 @@ impl Game<'_> {
             .then(|| sunrise_client::lod_net::Service::new(net.lod_distance, biome_names.clone()));
         let lan = super::lan_configuration_tasks::start(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
+        hub.dispatch_move_effects = true;
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
@@ -1905,7 +1906,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [d.position.x, d.position.y, d.position.z],
                 rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
+                on_ground: d.ground.on_ground,
                 velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
             };
             let bare = idle
@@ -1930,7 +1931,7 @@ impl Game<'_> {
             e.precise = false;
             e.needs_sync = d.needs_sync;
             e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
+            e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -1941,7 +1942,7 @@ impl Game<'_> {
             let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
             e.position = [o.position.x, o.position.y, o.position.z];
             e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
+            e.on_ground = o.ground.on_ground;
             e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));
@@ -2417,8 +2418,8 @@ impl Game<'_> {
                         self.run_guest_commands();
                     }
                 }
-                HostEvent::Jump { conn, from, yaw } => {
-                    self.guest_jump(conn, from, yaw);
+                HostEvent::AcceptedMove(conn, movement) => {
+                    self.guest_accepted_move(conn, movement);
                 }
             }
         }
@@ -3129,6 +3130,8 @@ impl Game<'_> {
         };
         host.hub.place_new_player(conn, &mut ctx);
         self.bind_player_attachments(conn, false);
+        self.lan_register_player_waypoint(conn);
+        self.lan_update_waypoints();
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
@@ -3645,7 +3648,8 @@ mod tests {
 
     impl LanHost {
         /// Install an already configured fixture hub without touching the process-wide sync cache.
-        pub(in crate::game) fn for_test(hub: Hub) -> Self {
+        pub(in crate::game) fn for_test(mut hub: Hub) -> Self {
+            hub.dispatch_move_effects = true;
             Self {
                 settings: LanSettings {
                     port: hub.lan.port,

@@ -1027,8 +1027,10 @@ impl Game<'_> {
                     && !id.ends_with("get")
                     && let Ok(t) = self.entities(ctx, "target", false)
                 {
-                    let target = self.waypoint_target(t[0]);
-                    self.cmds.waypoint_dirty.push(target);
+                    // Players already have a live attribute dirty callback.
+                    if !matches!(t[0], Target::Player | Target::Guest(_)) {
+                        self.cmds.waypoint_dirty.push(t[0]);
+                    }
                 }
                 result
             }
@@ -1352,9 +1354,24 @@ impl Game<'_> {
                     return;
                 }
             }
+            let motion = sunrise_client::motion::BodyMotion {
+                world: &g.world,
+                collision: g.collision,
+                facts: g.res.facts(),
+                blocks: Some(&g.res.motion().blocks),
+                context: &g.loop_context,
+                side: None,
+            };
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
-                e.set_on_ground(true);
+                let (feet, bounds) = (e.position(), e.bounds());
+                if let Some(ground) = e.ground_state_mut() {
+                    ground.on_ground = true;
+                    motion.update_support(ground, feet, bounds, None,
+                        sunrise_world::collision_context::CollisionContext::empty(false), None);
+                } else {
+                    e.set_on_ground(true);
+                }
             });
         });
     }

@@ -53,16 +53,17 @@ irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/
 ```
 
 The script picks the machine's x64 or ARM64 archive, including when PowerShell runs under x64 emulation. It downloads
-the current Sunrise Nightly from GitHub (the only build Sunrise ships;
-`--version` picks another), checks it against the release's signature when OpenSSL 3 is installed (on Windows, Git
-for Windows includes it), else against the SHA-256 GitHub publishes, and never asks for sudo or administrator rights. It installs:
+the current Sunrise Nightly from GitHub, or the release `--version <tag>` names (Windows: `-Version <tag>`): a stable
+release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it
+against the release's signature with a verifier the script pins (it refuses the install if anything doesn't match),
+and never asks for sudo or administrator rights. It installs:
 
 - the release in `~/.local/share/sunrise/releases/<version>` (Windows: `%LOCALAPPDATA%\Sunrise`), with
   `current` pointing at the one in use;
 - `sunrise-server` and `sunrise-prepare` in `~/.local/bin` (Windows: added to your PATH);
 - a `game-files` folder for the files you prepare, kept across updates.
 
-Options: `--version vX.Y.Z`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
+Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version <tag>`, `-Dir FOLDER`). Other systems,
 such as Linux on ARM, build from source: `cargo build --release -p sunrise-game --bin sunrise-client -p
 sunrise-server` and keep both programs in one folder.
 
@@ -407,7 +408,9 @@ minutes. It keeps the crash report and gives up after 5 crashes in 10 minutes, a
 after it starts and every 6 hours after, and says so in its log, in `status` and in the panel; it never
 updates by itself. `sunrise-server update --check` (add `--json` for machine output) asks once. `sunrise-server update`:
 
-1. downloads the current Nightly and checks it against its signed SHA-256;
+1. downloads the newest build of the server's channel and checks it against its signed SHA-256: on a stable release
+   (`26.3-0.1.0`), the newest stable release of its line (the same Minecraft version and major, `26.3-0.x`),
+   never a Nightly or the next major; on any other build, the current Nightly;
 2. stops the game, backs up the world (`backups/<time>-before-<release>.zip`) and switches to the new
    release;
 3. starts the game on it and waits up to 5 minutes (`--timeout SECONDS`) for it to come up.
@@ -415,7 +418,7 @@ updates by itself. `sunrise-server update --check` (add `--json` for machine out
 If the new game crashes or doesn't come up in time, the server goes back to the release it was on by itself
 and puts the world back as it was just before the switch (the world the new game left is kept in
 `backups/`). `sunrise-server rollback` goes back to the release before by hand, keeping the world as it is
-(it backs it up first). `--version vX.Y.Z` installs a given release, and `--archive FILE --version NAME` an
+(it backs it up first). `--version <tag>` installs a given release (moving to another line or channel too), and `--archive FILE --version NAME` an
 archive you have, such as your own build. A server still on a release from before the last dated one doesn't know
 that 0.2 comes after the dated releases and says it is up to date: run `sunrise-server update --version v0.2.0`
 once ([versioning](versioning.md)). A stopped server is switched and starts on the new release next

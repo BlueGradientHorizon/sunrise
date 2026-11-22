@@ -2152,21 +2152,30 @@ impl Game<'_> {
         if killed && let Some(Who::Mob(killer)) = source.attacker {
             self.zombie_killed(killer, target);
         }
-        self.settle_warden_hurt(target);
+        self.settle_mob_hurt(target);
         hurt
     }
-    /// Run `Warden.hurtServer`'s anger and target selection synchronously after a hit,
-    /// matching vanilla even while ticked simulation is frozen or the base hurt call returned false.
-    pub(in crate::game) fn settle_warden_hurt(&mut self, id: u32) {
+    /// Apply reactions that need the game in `hurtServer`, without waiting for
+    /// a mob tick: a Creaking's heart response or a Warden's anger and targeting.
+    /// Wardens can react even when the base hurt call returned false.
+    pub(in crate::game) fn settle_mob_hurt(&mut self, id: u32) {
+        use sunrise_client::mobs::{creaking, warden};
+
         let Some(index) = self.mobs.iter().position(|m| {
             m.id == id
-                && m.extra
-                    .warden
-                    .as_ref()
-                    .is_some_and(|st| st.has_pending_hurt())
+                && (creaking::has_pending_hurt(m)
+                    || m.extra
+                        .warden
+                        .as_ref()
+                        .is_some_and(|st| st.has_pending_hurt()))
         }) else {
             return;
         };
+        if self.mobs[index].species() == Species::Creaking {
+            self.finish_creaking_hurt(index);
+            return;
+        }
+        let mut events = Vec::new();
         let uuid = self.level.player_uuid;
         let others: Vec<_> = self
             .mobs
@@ -2174,10 +2183,9 @@ impl Game<'_> {
             .map(|m| seen(m, uuid, self.items()))
             .collect();
         let mut mob = self.mobs.swap_remove(index);
-        let mut events = Vec::new();
         {
             let world = self.mob_world_base(&others);
-            sunrise_client::mobs::warden::handle_hurt(&mut mob, &world, &mut events);
+            warden::handle_hurt(&mut mob, &world, &mut events);
         }
         self.mobs.push(mob);
         let last = self.mobs.len() - 1;
@@ -2186,6 +2194,29 @@ impl Game<'_> {
         }
         if !events.is_empty() {
             let _ = self.handle_mob_events(events);
+        }
+    }
+
+    pub(in crate::game) fn settle_creaking_hurt(&mut self, id: u32) {
+        if let Some(index) = self.mob_index.find(&self.mobs, id)
+            && sunrise_client::mobs::creaking::has_pending_hurt(&self.mobs[index])
+        {
+            self.finish_creaking_hurt(index);
+        }
+    }
+
+    fn finish_creaking_hurt(&mut self, index: usize) {
+        let mob = &mut self.mobs[index];
+        let (id, join) = (mob.id, mob.join);
+        let mut events = Vec::new();
+        let reaction = sunrise_client::mobs::creaking::take_hurt(mob, &mut events);
+        let _ = self.handle_mob_events(events);
+        if let Some((home, by_player)) = reaction
+            && self
+                .mob_object(id)
+                .is_some_and(|mob| mob.join == join && !mob.removed)
+        {
+            self.creaking_hurt(home, id, by_player);
         }
     }
     /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a mob, through the
@@ -2680,6 +2711,16 @@ impl Game<'_> {
                         }
                     }
                 }
+                MobEvent::PushJoined { id, join, velocity } => {
+                    if let Some(mob) = self.mob_object_mut(id).filter(|mob| mob.join == join) {
+                        mob.velocity = mob.velocity.add_vector(Vec3::new(
+                            velocity[0],
+                            velocity[1],
+                            velocity[2],
+                        ));
+                        mob.needs_sync = true;
+                    }
+                }
                 MobEvent::Knockback {
                     target,
                     power,
@@ -2715,8 +2756,7 @@ impl Game<'_> {
                         Lid::Shulker(shulker),
                         Vec3::new(delta[0], delta[1], delta[2]),
                     );
-                    // A client of a server pushes only its own player, as
-                    // the shulker box's lid does.
+                    // Use the same client push as a shulker box's lid.
                     if self.remote.is_some() {
                         self.lid_push_local(lid, area, delta);
                     } else {
@@ -3664,11 +3704,6 @@ impl Game<'_> {
                     self.level_event_at(2001, pos, state.0 as i32);
                 }
                 MobEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id,
-                } => self.creaking_hurt(home, id, by_player),
                 MobEvent::CreakingTearDown { center, spread } => {
                     self.creaking_tear_down(center, spread)
                 }
@@ -4517,7 +4552,7 @@ impl Game<'_> {
     fn give_mob_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32, ambient: bool) {
         let immune = self.creative || self.spectator();
         if let Some(instance) = mob_effect_instance(effect, ticks, amplifier, ambient, immune) {
-            self.potions.effects.add(instance);
+            self.apply_player_effect(instance);
         }
     }
     /// `WitherRoseBlock.entityInside` for the player: on a server level that
@@ -5634,7 +5669,7 @@ impl Game<'_> {
             who: Who::Mob(id), ..
         } = hit
         {
-            self.settle_warden_hurt(id);
+            self.settle_mob_hurt(id);
         }
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()

@@ -56,7 +56,7 @@ mod spawn_info;
 mod tracking_pass;
 use advancements::AdvancementOwners;
 use chat::yellow_names;
-pub use pending_move::{Accepted, Hearing, PendingMove};
+pub use pending_move::{Accepted, CommittedMove, Hearing, PendingMove};
 use raw_inbox::{PacketDrain, yield_raw};
 pub mod game_event {
     pub const NO_RESPAWN_BLOCK_AVAILABLE: u8 = 0;
@@ -184,12 +184,8 @@ pub enum HostEvent {
     ),
     /// A changed movement report is held for the game to rule on ([`Hub::resolve_move`]).
     PlayerMove(u32),
-    /// An accepted position started a jump, before later gameplay packets.
-    Jump {
-        conn: u32,
-        from: [f64; 3],
-        yaw: f32,
-    },
+    /// An accepted report whose effects the game completes before the inbox resumes.
+    AcceptedMove(u32, CommittedMove),
     /// A guest's client finished loading the level around them.
     PlayerLoaded(u32),
     /// A guest changed recipe book settings.
@@ -345,6 +341,8 @@ pub struct Hub {
     pending_kicks: Vec<HostEvent>,
     /// A native mod listens to `player_move`: a changed report waits for the game ([`pending_move`]).
     pub moves_listened: bool,
+    /// This hub's game owns the movement effects that need an acting player and a live level.
+    pub dispatch_move_effects: bool,
     /// `[transfer]` on (a dedicated server's `--transfers`): the players a proxy
     /// said would arrive (`player-expect`). None while it is off.
     pub transfers: Option<super::arrivals::Transfers>,
@@ -819,6 +817,7 @@ impl Hub {
             packet_drain: None,
             pending_kicks: Vec::new(),
             moves_listened: false,
+            dispatch_move_effects: false,
             transfers: None,
             native_tracking: Vec::new(),
             players_after_tracking: false,
@@ -2151,6 +2150,9 @@ impl Hub {
         self.guests.update(i, |g| {
             g.teleport_tick = ticks;
             g.held_ticket_chunk = Some(g.ticket_chunk()); // teleport has no move
+            // Entity.teleportSetPosition clears movementThisTick. The body
+            // must not walk or glide along the old path after a teleport.
+            g.moves.clear();
             g.pending_move = None;
             g.on_collider = None;
             g.carry_hint = None;
@@ -3323,7 +3325,7 @@ impl Hub {
             spectator: false,
             watching: false,
             hidden: None,
-            general: false,
+            general: None,
         }
     }
 
@@ -4094,6 +4096,7 @@ impl Hub {
                         .update(i, |guest| guest.last_action_tick = value);
                 }
             }
+            let event_start = events.len();
             match packet {
                 // hasClientLoaded: these handlers ignore the player's actions until
                 // the client says the level around it is loaded (or 60 ticks pass),
@@ -4417,6 +4420,15 @@ impl Hub {
                     self.kick(conn, literal(&reason));
                 }
                 other => events.push(HostEvent::Packet(conn, Box::new(other))),
+            }
+            if events[event_start..]
+                .iter()
+                .any(|event| matches!(event, HostEvent::AcceptedMove(..)))
+            {
+                // Fall and landing can write to the level or move the player again. A
+                // subsequent packet must read those writes, not just the accepted position.
+                events.push(HostEvent::InputCredits(credits));
+                return true;
             }
         }
         events.push(HostEvent::InputCredits(credits));

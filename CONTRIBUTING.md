@@ -161,8 +161,8 @@ still fails by binary name. Move a network test with `tools/ci/move_to_daily.py`
 - If a daily run fails on a test your pull request added or touched, an issue is filed that names the test, where it
   panicked and the pull requests merged since the last green daily run. The fix is an ordinary pull request.
 
-Three kinds of build: a **snapshot**, from main's head on request, needs only the gate tier and no in-game tests
-(it is published as `snapshot-<date>-<short>`, which no launcher offers, to test packages and platforms after a
+Three kinds of build: a **Dev build**, from a commit on main on request, needs only the gate tier and no in-game tests
+(it is published as `dev-<date>-<short>`, installed only by explicit tag, to test packages and platforms after a
 merge); the **nightly** is published by the daily run when every part of it is green; a **release** is cut from a
 nightly.
 
@@ -266,8 +266,8 @@ How Sunrise is run, and how people join the Team or lead a group: [GOVERNANCE.md
 
 ## Licence and DCO
 
-Sunrise's code is under the [PolyForm Shield licence](LICENSE), and so is what you contribute: it comes in under the same
-licence it goes out under, and you keep your copyright. There is no CLA. Instead, sign off every commit (`git commit -s`)
+Sunrise's code is under the licence in [LICENSE](LICENSE): PolyForm Shield 1.0.0 with the Sunrise Additional Terms,
+version 1.0 or later. Your contribution comes in under that same licence, and you keep your copyright. There is no CLA. Instead, sign off every commit (`git commit -s`)
 to certify the [Developer Certificate of Origin](https://developercertificate.org/): that you wrote it, or have the
 right to submit it under the project's licence. The DCO check fails a pull request with a commit that isn't signed off;
 `git rebase --signoff origin/main` fixes a branch.

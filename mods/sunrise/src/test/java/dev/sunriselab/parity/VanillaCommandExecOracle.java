@@ -888,6 +888,12 @@ public final class VanillaCommandExecOracle {
                             out.append(gson.toJson(record)).append('\n');
                         }
                     }
+                    case "creaking_hit_order" -> {
+                        // Optional fixture: the shared runner still compiles on its own.
+                        Class<?> fixture = Class.forName("dev.sunriselab.parity.VanillaCreakingHitOrderOracle");
+                        var run = fixture.getDeclaredMethod("run", ServerPlayer.class, EmbeddedChannel.class, JsonObject.class);
+                        out.append(gson.toJson(run.invoke(null, player, channel, op))).append('\n');
+                    }
                     case "dragon_contacts" -> {
                         // Optional fixture: the shared runner still compiles on its own.
                         try {

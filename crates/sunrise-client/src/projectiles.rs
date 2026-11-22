@@ -366,6 +366,8 @@ pub struct Projectile {
     pub arrow: Option<Box<crate::arrows::ArrowState>>,
     /// `AbstractHurtingProjectile.accelerationPower`.
     pub acceleration: f64,
+    /// Supporting block selected by the base move used by pistons (not by ray hits).
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.needsSync`: a server tells its clients about the change this
     /// tick instead of at the next update interval.
     pub needs_sync: bool,
@@ -687,6 +689,7 @@ impl Projectile {
             lava_marked: false,
             bonus: Default::default(),
             acceleration,
+            ground: Default::default(),
             needs_sync: false,
             sync_velocity: false,
             no_deflect_ticks,
