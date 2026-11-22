@@ -936,8 +936,7 @@ mod tests {
     #[test]
     fn layers_land_in_their_cells() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1062,8 +1061,7 @@ mod tests {
     #[test]
     fn stitched_sprites_keep_their_own_size_and_padding() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1130,9 +1128,7 @@ mod tests {
     }
 
     fn material_fixture(animated: bool) {
-        let instance = crate::test_gpu::instance();
-        // No adapter (a CI runner without a GPU): skip, as the module's other readback tests do.
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =
@@ -1272,8 +1268,7 @@ mod tests {
     #[test]
     fn terrain_inputs_respects_separate_ao() {
         let _gpu = crate::test_gpu::lock();
-        let instance = crate::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::test_gpu::adapter() else {
             return;
         };
         let (device, _) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();

@@ -371,8 +371,7 @@ fn an_image_without_an_entry_reads_zero() {
 #[test]
 fn a_composite_program_blends_onto_its_buffer() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
     // A pass's pipeline layout has six bind group slots.
@@ -380,7 +379,7 @@ fn a_composite_program_blends_onto_its_buffer() {
         required_limits: adapter.limits(),
         ..Default::default()
     };
-    let Ok((device, queue)) = pollster::block_on(adapter.request_device(&desc)) else {
+    let Some((device, queue)) = crate::gfx::test_gpu::optional_device_with(&adapter, &desc) else {
         return;
     };
     let dir = std::env::temp_dir().join(format!("hz-composite-blend-{}", std::process::id()));

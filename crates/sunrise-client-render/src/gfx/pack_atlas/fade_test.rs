@@ -18,13 +18,8 @@ impl Drop for ProbePack {
 #[test]
 fn terrain_fade_reaches_pack_pixels_through_real_instances() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let adapter = match pollster::block_on(instance.request_adapter(&Default::default())) {
-        Ok(adapter) => adapter,
-        Err(error) => {
-            eprintln!("SKIP terrain fade GPU control: no adapter: {error}");
-            return;
-        }
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+        return;
     };
     eprintln!("terrain fade adapter: {:?}", adapter.get_info());
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
@@ -190,13 +185,8 @@ fn terrain_fade_reaches_pack_pixels_through_real_instances() {
 #[test]
 fn terrain_tier_reaches_pack_pixels() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let adapter = match pollster::block_on(instance.request_adapter(&Default::default())) {
-        Ok(adapter) => adapter,
-        Err(error) => {
-            eprintln!("SKIP terrain tier GPU control: no adapter: {error}");
-            return;
-        }
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+        return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let array = device.create_texture(&wgpu::TextureDescriptor {

@@ -9,8 +9,7 @@ use wgpu::util::DeviceExt;
 #[test]
 fn mid_tex_coord_follows_each_quads_mapped_corners() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
@@ -132,8 +131,7 @@ fn mid_tex_coord_follows_each_quads_mapped_corners() {
 #[test]
 fn flat_draws_map_uvs_onto_a_stitched_sprite() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
@@ -183,8 +181,7 @@ fn flat_draws_map_uvs_onto_a_stitched_sprite() {
 #[test]
 fn terrain_vertices_go_down_to_the_32768th_below_them() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
@@ -257,8 +254,7 @@ fn terrain_vertices_go_down_to_the_32768th_below_them() {
 fn compact_records_feed_a_pack_the_vertices_they_hold() {
     let _gpu = crate::gfx::test_gpu::lock();
     use crate::mesher::packed;
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();

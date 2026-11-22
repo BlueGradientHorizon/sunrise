@@ -1210,11 +1210,11 @@ var<private> params: ReferenceParams;
     #[test]
     fn coverage_target_resizes_resets_and_shows_in_the_debug_view() {
         let _gpu = crate::gfx::test_gpu::lock();
-        let instance = crate::gfx::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        let Some((device, queue)) =
+            crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())
         else {
             return;
         };
@@ -1295,16 +1295,17 @@ var<private> params: ReferenceParams;
     }
 
     pub(super) fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+        let adapter = crate::gfx::test_gpu::adapter()?;
         eprintln!("HDR GPU {:?}", adapter.get_info());
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_features: adapter.features()
-                & (wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
-                    | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
-            ..Default::default()
-        }))
-        .ok()
+        crate::gfx::test_gpu::optional_device_with(
+            &adapter,
+            &wgpu::DeviceDescriptor {
+                required_features: adapter.features()
+                    & (wgpu::Features::TEXTURE_FORMAT_16BIT_NORM
+                        | wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES),
+                ..Default::default()
+            },
+        )
     }
 
     /// Clears all of `texture` to `color`.

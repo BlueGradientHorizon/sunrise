@@ -2348,12 +2348,11 @@ mod tests {
     fn device_where(
         supported: impl Fn(&wgpu::Adapter) -> bool,
     ) -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+        let adapter = crate::gfx::test_gpu::adapter()?;
         if !supported(&adapter) {
             return None;
         }
-        let pair = pollster::block_on(adapter.request_device(&Default::default())).ok()?;
+        let pair = crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())?;
         eprintln!("post-effect GPU: {:?}", adapter.get_info());
         Some(pair)
     }

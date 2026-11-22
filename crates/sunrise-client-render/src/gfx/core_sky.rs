@@ -341,14 +341,7 @@ mod tests {
             void main() {\n    fragColor = ColorModulator;\n}\n";
         let program = crate::core_shader::translate_core(&vertex, fragment, &[], &include, &GLUE)
             .expect("the sky shaders translate");
-        let instance = crate::gfx::test_gpu::instance();
-        let Some((device, queue)) =
-            pollster::block_on(instance.request_adapter(&Default::default()))
-                .ok()
-                .and_then(|adapter| {
-                    pollster::block_on(adapter.request_device(&Default::default())).ok()
-                })
-        else {
+        let Some((_, device, queue)) = crate::gfx::test_gpu::optional_device() else {
             eprintln!("no GPU: skipping");
             return;
         };

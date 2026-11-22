@@ -75,8 +75,7 @@ pub(super) struct Gpu {
 
 impl Gpu {
     pub(super) fn new() -> Option<Self> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+        let adapter = crate::gfx::test_gpu::adapter()?;
         if !hud_coverage::supported(
             adapter.limits().max_color_attachments,
             adapter.get_downlevel_capabilities().flags,
@@ -86,7 +85,7 @@ impl Gpu {
             return None;
         }
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&Default::default())).ok()?;
+            crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())?;
         let atlas = device.create_texture_with_data(
             &queue,
             &wgpu::TextureDescriptor {

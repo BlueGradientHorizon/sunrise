@@ -55,14 +55,16 @@ fn a_pack_without_final_reads_the_replaced_world_colour() {
 #[test]
 fn a_scaled_picture_fills_the_whole_window() {
     let _gpu = crate::gfx::test_gpu::lock();
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
-    let Ok((device, queue)) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_limits: adapter.limits(),
-        ..Default::default()
-    })) else {
+    let Some((device, queue)) = crate::gfx::test_gpu::optional_device_with(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            required_limits: adapter.limits(),
+            ..Default::default()
+        },
+    ) else {
         return;
     };
     eprintln!("scaled picture adapter: {:?}", adapter.get_info());
@@ -109,14 +111,16 @@ fn a_scaled_picture_fills_the_whole_window() {
 }
 
 fn replacement(change: Change, final_shader: bool) {
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         return;
     };
-    let Ok((device, queue)) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_limits: adapter.limits(),
-        ..Default::default()
-    })) else {
+    let Some((device, queue)) = crate::gfx::test_gpu::optional_device_with(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            required_limits: adapter.limits(),
+            ..Default::default()
+        },
+    ) else {
         return;
     };
     eprintln!("world-target adapter: {:?}", adapter.get_info());

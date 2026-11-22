@@ -866,11 +866,11 @@ mod tests {
     #[test]
     fn an_identity_0_2_material_is_vanilla_s_within_an_8_bit_step() {
         let _gpu = crate::gfx::test_gpu::lock();
-        let instance = crate::gfx::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
             return;
         };
-        let Ok((device, queue)) = pollster::block_on(adapter.request_device(&Default::default()))
+        let Some((device, queue)) =
+            crate::gfx::test_gpu::optional_device_with(&adapter, &Default::default())
         else {
             return;
         };
@@ -1048,8 +1048,12 @@ mod tests {
         let line = (Api::V0_1, false);
         let pack = shader_source(&stage.source, &[], &[], (false, false), line) + &entries(PREFIX);
         let instance = crate::gfx::test_gpu::instance();
+        let adapters = pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()));
+        if adapters.is_empty() {
+            crate::gfx::test_gpu::missing_adapter("adapter enumeration found none");
+        }
         let mut tested = Vec::new();
-        for adapter in pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all())) {
+        for adapter in adapters {
             let info = adapter.get_info();
             let device_name = format!("{} ({:?})", info.name, info.backend);
             let features = wgpu::Features::VERTEX_WRITABLE_STORAGE;

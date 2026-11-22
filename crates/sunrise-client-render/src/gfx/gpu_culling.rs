@@ -2798,11 +2798,13 @@ mod tests {
             return None;
         }
         eprintln!("GPU culling on {} ({name})", adapter.get_info().name);
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_features: needed | timing,
-            ..Default::default()
-        }))
-        .ok()
+        crate::gfx::test_gpu::optional_device_with(
+            adapter,
+            &wgpu::DeviceDescriptor {
+                required_features: needed | timing,
+                ..Default::default()
+            },
+        )
     }
 
     /// `test` on each device here that draws counts with first instances

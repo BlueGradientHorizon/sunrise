@@ -792,27 +792,29 @@ mod tests {
 
     /// A device with those of `features` the adapter has.
     fn device_with(features: wgpu::Features) -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+        let adapter = crate::gfx::test_gpu::adapter()?;
         eprintln!("arena GPU regression: {}", adapter.get_info().name);
         let required_features = adapter.features() & features;
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_features,
-            ..Default::default()
-        }))
-        .ok()
+        crate::gfx::test_gpu::optional_device_with(
+            &adapter,
+            &wgpu::DeviceDescriptor {
+                required_features,
+                ..Default::default()
+            },
+        )
     }
 
     /// A device with the adapter's own limits, as the renderer opens it: page
     /// caps past the default 256 MiB buffer limit show there.
     fn device_at_limits() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = crate::gfx::test_gpu::instance();
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            required_limits: adapter.limits(),
-            ..Default::default()
-        }))
-        .ok()
+        let adapter = crate::gfx::test_gpu::adapter()?;
+        crate::gfx::test_gpu::optional_device_with(
+            &adapter,
+            &wgpu::DeviceDescriptor {
+                required_limits: adapter.limits(),
+                ..Default::default()
+            },
+        )
     }
 
     /// `device` and `device_at_limits`: the default limits bind 128 MiB of a storage

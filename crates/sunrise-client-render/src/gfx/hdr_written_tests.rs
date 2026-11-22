@@ -913,8 +913,7 @@ fn float_stars_keep_the_original_rgb_with_brightness_as_coverage() {
 /// A device for the real material layout, which binds the terrain arrays and the pack's frame
 /// together.
 fn material_gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
-    let instance = super::super::test_gpu::instance();
-    let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+    let adapter = crate::gfx::test_gpu::adapter()?;
     if adapter.limits().max_sampled_textures_per_shader_stage < 19 {
         return None;
     }
@@ -1318,8 +1317,7 @@ fn additive_texels_below_the_mark_cutoff_keep_their_gain() {
 }
 
 fn check_oit_writer(terrain: bool, kind: &str, overlay: u32, tier: u32, alphas: &[u8]) {
-    let instance = crate::gfx::test_gpu::instance();
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+    let Some(adapter) = crate::gfx::test_gpu::adapter() else {
         eprintln!("OIT GPU unavailable");
         return;
     };

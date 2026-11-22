@@ -442,11 +442,13 @@ fn oit_device() -> Option<(wgpu::Device, wgpu::Queue)> {
         return None;
     }
     eprintln!("adapter {:?}", adapter.get_info());
-    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        required_features: features,
-        ..Default::default()
-    }))
-    .ok()
+    crate::gfx::test_gpu::optional_device_with(
+        &adapter,
+        &wgpu::DeviceDescriptor {
+            required_features: features,
+            ..Default::default()
+        },
+    )
 }
 
 /// A vertex stage covering the target with each face's quad at device depth 0.5, wound so fancy

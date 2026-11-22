@@ -247,28 +247,7 @@ mod tests {
     #[test]
     fn a_stage_s_name_does_not_stop_it_compiling() {
         let _gpu = crate::gfx::test_gpu::lock();
-        for (backends, compiler, name) in [
-            (wgpu::Backends::VULKAN, Default::default(), "Vulkan"),
-            (
-                wgpu::Backends::DX12,
-                wgpu::Dx12Compiler::Fxc,
-                "DirectX 12, FXC",
-            ),
-            (
-                wgpu::Backends::DX12,
-                wgpu::Dx12Compiler::default_dynamic_dxc(),
-                "DirectX 12, DXC",
-            ),
-        ] {
-            let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-            desc.backends = backends;
-            desc.backend_options.dx12.shader_compiler = compiler;
-            let instance = wgpu::Instance::new(desc);
-            let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default()))
-            else {
-                eprintln!("{name}: skipped");
-                continue;
-            };
+        for (adapter, name) in crate::gfx::test_gpu::each_adapter() {
             let (device, _) =
                 pollster::block_on(adapter.request_device(&Default::default())).unwrap();
             let (globals, frame) = (globals_layout(&device), frame(&device));
@@ -297,8 +276,7 @@ mod tests {
     #[test]
     fn a_pack_gets_vanilla_s_colour_and_draws_opaque() {
         let _gpu = crate::gfx::test_gpu::lock();
-        let instance = crate::gfx::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
             return;
         };
         let (device, queue) =

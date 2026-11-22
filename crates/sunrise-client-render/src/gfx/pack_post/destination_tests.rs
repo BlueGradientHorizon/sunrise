@@ -165,8 +165,7 @@ impl Fixture {
 
     /// [`Self::new`] with `features` turned on; `None` when the adapter lacks one.
     pub(super) fn with_features(features: wgpu::Features) -> Option<Self> {
-        let instance = crate::gfx::test_gpu::instance();
-        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
             eprintln!("Post destination test skipped: no GPU adapter");
             return None;
         };
