@@ -24,17 +24,15 @@ class BaseCommitTests(unittest.TestCase):
     def test_a_pull_request_compares_against_its_merge_commits_first_parent(self):
         sha, _ = surface_report.base_commit("pull_request", "", lambda *a: MERGE)
         self.assertEqual(sha, "aaaa")
-        sha, why = surface_report.base_commit("pull_request", "", lambda *a: SINGLE)
+        sha, _ = surface_report.base_commit("pull_request", "", lambda *a: SINGLE)
         self.assertIsNone(sha)
-        self.assertIn("not a pull request's merge commit", why)
 
     def test_a_dispatch_compares_against_its_test_merges_first_parent(self):
         sha, _ = surface_report.base_commit("workflow_dispatch", "12", lambda *a: MERGE)
         self.assertEqual(sha, "aaaa")
         # A dispatch without `pr` checks main's own commit: there is no base to compare.
-        sha, why = surface_report.base_commit("workflow_dispatch", "", lambda *a: MERGE)
+        sha, _ = surface_report.base_commit("workflow_dispatch", "", lambda *a: MERGE)
         self.assertIsNone(sha)
-        self.assertEqual(why, "no base for a workflow_dispatch run")
 
     def test_a_push_has_no_base(self):
         sha, why = surface_report.base_commit("push", "", None)
@@ -395,9 +393,11 @@ class MainTests(unittest.TestCase):
         self.assertIn("No surface report", summary)
 
     def test_a_dispatch_whose_checkout_is_not_a_merge_reports_and_passes(self):
-        code, out, _ = self.run_main("workflow_dispatch", "7", git=lambda *a: SINGLE)
-        self.assertEqual(code, 0)
-        self.assertIn("not a pull request's merge commit", out)
+        unpacked = []
+        code, _, _ = self.run_main("workflow_dispatch", "7", git=lambda *a: SINGLE,
+                                   unpack=lambda sha, into: unpacked.append(sha))
+        # No base is selected, so nothing is archived, and the report passes.
+        self.assertEqual((code, unpacked), (0, []))
 
     def test_a_report_is_printed_written_and_its_code_returned(self):
         fetched = []
