@@ -629,8 +629,8 @@ pub fn state_to_nbt(registry: &BlockRegistry, state: BlockStateId) -> Tag {
     }
 }
 /// `BlockState.CODEC` read back: a block name or `{id, properties}` (or the
-/// legacy `{Name, Properties}`). A name the registry knows only as a block
-/// reads as its default state, and one it does not know at all as `None`.
+/// legacy `{Name, Properties}`). Omitted properties take the block's defaults.
+/// A name the registry does not know at all reads as `None`.
 pub fn state_from_nbt(registry: &BlockRegistry, tag: &Tag) -> Option<BlockStateId> {
     let state = match tag.get("Name") {
         Some(Tag::String(name)) => BlockState {
@@ -650,6 +650,7 @@ pub fn state_from_nbt(registry: &BlockRegistry, tag: &Tag) -> Option<BlockStateI
     };
     registry
         .id(&state)
+        .or_else(|| registry.resolve(&state).ok())
         .or_else(|| registry.default_state(&state.name))
 }
 /// `BlockState.isAir`: air, cave air and void air.
