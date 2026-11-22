@@ -1386,24 +1386,40 @@ impl Renderer {
             fragment: "fs_entity_unmarked",
             write_mask: wgpu::ColorWrites::ALL,
         });
-        // RenderPipelines.TEXT_POLYGON_OFFSET: a text display's text and
-        // background win against the surface they lie on (bias 1, 10), from
-        // the front only.
+        // RenderPipelines.TEXT_POLYGON_OFFSET: a display's text/background or a sign's
+        // outlined fill wins against the surface it lies on (bias 1, 10), from the front only.
+        let text_bias = wgpu::DepthBiasState {
+            constant: 10,
+            slope_scale: 1.0,
+            clamp: 0.0,
+        };
         let text_polygon_offset_pipeline = entity_pipeline_with(EntityPipelineOptions {
             label: "Polygon offset text",
             cull_mode: Some(wgpu::Face::Back),
             depth_write: true,
             compare: wgpu::CompareFunction::GreaterEqual,
-            bias: wgpu::DepthBiasState {
-                constant: 10,
-                slope_scale: 1.0,
-                clamp: 0.0,
-            },
+            bias: text_bias,
             blend: alpha_blend,
             clouds: false,
             vertex: "vs_entity",
-            fragment: "fs_entity_unmarked",
+            fragment: "fs_entity_text",
             write_mask: wgpu::ColorWrites::ALL,
+        });
+        // Marked HDR targets store a glowing glyph's tier in alpha. Match the colour pass's
+        // depth bias and culling in each mode so an outline cannot mark over its fill.
+        let text_mark_pipelines = [wgpu::DepthBiasState::default(), text_bias].map(|bias| {
+            entity_pipeline_with(EntityPipelineOptions {
+                label: "HDR text mark",
+                cull_mode: Some(wgpu::Face::Back),
+                depth_write: false,
+                compare: wgpu::CompareFunction::GreaterEqual,
+                bias,
+                blend: wgpu::BlendState::REPLACE,
+                clouds: false,
+                vertex: "vs_entity",
+                fragment: "fs_text_hdr_mark",
+                write_mask: wgpu::ColorWrites::ALPHA,
+            })
         });
         let world_text_pipeline = world_text::pipeline(
             &device,
@@ -2379,6 +2395,7 @@ impl Renderer {
             world_primitives,
             text_polygon_offset_pipeline,
             world_text_pipeline,
+            text_mark_pipelines,
             fluid_pipeline,
             terrain_model_pipelines,
             celestial,

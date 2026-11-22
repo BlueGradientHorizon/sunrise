@@ -183,6 +183,7 @@ pub struct Renderer {
     pub(crate) world_primitives: world_primitives::WorldPrimitives,
     pub(crate) text_polygon_offset_pipeline: wgpu::RenderPipeline,
     pub(crate) world_text_pipeline: wgpu::RenderPipeline,
+    pub(crate) text_mark_pipelines: [wgpu::RenderPipeline; 2],
     pub(crate) fluid_pipeline: wgpu::RenderPipeline,
     pub(crate) terrain_model_pipelines: [wgpu::RenderPipeline; 4],
     pub(crate) celestial: celestial::Celestial,

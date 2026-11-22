@@ -2880,23 +2880,33 @@ impl Renderer {
                 pass.stage(self.own_timing.as_mut(), "entity text solid");
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 // NORMAL outlines and plain text before the coplanar POLYGON_OFFSET fills.
-                if text_normal_solid_quads > 0 {
-                    pass.set_pipeline(&self.world_text_pipeline);
-                    pass.set_bind_group(0, &self.entity_group, &[]);
-                    pass.draw_indexed(
-                        0..text_normal_solid_quads * 6,
-                        ((world_quads - text_normal_solid_quads) * 4) as i32,
-                        0..1,
-                    );
-                }
-                if text_offset_solid_quads > 0 {
-                    pass.set_pipeline(&self.text_polygon_offset_pipeline);
-                    self.bind_world_text(&mut pass, true, false);
-                    pass.draw_indexed(
-                        0..text_offset_solid_quads * 6,
-                        ((world_quads - text_solid_quads) * 4) as i32,
-                        0..1,
-                    );
+                let marked = light_marks(self.output.frame.format, self.hdr.is_some());
+                for (index, (pipeline, count, first)) in [
+                    (
+                        &self.world_text_pipeline,
+                        text_normal_solid_quads,
+                        world_quads - text_normal_solid_quads,
+                    ),
+                    (
+                        &self.text_polygon_offset_pipeline,
+                        text_offset_solid_quads,
+                        world_quads - text_solid_quads,
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if count == 0 {
+                        continue;
+                    }
+                    pass.set_pipeline(pipeline);
+                    self.bind_world_text(&mut pass, index == 1, false);
+                    pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    if marked {
+                        pass.set_pipeline(&self.text_mark_pipelines[index]);
+                        pass.set_bind_group(0, &self.entity_group, &[]);
+                        pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
+                    }
                 }
                 pass.set_bind_group(0, &self.group, &[]);
             }
