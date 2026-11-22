@@ -991,7 +991,7 @@ fn entered_part_entries<'a, P: ?Sized>(
         .filter(move |attached| {
             mod_index_on(attached.mod_index) && !poisoned(hook_id, attached.mod_id)
         })
-        .map(move |attached| {
+        .inspect(move |attached| {
             // The last part's mark goes first, as in `Entered`.
             scope.replace(
                 &mut guard,
@@ -1001,7 +1001,6 @@ fn entered_part_entries<'a, P: ?Sized>(
                     part: Some(attached.type_name),
                 },
             );
-            attached
         })
 }
 
