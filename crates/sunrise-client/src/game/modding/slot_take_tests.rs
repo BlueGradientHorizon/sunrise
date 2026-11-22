@@ -144,7 +144,10 @@ impl BlockEntityPart for Pot {
                 let _: Result<(), mod_api::TransactionError<()>> =
                     event.subject.transaction(|scope, tx| {
                         let host = scope.host();
-                        assert_eq!(place.insert(host, tx, &ItemResource::of(event.taken), 1), 1);
+                        assert_eq!(
+                            place.insert(host, tx, &ItemResource::of(event.taken), 1),
+                            Ok(1)
+                        );
                         if matches!(SCRIPT.get(), TakeScript::Panic) {
                             panic!("a broken listener");
                         }
@@ -229,7 +232,7 @@ impl BlockEntityPart for Pot {
                         let host = scope.host();
                         // The old slot stack has not been added to inventory or dropped yet.
                         let dirt = place.resource(host).expect("hotbar 8 still holds dirt");
-                        assert_eq!(place.extract(host, tx, &dirt, 64), 64);
+                        assert_eq!(place.extract(host, tx, &dirt, 64), Ok(64));
                         Ok::<_, ()>(())
                     });
             }
@@ -241,8 +244,8 @@ impl BlockEntityPart for Pot {
                         let stick = ItemResource::of(&api_item("minecraft:stick", 1));
                         let player = host.player(event.player).unwrap();
                         let cursor = player.container_menu(host).unwrap().cursor();
-                        assert_eq!(place.extract(host, tx, &stick, 1), 1);
-                        assert_eq!(cursor.insert(host, tx, &stick, 1), 1);
+                        assert_eq!(place.extract(host, tx, &stick, 1), Ok(1));
+                        assert_eq!(cursor.insert(host, tx, &stick, 1), Ok(1));
                         assert_eq!(cursor.amount(host), 2);
                         Ok::<_, ()>(())
                     });
@@ -256,10 +259,10 @@ impl BlockEntityPart for Pot {
                         let cursor = player.container_menu(host).unwrap().cursor();
                         assert_eq!(
                             cursor.extract(host, tx, &ItemResource::of(event.taken), 4),
-                            4
+                            Ok(4)
                         );
                         let pearls = ItemResource::of(&api_item("minecraft:ender_pearl", 1));
-                        assert_eq!(cursor.insert(host, tx, &pearls, 14), 14);
+                        assert_eq!(cursor.insert(host, tx, &pearls, 14), Ok(14));
                         Ok::<_, ()>(())
                     });
             }
@@ -272,13 +275,11 @@ impl BlockEntityPart for Pot {
                         let items = level
                             .capability(host, &ITEMS, [LINK.0, LINK.1, LINK.2], None)
                             .unwrap();
-                        LINK_INSERTED.set(items.insert_at(
-                            host,
-                            tx,
-                            0,
-                            &ItemResource::of(event.taken),
-                            1,
-                        ));
+                        LINK_INSERTED.set(
+                            items
+                                .insert_at(host, tx, 0, &ItemResource::of(event.taken), 1)
+                                .unwrap(),
+                        );
                         panic!("a linked write failed");
                     });
             }

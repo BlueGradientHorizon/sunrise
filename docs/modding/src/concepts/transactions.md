@@ -243,8 +243,9 @@ handler or panicking, even for a zero-amount write. The innermost-frame rule fol
 NeoForge's `TransactionManager.validateCurrentTransaction`. Use the inner `tx` until
 that closure returns.
 
-Result-bearing writes report `InvalidContext` in their own error type. Count-only
-and boolean writes return zero or false, and world-fluid pickup returns `None`.
+Every transaction-scoped write reports a mismatched context as an error (`InvalidContext`
+in `TransactionError`, `StorageError`, `ItemPlaceEditError`, `CraftedByError`, or
+`BlockEntityItemError`) rather than returning zero, `false`, or `None`.
 Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` for
 that same innermost frame or `None` when opening a root transaction. A mismatch,
 including `None` while one is open, returns `TransactionError::InvalidContext`.

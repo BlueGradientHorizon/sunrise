@@ -183,6 +183,12 @@ impl<E: std::error::Error + 'static> std::error::Error for TransactionError<E> {
     }
 }
 
+impl<E> crate::NoBackend for TransactionError<E> {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
 // no wire: a local scratch transaction refusal, not a mod boundary payload.
 // exhaustive: transaction refusal or rejected initial stack.
 /// Why this host refused a scratch item-place scope.
@@ -516,7 +522,7 @@ mod tests {
                     assert!(host.transaction_matches(Some(outer)));
                     items.extract_at(host, joined, 0, &resource, 1)
                 });
-                assert_eq!(moved, Some(1));
+                assert_eq!(moved, Some(Ok(1)));
                 assert!(host.transaction_matches(Some(outer)));
                 assert_eq!(items.amount(host, 0), 0);
                 commit.then_some(()).ok_or(())
@@ -549,9 +555,21 @@ mod tests {
         let (mut owner, _) = fake_with_stone();
         let level = owner.level.level();
         let block = owner.block_entity(level, AT).unwrap();
+        let water = crate::FluidKey(1);
         owner
             .transaction(|_, tx| {
-                assert_eq!(level.pickup_fluid(&mut NoTx, AT, None, tx), None);
+                assert_eq!(
+                    level.pickup_fluid(&mut NoTx, AT, None, tx),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(
+                    level.place_fluid(&mut NoTx, AT, water, None, false, tx),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(
+                    level.play_fluid_effects(&mut NoTx, AT, water, false, None, tx),
+                    Err(TransactionError::InvalidContext)
+                );
                 assert_eq!(
                     block.set_item_slot(&mut NoTx, tx, 0, None),
                     Err(crate::BlockEntityItemError::InvalidContext)
@@ -583,10 +601,24 @@ mod tests {
 
     #[test]
     fn a_live_context_from_another_host_is_refused_and_leaves_state_unchanged() {
+        use crate::{
+            ComponentId, EnergyHandler, ItemComponentEnergy, ItemComponentHandler, ItemPlace,
+            STORAGE, StorageError,
+        };
         let (mut owner, resource) = fake_with_stone();
         let mut other = owner.clone();
         let level = owner.level.level();
         let items = level.capability(&mut owner, &ITEMS, AT, None).unwrap();
+        let storage = level.capability(&mut owner, &STORAGE, AT, None).unwrap();
+        let place = ItemPlace::BlockEntity {
+            level,
+            pos: AT,
+            side: None,
+            slot: 0,
+        };
+        let component = ComponentId::new("test:charge").unwrap();
+        let component_handler = ItemComponentHandler::new(place.clone(), component.clone());
+        let energy = ItemComponentEnergy::new(place.clone(), component, 100, 100, 100);
 
         other
             .transaction(|other, foreign| {
@@ -595,13 +627,56 @@ mod tests {
                         assert_eq!((foreign.depth(), own.depth()), (0, 0));
                         assert!(!host.transaction_matches(Some(foreign)));
                         assert!(host.transaction_matches(Some(own)));
-                        assert_eq!(items.extract_at(host, foreign, 0, &resource, 1), 0);
+                        assert_eq!(
+                            items.extract_at(host, foreign, 0, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            items.insert_at(host, foreign, 0, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            items.set_max_stack_size(host, foreign, 32),
+                            Err(TransactionError::InvalidContext)
+                        );
                         assert_eq!(
                             items.extract(host, foreign, &resource, 1),
                             Err(TransactionError::InvalidContext)
                         );
+                        assert_eq!(
+                            storage.insert(host, foreign, &resource, 1),
+                            Err(StorageError::InvalidContext)
+                        );
+                        assert_eq!(
+                            storage.extract(host, foreign, &resource, 1),
+                            Err(StorageError::InvalidContext)
+                        );
+                        assert_eq!(
+                            place.insert(host, foreign, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            place.extract(host, foreign, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            place.exchange(host, foreign, &resource, 1),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            component_handler.write(host, foreign, None),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            energy.insert(host, foreign, 10),
+                            Err(TransactionError::InvalidContext)
+                        );
+                        assert_eq!(
+                            energy.extract(host, foreign, 10),
+                            Err(TransactionError::InvalidContext)
+                        );
                         assert_eq!(items.amount(host, 0), 1);
-                        assert_eq!(items.extract_at(host, own, 0, &resource, 1), 1);
+                        assert_eq!(items.extract_at(host, own, 0, &resource, 1), Ok(1));
                         Ok::<_, ()>(())
                     })
                     .unwrap();

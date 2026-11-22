@@ -78,11 +78,12 @@ mod tests {
         host.registries.resolve_items([egg.clone()]).unwrap();
         let eggs = ItemResource::of(&ItemStack::of(host.item_key(&egg).unwrap()));
         let server: &mut dyn ServerHost = &mut host;
-        let aborted = server.transaction(|host, tx| Err::<(), _>(hand.insert(host, tx, &eggs, 20)));
+        let aborted =
+            server.transaction(|host, tx| Err::<(), _>(hand.insert(host, tx, &eggs, 20).unwrap()));
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(20)));
         assert!(host.players.get(7).unwrap().slots.is_empty());
         let server: &mut dyn ServerHost = &mut host;
-        let went = server.transaction(|host, tx| Ok::<_, ()>(hand.insert(host, tx, &eggs, 20)));
+        let went = server.transaction(|host, tx| hand.insert(host, tx, &eggs, 20));
         assert_eq!(went, Ok(20));
         let player = host.players.get(7).unwrap();
         assert_eq!(player.main_hand().map(ItemStack::count), Some(16));

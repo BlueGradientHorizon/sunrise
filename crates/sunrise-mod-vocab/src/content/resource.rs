@@ -540,14 +540,18 @@ pub trait ResourceHandler<R> {
     /// Existing oversized stacks remain extractable. The game persists this with block entity data.
     /// On the default block `ITEMS` handler, a successful call queues the backing container's
     /// change notice at root commit, even if no items moved.
-    /// Unsupported handlers return false without mutation.
+    /// Unsupported handlers return `Ok(false)` without mutation. A mismatched `tx` returns
+    /// `Err(TransactionError::InvalidContext)`.
     fn set_max_stack_size(
         &self,
-        _host: &mut dyn ServerHost,
-        _tx: &TransactionContext,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
         _limit: u32,
-    ) -> bool {
-        false
+    ) -> Result<bool, TransactionError<()>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(false)
     }
 
     /// How many indices it has.
@@ -575,6 +579,8 @@ pub trait ResourceHandler<R> {
         self.capacity(host, index, Some(resource)) > 0
     }
     /// Puts up to `amount` of `resource` into index `index`: how much went in.
+    /// A mismatched `tx` returns `Err(TransactionError::InvalidContext)` without consulting the
+    /// handler; an overanswer returns `Err(TransactionError::Aborted(Overanswered))`.
     fn insert_at(
         &self,
         host: &mut dyn ServerHost,
@@ -582,9 +588,10 @@ pub trait ResourceHandler<R> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32;
+    ) -> Result<u32, TransactionError<Overanswered>>;
     /// Takes up to `amount` of `resource` out of index `index`: how much came out. None of
-    /// another resource.
+    /// another resource. A mismatched `tx` returns `Err(TransactionError::InvalidContext)` without
+    /// consulting the handler; an overanswer returns `Err(TransactionError::Aborted(Overanswered))`.
     fn extract_at(
         &self,
         host: &mut dyn ServerHost,
@@ -592,7 +599,7 @@ pub trait ResourceHandler<R> {
         index: usize,
         resource: &R,
         amount: u32,
-    ) -> u32;
+    ) -> Result<u32, TransactionError<Overanswered>>;
     /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
     /// Prefer this to `insert_at` unless targeting a specific index. The default runs in its
     /// own journal and rolls back with `TransactionError::Aborted(Overanswered)` if an index
@@ -610,7 +617,7 @@ pub trait ResourceHandler<R> {
         }
         let size = self.size(host);
         in_turn(host, amount, 0..size, |host, tx, index, left| {
-            Ok(self.insert_at(host, tx, *index, resource, left))
+            self.insert_at(host, tx, *index, resource, left)
         })
     }
     /// Takes up to `amount` of `resource` out from wherever it is: by default index by index
@@ -628,7 +635,7 @@ pub trait ResourceHandler<R> {
         }
         let size = self.size(host);
         in_turn(host, amount, 0..size, |host, tx, index, left| {
-            Ok(self.extract_at(host, tx, *index, resource, left))
+            self.extract_at(host, tx, *index, resource, left)
         })
     }
 }
@@ -717,7 +724,11 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     host: &mut dyn ServerHost,
     ends: Ends<'_, A, B>,
     want: N,
-    extract: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> N,
+    extract: impl Fn(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        N,
+    ) -> Result<N, TransactionError<Overanswered>>,
     insert: impl Fn(
         &mut dyn ServerHost,
         &TransactionContext,
@@ -728,7 +739,8 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: the transfer failed.
     let step = |host: &mut dyn ServerHost, want: N| {
         host.transaction(|host, tx| {
-            let Some(out) = from.checked(extract(host, tx, want), want, at) else {
+            let extracted = extract(host, tx, want).map_err(Err)?;
+            let Some(out) = from.checked(extracted, want, at) else {
                 return Err(Err(TransactionError::Aborted(Overanswered {
                     owner: Some(from.owner()),
                 })));

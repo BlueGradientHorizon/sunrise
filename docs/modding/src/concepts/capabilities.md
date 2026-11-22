@@ -114,7 +114,7 @@ Each method receives the host; the handler holds no borrow of the game.
 | `amount` / `amount_int` | Amount held at an index; `amount_int` caps it at `i32::MAX`. |
 | `capacity` / `capacity_int` | Limit for `Some(&resource)`, or the general limit for `None`. An unknown general limit is `u32::MAX`; `capacity_int` caps the answer at `i32::MAX`. This is not free space or permission to insert. |
 | `is_valid` | Whether the resource is allowed at an index. The default checks for nonzero capacity; override it for separate acceptance rules and enforce those rules in `insert_at`. |
-| `insert_at` / `extract_at` | Move up to the requested amount at one index, using the innermost `&TransactionContext`. Return the actual amount moved. Insertion can refuse even with nonzero capacity. |
+| `insert_at` / `extract_at` | Move up to the requested amount at one index, using the innermost `&TransactionContext`. Return `Result<u32, TransactionError<Overanswered>>` with the actual amount moved, or `InvalidContext` if `tx` does not match the innermost open transaction. Insertion can refuse even with nonzero capacity. |
 | `insert` / `extract` | Let the handler choose where to move the resource. The default visits indices in order. Prefer these unless you need to target a specific index. They return `Result<u32, TransactionError<Overanswered>>`. |
 
 Keep handler state in transaction-managed storage such as block entity slots, saved compounds or

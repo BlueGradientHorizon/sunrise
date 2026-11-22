@@ -48,9 +48,25 @@ fn a_second_pickup_of_one_source_in_a_transaction_gets_nothing() {
         game.world.set(AT[0], AT[1], AT[2], water).unwrap();
         let host: &mut dyn ServerHost = game;
         let picked: Result<_, TransactionError<()>> = host.transaction(|host, tx| {
+            host.transaction(|host, _inner| {
+                assert_eq!(
+                    level.pickup_fluid(host, AT, None, tx),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(
+                    level.place_fluid(host, AT, key("minecraft:water"), None, false, tx),
+                    Err(TransactionError::InvalidContext)
+                );
+                assert_eq!(
+                    level.play_fluid_effects(host, AT, key("minecraft:water"), false, None, tx),
+                    Err(TransactionError::InvalidContext)
+                );
+                Ok::<_, ()>(())
+            })
+            .unwrap();
             Ok((
-                level.pickup_fluid(host, AT, None, tx),
-                level.pickup_fluid(host, AT, None, tx),
+                level.pickup_fluid(host, AT, None, tx).unwrap(),
+                level.pickup_fluid(host, AT, None, tx).unwrap(),
             ))
         });
         let one = FluidStack::new(key("minecraft:water"), 1000);
@@ -78,7 +94,10 @@ fn an_aborted_placement_over_a_skull_leaves_it_and_drops_nothing() {
         dispense_fixture::start_recording();
         let water = key("minecraft:water");
         let _ = game.storage_transaction(|game, tx| {
-            assert!(game.level_place_fluid(level, AT, water, None, true, tx));
+            assert_eq!(
+                game.level_place_fluid(level, AT, water, None, true, tx),
+                Ok(true)
+            );
             // Inside the transaction the skull is gone and the water is there.
             assert_eq!(block(game), state(game, "minecraft:water"));
             assert!(game.world.block_entities.get(&pos).is_none());
@@ -104,7 +123,9 @@ fn a_committed_pour_breaks_what_it_replaces_then_sends_its_events_in_order() {
         dispense_fixture::start_recording();
         let host: &mut dyn ServerHost = game;
         let placed: Result<bool, TransactionError<()>> = host.transaction(|host, tx| {
-            Ok(level.place_fluid(host, AT, key("minecraft:lava"), None, false, tx))
+            level
+                .place_fluid(host, AT, key("minecraft:lava"), None, false, tx)
+                .map_err(|_| ())
         });
         assert_eq!(placed, Ok(true));
         let lines = dispense_fixture::stop_recording();
@@ -152,7 +173,9 @@ fn the_call_time_answer_stands_when_the_block_changes_before_the_commit() {
         let water = key("minecraft:water");
         let placed = game
             .storage_transaction(|game, tx| {
-                let placed = game.level_place_fluid(level, AT, water, None, false, tx);
+                let placed = game
+                    .level_place_fluid(level, AT, water, None, false, tx)
+                    .map_err(|_| ())?;
                 // A later write in the same transaction: the commit doesn't decide again.
                 game.journal_set_block(AT, stone);
                 Ok::<_, ()>(placed)
@@ -230,7 +253,10 @@ fn a_drop_listener_sees_the_old_block_and_an_abort_undoes_the_loot_it_unpacked()
             );
             let water = key("minecraft:water");
             let _ = game.storage_transaction(|game, tx| {
-                assert!(game.level_place_fluid(level, AT, water, None, false, tx));
+                assert_eq!(
+                    game.level_place_fluid(level, AT, water, None, false, tx),
+                    Ok(true)
+                );
                 Err::<(), ()>(())
             });
             // The listener ran while the broken block was still there.
@@ -268,7 +294,10 @@ fn a_cancelled_drop_keeps_the_replacement() {
             let items = game.dropped.len();
             let water = key("minecraft:water");
             game.storage_transaction(|game, tx| {
-                assert!(game.level_place_fluid(level, AT, water, None, false, tx));
+                assert_eq!(
+                    game.level_place_fluid(level, AT, water, None, false, tx),
+                    Ok(true)
+                );
                 Ok::<_, ()>(())
             })
             .unwrap();
@@ -292,7 +321,10 @@ fn a_later_write_that_puts_the_block_back_keeps_its_block_entity_at_the_commit()
             .insert(pos, BlockEntity::Skull(Default::default()));
         let water = key("minecraft:water");
         game.storage_transaction(|game, tx| {
-            assert!(game.level_place_fluid(level, AT, water, None, false, tx));
+            assert_eq!(
+                game.level_place_fluid(level, AT, water, None, false, tx),
+                Ok(true)
+            );
             assert!(game.world.block_entities.get(&pos).is_none());
             game.journal_set_block(AT, skull);
             Ok::<_, ()>(())
@@ -694,10 +726,16 @@ fn validated_fluid_utility_keeps_only_accepted_writes_in_its_outer_transaction()
         let lava = key("minecraft:lava");
         let _ = game.storage_transaction(|game, tx| {
             calls.refuse_place.store(true, Relaxed);
-            assert!(!game.level_place_fluid(level, AT, lava, None, true, tx));
+            assert_eq!(
+                game.level_place_fluid(level, AT, lava, None, true, tx),
+                Ok(false)
+            );
             assert_eq!(block(game), dandelion);
             calls.refuse_place.store(false, Relaxed);
-            assert!(game.level_place_fluid(level, AT, lava, None, true, tx));
+            assert_eq!(
+                game.level_place_fluid(level, AT, lava, None, true, tx),
+                Ok(true)
+            );
             assert_eq!(block(game), state(game, "minecraft:emerald_block"));
             Err::<(), ()>(())
         });
@@ -773,7 +811,10 @@ fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
                 .set(AT[0], AT[1], AT[2], state(game, "minecraft:dandelion"))
                 .unwrap();
             game.storage_transaction(|game, tx| {
-                assert!(game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx));
+                assert_eq!(
+                    game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx),
+                    Ok(true)
+                );
                 Ok::<_, ()>(())
             })
             .unwrap();
@@ -838,7 +879,10 @@ fn liquid_hosts_read_the_same_comparator_signal_without_unpacking_loot() {
             .set(AT[0], AT[1], AT[2], state(game, "minecraft:dandelion"))
             .unwrap();
         let _ = game.storage_transaction(|game, tx| {
-            assert!(game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx));
+            assert_eq!(
+                game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx),
+                Ok(true)
+            );
             assert_eq!(
                 game.world
                     .block_entity_extras(loot_pos)

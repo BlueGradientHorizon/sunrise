@@ -94,7 +94,7 @@ fn write_dirt(host: &mut dyn ServerHost) {
     };
     assert!(!host.transaction_matches(None), "inside the action");
     host.transaction(|host, tx| {
-        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+        assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
         Ok::<_, ()>(())
     })
     .unwrap();
@@ -136,7 +136,7 @@ impl BlockEntityPart for Part {
                     };
                     assert_eq!(
                         place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
-                        2
+                        Ok(2)
                     );
                     Ok(())
                 });
@@ -185,7 +185,7 @@ impl BlockEntityPart for Part {
                     };
                     assert_eq!(
                         place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
-                        2
+                        Ok(2)
                     );
                     panic!("a listener failed");
                 });
@@ -229,7 +229,7 @@ impl BlockEntityPart for Part {
                         .expect("the second block's items");
                     assert_eq!(
                         items.insert_at(host, tx, 0, &ItemResource::of(&stone(1)), 4),
-                        4
+                        Ok(4)
                     );
                     Ok(())
                 });
@@ -316,7 +316,7 @@ impl BlockEntityPart for Part {
                     };
                     assert_eq!(
                         place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
-                        2
+                        Ok(2)
                     );
                     panic!("the take listener failed after the cross-block move");
                 });
@@ -351,7 +351,7 @@ impl mod_api::MenuPart for Part {
                 let items = level.capability(host, &ITEMS, pos, None).unwrap();
                 assert_eq!(
                     items.insert_at(host, tx, 0, &ItemResource::of(&stack), 2),
-                    2
+                    Ok(2)
                 );
                 Ok::<_, ()>(())
             })
@@ -411,7 +411,7 @@ impl mod_api::MenuPart for Part {
                     };
                     assert_eq!(
                         place.insert(scope.host(), tx, &ItemResource::of(&dirt), 2),
-                        2
+                        Ok(2)
                     );
                     panic!("menu button panicked inside subject.transaction");
                 });
@@ -1399,7 +1399,7 @@ impl mod_api::BlockPart for QuickMoveObserver {
             .unwrap();
             assert_eq!(
                 host.transaction(|host, tx| {
-                    Ok::<_, ()>(items.insert_at(host, tx, 0, &ItemResource::of(&stone), 2))
+                    items.insert_at(host, tx, 0, &ItemResource::of(&stone), 2)
                 }),
                 Ok(2)
             );

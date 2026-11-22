@@ -146,9 +146,9 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
                 "trade listener is inside the action"
             );
             host.transaction(|host, tx| {
-                assert_eq!(place.insert(host, tx, &dirt, 2), 2);
+                assert_eq!(place.insert(host, tx, &dirt, 2), Ok(2));
                 if matches!(write, PlayerWrite::ShiftDestination { restore: true }) {
-                    assert_eq!(place.extract(host, tx, &dirt, 2), 2);
+                    assert_eq!(place.extract(host, tx, &dirt, 2), Ok(2));
                 }
                 Ok::<_, ()>(())
             })

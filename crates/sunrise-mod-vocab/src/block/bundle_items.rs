@@ -1,5 +1,6 @@
 use crate::{
-    ItemPlace, ItemResource, ItemStack, ResourceHandler, ServerHost, TransactionContext, backend_of,
+    ItemPlace, ItemResource, ItemStack, Overanswered, ResourceHandler, ServerHost,
+    TransactionContext, TransactionError, backend_of,
 };
 
 /// A bundle's item handler at a place, using the game's shared bundle weight rules.
@@ -31,11 +32,13 @@ impl BundleItems {
         tx: &TransactionContext,
         changed: &ItemStack,
         moved: u32,
-    ) -> u32 {
-        match self.0.exchange(host, tx, &ItemResource::of(changed), 1) {
-            1 => moved,
-            _ => 0,
-        }
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(
+            match self.0.exchange(host, tx, &ItemResource::of(changed), 1)? {
+                1 => moved,
+                _ => 0,
+            },
+        )
     }
 }
 impl ResourceHandler<ItemResource> for BundleItems {
@@ -76,12 +79,12 @@ impl ResourceHandler<ItemResource> for BundleItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(offer) = resource.to_stack(amount) else {
-            return 0;
+            return Ok(0);
         };
         let Some((went, changed)) = self
             .0
@@ -89,10 +92,10 @@ impl ResourceHandler<ItemResource> for BundleItems {
             .flatten()
             .and_then(|held| backend_of(host)?.item_bundle_insert_slot(&held, index, &offer))
         else {
-            return 0;
+            return Ok(0);
         };
         match went {
-            0 => 0,
+            0 => Ok(0),
             went => self.rewrite(host, tx, &changed, went.min(amount)),
         }
     }
@@ -103,9 +106,9 @@ impl ResourceHandler<ItemResource> for BundleItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some((Some(out), changed)) = self
             .0
@@ -120,7 +123,7 @@ impl ResourceHandler<ItemResource> for BundleItems {
                 backend.item_bundle_extract(&held, index, amount)
             })
         else {
-            return 0;
+            return Ok(0);
         };
         self.rewrite(host, tx, &changed, out.count().min(amount))
     }

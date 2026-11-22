@@ -115,7 +115,7 @@ fn a_give_to_a_player_in_another_level_drops_overflow_there() {
                         player: u128::from(conn),
                         slot: 0,
                     };
-                    Ok::<_, ()>(slot.insert(host, tx, &resource, 1))
+                    slot.insert(host, tx, &resource, 1)
                 })
                 .unwrap();
             assert_eq!(taken, 0, "{case}: a full slot takes nothing");

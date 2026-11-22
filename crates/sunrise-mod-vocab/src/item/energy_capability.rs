@@ -10,17 +10,60 @@ use std::marker::PhantomData;
 
 /// A block's energy (NeoForge's `EnergyHandler`): stateless, given the host, and written only in
 /// a transaction, as a [`ResourceHandler`](crate::ResourceHandler) is. Pass the context for the
-/// innermost open transaction to a write. The capability refuses a mismatched context without
-/// calling the provider; these count-only writes return zero.
+/// innermost open transaction to a write. The capability refuses a mismatched context with
+/// `TransactionError::InvalidContext` without calling the provider.
 pub trait EnergyHandler: Send + Sync {
     /// How much it holds.
     fn amount(&self, host: &mut dyn ServerHost) -> u32;
     /// How much it holds when full.
     fn capacity(&self, host: &mut dyn ServerHost) -> u32;
     /// Puts up to `amount` in, in transaction `tx`: how much went. Never more than `amount`.
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32;
+    /// A mismatched `tx` returns `Err(TransactionError::InvalidContext)`.
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>>;
     /// Takes up to `amount` out, in transaction `tx`: how much came. Never more than `amount`.
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32;
+    /// A mismatched `tx` returns `Err(TransactionError::InvalidContext)`.
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>>;
+}
+
+impl Capability<dyn EnergyHandler> {
+    fn check_energy_transfer(
+        &self,
+        answer: Result<u32, TransactionError<Overanswered>>,
+        amount: u32,
+        operation: &str,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        answer
+            .and_then(|answer| {
+                crate::content::resource::checked_transfer(answer, amount)
+                    .map_err(TransactionError::Aborted)
+            })
+            .map_err(|mut error| {
+                match &mut error {
+                    TransactionError::InvalidContext
+                    | TransactionError::Unavailable
+                    | TransactionError::CommitRefused => {
+                        let owner = self.owner.unwrap_or("the game");
+                        log::warn!("Energy handler from {owner}: {operation}: {error:?}");
+                    }
+                    TransactionError::Aborted(over) if over.owner.is_none() => {
+                        crate::block::item_place::warn_broken(self.owner, &operation);
+                        over.owner = Some(self.owner());
+                    }
+                    TransactionError::Aborted(_) => {}
+                }
+                error
+            })
+    }
 }
 
 impl EnergyHandler for Capability<dyn EnergyHandler> {
@@ -30,17 +73,27 @@ impl EnergyHandler for Capability<dyn EnergyHandler> {
     fn capacity(&self, host: &mut dyn ServerHost) -> u32 {
         self.handler.capacity(host)
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        self.handler.insert(host, tx, amount)
+        self.check_energy_transfer(self.handler.insert(host, tx, amount), amount, "insert")
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        self.handler.extract(host, tx, amount)
+        self.check_energy_transfer(self.handler.extract(host, tx, amount), amount, "extract")
     }
 }
 
@@ -77,21 +130,31 @@ impl EnergyHandler for GameEnergy {
     fn capacity(&self, host: &mut dyn ServerHost) -> u32 {
         crate::backend_of(host).map_or(0, |backend| backend.energy_capacity(self.0))
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        crate::backend_mut_of(host)
+        Ok(crate::backend_mut_of(host)
             .map_or(0, |backend| backend.energy_insert(self.0, amount, tx))
-            .min(amount)
+            .min(amount))
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        crate::backend_mut_of(host)
+        Ok(crate::backend_mut_of(host)
             .map_or(0, |backend| backend.energy_extract(self.0, amount, tx))
-            .min(amount)
+            .min(amount))
     }
 }
 
@@ -124,7 +187,7 @@ pub fn move_energy(
         },
         want,
         |host, tx, want| from.extract(host, tx, want),
-        |host, tx, out| Ok(to.insert(host, tx, out)),
+        |host, tx, out| to.insert(host, tx, out),
     )
 }
 
@@ -160,11 +223,27 @@ impl EnergyHandler for EmptyEnergyHandler {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         0
     }
-    fn insert(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
-        0
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(0)
     }
-    fn extract(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
-        0
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(0)
     }
 }
 
@@ -181,14 +260,27 @@ impl EnergyHandler for InfiniteEnergyHandler {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         u32::MAX
     }
-    fn insert(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
-        0
-    }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        amount
+        Ok(0)
+    }
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(amount)
     }
 }
 
@@ -204,14 +296,27 @@ impl EnergyHandler for VoidingEnergyHandler {
     fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
         u32::MAX
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
-        amount
+        Ok(amount)
     }
-    fn extract(&self, _host: &mut dyn ServerHost, _tx: &TransactionContext, _: u32) -> u32 {
-        0
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        _: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        if !host.transaction_matches(Some(tx)) {
+            return Err(TransactionError::InvalidContext);
+        }
+        Ok(0)
     }
 }
 
@@ -242,15 +347,25 @@ impl EnergyHandler for LimitingEnergyHandler {
     fn capacity(&self, host: &mut dyn ServerHost) -> u32 {
         self.inner.capacity(host)
     }
-    fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         self.inner.insert(host, tx, amount.min(self.max_insert))
     }
-    fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+    fn extract(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &TransactionContext,
+        amount: u32,
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         self.inner.extract(host, tx, amount.min(self.max_extract))
     }

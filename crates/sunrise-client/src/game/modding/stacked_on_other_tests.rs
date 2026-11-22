@@ -94,9 +94,9 @@ impl Hooks for Listener {
             let dirt = api_stack("minecraft:dirt", 1);
             assert!(!host.transaction_matches(None), "inside the action");
             host.transaction(|host, tx| {
-                assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), 2);
+                assert_eq!(place.insert(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
                 if s.take_dirt_back {
-                    assert_eq!(place.extract(host, tx, &ItemResource::of(&dirt), 2), 2);
+                    assert_eq!(place.extract(host, tx, &ItemResource::of(&dirt), 2), Ok(2));
                 }
                 Ok::<_, ()>(())
             })

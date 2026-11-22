@@ -19,10 +19,9 @@
 //! measurements behind this API, 256 pipes moving 8 items a tick each cost 2.8 ms a tick that
 //! way against 3.7 ms through `STORAGE`. `STORAGE` pays off for bulk stores, large moves, and
 //! networks that sleep while idle.
-use crate::content::resource::{Ends, move_once};
 use crate::{
-    BlockSide, Capability, CapabilityKey, ITEMS, ItemResource, ResourceHandler, ServerHost,
-    TransactionContext, TransactionError,
+    BlockSide, Capability, CapabilityKey, HostTransaction as _, ITEMS, ItemResource,
+    ResourceHandler, ServerHost, TransactionContext, TransactionError,
 };
 use std::{collections::HashSet, marker::PhantomData, ops::ControlFlow};
 
@@ -88,23 +87,23 @@ pub trait ItemStorage {
         resource: &ItemResource,
     ) -> Result<u64, StorageError>;
     /// Puts up to `amount` of `resource` in, in transaction `tx`: how much went in, never more
-    /// than `amount`.
+    /// than `amount`. A mismatched `tx` returns `Err(StorageError::InvalidContext)`.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64;
+    ) -> Result<u64, StorageError>;
     /// Takes up to `amount` of `resource` out, in transaction `tx`: how much came out, never more
-    /// than `amount`.
+    /// than `amount`. A mismatched `tx` returns `Err(StorageError::InvalidContext)`.
     fn extract(
         &self,
         host: &mut dyn ServerHost,
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64;
+    ) -> Result<u64, StorageError>;
     /// Visits occupied entries in provider order. For a container, this is the order of the
     /// slots exposed on the queried side, not necessarily physical slot order.
     ///
@@ -195,11 +194,15 @@ impl ItemStorage for Capability<dyn ItemStorage> {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
-        self.handler.insert(host, tx, resource, amount)
+        let moved = self.handler.insert(host, tx, resource, amount)?;
+        self.checked(moved, amount, resource)
+            .ok_or_else(|| StorageError::Overanswered {
+                owner: self.owner(),
+            })
     }
     fn extract(
         &self,
@@ -207,11 +210,15 @@ impl ItemStorage for Capability<dyn ItemStorage> {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
-        self.handler.extract(host, tx, resource, amount)
+        let moved = self.handler.extract(host, tx, resource, amount)?;
+        self.checked(moved, amount, resource)
+            .ok_or_else(|| StorageError::Overanswered {
+                owner: self.owner(),
+            })
     }
     fn visit_entries(
         &self,
@@ -247,13 +254,13 @@ impl ItemStorage for GameStorage {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
-        crate::backend_mut_of(host)
+        Ok(crate::backend_mut_of(host)
             .map_or(0, |b| b.container_insert_kind(self.0, resource, amount, tx))
-            .min(amount)
+            .min(amount))
     }
     fn extract(
         &self,
@@ -261,15 +268,15 @@ impl ItemStorage for GameStorage {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
-        crate::backend_mut_of(host)
+        Ok(crate::backend_mut_of(host)
             .map_or(0, |b| {
                 b.container_extract_kind(self.0, resource, amount, tx)
             })
-            .min(amount)
+            .min(amount))
     }
     fn visit_entries(
         &self,
@@ -302,16 +309,21 @@ impl Slots {
         resource: &ItemResource,
         left: &mut u64,
         pick: impl Fn(&mut dyn ServerHost, usize) -> bool,
-    ) {
+    ) -> Result<(), StorageError> {
         for index in 0..self.0.size(host) {
             if *left == 0 {
-                return;
+                return Ok(());
             }
             if pick(host, index) {
                 let ask = (*left).min(u32::MAX as u64) as u32;
-                *left -= self.0.insert_at(host, tx, index, resource, ask).min(ask) as u64;
+                let moved = self
+                    .0
+                    .insert_at(host, tx, index, resource, ask)
+                    .map_err(storage_error_from_tx)?;
+                *left -= moved.min(ask) as u64;
             }
         }
+        Ok(())
     }
 }
 
@@ -361,18 +373,18 @@ impl ItemStorage for Slots {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
         let mut left = amount;
         self.fill(host, tx, resource, &mut left, |host, index| {
             self.holds(host, index, resource)
-        });
+        })?;
         self.fill(host, tx, resource, &mut left, |host, index| {
             self.0.resource(host, index).is_none()
-        });
-        amount - left
+        })?;
+        Ok(amount - left)
     }
     fn extract(
         &self,
@@ -380,9 +392,9 @@ impl ItemStorage for Slots {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u64,
-    ) -> u64 {
+    ) -> Result<u64, StorageError> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(StorageError::InvalidContext);
         }
         let mut left = amount;
         for index in 0..self.0.size(host) {
@@ -391,10 +403,14 @@ impl ItemStorage for Slots {
             }
             if self.holds(host, index, resource) {
                 let ask = left.min(u32::MAX as u64) as u32;
-                left -= self.0.extract_at(host, tx, index, resource, ask).min(ask) as u64;
+                let moved = self
+                    .0
+                    .extract_at(host, tx, index, resource, ask)
+                    .map_err(storage_error_from_tx)?;
+                left -= moved.min(ask) as u64;
             }
         }
-        amount - left
+        Ok(amount - left)
     }
     fn visit_entries(
         &self,
@@ -437,23 +453,37 @@ pub fn transfer(
     if want == 0 {
         return Ok(0);
     }
-    move_once(
-        host,
-        Ends {
-            from,
-            to,
-            at: resource,
-        },
-        want,
-        |host, tx, want| from.extract(host, tx, resource, want),
-        |host, tx, out| Ok(to.insert(host, tx, resource, out)),
-    )
-    .map_err(|error| match error {
+    let step = |host: &mut dyn ServerHost, want: u64| {
+        host.transaction(|host, tx| {
+            let out = from.extract(host, tx, resource, want).map_err(Err)?;
+            let took = to.insert(host, tx, resource, out).map_err(Err)?;
+            if took == out && took > 0 {
+                Ok(out)
+            } else {
+                Err(Ok(took))
+            }
+        })
+    };
+    match step(host, want) {
+        Err(TransactionError::Aborted(Ok(took))) if took > 0 => step(host, took),
+        answer => answer,
+    }
+    .or_else(|error| match error {
+        TransactionError::InvalidContext => Err(StorageError::InvalidContext),
+        TransactionError::Unavailable => Err(StorageError::TransactionUnavailable),
+        TransactionError::CommitRefused => Err(StorageError::CommitRefused),
+        TransactionError::Aborted(Ok(_)) => Ok(0),
+        TransactionError::Aborted(Err(error)) => Err(error),
+    })
+}
+
+fn storage_error_from_tx(error: TransactionError<crate::Overanswered>) -> StorageError {
+    match error {
         TransactionError::Aborted(over) => over.into(),
         TransactionError::InvalidContext => StorageError::InvalidContext,
         TransactionError::Unavailable => StorageError::TransactionUnavailable,
         TransactionError::CommitRefused => StorageError::CommitRefused,
-    })
+    }
 }
 
 /// Moves up to `max` of what `filter` accepts out of `from` into `to` (NeoForge's
@@ -562,10 +592,10 @@ mod tests {
             _: &TransactionContext,
             r: &ItemResource,
             n: u64,
-        ) -> u64 {
-            let went = n.min(self.space_for(h, r).unwrap());
+        ) -> Result<u64, StorageError> {
+            let went = n.min(self.space_for(h, r)?);
             *self.0.held.borrow_mut().entry(r.clone()).or_default() += went;
-            went
+            Ok(went)
         }
         fn extract(
             &self,
@@ -573,10 +603,10 @@ mod tests {
             _: &TransactionContext,
             r: &ItemResource,
             n: u64,
-        ) -> u64 {
-            let came = n.min(self.amount(h, r).unwrap());
+        ) -> Result<u64, StorageError> {
+            let came = n.min(self.amount(h, r)?);
             *self.0.held.borrow_mut().entry(r.clone()).or_default() -= came;
-            came
+            Ok(came)
         }
         fn visit_entries(
             &self,
@@ -615,8 +645,14 @@ mod tests {
         let (target, to) = bulk(64, &[]);
         host.transaction(|host, parent| {
             host.transaction(|host, _| {
-                assert_eq!(from.extract(host, parent, stone, 1), 0);
-                assert_eq!(to.insert(host, parent, stone, 1), 0);
+                assert_eq!(
+                    from.extract(host, parent, stone, 1),
+                    Err(StorageError::InvalidContext)
+                );
+                assert_eq!(
+                    to.insert(host, parent, stone, 1),
+                    Err(StorageError::InvalidContext)
+                );
                 assert_eq!(
                     transfer(host, &from, &to, stone, 1, parent),
                     Err(StorageError::InvalidContext)
@@ -646,7 +682,7 @@ mod tests {
         assert_eq!(storage.amount(host, dirt), Ok(5));
         // 24 and 54 topping up the stone, 64 in the empty slot.
         assert_eq!(storage.space_for(host, stone), Ok(24 + 54 + 64));
-        let went = host.transaction(|host, tx| Ok::<_, ()>(storage.insert(host, tx, stone, 500)));
+        let went = host.transaction(|host, tx| storage.insert(host, tx, stone, 500));
         assert_eq!(went, Ok(142), "no more than the room");
         assert_eq!(storage.amount(host, stone), Ok(192));
         assert_eq!(
@@ -654,7 +690,7 @@ mod tests {
             Ok(5),
             "the dirt's slot is not touched"
         );
-        let came = host.transaction(|host, tx| Ok::<_, ()>(storage.extract(host, tx, stone, 100)));
+        let came = host.transaction(|host, tx| storage.extract(host, tx, stone, 100));
         assert_eq!(came, Ok(100));
         let mut total = 0;
         storage
@@ -673,7 +709,7 @@ mod tests {
         let storage = storage_at(&mut host, [0, 64, 0]);
         let host: &mut dyn ServerHost = &mut host;
         let aborted: Result<(), TransactionError<()>> = host.transaction(|host, tx| {
-            assert_eq!(storage.insert(host, tx, &r[0], 70), 70);
+            assert_eq!(storage.insert(host, tx, &r[0], 70), Ok(70));
             Err(())
         });
         assert!(aborted.is_err());
@@ -739,7 +775,7 @@ mod tests {
                 _: usize,
                 _: &ItemResource,
                 _: u32,
-            ) -> u32 {
+            ) -> Result<u32, TransactionError<crate::Overanswered>> {
                 unreachable!("a visit does not insert")
             }
             fn extract_at(
@@ -749,7 +785,7 @@ mod tests {
                 _: usize,
                 _: &ItemResource,
                 _: u32,
-            ) -> u32 {
+            ) -> Result<u32, TransactionError<crate::Overanswered>> {
                 unreachable!("a visit does not extract")
             }
         }
@@ -868,13 +904,13 @@ mod tests {
                 tx: &TransactionContext,
                 kind: &ItemResource,
                 amount: u64,
-            ) -> u64 {
+            ) -> Result<u64, StorageError> {
                 assert!(host.transaction_matches(Some(tx)));
-                let amount = amount.min(self.space_for(host, kind).unwrap());
+                let amount = amount.min(self.space_for(host, kind)?);
                 if amount > 0 {
                     self.entries.borrow_mut().push((kind.clone(), amount));
                 }
-                amount
+                Ok(amount)
             }
             fn extract(
                 &self,
@@ -882,7 +918,7 @@ mod tests {
                 tx: &TransactionContext,
                 kind: &ItemResource,
                 amount: u64,
-            ) -> u64 {
+            ) -> Result<u64, StorageError> {
                 assert!(host.transaction_matches(Some(tx)));
                 let mut entries = self.entries.borrow_mut();
                 let mut left = amount;
@@ -899,7 +935,7 @@ mod tests {
                     }
                     index += 1;
                 }
-                amount - left
+                Ok(amount - left)
             }
             fn visit_entries(
                 &self,

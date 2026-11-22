@@ -190,9 +190,11 @@ pub mod tests {
             _: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
-            self.downstream(host)
-                .map_or(0, |next| next.insert_at(host, tx, 0, resource, amount))
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            match self.downstream(host) {
+                Some(next) => next.insert_at(host, tx, 0, resource, amount),
+                None => Ok(0),
+            }
         }
         fn extract_at(
             &self,
@@ -201,8 +203,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -233,8 +235,8 @@ pub mod tests {
             index: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
-            Pipe(self.0).insert_at(host, tx, index, resource, amount) + 1
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(Pipe(self.0).insert_at(host, tx, index, resource, amount)? + 1)
         }
         fn extract_at(
             &self,
@@ -243,8 +245,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -333,18 +335,18 @@ pub mod tests {
             _: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let Some(damage) = self.0.with_stack(host, |pouch| pouch.damage()) else {
-                return 0;
+                return Ok(0);
             };
             if !resource.matches(&stick()) {
-                return 0;
+                return Ok(0);
             }
             let filled = ItemResource::of(&stack("test:pouch", 1, damage + amount));
-            match self.0.exchange(host, tx, &filled, 1) {
+            Ok(match self.0.exchange(host, tx, &filled, 1)? {
                 1 => amount,
                 _ => 0,
-            }
+            })
         }
         fn extract_at(
             &self,
@@ -353,8 +355,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -387,14 +389,14 @@ pub mod tests {
             _: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let pouch = resource.to_stack(1).unwrap();
             match self.0.with_stack(host, |bag| bag.damage()) {
                 Some(0) if amount > 0 && resource.item() == fixture_item_key("test:pouch") => {
                     let full = ItemResource::of(&stack("test:bag", 1, pouch.damage() + 1));
                     self.0.exchange(host, tx, &full, 1)
                 }
-                _ => 0,
+                _ => Ok(0),
             }
         }
         fn extract_at(
@@ -404,9 +406,9 @@ pub mod tests {
             index: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if amount == 0 || self.resource(host, index).as_ref() != Some(resource) {
-                return 0;
+                return Ok(0);
             }
             let empty = ItemResource::of(&stack("test:bag", 1, 0));
             self.0.exchange(host, tx, &empty, 1)
@@ -422,9 +424,14 @@ pub mod tests {
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             [damage / 100, damage % 100][index]
         }
-        fn rewrite(&self, host: &mut dyn ServerHost, tx: &TransactionContext, damage: u32) -> bool {
+        fn rewrite(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &TransactionContext,
+            damage: u32,
+        ) -> Result<bool, TransactionError<Overanswered>> {
             let case = ItemResource::of(&stack("test:case", 1, damage));
-            self.0.exchange(host, tx, &case, 1) == 1
+            Ok(self.0.exchange(host, tx, &case, 1)? == 1)
         }
     }
     impl ResourceHandler<ItemResource> for Case {
@@ -458,15 +465,15 @@ pub mod tests {
             index: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if index != 1 || resource.item() != fixture_item_key("minecraft:stick") {
-                return 0;
+                return Ok(0);
             }
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
-            match self.rewrite(host, tx, damage + amount) {
+            Ok(match self.rewrite(host, tx, damage + amount)? {
                 true => amount,
                 false => 0,
-            }
+            })
         }
         fn extract_at(
             &self,
@@ -475,23 +482,23 @@ pub mod tests {
             index: usize,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if index != 1 || resource.item() != fixture_item_key("minecraft:stick") {
-                return 0;
+                return Ok(0);
             }
             let damage = self.0.with_stack(host, |case| case.damage()).unwrap_or(0);
             let tried: Result<(), crate::TransactionError<()>> = host.transaction(|host, tx| {
-                self.rewrite(host, tx, damage % 100);
+                let _ = self.rewrite(host, tx, damage % 100);
                 Err(())
             });
             assert!(tried.is_err());
             let damage = self.0.with_stack(host, |stack| stack.damage()).unwrap();
             assert_eq!(damage / 100, 1, "diamond restored after inner abort");
             let took = amount.min(damage % 100);
-            match self.rewrite(host, tx, damage - took) {
+            Ok(match self.rewrite(host, tx, damage - took)? {
                 true => took,
                 false => 0,
-            }
+            })
         }
     }
 
@@ -514,7 +521,7 @@ pub mod tests {
             key: u64,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let place = charm_slot(key);
             let room = place
                 .with_stack(host, |held| {
@@ -536,7 +543,7 @@ pub mod tests {
             key: u64,
             resource: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             charm_slot(key).extract(host, tx, resource, amount)
         }
     }
@@ -573,8 +580,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
         fn extract_at(
             &self,
@@ -583,8 +590,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -614,9 +621,8 @@ pub mod tests {
         assert_eq!(items.amount(host, 3), 10);
         // Into one index, no further: 54 of 60 fill slot 3, and nothing goes elsewhere.
         let insert = |host: &mut dyn ServerHost, index, resource: &ItemResource, amount| {
-            let went = host.transaction(|host, tx| {
-                Ok::<_, ()>(items.insert_at(host, tx, index, resource, amount))
-            });
+            let went =
+                host.transaction(|host, tx| items.insert_at(host, tx, index, resource, amount));
             went.unwrap()
         };
         assert_eq!(insert(host, 3, &sticks, 60), 54);
@@ -962,8 +968,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             amount: u32,
-        ) -> u32 {
-            amount + 5
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(amount + 5)
         }
         fn extract_at(
             &self,
@@ -972,13 +978,13 @@ pub mod tests {
             index: usize,
             _: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let Some(backend) = backend_mut_of(host) else {
-                return 0;
+                return Ok(0);
             };
-            backend
+            Ok(backend
                 .container_extract(on(SHELF, None), index, amount + 5, tx)
-                .map_or(0, |out| out.count())
+                .map_or(0, |out| out.count()))
         }
     }
 
@@ -992,7 +998,7 @@ pub mod tests {
         let pouch = HAND.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
         let aborted: Result<(), crate::TransactionError<u32>> =
-            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
+            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3).unwrap()));
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(3)));
         assert_eq!(main_hand(&player), Some(stack("test:pouch", 2, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1019,12 +1025,12 @@ pub mod tests {
             tx: &TransactionContext,
             energy: u32,
             moved: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let charged = ItemResource::of(&stack("test:cell", 1, energy));
-            match self.0.exchange(host, tx, &charged, 1) {
+            Ok(match self.0.exchange(host, tx, &charged, 1)? {
                 1 => moved,
                 _ => 0,
-            }
+            })
         }
     }
     impl EnergyHandler for Cell {
@@ -1034,17 +1040,27 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost) -> u32 {
             1000
         }
-        fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        fn insert(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &TransactionContext,
+            amount: u32,
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let held = self.amount(host);
             match amount.min(1000 - held) {
-                0 => 0,
+                0 => Ok(0),
                 went => self.rewrite(host, tx, held + went, went),
             }
         }
-        fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, amount: u32) -> u32 {
+        fn extract(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &TransactionContext,
+            amount: u32,
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let held = self.amount(host);
             match amount.min(held) {
-                0 => 0,
+                0 => Ok(0),
                 came => self.rewrite(host, tx, held - came, came),
             }
         }
@@ -1090,13 +1106,14 @@ pub mod tests {
         let battery = crate::ItemComponentEnergy::new(HAND, energy.clone(), 1000, 250, 1000);
         let mut player = player_world(Some(stack("test:cell", 3, 0)));
         let host: &mut dyn ServerHost = &mut player;
-        let aborted = host.transaction(|host, tx| Err::<(), _>(battery.insert(host, tx, 300)));
+        let aborted =
+            host.transaction(|host, tx| Err::<(), _>(battery.insert(host, tx, 300).unwrap()));
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(250)));
         assert_eq!(main_hand(&player), Some(stack("test:cell", 3, 0)));
         assert!(player_of(&player).given.is_empty());
         // The limit moves 250 of 300: one of the three is charged and splits off.
         let host: &mut dyn ServerHost = &mut player;
-        let went = host.transaction(|host, tx| Ok::<_, ()>(battery.insert(host, tx, 300)));
+        let went = host.transaction(|host, tx| battery.insert(host, tx, 300));
         assert_eq!(went, Ok(250));
         assert_eq!(main_hand(&player), Some(stack("test:cell", 2, 0)));
         let given = &player_of(&player).given;
@@ -1117,14 +1134,14 @@ pub mod tests {
         ));
         let mut player = player_world(Some(stack("test:case", 3, 0)));
         let host: &mut dyn ServerHost = &mut player;
-        let aborted =
-            host.transaction(|host, tx| Err::<(), _>(canteen.insert_at(host, tx, 0, &water, 1000)));
+        let aborted = host.transaction(|host, tx| {
+            Err::<(), _>(canteen.insert_at(host, tx, 0, &water, 1000).unwrap())
+        });
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(1000)));
         assert_eq!(main_hand(&player), Some(stack("test:case", 3, 0)));
         assert!(player_of(&player).given.is_empty());
         let host: &mut dyn ServerHost = &mut player;
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert_at(host, tx, 0, &water, 5000)));
+        let went = host.transaction(|host, tx| canteen.insert_at(host, tx, 0, &water, 5000));
         assert_eq!(went, Ok(4000));
         assert_eq!(main_hand(&player), Some(stack("test:case", 2, 0)));
         let given = &player_of(&player).given;
@@ -1153,8 +1170,7 @@ pub mod tests {
             .registries
             .item_component("test:case", "test:fluid", Tag::Compound(unknown));
         let host: &mut dyn ServerHost = &mut player;
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert_at(host, tx, 0, &water, 1000)));
+        let went = host.transaction(|host, tx| canteen.insert_at(host, tx, 0, &water, 1000));
         assert_eq!(went, Ok(0));
         assert_eq!(main_hand(&player), Some(stack("test:case", 1, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1177,8 +1193,7 @@ pub mod tests {
             .registries
             .item_component("test:case", "test:fluid", Tag::Compound(full));
         let host: &mut dyn ServerHost = &mut player;
-        let came =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.extract_at(host, tx, 0, &water, 0)));
+        let came = host.transaction(|host, tx| canteen.extract_at(host, tx, 0, &water, 0));
         assert_eq!(came, Ok(0));
         assert_eq!(main_hand(&player), Some(stack("test:case", 2, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1230,8 +1245,7 @@ pub mod tests {
     /// `place.insert` of `stack` in a transaction of its own: how much went.
     pub(crate) fn insert(host: &mut dyn ServerHost, place: &ItemPlace, stack: ItemStack) -> u32 {
         let resource = ItemResource::of(&stack);
-        let went = host
-            .transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &resource, stack.count())));
+        let went = host.transaction(|host, tx| place.insert(host, tx, &resource, stack.count()));
         went.unwrap_or(0)
     }
 
@@ -1240,9 +1254,8 @@ pub mod tests {
     /// own: how many.
     pub(crate) fn exchange(host: &mut dyn ServerHost, place: &ItemPlace, stack: ItemStack) -> u32 {
         let resource = ItemResource::of(&stack);
-        let swapped = host.transaction(|host, tx| {
-            Ok::<_, ()>(place.exchange(host, tx, &resource, stack.count()))
-        });
+        let swapped =
+            host.transaction(|host, tx| place.exchange(host, tx, &resource, stack.count()));
         swapped.unwrap_or(0)
     }
 
@@ -1274,8 +1287,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             n: u32,
-        ) -> u32 {
-            n + 1
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(n + 1)
         }
         fn extract_at(
             &self,
@@ -1284,8 +1297,8 @@ pub mod tests {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -1370,7 +1383,7 @@ pub mod tests {
         assert_eq!(worn.component(&damage), Some(Tag::Int(5)));
         // Aborted, nothing changed; committed, one sword of the two is worn and splits off.
         let aborted = host.transaction(|host, tx| {
-            assert_eq!(place.exchange(host, tx, &worn, 1), 1);
+            assert_eq!(place.exchange(host, tx, &worn, 1), Ok(1));
             Err::<(), ()>(())
         });
         assert!(aborted.is_err());
@@ -1617,8 +1630,7 @@ pub mod tests {
         assert!(shelf_.slots[1].is_none());
         let handler = here().capability(&mut shelf_, &ITEMS, SHELF, None).unwrap();
         assert_eq!(handler.capacity(&mut shelf_, 1, Some(&resource)), 64);
-        let moved = shelf_
-            .transaction(|host, tx| Ok::<_, ()>(handler.insert_at(host, tx, 1, &resource, 128)));
+        let moved = shelf_.transaction(|host, tx| handler.insert_at(host, tx, 1, &resource, 128));
         assert_eq!(moved, Ok(1));
         assert_eq!(shelf_.slots[1], Some(stack("minecraft:bread", 1, 0)));
     }
@@ -1677,7 +1689,7 @@ pub mod tests {
         let pouch = in_bag.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
         let aborted: Result<(), crate::TransactionError<u32>> =
-            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
+            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3).unwrap()));
         assert_eq!(aborted, Err(crate::TransactionError::Aborted(3)));
         assert_eq!(main_hand(&player), Some(stack("test:bag", 2, 1)));
         assert!(player_of(&player).given.is_empty());
@@ -1698,8 +1710,8 @@ pub mod tests {
         let host: &mut dyn ServerHost = &mut player;
         let resource = ItemResource::of(&stick());
         host.transaction(|host, tx| {
-            assert_eq!(sticks.extract(host, tx, &resource, 1), 1);
-            assert_eq!(sticks.insert(host, tx, &resource, 2), 2);
+            assert_eq!(sticks.extract(host, tx, &resource, 1), Ok(1));
+            assert_eq!(sticks.insert(host, tx, &resource, 2), Ok(2));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -1734,12 +1746,12 @@ pub mod tests {
                 _: usize,
                 r: &ItemResource,
                 n: u32,
-            ) -> u32 {
+            ) -> Result<u32, TransactionError<Overanswered>> {
                 if n == 0
                     || r.item() != fixture_item_key("test:bag")
                     || self.0.with_stack(host, |stack| stack.damage()).unwrap() != 0
                 {
-                    return 0;
+                    return Ok(0);
                 }
                 let new =
                     ItemResource::of(&stack("test:outer", 1, r.to_stack(1).unwrap().damage() + 1));
@@ -1752,9 +1764,9 @@ pub mod tests {
                 i: usize,
                 r: &ItemResource,
                 n: u32,
-            ) -> u32 {
+            ) -> Result<u32, TransactionError<Overanswered>> {
                 if n == 0 || self.resource(host, i).as_ref() != Some(r) {
-                    return 0;
+                    return Ok(0);
                 }
                 let new = ItemResource::of(&stack("test:outer", 1, 0));
                 self.0.exchange(host, tx, &new, 1)
@@ -1774,8 +1786,8 @@ pub mod tests {
                 _: u64,
                 r: &ItemResource,
                 n: u32,
-            ) -> u32 {
-                HAND.insert(host, tx, r, n) + 1
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(HAND.insert(host, tx, r, n)? + 1)
             }
             fn extract(
                 &self,
@@ -1784,8 +1796,8 @@ pub mod tests {
                 _: u64,
                 r: &ItemResource,
                 n: u32,
-            ) -> u32 {
-                HAND.extract(host, tx, r, n) + 1
+            ) -> Result<u32, TransactionError<Overanswered>> {
+                Ok(HAND.extract(host, tx, r, n)? + 1)
             }
         }
 
@@ -1811,7 +1823,7 @@ pub mod tests {
                             let handler = in_bag.capability(host, &ITEM_ITEMS).unwrap();
                             assert_eq!(
                                 handler.insert_at(host, tx, 0, &r, 3),
-                                3,
+                                Ok(3),
                                 "depth {abort_depth}"
                             );
                             if abort_depth == 2 { Err(()) } else { Ok(()) }
@@ -1887,9 +1899,12 @@ pub mod tests {
             };
             let host: &mut dyn ServerHost = &mut p;
             let r = ItemResource::of(&stick());
+            let expected = Err(TransactionError::Aborted(
+                mod_vocab::__private::parts_installation::overanswered("doubler".to_owned()),
+            ));
             host.transaction(|host, tx| {
-                assert_eq!(at.insert(host, tx, &r, 1), 0);
-                assert_eq!(at.extract(host, tx, &r, 1), 0);
+                assert_eq!(at.insert(host, tx, &r, 1), expected);
+                assert_eq!(at.extract(host, tx, &r, 1), expected);
                 assert_eq!(
                     HAND.with_stack(host, |stack| stack.project()).flatten(),
                     Some(stack("minecraft:stick", 2, 0))
@@ -1950,7 +1965,7 @@ pub mod tests {
         assert_eq!(insert(&mut player, &charm, stick()), 0);
         let resource = ItemResource::of(&stick());
         assert_eq!(
-            player.transaction(|host, tx| Ok::<_, ()>(charm.extract(host, tx, &resource, 1))),
+            player.transaction(|host, tx| charm.extract(host, tx, &resource, 1)),
             Ok(0)
         );
         assert_eq!(
@@ -1962,7 +1977,7 @@ pub mod tests {
         assert_eq!(charm.amount(&mut player), 3);
         assert_eq!(insert(&mut player, &charm, stick()), 1);
         assert_eq!(
-            player.transaction(|host, tx| Ok::<_, ()>(charm.extract(host, tx, &resource, 1))),
+            player.transaction(|host, tx| charm.extract(host, tx, &resource, 1)),
             Ok(1)
         );
         assert_eq!(charm.amount(&mut player), 3);

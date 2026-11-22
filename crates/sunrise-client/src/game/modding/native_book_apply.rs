@@ -331,13 +331,13 @@ impl Game<'_> {
                 }
                 if let Some(stack) = before {
                     let resource = ItemResource::of(stack);
-                    if place.extract(host, tx, &resource, stack.count()) != stack.count() {
+                    if place.extract(host, tx, &resource, stack.count()) != Ok(stack.count()) {
                         return Err(());
                     }
                 }
                 if let Some(stack) = after {
                     let resource = ItemResource::of(stack);
-                    if place.insert(host, tx, &resource, stack.count()) != stack.count() {
+                    if place.insert(host, tx, &resource, stack.count()) != Ok(stack.count()) {
                         return Err(());
                     }
                 }

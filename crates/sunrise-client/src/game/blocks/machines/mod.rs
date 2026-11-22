@@ -4,7 +4,6 @@
 //! comparator signals (`AbstractContainerMenu.getRedstoneSignalFromContainer`).
 mod loot_access;
 use super::{Game, composter::is_composter, spill, storage::is_shulker_box};
-use mod_api::__private::game::*;
 use sunrise_core::nbt::Tag;
 
 #[cfg(test)]
@@ -1580,8 +1579,10 @@ impl Game<'_> {
             }
             let moved = self.storage_transaction(|game, tx| {
                 let host: &mut dyn mod_api::ServerHost = game;
-                let came = part.extract_at(host, tx, slot, &resource, 1);
-                if part.checked(came, 1, &at) != Some(1) {
+                let came = part
+                    .extract_at(host, tx, slot, &resource, 1)
+                    .map_err(|_| ())?;
+                if came != 1 {
                     return Err(());
                 }
                 let mut attempt = PlacementAttempt::default();
@@ -2373,7 +2374,7 @@ mod brewing_fuel_transfer_tests {
                 .unwrap();
                 let resource = mod_api::ItemResource::of(&stack);
                 host.transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &resource, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 0, &resource, 1), Ok(1));
                     Ok::<_, ()>(())
                 })
                 .unwrap();

@@ -679,7 +679,10 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
                     .try_into_api()
                     .unwrap();
                 host.transaction(|host, tx| {
-                    assert_eq!(storage.insert(host, tx, &ItemResource::of(&stock), 7), 7);
+                    assert_eq!(
+                        storage.insert(host, tx, &ItemResource::of(&stock), 7),
+                        Ok(7)
+                    );
                     assert_eq!(replacement.set_name(host, Some(LABEL)), Ok(true));
                     assert_eq!(
                         replacement.set_lock(host, Some(self.lock.clone())),

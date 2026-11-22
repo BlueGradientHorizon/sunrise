@@ -88,7 +88,12 @@ impl MenuPart for Part {
             return Flow::Continue;
         };
         host.transaction(|host, tx| {
-            ItemPlace::MenuSlot { menu, slot: 1 }.insert(host, tx, &ItemResource::of(&cursor), 1);
+            let _ = ItemPlace::MenuSlot { menu, slot: 1 }.insert(
+                host,
+                tx,
+                &ItemResource::of(&cursor),
+                1,
+            );
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -259,7 +264,7 @@ fn an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps() {
             let host: &mut dyn ServerHost = game;
             host.transaction(|host, tx| {
                 let place = ItemPlace::MenuSlot { menu, slot };
-                assert_eq!(place.insert(host, tx, &resource, 8), cap);
+                assert_eq!(place.insert(host, tx, &resource, 8), Ok(cap));
                 assert_eq!(place.with_stack(host, |stack| stack.count()), Some(cap));
                 Ok::<_, ()>(())
             })
@@ -323,7 +328,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         let stick = ItemStack::new("minecraft:stick", 1).try_into_api().unwrap();
         let resource = ItemResource::of(&stick);
         game.storage_transaction(|host, tx| {
-            assert_eq!(cursor.insert(host, tx, &resource, 3), 3);
+            assert_eq!(cursor.insert(host, tx, &resource, 3), Ok(3));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -342,7 +347,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         );
 
         game.storage_transaction(|host, tx| {
-            assert_eq!(cursor.extract(host, tx, &resource, 3), 3);
+            assert_eq!(cursor.extract(host, tx, &resource, 3), Ok(3));
             Ok::<_, ()>(())
         })
         .unwrap();
@@ -582,7 +587,7 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                         &ItemResource::of(&stick),
                         3
                     ),
-                    3
+                    Ok(3)
                 );
                 Ok::<_, ()>(())
             })
@@ -623,13 +628,13 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
         let old_slot = ItemPlace::MenuSlot { menu: old, slot: 1 };
         let host: &mut dyn ServerHost = game;
         host.transaction(|host, tx| {
-            assert_eq!(old_slot.insert(host, tx, &resource, 2), 2);
+            assert_eq!(old_slot.insert(host, tx, &resource, 2), Ok(2));
             Ok::<_, ()>(())
         })
         .unwrap();
 
         let aborted: Result<(), mod_api::TransactionError<()>> = host.transaction(|host, tx| {
-            assert_eq!(old_slot.insert(host, tx, &resource, 1), 1);
+            assert_eq!(old_slot.insert(host, tx, &resource, 1), Ok(1));
             player
                 .open_mod_menu(host, {
                     let mut request =
@@ -642,7 +647,7 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
                 .unwrap();
             let new = player.container_menu(host).unwrap();
             let new_slot = ItemPlace::MenuSlot { menu: new, slot: 1 };
-            assert_eq!(new_slot.insert(host, tx, &resource, 4), 4);
+            assert_eq!(new_slot.insert(host, tx, &resource, 4), Ok(4));
             Err(())
         });
         assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));

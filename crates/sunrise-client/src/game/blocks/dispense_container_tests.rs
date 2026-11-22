@@ -227,20 +227,20 @@ impl ResourceHandler<FluidResource> for Jug {
         _: usize,
         _: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
         if amount < 1000 {
-            return 0;
+            return Ok(0);
         }
         let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
         let potion = ItemResource::of(&mod_api::ItemStack::new(potion, 1).unwrap());
         let all = self.place.amount(host);
-        if self.place.exchange(host, tx, &potion, all) != all {
-            return 0;
+        if self.place.exchange(host, tx, &potion, all)? != all {
+            return Ok(0);
         }
         if self.replace_during_transfer {
             replace_dispenser_with_chest(host, "minecraft:overworld");
         }
-        1000
+        Ok(1000)
     }
     fn extract_at(
         &self,
@@ -249,8 +249,8 @@ impl ResourceHandler<FluidResource> for Jug {
         _: usize,
         _: &FluidResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -280,27 +280,27 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
         _: usize,
         _: &FluidResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
         if amount < 1000 {
-            return 0;
+            return Ok(0);
         }
         let Some(current) = self.0.resource(host) else {
-            return 0;
+            return Ok(0);
         };
         let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
         let potion = ItemResource::of(&mod_api::ItemStack::new(potion, 1).unwrap());
-        if self.0.extract(host, tx, &current, 1) != 1 {
-            return 0;
+        if self.0.extract(host, tx, &current, 1)? != 1 {
+            return Ok(0);
         }
         // Through `OneByOne`, asking to insert 3 caps at 1 (into overflow while slot 0 still holds clay).
-        if self.0.insert(host, tx, &potion, 3) != 1 {
-            return 0;
+        if self.0.insert(host, tx, &potion, 3)? != 1 {
+            return Ok(0);
         }
         // Extract a second unit from slot 0 (emptying it when initial count was 2, leaving 2 when 4).
-        if self.0.extract(host, tx, &current, 1) != 1 {
-            return 0;
+        if self.0.extract(host, tx, &current, 1)? != 1 {
+            return Ok(0);
         }
-        1000
+        Ok(1000)
     }
     fn extract_at(
         &self,
@@ -309,8 +309,8 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
         _: usize,
         _: &FluidResource,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, mod_api::TransactionError<mod_api::Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -561,8 +561,8 @@ fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
         let host: &mut dyn ServerHost = game;
         let (inserted, final_stack) = host
             .scratch_stack(stack, |host, tx, slot| {
-                assert_eq!(slot.extract(host, tx, &resource, 1), 1);
-                Ok::<_, ()>(slot.insert(host, tx, &resource, 3))
+                assert_eq!(slot.extract(host, tx, &resource, 1), Ok(1));
+                slot.insert(host, tx, &resource, 3)
             })
             .unwrap();
         assert_eq!(inserted, 1);

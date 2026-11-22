@@ -181,12 +181,12 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(place) = self.place(host, index) else {
-            return 0;
+            return Ok(0);
         };
         let limit = max_stack(host, resource);
         fill(host, tx, &place, resource, amount, limit)
@@ -198,12 +198,12 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         self.place(host, index)
-            .map_or(0, |place| place.extract(host, tx, resource, amount))
+            .map_or(Ok(0), |place| place.extract(host, tx, resource, amount))
     }
 }
 
@@ -287,12 +287,12 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(place) = self.place(host, index) else {
-            return 0;
+            return Ok(0);
         };
         let limit = self.capacity(host, index, Some(resource));
         fill(host, tx, &place, resource, amount, limit)
@@ -304,12 +304,12 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         self.place(host, index)
-            .map_or(0, |place| place.extract(host, tx, resource, amount))
+            .map_or(Ok(0), |place| place.extract(host, tx, resource, amount))
     }
 }
 
@@ -355,17 +355,17 @@ fn fill(
     resource: &ItemResource,
     amount: u32,
     limit: u32,
-) -> u32 {
+) -> Result<u32, TransactionError<Overanswered>> {
     let held = place.with_stack(host, |held| {
         resource.matches_view(&held).then(|| held.count())
     });
     let held = match held {
         Some(Some(count)) => count,
-        Some(None) => return 0,
+        Some(None) => return Ok(0),
         None => 0,
     };
     match amount.min(limit.saturating_sub(held)) {
-        0 => 0,
+        0 => Ok(0),
         room => place.insert(host, tx, resource, room),
     }
 }
@@ -443,12 +443,12 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(place) = self.place(host, index) else {
-            return 0;
+            return Ok(0);
         };
         let limit = self.capacity(host, index, Some(resource));
         fill(host, tx, &place, resource, amount, limit)
@@ -460,19 +460,19 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         index: usize,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         if !host.transaction_matches(Some(tx)) {
-            return 0;
+            return Err(TransactionError::InvalidContext);
         }
         let Some(place) = self.place(host, index) else {
-            return 0;
+            return Ok(0);
         };
         // `ArmorSlot.mayPickup`: bound armour stays on outside creative.
         let bound = resource.has_enchantment_effect(host, PREVENT_ARMOR_CHANGE);
         if (MAIN..OFF_HAND).contains(&index) && bound {
             let player = host.player(self.player);
             if player.and_then(|player| player.has_infinite_materials(host)) != Some(true) {
-                return 0;
+                return Ok(0);
             }
         }
         place.extract(host, tx, resource, amount)
@@ -512,7 +512,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
                 resource.matches_view(&held).then(|| held.count())
             }) {
                 let room = (amount - went).min(limit.saturating_sub(count));
-                went += place.insert(host, tx, resource, room);
+                went += place.insert(host, tx, resource, room)?;
             }
         }
         for place in (0..MAIN).filter_map(|index| self.slot(index)) {
@@ -520,7 +520,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
                 break;
             }
             if place.with_stack(host, |_| ()).is_none() {
-                went += place.insert(host, tx, resource, (amount - went).min(limit));
+                went += place.insert(host, tx, resource, (amount - went).min(limit))?;
             }
         }
         Ok(went)

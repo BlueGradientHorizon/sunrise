@@ -172,7 +172,7 @@ pub fn try_pickup_fluid(
     host.transaction(|host, tx| {
         let moved = move_first(host, &handler, destination)?.ok_or(())?;
         if let Some(fluid) = moved.key() {
-            level.play_fluid_effects(host, pos, fluid, true, player, tx);
+            let _ = level.play_fluid_effects(host, pos, fluid, true, player, tx);
         }
         Ok::<_, ()>(moved)
     })
@@ -193,7 +193,11 @@ pub fn try_pickup_world_fluid(
     pos: [i32; 3],
 ) -> Option<FluidStack> {
     host.transaction(|host, tx| {
-        let picked = level.pickup_fluid(host, pos, player, tx).ok_or(())?;
+        let picked = level
+            .pickup_fluid(host, pos, player, tx)
+            .ok()
+            .flatten()
+            .ok_or(())?;
         let fluid = FluidResource::of(&picked);
         match destination
             .insert(host, tx, &fluid, picked.amount)
@@ -232,12 +236,12 @@ pub fn try_place_fluid(
             continue;
         };
         let placed = host.transaction(|host, tx| {
-            if source.extract_at(host, tx, index, &fluid, BUCKET) != BUCKET {
+            if source.extract_at(host, tx, index, &fluid, BUCKET) != Ok(BUCKET) {
                 return Err(());
             }
             match level.place_fluid(host, pos, key, player, validate, tx) {
-                true => Ok(fluid.to_stack(BUCKET)),
-                false => Err(()),
+                Ok(true) => Ok(fluid.to_stack(BUCKET)),
+                Ok(false) | Err(_) => Err(()),
             }
         });
         if let Ok(placed) = placed {

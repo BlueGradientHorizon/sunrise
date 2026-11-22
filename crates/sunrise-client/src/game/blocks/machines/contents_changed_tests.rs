@@ -127,8 +127,8 @@ impl BlockPart for Observed {
         );
         assert_eq!(
             host.transaction(|host, tx| {
-                assert_eq!(source.insert_at(host, tx, 0, &sticks, 2), 2);
-                assert_eq!(other.insert_at(host, tx, 0, &sticks, 3), 3);
+                assert_eq!(source.insert_at(host, tx, 0, &sticks, 2), Ok(2));
+                assert_eq!(other.insert_at(host, tx, 0, &sticks, 3), Ok(3));
                 Ok::<_, ()>(())
             }),
             Ok(())
@@ -243,17 +243,17 @@ fn explicit_notices_observe_tentative_writes_and_survive_abort() {
             changes.0.lock().unwrap().clear();
             assert_eq!(
                 game.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 2), 2);
+                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 2), Ok(2));
                     assert!(
                         host.transaction(|host, inner| {
-                            assert_eq!(items.insert_at(host, inner, 0, &sticks, 7), 7);
+                            assert_eq!(items.insert_at(host, inner, 0, &sticks, 7), Ok(7));
                             Err::<(), ()>(())
                         })
                         .is_err()
                     );
                     assert_eq!(items.amount(host, 0), 2);
                     host.transaction(|host, inner| {
-                        assert_eq!(items.insert_at(host, inner, 0, &sticks, 3), 3);
+                        assert_eq!(items.insert_at(host, inner, 0, &sticks, 3), Ok(3));
                         Ok::<_, ()>(())
                     })
                     .unwrap();
@@ -273,7 +273,7 @@ fn explicit_notices_observe_tentative_writes_and_survive_abort() {
             game.world.block_log = Some(Vec::new());
             assert!(
                 game.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 4), 4);
+                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 4), Ok(4));
                     for _ in 0..2 {
                         assert!(entity.set_changed(host).unwrap());
                     }
@@ -409,7 +409,7 @@ fn a_panicking_part_does_not_leave_its_contents_notice_guarded() {
             );
             let host: &mut dyn ServerHost = game;
             let committed = host.transaction(|host, tx| {
-                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), Ok(1));
                 assert!(entity.set_changed(host).unwrap());
                 assert!(PANIC_WRITE_FINISHED.get());
                 assert!(host.transaction_matches(Some(tx)));
@@ -478,8 +478,8 @@ fn a_double_container_notifies_each_backing_block_once() {
             changes.0.lock().unwrap().clear();
             assert_eq!(
                 game.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 3), 3);
-                    assert_eq!(items.insert_at(host, tx, 27, &sticks, 2), 2);
+                    assert_eq!(items.insert_at(host, tx, 0, &sticks, 3), Ok(3));
+                    assert_eq!(items.insert_at(host, tx, 27, &sticks, 2), Ok(2));
                     Ok::<_, ()>(())
                 }),
                 Ok(())
@@ -638,13 +638,13 @@ fn notices_come_in_first_write_order_once_each_whatever_the_journal_keeps() {
             );
             changes.0.lock().unwrap().clear();
             let committed = game.storage_transaction(|host, tx| {
-                assert_eq!(first.insert_at(host, tx, 0, &sticks, 2), 2);
+                assert_eq!(first.insert_at(host, tx, 0, &sticks, 2), Ok(2));
                 host.transaction(|host, inner| {
-                    assert_eq!(second.insert_at(host, inner, 3, &sticks, 5), 5);
+                    assert_eq!(second.insert_at(host, inner, 3, &sticks, 5), Ok(5));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
-                assert_eq!(first.insert_at(host, tx, 1, &sticks, 1), 1);
+                assert_eq!(first.insert_at(host, tx, 1, &sticks, 1), Ok(1));
                 assert!(
                     changes.0.lock().unwrap().is_empty(),
                     "nothing told before the commit"
@@ -700,7 +700,7 @@ fn default_items_notifies_for_committed_mod_container_writes() {
             changes.0.lock().unwrap().clear();
             assert_eq!(
                 game.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), 32);
+                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), Ok(32));
                     Err::<(), _>(())
                 }),
                 Err(())
@@ -711,9 +711,9 @@ fn default_items_notifies_for_committed_mod_container_writes() {
 
             assert_eq!(
                 game.storage_transaction(|host, tx| {
-                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), 32);
+                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), Ok(32));
                     host.transaction(|host, inner| {
-                        assert_eq!(items.insert_at(host, inner, 1, &stick, 32), 32);
+                        assert_eq!(items.insert_at(host, inner, 1, &stick, 32), Ok(32));
                         Ok::<_, ()>(())
                     })
                     .unwrap();
@@ -778,7 +778,7 @@ fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
                     assert_eq!(inner.depth(), 1);
                     assert!(!host.transaction_matches(Some(outer)));
                     assert!(host.transaction_matches(Some(inner)));
-                    assert_eq!(items.insert_at(host, inner, 0, &sticks, 4), 4);
+                    assert_eq!(items.insert_at(host, inner, 0, &sticks, 4), Ok(4));
                     Ok::<_, ()>(())
                 })
                 .unwrap();
@@ -792,7 +792,7 @@ fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
             // The notice of a committed write runs while the root closes.
             LIFECYCLES.lock().unwrap().clear();
             let committed = host.transaction(|host, tx| {
-                assert_eq!(items.insert_at(host, tx, 0, &sticks, 2), 2);
+                assert_eq!(items.insert_at(host, tx, 0, &sticks, 2), Ok(2));
                 assert!(entity.set_changed(host).unwrap());
                 Ok::<_, ()>(())
             });
@@ -831,7 +831,7 @@ fn a_notice_that_opens_a_transaction_keeps_the_root_closing_phase() {
             LIFECYCLES.lock().unwrap().clear();
             let host: &mut dyn ServerHost = game;
             let committed = host.transaction(|host, tx| {
-                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), Ok(1));
                 Ok::<_, ()>(())
             });
             assert_eq!(committed, Ok(()));
@@ -890,7 +890,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
             changes.0.lock().unwrap().clear();
             let host: &mut dyn ServerHost = game;
             let committed = host.transaction(|host, tx| {
-                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), Ok(1));
                 assert_eq!(
                     depot.set_item_slot(host, tx, 0, Some(stick.clone())),
                     Ok(true)
@@ -905,7 +905,7 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
             assert_eq!(depot.item_slot(host, 0), Ok(Some(stick)));
             let next = host.transaction(|host, tx| {
                 assert_eq!(host.transaction_lifecycle(), TransactionLifecycle::Open);
-                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), Ok(1));
                 Ok::<_, ()>(())
             });
             assert_eq!(next, Ok(()));
@@ -1012,11 +1012,11 @@ fn bookshelf_abort_restores_items_flags_and_last_slot_but_keeps_issued_effects()
                 let aborted: Result<(), ()> = game.storage_transaction(|host, tx| {
                     match operation {
                         "insert" => {
-                            assert_eq!(items.insert_at(host, tx, 2, &book, 1), 1);
+                            assert_eq!(items.insert_at(host, tx, 2, &book, 1), Ok(1));
                             assert!(entity.set_changed(host).unwrap());
                         }
                         "extract" => {
-                            assert_eq!(items.extract_at(host, tx, 2, &book, 1), 1);
+                            assert_eq!(items.extract_at(host, tx, 2, &book, 1), Ok(1));
                             assert!(entity.set_changed(host).unwrap());
                         }
                         _ => {

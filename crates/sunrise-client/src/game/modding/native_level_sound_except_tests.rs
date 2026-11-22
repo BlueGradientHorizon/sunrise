@@ -2608,11 +2608,11 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                 {
                     assert_eq!(
                         place.extract(server, tx, &res, existing_count),
-                        existing_count
+                        Ok(existing_count)
                     );
                 }
                 let next = item_resource(item);
-                assert_eq!(place.insert(server, tx, &next, count), count);
+                assert_eq!(place.insert(server, tx, &next, count), Ok(count));
             }
 
             struct NetherFakeWriteHook {

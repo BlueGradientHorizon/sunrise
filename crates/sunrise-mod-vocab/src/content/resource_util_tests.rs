@@ -45,7 +45,7 @@ impl ResourceHandler<Chemical> for Tanks {
         index: usize,
         chemical: &Chemical,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let chemical = if *chemical == HYDROGEN_ALIAS {
             &HYDROGEN
         } else {
@@ -53,10 +53,10 @@ impl ResourceHandler<Chemical> for Tanks {
         };
         let mut tanks = self.0.borrow_mut();
         let Some(tank) = tanks.get_mut(index) else {
-            return 0;
+            return Ok(0);
         };
         let held = match tank {
-            Some((other, _)) if other != chemical => return 0,
+            Some((other, _)) if other != chemical => return Ok(0),
             Some((_, held)) => *held,
             None => 0,
         };
@@ -64,7 +64,7 @@ impl ResourceHandler<Chemical> for Tanks {
         if went > 0 {
             *tank = Some((chemical.clone(), held + went));
         }
-        went
+        Ok(went)
     }
     fn extract_at(
         &self,
@@ -73,17 +73,17 @@ impl ResourceHandler<Chemical> for Tanks {
         index: usize,
         chemical: &Chemical,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         let mut tanks = self.0.borrow_mut();
         let Some(tank) = tanks.get_mut(index) else {
-            return 0;
+            return Ok(0);
         };
         let Some((held_chemical, held)) = tank.clone().filter(|(c, _)| c == chemical) else {
-            return 0;
+            return Ok(0);
         };
         let came = amount.min(held);
         *tank = (held > came).then(|| (held_chemical, held - came));
-        came
+        Ok(came)
     }
 }
 
@@ -232,8 +232,8 @@ impl ResourceHandler<Chemical> for Oversized {
         _: usize,
         _: &Chemical,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(0)
     }
     fn extract_at(
         &self,
@@ -242,8 +242,8 @@ impl ResourceHandler<Chemical> for Oversized {
         _: usize,
         _: &Chemical,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -286,8 +286,8 @@ impl<R> ResourceHandler<R> for Liar {
         _: usize,
         _: &R,
         amount: u32,
-    ) -> u32 {
-        amount.saturating_add(1)
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(amount.saturating_add(1))
     }
     fn extract_at(
         &self,
@@ -296,8 +296,8 @@ impl<R> ResourceHandler<R> for Liar {
         _: usize,
         _: &R,
         _: u32,
-    ) -> u32 {
-        0
+    ) -> Result<u32, TransactionError<Overanswered>> {
+        Ok(0)
     }
 }
 
@@ -481,7 +481,7 @@ fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
             index: usize,
             item: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             self.0.insert_at(host, tx, index, item, amount)
         }
         fn extract_at(
@@ -491,9 +491,9 @@ fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
             index: usize,
             item: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if amount != self.0.amount(host, index) {
-                return 0;
+                return Ok(0);
             }
             self.0.extract_at(host, tx, index, item, amount)
         }
@@ -555,8 +555,8 @@ fn extractability_scan_sees_a_zero_answer_write_then_rolls_back_both_slots() {
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
         fn extract_at(
             &self,
@@ -565,15 +565,15 @@ fn extractability_scan_sees_a_zero_answer_write_then_rolls_back_both_slots() {
             slot: usize,
             r: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if slot == 0 {
-                assert_eq!(self.0.extract_at(host, tx, slot, r, amount), 3);
-                return 0;
+                assert_eq!(self.0.extract_at(host, tx, slot, r, amount), Ok(3));
+                return Ok(0);
             }
             if self.0.amount(host, 0) == 0 {
                 self.0.extract_at(host, tx, slot, r, amount)
             } else {
-                0
+                Ok(0)
             }
         }
     }
@@ -728,12 +728,12 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
             index: usize,
             item: &ItemResource,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             if self.source.resource(host, 1).as_ref() == Some(item) {
                 // The previous resource really moved before the second one's bad answer.
                 assert_eq!(self.source.amount(host, 0), 0);
                 assert_eq!(self.sink.amount(host, 0), 5);
-                return amount + 1;
+                return Ok(amount + 1);
             }
             // The destination is called after the probe rolls back, before extraction.
             assert_eq!(self.source.amount(host, 0), 5);
@@ -746,8 +746,8 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
             _: usize,
             _: &ItemResource,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
     }
 
@@ -769,7 +769,7 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
     let host: &mut dyn ServerHost = &mut fake;
     host.transaction(|host, parent| {
         // Commit this unrelated edit even after catching the helper's failure.
-        assert_eq!(other.insert_at(host, parent, 0, stone, 1), 1);
+        assert_eq!(other.insert_at(host, parent, 0, stone, 1), Ok(1));
         assert_eq!(
             move_resources(host, &from, &to, |_| true, 8, Some(parent)),
             Err(TransactionError::Aborted(Overanswered {
@@ -850,12 +850,12 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
             _: usize,
             _: &Chemical,
             amount: u32,
-        ) -> u32 {
-            if !self.0 && amount == u32::MAX {
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(if !self.0 && amount == u32::MAX {
                 amount
             } else {
                 0
-            }
+            })
         }
         fn extract_at(
             &self,
@@ -864,12 +864,12 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
             _: usize,
             _: &Chemical,
             amount: u32,
-        ) -> u32 {
-            if self.0 && amount == u32::MAX {
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(if self.0 && amount == u32::MAX {
                 amount
             } else {
                 0
-            }
+            })
         }
     }
 
@@ -920,8 +920,8 @@ fn moves_probe_the_remaining_request_once_per_source_index() {
             _: usize,
             _: &Chemical,
             _: u32,
-        ) -> u32 {
-            0
+        ) -> Result<u32, TransactionError<Overanswered>> {
+            Ok(0)
         }
         fn extract_at(
             &self,
@@ -930,9 +930,9 @@ fn moves_probe_the_remaining_request_once_per_source_index() {
             index: usize,
             _: &Chemical,
             amount: u32,
-        ) -> u32 {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             self.0.borrow_mut().push((index, amount));
-            amount.min(1)
+            Ok(amount.min(1))
         }
     }
 

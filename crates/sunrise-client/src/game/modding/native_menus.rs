@@ -605,15 +605,15 @@ mod tests {
                         let mut inner_restored = None;
                         let host: &mut dyn ServerHost = game;
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             let inner = host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Err::<(), ()>(())
                             });
                             assert_eq!(inner, Err(TransactionError::Aborted(())));
                             inner_restored =
                                 place.with_stack(host, |stack| stack.project()).flatten();
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(TransactionError::Aborted(())));
@@ -623,8 +623,8 @@ mod tests {
                         ));
                         // Player and menu writes share the ender snapshot, not competing copies.
                         let aborted = host.transaction(|host, tx| {
-                            assert_eq!(place.extract(host, tx, &resource, 1), 1);
-                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), 1);
+                            assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
+                            assert_eq!(menu.cursor().insert(host, tx, &resource, 1), Ok(1));
                             Err::<(), ()>(())
                         });
                         assert_eq!(aborted, Err(TransactionError::Aborted(())));
@@ -636,7 +636,7 @@ mod tests {
                         // A committed child lends its first snapshot to the parent.
                         let aborted = host.transaction(|host, _| {
                             host.transaction(|host, tx| {
-                                assert_eq!(place.extract(host, tx, &resource, 1), 1);
+                                assert_eq!(place.extract(host, tx, &resource, 1), Ok(1));
                                 Ok::<_, ()>(())
                             })
                             .unwrap();
@@ -979,9 +979,8 @@ mod tests {
                 .try_into_api()
                 .unwrap();
             let slot = ItemPlace::MenuSlot { menu, slot: 4 };
-            let written = host.transaction(|host, tx| {
-                Ok::<_, ()>(slot.insert(host, tx, &ItemResource::of(&diamond), 3))
-            });
+            let written =
+                host.transaction(|host, tx| slot.insert(host, tx, &ItemResource::of(&diamond), 3));
             assert_eq!(written, Ok(3));
             assert!(sent(&rx).is_empty(), "nothing before the tick's sync");
 

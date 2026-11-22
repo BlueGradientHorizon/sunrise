@@ -57,21 +57,22 @@ Keep the contents in the stack and use these methods to access it:
 | `place.with_stack(host, read)` | The callback's result, or `None` without calling it if the place is empty or unavailable |
 | `place.resource(host)` | Its resource without a count, or `None` |
 | `place.amount(host)` | Its count, or 0 |
-| `place.insert(host, tx, &resource, amount)` | How much was inserted |
-| `place.extract(host, tx, &resource, amount)` | How much was taken from a stack matching the resource's item and components |
-| `place.exchange(host, tx, &resource, amount)` | How much was exchanged, or 0 if the exchange fails |
+| `place.insert(host, tx, &resource, amount)` | `Result<u32, TransactionError<Overanswered>>`: how much was inserted, or a transaction/overanswer error |
+| `place.extract(host, tx, &resource, amount)` | `Result<u32, TransactionError<Overanswered>>`: how much was taken from a stack matching the resource's item and components |
+| `place.exchange(host, tx, &resource, amount)` | `Result<u32, TransactionError<Overanswered>>`: how much was exchanged, or `Ok(0)` if the exchange could not run |
 
 Where the game handles extraction directly, an override equal to the item's default does not
 change what matches. The resource need not be valid for insertion: for example, a damage
 component already on a stack can match even when that stack has no maximum damage.
 
 Pass the innermost `&TransactionContext` to every write, including writes to lent scratch places.
-A foreign or ancestor context refuses without calling the provider: amount-only writes return
-zero and `edit` returns `ItemPlaceEditError::InvalidContext`. Writes that open a nested scope,
-including exchange,
-restore changes at every level of nested items on abort. If a handler answers more than
-requested, the move is undone and the
-game warns once, naming the mod.
+A foreign or ancestor context refuses without calling the provider: `insert`, `extract`, and
+`exchange` return `TransactionError::InvalidContext`, `edit` returns
+`ItemPlaceEditError::InvalidContext`, and `on_crafted_by` returns `CraftedByError::InvalidContext`
+(or `CraftedByError::CommitRefused` if its inner replacement commit is rolled back). Writes that
+open a nested scope, including exchange, restore changes at every level of nested items on abort.
+If a handler answers more than requested, the move is undone and the game warns once, naming the
+mod.
 
 ## Exchanging one item
 
@@ -192,7 +193,7 @@ These methods return detached resources. Store the result with an exchange of on
 ```rust,ignore
 let resource = place.resource(host).ok_or("empty place")?;
 let changed = resource.with_component(host, &damage, Tag::Int(5))?;
-place.exchange(host, tx, &changed, 1);
+let _ = place.exchange(host, tx, &changed, 1)?;
 ```
 
 The exchange damages one sword from a stack, splitting it off when necessary.
