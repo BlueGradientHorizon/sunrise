@@ -139,6 +139,55 @@ for padding sections and unloaded borders is tracked in [#2761](https://github.c
 
 Dispatch reuses its batch storage once it has enough capacity.
 
+### Extracting your own quads
+
+`ParticleProvider::extract` runs for each live particle whose current center is in the world
+camera's culling frustum, even when optional particle culling is off. The culling lens uses the wider
+of the configured and effective FOV, not the bobbed or narrowed render projection. Live GUI scenes
+use the ordinary quad and do not call `extract`. This is a draw call, separate from
+`tick`; it borrows the current and previous particle state, camera and frame light. By default
+it calls `output.add_default()`, which uses the same sprite, pose and blend as an ordinary quad.
+An override can call that method, append custom quads, or leave the output empty to draw nothing.
+The usual stock-quad geometry checks apply only to `add_default`.
+
+For example, a provider's `extract` can draw two overlapping opaque shapes at different angles:
+
+```rust,ignore
+use mod_api::{ModParticle, ParticleBlend, ParticleExtractView, ParticleQuad, QuadParticleRenderState};
+
+fn extract(&self, particle: &ModParticle, view: &ParticleExtractView,
+    output: &mut dyn QuadParticleRenderState) {
+    let t = f64::from(view.partial_tick);
+    let center: [f32; 3] = std::array::from_fn(|i| {
+        let world = particle.previous[i] + t * (particle.position[i] - particle.previous[i]);
+        (world - view.camera[i]) as f32
+    });
+    for (offset, rotation) in [
+        (-0.125, [0.0, 0.0, 0.0, 1.0]),
+        ( 0.125, [0.0, 1.0, 0.0, 1.0]),
+    ] {
+        let mut quad = ParticleQuad::default();
+        quad.layer = ParticleBlend::Opaque;
+        quad.center = [center[0] + offset, center[1], center[2]];
+        quad.rotation = rotation;
+        quad.half_size = particle.size;
+        quad.frame = particle.frame;
+        quad.color = 0xffcceeff;
+        quad.light_coords = view.light_coords;
+        output.add(quad);
+    }
+}
+```
+
+Centers are camera-relative and rotations are XYZW quaternions; the renderer does not normalize
+rotations. Each `frame` is an existing index into the bind-time sprite list. UVs are local to that
+sprite: `[0.0, 0.0, 1.0, 1.0]` selects it whole. `color` is `0xAARRGGBB`; for packed light use the
+view's value or vanilla's `LightCoordsUtil.pack`/`smoothPack` layout. The explicit layer wins over
+the group's blend. Opaque quads replace covered pixels after the alpha cut; translucent quads
+blend. Both are depth tested and culled from the back. The group still controls admission of the particle,
+not the number of quads it emits. The sink ignores an unresolved frame or non-finite geometry/UV
+without dropping other quads.
+
 ### Particle render groups
 
 In `Hooks::register_particle_groups`, call `event.register(id, factory)` with an
