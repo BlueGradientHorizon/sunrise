@@ -314,6 +314,11 @@ chunks. A level view in an open transaction sees tentative Part-state writes in 
 Unloaded or stale holders fail; clients have no server Part state. All of these reads require the
 owning game thread and are never available in worker hook bodies.
 
+A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
+`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
+other reads on that view, including staged changes. A client asks its own providers about its
+local data; placement still follows the server's result. See [Capabilities](capabilities.md).
+
 `LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
 
 Redstone and shape reads on `LevelHost`, for placement and survival: `signal(pos, direction)`

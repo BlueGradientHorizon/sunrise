@@ -6,6 +6,15 @@ use crate::*;
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelBlocksBackend {
+    /// Visit one resident block's read-only level and resolved capability inputs, or do
+    /// nothing when the position cannot be resolved. The borrow ends before server defaults.
+    // hidden: the typed capability methods own the query; only their engine adapter visits the site
+    #[doc(hidden)]
+    fn level_with_capability_site(
+        &self,
+        at: BlockSide,
+        visit: &mut dyn FnMut(&dyn LevelHost, BlockCapabilitySite),
+    ) -> Result<(), LevelReadError>;
     /// Side: both.
     /// The contextual friction of `state` at `pos` (`IBlockExtension.getFriction`).
     /// The state need not occupy the position. `entity` is the optional id and type
