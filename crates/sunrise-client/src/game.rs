@@ -8501,6 +8501,7 @@ impl Game<'_> {
             // they give. A world without any (`has_mods`) has none to find among its other
             // unrendered block entities (furnaces, hoppers...).
             let radius = self.effective_render_distance();
+            let untemplated = self.untemplated_mod_block_entities(camera);
             let mods = self
                 .world
                 .block_entities
@@ -8511,7 +8512,6 @@ impl Game<'_> {
                 })
                 .into_iter()
                 .flatten();
-            let untemplated = self.untemplated_mod_block_entities(camera);
             let untemplated_eye = untemplated.iter().map(|block| {
                 (
                     block,

@@ -2270,9 +2270,9 @@ mod tests {
         let camera = at((0, 2, 0));
         o.settle(camera, 1, true);
         let expected = reference(&o.columns, camera, 1, true, true);
-        for x in -2..=2 {
-            for z in -2..=2 {
-                for y in 0..6 {
+        for x in -2i32..=2 {
+            for z in -2i32..=2 {
+                for y in 0i32..6 {
                     let key = (x, y, z);
                     let in_box = x.abs() <= 1 && z.abs() <= 1 && (y - 2).abs() <= 1;
                     assert_eq!(expected.contains(&key), in_box, "reference at {key:?}");
