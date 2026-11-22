@@ -764,15 +764,15 @@ mod tests {
                     .unwrap();
                 game.handle_packet(spawn(5, "mymod:missile", [9.5, 70.0, 0.5]))
                     .unwrap();
+                let empty_capture = mod_api::__private::game::capture_entity_render_attachments(
+                    &Attachments::default(),
+                );
                 let held = rows(game);
                 assert_eq!(held.keys().collect::<Vec<_>>(), [&5]);
                 assert_eq!(held[&5].position, [0.5, 70.0, 0.5]);
                 assert_eq!(held[&5].uuid, 0x77);
                 // Immediately visible with empty render attachments even without attachment_sync.
-                assert_eq!(
-                    held[&5].render_attachments,
-                    mod_api::EntityRenderAttachments::default()
-                );
+                assert_eq!(held[&5].render_attachments, empty_capture);
                 assert_eq!(held[&5].render_attachments.get(&fuel_key), Ok(None));
                 // Both deltas and whole snapshots publish to render_attachments for a known row.
                 game.remote_attachment_sync(attachment_message(5, false, Some(12)));
@@ -806,10 +806,7 @@ mod tests {
                 game.handle_packet(spawn(8, "mymod:missile", [0.5, 70.0, 0.5]))
                     .unwrap();
                 assert_eq!(row_ids(game), [5, 8]);
-                assert_eq!(
-                    rows(game)[&8].render_attachments,
-                    mod_api::EntityRenderAttachments::default()
-                );
+                assert_eq!(rows(game)[&8].render_attachments, empty_capture);
                 game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
                     id: 5,
                     path: play::PositionPath::Linear([3.5, 70.0, 0.5]),

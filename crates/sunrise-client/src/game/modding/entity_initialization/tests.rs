@@ -607,7 +607,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             assert!(game.entity_attachments.contains_key(&ghost));
             use mod_api::{AttachmentQueries, AttachmentQueriesMut};
             let batch = game.query_mut(&saved_key).unwrap();
-            assert_eq!(batch.iter().try_next().unwrap().is_some(), true);
+            assert!(batch.iter().try_next().unwrap().is_some());
             let row = batch.iter().try_next().unwrap().unwrap();
             assert_eq!(
                 row.with_value(Default::default(), |value| *value).unwrap(),

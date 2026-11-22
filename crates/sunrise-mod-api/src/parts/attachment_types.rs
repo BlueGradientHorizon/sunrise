@@ -172,52 +172,42 @@ mod tests {
     }
 
     #[test]
-    fn foreign_namespace_attachment_is_accepted_and_owner_is_tracked_for_duplicates_and_server_side()
-     {
+    fn owned_alias_keeps_its_attachment_id_and_the_declaring_owner() {
         let mut registrar = PartRegistrar::new("b");
-        let key = reg(&mut registrar)
-            .register_attachment_type(crate::AttachmentDescriptor::new("a:mana", || 5u32))
-            .expect("any valid lowercase namespace:name is accepted");
-        assert_eq!(key.owner(), "b");
-        assert_eq!(key.namespace(), "a");
-        assert_eq!(key.name(), "mana");
-
-        registrar.mod_id = "c";
         assert_eq!(
             reg(&mut registrar)
-                .register_attachment_type(crate::AttachmentDescriptor::new("a:mana", || 5u32)),
-            Err("package c attachment a:mana: already declared by package b".into())
-        );
-
-        crate::load_state::with_test_package_inventory(
-            vec![package("srv", crate::Side::Server)],
-            || {
-                let mut srv = PartRegistrar::new("srv");
-                reg(&mut srv)
-                    .register_attachment_type(
-                        crate::AttachmentDescriptor::new("shared:flag", || 0u32).sync(u32_codec()),
-                    )
-                    .unwrap();
-                assert_eq!(
-                    super::super::install_registrar(srv, &crate::parts::tests::rule_schema()),
-                    Err(vec![
-                        "package srv attachment shared:flag: a side = \"server\" package cannot declare a synced attachment".into()
-                    ])
-                );
-            },
-        );
-
-        let mut both = PartRegistrar::new("owner_pkg");
-        reg(&mut both)
-            .register_attachment_type(
-                crate::AttachmentDescriptor::new("shared:flag", || 0u32).sync(u32_codec()),
+                .register_attachment_type(crate::AttachmentDescriptor::new("shared:mana", || 5u32)),
+            Err(
+                "package b attachment shared:mana: namespace belongs to package shared, not b"
+                    .into()
             )
-            .unwrap();
-        super::super::install_registrar(both, &crate::parts::tests::rule_schema()).unwrap();
-        assert_eq!(
-            crate::__private::client_requirement("owner_pkg"),
-            Some("declares the synced attachment shared:flag".into())
         );
+        let owner = crate::PackageInfo::new(
+            "b".into(),
+            "1".into(),
+            crate::PackageKind::Code,
+            crate::Side::Both,
+            vec!["b".into(), "shared".into()],
+            vec![],
+        );
+        crate::load_state::with_test_package_inventory(vec![owner], || {
+            let mut registrar = PartRegistrar::new("b");
+            let key = reg(&mut registrar)
+                .register_attachment_type(
+                    crate::AttachmentDescriptor::new("shared:mana", || 5u32).sync(u32_codec()),
+                )
+                .unwrap();
+            assert_eq!(key.id(), "shared:mana");
+            assert_eq!(key.owner(), "b");
+            registrar.mod_id = "c";
+            assert_eq!(
+                reg(&mut registrar).register_attachment_type(crate::AttachmentDescriptor::new(
+                    "shared:mana",
+                    || 5u32
+                )),
+                Err("package c attachment shared:mana: already declared by package b".into())
+            );
+        });
     }
 
     #[test]
@@ -392,15 +382,14 @@ mod tests {
         assert_eq!(consumer_key.get(&mut host, crate::Holder::Level), Ok(37));
         let batch: crate::AttachmentBatch =
             sunrise_mod_runtime::attachments::AttachmentBatch::empty().into();
-        assert_eq!(
+        assert!(
             batch
                 .query(&consumer_key)
                 .unwrap()
                 .iter()
                 .try_next()
                 .unwrap()
-                .is_none(),
-            true
+                .is_none()
         );
 
         // Reinstall: previously issued keys become stale even with the same ID and Rust type.
@@ -429,15 +418,14 @@ mod tests {
         );
         let live_batch: crate::AttachmentBatch =
             sunrise_mod_runtime::attachments::AttachmentBatch::empty().into();
-        assert_eq!(
+        assert!(
             live_batch
                 .query(&owner_key_next)
                 .unwrap()
                 .iter()
                 .try_next()
                 .unwrap()
-                .is_none(),
-            true
+                .is_none()
         );
         assert_eq!(owner_key_next.get(&mut host, crate::Holder::Level), Ok(37));
     }

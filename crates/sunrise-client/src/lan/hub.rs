@@ -8268,25 +8268,7 @@ mod tests {
     }
 
     fn assert_player_initial_sync(held: bool) {
-        struct Badge;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Badge {
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                r.register_attachment_type(
-                    mod_api::AttachmentDescriptor::new("test:badge", mod_api::Compound::default)
-                        .sync(mod_api::AttachmentCodec {
-                            encode: |value| Ok(value.clone()),
-                            decode: |value| Ok(value.clone()),
-                        }),
-                )
-                .unwrap();
-            }
-        }
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(Badge))].into();
-        mod_platform::testing::with_mods(mods.clone(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            player_initial_sync(held);
-        });
+        crate::lan::entity::with_synced_tags(&["test:badge"], || player_initial_sync(held));
     }
 
     fn player_initial_sync(held: bool) {

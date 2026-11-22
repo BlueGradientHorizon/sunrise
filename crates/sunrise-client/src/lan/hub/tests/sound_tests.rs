@@ -657,7 +657,9 @@ fn a_late_spawn_pairs_with_the_only_held_viewer_before_the_next_pass() {
     map.apply_sync(change.clone());
     let maps = [(37, map)].into_iter().collect();
     let ticks = hub.tracking_ticks().unwrap_or_default();
-    hub.note_joined(&[trident], Some(&maps));
+    crate::lan::entity::with_synced_tags(&["test:flight"], || {
+        hub.note_joined(&[trident], Some(&maps));
+    });
 
     assert_eq!(hub.tracking_ticks(), Some(ticks));
     let queued: Vec<_> = inspect().iter().map(|body| decode_packet(body)).collect();
@@ -737,7 +739,9 @@ fn late_pairing_is_one_publication_amid_concurrent_reliable_replies() {
             }
         });
         ready.wait();
-        hub.note_joined(&[trident], Some(&maps)); // No Holding guard.
+        crate::lan::entity::with_synced_tags(&["test:flight"], || {
+            hub.note_joined(&[trident], Some(&maps)); // No Holding guard.
+        });
     });
     let queued: Vec<_> = inspect().iter().map(|body| decode_packet(body)).collect();
     let start = queued

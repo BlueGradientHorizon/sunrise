@@ -2128,15 +2128,14 @@ mod nested_vehicle_discard_tests {
                 )));
                 let key = self.key.lock().unwrap().clone().unwrap();
                 let batch = host.attachment_query("vehicle_boundary", "value").unwrap();
-                assert_eq!(
+                assert!(
                     batch
                         .query(&key)
                         .unwrap()
                         .iter()
                         .try_next()
                         .unwrap()
-                        .is_some(),
-                    false
+                        .is_none()
                 );
                 return mod_api::Flow::Cancel;
             }
@@ -2232,15 +2231,14 @@ mod nested_vehicle_discard_tests {
                     assert!(game.run_command(&command));
                     set_vehicle_test_attachment(game, &key);
                     let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(
+                    assert!(
                         batch
                             .query(&key)
                             .unwrap()
                             .iter()
                             .try_next()
                             .unwrap()
-                            .is_some(),
-                        true
+                            .is_some()
                     );
                     let vehicle = game.entity(71).unwrap();
                     if cart {
@@ -2260,15 +2258,14 @@ mod nested_vehicle_discard_tests {
                     assert!(game.entity_passengers(vehicle).is_none());
                     assert!(!game.run_command(&command));
                     let batch = game.attachment_query("vehicle_boundary", "value").unwrap();
-                    assert_eq!(
+                    assert!(
                         batch
                             .query(&key)
                             .unwrap()
                             .iter()
                             .try_next()
                             .unwrap()
-                            .is_some(),
-                        false
+                            .is_none()
                     );
                 });
             });

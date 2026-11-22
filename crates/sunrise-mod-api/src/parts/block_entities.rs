@@ -743,7 +743,7 @@ pub mod tests {
                 let key = r.attachment_key::<u32>("owner:progress").unwrap();
                 assert!(matches!(
                     r.attachment_key::<i64>("owner:progress"),
-                    Err(AttachmentError::TypeMismatch { .. })
+                    Err(AttachmentError::TypeMismatch)
                 ));
                 let press = r.block_entity_type_key("owner:press");
                 r.block_entity_part_with_state(&press, Keeps(key)).unwrap();

@@ -7,6 +7,7 @@
 //! `Tracker` is the set of entities it has been paired with.
 use super::tracking;
 use std::sync::Arc;
+use sunrise_mod_runtime::attachments::{AttachmentSyncInput, Holder as AttachmentHolder};
 use sunrise_protocol::{
     buf::pack_degrees,
     entity_data::{Particle, Value, serializer},
@@ -1258,8 +1259,6 @@ pub fn report_attachment_sync_refusal(
     log::warn!("Sunrise: attachment sync for {holder:?} not sent: {error}");
 }
 
-use sunrise_mod_runtime::attachments::{AttachmentSyncInput, Holder as AttachmentHolder};
-
 fn capture_attachment_projection()
 -> impl Fn(AttachmentHolder, &str, &str, AttachmentSyncInput<'_>) -> Option<mod_api::Compound> + Sync
 {
@@ -2090,6 +2089,37 @@ mod slab;
 #[cfg(test)]
 #[path = "entity/send_bench.rs"]
 mod send_bench;
+
+#[cfg(test)]
+pub(super) fn with_synced_tags(names: &'static [&'static str], run: impl FnOnce()) {
+    struct Declare(&'static [&'static str]);
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Declare {
+        fn register(
+            &self,
+            registrar: &mut dyn mod_api::Registrar,
+            _: &mod_api::RegistrationContext,
+        ) {
+            let codec = mod_api::AttachmentCodec {
+                encode: |value: &mod_api::Compound| Ok(value.clone()),
+                decode: |value| Ok(value.clone()),
+            };
+            for &name in self.0 {
+                registrar
+                    .register_attachment_type(
+                        mod_api::AttachmentDescriptor::new(name, mod_api::Compound::default)
+                            .sync(codec),
+                    )
+                    .unwrap();
+            }
+        }
+    }
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(Declare(names)))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        run();
+    });
+}
 
 #[cfg(test)]
 mod tests {
@@ -3565,28 +3595,10 @@ mod tests {
 
     #[test]
     fn pairing_prepares_attachment_sync_lazily_and_keeps_bundle_intact_on_tcp_oversize() {
-        struct Declare;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Declare {
-            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                let codec = mod_api::AttachmentCodec {
-                    encode: |value: &mod_api::Compound| Ok(value.clone()),
-                    decode: |value| Ok(value.clone()),
-                };
-                for name in ["test:fuel", "test:blob"] {
-                    r.register_attachment_type(
-                        mod_api::AttachmentDescriptor::new(name, mod_api::Compound::default)
-                            .sync(codec),
-                    )
-                    .unwrap();
-                }
-            }
-        }
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(Declare))].into();
-        mod_platform::testing::with_mods(mods.clone(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            assert_pairing_attachment_sync();
-        });
+        with_synced_tags(
+            &["test:fuel", "test:blob", "test:refused"],
+            assert_pairing_attachment_sync,
+        );
     }
 
     fn assert_pairing_attachment_sync() {
@@ -3624,15 +3636,21 @@ mod tests {
                 .collect()
         };
         let mut small_map = Attachments::default();
-        small_map.apply_sync(AttachmentSync {
+        let fuel = AttachmentSync {
             namespace: "test".into(),
             name: "fuel".into(),
             value: Some([("n".into(), Tag::Int(42))].into()),
+        };
+        small_map.apply_sync(fuel.clone());
+        small_map.apply_sync(AttachmentSync {
+            namespace: "test".into(),
+            name: "refused".into(),
+            value: Some([("bad".into(), Tag::End)].into()),
         });
         let expected_entity_payload = attachment_sync::encode(&attachment_sync::Message {
             holder: Holder::Entity(7),
             replace: true,
-            changes: small_map.synced(project_attachment_sync(Holder::Entity(7))),
+            changes: vec![fuel],
         })
         .unwrap();
 

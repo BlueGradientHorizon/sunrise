@@ -110,6 +110,7 @@ ids = [
     "handle:ChunkDiskData::from_nbt",
     "hook:chunk_data_load",
     "hook:chunk_data_save",
+    "behaviour:hook_dispatch_panic_containment",
     "handle:OriginalPlayer::attachment",
     "handle:OriginalPlayer::existing_attachment",
     "handle:OriginalPlayer::has_attachment",

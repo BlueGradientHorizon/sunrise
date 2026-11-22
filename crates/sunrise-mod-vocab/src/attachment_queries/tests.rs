@@ -171,14 +171,13 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
             Ok(&99)
         );
     }
-    assert_eq!(
+    assert!(
         host.query(&key)
             .unwrap()
             .iter()
             .try_next()
             .unwrap()
-            .is_none(),
-        true
+            .is_none()
     );
 }
 
