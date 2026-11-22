@@ -54,9 +54,12 @@ impl Requests {
             finished,
         } = self;
         wanted.clear();
-        wanted.extend(chunks.iter().copied().filter(|&key| {
-            !finished.contains(&key) && !current.contains(&batch_origin(key))
-        }));
+        wanted.extend(
+            chunks
+                .iter()
+                .copied()
+                .filter(|&key| !finished.contains(&key) && !current.contains(&batch_origin(key))),
+        );
         wanted
             .make_contiguous()
             .sort_unstable_by_key(|&key| (distance(key, center), key));
@@ -731,23 +734,45 @@ mod tests {
 
     use super::*;
     /// Flying on, the decoration threads build what the view wants now, nearest
-    /// first: what an earlier request asked for is not kept.
+    /// first: what an earlier request asked for is not kept. The builder has no
+    /// threads here: the test reads the queue they take from.
     #[test]
     fn decoration_takes_the_latest_request_nearest_first() {
-        let mut requests = Requests::default();
-        requests.replace_wanted(&[(-3, 0), (-2, 1), (20, 0)], [0, 0]);
-        // A thread builds the batch at 24..32 and has emitted (17, 2) already.
-        requests.current.insert((24, 0));
-        requests.finished.insert((17, 2));
+        let builder = Builder {
+            shared: Arc::new(Shared {
+                requests: Mutex::new(Requests::default()),
+                wake: Condvar::new(),
+                stop: AtomicBool::new(false),
+            }),
+            results: mpsc::channel().1,
+            threads: Vec::new(),
+        };
+        let wanted = || Vec::from(builder.shared.requests.lock().unwrap().wanted.clone());
+        builder.request(&[(-3, 0), (-2, 1), (20, 0)], [0, 0]);
+        {
+            // A thread builds the batch at 24..32 and has emitted (17, 2) already.
+            let mut requests = builder.shared.requests.lock().unwrap();
+            requests.current.insert((24, 0));
+            requests.finished.insert((17, 2));
+        }
         // The player flew east: the request leaves the chunks behind out.
-        requests.replace_wanted(&[(40, 5), (25, 3), (17, 2), (20, 0), (30, 1)], [320, 0]);
-        assert_eq!(Vec::from(requests.wanted.clone()), [(20, 0), (40, 5)]);
+        builder.request(&[(40, 5), (25, 3), (17, 2), (20, 0), (30, 1)], [320, 0]);
+        assert_eq!(wanted(), [(20, 0), (40, 5)]);
+        {
+            let mut requests = builder.shared.requests.lock().unwrap();
+            requests.current.clear();
+            requests.finished.clear();
+        }
         // A request is cut to its nearest `REQUESTS`.
         let far: Vec<_> = (0..REQUESTS as i32 + 10).rev().map(|x| (x, 0)).collect();
-        requests.replace_wanted(&far, [0, 0]);
-        assert_eq!(requests.wanted.len(), REQUESTS);
-        assert_eq!(requests.wanted.front(), Some(&(0, 0)));
-        assert!(requests.wanted.iter().all(|&(x, _)| x < REQUESTS as i32));
+        builder.request(&far, [0, 0]);
+        let kept = wanted();
+        assert_eq!(kept.len(), REQUESTS);
+        assert_eq!(kept.first(), Some(&(0, 0)));
+        assert!(kept.iter().all(|&(x, _)| x < REQUESTS as i32));
+        // The view wants nothing: nothing is left to build.
+        builder.request(&[], [0, 0]);
+        assert!(wanted().is_empty());
     }
     #[test]
     #[ignore = "daily"]
