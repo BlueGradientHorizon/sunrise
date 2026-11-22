@@ -16,6 +16,8 @@ pub trait Hooks {
     /// The server lends the level random host as `fall_on` does, and accepts
     /// `event.write_entity(EntityWrite::…)` for the stepping entity before the inside scan.
     /// Hurt writes apply to players, mobs, dropped items and experience orbs.
+    /// Use `LevelHost::entity_type_is_living(event.kind)` when the block only affects living
+    /// bodies, as magma does.
     /// Boats, minecarts, armor stands and projectiles ignore contact hurt.
     /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
     /// drain: requests apply at the batch end if `pos` still holds `state`.

@@ -904,6 +904,104 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
     );
 }
 
+type LivingStep = (i32, Option<bool>);
+
+#[derive(Clone, Default)]
+struct LivingFloor(Arc<Mutex<Vec<LivingStep>>>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for LivingFloor {
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        let mod_api::LevelRandomSide::Server(level) = level else {
+            return;
+        };
+        let living = level.entity_type_is_living(event.kind);
+        self.0.lock().unwrap().push((event.entity, living));
+        if living == Some(true) && !event.stepping_carefully {
+            event.write_entity(mod_api::EntityWrite::Hurt { amount: 1.0 });
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for LivingFloor {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        r.block_part(stone, self.clone());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_can_hurt_only_living_bodies_on_the_same_block() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_can_hurt_only_living_bodies_on_the_same_block",
+        || {
+            let part = LivingFloor::default();
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                "living_floor",
+                Box::new(part.clone()),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                crate::game::native_entity_refs::tests::with_game(|game| {
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    let stone = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:stone")
+                        .unwrap();
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    game.tickets.update(None);
+
+                    let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    let mut pig =
+                        sunrise_client::mobs::Mob::new(77, kind, Vec3::new(4.5, 64.0, 4.5), 0.0);
+                    pig.no_ai = true;
+                    pig.ground.on_ground = true;
+                    let pig_health = pig.health;
+                    game.mobs.push(pig);
+                    game.spawn_item(
+                        ItemStack::new("minecraft:iron_ingot", 1),
+                        [4.5, 64.25, 4.5],
+                        [0.0, -0.96, 0.0],
+                        20,
+                    );
+                    let mut item = game.dropped.remove(0);
+                    let item_health = item.health;
+
+                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                        game.tick_creature_entities().unwrap();
+                        assert_eq!(
+                            game.tick_item_with_block_contacts(
+                                &mut item,
+                                None,
+                                &[],
+                                false,
+                                &mut |_| {}
+                            ),
+                            (true, false)
+                        );
+                    });
+                    let seen = part.0.lock().unwrap();
+                    assert!(seen.contains(&(77, Some(true))), "pig contact: {seen:?}");
+                    assert!(
+                        seen.contains(&(item.id as i32, Some(false))),
+                        "item contact: {seen:?}"
+                    );
+                    assert_eq!(game.mobs[0].health, pig_health - 1.0);
+                    assert_eq!(item.health, item_health);
+                });
+            });
+        },
+    );
+}
+
 const ACCEPT_BEFORE: u8 = 0;
 const REJECT: u8 = 1;
 const ACCEPT_AFTER: u8 = 2;
