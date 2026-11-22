@@ -174,7 +174,7 @@ def run_side(label, server_command, client_command, build, world):
                 server.console(f'item replace entity {PLAYER} weapon.mainhand with '
                                'minecraft:armor_stand[entity_data={id:"minecraft:armor_stand",Rotation:[90f,0f]}]')
                 server.console(f'teleport {PLAYER} 5.5 -60 0.5 -135 0')
-                server.wait_for(rf'<{PLAYER}> stand paired', timeout=18)
+                server.wait_for(rf'<{PLAYER}> stand paired')
                 for command in STAND_ROTATIONS:
                     server.console(command)
                 # A fixed number of ticks, so that what still changes (a TNT fuse) ends the same.
