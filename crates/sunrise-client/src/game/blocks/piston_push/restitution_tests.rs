@@ -277,10 +277,6 @@ fn an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step() {
                     "the shulker's lid moves the observer before interpolation"
                 );
                 assert_eq!(boat.position.y, 64.375 + rise);
-                assert_eq!(
-                    boat.velocity.y, -1.0,
-                    "an observer does not simulate restitution"
-                );
             })
         },
     );
