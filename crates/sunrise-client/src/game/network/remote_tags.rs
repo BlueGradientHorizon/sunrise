@@ -112,9 +112,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use mod_api::{
-        Hooks, HostSide, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent,
-    };
+    use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
     use mod_platform::__private::part_tests::block_key;
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::{
@@ -139,23 +137,24 @@ mod tests {
     struct Probe(Arc<Mutex<Vec<Seen>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
-        fn tags_updated(&self, host: HostSide<'_>, event: &mut TagsUpdatedEvent) {
-            let HostSide::Client(host) = host else {
-                panic!("the server's tags are a client's to apply");
-            };
-            let host: &dyn mod_api::Host = &*host;
-            let tags = host.tags();
+        fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {
+            assert!(
+                matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }),
+                "the server's tags are a client's to apply"
+            );
+            let tags = context.tags();
             let key = |tag| tags.key(&Identifier::parse(tag).unwrap()).unwrap();
-            let stick = host.item_key(&Identifier::parse("minecraft:stick").unwrap());
+            let stick = context.item_key(&Identifier::parse("minecraft:stick").unwrap());
             self.0.lock().unwrap().push(Seen {
                 cause: event.cause,
                 items: tags.items(key("test:items")),
                 empty_items: tags.items(key("test:empty_items")),
                 fluids: tags.fluids(key("test:fluids")),
-                stone_in_block_tag: host.block_in_tag(block_key("minecraft:stone"), "test:blocks"),
-                dirt_in_block_tag: host.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
+                stone_in_block_tag: context
+                    .block_in_tag(block_key("minecraft:stone"), "test:blocks"),
+                dirt_in_block_tag: context.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
                 stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items")),
-                lava_in_fluid_tag: host.fluid_in_tag("minecraft:lava", "test:fluids"),
+                lava_in_fluid_tag: context.fluid_in_tag("minecraft:lava", "test:fluids"),
             });
         }
     }
@@ -234,8 +233,7 @@ mod tests {
                     let view = reader.context();
                     (
                         view.is_in_tag(stick, tag),
-                        view.item_count(tag),
-                        view.item_at(tag, 0),
+                        view.items_in_tag(tag).map(<[_]>::to_vec),
                     )
                 };
 
@@ -263,7 +261,7 @@ mod tests {
                 assert_eq!(seen.lock().unwrap()[0].stone_in_block_tag, Some(true));
                 assert_eq!(seen.lock().unwrap()[0].items, TagMembers::Unavailable);
                 assert_eq!(seen.lock().unwrap()[0].stick_in_item_tag, None);
-                assert_eq!(item_reads(game), (None, None, None));
+                assert_eq!(item_reads(game), (None, None));
 
                 game.handle_packet(C::UpdateTags(UpdateTags {
                     registries: vec![RegistryTags {
@@ -272,7 +270,7 @@ mod tests {
                     }],
                 }))
                 .unwrap();
-                assert_eq!(item_reads(game), (Some(false), Some(0), None));
+                assert_eq!(item_reads(game), (Some(false), Some(vec![])));
                 assert_eq!(seen.lock().unwrap()[1].items, TagMembers::Missing);
                 assert_eq!(seen.lock().unwrap()[1].stick_in_item_tag, Some(false));
 
@@ -295,8 +293,18 @@ mod tests {
                 let overlay = sunrise_world::loot::PackOverlay::new(&files);
                 let root = &game.options.resources;
                 let item_data = &game.res.core.item_data;
-                let sources =
-                    crate::game::lan::sync::server_sources(root, item_data, &overlay).unwrap();
+                // Build the server's item catalog from its packs, not the client table whose
+                // item tags were intentionally replaced by the preceding empty update.
+                let server_items =
+                    sunrise_client::items::Items::catalog(root, &overlay, item_data.defaults())
+                        .unwrap();
+                let sources = crate::game::lan::sync::server_sources(
+                    root,
+                    item_data,
+                    &server_items,
+                    &overlay,
+                )
+                .unwrap();
                 let wire = sunrise_client::lan::data::SyncData::load(
                     root,
                     &overlay,
@@ -327,7 +335,7 @@ mod tests {
                         }
                     );
                 }
-                assert_eq!(item_reads(game), (Some(true), Some(2), Some(potion)));
+                assert_eq!(item_reads(game), (Some(true), Some(vec![potion, stick])));
                 assert_eq!(
                     seen.lock().unwrap()[2],
                     Seen {
@@ -347,7 +355,7 @@ mod tests {
                     &[("minecraft:block", "test:blocks", &["minecraft:stone"])],
                 )))
                 .unwrap();
-                assert_eq!(item_reads(game), (Some(true), Some(2), Some(potion)));
+                assert_eq!(item_reads(game), (Some(true), Some(vec![potion, stick])));
 
                 // An update in play replaces the registries it names and keeps the others.
                 game.handle_packet(C::UpdateTags(update(
@@ -358,6 +366,7 @@ mod tests {
                     ],
                 )))
                 .unwrap();
+                assert_eq!(item_reads(game), (Some(false), Some(vec![])));
                 assert_eq!(mod_api::Tags::items(game, empty_tag), TagMembers::Missing);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.len(), 5);
@@ -580,6 +589,7 @@ mod tests {
                 let wire = sync::sync_data(
                     &game.options.resources,
                     &game.res.core.item_data,
+                    game.items(),
                     &game.pack_files(),
                 )
                 .unwrap();
@@ -730,10 +740,16 @@ mod tests {
                 r.block_key("minecraft:glass");
                 r.block_part_tag("power_test:providers", Provider);
             }
-            fn tags_updated(&self, host: HostSide<'_>, _: &mut TagsUpdatedEvent) {
-                let HostSide::Client(host) = host else { return };
+            fn tags_updated(
+                &self,
+                context: &dyn mod_api::ReloadContext,
+                event: &mut TagsUpdatedEvent,
+            ) {
+                if !matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }) {
+                    return;
+                }
                 ENABLED.store(
-                    host.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
+                    context.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
                         == Some(true),
                     Ordering::Relaxed,
                 );

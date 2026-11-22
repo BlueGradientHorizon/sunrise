@@ -169,7 +169,7 @@ impl Game<'_> {
             // second rider and a horse or nautilus opens its inventory.
             return matches!(m.species(), Species::Pig | Species::Strider).then_some(false);
         }
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return None;
         }
         // attemptToShearEquipment takes the body slot before the saddle: horse
@@ -209,6 +209,7 @@ impl Game<'_> {
     /// `Pig.mobInteract` / `Strider.mobInteract`: saddle an adult, or ride a saddled mount with no passenger.
     fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
         let held = self.inventory[self.selected].clone();
+        let sneaking = self.held_mapping(Action::Sneak);
         let m = &self.mobs[index];
         if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
             return false;
@@ -233,11 +234,7 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled()
-            || food
-            || self.keys.held(Action::Sneak)
-            || self.has_seated_passengers(m.id)
-        {
+        if !m.extra.saddled() || food || sneaking || self.has_seated_passengers(m.id) {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -333,8 +330,8 @@ impl Game<'_> {
         if species == Species::SkeletonHorse && !m.extra.tame {
             return false;
         }
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.held_mapping(Action::Sneak)
+            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
         // hand makes an untamed one mad instead of seating the player.
         let dandelion = [self.held(), self.offhand.as_ref()]
@@ -626,6 +623,7 @@ impl Game<'_> {
                 self.audio.play(&sound, Some(at), 0.4, 1.0);
             }
         }
+        let sprint = keys.sprint || self.held_mapping(Action::Sprint);
         let m = &mut self.mobs[i];
         let pending = m.rider.map_or(0.0, |r| r.jump);
         m.rider = Some(equine::Rider {
@@ -635,7 +633,7 @@ impl Game<'_> {
             pitch: self.pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: keys.sprint || self.keys.held(Action::Sprint),
+            sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives
@@ -936,43 +934,68 @@ impl Game<'_> {
     /// player, the server players and the mob on its back each get it, with
     /// their own safe distance and armour.
     pub(super) fn fall_to_passengers(&mut self, mob: u32, distance: f64, modifier: f32) {
-        if self.riding == Some(mob) {
-            self.rider_fall_damage(distance, modifier);
-        }
-        let guests: Vec<u32> = self.lan.as_ref().map_or_else(Vec::new, |h| {
-            h.hub
-                .guests
-                .iter()
-                .filter(|g| g.vehicle == Some(mob) && Some(g.conn) != self.lan_acting)
-                .map(|g| g.conn)
-                .collect()
-        });
-        for conn in guests {
-            self.guest_hit_by(conn, |g| g.rider_fall_damage(distance, modifier));
-        }
-        let riders: Vec<u32> = self
-            .mobs
-            .iter()
-            .filter(|m| m.extra.mount == Some(mob))
-            .map(|m| m.id)
-            .collect();
-        for rider in riders {
-            if let Some(r) = self.mobs.iter_mut().find(|m| m.id == rider) {
-                let mut events = Vec::new();
-                r.cause_fall_damage_from(
-                    &self.loop_context,
-                    crate::game::entity::damage_level_of!(
-                        self,
-                        &sunrise_client::health::NO_ATTACK,
-                        no_push,
-                        None
-                    ),
-                    distance,
-                    modifier,
-                    &mut events,
-                );
-                let _ = self.handle_mob_events(events);
+        let seats = self.seated_passengers(mob);
+        for (_, id, player) in seats {
+            if player {
+                if self.riding == Some(mob)
+                    && self
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.entity_id as u32 == id)
+                {
+                    self.rider_fall_damage(distance, modifier);
+                } else if let Some(conn) = self.lan.as_ref().and_then(|host| {
+                    host.hub
+                        .guests
+                        .iter()
+                        .find(|g| g.entity_id as u32 == id && g.vehicle == Some(mob))
+                        .map(|g| g.conn)
+                }) {
+                    self.guest_hit_by(conn, |g| g.rider_fall_damage(distance, modifier));
+                }
+                continue;
             }
+            let Some(i) = self.mob_index.find(&self.mobs, id) else {
+                continue;
+            };
+            let join = self.mobs[i].join;
+            let fall = sunrise_client::mobs::living::PassengerFall { distance, modifier };
+            let mut resume = None;
+            let mut events = Vec::new();
+            while let Some(i) = self.mob_index.find(&self.mobs, id) {
+                let rider = &mut self.mobs[i];
+                if rider.join != join
+                    || rider.removed
+                    || (resume.is_none() && rider.extra.mount != Some(mob))
+                {
+                    break;
+                }
+                let level = crate::game::entity::damage_level_of!(
+                    self,
+                    &sunrise_client::health::NO_ATTACK,
+                    no_push,
+                    None
+                );
+                let pause = match resume.take() {
+                    None => rider.passenger_fall_until_pause(
+                        &self.loop_context,
+                        level,
+                        &mut events,
+                        fall,
+                    ),
+                    Some(pause) => rider.resume_passenger_fall(level, &mut events, pause),
+                };
+                let Some(pause) = pause else {
+                    break;
+                };
+                if let Some(passengers) = pause.passengers() {
+                    self.fall_to_passengers(id, passengers.distance, passengers.modifier);
+                } else {
+                    self.finish_mob_damage_at(i);
+                }
+                resume = Some(pause);
+            }
+            let _ = self.handle_mob_events(events);
         }
     }
     /// The player this game runs (the local one, or the server player it acts
@@ -1000,6 +1023,9 @@ impl Game<'_> {
             block_registries: Some(&self.pack.block_registries),
         }
         .cause_mount_fall(distance, modifier);
+        if self.lan_acting.is_some() {
+            self.finish_guest_damage();
+        }
     }
     /// `PlayerRideableJumping`: horses, camels and nautili (the dash).
     fn jumps(species: Species) -> bool {
@@ -1014,28 +1040,6 @@ impl Game<'_> {
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.
     pub(super) fn mount_jumping(&self) -> bool {
         self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
-    }
-    /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
-    /// layer, only while riding a mount). Returns the mount's heart count
-    /// (`getVehicleMaxHearts`).
-    pub(super) fn draw_mount_hud(
-        &mut self,
-        batch: &mut HudBatch,
-        w: i32,
-        h: i32,
-        heights: &mut sunrise_client::hud_layout::StatusBarHeights,
-    ) -> i32 {
-        let Some(i) = self.mount_index() else {
-            return 0;
-        };
-        let m = &self.mobs[i];
-        let hearts = sunrise_client::hud_layout::vehicle_max_hearts(m.attrs.max_health);
-        let draws = sunrise_client::hud_layout::vehicle_health(w, h, hearts, m.health, heights);
-        self.keep_status_rows(&draws, w, h);
-        self.gui_layer("minecraft:vehicle_health", batch, |g, batch| {
-            sunrise_client::hud_layout::paint(batch, &g.gui.atlas, &draws);
-        });
-        hearts
     }
     /// The jump bar when it is the contextual bar.
     pub(super) fn draw_jump_bar(&self, batch: &mut HudBatch, w: i32, h: i32) {

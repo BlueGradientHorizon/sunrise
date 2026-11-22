@@ -325,8 +325,11 @@ impl Game<'_> {
         // The host's held keys stay theirs: the guest holds only sneak, and a
         // screen the guest opens (`keys.clear()`) leaves the host walking.
         let host_keys = std::mem::take(&mut self.keys);
-        if g.sneaking {
-            self.keys.insert(KeyCode::ShiftLeft);
+        let saved_mappings = std::mem::take(&mut self.vanilla_mappings);
+        let sneaking = g.sneaking;
+        let guest_vehicle = g.vehicle;
+        if sneaking {
+            self.insert_device_key(KeyCode::ShiftLeft);
         }
         // The window's screens are the host's: a sign, book, command block or
         // mount menu the guest's action opens is not drawn over the host's
@@ -360,16 +363,15 @@ impl Game<'_> {
         std::mem::swap(&mut self.mount, &mut play.mount);
         // `Entity.portalCooldown` and `portalProcess` are the player's own.
         std::mem::swap(&mut self.portals.player, &mut play.portal);
-        let (left, right) = (self.left, self.right);
-        self.left = play.digging.is_some();
-        self.right = play.using.is_some() || self.using.is_some();
+        self.set_mapping_held("key.attack", play.digging.is_some());
+        self.set_mapping_held("key.use", play.using.is_some() || self.using.is_some());
         // The guest's vehicle (Entity.vehicle) for its turn.
-        let riding = std::mem::replace(&mut self.riding, g.vehicle);
+        let riding = std::mem::replace(&mut self.riding, guest_vehicle);
         // `Entity.isPassenger()` for that turn, from the same vehicle: the
         // guest's body keeps no swim (`Entity.updateSwimming` needs it false).
         // Taken from `g.vehicle` each turn, so boarding and getting out land.
         if let Some(p) = self.player.as_mut() {
-            p.is_passenger = g.vehicle.is_some();
+            p.is_passenger = guest_vehicle.is_some();
         }
         // Entity.collide: the guest's body collides with the level's world
         // border too, as it is this turn (it moves with /worldborder).
@@ -489,6 +491,7 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_keys,
+            saved_mappings,
             screen,
             host_sign,
             host_book,
@@ -511,8 +514,6 @@ impl Game<'_> {
             attack_ticks,
             attack_item,
             swing,
-            left,
-            right,
             riding,
             host_station,
             sleeping,
@@ -559,7 +560,7 @@ impl Game<'_> {
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
-        // The callbacks a turn ends with (combat, armor, the totem, the food hook) can reach a
+        // The callbacks a turn ends with (combat, armor, the food hook) can reach a
         // mod and panic. The swap is still restored below and the guest's progress written
         // back; the panic resumes at the end (#2240). `as_guest_at` calls this after catching a
         // panic of the turn itself, so a panic here then goes on in place of that one.
@@ -568,8 +569,6 @@ impl Game<'_> {
                 self.record_combat(&turn_events);
                 self.wear_armor(&turn_events);
             }
-            // A totem that saved the guest this turn (its hurt set it off).
-            let totem = self.apply_totem();
             // The mods hear the food level the turn changed (eating, hunger,
             // starving...), once for the change it made as a whole, with the
             // guest's state still swapped in; they may change or undo it before it
@@ -597,15 +596,11 @@ impl Game<'_> {
                     }
                 }
             }
-            totem
         }));
-        let (totem, panic) = match callbacks {
-            Ok(totem) => (totem, None),
-            Err(payload) => {
-                self.record_open_turns();
-                (None, Some(payload))
-            }
-        };
+        let panic = callbacks.err();
+        if panic.is_some() {
+            self.record_open_turns();
+        }
         let GuestSwap {
             attachments,
             conn,
@@ -627,6 +622,7 @@ impl Game<'_> {
             xp,
             level_up_sound,
             host_keys,
+            saved_mappings,
             screen,
             host_sign,
             host_book,
@@ -649,8 +645,6 @@ impl Game<'_> {
             attack_ticks,
             attack_item,
             swing,
-            left,
-            right,
             riding,
             host_station,
             sleeping,
@@ -818,8 +812,6 @@ impl Game<'_> {
         // ServerPlayer.displayClientMessage(_, true): the guest's action bar.
         let guest_message = std::mem::replace(&mut self.message, message);
         let guest_vehicle = std::mem::replace(&mut self.riding, riding);
-        self.left = left;
-        self.right = right;
         play.mining = std::mem::replace(&mut self.mining, mining);
         play.destroy_delay = std::mem::replace(&mut self.destroy_delay, destroy_delay);
         play.using = std::mem::replace(&mut self.using, using);
@@ -852,6 +844,7 @@ impl Game<'_> {
         // inventory key while riding).
         let guest_mount = std::mem::replace(&mut self.mount_menu, host_mount_menu).opened_mob();
         self.keys = host_keys;
+        self.vanilla_mappings = saved_mappings;
         let new_mode = self.mode_id();
         let turn_previous = std::mem::replace(&mut self.previous_mode, outer_previous);
         let turn_abilities = std::mem::replace(&mut self.acting_abilities, outer_abilities);
@@ -1027,18 +1020,8 @@ impl Game<'_> {
                 g.send(&g.abilities_packet());
             }
         });
-        // LivingEntity.checkTotemDeathProtection's entity event, to every
-        // client tracking the guest and its own; this window draws it too.
-        if let Some(body) = totem {
-            let id = host.hub.guests[i].entity_id;
-            host.hub.entity_event(id, crate::game::totem::TOTEM_EVENT);
-            if self.player.is_some() {
-                self.totem_event(sunrise_client::particles::TrackingTarget::Entity(id), body);
-            }
-        }
-        let Some(host) = self.lan.as_mut() else {
-            unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-        };
+        let ended_digging = host.hub.guests[i].dead
+            && (play.digging.is_some() || play.delayed.is_some() || play.destroy_pos.is_some());
         host.play.insert(conn, play);
         let finished = self.lan_guest_swaps.pop();
         debug_assert_eq!(finished, Some(conn));
@@ -1057,6 +1040,9 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
         self.bind_current_hook_residency();
+        if ended_digging {
+            self.guest_forget_digging(conn);
+        }
         for event in turn_events {
             match event {
                 MotionEvent::Health(sunrise_client::health::HealthEvent::DamageBroadcast {

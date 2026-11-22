@@ -225,8 +225,7 @@ impl Game<'_> {
         if let Some(remote) = &self.remote {
             let catalog = crate::game::general::general_type_catalog();
             for (&id, row) in &remote.general.rows {
-                if row.shown
-                    && catalog.pickable(row.type_slot)
+                if catalog.pickable(row.type_slot)
                     && let Ok(entity) = u32::try_from(id)
                     && let Some(distance) = ray_box(eye, dir, reach, row.bounds())
                     && pick.consider(self, entity, distance)
@@ -760,7 +759,7 @@ impl Game<'_> {
             }
             if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id) {
                 m.velocity = velocity;
-                m.on_ground = on_ground;
+                m.ground.on_ground = on_ground;
             }
             if far && let Some(report) = self.remote_vehicle_packets().into_iter().next() {
                 self.send(report);
@@ -859,7 +858,10 @@ impl Game<'_> {
                 self.refresh_boat_status(i);
             }
             let touches = self.boat_bubble_columns(i);
-            for _ in 0..2 {
+            for pass in 0..2 {
+                if pass == 1 && driven {
+                    self.boat_second_step(i);
+                }
                 for &column in &touches {
                     if column.surface {
                         if self.boat_splash_roll(i) {
@@ -1037,7 +1039,7 @@ fn mount_move(m: &Mob, at: PosRot) -> S {
         position: at.position,
         yaw: at.yaw,
         pitch: at.pitch,
-        on_ground: m.on_ground,
+        on_ground: m.ground.on_ground,
     })
 }
 
@@ -1398,7 +1400,7 @@ mod tests {
         let Some(mut m) = mob("minecraft:horse") else {
             return;
         };
-        (m.yaw, m.head_pitch, m.on_ground) = (90.0, 10.0, true);
+        (m.yaw, m.head_pitch, m.ground.on_ground) = (90.0, 10.0, true);
         let at = PosRot {
             position: [m.position.x, m.position.y, m.position.z],
             yaw: m.yaw,

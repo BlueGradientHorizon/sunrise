@@ -218,7 +218,9 @@ impl Game<'_> {
         if self.fns.loaded || self.world_root.as_os_str().is_empty() {
             return;
         }
-        let _ = self.reload_datapacks(false, &self.level.enabled_features.clone());
+        if let Err(error) = self.reload_datapacks(false, &self.level.enabled_features.clone()) {
+            log::warn!("Sunrise: {}", error.diagnostic());
+        }
     }
     pub(super) fn open_world_datapacks(
         &mut self,
@@ -311,7 +313,6 @@ impl Game<'_> {
         }
         // Every candidate, including world tables, must prepare successfully
         // before any listener publishes its new state.
-        let prepared = self.apply_server_reload_callbacks(prepared);
         if let Some(root) = next_root {
             self.options.resources = root.prepared().to_owned();
             self.pack.data_source = root.data().clone();
@@ -338,8 +339,7 @@ impl Game<'_> {
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
             super::lan::sync::install_world_sync_data(wire);
         }
-        self.build_native_commands(enabled_features);
-        self.apply_server_reload(prepared, &stack);
+        self.apply_server_reload(prepared, &stack, enabled_features);
         self.run_native_advancement_grants();
         // The schedule is the world's live `TimerQueue` `SavedData`, not pack
         // content: firing an event (`TimerQueue.tick`) and `/schedule clear`
@@ -1477,7 +1477,6 @@ impl Game<'_> {
             }
         };
         prepared.bind_loot(&world);
-        let prepared = self.apply_server_reload_callbacks(prepared);
         self.install_loop_context(context);
         self.fns.packs = stack.packs.clone();
         self.fns.enabled = stack.enabled.clone();
@@ -1485,17 +1484,17 @@ impl Game<'_> {
         self.save_datapack_settings();
         self.fns.load_pending = true;
         self.install_world_tables(world);
-        self.build_native_commands(&self.level.enabled_features.clone());
-        self.apply_server_reload(prepared, &stack);
+        self.apply_server_reload(prepared, &stack, &self.level.enabled_features.clone());
         self.run_native_advancement_grants();
         Ok(())
     }
 
     fn reload_failure(error: ReloadStageError) -> sunrise_client::command::CommandError {
-        log::warn!("Sunrise: {error}");
+        let diagnostic = error.diagnostic();
+        log::warn!("Sunrise: {diagnostic}");
         sunrise_client::command::CommandError::new(
             Text::translate("commands.reload.failure", &[])
-                .append(Text::literal(format!("\n{error}"))),
+                .append(Text::literal(format!("\n{diagnostic}"))),
         )
     }
 
@@ -1536,6 +1535,61 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reload_failure_formats_nested_listener_error_source_chain() {
+        #[derive(Debug)]
+        struct Inner;
+        impl std::fmt::Display for Inner {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("inner cause")
+            }
+        }
+        impl std::error::Error for Inner {}
+
+        #[derive(Debug)]
+        struct Middle(Inner);
+        impl std::fmt::Display for Middle {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("middle cause")
+            }
+        }
+        impl std::error::Error for Middle {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        #[derive(Debug)]
+        struct Outer(Middle);
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("outer cause")
+            }
+        }
+        impl std::error::Error for Outer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        let source = mod_api::ReloadResourceError::new(
+            mod_api::Identifier::parse("test_mod:machine").unwrap(),
+            Outer(Middle(Inner)),
+        );
+        let reply = Game::reload_failure(ReloadStageError::Listener {
+            listener: mod_api::Identifier::parse("test_mod:listener").unwrap(),
+            source,
+        })
+        .message
+        .plain();
+        assert!(
+            reply.contains(
+                "reload listener test_mod:listener: test_mod:machine: outer cause: middle cause: inner cause"
+            ),
+            "{reply}"
+        );
+    }
 
     #[test]
     #[ignore = "daily"]
@@ -1614,18 +1668,16 @@ mod tests {
                 event: &mut mod_api::RegisterCommandsEvent<'_>,
             ) {
                 if self.offered.load(Ordering::Relaxed) {
+                    let ran = self.ran.clone();
                     event
                         .commands
-                        .push(mod_api::Command::new("fnmod [n:integer]"));
+                        .push(mod_api::Command::new("fnmod [n:integer]").executes(
+                            move |_, _, _| {
+                                ran.fetch_add(1, Ordering::Relaxed);
+                                Some(1)
+                            },
+                        ));
                 }
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                _: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                self.ran.fetch_add(1, Ordering::Relaxed);
-                mod_api::Flow::Cancel
             }
         }
         let offered = Arc::new(AtomicBool::new(true));

@@ -79,9 +79,9 @@ Vanilla Minecraft: Java Edition 26.3, and nothing else.
 ### Portable crates
 
 `sunrise-core`, `sunrise-world`, `sunrise-protocol`, `sunrise-items`, `sunrise-command`, `sunrise-client-core`
-and `sunrise-assets` hold vanilla's rules and data with no desktop in them. `sunrise-threads` and
-`sunrise-guest-stack` provide the desktop-free execution plumbing: worker scheduling, sampling and stack
-reservations, and `sunrise-java-properties` reads and writes Java-properties files with the standard library alone. These portable crates have no window, GPU, sound, gamepad or clipboard library, no HTTP client,
+and `sunrise-assets` hold vanilla's rules and data with no desktop in them. `sunrise-threads` provides worker
+scheduling and sampling, and `sunrise-java-properties` reads and writes Java-properties files with the standard
+library alone. These portable crates have no window, GPU, sound, gamepad or clipboard library, no HTTP client,
 and no engine crate outside the portable list. The platform sits on the desktop engine
 (`wgpu`, `winit`, `cpal`), which a handheld console or a browser can't run, so a port there builds on these crates
 instead. They stay that way: the layer check fails when one takes `winit`, `wgpu`, `cpal`, `gilrs`, `arboard` or
@@ -267,6 +267,12 @@ The seam's points 1-3 above, as they work today (layer plan M5).
 | `sunrise-platform` | platform | `sunrise_platform::hooks`: `Hooks`, `Started`, `register`, without the dispatch |
 | `sunrise-game` | platform | The game for an executable to start: `sunrise_game::main()`, the allocator, the mod API mark. The platform's own parts register here as they leave the engine (M6) |
 | `sunrise-official` | Sunrise | The official executable: `register()` adds the Sunrise crates' hooks, then it runs `sunrise_game::main()` |
+
+If you embed the game in your own executable, remove calls to and imports of the retired
+`sunrise_game::prepare_main_stack`, `sunrise_platform::prepare_main_stack` and
+`sunrise_mod_host::prepare_main_stack` re-exports. Register your hooks as before, then call
+`sunrise_game::main()`. On Windows, reserve the main stack at your executable's link as the
+[game build does](release-flow.md#builds).
 
 A Sunrise crate that runs in the game:
 

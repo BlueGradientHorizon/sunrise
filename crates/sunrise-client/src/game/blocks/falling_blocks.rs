@@ -257,6 +257,25 @@ impl Game<'_> {
             f.fall_distance,
         );
         f.velocity = self.finish_body_restitution(entity, f.position, response);
+        let side = game_side!(self);
+        let body = self.body_motion(&side);
+        body.apply_block_speed(f.position, &mut f.velocity);
+        let writes = self.body_step_on(
+            entity,
+            (
+                f.position,
+                sunrise_client::falling_block::bounds(f.position),
+            ),
+            &f.ground,
+            &mut f.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut f.velocity,
+            Some(&mut f.fall_distance),
+            Some(&mut f.stuck),
+            Some(&mut f.fire_ticks),
+        );
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck
         // (Entity.makeStuckInBlock), BubbleColumnBlock.entityInside lifts or
         // drags it. Entity.move records the move unless it was blocked short

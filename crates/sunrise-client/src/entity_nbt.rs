@@ -556,14 +556,14 @@ fn profile_from_nbt(tag: &Tag) -> Option<sunrise_protocol::entity_data::Profile>
         });
     }
     let property = |name: String, value: &Tag, signature: Option<String>| match value {
-        Tag::String(v) => Some(sunrise_protocol::packets::login::Property {
+        Tag::String(v) => Some(sunrise_core::profile::AccountProperty {
             name,
             value: v.to_string_lossy(),
             signature,
         }),
         _ => None,
     };
-    let properties: Vec<sunrise_protocol::packets::login::Property> = match tag.get("properties") {
+    let properties: Vec<sunrise_core::profile::AccountProperty> = match tag.get("properties") {
         // `ExtraCodecs.PROPERTY_MAP`: a list of properties ...
         Some(Tag::List(list)) => list
             .iter()
@@ -732,7 +732,7 @@ pub fn write_mob(
         position: m.position,
         motion: m.velocity,
         rotation: [m.yaw, m.head_pitch],
-        on_ground: m.on_ground,
+        on_ground: m.ground.on_ground,
         fall_distance: m.fall_distance,
     };
     // `Entity.saveWithoutId` consumes these live values in its own order.
@@ -1938,7 +1938,7 @@ fn mob_from_nbt_at(
     // LivingEntity.readAdditionalSaveData: `setSharedFlag(7, getBooleanOr(FallFlying, false))`.
     m.extra.fall_flying = flag(tag, "FallFlying");
     read_mob_home(&mut m, tag);
-    m.on_ground = flag(tag, "OnGround");
+    m.ground.on_ground = flag(tag, "OnGround");
     m.fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     // AbstractCubeMob.readAdditionalSaveData sizes before the living load, so saved bases win.
     if matches!(
@@ -3106,7 +3106,7 @@ pub fn arrow_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: a.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3194,7 +3194,7 @@ pub fn arrow_from_nbt(
     p.left_owner = flag(tag, "LeftOwner");
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     projectile_fields::load_arrow_entity_fields(&mut p, tag);
     let a = p.arrow.as_mut()?;
     a.life = number(tag.get("life")).unwrap_or(0) as i16 as i32;
@@ -3251,7 +3251,7 @@ pub fn fireball_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3382,7 +3382,7 @@ pub fn throwable_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3428,7 +3428,7 @@ pub fn throwable_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Project
     p.owner_uuid = owner;
     p.no_gravity = flag(tag, "NoGravity");
     load_projectile_entity_fields(&mut p, tag);
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
 }
 
@@ -3472,7 +3472,7 @@ pub fn spit_or_bullet_from_nbt(
     [p.yaw, p.pitch] = rotation(tag);
     p.owner_uuid = owner;
     projectile_fields::load_projectile_flags_and_entity_fields(&mut p, tag);
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     Some(p)
 }
 
@@ -3497,7 +3497,7 @@ pub fn spit_or_bullet_to_nbt(
         position: p.position,
         motion: p.velocity,
         rotation: [p.yaw, p.pitch],
-        on_ground: p.on_ground,
+        on_ground: p.ground.on_ground,
         fall_distance: p.fall_distance,
     };
     let mut tag = base.tag(raw);
@@ -3570,7 +3570,7 @@ pub fn fireball_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projecti
     if projectile_fields::keeps_entity_fields(&p) {
         load_projectile_entity_fields(&mut p, tag);
     }
-    p.on_ground = flag(tag, "OnGround");
+    p.ground.on_ground = flag(tag, "OnGround");
     p.fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     p.acceleration = float(tag.get("acceleration_power")).unwrap_or(0.1);
     if let Some(item) = tag.get("Item").and_then(item_from_nbt) {
@@ -3909,7 +3909,7 @@ pub fn armor_stand_tag(
         position: a.position,
         motion: a.velocity,
         rotation: [a.yaw, a.pitch],
-        on_ground: a.on_ground,
+        on_ground: a.ground.on_ground,
         fall_distance: a.enchantment_fall_distance,
     };
     let mut out = EntityTagWriter::new(raw);
@@ -4037,7 +4037,7 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
     a.invisible = flag(tag, "Invisible");
     a.marker = flag(tag, "Marker");
     a.no_gravity = flag(tag, "NoGravity");
-    a.on_ground = flag(tag, "OnGround");
+    a.ground.on_ground = flag(tag, "OnGround");
     // ArmorStand.readAdditionalSaveData: each part of `Pose` that is a list of
     // three numbers, the others staying at their defaults.
     if let Some(pose) = tag.get("Pose") {
@@ -6836,11 +6836,11 @@ pub fn bucket_components(m: &Mob) -> crate::item_data::StackData {
     data.set_other("minecraft:bucket_entity_data", Some(bucket_data(m)));
     // SulfurCube.saveToBucketTag: the body block, when it has one.
     if m.species() == crate::mobs::Species::SulfurCube
-        && let Some(body) = m.extra.body_id()
+        && let Some(body) = m.extra.body_stack()
     {
         data.set_other(
             "minecraft:sulfur_cube_content",
-            Some(Tag::compound([("id", string(body))])),
+            Some(crate::item_data::raw_template_tag(body)),
         );
     }
     if m.species() == crate::mobs::Species::Axolotl {
@@ -6884,6 +6884,11 @@ pub fn apply_item_components(m: &mut Mob, stack: &crate::items::ItemStack) {
     };
     if let Some(name) = stack.custom_name() {
         m.custom_name = Some(name);
+    }
+    if m.species() == crate::mobs::Species::SulfurCube
+        && let Some(body) = components.template_stack("minecraft:sulfur_cube_content")
+    {
+        m.extra.set_body_stack(Some(body));
     }
     if let Some(data) = components.other("minecraft:bucket_entity_data") {
         if let Some(v) = number(data.get("Age")) {

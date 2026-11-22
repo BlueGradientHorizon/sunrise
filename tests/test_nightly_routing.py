@@ -296,16 +296,20 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
                 args = sys.argv[1:]
                 report = {"frames": int(args[args.index("--world-frames") + 1]),
                           "chunks": 1, "meshed_sections": 1, "player": [0, 64, 0],
-                          "display": os.environ.get("DISPLAY"), "wayland": os.environ.get("WAYLAND_DISPLAY")}
+                          "display": os.environ.get("DISPLAY"), "wayland": os.environ.get("WAYLAND_DISPLAY"),
+                          "stack_override": os.environ.get("RUST_MIN_STACK")}
                 pathlib.Path(args[args.index("--smoke-report") + 1]).write_text(json.dumps(report))
             '''))
             binary.chmod(0o755)
-            result = subprocess.run(["bash", str(SMOKE)], cwd=ROOT, env={**os.environ, "BIN": folder, "RUNNER_TEMP": folder, "RUNNER_OS": "Linux", "DISPLAY": ":invalid", "WAYLAND_DISPLAY": "invalid"}, text=True, capture_output=True)
+            env = {**os.environ, "BIN": folder, "RUNNER_TEMP": folder, "RUNNER_OS": "Linux",
+                   "DISPLAY": ":invalid", "WAYLAND_DISPLAY": "invalid", "RUST_MIN_STACK": "16777216"}
+            result = subprocess.run(["bash", str(SMOKE)], cwd=ROOT, env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             report = json.loads((root / "smoke-test.json").read_text())
             self.assertEqual(report["frames"], 1500)
             self.assertRegex(report["display"], r"^:[0-9]+$")
             self.assertIsNone(report["wayland"])
+            self.assertIsNone(report["stack_override"], "the integrated server must start at its own stack floor")
 
     @unittest.skipUnless(os.name == "posix", "The signing gate runs in Bash on Linux")
     def test_fork_dry_run_cannot_pass_without_real_smoke_report(self):

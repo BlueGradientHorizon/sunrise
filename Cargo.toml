@@ -1,7 +1,6 @@
 [workspace]
 exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "third_party/wgpu-hal", "third_party/naga", "third_party/libmimalloc-sys", "tools/fixtures/paper-trace-mod"]
 members = [
-    "crates/sunrise-guest-stack",
     "crates/sunrise-mod-vocab",
     "crates/sunrise-game-discovery",
     "crates/sunrise-telemetry",
@@ -19,6 +18,7 @@ members = [
     "docs/modding/examples",
     "crates/sunrise-dualsense",
     "crates/sunrise-narrator",
+    "crates/sunrise-audio-input",
     "crates/sunrise-threads",
     "crates/sunrise-hdr",
     "crates/sunrise-world",

@@ -10,6 +10,7 @@ use std::{
     sync::Arc,
 };
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_protocol::item::consume_effects;
 use sunrise_protocol::{
     entity_data,
     packets::configuration::{RegistryData, RegistryEntry, RegistryTags, TagEntry, UpdateTags},
@@ -471,8 +472,7 @@ impl SyncData {
             advancements: super::advancements::ServerAdvancements::load(
                 Path::new(""),
                 &sunrise_world::loot::PackOverlay::NONE,
-                BTreeMap::new(),
-                HashMap::new(),
+                super::recipes::BookProjections::default(),
             ),
             content_identity: None,
         }
@@ -794,6 +794,33 @@ impl SyncData {
             );
             registries.push(((*key).to_owned(), e));
         }
+        if consume_effects::has_custom_types() {
+            let (names, data): (Vec<_>, Vec<_>) = consume_effects::configuration()
+                .map(|(name, schema)| (name.to_owned(), Tag::Long(schema as i64)))
+                .unzip();
+            dynamic
+                .add_consume_effects(RegistryData {
+                    registry: consume_effects::REGISTRY.to_owned(),
+                    entries: names
+                        .iter()
+                        .zip(&data)
+                        .map(|(name, schema)| RegistryEntry {
+                            id: name.clone(),
+                            data: Some(schema.clone()),
+                        })
+                        .collect(),
+                })
+                .map_err(|error| error.to_string())?;
+            let from_pack = vec![true; names.len()];
+            registries.push((
+                consume_effects::REGISTRY.to_owned(),
+                Entries {
+                    names,
+                    data,
+                    from_pack,
+                },
+            ));
+        }
         // Merge the world's tag files against the admitted registry IDs above.
         drop(registries_step);
         let tags_step = startup::step("sync.tags");
@@ -839,23 +866,6 @@ impl SyncData {
         } else {
             None
         };
-        let damage = sunrise_client_core::registries::RegistryIds {
-            ids: dynamic
-                .registries
-                .get("minecraft:damage_type")
-                .into_iter()
-                .flatten()
-                .map(|(name, _)| name.clone())
-                .collect(),
-            tags: tags
-                .registries
-                .iter()
-                .find(|registry| registry.registry == "minecraft:damage_type")
-                .into_iter()
-                .flat_map(|registry| &registry.tags)
-                .map(|tag| tag.name.clone())
-                .collect(),
-        };
         let mut sync = Self {
             effect_particle_ids: Default::default(),
             content_identity,
@@ -872,30 +882,22 @@ impl SyncData {
             advancements: match kept.filter(|_| mode == SyncLoad::SameFiles) {
                 Some(kept) => kept.advancements.clone(),
                 None => {
-                    let (recipes, groups) = startup::time("sync.network_recipes", || {
-                        super::recipes::network_recipes(
-                            resources,
-                            overlay,
-                            defaults,
-                            sources,
-                            damage,
-                            packed.as_deref(),
-                            world_tags.map(|tags| tags.items.as_ref()),
-                        )
+                    let projections = startup::time("sync.book_projections", || {
+                        super::recipes::book_projections(sources)
                     })
                     .map_err(|error| error.to_string())?;
                     startup::time("sync.advancements", || {
                         let tree = advancements
                             .cloned()
                             .unwrap_or_else(|| Tree::shared(&resources.join("data"), overlay));
-                        super::advancements::ServerAdvancements::from_tree(tree, recipes, groups)
+                        super::advancements::ServerAdvancements::from_tree(tree, projections)
                     })
                 }
             },
             packed_registries: packed,
         };
         let (recipes, buttons) = startup::time("sync.update_recipes", || {
-            super::recipes::update_recipes(&sync.advancements.recipes, &sync, sources)
+            super::recipes::update_recipes(&sync, sources)
         });
         sync.recipes = recipes;
         sync.stonecutter_buttons = Arc::new(buttons);
@@ -992,6 +994,9 @@ impl SyncData {
 
     /// The id of a name in a built-in or synchronized registry.
     pub fn id(&self, registry: &str, name: &str) -> Option<i32> {
+        if registry == consume_effects::REGISTRY {
+            return self.dynamic.consume_effect_id(name);
+        }
         if registry == "minecraft:data_component_type"
             && self.dynamic.custom_components
             && let Some(id) = sunrise_protocol::item::custom::id(name)
