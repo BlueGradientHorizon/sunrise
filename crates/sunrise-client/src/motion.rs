@@ -1598,18 +1598,8 @@ impl MotionWorld<'_, '_, '_> {
         // MagmaBlock's hot floor hurts unless it steps carefully (sneaks).
         if self.player.ground.on_ground && pass != BlockPass::ServerStuck {
             let on = self.legacy_on_position()?;
-            let under = self.assets.registry.state(self.block(on));
-            if let Some(block) = under {
-                crate::block_contact::step_on(
-                    &block.name,
-                    crate::block_contact::Contact {
-                        entity: self.player.entity_id,
-                        kind: "minecraft:player",
-                        state: self.block(on),
-                        position: on,
-                    },
-                );
-            }
+            let state = self.block(on);
+            let under = self.assets.registry.state(state);
             let magma = under.is_some_and(|s| s.name == "minecraft:magma_block");
             let slime = under.is_some_and(|s| s.name == "minecraft:slime_block");
             if magma && !self.player.shift_key_down {
@@ -1617,7 +1607,6 @@ impl MotionWorld<'_, '_, '_> {
             }
             // TurtleEggBlock.stepOn: a step that is not careful may break an egg.
             if !self.player.shift_key_down {
-                let state = self.block(on);
                 self.resources
                     .landing
                     .step_on(
@@ -1630,14 +1619,15 @@ impl MotionWorld<'_, '_, '_> {
             }
             // SlimeBlock.stepOn: a slow walk on slime drags the horizontal
             // speed (the client moves its own player, so not the server's copy).
-            if slime && !damage_only && !self.player.shift_key_down {
-                let abs_delta_y = self.player.velocity.y.abs();
-                if abs_delta_y < 0.1 {
-                    let scale = 0.4 + abs_delta_y * 0.2;
-                    self.player.velocity.x *= scale;
-                    self.player.velocity.z *= scale;
-                }
+            if slime
+                && !damage_only
+                && !self.player.shift_key_down
+                && let Some(scale) = crate::entities::slime_step_on_scale(self.player.velocity.y)
+            {
+                self.player.velocity.x *= scale;
+                self.player.velocity.z *= scale;
             }
+            self.part_step_on(state, on)?;
         }
         let mut visited = crate::fast_hash::FxHashSet::default();
         let mut effects = mod_api::InsideEffects::default();

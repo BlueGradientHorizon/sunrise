@@ -1120,6 +1120,13 @@ mod crafting_remainder_tests {
     #[test]
     #[ignore = "daily"]
     fn crafting_remainder_part_override_and_default() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_block_states::crafting_remainder_tests::crafting_remainder_part_override_and_default",
+            "SUNRISE_FURNACE_CRAFTING_REMAINDER_CASE",
+            &["override"],
+        ) {
+            return;
+        }
         let mods: mod_api::Mods =
             vec![mod_api::ModEntry::new("remainder", Box::new(RemainderMod))].into();
         crate::game::api_values::install_parts(&mods).unwrap();
@@ -1160,12 +1167,11 @@ mod crafting_remainder_tests {
                         .is_none(),
                     "oversized Part output is refused"
                 );
-                use crate::furnace::FurnaceCooking;
                 let fuel = ItemStack {
                     damage: 2,
                     ..ItemStack::new("minecraft:wooden_hoe", 1)
                 };
-                let mut furnace = crate::containers::Furnace {
+                let furnace = crate::containers::Furnace {
                     kind: crate::containers::FurnaceKind::Furnace,
                     items: [
                         Some(ItemStack::new("minecraft:iron_ore", 1)),
@@ -1179,15 +1185,27 @@ mod crafting_remainder_tests {
                     speed: 1.0,
                     recipes_used: Default::default(),
                 };
-                let mut drops = Vec::new();
-                furnace.tick(
-                    &game.loop_context,
-                    game.recipes(),
-                    game.items(),
-                    game.res.providers(),
-                    &mut drops,
-                    &|s| game.crafting_remainder(s),
+                use sunrise_client::containers::BlockEntity;
+                let pos = (8, 64, 8);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
                 );
+                let state = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:furnace")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+                game.world
+                    .block_entities
+                    .insert(pos, BlockEntity::Furnace(furnace));
+                game.tick_furnace(pos).unwrap();
+                let Some(BlockEntity::Furnace(furnace)) = game.world.block_entities.get(&pos)
+                else {
+                    panic!("no furnace");
+                };
                 let grid = [Some(fuel), None, None, None];
                 let crafted =
                     game.recipes()

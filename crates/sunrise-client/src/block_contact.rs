@@ -323,11 +323,25 @@ pub struct Contact<'a> {
     pub position: BlockPos,
 }
 
+/// The body and exact retained contact used by `Block.stepOn`.
+#[derive(Clone, Copy)]
+pub struct StepContact<'a> {
+    pub contact: Contact<'a>,
+    pub carefully: bool,
+    pub bounds: sunrise_core::geometry::Aabb,
+}
+
+pub enum StepLevel<'a, 'world> {
+    Server(&'a mut DamageLevel<'world>),
+    Client(crate::motion::FrictionLevel<'a>),
+}
+
 /// Where the contacts are answered: the game binds these to the hooks of the block
 /// parts, and says which block states have a part for each.
 pub struct Hooks {
-    /// `Block.stepOn` for a mod block, in the dimension.
-    pub step_on: fn(&str, Contact<'_>),
+    pub step_listens: fn(BlockStateId) -> bool,
+    /// `Block.stepOn` for the block's subscribed Parts; returns only checked outputs.
+    pub step_on: fn(StepLevel<'_, '_>, StepContact<'_>, &mut [f64; 3]) -> Vec<mod_api::EntityWrite>,
     pub any_inside: fn() -> bool,
     pub inside_listens: fn(BlockStateId) -> bool,
     pub pass_listens: fn(BlockStateId) -> bool,
@@ -443,16 +457,27 @@ fn tick_level(read: &'static str) -> Option<&'static str> {
     LEVEL.get()
 }
 
-/// `Block.stepOn` for a mod block: the entity stands on `contact`'s block.
-pub fn step_on(block: &str, contact: Contact<'_>) {
-    if block.starts_with("minecraft:") {
-        return;
-    }
-    if let Some(dimension) = tick_level("step_on")
-        && let Some(hooks) = HOOKS.get()
-    {
-        (hooks.step_on)(dimension, contact);
-    }
+/// Prefer checking this before lending the level, so an unmodded step doesn't
+/// borrow the random stream or prepare a host.
+pub fn step_listens(state: BlockStateId) -> bool {
+    HOOKS.get().is_some_and(|hooks| (hooks.step_listens)(state))
+}
+
+/// `Block.stepOn`: give the contacted state the simulating body's current movement.
+/// The body consumes the entity writes before its inside scan, never at the batch drain.
+pub fn step_on(
+    level: StepLevel<'_, '_>,
+    step: StepContact<'_>,
+    movement: &mut sunrise_core::geometry::Vec3,
+) -> Vec<mod_api::EntityWrite> {
+    let Some(hooks) = HOOKS.get() else {
+        return Vec::new();
+    };
+    let mut answer = movement.components();
+    let writes = (hooks.step_on)(level, step, &mut answer);
+    let [x, y, z] = answer;
+    *movement = sunrise_core::geometry::Vec3::new(x, y, z);
+    writes
 }
 
 /// The dimension the current thread's contacts answer in, as `inside` and the
@@ -511,7 +536,7 @@ fn accepted_damage(answer: f32, kept: f32) -> f32 {
     }
 }
 
-/// A part's bounce answer, ignored unless every component is finite.
+/// A contact Part's movement answer, ignored unless every component is finite.
 fn accepted_movement(
     answer: sunrise_core::geometry::Vec3,
     kept: sunrise_core::geometry::Vec3,
