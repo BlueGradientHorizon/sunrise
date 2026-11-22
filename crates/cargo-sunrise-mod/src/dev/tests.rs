@@ -1,4 +1,5 @@
 use super::*;
+use std::fs;
 
 fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<OsString> + 'a {
     move |name| {
@@ -191,7 +192,7 @@ fn a_retained_sdk_builds_a_lower_mixin_with_its_signed_tool() {
         sunrise_native_build::rust::VERSION.into(),
     )
     .unwrap();
-    let bytes = index.to_json();
+    let bytes = index.to_json().into_bytes();
     let sums = sign::sums_file(&[(sdk::INDEX.into(), sign::sha256_hex(&bytes))]);
     let (key, _) = SigningKey::generate().unwrap();
     fs::write(release.join(sdk::INDEX), bytes).unwrap();
