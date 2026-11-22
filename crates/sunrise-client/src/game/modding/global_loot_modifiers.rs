@@ -352,6 +352,7 @@ pub(super) fn bind_retained(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::loot_types;
     use mod_api::{
         __private::game::ServerReloadListenersOrder, DataLoadContext, Hooks, LootList,
         LootModifierContext, LootStack, LootStackEditError, ModEntry, Registrar,
@@ -597,7 +598,7 @@ mod tests {
                     Path::new("scoped-glm-overlay"),
                     &loot::PackOverlay::new(&overlay),
                     &defaults,
-                    super::loot_types::capture(),
+                    loot_types::capture(),
                 )
                 .unwrap();
                 let serializers = Serializers::capture();
@@ -813,7 +814,7 @@ mod tests {
                     Path::new("scoped-glm-panic-overlay"),
                     &loot::PackOverlay::new(&overlay),
                     &defaults,
-                    super::loot_types::capture(),
+                    loot_types::capture(),
                 )
                 .unwrap();
                 let (generation, _) = Serializers::capture()
