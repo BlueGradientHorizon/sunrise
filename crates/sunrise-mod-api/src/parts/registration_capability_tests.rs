@@ -286,4 +286,206 @@ mod tests {
                 .is_block_capability_registered(&ITEMS, &accepted)
         );
     }
+
+    #[test]
+    fn stock_storage_refuses_malformed_shapes_and_negative_energy() {
+        let mut registrar = super::super::PartRegistrar::new("bad_storage");
+
+        let mut bad_face: [Vec<usize>; 6] = Default::default();
+        bad_face[0] = vec![2];
+        let mut multi_bad_face: [Vec<usize>; 6] = Default::default();
+        multi_bad_face[0] = vec![1];
+        let bad_containers = [
+            (
+                "bad_storage:bad_face",
+                crate::ModContainer {
+                    slots: 2,
+                    faces: bad_face,
+                    ..Default::default()
+                },
+            ),
+            (
+                "bad_storage:bad_input",
+                crate::ModContainer {
+                    slots: 2,
+                    inputs: vec![2],
+                    ..Default::default()
+                },
+            ),
+            (
+                "bad_storage:bad_output",
+                crate::ModContainer {
+                    slots: 2,
+                    outputs: vec![2],
+                    ..Default::default()
+                },
+            ),
+            (
+                "bad_storage:bad_rules",
+                crate::ModContainer {
+                    slots: 1,
+                    insert_rules: vec![
+                        crate::ModContainerInsertRule::Any,
+                        crate::ModContainerInsertRule::OnlyWhenEmpty,
+                    ],
+                    ..Default::default()
+                },
+            ),
+            (
+                "bad_storage:multi_bad",
+                crate::ModContainer {
+                    slots: 1,
+                    faces: multi_bad_face,
+                    inputs: vec![1],
+                    outputs: vec![1],
+                    insert_rules: vec![
+                        crate::ModContainerInsertRule::Any,
+                        crate::ModContainerInsertRule::Any,
+                    ],
+                    menu: None,
+                },
+            ),
+        ];
+        for (target, container) in bad_containers {
+            let before = registrar.refused.len();
+            let key = (&mut registrar as &mut dyn Registrar).block_key(target);
+            (&mut registrar as &mut dyn Registrar).block_container(&key, container);
+            assert_eq!(registrar.refused.len(), before + 1, "{target}");
+            let msg = registrar.refused.last().unwrap();
+            assert!(msg.contains("bad_storage") && msg.contains(target), "{msg}");
+            assert!(
+                !registrar
+                    .parts
+                    .default_block_containers
+                    .contains_key(target)
+            );
+            assert!(
+                !(&mut registrar as &mut dyn Registrar)
+                    .is_block_capability_registered(&ITEMS, &key)
+            );
+            assert!(
+                !(&mut registrar as &mut dyn Registrar)
+                    .is_block_capability_registered(&STORAGE, &key)
+            );
+        }
+
+        let mut bad_fluid_face = crate::ModFluidTanks::default();
+        bad_fluid_face.tanks = vec![1000];
+        bad_fluid_face.faces[0] = vec![1];
+        let mut bad_fluid_input = crate::ModFluidTanks::default();
+        bad_fluid_input.tanks = vec![1000];
+        bad_fluid_input.inputs = vec![1];
+        let mut bad_fluid_output = crate::ModFluidTanks::default();
+        bad_fluid_output.tanks = vec![1000];
+        bad_fluid_output.outputs = vec![1];
+        for (target, fluids) in [
+            ("bad_storage:fluid_face", bad_fluid_face),
+            ("bad_storage:fluid_input", bad_fluid_input),
+            ("bad_storage:fluid_output", bad_fluid_output),
+        ] {
+            let before = registrar.refused.len();
+            let key = (&mut registrar as &mut dyn Registrar).block_key(target);
+            (&mut registrar as &mut dyn Registrar).block_fluids(&key, fluids);
+            assert_eq!(registrar.refused.len(), before + 1, "{target}");
+            let msg = registrar.refused.last().unwrap();
+            assert!(msg.contains("bad_storage") && msg.contains(target), "{msg}");
+            assert!(!registrar.parts.default_block_fluids.contains_key(target));
+            assert!(
+                !(&mut registrar as &mut dyn Registrar)
+                    .is_block_capability_registered(&FLUIDS, &key)
+            );
+        }
+
+        for (target, energy) in [
+            (
+                "bad_storage:neg_cap",
+                crate::ModEnergyBuffer {
+                    capacity: -1,
+                    max_insert: 0,
+                    max_extract: 0,
+                    insert_faces: [true; 6],
+                    extract_faces: [true; 6],
+                },
+            ),
+            (
+                "bad_storage:neg_insert",
+                crate::ModEnergyBuffer {
+                    capacity: 0,
+                    max_insert: -1,
+                    max_extract: 0,
+                    insert_faces: [true; 6],
+                    extract_faces: [true; 6],
+                },
+            ),
+            (
+                "bad_storage:neg_extract",
+                crate::ModEnergyBuffer {
+                    capacity: 0,
+                    max_insert: 0,
+                    max_extract: -1,
+                    insert_faces: [true; 6],
+                    extract_faces: [true; 6],
+                },
+            ),
+        ] {
+            let before = registrar.refused.len();
+            let key = (&mut registrar as &mut dyn Registrar).block_key(target);
+            (&mut registrar as &mut dyn Registrar).block_energy(&key, energy);
+            assert_eq!(registrar.refused.len(), before + 1, "{target}");
+            let msg = registrar.refused.last().unwrap();
+            assert!(msg.contains("bad_storage") && msg.contains(target), "{msg}");
+            assert!(!registrar.parts.default_block_energy.contains_key(target));
+            assert!(
+                !(&mut registrar as &mut dyn Registrar)
+                    .is_block_capability_registered(&ENERGY, &key)
+            );
+        }
+
+        let refused_before_valid = registrar.refused.len();
+        let vault = (&mut registrar as &mut dyn Registrar).block_key("bad_storage:valid_vault");
+        let mut vault_faces: [Vec<usize>; 6] = Default::default();
+        vault_faces[1] = vec![256];
+        (&mut registrar as &mut dyn Registrar).block_container(
+            &vault,
+            crate::ModContainer {
+                slots: 257,
+                faces: vault_faces,
+                inputs: vec![256],
+                outputs: vec![256],
+                insert_rules: Vec::new(),
+                menu: None,
+            },
+        );
+        let tank = (&mut registrar as &mut dyn Registrar).block_key("bad_storage:valid_tank");
+        let mut fluids = crate::ModFluidTanks::default();
+        fluids.tanks = vec![1000; 17];
+        fluids.tanks[0] = 0;
+        fluids.tanks[16] = 1_000_001;
+        fluids.faces[1] = vec![0, 16];
+        fluids.inputs = vec![0, 16];
+        fluids.outputs = vec![0, 16];
+        (&mut registrar as &mut dyn Registrar).block_fluids(&tank, fluids);
+        let battery = (&mut registrar as &mut dyn Registrar).block_key("bad_storage:valid_battery");
+        (&mut registrar as &mut dyn Registrar).block_energy(
+            &battery,
+            crate::ModEnergyBuffer {
+                capacity: 0,
+                max_insert: 500,
+                max_extract: 500,
+                insert_faces: [false; 6],
+                extract_faces: [true; 6],
+            },
+        );
+        assert_eq!(registrar.refused.len(), refused_before_valid);
+        assert!(
+            (&mut registrar as &mut dyn Registrar).is_block_capability_registered(&ITEMS, &vault)
+        );
+        assert!(
+            (&mut registrar as &mut dyn Registrar).is_block_capability_registered(&FLUIDS, &tank)
+        );
+        assert!(
+            (&mut registrar as &mut dyn Registrar)
+                .is_block_capability_registered(&ENERGY, &battery)
+        );
+    }
 }

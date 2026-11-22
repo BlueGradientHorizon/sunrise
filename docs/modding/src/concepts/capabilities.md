@@ -69,7 +69,11 @@ when it returns `Some`. The default `ITEMS` handler's `capacity` remains a limit
 admission; `insert_at` applies the rule. See [Block entity containers](../how-to/content-mods.md#block-entity-containers)
 for the distinction from menu slots.
 The three block-storage declarations accept mod blocks only, not `minecraft` blocks; use
-`block_capability` to expose storage on a vanilla block. The first enabled declaration for a block
+`block_capability` to expose storage on a vanilla block. Container `faces`, `inputs` and `outputs`
+indices must be strictly below `slots` and `insert_rules.len()` at most `slots`; fluid `faces`,
+`inputs` and `outputs` indices must be strictly below `tanks.len()`; and energy `capacity`,
+`max_insert` and `max_extract` must be nonnegative. Malformed declarations are refused at
+registration rather than clamped or filtered. The first enabled declaration for a block
 type supplies its default storage. Item-container declarations may target vanilla items too, and
 their callbacks run in registration order until one returns `Some`.
 

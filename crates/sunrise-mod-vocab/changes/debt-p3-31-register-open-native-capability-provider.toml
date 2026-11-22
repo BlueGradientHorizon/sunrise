@@ -11,6 +11,8 @@ ids = [
     "method:CapabilityRegistrationRegistrar::entity_capability_registered",
     "method:CapabilityRegistrationRegistrar::item_capability_registered",
     "method:DefaultCapabilitiesRegistrar::block_container",
+    "method:DefaultCapabilitiesRegistrar::block_fluids",
+    "method:DefaultCapabilitiesRegistrar::block_energy",
 ]
 why = """
 Built-in and mod-defined capability keys now both bind typed native callbacks instead of carrying
@@ -28,6 +30,14 @@ nonnegative 32-bit integer, matching NeoForge's `ResourceHandler.size` and `getR
 `ItemStackWithSlot.CODEC`'s unsigned-byte slot encoding and mod-only saved `Items` rows encode
 extended indices (`>= 256`) in NBT `Int` `Slot` fields without wrapping, following NeoForge's
 `ItemStacksResourceHandler`/`StacksResourceHandler.serialize`.
+Stock mod block storage declarations (`block_container`, `block_fluids`, `block_energy`) now keep
+their declared slot counts, tank counts, tank capacities, zero-capacity buffers and transfer rates
+instead of clamping them to 256 slots, 16 tanks, `1..=1_000_000` mB, `capacity >= 1` or
+`0..=capacity`. Container face/input/output indices and `insert_rules` length, fluid
+face/input/output indices, and nonnegative energy `capacity`/`max_insert`/`max_extract` are
+validated once at registration (following NeoForge's `SimpleEnergyHandler` constructor and
+`FluidStacksResourceHandler`), refusing malformed registrations once with the registering mod and
+block instead of silently rewriting shapes.
 """
 migrate = """
 Do not construct or match BlockProviderOf, ItemProviderOf, EntityProviderOf or OwnProvider.
@@ -50,6 +60,11 @@ provide_*_capability method with NativeCapabilityProvider and may pass it throug
 Implementations of CapabilityRegistrationRegistrar change the receiver on item_capability_registered
 and entity_capability_registered from &self to &mut self. Calls using the typed
 is_item_capability_registered and is_entity_capability_registered helpers are unchanged.
-Keep `ModContainer::slots` passed to `r.block_container(&block, container)` within `0..=i32::MAX`;
-larger counts are refused at registration instead of silently narrowed.
+Keep `ModContainer::slots` passed to `r.block_container(&block, container)` within `0..=i32::MAX`,
+every index in `faces`, `inputs` and `outputs` strictly below `slots`, and `insert_rules.len() <= slots`.
+Keep every index in `ModFluidTanks::{faces, inputs, outputs}` strictly below `tanks.len()`; zero-capacity
+tanks remain 0 mB and refuse fill instead of being promoted to 1 mB.
+Pass nonnegative (`>= 0`) `capacity`, `max_insert` and `max_extract` to `r.block_energy(&block, buffer)`;
+negatives are refused at registration, while zero capacity and transfer rates above `capacity` are kept
+as declared.
 """

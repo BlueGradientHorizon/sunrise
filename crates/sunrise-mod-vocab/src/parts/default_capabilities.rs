@@ -39,12 +39,21 @@ pub trait DefaultCapabilitiesRegistrar {
     /// Declare this mod block's item slots and optional menu. Vanilla blocks must use
     /// `block_capability` instead of replacing the game's block entity ownership.
     /// `container.slots` must fit in a nonnegative `i32` (matching NeoForge `ResourceHandler.size`
-    /// and `getResource(int)`); larger counts are refused at registration. The normal game table
-    /// builder validates faces; a provider with no slots is registered.
+    /// and `getResource(int)`), every slot index in `faces`, `inputs` and `outputs` must be
+    /// `< container.slots`, and `insert_rules.len()` must be `<= container.slots` (omitted rules
+    /// mean `Any`); malformed declarations are refused at registration. A supported `menu` whose
+    /// slot count matches `container.slots` opens when the block is used; an unsupported or
+    /// mismatched menu is ignored without changing `container.slots`. A provider with no slots is
+    /// registered.
     fn block_container(&mut self, block: &crate::BlockKey, container: crate::ModContainer);
-    /// Declare this block's fluid tanks, validated by the normal game table builder.
+    /// Declare this block's fluid tanks. Every tank index in `faces`, `inputs` and `outputs` must
+    /// be `< fluids.tanks.len()`; out-of-range indices are refused at registration. Capacities are
+    /// kept as declared (matching NeoForge `FluidStacksResourceHandler`); a zero-capacity tank
+    /// accepts no fluid.
     fn block_fluids(&mut self, block: &crate::BlockKey, fluids: crate::ModFluidTanks);
-    /// Declare this block's energy buffer, validated by the normal game table builder.
+    /// Declare this block's energy buffer (matching NeoForge `SimpleEnergyHandler`). `capacity`,
+    /// `max_insert` and `max_extract` must be nonnegative (`>= 0`); negative values are refused at
+    /// registration. Zero capacity and transfer rates larger than `capacity` are kept as declared.
     fn block_energy(&mut self, block: &crate::BlockKey, energy: crate::ModEnergyBuffer);
     /// Register the type-bound callback used by `item_container`.
     fn register_item_container(
