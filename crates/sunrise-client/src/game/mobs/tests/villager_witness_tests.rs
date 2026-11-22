@@ -1,5 +1,8 @@
 //! Actual murder notification, with no server or world tick.
 use super::*;
+use crate::game::native_entity_refs::tests::{
+    bind_acting_guest, bind_local_player, run_fresh_cases, with_game,
+};
 use sunrise_client::mobs::{Damage, Who};
 
 #[test]
@@ -44,13 +47,19 @@ fn murder_uses_only_the_victims_sensor_memory() {
     });
 }
 
-/// Hits through `mob_hits_mob`: a mob (removed right after), two players in one tick, a
-/// refused hit and a lethal one. Vanilla's `Villager.setLastHurtByMob` adds 25 minor_negative
-/// per accepted hit and broadcasts event 13 only for a living villager hit by a player.
+/// Accepted damage writes the hit's own gossip in `Villager.setLastHurtByMob`, before
+/// either the next hit or removal of its attacker. No world tick or artificial reset.
 #[test]
 #[ignore = "daily"]
 fn every_accepted_hurt_counts_for_its_own_attacker() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    if run_fresh_cases(
+        "game::villagers::witness_tests::every_accepted_hurt_counts_for_its_own_attacker",
+        "SUNRISE_VILLAGER_HURT_SEQUENCE_CHILD",
+        &["same-tick"],
+    ) {
+        return;
+    }
+    with_game(|game| {
         game.mobs.clear();
         let kind = game
             .res
@@ -58,58 +67,36 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
             .get("minecraft:villager")
             .unwrap()
             .clone();
-        for (id, x) in [(90, 2.0), (91, 1.0), (92, 3.0)] {
-            game.mobs
-                .push(Mob::new(id, kind.clone(), Vec3::new(x, 100.0, 1.0), 0.0));
+        let at = Vec3::new(1.0, 100.0, 1.0);
+        for id in [90, 91, 92] {
+            game.mobs.push(Mob::new(id, kind.clone(), at, 0.0));
         }
         game.persist.uuids.insert(92, [0, 0, 0, 4]);
         game.native_mobs_joined(0, false);
         let mob_uuid = game.persist.uuids[&90];
-        // A player's hit names its player through the player entity.
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(1.0, 100.0, 1.0))
-                .unwrap(),
-        );
-        let (host, guest) = ([0, 0, 0, 2], 0x3u128);
-        game.level.player_uuid = Some(host);
-        let hit = |game: &mut Game<'_>, attacker: Who, amount| {
-            game.mobs
-                .iter_mut()
-                .find(|m| m.id == 91)
-                .unwrap()
-                .invulnerable = 0;
-            let damage = match attacker {
-                Who::Player => Damage::player([1.0, 100.0, 1.0]),
-                Who::Mob(id) => Damage::mob(id, [1.0, 100.0, 1.0]),
-            };
-            game.mob_hits_mob(91, amount, damage)
+        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
+        let player_hit = |game: &mut Game<'_>, uuid, amount| {
+            bind_local_player(game, 300, uuid);
+            game.mob_hits_mob(91, amount, Damage::player([at.x, at.y, at.z]))
         };
-        let guest_hit = |game: &mut Game<'_>, uuid: u128, amount| {
-            game.lan_acting = Some(7);
-            game.lan_acting_uuid = Some(uuid);
-            let hurt = hit(game, Who::Player, amount);
-            game.lan_acting = None;
-            hurt
-        };
-        assert!(hit(game, Who::Mob(90), 1.0));
-        // The attacker is gone before anything ticks; the gossip is in already.
+        assert!(player_hit(game, 2, 1.0));
+        assert!(player_hit(game, 3, 3.0));
+        let mob = Damage::mob(90, [at.x, at.y, at.z]);
+        assert!(game.mob_hits_mob(91, 5.0, mob));
+        assert!(!game.mob_hits_mob(91, 2.0, Damage::mob(92, [at.x, at.y, at.z])));
+        assert!(game.mob_hits_mob(91, 7.0, mob));
         game.mobs.remove(0);
-        assert_eq!(game.mobs[0].id, 91);
-        assert!(hit(game, Who::Player, 1.0));
-        assert!(guest_hit(game, guest, 1.0));
-        assert!(
-            !game.mob_hits_mob(91, 1.0, Damage::mob(92, [1.0, 100.0, 1.0])),
-            "the cooldown refuses a hit this weak"
-        );
-        assert!(guest_hit(game, 0x5, 1000.0));
+        assert!(player_hit(game, 5, 1000.0));
+        assert!(!game.mobs[0].alive());
         let got = [
             mob_uuid,
-            host,
-            sunrise_client::lan::playerdata::uuid_ints(guest),
+            [0, 0, 0, 2],
+            [0, 0, 0, 3],
+            [0, 0, 0, 4],
+            [0, 0, 0, 5],
         ]
         .map(|uuid| game.villager_reputation_of(91, uuid));
-        let expected = match std::env::var_os("SUNRISE_REPUTATION_ORACLE") {
-            // The harness's vanilla `hurt` row: a mob and two players.
+        let expected: Vec<i32> = match std::env::var_os("SUNRISE_REPUTATION_ORACLE") {
             Some(oracle) => std::fs::read_to_string(oracle)
                 .unwrap()
                 .lines()
@@ -119,68 +106,74 @@ fn every_accepted_hurt_counts_for_its_own_attacker() {
                 .split(',')
                 .map(|s| s.parse().unwrap())
                 .collect(),
-            None => vec![-25, -25, -25],
+            None => vec![-50, -25, -25, 0, -25],
         };
-        assert_eq!(got.to_vec(), expected);
-        let lethal = sunrise_client::lan::playerdata::uuid_ints(0x5);
-        assert_eq!(game.villager_reputation_of(91, lethal), -25);
-        assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 4]), 0);
-        // A site that pushes nobody (`no_push`, as a no_knockback damage type is) counts too, with
-        // the UUID of the hit's own source: a player, then a mob that already has one.
-        game.mobs
-            .push(Mob::new(93, kind.clone(), Vec3::new(1.0, 100.0, 2.0), 0.0));
-        let victim = game.mobs.len() - 1;
-        for (attacker, uuid) in [(Who::Player, host), (Who::Mob(92), [0, 0, 0, 4])] {
-            let mut attack = game.attack_of_who(Some(attacker));
-            attack.player_uuid = (attacker == Who::Player).then_some(host);
-            game.mobs[victim].invulnerable = 0;
-            let damage = match attacker {
-                Who::Player => Damage::player([1.0, 100.0, 2.0]),
-                Who::Mob(id) => Damage::mob(id, [1.0, 100.0, 2.0]),
-            };
-            assert!(game.mobs[victim].damage(
-                crate::game::entity::damage_level_of!(game, &attack, no_push, None),
-                1.0,
-                damage
-            ));
-            assert_eq!(game.villager_reputation_of(93, uuid), -25);
-        }
+        assert_eq!(got.as_slice(), expected);
     });
 }
 
-/// A mob with no UUID hitting a villager twice before the end of the tick keeps one UUID, and
-/// the gossip is under the one the mob keeps.
+/// The no-knockback-credit sting during the borrowed pufferfish tick uses the UUID
+/// allocated when that fish entered the world, not a new identity at the point of damage.
 #[test]
 #[ignore = "daily"]
 fn two_hits_of_a_mob_without_uuid_share_one() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    if run_fresh_cases(
+        "game::villagers::witness_tests::two_hits_of_a_mob_without_uuid_share_one",
+        "SUNRISE_VILLAGER_HURT_STING_CHILD",
+        &["sting"],
+    ) {
+        return;
+    }
+    with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        game.build_registries();
+        game.streaming
+            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
         game.mobs.clear();
-        let kind = game
+        let fish = game
+            .res
+            .mob_types()
+            .get("minecraft:pufferfish")
+            .unwrap()
+            .clone();
+        let villager = game
             .res
             .mob_types()
             .get("minecraft:villager")
             .unwrap()
             .clone();
-        game.mobs
-            .push(Mob::new(91, kind.clone(), Vec3::new(1.0, 100.0, 1.0), 0.0));
-        game.mobs
-            .push(Mob::new(90, kind, Vec3::new(2.0, 100.0, 1.0), 0.0));
+        let mut fish = Mob::new(90, fish, Vec3::new(1.5, 80.0, 1.5), 0.0);
+        fish.extra.size = 2;
+        fish.no_ai = true;
+        fish.no_gravity = true;
+        game.mobs.push(fish);
+        for (id, x) in [(91, 1.25), (92, 1.75)] {
+            let mut target = Mob::new(id, villager.clone(), Vec3::new(x, 80.0, 1.5), 0.0);
+            target.no_ai = true;
+            target.no_gravity = true;
+            game.mobs.push(target);
+        }
         game.native_mobs_joined(0, false);
         let uuid = game.persist.uuids[&90];
-        let attack = Damage::mob(90, [2.0, 100.0, 1.0]);
-        assert!(game.mob_hits_mob(91, 1.0, attack));
-        assert!(game.mob_hits_mob(91, 2.0, attack));
+        game.tick_creature_entities().unwrap();
         assert_eq!(game.persist.uuids[&90], uuid);
-        assert_eq!(game.villager_reputation_of(91, uuid), -50);
+        assert_eq!(game.villager_reputation_of(91, uuid), -25);
+        assert_eq!(game.villager_reputation_of(92, uuid), -25);
     });
 }
 
-/// `Villager.onReputationEventFrom` refreshes only the trader the hit came from, and a hit's
-/// player is the hit's own, not the player acting now.
+/// An indirect hit credits the cloud's guest owner, not the player in the acting body.
 #[test]
 #[ignore = "daily"]
 fn hurt_gossip_belongs_to_the_hits_own_player() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    if run_fresh_cases(
+        "game::villagers::witness_tests::hurt_gossip_belongs_to_the_hits_own_player",
+        "SUNRISE_VILLAGER_HURT_CLOUD_CHILD",
+        &["cloud"],
+    ) {
+        return;
+    }
+    with_game(|game| {
         game.mobs.clear();
         let kind = game
             .res
@@ -188,22 +181,25 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
             .get("minecraft:villager")
             .unwrap()
             .clone();
-        game.mobs
-            .push(Mob::new(91, kind, Vec3::new(1.0, 100.0, 1.0), 0.0));
-        let (host, guest) = ([0, 0, 0, 2], [0, 0, 0, 9]);
-        game.level.player_uuid = Some(host);
-        let attack = sunrise_client::health::Attack {
-            player_uuid: Some(guest),
-            ..Default::default()
-        };
-        let plan = game.prepare_knockback_credit(91, Some(Who::Player), &attack);
-        let credit = plan.lend(&mut game.last_hurt_by_player);
-        assert_eq!(
-            sunrise_client::health::KnockbackCredit::hurt_by_uuid(
-                &credit,
-                &Damage::player([1.0; 3])
-            ),
-            Some(guest)
+        let at = Vec3::new(1.0, 100.0, 1.0);
+        game.mobs.push(Mob::new(91, kind, at, 0.0));
+        game.native_mobs_joined(0, false);
+        game.player = Some(sunrise_client::motion::PlayerMotion::new(game.motion, at).unwrap());
+        bind_local_player(game, 301, 9);
+        game.lan_acting = Some(7);
+        game.lan_acting_name = Some("Cloud owner".into());
+        bind_acting_guest(game);
+        game.lan_acting = None;
+        bind_local_player(game, 302, 2);
+        game.cloud_affect(
+            crate::game::potions::Victim::Mob(91),
+            &[("instant_damage", 1, 0)],
+            (&[], &[], 1.0),
+            [at.x, at.y, at.z],
+            &crate::text::Text::literal("Cloud"),
+            (Some(Who::Player), Some(7)),
         );
+        assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 9]), -25);
+        assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 2]), 0);
     });
 }

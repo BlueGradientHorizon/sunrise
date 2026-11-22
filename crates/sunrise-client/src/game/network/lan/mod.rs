@@ -5697,18 +5697,38 @@ mod merchant_packet_tests {
     #[test]
     #[ignore = "daily"]
     fn merchant_take_keeps_packet_snapshot_until_price_refresh() {
+        use crate::game::native_entity_refs::tests::{
+            bind_local_player, run_fresh_cases, with_game,
+        };
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
+        use sunrise_client::mobs::{Damage, Mob};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_protocol::packets::play::Clientbound;
+
+        if run_fresh_cases(
+            "game::lan::merchant_packet_tests::merchant_take_keeps_packet_snapshot_until_price_refresh",
+            "SUNRISE_MERCHANT_HURT_PACKETS_CHILD",
+            &["merchant"],
+        ) {
+            return;
+        }
         use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
 
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.world_root = std::env::temp_dir()
-                .join(format!("sunrise-merchant-packet-{}", std::process::id()));
+        with_game(|game| {
             game.build_registries();
             game.set_allow_commands(true);
 
             let mut sync = sunrise_client::lan::data::SyncData::empty();
             for (registry, names) in [
                 ("minecraft:menu", vec!["minecraft:merchant".to_owned()]),
+                (
+                    "minecraft:entity_type",
+                    vec!["minecraft:villager".to_owned()],
+                ),
+                (
+                    "minecraft:damage_type",
+                    vec!["minecraft:player_attack".to_owned()],
+                ),
                 (
                     "minecraft:item",
                     vec![
@@ -5765,7 +5785,7 @@ mod merchant_packet_tests {
             let mut guest = Guest::new(
                 Joined {
                     conn: 1,
-                    uuid: 1,
+                    uuid: 2,
                     name: "Test".into(),
                     properties: Vec::new(),
                     info: sunrise_protocol::packets::configuration::ClientInformation::new(8),
@@ -5781,6 +5801,7 @@ mod merchant_packet_tests {
             );
             guest.placed = true;
             guest.dimension = "minecraft:overworld".into();
+            guest.sent_chunks.insert((0, 0));
             guest.inventory[0] = Some(sunrise_client::items::ItemStack::new(
                 "minecraft:emerald",
                 8,
@@ -5879,9 +5900,7 @@ mod merchant_packet_tests {
                     };
                     let mut reader = sunrise_protocol::buf::Reader::new(&body);
                     let id = reader.varint().unwrap();
-                    match sunrise_protocol::packets::play::Clientbound::decode(id, reader.rest())
-                        .unwrap()
-                    {
+                    match Clientbound::decode(id, reader.rest()).unwrap() {
                         sunrise_protocol::packets::play::Clientbound::MerchantOffers(packet) => {
                             offers.push(packet)
                         }
@@ -5963,11 +5982,6 @@ mod merchant_packet_tests {
             assert_eq!(refreshed.len(), 1);
             assert_eq!(refreshed[0].offers[0].uses, 2);
             assert_eq!(refreshed[0].xp, 22);
-            // A hurt gossip refreshes only the trader whose hit it was.
-            game.lan_merchant_reputation(77, Some([0, 0, 0, 2]));
-            assert!(packets(&rx).0.is_empty(), "another player's hit leaves it");
-            game.lan_merchant_reputation(77, Some([0, 0, 0, 1]));
-            assert_eq!(packets(&rx).0.len(), 1);
             game.lan_merchant_reputation(77, None);
             assert_eq!(
                 packets(&rx).0.len(),
@@ -6031,6 +6045,109 @@ mod merchant_packet_tests {
             let content = contents.last().expect("level-up take sends contents");
             assert_eq!(content.items[0].as_ref().unwrap().count, 4);
             assert_eq!(content.carried.as_ref().unwrap().count, 3);
+
+            // `setLastHurtByMob` refreshes the matching buyer before event 13 and the
+            // damage packet. Another player gets anger but no offer; mobs and lethal
+            // blows show no anger. Keep the victim's same-tick cooldown throughout.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .play
+                .get_mut(&1)
+                .unwrap()
+                .merchant
+                .as_mut()
+                .unwrap()
+                .merchant
+                .session
+                .offers[0]
+                .price_multiplier = 0.2;
+            game.audio.capture = Some(Vec::new());
+            let mut states = super::States::default();
+            game.lan_entities(&mut states, false, 0, None);
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.note_joined(states.as_slice(), None);
+            assert!(hub.guests[0].tracker.is_tracking(77));
+            rx.try_iter().for_each(drop);
+
+            let at = [0.5, 4.0, 0.5];
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    Vec3::new(at[0], at[1], at[2]),
+                )
+                .unwrap(),
+            );
+            bind_local_player(game, 300, 3);
+            let mut actual = Vec::new();
+            let mut record = |game: &mut super::Game<'_>| {
+                game.lan_flush_effects();
+                for out in rx.try_iter() {
+                    let sunrise_client::lan::Out::Packet(body) = out else {
+                        continue;
+                    };
+                    let mut reader = sunrise_protocol::buf::Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    match Clientbound::decode(id, reader.rest()).unwrap() {
+                        Clientbound::MerchantOffers(packet) => {
+                            let offer = &packet.offers[0];
+                            actual.push(format!(
+                                "offer:{}",
+                                offer.cost_a.count + offer.special_price
+                            ));
+                        }
+                        Clientbound::EntityEvent(packet)
+                            if packet.id == 77 && packet.event == 13 =>
+                        {
+                            actual.push("entity:13".to_owned());
+                        }
+                        Clientbound::DamageEvent(packet) if packet.id == 77 => {
+                            actual.push("damage".to_owned());
+                        }
+                        _ => {}
+                    }
+                }
+            };
+            assert_eq!(
+                game.as_guest(1, |g| g.hurt_by_player(0, 1.0, Damage::player(at))),
+                Some((true, false))
+            );
+            record(game);
+            assert_eq!(
+                game.hurt_by_player(0, 3.0, Damage::player(at)),
+                (true, false)
+            );
+            record(game);
+            let kind = game.mobs[0].kind.clone();
+            game.mobs
+                .push(Mob::new(78, kind.clone(), Vec3::new(1.0, 4.0, 1.0), 0.0));
+            game.mobs
+                .push(Mob::new(79, kind, Vec3::new(1.5, 4.0, 1.0), 0.0));
+            game.native_mobs_joined(0, false);
+            assert!(game.mob_hits_mob(77, 5.0, Damage::mob(78, at)));
+            assert!(!game.mob_hits_mob(77, 2.0, Damage::mob(79, at)));
+            assert!(game.mob_hits_mob(77, 7.0, Damage::mob(78, at)));
+            record(game);
+            bind_local_player(game, 300, 5);
+            assert_eq!(
+                game.hurt_by_player(0, 1000.0, Damage::player(at)),
+                (true, true)
+            );
+            record(game);
+            let expected = match std::env::var_os("SUNRISE_REPUTATION_ORACLE") {
+                Some(oracle) => std::fs::read_to_string(oracle)
+                    .unwrap()
+                    .lines()
+                    .find_map(|line| line.strip_prefix("hurt_order "))
+                    .unwrap()
+                    .split(',')
+                    // The sound is delivered by the audio layer, not the effects flush.
+                    .filter(|event| *event != "sound")
+                    .collect::<Vec<_>>()
+                    .join(","),
+                None => "offer:9,entity:13,damage,entity:13".to_owned(),
+            };
+            assert_eq!(actual.join(","), expected);
         });
     }
 }
