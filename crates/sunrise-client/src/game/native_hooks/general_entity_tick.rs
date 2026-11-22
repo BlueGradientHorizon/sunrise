@@ -114,12 +114,12 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
             &'loan mod_api::TransactionContext,
         ) -> bool,
     ) -> Result<(), mod_api::TransactionUnavailable> {
-        let (subject, route) = (self.subject, self.kind);
+        let (subject, kind) = (self.subject, self.kind);
         let _ = self.game.storage_transaction(|game, tx| {
             let mut child = GeneralTickAccess {
                 game,
-                subject: subject,
-                kind: route,
+                subject,
+                kind,
             };
             callback(&mut child, tx).then_some(()).ok_or(())
         });

@@ -3785,11 +3785,7 @@ mod tests {
                             game.world.block(JOURNALED[0], JOURNALED[1], JOURNALED[2]),
                             air
                         );
-                        assert_eq!(
-                            game.current_storage_frame()
-                                .is_some_and(|frame| frame.matches(outer)),
-                            true
-                        );
+                        assert!(mod_api::ServerHost::transaction_matches(game, Some(outer)));
                         Ok::<_, ()>(())
                     })
                     .unwrap();

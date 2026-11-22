@@ -197,12 +197,12 @@ impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
             &'loan mod_api::TransactionContext,
         ) -> bool,
     ) -> Result<(), mod_api::TransactionUnavailable> {
-        let (subject, route) = (self.subject, self.index);
+        let (subject, index) = (self.subject, self.index);
         let _ = self.game.storage_transaction(|game, tx| {
             let mut child = ItemEntityTickAccess {
                 game,
-                subject: subject,
-                index: route,
+                subject,
+                index,
             };
             callback(&mut child, tx).then_some(()).ok_or(())
         });

@@ -98,9 +98,9 @@ impl Game<'_> {
         let (failure, reason) = self.storage_scope(|game, _| {
             let mut context = MainContext {
                 game,
-                epoch: incoming.epoch.clone(),
+                epoch: &incoming.epoch,
                 endpoint: endpoint.clone(),
-                receiver: incoming.receiver.clone(),
+                receiver: &incoming.receiver,
                 disconnect: None,
                 failure: None,
             };
@@ -154,9 +154,9 @@ impl Game<'_> {
 }
 struct MainContext<'a, 'resources> {
     game: &'a mut Game<'resources>,
-    epoch: Arc<Epoch>,
+    epoch: &'a Arc<Epoch>,
     endpoint: Endpoint,
-    receiver: mod_api::__private::game::PayloadReceiver,
+    receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<CallbackFailure>,
 }
@@ -253,7 +253,7 @@ impl IPayloadContext for MainContext<'_, '_> {
             .endpoint
             .transport()
             .epoch()
-            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, &self.epoch))
+            .is_none_or(|epoch| !Arc::ptr_eq(&epoch, self.epoch))
         {
             return Err(ConfigurationTaskError::Disconnected);
         }
@@ -269,7 +269,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         if !self.epoch.active() || self.disconnect.is_some() {
             return Err(PayloadContextError::Disconnected);
         }
-        let receiver = self.receiver.clone();
+        let receiver = self.receiver;
         if let Err(error) = receiver.run_work(work.as_ref(), self) {
             // Preserve the first panic even if the caller catches or overwrites its
             // error by attempting more work on the now-disabled callback.
@@ -294,9 +294,9 @@ impl IPayloadContext for MainContext<'_, '_> {
         {
             return Err(TransactionUnavailable);
         }
-        let epoch = Arc::clone(&self.epoch);
+        let epoch = self.epoch;
         let endpoint = self.endpoint.clone();
-        let receiver = self.receiver.clone();
+        let receiver = self.receiver;
         if let Ok((disconnect, failure)) = self.game.storage_transaction(|game, tx| {
             let mut inner = MainContext {
                 game,
