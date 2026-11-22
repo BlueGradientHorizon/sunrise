@@ -1364,7 +1364,7 @@ fn tick_advancement_notice_precedes_recipe_reward() {
 }
 
 /// `PlayerRef::set_selected_slot` from inside the guest's own turn: their state is in place, so
-/// the slot is written there, and their client is still told (`leave_guest` sends nothing).
+/// the slot is written there, and their client is still told (the put-back at the end of `guest_turn` sends nothing).
 #[test]
 #[ignore = "daily"]
 fn set_selected_slot_tells_an_acting_guests_client() {
@@ -1619,7 +1619,7 @@ impl mod_api::Hooks for PanicOnFood {
     }
 }
 
-/// A native `food_level_changed` listener that panics while `leave_guest` reports the turn's
+/// A native `food_level_changed` listener that panics while the put-back at the end of `guest_turn` reports the turn's
 /// food change still lets the guest swap be restored and the turn's progress be written back,
 /// and the same connection's next turn runs and is heard (#2240).
 #[test]
