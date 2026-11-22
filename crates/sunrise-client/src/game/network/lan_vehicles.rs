@@ -491,7 +491,7 @@ impl Game<'_> {
                 m.velocity,
                 m.bounds(),
                 step,
-                m.on_ground,
+                m.ground.on_ground,
             )
         } else {
             if let Some(c) = vehicle.and_then(|v| self.carts.iter().find(|c| c.id == v))
