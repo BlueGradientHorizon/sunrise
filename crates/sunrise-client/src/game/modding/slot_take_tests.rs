@@ -4,8 +4,9 @@
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
-    BlockEntityPart, BlockPart, Hooks, HostBlockStates, ITEMS, ItemCraftedEvent, ItemPlace,
-    ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar,
+    BlockEntityPart, BlockPart, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemCraftedEvent,
+    ItemPlace, ItemResource, MenuPart, MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods,
+    Registrar,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -44,6 +45,7 @@ type Heard = (u128, String, usize, (String, u32), Option<(String, u32)>);
 #[derive(Clone, Copy)]
 enum TakeScript {
     Hear,
+    ChargeInputs,
     Reward,
     Panic,
     PanicWithoutReward,
@@ -79,10 +81,28 @@ struct Pot;
 impl BlockPart for Pot {
     fn contents_changed(
         &self,
-        _: &mut dyn mod_api::ServerHost,
-        _: &mut mod_api::ContentsChangedEvent,
+        host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::ContentsChangedEvent,
     ) {
         CHANGED.set(CHANGED.get() + 1);
+        if !matches!(SCRIPT.get(), TakeScript::ChargeInputs) {
+            return;
+        }
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        let entity = host.block_entity(event.level, pos).unwrap();
+        assert_eq!(entity.item_slot(host, RESULT as u32), Ok(None));
+        assert_eq!(
+            host.transaction(|host, tx| {
+                assert_eq!(
+                    entity.set_item_slot(host, tx, 0, Some(api_item(PLANKS, 1))),
+                    Ok(true)
+                );
+                assert_eq!(entity.set_item_slot(host, tx, KEPT as u32, None), Ok(true));
+                Ok::<_, ()>(())
+            }),
+            Ok(())
+        );
+        assert_eq!(entity.set_changed(host), Ok(true));
     }
 }
 #[mod_api::sunrise_part]
@@ -110,7 +130,7 @@ impl BlockEntityPart for Pot {
         };
         let tx = host.transaction_current().expect("a take is tentative");
         match SCRIPT.get() {
-            TakeScript::Hear => {}
+            TakeScript::Hear | TakeScript::ChargeInputs => {}
             TakeScript::PanicWithoutReward => panic!("a broken craft listener"),
             TakeScript::Reward | TakeScript::Panic | TakeScript::Invalid => {
                 assert_eq!(
@@ -734,6 +754,196 @@ fn replacing_the_detached_holder_spills_only_the_contents_after_the_take() {
 
 const PLANKS: &str = "minecraft:oak_planks";
 const LOG: &str = "minecraft:oak_log";
+
+/// Track only the packets sent after the guest has seen the seeded pot slots.
+fn watch_pot(game: &mut crate::game::Game<'_>) -> (i32, i32, mpsc::Receiver<Out>) {
+    let host = game.lan.as_mut().unwrap();
+    let (tx, rx) = mpsc::channel();
+    host.hub.guests.update(0, |guest| {
+        guest.sender = PlayerSender::new(tx, Arc::default())
+    });
+    let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+    host.hub.resend_menu(12, window, &game.world);
+    rx.try_iter().for_each(drop);
+    let state = host.hub.guests[0].menu.as_ref().unwrap().state;
+    (window, state, rx)
+}
+
+fn slot_replies(
+    rx: &mpsc::Receiver<Out>,
+) -> impl Iterator<Item = sunrise_protocol::packets::play::ContainerSetSlot> + '_ {
+    rx.try_iter()
+        .flat_map(|out| match out {
+            Out::Packet(body) => vec![body],
+            Out::Packets(bodies) => bodies,
+            _ => Vec::new(),
+        })
+        .filter_map(|body| {
+            let mut reader = sunrise_protocol::buf::Reader::new(&body);
+            match Clientbound::decode(reader.varint().unwrap(), reader.rest()).unwrap() {
+                Clientbound::ContainerSetSlot(set) => Some(set),
+                _ => None,
+            }
+        })
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_click_sends_the_other_slots_written_by_contents_changed() {
+    crate::game::in_own_process(
+        "game::slot_take_tests::a_click_sends_the_other_slots_written_by_contents_changed",
+        || {
+            with_pot(pot_type(SLOTS, None), |game| {
+                set(
+                    game,
+                    &[
+                        (0, item(PLANKS, 3)),
+                        (KEPT, item("minecraft:iron_pickaxe", 1)),
+                        (RESULT, stone(1)),
+                    ],
+                    &[],
+                    None,
+                );
+                let (window, state, rx) = watch_pot(game);
+                let host = game.lan.as_mut().unwrap();
+                let net = host.hub.stack(&stone(1)).unwrap();
+                let sync = host.hub.sync_data();
+                let names = sunrise_protocol::registry::SyncedNames {
+                    builtin: &sync.builtin,
+                    dynamic: &sync.dynamic,
+                };
+                let carried = sunrise_protocol::item::Hashed::create(&net, &names).unwrap();
+                SCRIPT.set(TakeScript::ChargeInputs);
+                game.lan_guest_packet(
+                    12,
+                    Serverbound::ContainerClick(ContainerClick {
+                        container: window,
+                        state,
+                        slot: RESULT as i16,
+                        button: 0,
+                        input: 0,
+                        changed: vec![(RESULT as i16, None)],
+                        carried: Some(carried),
+                    }),
+                );
+                assert_eq!(held(game, 0), (0, 1));
+                assert_eq!((in_pot(game, 0), in_pot(game, KEPT)), (1, 0));
+                let replies: Vec<_> = slot_replies(&rx)
+                    .map(|set| (set.container, set.slot, set.item.map(|s| s.count)))
+                    .collect();
+                assert_eq!(replies, [(window, 0, Some(1)), (window, KEPT as i16, None)]);
+            })
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
+    use sunrise_core::nbt::Tag;
+    use sunrise_protocol::item::{Component, Hashed, component};
+
+    crate::game::in_own_process(
+        "game::slot_take_tests::a_damage_only_repair_reaches_the_open_menu_and_inventory",
+        || {
+            with_pot(pot_type(SLOTS, None), |game| {
+                // A damageable stack whose base item has no damage component. Zero is a patch,
+                // not the prototype value, and max_damage is unchanged throughout the case.
+                let damage = |d| {
+                    ItemStack::from_nbt(&sunrise_core::nbt::Compound::from([
+                        ("id".into(), Tag::String("minecraft:stick".into())),
+                        (
+                            "components".into(),
+                            Tag::compound([
+                                ("minecraft:damage", Tag::Int(d)),
+                                ("minecraft:max_damage", Tag::Int(60)),
+                                ("minecraft:max_stack_size", Tag::Int(1)),
+                            ]),
+                        ),
+                    ]))
+                    .unwrap()
+                };
+                let damaged = damage(10);
+                let repaired = damage(0);
+                set(game, &[(RESULT, Some(damaged.clone()))], &[], None);
+                let (window, _, rx) = watch_pot(game);
+                let host = game.lan.as_mut().unwrap();
+                let old = host.hub.stack(&Some(damaged.clone())).unwrap();
+                let sync = host.hub.sync_data();
+                let (builtin, dynamic) = (sync.builtin.clone(), sync.dynamic.clone());
+                let names = sunrise_protocol::registry::SyncedNames {
+                    builtin: &builtin,
+                    dynamic: &dynamic,
+                };
+                let old = Hashed::create(&old, &names).unwrap();
+
+                let zero = |packet: sunrise_protocol::packets::play::ContainerSetSlot| {
+                    let stack = packet.item.unwrap();
+                    assert!(
+                        stack
+                            .added
+                            .contains(&(component::MAX_DAMAGE, Component::Int(60)))
+                    );
+                    assert!(
+                        stack
+                            .added
+                            .contains(&(component::DAMAGE, Component::Int(0)))
+                    );
+                    assert!(!old.matches(&stack, &names));
+                };
+                game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[RESULT] =
+                    Some(repaired.clone());
+                host.hub.sync_containers(&game.world);
+                zero(
+                    slot_replies(&rx)
+                        .find(|set| set.container == window && set.slot == RESULT as i16)
+                        .unwrap(),
+                );
+
+                // The client takes the stale damage-10 result with a number key. Correct only its
+                // hotbar prediction; the empty result is predicted correctly.
+                let state = host.hub.guests[0].menu.as_ref().unwrap().state;
+                let hotbar = (SLOTS + 27) as i16;
+                game.lan_guest_packet(
+                    12,
+                    Serverbound::ContainerClick(ContainerClick {
+                        container: window,
+                        state,
+                        slot: RESULT as i16,
+                        button: 0,
+                        input: Input::Swap as i32,
+                        changed: vec![(RESULT as i16, None), (hotbar, Some(old.clone()))],
+                        carried: None,
+                    }),
+                );
+                let mut replies = slot_replies(&rx);
+                let correction = replies.next().unwrap();
+                assert_eq!((correction.container, correction.slot), (window, hotbar));
+                zero(correction);
+                assert!(replies.next().is_none());
+
+                let host = game.lan.as_mut().unwrap();
+                assert_eq!(host.hub.guests[0].inventory[0], Some(repaired.clone()));
+                host.hub.close_container(12);
+                host.hub
+                    .guests
+                    .update(0, |guest| guest.inventory[0] = Some(damaged));
+                host.hub.send_inventory(0);
+                rx.try_iter().for_each(drop);
+                host.hub
+                    .guests
+                    .update(0, |guest| guest.inventory[0] = Some(repaired));
+                host.hub.sync_guest_after_tick(12);
+                zero(
+                    slot_replies(&rx)
+                        .find(|set| set.container == 0 && set.slot == 36)
+                        .unwrap(),
+                );
+            })
+        },
+    );
+}
+
 const GRID: ModCrafting = ModCrafting {
     grid: 0,
     size: 3,
