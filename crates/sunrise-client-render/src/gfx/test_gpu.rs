@@ -1,5 +1,5 @@
-// The GPU tests' `wgpu::Instance` and adapters (shared: the shader pack crate's
-// `test_gpu` includes this file, which is why it is not an inner doc comment).
+// The GPU tests' `wgpu::Instance` and adapters. The shader pack crate's `test_gpu` keeps its
+// own copy of the helpers its tests call, with the same missing-adapter policy.
 
 use std::sync::{Mutex, MutexGuard};
 

@@ -34,9 +34,4 @@ pub enum CelestialBody {
 }
 
 #[cfg(test)]
-#[allow(
-    dead_code,
-    reason = "the shared fixture also serves client renderer tests"
-)]
-#[path = "../../sunrise-client-render/src/gfx/test_gpu.rs"]
 pub(crate) mod test_gpu;
