@@ -590,6 +590,10 @@ pub trait World {
     fn structures(&self, pos: [i32; 3]) -> Vec<String>;
     /// Block name and properties.
     fn block(&self, pos: [i32; 3]) -> (String, BTreeMap<String, String>);
+    /// The registered state, when the world can borrow it without a snapshot.
+    fn block_state(&self, _pos: [i32; 3]) -> Option<&sunrise_world::chunk::BlockState> {
+        None
+    }
     /// Legal values of the actual registered property, unavailable without registry access.
     fn block_property_values(&self, _block: &str, _property: &str) -> Option<Vec<String>> {
         None
@@ -878,20 +882,30 @@ pub fn block(v: &Value, pos: [i32; 3], w: &dyn World) -> bool {
     if v.is_null() {
         return true;
     }
-    let (name, props) = w.block(pos);
-    if !id_matches(&v["blocks"], "block", &name, w) {
+    let borrowed = w.block_state(pos);
+    let owned = borrowed.is_none().then(|| w.block(pos));
+    let name = borrowed
+        .map(|state| state.name.as_str())
+        .or_else(|| owned.as_ref().map(|(name, _)| name.as_str()))
+        .unwrap_or_default();
+    if !id_matches(&v["blocks"], "block", name, w) {
         return false;
     }
     if let Some(state) = v["state"].as_object() {
         for (k, want) in state {
-            let have = props.get(k).cloned().unwrap_or_default();
+            let have = match borrowed {
+                Some(s) => s.properties.get(k),
+                None => owned.as_ref().and_then(|(_, props)| props.get(k)),
+            }
+            .map(String::as_str)
+            .unwrap_or_default();
             let ok = match want {
-                Value::String(s) => have == *s,
-                Value::Bool(b) => have == b.to_string(),
+                Value::String(s) => have == s,
+                Value::Bool(b) => have == if *b { "true" } else { "false" },
                 Value::Number(n) => have == n.to_string(),
                 Value::Object(bounds) => w
-                    .block_property_values(&name, k)
-                    .is_some_and(|domain| state_ranges::matches(bounds, &have, &domain)),
+                    .block_property_values(name, k)
+                    .is_some_and(|domain| state_ranges::matches(bounds, have, &domain)),
                 _ => false,
             };
             if !ok {
@@ -1599,7 +1613,7 @@ pub fn literal_random_chance(v: &Value, draw: &mut dyn FnMut() -> f32) -> Option
     Some(draw() < chance)
 }
 
-fn condition_leaf(v: &Value, ctx: &Entities, w: &dyn World) -> bool {
+pub(crate) fn condition_leaf(v: &Value, ctx: &Entities, w: &dyn World) -> bool {
     match v {
         Value::Object(o) if o.contains_key("condition") || o.contains_key("type") => {
             let ty = o

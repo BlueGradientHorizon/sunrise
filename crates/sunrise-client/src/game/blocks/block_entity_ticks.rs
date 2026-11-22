@@ -608,12 +608,11 @@ impl Game<'_> {
         let before = match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Furnace(f)) => (
                 f.cooking_timer,
-                (f.lit_remaining == 0)
+                (f.lit_remaining <= 0)
                     .then(|| f.items[1].as_ref().map(|s| s.item.clone()))
                     .flatten(),
                 f.items[0].as_ref().map(|s| s.item.clone()),
                 f.items[2].as_ref().map_or(0, |s| s.count),
-                f.lit_remaining,
             ),
             _ => return Ok(()),
         };
@@ -623,43 +622,48 @@ impl Game<'_> {
                 && matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Furnace(f))
                     if f.lit_remaining <= 1 && f.items[1].as_ref().is_some_and(|s|
                         mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &s.item)));
-            let lit = if needs_part {
-                let Some(BlockEntity::Furnace(original)) = self.world.block_entities.get(&pos)
-                else {
-                    return Ok(());
-                };
-                let mut furnace = original.clone();
-                let lit = furnace.tick(
-                    &self.loop_context,
-                    world_recipes!(self),
-                    world_items!(self),
-                    self.res.providers(),
-                    &mut drops,
-                    &|s| self.crafting_remainder(s),
-                );
+            let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get_mut(&pos)
+            else {
+                return Ok(());
+            };
+            let was_lit = furnace.count_down_burn();
+            let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get(&pos) else {
+                return Ok(());
+            };
+            let items = world_items!(self);
+            let mut random = self.world.random.clone();
+            let plan = furnace.prepare_tick(
+                &self.loop_context, world_recipes!(self), items, was_lit, |fuel| {
+                    sunrise_client::providers::Evaluation {
+                        providers: self.res.providers(),
+                        random: &mut random,
+                        condition: |cond: &serde_json::Value, random: &mut sunrise_core::random::LevelRandom| {
+                            sunrise_client::furnace::provider_condition(cond, &super::advancements::View(self), [pos.0, pos.1, pos.2], random)
+                        },
+                    }.cooking_fuel(fuel)
+                },
+            );
+            self.world.random = random;
+            let step = if needs_part {
+                let mut furnace = furnace.clone();
+                let step = plan.apply(&mut furnace, &mut drops, |s| self.crafting_remainder(s));
                 self.world
                     .block_entities
                     .insert(pos, BlockEntity::Furnace(furnace));
-                lit
+                step
             } else {
                 let Some(BlockEntity::Furnace(furnace)) = self.world.block_entities.get_mut(&pos)
                 else {
                     return Ok(());
                 };
-                let items = world_items!(self);
-                furnace.tick(
-                    &self.loop_context,
-                    world_recipes!(self),
-                    items,
-                    self.res.providers(),
-                    &mut drops,
-                    &|s| crate::crafting::CraftingRemainder::crafting_remainder(items, s),
-                )
+                plan.apply(furnace, &mut drops, |s| {
+                    crate::crafting::CraftingRemainder::crafting_remainder(items, s)
+                })
             };
             let Some(BlockEntity::Furnace(f)) = self.world.block_entities.get(&pos) else {
                 return Ok(());
             };
-            let burning = before.1.filter(|_| f.lit_remaining > 0);
+            let burning = before.1.filter(|_| step.consumed_fuel);
             let smelted = f.items[2]
                 .as_ref()
                 .filter(|after| after.count > before.3)
@@ -668,10 +672,7 @@ impl Game<'_> {
             let smelting = started
                 .then(|| f.items[0].as_ref().map(|item| item.item.clone()))
                 .flatten();
-            // The tick takes one off `lit_remaining`; only consuming fuel
-            // sets it higher (a lava bucket leaves a bucket of the same count).
-            let fueled = f.lit_remaining > before.4.saturating_sub(1);
-            (lit, burning, smelted, smelting, fueled)
+            (step.lit, burning, smelted, smelting, step.consumed_fuel)
         };
         // `AbstractFurnaceBlockEntity.serverTick`: `burn` and consuming fuel
         // set the changed flag, so a completed smelt or a refuel marks the
@@ -1211,6 +1212,93 @@ mod furnace_changed_tests {
             game.world.modified.contains(&(0, 0)),
             "a refuel left the chunk unmarked"
         );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_nonpositive_fuel_does_not_mark_or_notify_before_a_real_ignition() {
+        use std::sync::{Arc, Mutex};
+        struct Burns(Arc<Mutex<Vec<([i32; 3], String)>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Burns {
+            fn furnace_burn(
+                &self,
+                _: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::FurnaceBurnEvent<'_>,
+            ) {
+                self.0.lock().unwrap().push((event.pos, event.fuel.into()));
+            }
+        }
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "furnace_burn_probe",
+            Box::new(Burns(seen.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let mut resources = None;
+            let mut game = server_game(&mut resources);
+            let pos = (8, 64, 8);
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:furnace")
+                .unwrap();
+            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+            let fuel = |duration| {
+                sunrise_client::item_data::parse_stack(&format!(
+                r#"{{id:"minecraft:coal",count:2,components:{{"minecraft:cooking_fuel":{{burn_time:{duration},speed_multiplier:1.0f}}}}}}"#,
+            )).unwrap()
+            };
+            game.world.block_entities.insert(
+                pos,
+                BlockEntity::Furnace(Furnace {
+                    kind: FurnaceKind::Furnace,
+                    items: [Some(ItemStack::new("minecraft:raw_iron", 1)), fuel(0), None],
+                    lit_remaining: 0,
+                    lit_total: 0,
+                    cooking_timer: 0,
+                    cooking_total: 200,
+                    speed: 1.0,
+                    recipes_used: HashMap::new(),
+                }),
+            );
+            game.world.modified.clear();
+            game.tick_furnace(pos).unwrap();
+            assert!(!game.world.modified.contains(&(0, 0)));
+            assert!(seen.lock().unwrap().is_empty());
+            let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get_mut(&pos) else {
+                panic!("no furnace");
+            };
+            assert_eq!(f.items[1], fuel(0));
+            f.items[1] = fuel(-5);
+            for _ in 0..2 {
+                game.tick_furnace(pos).unwrap();
+                let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&pos) else {
+                    panic!("no furnace");
+                };
+                assert_eq!(f.lit_remaining, -5);
+                assert_eq!(f.items[1], fuel(-5));
+                assert!(!game.world.modified.contains(&(0, 0)));
+                assert!(seen.lock().unwrap().is_empty());
+            }
+            let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get_mut(&pos) else {
+                panic!("no furnace");
+            };
+            f.items[1] = fuel(31);
+            game.tick_furnace(pos).unwrap();
+            let Some(BlockEntity::Furnace(f)) = game.world.block_entities.get(&pos) else {
+                panic!("no furnace");
+            };
+            assert_eq!(f.lit_remaining, 31);
+            assert_eq!(f.items[1].as_ref().map(|s| s.count), Some(1));
+            assert!(game.world.modified.contains(&(0, 0)));
+            assert_eq!(
+                &*seen.lock().unwrap(),
+                &[([8, 64, 8], "minecraft:coal".to_owned())]
+            );
+        });
     }
 }
 

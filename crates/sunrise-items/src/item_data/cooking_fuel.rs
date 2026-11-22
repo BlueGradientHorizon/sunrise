@@ -1,9 +1,49 @@
-//! `CookingFuel.CODEC` and its borrowed `ResolvableInt` / `ResolvableFloat` values.
+//! `CookingFuel.CODEC` and its decoded runtime value.
 use crate::{
     items::{ItemStack, Items},
     properties::resolvable::{self, Float, Int},
 };
+use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+
+pub(super) const ID: &str = "minecraft:cooking_fuel";
+pub(super) const REMOVED: &str = "!minecraft:cooking_fuel";
+
+#[derive(Debug)]
+pub enum Resolvable<T> {
+    Constant(T),
+    Reference(String),
+}
+
+#[derive(Debug)]
+pub struct CookingFuel {
+    pub burn_time: Resolvable<i32>,
+    pub speed_multiplier: Resolvable<f32>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) enum Patch {
+    Set(Arc<CookingFuel>),
+    Unavailable,
+}
+
+impl Patch {
+    pub(super) fn from_value(value: &Tag) -> Self {
+        match fields(value) {
+            Ok((burn, speed)) => Self::Set(Arc::new(CookingFuel {
+                burn_time: match burn {
+                    Int::Constant(value) => Resolvable::Constant(value),
+                    Int::Reference(key) => Resolvable::Reference(key.to_string()),
+                },
+                speed_multiplier: match speed {
+                    Float::Constant(value) => Resolvable::Constant(value),
+                    Float::Reference(key) => Resolvable::Reference(key.to_string()),
+                },
+            })),
+            Err(_) => Self::Unavailable,
+        }
+    }
+}
 
 fn fields(value: &Tag) -> Result<(Int<'_>, Float<'_>), &'static str> {
     if !matches!(value, Tag::Compound(_)) {
@@ -22,24 +62,21 @@ fn fields(value: &Tag) -> Result<(Int<'_>, Float<'_>), &'static str> {
 
 /// `ItemStack.get(DataComponents.COOKING_FUEL)`: read the retained payload, or its
 /// prototype if the stack neither replaces nor removes the component.
-pub fn for_stack<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<(Int<'a>, Float<'a>)> {
-    const ID: &str = "minecraft:cooking_fuel";
-    if let Some(data) = stack.data() {
-        if data.other("!minecraft:cooking_fuel").is_some() {
-            return None;
-        }
-        if let Some(value) = data.other(ID) {
-            return fields(value).ok();
-        }
+pub fn for_stack<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<&'a CookingFuel> {
+    match stack
+        .data()
+        .and_then(|data| data.cooking_fuel.as_ref())
+        .or_else(|| {
+            items
+                .get(&stack.item)?
+                .component_prototype
+                .data()?
+                .cooking_fuel
+                .as_ref()
+        })? {
+        Patch::Set(fuel) => Some(fuel),
+        Patch::Unavailable => None,
     }
-    fields(
-        items
-            .get(&stack.item)?
-            .component_prototype
-            .data()?
-            .other(ID)?,
-    )
-    .ok()
 }
 
 /// Decode the two required fields, ignoring unknown fields; neither has a default or range.

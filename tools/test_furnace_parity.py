@@ -36,6 +36,8 @@ def fuel_stacks():
         'removed': stack('minecraft:coal', components='{"!minecraft:cooking_fuel":{}}'),
         'overridden': stack('minecraft:coal', components='{"minecraft:cooking_fuel":{burn_time:323,speed_multiplier:1.25f}}'),
         'zero_time': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:0,speed_multiplier:2.5f}}'),
+        'negative_time': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:-5,speed_multiplier:1.25f}}'),
+        'set_and_remove': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:1.25f},"!minecraft:cooking_fuel":{}}'),
         'default_fuel': stack('minecraft:coal'),
         'default_nonfuel': stack('minecraft:diamond'),
     }
@@ -86,6 +88,26 @@ def make_cases(build):
     for kind in KINDS:
         ing, _, cook, _ = all_recipes[kind][0]
         cases.append(fcase(kind, 1, stack(ing), stack('minecraft:diamond', components=named), total=cook))
+    fixture = build / 'fixture-pack/data/test/context_float_provider'
+    fixture.mkdir(parents=True, exist_ok=True)
+    definitions = {
+        'fraction': {'type': 'minecraft:div', 'left': 3, 'right': 2},
+        'conditional': {'type': 'minecraft:conditional',
+                        'condition': {'type': 'minecraft:match_block', 'blocks': 'minecraft:furnace',
+                                      'state': {'lit': 'false'}, 'nbt': '{lit_time_remaining:0}'},
+                        'on_true': 'test:fraction', 'on_false': 2},
+    }
+    for name, definition in definitions.items():
+        (fixture / f'{name}.json').write_text(json.dumps(definition))
+    for kind in KINDS:
+        ing, _, cook, _ = all_recipes[kind][0]
+        for name in definitions:
+            patch = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:%s"}}' % name
+            cases.append(fcase(kind, 1, stack(ing), stack('minecraft:diamond', components=patch), total=cook)
+                         + ' fixture')
+    patch = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:conditional"}}'
+    cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=patch),
+                       timer=20, total=200, lit=1, littotal=80) + ' fixture')
     missing = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:absent"}}'
     cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=missing), total=200))
 
@@ -143,7 +165,8 @@ def make_cases(build):
                            new=stack('minecraft:gold_ore')))
 
     path = build / 'cases.txt'
-    path.write_text(f'#resources {resources}\n' + ''.join(c + '\n' for c in cases))
+    hopper = lab.ROOT / 'crates/sunrise-client/src/game/blocks/machines/furnace_hopper.tsv'
+    path.write_text(f'#resources {resources}\n#hopper {hopper}\n' + ''.join(c + '\n' for c in cases))
     return path, len(cases)
 
 
