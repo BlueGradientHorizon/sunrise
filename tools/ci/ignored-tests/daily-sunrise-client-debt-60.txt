@@ -1,4 +1,4 @@
-sunrise-client game::stations::tooltip::bundle_tests::bundle_gather_keeps_vanillas_selected_slot lib daily resources
+sunrise-client game::stations::tooltip::bundle_tests::bundle_gather_keeps_vanillas_selected_slot lib daily child-process
 sunrise-client game::stations::tooltip::component_tests::audit_88_no_listener_fast_path_and_deep_local_text lib daily child-process
 sunrise-client game::stations::tooltip::component_tests::gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components lib daily child-process
 sunrise-client game::stations::tooltip::component_tests::gather_wraps_logical_arabic_advances_but_measures_visual_lines lib daily child-process

@@ -3791,6 +3791,13 @@ mod cycling_tests {
     #[test]
     #[ignore = "daily"]
     fn a_tooltip_pre_answer_moves_or_cancels_the_tooltip() {
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::stations::cycling_tests::a_tooltip_pre_answer_moves_or_cancels_the_tooltip",
+            "SUNRISE_TOOLTIP_PRE_ANSWER_CASE",
+            &["pre"],
+        ) {
+            return;
+        }
         use mod_api::{self, ClientHost, Hooks, Identifier, ModEntry, Mods, RenderTooltipPreEvent};
         use std::sync::atomic::{AtomicU8, Ordering};
 

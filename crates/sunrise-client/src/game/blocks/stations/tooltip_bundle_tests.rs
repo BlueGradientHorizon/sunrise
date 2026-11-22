@@ -21,6 +21,14 @@ impl Hooks for Edit {
     }
 }
 
+fn run_bundle_case(name: &str) -> bool {
+    crate::game::native_entity_refs::tests::run_fresh_cases(
+        &format!("game::stations::tooltip::bundle_tests::{name}"),
+        "SUNRISE_BUNDLE_TOOLTIP_CASE",
+        &["bundle"],
+    )
+}
+
 fn run(mode: Option<bool>, test: impl FnOnce(&mut Game<'_>)) {
     let mods: Mods = mode
         .map(|mode| ModEntry::new("bundle-test", Box::new(Edit(mode))))
@@ -97,6 +105,9 @@ fn bottom(batch: &HudBatch) -> f32 {
 #[test]
 #[ignore = "daily"]
 fn bundle_no_listener_order_and_draw_position() {
+    if run_bundle_case("bundle_no_listener_order_and_draw_position") {
+        return;
+    }
     run(None, |game| {
         let stack = bundle();
         let lines = vec![
@@ -133,6 +144,9 @@ fn bundle_gather_moves_image_to_end() {
 #[test]
 #[ignore = "daily"]
 fn bundle_gather_keeps_vanillas_selected_slot() {
+    if run_bundle_case("bundle_gather_keeps_vanillas_selected_slot") {
+        return;
+    }
     run(Some(true), |game| {
         let mut stack = bundle();
         stack.data_mut().bundle_selected = sunrise_client::item_data::BundleSelected(0);
@@ -179,6 +193,9 @@ fn non_bundle_keeps_text_only_geometry() {
 #[test]
 #[ignore = "daily"]
 fn bundle_empty_text_gathers_image_at_zero() {
+    if run_bundle_case("bundle_empty_text_gathers_image_at_zero") {
+        return;
+    }
     run(None, |game| {
         let elements = game
             .gather_tooltip_components(&bundle(), vec![], 10, (320.0, 240.0))
@@ -196,6 +213,9 @@ fn bundle_empty_text_gathers_image_at_zero() {
 #[test]
 #[ignore = "daily"]
 fn bundle_empty_contents_keeps_image() {
+    if run_bundle_case("bundle_empty_contents_keeps_image") {
+        return;
+    }
     run(None, |game| {
         let stack = ItemStack::new("minecraft:bundle", 1);
         let lines = vec![(sunrise_client::text::Text::literal("Name"), u32::MAX)];
