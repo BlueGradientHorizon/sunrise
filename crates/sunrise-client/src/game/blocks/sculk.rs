@@ -1677,7 +1677,7 @@ impl Game<'_> {
         let effect =
             sunrise_client::effects::EffectInstance::new("darkness", warden::DARKNESS_DURATION, 0)
                 .with_flags(false, false);
-        self.potions.effects.add(effect);
+        self.apply_player_effect(effect);
     }
 
     // ---- catalysts ----
