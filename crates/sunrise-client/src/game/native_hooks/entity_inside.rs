@@ -192,6 +192,10 @@ mod sweep_tests {
             *self.0.speed.lock().unwrap() = Some(r.effect_key("minecraft:speed"));
             let stone = r.block_key("minecraft:stone");
             r.block_part(stone, self.0.clone());
+            if self.0.hurt_after.is_some() {
+                let grass = r.block_key("minecraft:short_grass");
+                r.block_part(grass, self.0.clone());
+            }
         }
     }
 
@@ -355,8 +359,9 @@ mod sweep_tests {
                             "the walk itself reaches both contacts"
                         );
                         assert!(dead, "the killing write applied");
-                        assert!(
-                            (after - before).abs() < 1e-9,
+                        assert_eq!(
+                            after.to_bits(),
+                            before.to_bits(),
                             "the writes after the death never apply"
                         );
                     });
@@ -701,10 +706,52 @@ mod sweep_tests {
                         assert_eq!(game.dropped.len(), 1);
                         assert_eq!(game.dropped[0].stack, diamonds);
                         assert_eq!(game.dropped[0].position, item.position);
-                        assert!(
-                            (item.velocity.x - before).abs() < 1e-9,
+                        assert_eq!(
+                            item.velocity.x.to_bits(),
+                            before.to_bits(),
                             "the writes after the destruction never apply"
                         );
+
+                        // Run the real batch on a merge tick. The victim touches a
+                        // non-solid block, its neighbour is close enough to merge
+                        // but doesn't touch that block.
+                        let grass = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("minecraft:short_grass")
+                            .unwrap();
+                        game.world.set(1, 104, 0, grass).unwrap();
+                        game.tickets.update(None);
+                        game.ticked_entities_through = u32::MAX;
+                        for (health, count) in [(5, 3), (1, 2)] {
+                            part.contacts.lock().unwrap().clear();
+                            game.dropped.clear();
+                            for (x, count, ticks, health) in
+                                [(1.25, 1, 39, health), (0.75, 2, 0, 5)]
+                            {
+                                game.spawn_item(
+                                    ItemStack::new("minecraft:stone", count),
+                                    [x, 104.5, 0.5],
+                                    [0.0; 3],
+                                    20,
+                                );
+                                let item = game.dropped.last_mut().unwrap();
+                                item.no_gravity = true;
+                                item.health = health;
+                                item.ticks = ticks;
+                            }
+                            let neighbour = game.dropped[1].id;
+                            sunrise_client::block_contact::in_level(
+                                sunrise_client::parallel::TickThread::mint(),
+                                Some("minecraft:overworld"),
+                                || game.tick_items(),
+                            );
+                            assert_eq!(*part.contacts.lock().unwrap(), [[1, 104, 0]]);
+                            assert_eq!(game.dropped.len(), 1);
+                            assert_eq!(game.dropped[0].id, neighbour);
+                            assert_eq!(game.dropped[0].stack.count, count);
+                        }
                     });
                 });
             },

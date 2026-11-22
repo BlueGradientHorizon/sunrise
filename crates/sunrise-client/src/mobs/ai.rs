@@ -43,14 +43,34 @@ mod inside_walk_tests {
     /// mod_api dispatch hop this stands for is the player's, the item's and the
     /// the projectile's tests' to prove; the mob tests here prove the walk, its
     /// arms, the flush and the containment.
-    /// The module's fire reads process-wide statics: one test at a time.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    /// Each fixture installs the hook and resolves effects in its own process.
     static CONTACTS: Mutex<Vec<[i32; 3]>> = Mutex::new(Vec::new());
     static KILL_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static PANIC_AFTER: AtomicUsize = AtomicUsize::new(usize::MAX);
     static ENABLED: AtomicBool = AtomicBool::new(false);
     std::thread_local! {
         static KILL_DAMAGE: std::cell::Cell<Option<mod_api::DamageTypeKey>> = const { std::cell::Cell::new(None) };
+    }
+
+    fn in_contact_test_process(test: &str) -> bool {
+        const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
+        let module = module_path!().split_once("::").unwrap().1;
+        let name = format!("{module}::{test}");
+        if std::env::var_os(CHILD).is_some_and(|value| value == name.as_str()) {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([&name, "--exact", "--include-ignored", "--test-threads=1"])
+            .env(CHILD, &name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{name} failed in its own process:\n{stdout}{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        false
     }
 
     fn reset(kill: usize, panic: usize, enabled: bool) {
@@ -141,9 +161,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_a_mob_once_a_block_in_walk_order() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_part_pushes_a_mob_once_a_block_in_walk_order") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -197,21 +217,7 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_mobs_flush() {
-        const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
-        if std::env::var_os(CHILD).is_none() {
-            let name = concat!(module_path!(), "::a_killing_write_stops_the_mobs_flush");
-            let name = name.split_once("::").unwrap().1;
-            let out = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([name, "--exact", "--include-ignored"])
-                .env(CHILD, "1")
-                .output()
-                .unwrap();
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            assert!(
-                out.status.success() && stdout.contains("test result: ok. 1 passed;"),
-                "{stdout}{}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+        if !in_contact_test_process("a_killing_write_stops_the_mobs_flush") {
             return;
         }
         reset(0, usize::MAX, true);
@@ -242,8 +248,9 @@ mod inside_walk_tests {
                 );
                 assert_eq!(CONTACTS.lock().unwrap().len(), 2);
                 assert!(!mob.alive(), "the killing write applied");
-                assert!(
-                    (mob.velocity.x - before).abs() < 1e-9,
+                assert_eq!(
+                    mob.velocity.x.to_bits(),
+                    before.to_bits(),
                     "the writes after the death never apply"
                 );
                 assert!(!mob.has_effect("minecraft:wither"));
@@ -259,9 +266,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_mobs_tick_restored() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_panicking_part_leaves_the_mobs_tick_restored") {
+            return;
+        }
         reset(usize::MAX, 0, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -313,9 +320,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_mob_without_a_part_keeps_vanilla_behavior() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_mob_without_a_part_keeps_vanilla_behavior") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, false);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -359,9 +366,9 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_diagonal_move_walks_blocks_in_vanillas_order() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_diagonal_move_walks_blocks_in_vanillas_order") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, true);
         let ran = crate::mobs::world::with_built_test_world(
             &[],
@@ -412,16 +419,14 @@ mod inside_walk_tests {
 
     /// #478: a part's `AddEffect` write is `LivingEntity.addEffect` on a mob,
     /// so a second write updates the one instance instead of listing it
-    /// twice. It installs the same Wither-only registry as `reset`, so the
-    /// process-wide `OnceLock` holds the same keys whichever test runs first;
-    /// the stored modifier `addEffect` adds is covered by
+    /// twice. The stored modifier `addEffect` adds is covered by
     /// `effect_modifier_tests`, which read no registry.
     #[test]
     #[ignore = "daily"]
     fn a_parts_add_effect_write_merges_into_one_instance() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !in_contact_test_process("a_parts_add_effect_write_merges_into_one_instance") {
+            return;
+        }
         reset(usize::MAX, usize::MAX, false);
         let mut mob = Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
         let mut level = crate::health::TestLevel::new(0);

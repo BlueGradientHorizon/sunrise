@@ -1228,6 +1228,9 @@ impl Game<'_> {
             }
             if !client {
                 self.sweep_item_inside(item);
+                if item.health <= 0 {
+                    return (false, true);
+                }
             }
         }
         item.finish_move_block_effects(&self.world, self.res.facts(), step);
