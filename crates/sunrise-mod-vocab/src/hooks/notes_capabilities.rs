@@ -178,13 +178,9 @@ pub trait Notes {
   was queued, not whether a player heard it. The server discards unknown sound events when it dispatches
   the queue.
 
-- `Host::config_files()` retains the calling mod's `config/<mod id>/`, `<mod id>.<ext>` and `<mod id>-<rest>` ownership spelling and 4 MiB `CONFIG_FILE_MAX`; a world's `serverconfig/` copy is read through registered `Server` config listeners (`ConfigEvent::Loading`).
-  `Host::data_files()` on both sides instead owns `<game directory>/sunrise-mod-data/<mod id>/`; server-only `ServerHost::world_data_files()` owns `<world>/sunrise-mod-data/<mod id>/`, copied, deleted and backed up with the save (`NoWorld` without a world).
-  All three share `ConfigFiles`, `ConfigPath`, `ConfigEntry` and typed `ConfigFileError`; bulk paths omit the mod id, relative to the implicit mod root. Settings remain separate, one file per key, with unchanged scanning; bulk files are never scanned.
-  Sunrise's bulk cap is `DATA_FILE_MAX` (64 MiB), not the config cap. Reads, writes and stats enforce their root; writes replace bytes atomically, never leaving a partial file.
-  Checked `/`-separated paths refuse traversal, backslashes and symbolic links; another mod's files, missing calling-mod context, oversize files and unavailable operations receive typed refusals.
-  `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
-  `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
+- `Host::config_dir()` lends `&std::path::Path` for the game's `config/` folder beside `options.txt` (beside `server.properties` on a dedicated server), matching NeoForge's `FMLPaths.CONFIGDIR`, and is available in both the `Config` and `World` load phases.
+  Native mods read and write their own config and bulk files directly with `std::fs` under `Host::config_dir()`, `Host::instance_dir()` (for instance-wide data such as `<instance>/sunrise-mod-data/<mod id>/`), or `ServerHost::world_dir()` (for world-scoped data backed up and deleted with the save).
+  Settings remain separate in `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key ([config files and settings](../how-to/mod-settings.md)).
 
 - The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
   hook hears the layout's inputs (`HealthInputs`) and the screen's GUI size, and a mod that answers with

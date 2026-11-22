@@ -178,14 +178,10 @@ impl Game<'_> {
             self.native_configs.started = true;
             return;
         }
-        let config_dir = match Self::native_config_dir() {
-            Ok(dir) => dir,
-            Err(e) => {
-                log::warn!("Sunrise: mod configs: {e}");
-                return;
-            }
-        };
-        for (config, snapshot) in self.native_configs.load(configs, kinds, &config_dir, world) {
+        for (config, snapshot) in self
+            .native_configs
+            .load(configs, kinds, &self.config_root, world)
+        {
             config.notify_snapshot(
                 super::execution_role::host_side(self),
                 ConfigEvent::Loading,
@@ -246,6 +242,9 @@ impl Game<'_> {
     }
 }
 
+#[cfg(test)]
+#[path = "native_configs/storage_tests.rs"]
+mod storage_tests;
 #[cfg(test)]
 #[path = "native_configs/tests.rs"]
 mod tests;

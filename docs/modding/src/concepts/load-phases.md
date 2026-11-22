@@ -17,7 +17,7 @@ Each owning thread progresses through `Packages → Registration → Setup → C
 | Packages | Package discovery; no game Host operations. |
 | Registration | Declarations through `RegistrationContext`, with its mod-list, registry and settings reads; no Host. |
 | Setup | Client setup reads, published asset/data queries and registry/settings/mod-list reads; no world handles or transactions. |
-| Config | Settings reads and the mod-scoped `ConfigFiles` service; no world handles, transactions or other game operations. |
+| Config | Settings reads and `Host::config_dir()`; no world handles, transactions or other game operations. |
 | Reloading | Published asset/data queries, registry facts, settings and mod-list reads, listener registration, and `DataLoadContext` callbacks; no world handles or transactions. |
 | World | The owning game's side-typed `ServerHost` or `ClientHost`. |
 
@@ -85,7 +85,7 @@ completes. A title-screen callback is already in World: world-handle constructor
 rather than being forbidden in Setup. A dedicated
 server loads Common once before its first world; Server configs load and unload per world.
 A second world does not repeat registration or client setup. Config loading can read settings and
-use the scoped `ConfigFiles` service to read or save its own config files. World handles,
+call `Host::config_dir()` to reach the `config/` folder with `std::fs`. World handles,
 transactions and other game operations panic with `Config` in the diagnostic.
 Config file polling is not a phase transition, and Server config unloading leaves the World phase.
 

@@ -141,8 +141,6 @@ client_view::set_camera_type
 client_view::set_hud_mode
 client_view::set_local_rotation
 client_view::view_hit
-config::config_files
-config::data_files
 config::dimension
 config::dist
 config::game_rule
@@ -170,7 +168,6 @@ config::tick_rate_is_frozen
 config::tick_stats
 config::tick_times
 config::translate
-config::world_data_files
 config::world_dir
 configuration_tasks::configuration_has_channel
 configuration_tasks::configuration_send_payload

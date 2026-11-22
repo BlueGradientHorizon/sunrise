@@ -39,38 +39,26 @@ dedicated server), as Fabric and NeoForge mods' do.
    a panic disables only that registration for the rest of the session and raises an error notice naming that
    mod without aborting server shutdown.
 
-`ConfigEvent::Loading` runs in the Config [load phase](../concepts/load-phases.md): settings reads and config
-files are available, world handles and transactions are not. Polling leaves the current phase unchanged and
-`ConfigEvent::Unloading` runs in World.
+`ConfigEvent::Loading` runs in the Config [load phase](../concepts/load-phases.md): settings reads and
+`Host::config_dir()` are available, world handles and transactions are not. Polling leaves the current phase
+unchanged and `ConfigEvent::Unloading` runs in World.
 
-For files the hooks don't manage, `Host::config_files()` gives your mod its own files in `config/`. Paths retain
-the ownership spelling above, such as `<mod id>/extra.toml`. The service is bound to the mod whose hook or Part
-is running; you cannot reach another mod's files.
+For files the config lifecycle doesn't manage, `Host::config_dir()` lends `&std::path::Path` for the game's
+`config/` folder (NeoForge's `FMLPaths.CONFIGDIR`). Startup ensures the folder exists; lending it performs no
+I/O, and mods read and write their files directly with `std::fs`.
 
 ## Bulk data
 
-Keep map tiles, waypoints, seeds and exports out of settings and config files:
+Keep map tiles, waypoints, seeds and exports out of settings and config files, using `std::fs` under the
+host's real directories:
 
-- `Host::data_files()` is available on both sides, rooted at `<game directory>/sunrise-mod-data/<mod id>/`.
+- `Host::instance_dir()` is available on both sides (for example, `<instance>/sunrise-mod-data/<mod id>/`).
   A client-only mod can key its own subfolders by server or save and dimension.
-- `ServerHost::world_data_files()` is server-only, rooted at `<world>/sunrise-mod-data/<mod id>/`.
-  Its contents are copied, deleted and backed up with the save. Without a current world it refuses calls with
-  `ConfigFileError::NoWorld`; a client has no world-folder service.
+- `ServerHost::world_dir()` is server-only and returns `Option<PathBuf>` for the open save folder (for example,
+  `<world>/sunrise-mod-data/<mod id>/`). Its contents are copied, deleted and backed up with the save. It
+  returns `None` when no world is open.
 
-Both use the same `ConfigFiles`, `ConfigPath`, `ConfigEntry` and `ConfigFileError` types as config files. Bulk paths are relative to your implicit mod root: `tiles/overworld/0.bin`, not
-`<mod id>/tiles/overworld/0.bin`. The game never scans bulk data as settings or config.
-
-`read`, `write` and `stat` operate on checked `/`-separated paths; traversal (`..`), backslashes and symbolic links
-are refused. Writes replace the whole file atomically, never exposing partial contents. Sunrise's own per-file
-limits are `DATA_FILE_MAX` (64 MiB) for both bulk areas and `CONFIG_FILE_MAX` (4 MiB) for config files.
-Oversized files and unavailable operations return typed errors, rather than partially writing.
-`remove` deletes one file under the same confinement and returns whether it was there; it refuses a folder
-with `ConfigFileError::NotAFile` and never removes one.
-
-Walk a folder with `list(&folder, after, limit)`: start with `after = None`, then pass the last returned entry's
-name as the exclusive cursor. Names are lexicographically ordered; each page has at most `limit` entries.
-`limit` must be between 1 and `CONFIG_LIST_MAX` (1024), or the call returns `ConfigFileError::InvalidPage`.
-Use `ConfigPath::root()` to list your own root, and stop when a page is empty.
+The game never scans `sunrise-mod-data/` as settings or config.
 
 ## Settings
 
@@ -89,5 +77,5 @@ A mod reads and writes only its own settings: another mod's id, or a key its own
 `None` and writes nothing.
 
 The settings folder is settings only, not bulk storage: ordinary files there are read as setting keys and
-subfolders or unsafe entries still warn during snapshots. Use the bulk services above instead; their files are
-not included in settings snapshots.
+subfolders or unsafe entries still warn during snapshots. Keep bulk files under `Host::instance_dir()` or
+`ServerHost::world_dir()` instead; their files are not included in settings snapshots.

@@ -13,9 +13,9 @@ impl Drop for CleanupDir {
     }
 }
 
-type ConfigDecl = (ConfigKind, Option<&'static str>, &'static str);
+pub(super) type ConfigDecl = (ConfigKind, Option<&'static str>, &'static str);
 
-fn with_registered_configs(
+pub(super) fn with_registered_configs(
     entries: &[(&'static str, &[ConfigDecl])],
     f: impl FnOnce(&'static [RegisteredConfig]),
 ) {
@@ -84,6 +84,10 @@ fn config_permissions_and_once_per_side_survive_two_worlds() {
                                     HostSide::Client(host) => &**host,
                                 };
                                 let _ = read.setting("phase_probe", "unused");
+                                assert_eq!(
+                                    read.config_dir(),
+                                    Game::game_dir().join("config").as_path()
+                                );
                                 let refused =
                                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                         read.entity(1)
@@ -171,7 +175,7 @@ fn owner_bound_config_lifecycle_isolates_owners_refusals_and_panics() {
 
     let world_one = Folder::new("daily-w1");
     let world_two = Folder::new("daily-w2");
-    let config_dir = Game::native_config_dir().unwrap();
+    let config_dir = Game::game_dir().join("config");
     let _cleanup = CleanupDir(config_dir.join(&tag));
 
     let override_path = world_one.0.join("serverconfig").join(&alpha_second_rel);

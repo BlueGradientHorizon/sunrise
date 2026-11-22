@@ -1102,8 +1102,6 @@ mod native_command_completion_tests;
 mod native_command_reads;
 #[path = "game/modding/native_components.rs"]
 mod native_components;
-#[path = "game/modding/native_config_files.rs"]
-mod native_config_files;
 #[path = "game/modding/native_configs.rs"]
 mod native_configs;
 #[path = "game/modding/native_console.rs"]
@@ -3967,6 +3965,9 @@ struct Game<'a> {
     lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
     held_out: Vec<u32>,
+    /// The game's `config/` folder beside `options.txt` (or `server.properties`
+    /// on a dedicated server), lent by `Host::config_dir`.
+    config_root: PathBuf,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
     mod_phase: mod_api::__private::PhaseOwner,
@@ -13695,6 +13696,7 @@ impl<'a> Game<'a> {
             resident_entities: Default::default(),
             lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
+            config_root: Self::game_dir().join("config"),
             native_configs: Default::default(),
             mod_phase,
             native_net: Default::default(),
@@ -13977,6 +13979,9 @@ pub(crate) fn run_with(
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
+    if let Err(error) = native_hooks::config_dir(&Game::game_dir()) {
+        log::warn!("Sunrise: config folder: {error}");
+    }
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
     mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
     crate::game::part_admission::admit_parts(mod_api::__private::mods())?;

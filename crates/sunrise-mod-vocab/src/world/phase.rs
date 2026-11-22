@@ -38,7 +38,7 @@ pub enum ModPhase {
     Registration,
     /// One side's startup, before its configs and world.
     Setup,
-    /// Config loading: settings reads and scoped config files.
+    /// Config loading: settings reads and `Host::config_dir`.
     Config,
     /// The owning game's normal runtime.
     World,
@@ -254,6 +254,8 @@ pub enum LoadAccess {
     ClientSetup,
     /// Published asset/data facts, including resource-cache queries.
     PublishedResources,
+    /// Immutable host path or fact available in every phase without refusing or unwinding.
+    Always,
 }
 
 /// The default body of a host method: a test double that does not implement it gets the access
@@ -279,6 +281,9 @@ pub(crate) fn unprovided(method: &'static str, operation: &'static str, access: 
 /// message; no production path reaches that.
 #[inline]
 pub fn check_access(operation: &'static str, access: LoadAccess) {
+    if access == LoadAccess::Always {
+        return;
+    }
     let phase = current_phase();
     if phase != ModPhase::World
         && (!phase_allows(phase, operation, access) || super::phase_refusal::latched())
@@ -295,7 +300,7 @@ pub fn access_allowed(operation: &str, access: LoadAccess) -> bool {
 
 #[inline]
 fn phase_allows(phase: ModPhase, operation: &str, access: LoadAccess) -> bool {
-    if phase == ModPhase::World {
+    if phase == ModPhase::World || access == LoadAccess::Always {
         return true;
     }
     let metadata = access == LoadAccess::Metadata;
@@ -310,7 +315,7 @@ fn phase_allows(phase: ModPhase, operation: &str, access: LoadAccess) -> bool {
                     LoadAccess::ClientSetup | LoadAccess::PublishedResources
                 )
         }
-        ModPhase::Config => settings || operation == "config_files",
+        ModPhase::Config => settings,
         ModPhase::Reloading => settings || metadata || access == LoadAccess::PublishedResources,
         ModPhase::Packages | ModPhase::Registration => false,
     }

@@ -549,7 +549,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         .map_err(|e| e.to_string())?;
                     if !matches!(
                         level.to_string().as_str(),
-                        "WorldOnly" | "Metadata" | "ClientSetup" | "PublishedResources"
+                        "WorldOnly" | "Metadata" | "ClientSetup" | "PublishedResources" | "Always"
                     ) {
                         return Err(format!("{name}: unknown access level {level}"));
                     }
@@ -656,7 +656,9 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         .attrs
                         .iter()
                         .any(|attr| attr.path().is_ident("decline_unavailable"));
-                    let access = if decline {
+                    let access = if level == "Always" {
+                        String::new()
+                    } else if decline {
                         format!(
                             "if !mod_api::__private::access_allowed({name:?}, mod_api::__private::LoadAccess::{level}) {{ return; }}"
                         )
