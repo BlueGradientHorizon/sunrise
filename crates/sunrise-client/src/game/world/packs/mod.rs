@@ -598,6 +598,7 @@ impl Game<'_> {
         self.apply_client_reload(client_applies, |game| {
             // Refresh modifiers from the newly staged packs, including removals.
             game.creative_screen.set_pack_modifiers(tab_modifiers);
+            game.refresh_creative_search_names();
             [
                 game.frame_model,
                 game.glow_frame_model,

@@ -25,14 +25,17 @@ pub trait ItemsHost {
     /// hasn't the component, and for an unknown item.
     fn item_default_component(&self, item: ItemKey, component: &str) -> Option<Tag>;
     /// Side: both.
-    /// `ItemStack.getHoverName()` as a component, as vanilla builds it: the custom name as
-    /// written, else a potion's or tipped arrow's contents name, a written book's non-blank
-    /// title, a player head's `%s's Head` for its owner, the `item_name` component (a removed one
-    /// reads empty; the ominous banner's included), else the item's default name as a bare
-    /// translatable (`item.*` or `block.*`); only a fallback written into a component is kept.
-    /// It carries no rarity colour or italics (`getStyledHoverName` adds those). Each viewer renders a translatable in their own
-    /// language; call `text_string` on it for a string in this side's language. An invalid stack
-    /// is a [`TextFormError`].
+    /// `ItemStack.getHoverName()` as a component. The custom name wins, then a written book's
+    /// nonblank raw title. Otherwise the item's name is used: a mod item's `ItemPart::item_name`
+    /// answer replaces its default; `None` keeps it. Vanilla item overrides (such as potion
+    /// contents or a profiled player head) participate in the item-name step; the base item uses
+    /// the stack's `item_name` patch or inherits its prototype's value. A removal in the
+    /// stack's patch reads empty; if a mod item's prototype has no `item_name` (including
+    /// when the mod removes it), the game uses its item or block translation key. Only a
+    /// fallback written into a component is kept.
+    /// It carries no rarity colour or italics (`getStyledHoverName` adds those). Each viewer
+    /// renders a translatable in their own language; call `text_string` on it for a string in
+    /// this side's language. An invalid stack is a [`TextFormError`].
     fn hover_name(&self, stack: &ItemStack) -> Result<Text, TextFormError>;
     /// Side: both.
     /// Item `item`'s cooking-fuel burn time in ticks (`FuelValues.burnDuration` of its `cooking_fuel`
