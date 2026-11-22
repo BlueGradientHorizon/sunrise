@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Compare the client ticks of spawners, trial spawners, vaults, campfires, conduits, beacons and potent
-sulfur with vanilla 26.3.
+"""Compare the client ticks of spawners, trial spawners, vaults, campfires, beacons, potent sulfur
+and animated block entities with vanilla 26.3.
 
-The Java oracle (VanillaBlockEntityClientTickOracle) runs BaseSpawner.clientTick,
-TrialSpawner.tickClient and VaultBlockEntity.Client.tick as ClientLevel.tickBlockEntities does:
-every loaded one, each tick, in the level's ticker order, sharing the level random. Columns arrive
+The Java oracle (VanillaBlockEntityClientTickOracle) runs their client tickers as
+ClientLevel.tickBlockEntities does: every loaded one, each tick, in the level's ticker order,
+sharing the level random. Columns arrive
 as chunk packets carrying update tags, whose order the tickers follow (LevelChunk.replaceWithPacketData),
 and level events 3011 to 3021 run through LevelEventHandler. The game test TEST runs the same cases on a
 server's client: chunk packets (`remote_chunk`), forgotten columns, level events and
@@ -19,7 +19,8 @@ Cases: campfires, a conduit, a beacon and potent sulfur mixed with the rest in o
 player; every trial spawner state, ominous or not, around a spawn and a 20-tick boundary; vaults
 with and without a display item and a connected player around the particle range; each kind at
 Chebyshev distance 63, 64 and 65 and far beyond, several sharing the level random, a mixed column
-forgotten and sent again in another order, and level events 3011 to 3021.
+forgotten and sent again in another order, a shulker lid pushing a player out of spawner range
+before or after the spawner and book tick, and level events 3011 to 3021.
 
 docs/parity/block-entity-client-ticks.jsonl holds the cases and a hash of vanilla's log of each, which
 the game test checks alone in the daily run; `--write` makes it again, and a run fails while it is
@@ -210,6 +211,16 @@ def cases():
         events={'3': [['blockEvent', [1, 64, 1], 1, 1]], '4': [['blockEvent', [3, 64, 1], 1, 1]],
                 '6': [['blockEvent', [14, 64, 2], 1, 3]], '9': [['blockEvent', [1, 64, 12], 1, 2]],
                 '30': [['blockEvent', [3, 64, 1], 1, 0]], '33': [['blockEvent', [1, 64, 1], 1, 0]]})
+    # ShulkerBoxBlockEntity.moveCollidedEntities pushes the player east out of BaseSpawner's
+    # required range on its first tick. Compare the spawner on both sides of that push, and the
+    # book's target angle (EnchantingTableBlockEntity.bookAnimationTick) at the new position.
+    lid = at('shulker', [8, 64, 8], facing='east')
+    book = at('enchanting_table', [9, 64, 10])
+    nearby = spawner([7, 64, 8], range_=2)
+    push = {'0': [['blockEvent', [8, 64, 8], 1, 1]]}
+    for label, entities in (('before', [lid, nearby, book]), ('after', [nearby, book, lid])):
+        add(f'shulker pushes {label} spawner ticks', entities, player(9.3, 64.0, 9.15), ticks=1,
+            events=push, path='remote')
     return out
 
 
@@ -271,7 +282,7 @@ def main():
         homes = {k: scratch / k for k in ('SUNRISE_HOME', 'SUNRISE_LAUNCHER_HOME', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME')}
         env = lab.game_env(os.environ, **homes, RUST_MIN_STACK='16777216')
         # The shared vanilla build (no Extras, no controllers), as the other harnesses of this test
-        # binary take it; tools/parity.py builds it ahead from this command.
+        # binary take it; the parity workflow warms this feature variant before running the harnesses.
         compiled = run(['cargo', 'test', '--locked', '-p', 'sunrise-client', '--no-default-features', '--lib', '--no-run',
                         '--message-format=json'],
                        'compile', env=env)

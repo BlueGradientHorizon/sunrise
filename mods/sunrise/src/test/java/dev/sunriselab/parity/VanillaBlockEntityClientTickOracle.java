@@ -13,9 +13,10 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -23,23 +24,36 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.levelgen.LegacyRandomSource;
 import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BeaconBlockEntity;
+import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.entity.BlockEntityTypes;
+import net.minecraft.world.level.block.entity.CampfireBlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.ConduitBlockEntity;
+import net.minecraft.world.level.block.entity.EnchantingTableBlockEntity;
+import net.minecraft.world.level.block.entity.PotentSulfurBlockEntity;
+import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.TrialSpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.vault.VaultBlockEntity;
 import net.minecraft.world.level.block.entity.vault.VaultSharedData;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.entity.EntityInLevelCallback;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.renderer.LevelEventHandler;
 
 /**
- * Original oracle for the client ticks of spawners, trial spawners and vaults
- * (BaseSpawner.clientTick, TrialSpawner.tickClient, VaultBlockEntity.Client.tick) as
- * ClientLevel.tickBlockEntities runs them: every loaded one, each client tick, in the level's
- * ticker order, all drawing from the one level random. A case's columns arrive as chunk packets:
+ * Original oracle for spawners, trial spawners, vaults, campfires, beacons, potent sulfur
+ * and animated block entities as ClientLevel.tickBlockEntities runs them: every loaded one,
+ * each client tick, in the level's ticker order, all drawing from the one level random.
+ * A case's columns arrive as chunk packets:
  * LevelChunk.replaceWithPacketData drops the column's block entities and makes those the packet
  * lists, each loading the update tag the server's copy gives, in its order (forEachBlockEntityTag, getBlockEntity(IMMEDIATE), addAndRegisterBlockEntity),
  * so their tickers join the level's list in packet order; a forgotten column's tickers go.
@@ -50,7 +64,7 @@ import net.minecraft.client.renderer.LevelEventHandler;
  * display entity first, as SpawnerRenderer makes one (BaseSpawner.clientTick does nothing
  * without it).
  *
- * Input lines: case JSON. Output lines: {ticks: [{events, random, spins}]} or {error}. Doubles,
+ * Input lines: case JSON. Output lines: {ticks: [{events, random, spins, states}]} or {error}. Doubles,
  * floats and sound seeds are their raw bits, as hex strings.
  */
 public final class VanillaBlockEntityClientTickOracle {
@@ -79,6 +93,8 @@ public final class VanillaBlockEntityClientTickOracle {
         @Override public HumanoidArm getMainArm() { return HumanoidArm.RIGHT; }
         @Override public boolean isSpectator() { return spectator; }
         @Override public boolean isAlive() { return !dead; }
+        // There are no obstacles along the lid's push: use its displacement directly.
+        @Override public void move(MoverType type, Vec3 delta) { setPos(position().add(delta)); }
     }
 
     /** The client level as these ticks see it. */
@@ -117,8 +133,14 @@ public final class VanillaBlockEntityClientTickOracle {
         @Override public int getMinY() { return -64; }
         @Override public boolean isClientSide() { return true; }
         @Override public <T extends net.minecraft.world.entity.Entity> List<T> getEntitiesOfClass(Class<T> type, net.minecraft.world.phys.AABB box, java.util.function.Predicate<? super T> selector) { return List.of(); }
-        // No entities but the player: a shulker's lid and a bell's search find nobody.
-        @Override public List<net.minecraft.world.entity.Entity> getEntities(net.minecraft.world.entity.Entity except, net.minecraft.world.phys.AABB box, java.util.function.Predicate<? super net.minecraft.world.entity.Entity> selector) { return List.of(); }
+        // The shulker's lid queries the entities in its swept box.
+        @Override public List<Entity> getEntities(Entity except, AABB box, java.util.function.Predicate<? super Entity> selector) {
+            List<Entity> found = new ArrayList<>();
+            for (var player : casePlayers) {
+                if (player != except && box.intersects(player.getBoundingBox()) && selector.test(player)) found.add(player);
+            }
+            return found;
+        }
         // A client plays no sound for `except == null` (ClientLevel.playSeededSound: only the local player's).
         @Override public void playSound(net.minecraft.world.entity.Entity except, double x, double y, double z, SoundEvent sound, SoundSource source, float volume, float pitch) { }
         @Override public void playSound(net.minecraft.world.entity.Entity except, double x, double y, double z, net.minecraft.core.Holder<SoundEvent> sound, SoundSource source, float volume, float pitch) { }
@@ -234,12 +256,24 @@ public final class VanillaBlockEntityClientTickOracle {
         } else if (be instanceof VaultBlockEntity v) {
             VaultBlockEntity.Client.tick(level, p, state, v.getClientData(), v.getSharedData());
         } else {
-            // BlockState.getTicker with the client level: campfire particles, conduit, beacon, geyser.
-            @SuppressWarnings({"unchecked", "rawtypes"})
-            net.minecraft.world.level.block.entity.BlockEntityTicker<BlockEntity> ticker =
-                (net.minecraft.world.level.block.entity.BlockEntityTicker) ((EntityBlock) state.getBlock()).getTicker(level, state, be.getType());
-            if (ticker != null) ticker.tick(level, p, state, be);
+            switch (be) {
+                case CampfireBlockEntity c -> tickRegistered(level, BlockEntityTypes.CAMPFIRE, c);
+                case ConduitBlockEntity c -> tickRegistered(level, BlockEntityTypes.CONDUIT, c);
+                case BeaconBlockEntity b -> tickRegistered(level, BlockEntityTypes.BEACON, b);
+                case PotentSulfurBlockEntity s -> tickRegistered(level, BlockEntityTypes.POTENT_SULFUR, s);
+                case BellBlockEntity b -> tickRegistered(level, BlockEntityTypes.BELL, b);
+                case ChestBlockEntity c -> tickRegistered(level, BlockEntityTypes.CHEST, c);
+                case EnchantingTableBlockEntity e -> tickRegistered(level, BlockEntityTypes.ENCHANTING_TABLE, e);
+                case ShulkerBoxBlockEntity s -> tickRegistered(level, BlockEntityTypes.SHULKER_BOX, s);
+                default -> throw new IllegalArgumentException("No ticker fixture for " + be.getType());
+            }
         }
+    }
+
+    private static <T extends BlockEntity> void tickRegistered(CaseLevel level, BlockEntityType<T> type, T entity) {
+        BlockState state = entity.getBlockState();
+        var ticker = ((EntityBlock) state.getBlock()).getTicker(level, state, type);
+        if (ticker != null) ticker.tick(level, entity.getBlockPos(), state, entity);
     }
 
     static boolean spins(BlockEntity be) {
@@ -365,7 +399,10 @@ public final class VanillaBlockEntityClientTickOracle {
                 var entity = net.minecraft.world.entity.Entity.class;
                 set(entity, player, "position", position);
                 set(entity, player, "blockPosition", BlockPos.containing(position));
-                set(entity, player, "dimensions", EntityDimensions.scalable(0.6F, 1.8F));
+                var dimensions = EntityDimensions.scalable(0.6F, 1.8F);
+                set(entity, player, "dimensions", dimensions);
+                set(entity, player, "levelCallback", EntityInLevelCallback.NULL);
+                player.setBoundingBox(dimensions.makeBoundingBox(position));
                 set(entity, player, "uuid", new UUID(0x5355_4e52_4953_45L, 1L));
                 player.dead = pc.get("dead").getAsBoolean();
                 player.spectator = pc.get("spectator").getAsBoolean();

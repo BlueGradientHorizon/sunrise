@@ -1,10 +1,8 @@
-//! `ClientLevel.tickBlockEntities` for spawners, trial spawners and vaults on a server's client,
-//! case by case against vanilla 26.3 (tools/test_block_entity_client_tick_parity.py): each case's
-//! columns arrive in chunk packets (`remote_chunk`), are forgotten and sent again as the server's
-//! packets do, take level events 3011 to 3021 (`level_event_at`) and tick
-//! (`tick_client_block_entities`). Each tick logs one ordered stream of the particles and local
-//! sounds (with the seed each sound's instance takes), each block entity's spin and the level
-//! random's state.
+//! `ClientLevel.tickBlockEntities` for spawners, trial spawners, vaults, campfires, beacons,
+//! potent sulfur and animated block entities on a server's client. Against vanilla 26.3
+//! (`tools/test_block_entity_client_tick_parity.py`), the fixture compares particles, sounds,
+//! spins, beacon beams, animation state and the level random after each tick. Separate cases
+//! exercise ticker enabling, animation lifetimes and when particles join the engine.
 use super::*;
 use std::sync::Arc;
 use sunrise_client::block_entity_anim::Ticker;
@@ -19,7 +17,7 @@ use sunrise_world::registry::BlockStateId;
 /// makes them).
 const COMMITTED: &str = include_str!("../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
-const TYPES: [&str; 11] = [
+const TYPES: [&str; 12] = [
     "minecraft:mob_spawner",
     "minecraft:trial_spawner",
     "minecraft:vault",
@@ -31,6 +29,7 @@ const TYPES: [&str; 11] = [
     "minecraft:shulker_box",
     "minecraft:bell",
     "minecraft:enchanting_table",
+    "minecraft:decorated_pot",
 ];
 const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 
@@ -40,6 +39,9 @@ const PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 #[test]
 #[ignore = "daily"]
 fn client_ticks_match_the_vanilla_cases() {
+    if run_in_child("client_ticks_match_the_vanilla_cases") {
+        return;
+    }
     let harness = std::env::var("SUNRISE_CLIENT_TICK_CASES")
         .ok()
         .zip(std::env::var("SUNRISE_CLIENT_TICK_OUT").ok());
@@ -92,10 +94,17 @@ fn client_ticks_match_the_vanilla_cases() {
     });
 }
 
-/// A client of a server with the block entity types of `TYPES`, for `test`. Resource loading
-/// publishes the block namespaces process-wide: they are put back when it returns.
+/// Resource loading publishes registries process-wide. Keep them in the test's own process.
+fn run_in_child(test: &str) -> bool {
+    crate::game::native_entity_refs::tests::run_fresh_cases(
+        &format!("game::spawner_client_tick_tests::{test}"),
+        "SUNRISE_CLIENT_TICK_CHILD",
+        &["remote"],
+    )
+}
+
+/// A client of a server with the block entity types of `TYPES`, for `test`.
 fn with_remote_game(test: impl FnOnce(&mut Game<'_>)) {
-    let _published = crate::game::game_tests::tests::published();
     crate::game::native_entity_refs::tests::with_client_game(|game| {
         game.settings.render_distance = 32;
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -665,6 +674,9 @@ fn x_of(event: &serde_json::Value) -> f64 {
 #[test]
 #[ignore = "daily"]
 fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
+    if run_in_child("a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner") {
+        return;
+    }
     with_remote_game(|game| {
         let campfire = campfire_json([1, 64, 1], false);
         let case = case_of(
@@ -703,6 +715,9 @@ fn a_campfire_lit_before_the_first_ticker_pass_ticks_behind_the_spawner() {
 #[test]
 #[ignore = "daily"]
 fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
+    if run_in_child("a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level") {
+        return;
+    }
     with_remote_game(|game| {
         let sulfur = serde_json::json!({ "kind": "potent_sulfur", "pos": [13, 64, 13],
             "state": "erupting" });
@@ -721,46 +736,107 @@ fn a_geyser_counts_its_eruption_from_the_tick_it_joined_the_level() {
     });
 }
 
-/// `DecoratedPotBlockEntity` has no ticker: the wobble a block event starts is kept for the
-/// pot's life, tick after tick, and drawn.
+/// `DecoratedPotBlockEntity.triggerEvent`: wobble survives ticks, state changes and update
+/// tags, but a new pot (`LevelChunk.setBlockState` or `replaceWithPacketData`) cannot inherit it.
 #[test]
 #[ignore = "daily"]
 fn a_decorated_pots_wobble_survives_the_client_ticks() {
+    if run_in_child("a_decorated_pots_wobble_survives_the_client_ticks") {
+        return;
+    }
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
+
     with_remote_game(|game| {
         let pos = [8, 64, 8];
-        let case = case_of(
-            1000,
-            [6.5, 64.0, 2.5],
-            serde_json::json!([]),
-            serde_json::json!([]),
-        );
+        let fills = serde_json::json!([{
+            "from": pos, "to": pos, "block": "minecraft:decorated_pot",
+        }]);
+        let case = case_of(1000, [6.5, 64.0, 2.5], serde_json::json!([]), fills);
         start_case(game, &case, &mut false);
-        game.streaming
-            .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
-        let pot = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:decorated_pot")
-            .unwrap();
-        game.world.set(pos[0], pos[1], pos[2], pot).unwrap();
-        game.block_entity_event(pos, 1, 0);
+        send_column(game, &[], (0, 0), &[], &case["fills"]);
+        let remote = game.remote.as_mut().unwrap();
+        Arc::make_mut(&mut remote.builtin).registries.insert(
+            "minecraft:block".into(),
+            sunrise_protocol::registry::Ids::from_names(vec!["minecraft:decorated_pot".into()]),
+        );
+        let event = || {
+            C::BlockEvent(play::BlockEvent {
+                pos,
+                b0: 1,
+                b1: 0,
+                block: 0,
+            })
+        };
+        game.apply_packet(event()).unwrap();
         for _ in 0..3 {
             tick_phase(game);
         }
-        let time = game.world.game_time;
-        let anim = game.be_anims.block_anim(pos, time, 0.5, Default::default());
+        let wobble = game.block_anim(pos, 0.5).wobble;
         assert!(
-            anim.wobble.is_some_and(|(_, progress)| progress > 0.0),
-            "{:?}",
-            anim.wobble
+            wobble.is_some_and(|(_, progress)| progress > 0.0),
+            "{wobble:?}"
         );
-        // Its block gone, so is the wobble.
-        game.world
-            .set(pos[0], pos[1], pos[2], game.world.air)
+
+        let registry = game.pack.assets.registry;
+        let pot = registry.default_state("minecraft:decorated_pot").unwrap();
+        let mut wet = registry.state(pot).unwrap().clone();
+        wet.properties.insert("waterlogged".into(), "true".into());
+        for state in [registry.id(&wet).unwrap(), pot] {
+            game.apply_packet(C::BlockUpdate(play::BlockUpdate {
+                pos,
+                state: state.0 as i32,
+            }))
             .unwrap();
-        tick_phase(game);
-        assert!(game.be_anims.pots.is_empty());
+            assert_eq!(game.block_anim(pos, 0.5).wobble, wobble);
+        }
+        game.apply_packet(C::BlockEntityData(play::BlockEntityData {
+            pos,
+            kind: TYPES
+                .iter()
+                .position(|&t| t == "minecraft:decorated_pot")
+                .unwrap() as i32,
+            tag: Tag::Compound(
+                [(
+                    "sherds".into(),
+                    Tag::Compound(
+                        [(
+                            "back".into(),
+                            Tag::String("minecraft:angler_pottery_sherd".into()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                )]
+                .into_iter()
+                .collect(),
+            ),
+        }))
+        .unwrap();
+        let anim = game.block_anim(pos, 0.5);
+        assert_eq!(
+            anim.sherds[0].as_deref(),
+            Some("minecraft:angler_pottery_sherd")
+        );
+        assert_eq!(anim.wobble, wobble);
+
+        for state in [game.world.air, pot] {
+            game.apply_packet(C::BlockUpdate(play::BlockUpdate {
+                pos,
+                state: state.0 as i32,
+            }))
+            .unwrap();
+        }
+        assert_eq!(game.block_anim(pos, 0.5).wobble, None);
+        for forget in [false, true] {
+            game.apply_packet(event()).unwrap();
+            assert!(game.block_anim(pos, 0.5).wobble.is_some());
+            if forget {
+                game.apply_packet(C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [0, 0] }))
+                    .unwrap();
+            }
+            send_column(game, &[], (0, 0), &[], &case["fills"]);
+            assert_eq!(game.block_anim(pos, 0.5).wobble, None);
+        }
     });
 }
 
@@ -769,6 +845,9 @@ fn a_decorated_pots_wobble_survives_the_client_ticks() {
 #[test]
 #[ignore = "daily"]
 fn a_conduit_sent_again_between_ticks_starts_fresh() {
+    if run_in_child("a_conduit_sent_again_between_ticks_starts_fresh") {
+        return;
+    }
     with_remote_game(|game| {
         let conduit = serde_json::json!({ "kind": "conduit", "pos": [8, 64, 8] });
         let case = case_of(
@@ -781,11 +860,18 @@ fn a_conduit_sent_again_between_ticks_starts_fresh() {
         for _ in 0..3 {
             tick_phase(game);
         }
-        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 3);
-        game.forget_remote_columns(&mut [(0, 0)].into_iter().collect(), true);
+        let pos = [8, 64, 8];
+        assert_eq!(game.block_anim(pos, 0.5).conduit.0, 3);
+        game.apply_packet(
+            sunrise_protocol::packets::play::Clientbound::ForgetLevelChunk(
+                sunrise_protocol::packets::play::ForgetLevelChunk { pos: [0, 0] },
+            ),
+        )
+        .unwrap();
         send_column(game, &entities, (0, 0), &[0], &case["fills"]);
+        assert_eq!(game.block_anim(pos, 0.5).conduit, (0, false, false, 0.0));
         tick_phase(game);
-        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 1);
+        assert_eq!(game.block_anim(pos, 0.5).conduit.0, 1);
     });
 }
 
@@ -795,31 +881,25 @@ fn a_conduit_sent_again_between_ticks_starts_fresh() {
 #[test]
 #[ignore = "daily"]
 fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
+    if run_in_child("a_book_after_a_shulker_lid_reads_the_pushed_player") {
+        return;
+    }
     with_remote_game(|game| {
         let shulker = serde_json::json!({ "kind": "shulker", "pos": [8, 64, 8], "facing": "east" });
         let table = serde_json::json!({ "kind": "enchanting_table", "pos": [9, 64, 10] });
         let case = case_of(
             1000,
-            [9.3, 64.0, 8.5],
+            [9.3, 64.0, 9.15],
             serde_json::json!([shulker, table]),
             serde_json::json!([]),
         );
         start_case(game, &case, &mut false);
         game.block_entity_event([8, 64, 8], 1, 1);
-        let before = game.player.as_ref().unwrap().position.x;
         tick_phase(game);
-        let player = game.player.as_ref().unwrap().position;
-        assert!(
-            player.x > before,
-            "the lid did not push the player: {before} {}",
-            player.x
-        );
-        let book = &game.be_anims.books[&[9, 64, 10]];
-        let expected = (player.z - 10.5).atan2(player.x - 9.5) as f32;
-        assert!(
-            (book.t_rot - expected).abs() < 1e-5,
-            "{} {expected}",
-            book.t_rot
+        // VanillaBlockEntityClientTickOracle, "shulker pushes before spawner ticks".
+        assert_eq!(
+            game.block_anim([9, 64, 10], 0.5).book.t_rot.to_bits(),
+            0xbfd1_9528
         );
     });
 }
@@ -830,6 +910,9 @@ fn a_book_after_a_shulker_lid_reads_the_pushed_player() {
 #[test]
 #[ignore = "daily"]
 fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
+    if run_in_child("a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it") {
+        return;
+    }
     with_remote_game(|game| {
         let case = case_of(
             1000,

@@ -106,8 +106,9 @@ impl Game<'_> {
     /// Whether block `block`'s block entity ticks on the client
     /// (`EntityBlock.getTicker` asked with the client level): set `ticks` when
     /// it is yours, and `native_block_entity_client_tick` runs for it once per
-    /// client tick. Asked once for each mod block, for all of its states,
-    /// the first time a client level ticks with a part that has a client tick.
+    /// client tick. Asked once for each mod block, for all of its states, when the client level
+    /// initializes its ticker table (before the first column's block entities or the first ticker
+    /// pass), if a part has a client tick.
     /// Set `ticks` to true to make it tick, and never clear a value an earlier mod or mixin set.
     pub(in crate::game) fn native_block_entity_client_ticks(&self, block: &str, ticks: &mut bool) {
         self.fire_block_entity_client_ticks(block, ticks);
@@ -227,8 +228,8 @@ impl Game<'_> {
     }
 
     /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
-    /// spawners and vaults always, a mod block's states when a part with a client tick says so
-    /// (asked once per block), every other state never.
+    /// spawners, vaults, beacons, the animated block entities, lit campfires and non-dry potent
+    /// sulfur. Mod blocks opt in once per block for all of their states.
     fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.pack.assets.registry;
         let mod_ticks = mod_api::__private::has_part_hook(mod_api::HookId::BlockEntityClientTick);
