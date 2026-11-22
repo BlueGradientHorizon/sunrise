@@ -5950,16 +5950,18 @@ mod merchant_packet_tests {
                     panic!("the trade voice is a server level sound");
                 };
                 let open = |host: &mut dyn mod_api::ServerHost| {
+                    let player = host.player(2).expect("buyer player handle");
                     assert!(
-                        host.open_menu(
-                            2,
-                            1,
-                            mod_api::Text::literal("Replacement"),
-                            Vec::new(),
-                            mod_api::MenuReplace::InPlace
-                        )
-                        .unwrap()
-                        .is_some()
+                        player
+                            .open_chest_menu(
+                                host,
+                                1,
+                                mod_api::Text::literal("Replacement"),
+                                Vec::new(),
+                                mod_api::MenuReplace::InPlace,
+                            )
+                            .unwrap()
+                            .is_some()
                     );
                 };
                 if self.abort {

@@ -1785,6 +1785,7 @@ mod tests {
                 &dependencies::Resolution::default(),
                 None,
                 &|_, _, _| {},
+                false,
             );
             let Err(error) = result else {
                 panic!("build accepted another build's internals catalog");

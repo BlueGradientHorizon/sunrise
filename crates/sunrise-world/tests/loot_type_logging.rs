@@ -90,6 +90,9 @@ impl loot::LootTags for EmptyTags {
     fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
         None
     }
+    fn item_tag_names(&self) -> Option<&loot::ItemTagNames> {
+        None
+    }
 }
 
 #[test]

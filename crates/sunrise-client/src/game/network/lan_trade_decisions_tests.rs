@@ -464,10 +464,6 @@ impl Hooks for RemoveHero {
         registrar.entity_tick_each("minecraft:villager");
     }
 
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
-    }
-
     fn entity_tick_pre(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPreEvent<'_>) {
         if self.before_work {
             Self::remove(host, event.entities);
@@ -574,10 +570,6 @@ struct EditInPost;
 impl Hooks for EditInPost {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         registrar.entity_tick_each("minecraft:villager");
-    }
-
-    fn entity_tick_listened(&self, _: HostSide<'_>, event: &mut mod_api::EntityTickListenedEvent) {
-        event.listened = true;
     }
 
     fn entity_tick_post(&self, host: HostSide<'_>, event: &mut mod_api::EntityTickPostEvent<'_>) {

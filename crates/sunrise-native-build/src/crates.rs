@@ -211,7 +211,7 @@ pub(crate) fn rewrite_closure(
 }
 
 /// Resolve a path within one mod without following links or traversing outside its root.
-fn local_path(root: &Path, relative: &Path, path: &str) -> Result<PathBuf, String> {
+pub(super) fn local_path(root: &Path, relative: &Path, path: &str) -> Result<PathBuf, String> {
     if path.contains('\\') {
         return Err("dependency path must use portable separators".into());
     }

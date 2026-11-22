@@ -23,8 +23,6 @@ pub(in crate::game) struct GuestMenus {
     pub(super) owned_menu: Option<(u64, Box<sunrise_client::menu::Menu>)>,
     /// The trading window is live even while the guest's player state is on loan.
     pub(super) merchant: MenuOwner<Option<super::lan_trading::GuestMerchant>>,
-    /// The outer `menu_clicked` decision. Nested default routing can decide a pickup on `hub`.
-    pub(super) click: MenuOwner<()>,
     /// Names the hub's container clicks of this guest, which have no menu value of their own: a
     /// click while another of the guest's is being decided is refused as busy.
     pub(in crate::game) hub: MenuOwner<()>,
