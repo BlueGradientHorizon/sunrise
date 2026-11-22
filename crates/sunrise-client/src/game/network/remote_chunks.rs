@@ -92,7 +92,9 @@ impl Game<'_> {
         } else {
             self.streaming.insert_remote(&mut self.world, chunk);
         }
-        self.world.block_entities.unload_column((x, z));
+        sunrise_client::spans::time("unload_block_entities", || {
+            self.world.block_entities.unload_column((x, z));
+        });
         self.load_block_entities((x, z), &p.chunk.block_entities);
         // After the column's block entities load: an attachment keeps its block entity if the
         // packet sent it again, and one left from a forgotten column goes.
