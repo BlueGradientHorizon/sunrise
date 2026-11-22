@@ -228,13 +228,18 @@ impl Game<'_> {
         }
     }
 
+    /// The biome colours used by the mesher and client tint queries. On a
+    /// world without its own table, a colour refresh updates the pack's table.
+    pub(super) fn mesh_biomes(&self) -> &Arc<Biomes> {
+        self.world_biomes
+            .as_ref()
+            .unwrap_or(&self.pack.context.biomes)
+    }
+
     /// What the chunk and far-terrain workers mesh with: the pack's context,
     /// over the world's biomes when it has its own.
     pub(super) fn worker_context(&self) -> Arc<WorkerContext> {
-        match &self.world_biomes {
-            Some(table) => self.pack.context_with(table.clone()),
-            None => self.pack.context.clone(),
-        }
+        self.pack.context_with(self.mesh_biomes().clone())
     }
     pub(super) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
         pack_files(&self.world_tables)
@@ -938,6 +943,17 @@ impl Game<'_> {
     /// Publish state keys and bind parts before their state-only answers are cached.
     /// A server also publishes its parts for world generation.
     pub(super) fn bind_parts(&self, prepared: PreparedParts) {
+        if self.is_logical_server()
+            && let Some(host) = &self.lan
+        {
+            cauldron_prediction::publish_registrations(
+                &prepared.cauldrons,
+                host.hub
+                    .guests
+                    .simulation_iter()
+                    .filter(|g| g.placed || g.held),
+            );
+        }
         cauldron_interactions::install(prepared.cauldrons);
         if self.is_logical_server() {
             native_worldgen_parts::publish(

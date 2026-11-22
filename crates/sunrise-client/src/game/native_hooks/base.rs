@@ -637,11 +637,11 @@ impl Game<'_> {
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
         self.fire_level_tick_post(level);
     }
-    /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
-    /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// (including its render bookkeeping) and `native_gui_layer_post`. Replacing
-    /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
-    /// draws from the chat screen, and a layer F1 hides fires neither hook.
+    /// Before a vanilla or registered HUD slot runs (`RenderGuiLayerEvent.Pre`), even under F1.
+    /// Paint into `draw` below the layer, or set `canceled` to skip the entire installed body
+    /// (including any side effects) and `native_gui_layer_post`. A replacement or wrapper
+    /// keeps the slot's ID and order, but does not inherit its visibility rules; those stay
+    /// in the original body. Focused chat paints separately in its screen without dispatching the HUD slot again.
     pub(in crate::game) fn native_gui_layer_pre(
         &self,
         layer: &str,
@@ -985,7 +985,7 @@ impl Game<'_> {
     /// sent and whenever its block changes, on the server thread; a client's copy of the block
     /// entity (made by `native_block_entity` there) merges it into its `nbt`.
     /// Leave it unset to send no tag of yours. A block change puts the one-shot fields of
-    /// `ModBlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
+    /// `BlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
     pub(in crate::game) fn native_block_entity_update_tag(
         pos: [i32; 3],
         entity: &ModBlockEntity,
@@ -1082,9 +1082,10 @@ impl Game<'_> {
     /// where the pointer is (so there is no position of its own), `button` the
     /// button's GLFW index (0 left, 1 right, 2 middle, 3 back, 4 forward; a
     /// button past those is the platform's own number, which differs between
-    /// systems) and `modifiers` GLFW's bits (shift 1, control 2,
-    /// alt 4, super 8). Set `canceled` and the press goes no further: no slot,
-    /// no screen button, no drag, no hotbar key, no sort or header button.
+    /// systems), and `modifiers` GLFW's bits (shift 1, control 2,
+    /// alt 4, super 8). `double_click` comes from the last handled press on
+    /// the same screen instance and button. Cancel to skip the screen and
+    /// Post; the press still counts as handled for double-click detection.
     ///
     /// It fires before anything the screen does with the press, on the window
     /// only, and while a screen of the game's or the title's is open (Options
@@ -1101,9 +1102,16 @@ impl Game<'_> {
         screen: &ScreenView<'_>,
         button: i32,
         modifiers: u32,
+        double_click: bool,
         canceled: &mut bool,
     ) {
-        self.fire_screen_mouse_button_pressed_pre(screen, button, modifiers, canceled);
+        self.fire_screen_mouse_button_pressed_pre(
+            screen,
+            button,
+            modifiers,
+            double_click,
+            canceled,
+        );
     }
     /// A mouse button went up over the open screen
     /// (`ScreenEvent.MouseButtonReleased.Pre`, vanilla's
@@ -1260,18 +1268,18 @@ impl Game<'_> {
         self.fire_screen_char_typed_pre(screen, c, modifiers, field, canceled);
     }
     /// A player pressed a mod menu's button (`clickMenuButton`), on the
-    /// server. The block entity is out of the world during the call when the
-    /// menu has one; blockless menus pass None. Mods may change it and the
-    /// clicking player's carried stack.
+    /// server. `subject` lends sequential access to the live resident block
+    /// entity (when present) and the server `Host`; blockless menus lend no
+    /// view while keeping `host()` and `transaction(...)` usable. Mods may
+    /// change the block entity in place and the clicking player's carried stack.
     pub(in crate::game) fn native_menu_button(
-        &mut self,
         menu: &str,
         block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: Option<&mut ModBlockEntity>,
+        subject: mod_api::BlockEntityScope<'_>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(menu, block, context, entity, carried);
+        Self::fire_menu_button(menu, block, context, subject, carried);
     }
     /// Whether the owner of this menu accepts button `id`. The active menu's owner
     /// decides its own IDs; the game does not impose a shared numeric range.
@@ -1284,35 +1292,26 @@ impl Game<'_> {
     ) {
         self.fire_menu_button_valid(menu, block, id, accepted);
     }
-    /// A player shift-clicked slot `slot` of the menu of the mod block
-    /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
-    /// Java menu overrides), on the server, before the game's own routing:
-    /// move the stack where your block wants it. `slot` is the menu's index:
-    /// below `container_slots` it is a container slot (the block's own, a linked slot,
-    /// or a crafting result), from there on the player's inventory (27 main slots,
-    /// then the hotbar). After the live slot allows pickup, `stack` is a copy of what
-    /// it holds. If the handler takes the move, the actual source keeps the remainder
-    /// and the player's client gets the menu again. If it declines, its writes are
-    /// rolled back and the same menu routes the move without rechecking pickup.
-    ///
-    /// For a mod container on a vanilla menu type and on a mod menu type,
-    /// the left or right button, a slot that holds something and that the
-    /// mod's screen shows; not for a spectator or a dead player, a menu no
-    /// longer valid, nor during a drag.
-    /// Asked once per click, where vanilla asks `quickMoveStack` again while
-    /// it keeps moving the same item. The player's state is swapped in, so
-    /// `native_acting_player` names them; `entity` is out of the world
-    /// during the call, as in `native_menu_button`.
+    /// The accepted menu lends its resident block entity and asks the Parts to route the move.
     pub(in crate::game) fn native_menu_quick_move(
-        &mut self,
-        pos: [i32; 3],
-        entity: &mut ModBlockEntity,
+        kind: mod_api::BlockEntityTypeKey,
+        subject: mod_api::BlockEntityScope<'_>,
         container_slots: usize,
         slot: usize,
         stack: &mut Option<mod_api::ItemStack>,
         handled: &mut bool,
-    ) {
-        self.fire_menu_quick_move(pos, entity, container_slots, slot, stack, handled);
+    ) -> bool {
+        let mut panicked = false;
+        Self::fire_menu_quick_move(
+            kind,
+            subject,
+            container_slots,
+            slot,
+            stack,
+            handled,
+            &mut panicked,
+        );
+        panicked
     }
     /// The commands native mods add to the session's tree: push the complete current set.
     /// Asked at world open before functions compile, on each reload and data pack change,
@@ -1420,21 +1419,10 @@ impl Game<'_> {
     /// `player` (`name`) changed dimension (NeoForge's
     /// `PlayerChangedDimensionEvent`): `from` and `to` are dimension ids
     /// (`minecraft:overworld`, `minecraft:the_nether`, `minecraft:the_end`).
-    /// Heard once per move, when it has ended: the portal's exit is found
-    /// and the player stands there (after the destination has loaded), a
-    /// command's teleport has landed, or a respawn in another level than the
-    /// death's is placed for good (a bed or anchor, or the world spawn's
-    /// free column, after the fallback when a respawn block was gone). The
-    /// level of `to` is the one in place, and the player's state is swapped
-    /// in, as for a command executor: `native_acting_player`,
-    /// `native_tell`, the item helpers and the rest reach them. Heard for:
-    /// Nether and End portals (also riding a vehicle, and leaving the End as
-    /// its winner), `/execute in ... run tp` and any other command that
-    /// teleports a player into another level, and death respawns, on dedicated
-    /// and integrated servers (single player and LAN), where the world is simulated.
-    /// Not heard by a remote client window, for a move within a level (`/tp`,
-    /// an End gateway), for a player who leaves before the move ends, or for a
-    /// move ending where it started (a respawn in the dimension of the death).
+    /// `ServerPlayer.teleport`: once a portal or command teleport crosses
+    /// dimensions and lands, with the destination level and player in place.
+    /// `PlayerList.respawn` replacements, including the return after credits,
+    /// use `native_player_respawned` instead.
     pub(in crate::game) fn native_player_changed_dimension(
         &mut self,
         player: u128,
@@ -3488,12 +3476,14 @@ impl Game<'_> {
     ) {
         self.fire_player_respawn_position(call);
     }
-    /// `player` (`name`) respawned (NeoForge's `PlayerRespawnEvent`): at the
-    /// end of `PlayerList.respawn`, once they are placed and their health,
-    /// food and experience reset, with their state swapped in. Once for each
-    /// death that ends in a respawn, on a server; not for the End-exit one.
-    pub(in crate::game) fn native_player_respawned(&mut self, player: u128, name: &str) {
-        self.fire_player_respawned(player, name);
+    /// NeoForge's `PlayerRespawnEvent`, after `PlayerList.respawn` placed the new player.
+    pub(in crate::game) fn native_player_respawned(
+        &mut self,
+        player: u128,
+        name: &str,
+        end_conquered: bool,
+    ) {
+        self.fire_player_respawned(player, name, end_conquered);
     }
     /// A player was saved to the world's store (NeoForge's
     /// `PlayerEvent.SaveToFile`, `PlayerList.save`): when they leave or the
@@ -3542,7 +3532,7 @@ impl Game<'_> {
         player: u128,
         name: &str,
         was_death: bool,
-        original: mod_api::OriginalPlayerRef,
+        original: mod_api::OriginalPlayer<'_>,
     ) {
         self.fire_player_clone(player, name, was_death, original);
     }
@@ -4238,7 +4228,7 @@ impl Game<'_> {
     /// entities). Call it when what clients show changed (a machine started),
     /// not for every tick's progress: a menu's data slots carry that. Nothing
     /// happens for an unloaded block. It also sends the one-shot fields of
-    /// `ModBlockEntityView::set_client_update_fields`.
+    /// `BlockEntityView::set_client_update_fields`.
     pub(in crate::game) fn block_entity_sync(&mut self, pos: [i32; 3]) {
         if !self.world.loaded(pos[0], pos[2]) {
             return;

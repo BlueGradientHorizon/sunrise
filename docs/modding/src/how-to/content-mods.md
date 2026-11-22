@@ -1134,10 +1134,12 @@ before applying the stack limit.
 
 The query has no Host and may run for a slot that is never written. Seed a filter from the
 accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
-`contents_changed` once per backing block at root commit. If your provider writes directly
-to storage it owns, issue `set_changed` explicitly or seed the filter in the provider. Menu
-clicks and quick-move still use the declared rules and `menu_slot_rules` (vanilla's
-`Slot.mayPlace`); they do not ask the block entity part.
+`contents_changed` once per backing block on commit. During `menu_quick_move`, the notice waits
+for source settlement and only runs if the original backing container is still there. A write to
+the same block from its active notice still applies without a second notice. If your provider
+writes directly to storage it owns, issue `set_changed` explicitly or seed the filter in the
+provider. Menu clicks and quick-move still use the declared rules and `menu_slot_rules`
+(vanilla's `Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 
@@ -1503,13 +1505,15 @@ the entity and rotate with its yaw.
 
 ### Custom block-state definition types
 
-Register a type id with `Hooks::register_block_state_models` before client resources
-load. Set `neoforge:definition_type` to that id in the blockstate JSON, and answer
-`Hooks::instantiate_block_state_definition` on every load and reload. Read the whole
-file from `event.config` and enumerate `event.states` in registry order. Append a
-`BlockStateModelPick::Model` for each state you choose, with its index, model id,
-quarter turns and UV-lock setting; append `Refuse` with a reason to reject a file.
-See the generated hook notes for a powered-block example.
+Register a definition provider with `Hooks::register_block_state_models` before client resources
+load (`event.register(id, provider)`). Set `neoforge:definition_type` to that id in the
+blockstate JSON; the bound provider runs directly on every load and reload. Read the whole
+file from `input.config`, the block identifier from `input.block`, and enumerate `input.states`
+in registry order. Return `Ok(picks)` with a `BlockStateModelPick::Model` for each state you
+choose (its index, model id, quarter turns and UV-lock setting), or `Err(reason)` to reject a
+file. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted, and a
+later registration for the same id replaces an earlier one. See the generated hook notes for a
+powered-block example.
 
 A state not picked inherits the lower pack layer's selection when present;
 otherwise it draws no model. Pack layers bind independently. An unknown type,

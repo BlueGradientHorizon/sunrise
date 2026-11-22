@@ -32,7 +32,15 @@ pub trait EffectsRegistrar {
 }
 
 /// A refused effect Part registration.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::MobEffectPartError>();
+/// ```
+// no wire: local mob-effect Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MobEffectPartError {
     /// Vanilla effects keep vanilla tick behaviour.

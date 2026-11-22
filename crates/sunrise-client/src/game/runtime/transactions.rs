@@ -20,10 +20,11 @@
 //! whole on its first write, from wherever the player's state lives then: the acting fields
 //! or a parked guest's record. On abort, the journal follows that storage through guest turns.
 //! An item a write drops from a player waits for
-//! the root commit too. An item entity's stack is kept on its first write; one emptied stays,
-//! empty, until the root commit removes it. A guest's menu storage (ender chest, crafting grid,
-//! a mod's chest menu) is kept whole on its first write through a menu slot; a crafting grid
-//! changed by the transaction has its result made again at the root commit.
+//! the root commit too. Item entities keep their stack, pickup delay, target and velocity on
+//! first write; one emptied stays, empty, until the root commit removes it. General entity views
+//! keep velocity, rotation and fall distance on first write. A guest's menu storage (ender chest,
+//! crafting grid, a mod's chest menu) is kept whole on its first write through a menu slot; a
+//! crafting grid changed by the transaction has its result made again at the root commit.
 //! `LivingRef::set_health` keeps the player's synced float storage and unpublished update
 //! events, or the mob's health and sync dirtiness. This does not journal other health,
 //! damage, death or attribute operations. Mob effect writes keep their effect lists, dirty bit,
@@ -34,14 +35,15 @@ use super::{BlockEntity, BlockStateId, Dim, Game, machines::HopperState, maps::M
 use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
+    block_entities::BlockEntityIdentity,
     effects::EffectInstance,
     fast_hash::FxHashSet,
     items::ItemStack,
     living_attributes::ModifierChanges,
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
-    world::{BlockEntityExtras, World},
+    world::{BlockEntityExtras, ModifiedChunks, World},
 };
-use sunrise_core::{position::BlockPos, random::LegacyRandom};
+use sunrise_core::{geometry::Vec3, position::BlockPos, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
@@ -53,6 +55,23 @@ mod entities;
 pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 #[path = "transactions/scratch.rs"]
 mod scratch;
+
+/// A notice names the container that received the write, not a replacement at its position.
+pub(super) struct QuickMoveNotice {
+    dim: Dim,
+    holder: BlockEntityIdentity,
+}
+
+struct QuickMoveNotices<'a, 'g> {
+    game: &'a mut Game<'g>,
+    outer: Option<Vec<QuickMoveNotice>>,
+}
+
+impl Drop for QuickMoveNotices<'_, '_> {
+    fn drop(&mut self) {
+        self.game.transactions.quick_move_notices = self.outer.take();
+    }
+}
 
 type Pos = (i32, i32, i32);
 /// The last pending value at this depth for a connection, menu generation and data index.
@@ -67,6 +86,8 @@ pub(super) struct OpenTransactions {
     levels: Vec<Level>,
     pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     closing: Option<TransactionLifecycle>,
+    /// Implicit container notices waiting for this quick move's source settlement.
+    quick_move_notices: Option<Vec<QuickMoveNotice>>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
@@ -80,11 +101,25 @@ pub(super) struct OpenTransactions {
     composter_epoch: Option<mod_api::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
+    /// Active retained original-player attachment maps during `player_clone` dispatch,
+    /// kept in sync with open transaction frames so mutations roll back on abort.
+    retained_original_attachments:
+        Vec<std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>>,
     #[cfg(test)]
     pub(in crate::game) trace: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
 }
 
 impl OpenTransactions {
+    pub(super) fn push_retained_original(
+        &mut self,
+        slot: std::sync::Arc<std::sync::Mutex<super::original_player::OriginalAttachmentSlot>>,
+    ) {
+        self.retained_original_attachments.push(slot);
+    }
+
+    pub(super) fn pop_retained_original(&mut self) {
+        self.retained_original_attachments.pop();
+    }
     pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
         entities::open_in(self, dim)
     }
@@ -141,6 +176,19 @@ impl OpenTransactions {
         }
     }
 
+    pub(super) fn mark_scoped_menu_write(
+        &mut self,
+        dim: Dim,
+        chunk: (i32, i32),
+        modified: &mut ModifiedChunks,
+    ) {
+        if let Some(level) = entities::open_in(self, dim) {
+            level.save_chunks.insert((dim, chunk));
+        } else {
+            modified.insert(chunk);
+        }
+    }
+
     /// Positions with a connection-group restore baseline for the level being edited.
     pub(super) fn journaled_connection_group_positions(&self, dim: Dim) -> FxHashSet<Pos> {
         self.iter()
@@ -169,6 +217,14 @@ impl OpenTransactions {
                 !matches!(after, After::ConnectionGroup(owner, pos, _) if *owner == dim && cleared.contains(pos))
             });
         }
+    }
+
+    /// Keep the first write to each field of a live general-entity subject.
+    pub(super) fn journal_general_entity(
+        &mut self,
+        join: crate::join_seq::JoinSeq,
+    ) -> Option<&mut KeptGeneralEntity> {
+        Some(self.last_mut()?.general_entities.entry(join).or_default())
     }
 
     /// The journaled-write epoch.
@@ -270,6 +326,14 @@ fn merge_block_update_flags(earlier: i32, later: i32) -> i32 {
         | (later & !(REQUESTED | SUPPRESSED))
 }
 
+/// Before-images of the fields a general-entity scope wrote, at one depth.
+#[derive(Default)]
+pub(super) struct KeptGeneralEntity {
+    pub(super) velocity: Option<Vec3>,
+    pub(super) rotation: Option<[f32; 2]>,
+    pub(super) fall_distance: Option<f64>,
+}
+
 /// One open transaction.
 #[derive(Default)]
 pub(super) struct Level {
@@ -333,8 +397,10 @@ pub(super) struct Level {
     /// Each chested mob's item list's length before `entity_slots` first grew it to its slots
     /// in this transaction.
     mob_lengths: HashMap<u32, usize>,
-    /// Each item entity's stack before this transaction first wrote it.
-    item_entities: HashMap<u32, ItemStack>,
+    /// Each item entity's changed fields before this transaction first wrote them.
+    item_entities: HashMap<crate::join_seq::JoinSeq, KeptItemEntity>,
+    /// Each general entity subject's changed fields before the first write.
+    general_entities: HashMap<crate::join_seq::JoinSeq, KeptGeneralEntity>,
     /// The merge fields of resident experience orbs before the first award touched them.
     orbs: HashMap<crate::join_seq::JoinSeq, (i32, u32, i32)>,
     /// Each detached station before the first click wrote it, by connection and owner.
@@ -525,7 +591,6 @@ pub(super) enum After {
         sunrise_client::net::PreparedPacket,
         mod_api::ServerboundPlayPacket,
     ),
-    Cauldron(super::cauldron_interactions::Effects),
     Composter(super::composter::Effects),
     /// A mod's world pickup or placement of fluid, its block already set: what is left of it
     /// (`Game::commit_fluid_write`).
@@ -534,10 +599,10 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
-    /// Detached mod entity state (not necessarily items) was edited.
-    DirtyBlockEntity(Pos),
-    /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
-    LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
+    /// `BlockEntity.setChanged` dirty/comparator updates without reentering `contents_changed`.
+    ChangedWithoutHook(Pos),
+    /// An implicit notice staged during a mod quick move.
+    QuickMoveChanged(QuickMoveNotice),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     MenuClick(Box<super::lan_menus::MenuClickReply>),
     MenuPlacesNotice(u32, u128, i32),
@@ -580,6 +645,9 @@ pub(super) enum After {
     Drop([i32; 3], ItemStack),
     /// `Player.drop(stack, false)` by the player with this UUID: what no longer fits.
     PlayerDrop(u128, ItemStack),
+    /// A respawn replaces the holder behind the player's UUID. Do not install a new
+    /// attachment generation or copy tentative data until the old generation is committed.
+    PlayerRespawn(u32),
     /// `/give`'s pickup sound for the player with this UUID, in the level that was in place
     /// when the stack was accepted (a command run for a borrowed player swaps it in).
     GivePickup(u128, super::Dim),
@@ -621,8 +689,8 @@ impl After {
             Self::Block(_)
                 | Self::BulkBlocks(..)
                 | Self::Changed(_)
-                | Self::DirtyBlockEntity(_)
-                | Self::LostMenuContents(..)
+                | Self::ChangedWithoutHook(_)
+                | Self::QuickMoveChanged(_)
                 | Self::Capabilities(_)
                 | Self::LevelWrite(_)
                 | Self::FluidWrite(_)
@@ -738,7 +806,13 @@ impl Level {
                 .or_insert(block);
         }
         for (id, kept) in std::mem::take(&mut child.item_entities) {
-            self.item_entities.entry(id).or_insert(kept);
+            self.item_entities.entry(id).or_default().merge(kept);
+        }
+        for (join, kept) in std::mem::take(&mut child.general_entities) {
+            let first = self.general_entities.entry(join).or_default();
+            first.velocity = first.velocity.or(kept.velocity);
+            first.rotation = first.rotation.or(kept.rotation);
+            first.fall_distance = first.fall_distance.or(kept.fall_distance);
         }
         for (chunk, mark) in std::mem::take(&mut child.chunk_marks) {
             self.chunk_marks.entry(chunk).or_insert(mark);
@@ -831,6 +905,11 @@ impl Game<'_> {
             lifetimes,
             ..Level::default()
         });
+        for slot in &self.transactions.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .open_frame(token);
+        }
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
         (token, close_token)
@@ -974,6 +1053,11 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
+        for slot in &self.transactions.retained_original_attachments {
+            slot.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .close_frame(level.token, commit);
+        }
         let mut independent = None;
         if commit && let Some(outer) = self.transactions.last_mut() {
             if outer.dimension == level.dimension {
@@ -986,6 +1070,7 @@ impl Game<'_> {
                     slots: std::mem::take(&mut level.slots),
                     blocks: std::mem::take(&mut level.blocks),
                     item_entities: std::mem::take(&mut level.item_entities),
+                    general_entities: std::mem::take(&mut level.general_entities),
                     chunk_marks: std::mem::take(&mut level.chunk_marks),
                     after: level
                         .after
@@ -1864,8 +1949,63 @@ impl Game<'_> {
     pub(super) fn defer_effect(&mut self, effect: DeferredEffect) {
         self.after_commit(After::Effect(effect));
     }
+    /// Collect committed implicit `setChanged` notices while the callback runs without opening
+    /// a transaction. Direct calls to `BlockEntityRef::set_changed` remain immediate.
+    pub(super) fn collect_quick_move_notices<R>(
+        &mut self,
+        dispatch: impl FnOnce(&mut Self) -> R,
+    ) -> (R, Vec<QuickMoveNotice>) {
+        let outer = self.transactions.quick_move_notices.replace(Vec::new());
+        let scope = QuickMoveNotices { game: self, outer };
+        let result = dispatch(&mut *scope.game);
+        let notices = scope
+            .game
+            .transactions
+            .quick_move_notices
+            .take()
+            .expect("active quick-move notice scope");
+        (result, notices)
+    }
+
+    /// Release accepted writes after source settlement, in their original levels and only to
+    /// the same storage rows. Don't enqueue the notices in an enclosing quick move again.
+    pub(super) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
+        for QuickMoveNotice { dim, holder } in notices {
+            let back = self.enter_command_level(dim);
+            let [x, y, z] = holder.position;
+            let pos = (x, y, z);
+            if self.dim == dim && self.world.block_entities.identity(pos) == Some(holder) {
+                self.container_changed(pos);
+            }
+            if let Some(back) = back {
+                self.enter_command_level(back);
+            }
+        }
+    }
+
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
+        let after = match after {
+            After::Changed(pos) => {
+                let reentering = !self.contents_changing.is_empty()
+                    && self.native_level_here().is_some_and(|level| {
+                        self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
+                    });
+                if reentering {
+                    After::ChangedWithoutHook(pos)
+                } else if self.transactions.quick_move_notices.is_some()
+                    && let Some(holder) = self.world.block_entities.identity(pos)
+                {
+                    After::QuickMoveChanged(QuickMoveNotice {
+                        dim: self.dim,
+                        holder,
+                    })
+                } else {
+                    After::Changed(pos)
+                }
+            }
+            after => after,
+        };
         let frame = if after.level_owned() {
             entities::open_in(&mut self.transactions, self.dim)
         } else {
@@ -1878,10 +2018,10 @@ impl Game<'_> {
     }
     fn run_after(&mut self, after: After) {
         match after {
+            After::PlayerRespawn(conn) => self.commit_player_respawn(conn),
             After::Trade(effect) => self.commit_merchant_effect(*effect),
             After::Payload(payload) => payload.publish(),
             After::Packet(packet, body) => self.publish_mod_held(packet, body),
-            After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
@@ -1890,10 +2030,14 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
-            After::DirtyBlockEntity(pos) => {
-                self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            After::ChangedWithoutHook(pos) => self.container_changed_without_hook(pos),
+            After::QuickMoveChanged(notice) => {
+                if let Some(queue) = &mut self.transactions.quick_move_notices {
+                    queue.push(notice);
+                } else {
+                    self.publish_quick_move_notices(vec![notice]);
+                }
             }
-            After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::MenuClick(reply) => self.publish_menu_click(*reply),
             After::MenuPlacesNotice(conn, uuid, window) => {
@@ -2097,16 +2241,6 @@ impl Game<'_> {
             packets.publish();
         }
         self.commit_menu_data(level.menu_data);
-        // A menu callback removed its detached block entity. Its accepted remainder is
-        // spilled separately and must not be replayed here.
-        let detached: std::collections::HashSet<_> = level
-            .after
-            .iter()
-            .filter_map(|after| match after {
-                After::LostMenuContents(pos, _) => Some(*pos),
-                _ => None,
-            })
-            .collect();
         // Replay from the old group so committed callbacks see writes in order. A fresh
         // publication entry survives only if the final group differs from that baseline.
         let mut clean_groups = Vec::new();
@@ -2179,12 +2313,17 @@ impl Game<'_> {
             }
         }
         let mut told = std::collections::HashSet::new();
+        let mut told_silent = FxHashSet::default();
+        let mut told_holders = FxHashSet::default();
         let mut explicit_group_since_block = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
+                After::Changed(pos) if !told.insert(Ok(pos)) => {}
+                After::ChangedWithoutHook(pos) if !told_silent.insert(pos) => {}
+                After::QuickMoveChanged(ref notice)
+                    if !told_holders.insert((notice.dim, notice.holder)) => {}
                 After::ConnectionGroup(dim, pos, group) => {
                     if let Some(world) = self.connection_group_world_mut(dim) {
                         world.set_connection_group(pos.0, pos.1, pos.2, group, true);
@@ -2196,9 +2335,7 @@ impl Game<'_> {
                 After::Block(step) if mixed.contains(&step.pos) => {
                     let (x, y, z) = step.pos;
                     explicit_group_since_block.remove(&step.pos);
-                    if step.removed.is_some()
-                        && (!step.replay.replay_removal || detached.contains(&step.pos))
-                    {
+                    if step.removed.is_some() && !step.replay.replay_removal {
                         self.world.block_entities.remove(&step.pos);
                     }
                     self.set_block_live(
@@ -2252,8 +2389,7 @@ impl Game<'_> {
                     // stood at removal, or leave it in place if the old block kind survived.
                     let b = self.res.behaviours();
                     let net_keeps_group = b.keeps_block_entity(was, now);
-                    if !detached.contains(&pos)
-                        && (replay_removal || b.block(now) == b.block(was))
+                    if (replay_removal || b.block(now) == b.block(was))
                         && let Some((entity, generation)) =
                             level.removed_block_entities.remove(&pos).flatten()
                     {
@@ -2519,9 +2655,24 @@ impl Game<'_> {
                 m.extra.items.truncate(len);
             }
         }
-        for (id, kept) in level.item_entities {
-            if let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) {
-                e.stack = kept;
+        for (join, kept) in level.item_entities {
+            if let Some(index) = self.dropped.locate(join) {
+                kept.restore(&mut self.dropped[index]);
+            }
+        }
+        let general = &mut self.resident_entities.general.rows;
+        for (join, kept) in level.general_entities {
+            if let Some(index) = general.locate(join) {
+                let row = &mut general[index];
+                if let Some(velocity) = kept.velocity {
+                    row.velocity = velocity;
+                }
+                if let Some(rotation) = kept.rotation {
+                    row.rotation = rotation;
+                }
+                if let Some(fall_distance) = kept.fall_distance {
+                    row.fall_distance = fall_distance;
+                }
             }
         }
         for (join, kept) in level.orbs {
@@ -2828,11 +2979,17 @@ mod tests {
                 game.creative = false;
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(seen.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(seen.lock().unwrap().is_empty());
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     seen.lock().unwrap().as_slice(),
                     &[(
@@ -2843,7 +3000,10 @@ mod tests {
                 game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
                 game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(seen.lock().unwrap().len(), 1);
                 game.close_storage_transaction(true);
             })
@@ -2880,7 +3040,10 @@ mod tests {
                     game.inventory[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
                 };
                 setup(game);
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
                     &[
@@ -2891,12 +3054,18 @@ mod tests {
                 drops.lock().unwrap().clear();
                 setup(game);
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 assert!(drops.lock().unwrap().is_empty());
                 game.close_storage_transaction(false);
                 assert!(drops.lock().unwrap().is_empty());
                 game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
+                assert_eq!(
+                    game.use_on_cauldron(pos).unwrap(),
+                    sunrise_client::cauldron::Outcome::Success
+                );
                 game.close_storage_transaction(true);
                 assert_eq!(
                     drops.lock().unwrap().as_slice(),
@@ -2944,7 +3113,10 @@ mod tests {
             let before = game.stats.get("custom", "minecraft:fill_cauldron");
             game.audio.capture = Some(Vec::new());
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.close_storage_transaction(false);
@@ -2957,7 +3129,10 @@ mod tests {
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             game.open_storage_transaction();
             game.open_storage_transaction();
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             game.close_storage_transaction(false);
             assert_eq!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
@@ -2967,7 +3142,10 @@ mod tests {
             game.close_storage_transaction(true);
             assert_eq!(game.stats.get("custom", "minecraft:fill_cauldron"), before);
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
-            assert!(game.use_on_cauldron(pos).unwrap());
+            assert_eq!(
+                game.use_on_cauldron(pos).unwrap(),
+                sunrise_client::cauldron::Outcome::Success
+            );
             assert_ne!(game.world.block(pos[0], pos[1], pos[2]), empty);
             assert_eq!(
                 &*game.inventory[0].as_ref().unwrap().item,
