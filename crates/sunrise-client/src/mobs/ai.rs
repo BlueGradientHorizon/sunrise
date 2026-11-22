@@ -116,10 +116,14 @@ mod inside_walk_tests {
                           _precise,
                           staged,
                           _writes| {
-                let fired = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    fire_like_a_part(at, staged);
-                }));
-                let _ = fired;
+                let mut callback = mod_api::InsideEffects::default();
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    fire_like_a_part(at, &mut callback);
+                }))
+                .is_ok()
+                {
+                    staged.absorb_step(callback);
+                }
             },
         });
     }
@@ -193,9 +197,23 @@ mod inside_walk_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_mobs_flush() {
-        let _test = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        const CHILD: &str = "SUNRISE_TEST_MOB_CONTACT_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let name = concat!(module_path!(), "::a_killing_write_stops_the_mobs_flush");
+            let name = name.split_once("::").unwrap().1;
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([name, "--exact", "--include-ignored"])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                out.status.success() && stdout.contains("test result: ok. 1 passed;"),
+                "{stdout}{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            return;
+        }
         reset(0, usize::MAX, true);
         let ran = crate::mobs::world::with_built_contact_test_world(
             |world, registry| {
@@ -228,6 +246,7 @@ mod inside_walk_tests {
                     (mob.velocity.x - before).abs() < 1e-9,
                     "the writes after the death never apply"
                 );
+                assert!(!mob.has_effect("minecraft:wither"));
             },
         );
         assert!(ran, "the vanilla test resources must be available");
@@ -1919,10 +1938,8 @@ fn apply_contact_writes(
 
 /// A typed entity write an `entity_inside` part queued for a mob, applied in
 /// its own tick. `Hurt` uses the generic damage kind: the block's own hurts
-/// keep their named kinds in the walk's arms above. Its `source` is not
-/// resolved to an attacker, so an enderman always draws its teleport chance,
-/// where `Enderman.hurtServer` skips it for a living attacker. The hurt's
-/// teleport is settled inside it.
+/// keep their named kinds in the walk's arms above. Generic contact damage
+/// has no attacker. The hurt's own teleport is settled before the write returns.
 fn apply_entity_write(
     m: &mut Mob,
     w: &MobWorld,
