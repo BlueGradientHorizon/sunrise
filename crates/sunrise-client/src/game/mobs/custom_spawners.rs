@@ -27,34 +27,33 @@ impl Game<'_> {
         self.creatures.custom_spawners.insert(dim, list);
     }
 
-    /// Whether vanilla's `kind` is still in this level's list.
-    pub(super) fn has_custom_spawner(&mut self, kind: SpawnerKind) -> bool {
-        if self.remote.is_some() || !self.is_logical_server() {
-            return false;
-        }
-        let dim = self.dim;
-        self.init_custom_spawners(dim);
-        self.creatures
-            .custom_spawners
-            .get(&dim)
-            .is_some_and(|list| list.contains(kind))
-    }
-
-    /// `ServerLevel.tickCustomSpawners`: every spawner in the list, in order. A vanilla
-    /// spawner keeps the place the game ticks it today (the phantom spawner runs with
-    /// the stats, after the mobs: `spawn_phantoms`); each mod-registered `CustomSpawner`
-    /// runs directly under its registering mod inside a server transaction.
+    /// `ServerLevel.tickCustomSpawners`: every spawner in the list, in order, including
+    /// `Phantom` before any mod-appended spawners. Skips logical clients, debug worlds
+    /// (`ServerChunkCache.tickChunks`), and ticks where `spawn_mobs` is disabled. Passes
+    /// `ServerLevel.isSpawningMonsters()` (`spawn_mobs && spawn_monsters`, independent of
+    /// Peaceful difficulty) as `spawn_enemies`, and runs each mod-registered `CustomSpawner`
+    /// directly under its registering mod inside a server transaction.
     pub(super) fn tick_custom_spawners(&mut self) {
-        if self.remote.is_some() || !self.is_logical_server() {
+        if self.remote.is_some()
+            || !self.is_logical_server()
+            || self.world_debug
+            || !self
+                .ui
+                .rules
+                .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MOBS)
+        {
             return;
         }
         let dim = self.dim;
         self.init_custom_spawners(dim);
+        // `ServerChunkCache.tickChunks` passes its `spawnEnemies` setting, which
+        // `MinecraftServer.updateMobSpawningFlags` derives from `ServerLevel.isSpawningMonsters()`
+        // (`SPAWN_MOBS && SPAWN_MONSTERS`, independent of Peaceful difficulty). `SPAWN_MOBS` was
+        // checked above.
         let spawn_enemies = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS)
-            && self.ui.difficulty != 0;
+            .bool_at(sunrise_client::gamerules::vanilla::SPAWN_MONSTERS);
         let level = self.level_ref(self.lend_epoch(), dim.key());
         let mut at = 0;
         loop {
@@ -79,7 +78,9 @@ impl Game<'_> {
                 mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::VillageSiege) => {
                     self.tick_village_siege();
                 }
-                // `Phantom` ticks in `spawn_phantoms`.
+                mod_api::__private::CustomSpawnerStep::Builtin(SpawnerKind::Phantom) => {
+                    self.tick_phantom_spawner(spawn_enemies);
+                }
                 mod_api::__private::CustomSpawnerStep::Builtin(_)
                 | mod_api::__private::CustomSpawnerStep::Skip => {}
                 mod_api::__private::CustomSpawnerStep::Mod(mut spawner) => {
@@ -155,13 +156,16 @@ mod tests {
     /// spawner counts its clock down. With two mods, `modify_custom_spawners`
     /// fires once per level, the cat spawner never ticks, and each mod's owned
     /// spawner ticks directly in list order with its own retained state and the
-    /// live `spawn_enemies` flag (not broadcast to other mods).
+    /// live `spawn_enemies` flag (`SPAWN_MOBS && SPAWN_MONSTERS`, independent of
+    /// Peaceful difficulty; not broadcast to other mods).
     #[test]
     #[ignore = "daily"]
     fn custom_spawners_tick_in_list_order_and_a_removed_one_never_ticks() {
+        use sunrise_client::gamerules::Value as RuleValue;
+
         with_game(|game| {
             game.creatures.cat.next_tick = 5;
-            game.tick_custom_spawners();
+            game.tick_spawners();
             assert_eq!(
                 game.creatures.cat.next_tick, 4,
                 "no listener: vanilla's cat spawner ticks"
@@ -195,10 +199,15 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 game.creatures.cat.next_tick = 5;
-                game.ui.difficulty = 2;
-                game.tick_custom_spawners();
+                // Vanilla `ServerLevel.isSpawningMonsters()` depends on the
+                // `spawn_mobs` and `spawn_monsters` game rules, not Peaceful difficulty.
                 game.ui.difficulty = 0;
-                game.tick_custom_spawners();
+                game.tick_spawners();
+                game.ui.difficulty = 2;
+                assert!(game.ui.rules.set("spawn_monsters", RuleValue::Bool(false)));
+                game.tick_spawners();
+                assert!(game.ui.rules.set("spawn_monsters", RuleValue::Bool(true)));
+                game.tick_spawners();
                 assert_eq!(
                     game.creatures.cat.next_tick, 5,
                     "the removed cat spawner never ticks"
@@ -220,6 +229,8 @@ mod tests {
                 "bmod tick 1 dim=minecraft:overworld enemies=true",
                 "amod tick 2 dim=minecraft:overworld enemies=false",
                 "bmod tick 2 dim=minecraft:overworld enemies=false",
+                "amod tick 3 dim=minecraft:overworld enemies=true",
+                "bmod tick 3 dim=minecraft:overworld enemies=true",
             ]
         );
     }
@@ -358,12 +369,140 @@ mod tests {
         mod_platform::testing::with_mods(mods.into(), || {
             with_client_game(|game| {
                 game.init_custom_spawners(Dim::Overworld);
-                assert!(!game.has_custom_spawner(SpawnerKind::Phantom));
+                game.tick_spawners();
                 game.tick_custom_spawners();
                 assert!(game.creatures.custom_spawners.is_empty());
             });
         });
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn custom_spawners_skip_debug_worlds_and_disabled_spawn_mobs_in_tick_spawners() {
+        use sunrise_client::gamerules::Value as RuleValue;
+
+        let ticks = Arc::new(AtomicUsize::new(0));
+        struct CountingMod(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for CountingMod {
+            fn modify_custom_spawners(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
+            ) {
+                let counter = self.0.clone();
+                event
+                    .spawners
+                    .add(move |_: &mut dyn ServerHost, _: LevelRef, _: bool| {
+                        counter.fetch_add(1, Ordering::Relaxed);
+                    });
+            }
+        }
+
+        let mods = vec![mod_api::ModEntry::new(
+            "debug_gate_spawner_mod",
+            Box::new(CountingMod(ticks.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.creatures.cat.next_tick = 5;
+                // `ServerChunkCache.tickChunks` skips the entire chunk-spawning phase
+                // (including `tickCustomSpawners`) in debug worlds, even with `spawn_mobs` on.
+                game.world_debug = true;
+                game.tick_spawners();
+                assert_eq!(ticks.load(Ordering::Relaxed), 0);
+                assert_eq!(game.creatures.cat.next_tick, 5);
+
+                // Outside a debug world, `spawn_mobs = false` also skips custom spawners.
+                game.world_debug = false;
+                assert!(game.ui.rules.set("spawn_mobs", RuleValue::Bool(false)));
+                game.tick_spawners();
+                assert_eq!(ticks.load(Ordering::Relaxed), 0);
+                assert_eq!(game.creatures.cat.next_tick, 5);
+
+                // Eligible tick: both built-in and owned mod spawners run once.
+                assert!(game.ui.rules.set("spawn_mobs", RuleValue::Bool(true)));
+                game.tick_spawners();
+                assert_eq!(ticks.load(Ordering::Relaxed), 1);
+                assert_eq!(game.creatures.cat.next_tick, 4);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn appended_custom_spawner_runs_after_phantom_spawner_in_same_pass() {
+        struct PhantomOrderMod {
+            log: Log,
+            remove_phantom: bool,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PhantomOrderMod {
+            fn modify_custom_spawners(
+                &self,
+                _: &dyn mod_api::Host,
+                event: &mut mod_api::ModifyCustomSpawnersEvent<'_>,
+            ) {
+                if self.remove_phantom {
+                    event.spawners.remove(SpawnerKind::Phantom);
+                }
+                let log = self.log.clone();
+                event
+                    .spawners
+                    .add(move |host: &mut dyn ServerHost, _: LevelRef, _: bool| {
+                        let saw_phantom = host.objective("phantom_pass_ran").is_some();
+                        log.lock()
+                            .unwrap()
+                            .push(format!("appended_spawner saw_phantom={saw_phantom}"));
+                    });
+            }
+
+            fn player_spawn_phantoms(
+                &self,
+                host: &mut dyn ServerHost,
+                _: &mut mod_api::PlayerSpawnPhantomsEvent<'_>,
+            ) -> Option<mod_api::PhantomSpawnResult> {
+                self.log.lock().unwrap().push("phantom_spawner".into());
+                host.add_objective(
+                    "phantom_pass_ran",
+                    "dummy",
+                    Text::literal("Phantom"),
+                    ObjectiveRenderType::Integer,
+                )
+                .unwrap();
+                Some(mod_api::PhantomSpawnResult::Deny)
+            }
+        }
+
+        for (remove_phantom, expected) in [
+            (
+                false,
+                vec![
+                    "phantom_spawner".to_owned(),
+                    "appended_spawner saw_phantom=true".to_owned(),
+                ],
+            ),
+            (true, vec!["appended_spawner saw_phantom=false".to_owned()]),
+        ] {
+            let log = Log::default();
+            let mods = vec![mod_api::ModEntry::new(
+                "phantom_order_mod",
+                Box::new(PhantomOrderMod {
+                    log: log.clone(),
+                    remove_phantom,
+                }),
+            )];
+            mod_platform::testing::with_mods(mods.into(), || {
+                with_game(|game| {
+                    super::super::bossbars::audience_tests::add_real_and_fake(game);
+                    game.world.day_time = 18000;
+                    game.stats.set_phantom_tick(0);
+                    game.tick_mobs().unwrap();
+                });
+            });
+            assert_eq!(*log.lock().unwrap(), expected);
+        }
     }
 
     #[test]

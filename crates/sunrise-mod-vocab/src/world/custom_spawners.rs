@@ -49,8 +49,11 @@ pub enum SpawnerKind {
 // no wire: owned server-side spawner object with local state and tick callback.
 pub trait CustomSpawner: Send + 'static {
     /// Vanilla `CustomSpawner#tick(ServerLevel, boolean)`: run one custom-spawner tick on
-    /// `level` while the `spawn_mobs` game rule is enabled. `spawn_enemies` matches
-    /// `ServerLevel#isSpawningMonsters()` (`spawn_monsters` enabled and difficulty not peaceful).
+    /// `level` outside debug worlds while the `spawn_mobs` game rule is enabled
+    /// (`ServerChunkCache#tickChunks`). `spawn_enemies` matches
+    /// `ServerLevel#isSpawningMonsters()` (`spawn_mobs` and `spawn_monsters` game rules
+    /// enabled, independent of Peaceful difficulty; entity- and spawner-specific difficulty
+    /// checks run separately).
     fn tick(&mut self, host: &mut dyn ServerHost, level: LevelRef, spawn_enemies: bool);
 }
 
