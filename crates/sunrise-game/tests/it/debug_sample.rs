@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_protocol::{
-    buf::Cursor,
+    buf::Reader,
     connection::Connection,
     ids::play::clientbound::DEBUG_SAMPLE,
     packets::{
@@ -63,7 +63,7 @@ impl Bot {
         let packet = if id == DEBUG_SAMPLE {
             // ClientboundDebugSamplePacket.write: VarInt length, four big-endian longs
             // (TpsDebugDimensions), then the TICK_TIME enum ordinal as a VarInt.
-            let mut frame = Cursor::new(&payload);
+            let mut frame = Reader::new(&payload);
             assert_eq!(frame.varint().expect("sample length"), 4);
             for _ in 0..4 {
                 frame.i64().expect("sample dimension");
