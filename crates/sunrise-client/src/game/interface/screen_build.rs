@@ -1659,7 +1659,7 @@ mod tests {
                 // Vanilla's painted 26 x 32 tabs are in two rows. The player
                 // can use the operator utilities, including the tab in column five.
                 game.potions.effects.list.clear();
-                game.set_mode_id(1);
+                game.set_local_mode(sunrise_client::command::args::GameMode::Creative);
                 game.ui.registries.permission = 2;
                 game.settings.operator_items_tab = true;
                 game.screen = Screen::Creative;
@@ -1679,7 +1679,7 @@ mod tests {
                 assert_eq!(tabs, expected);
 
                 // AnvilScreen does not paint the inventory's EffectsInInventory panel.
-                game.set_mode_id(0);
+                game.set_local_mode(sunrise_client::command::args::GameMode::Survival);
                 game.potions.effects.list = vec![sunrise_client::effects::EffectInstance::new(
                     "speed", 200, 0,
                 )];

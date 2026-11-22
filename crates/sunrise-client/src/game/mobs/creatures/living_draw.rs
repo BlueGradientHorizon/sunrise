@@ -87,7 +87,7 @@ impl Game<'_> {
             && !sunrise_client::scoreboard::invisible_to(
                 self.mob_team_of(mob),
                 viewer,
-                self.spectator(),
+                self.own_player_is_spectator(),
                 true,
             );
         let layers_only = invisible && outline.is_none() && is_player && !seen_invisible;

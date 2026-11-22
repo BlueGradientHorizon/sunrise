@@ -3,6 +3,9 @@ impl engine::LootTags for TestTags {
     fn members(&self, _: &str, _: &str) -> Option<Vec<String>> {
         None
     }
+    fn item_tag_names(&self) -> Option<&engine::ItemTagNames> {
+        None
+    }
 }
 struct TagReader;
 #[mod_api::__subscriptions]
@@ -70,9 +73,20 @@ impl mod_api::ModLootCondition for TagReader {
     }
 }
 #[test]
+#[ignore = "daily"]
 fn loot_types_read_current_membership_and_order_after_tag_reload() {
+    use crate::game::{loot_tags::LootTags, native_entity_refs::tests::run_fresh_cases};
+    use mod_api::{Identifier, Tags};
     use std::collections::HashMap;
     use sunrise_items::items::{Items, TagRegistry};
+
+    if run_fresh_cases(
+        "game::api_values::loot_values::tests::loot_types_read_current_membership_and_order_after_tag_reload",
+        "SUNRISE_LOOT_TAG_LIST_FIXTURE",
+        &["reload"],
+    ) {
+        return;
+    }
     super::super::prepare_stack_boundary_tests();
     let mut items = Items::for_tests(HashMap::new());
     with_mods(
@@ -82,7 +96,9 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
             mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
                 .unwrap();
             super::super::resolve_stack_boundary_test_items();
-            for (members, expected_count, expected_holds) in [
+            let name = Identifier::parse("test:ingredients").unwrap();
+            let stick = mod_api::__private::item_key("minecraft:stick").unwrap();
+            for (members, expected_count, expected_holds, item_tags, tag_names) in [
                 (
                     Some(vec![
                         "minecraft:potion".to_owned(),
@@ -90,9 +106,11 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
                     ]),
                     2,
                     true,
+                    vec![name.clone()],
+                    vec![name.clone()],
                 ),
-                (Some(Vec::new()), 1, false),
-                (None, 0, false),
+                (Some(Vec::new()), 1, false, vec![], vec![name]),
+                (None, 0, false, vec![], vec![]),
             ] {
                 items.set_tags(
                     TagRegistry::Item,
@@ -101,6 +119,10 @@ fn loot_types_read_current_membership_and_order_after_tag_reload() {
                         .map(|members| ("test:ingredients".into(), members))
                         .collect(),
                 );
+                let tags = LootTags(&items);
+                assert_eq!(tags.item_tags(stick), Some(item_tags));
+                assert_eq!(tags.item_tag_names(), Some(tag_names));
+
                 let mut value = stack();
                 let mut holds = false;
                 apply_type(

@@ -186,7 +186,7 @@ pub(super) struct Minecart {
     /// The synched `DATA_ID_COMMAND_NAME` and `DATA_ID_LAST_OUTPUT`, which
     /// follow the command block only at `onUpdated`.
     pub synced_command: String,
-    pub synced_output: String,
+    pub synced_output: Option<sunrise_core::nbt::Tag>,
     /// `AbstractMinecart.customDisplayBlockState` (`DisplayState`): the block
     /// state's NBT form, resolved against the registry where it draws.
     pub custom_display: Option<sunrise_core::nbt::Tag>,
@@ -537,7 +537,7 @@ impl Minecart {
             // A fresh `BaseSpawner`, as `MinecartSpawner`'s constructor makes.
             spawner: (kind == CartKind::Spawner).then(Default::default),
             synced_command: String::new(),
-            synced_output: String::new(),
+            synced_output: None,
             custom_display: None,
             custom_offset: None,
             random: random_source::entity(),
@@ -3108,7 +3108,7 @@ impl Minecart {
                 c.synced_command.clone_from(&c.command.command);
                 c.command.set_command(&c.synced_command);
             }
-            c.synced_output = c.command.last_output_string();
+            c.sync_command_output();
         }
         // MinecartSpawner.readAdditionalSaveData: BaseSpawner.load.
         if kind == CartKind::Spawner {

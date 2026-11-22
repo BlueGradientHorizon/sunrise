@@ -188,6 +188,13 @@ impl Game<'_> {
         }
     }
 
+    /// A synchronous level sound, not captured again at the end of the tick.
+    pub(super) fn play_immediate_level_sound(&mut self, sound: LevelSound<'_>) {
+        self.audio
+            .play_unshared(sound.name, Some(sound.at), sound.volume, sound.pitch);
+        self.send_level_sound(sound, None);
+    }
+
     /// `Level.playSound`'s packet for the players near the sound's position in
     /// the level in place, but the player on connection `except`, once the
     /// mods allowed it.

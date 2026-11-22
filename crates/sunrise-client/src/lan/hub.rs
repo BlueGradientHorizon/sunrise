@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, atomic::Ordering};
 use sunrise_core::random::LegacyRandom;
 use sunrise_protocol::ids::play::clientbound as ids;
 use sunrise_protocol::{
-    entity_data::{Particle, ParticleData, Value, serializer},
+    entity_data::{Particle, ParticleData, Particles, Value, serializer},
     packets::play::{self, Clientbound as C, Serverbound as S},
     text::{literal, translatable},
 };
@@ -1630,9 +1630,9 @@ impl Hub {
     /// forgotten, as the next tick would do), and this returns true: the chunks around the new
     /// place are still to come, one batch at a time, and whoever reads them must wait for them.
     pub fn send_arrival_state(&mut self, i: usize) -> bool {
-        let (mode, conn) = {
+        let (mode, conn, uuid) = {
             let g = &self.guests[i];
-            (g.game_mode, g.conn)
+            (g.game_mode, g.conn, g.uuid)
         };
         // The effects the login sent from this server's own file and the import took away:
         // `send_active_effects` only adds, and the client would go on predicting with them.
@@ -1663,6 +1663,15 @@ impl Hub {
             self.update_view(i);
         }
         let g = &self.guests[i];
+        g.send(&g.abilities_packet());
+        g.send(&C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+            actions: 4,
+            entries: vec![play::PlayerInfo {
+                uuid,
+                game_mode: Some(mode),
+                ..Default::default()
+            }],
+        }));
         g.send(&C::GameEvent(play::GameEvent {
             event: game_event::CHANGE_GAME_MODE,
             param: mode as f32,
@@ -2526,8 +2535,8 @@ impl Hub {
     }
 
     /// Keeps server-answer packets in a frozen player's inbox (teleport, chunk batch,
-    /// loaded, keep-alive, ping request, tick end, client information) and drops the rest:
-    /// a play `Pong` too, which answers nothing the server sent.
+    /// loaded, keep-alive, ping request, tick end, client information), plus debug
+    /// subscription updates. Drops the rest, including play `Pong`, which answers nothing.
     /// Chat messages and signed commands are dropped, but their last-seen messages
     /// are taken first (`unpackAndApplyLastSeen`). Chat acknowledgements are handled
     /// here in arrival order: the client counts them as acknowledged, and its next
@@ -2559,6 +2568,7 @@ impl Hub {
                 | S::ClientInformation(_)
                 | S::ClientTickEnd(_)
                 | S::KeepAlive(_)
+                | S::DebugSubscriptionRequest(_)
                 | S::PingRequest(_) => {
                     self.guests
                         .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
@@ -3299,7 +3309,11 @@ impl Hub {
             .collect();
         let mut meta = Vec::new();
         if !particles.is_empty() {
-            meta.push((10, serializer::PARTICLES, Value::Particles(particles)));
+            meta.push((
+                10,
+                serializer::PARTICLES,
+                Value::Particles(particles.into()),
+            ));
         }
         if ambient {
             meta.push((11, serializer::BOOLEAN, Value::Bool(true)));
@@ -3393,7 +3407,11 @@ impl Hub {
             forced_meta: [0; 4],
             // The effect swirls go back to none.
             defaults: vec![
-                (10, serializer::PARTICLES, Value::Particles(Vec::new())),
+                (
+                    10,
+                    serializer::PARTICLES,
+                    Value::Particles(Particles::new()),
+                ),
                 (11, serializer::BOOLEAN, Value::Bool(false)),
             ],
             equipment,
@@ -4187,6 +4205,7 @@ impl Hub {
                 | S::RecipeBookChangeSettings(_)
                 | S::RecipeBookSeenRecipe(_)
                 | S::ClientTickEnd(_)
+                | S::DebugSubscriptionRequest(_)
                 | S::KeepAlive(_)
                 | S::Pong(_)
                 | S::PingRequest(_) => false,
@@ -4281,6 +4300,11 @@ impl Hub {
                     if p.channel == sunrise_protocol::passage_sync::CROSS_CHANNEL =>
                 {
                     *held = self.passage_leg(i, p, ctx, events);
+                }
+                // handleDebugSubscriptionRequest.
+                S::DebugSubscriptionRequest(p) => {
+                    self.guests
+                        .update(i, |g| g.debug_subscriptions = p.subscriptions);
                 }
                 // handleAcceptPlayerLoad: markClientLoaded.
                 S::PlayerLoaded(_) => {
@@ -4870,14 +4894,13 @@ impl Hub {
         world: &World,
         collision: Option<&BlockCollisionRegistry<'_>>,
     ) {
-        let Some(uuid) = self
+        let Some((uuid, online)) = self
             .update_guest(conn, |g| {
+                if g.game_mode == mode {
+                    return None;
+                }
                 g.change_game_mode(mode);
-                // GameType.updatePlayerAbilities: the mode's flags, on the abilities
-                // the fork keeps them in (spectator flies, creative keeps what it had).
                 g.abilities.update_for_mode(mode);
-                // ServerPlayerGameMode.changeGameModeForPlayer: a player left flying
-                // by the change lands when the ground is within a block.
                 if !g.spectator()
                     && g.abilities.flying
                     && let Some(binding) = collision
@@ -4891,26 +4914,30 @@ impl Hub {
                         g.abilities.flying = false;
                     }
                 }
-                let uuid = g.uuid;
-                g.send(&C::GameEvent(play::GameEvent {
-                    event: game_event::CHANGE_GAME_MODE,
-                    param: mode as f32,
-                }));
                 g.send(&g.abilities_packet());
-                g.participates_online().then_some(uuid)
+                Some((g.uuid, g.participates_online()))
             })
             .flatten()
         else {
             return;
         };
-        self.broadcast(&C::PlayerInfoUpdate(play::PlayerInfoUpdate {
-            actions: 4,
-            entries: vec![play::PlayerInfo {
-                uuid,
-                game_mode: Some(mode),
-                ..Default::default()
-            }],
-        }));
+        if online {
+            self.broadcast(&C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+                actions: 4,
+                entries: vec![play::PlayerInfo {
+                    uuid,
+                    game_mode: Some(mode),
+                    ..Default::default()
+                }],
+            }));
+        }
+        self.update_guest(conn, |g| {
+            g.send(&C::GameEvent(play::GameEvent {
+                event: game_event::CHANGE_GAME_MODE,
+                param: mode as f32,
+            }));
+            g.send(&g.abilities_packet());
+        });
     }
 
     /// A player's nickname changed (None: their name again): kept for chat,
@@ -5400,6 +5427,7 @@ mod tests {
     mod collision_exclusion_tests;
     mod collision_part_tests;
     mod connection_group_sync_tests;
+    mod debug_subscription_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;
@@ -6888,7 +6916,13 @@ mod tests {
             (
                 10,
                 serializer::PARTICLES,
-                Value::Particles(vec![list[0].clone(), Particle { id: 0, data: None }]),
+                Value::Particles(
+                    vec![
+                        list.iter().next().unwrap().into_owned(),
+                        Particle { id: 0, data: None },
+                    ]
+                    .into(),
+                ),
             ),
             (11, serializer::BOOLEAN, Value::Bool(true)),
         ];
@@ -6912,7 +6946,7 @@ mod tests {
         let ordinary = vec![(
             10,
             serializer::PARTICLES,
-            Value::Particles(vec![Particle { id: 0, data: None }]),
+            Value::Particles(vec![Particle { id: 0, data: None }].into()),
         )];
         track(&mut hub, zombie(100, ordinary));
         let expected = [data(100, &[&particles(&[plain])])];
@@ -8463,5 +8497,127 @@ mod tests {
                 "no stale badge after placement"
             );
         }
+    }
+
+    #[test]
+    fn spawn_info_preserves_previous_game_mode_across_dimension_changes() {
+        let (mut hub, rx) = hub_with_a_guest();
+        let conn = hub.guests[0].conn;
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        hub.guests.update(0, |g| g.game_mode = 1);
+        hub.set_game_mode(conn, 2, &world, None);
+        hub.set_game_mode(conn, 3, &world, None);
+        assert_eq!(hub.guests[0].previous_game_mode, Some(2));
+        while rx.try_recv().is_ok() {}
+        let mut next_entity = 2;
+        let border = crate::worldborder::WorldBorder::default();
+        let ctx = TickCtx {
+            sea_level: 63,
+            world: &mut world,
+            entities: &[],
+            next_entity: &mut next_entity,
+            spawn: [0.5, 64.0, 0.5],
+            spawn_angle: [0.0; 2],
+            spawn_dimension: "minecraft:overworld",
+            difficulty: 2,
+            difficulty_locked: false,
+            clock_rate: 1.0,
+            tick_rate: 20.0,
+            tick_frozen: false,
+            tick_steps: Default::default(),
+            collision: None,
+            border: &border,
+            streaming: None,
+        };
+        assert_eq!(hub.spawn_info(0, 0, 63).previous_game_type, Some(2));
+        hub.set_dimension("minecraft:the_nether");
+        hub.change_level(0, [10.5, 64.0, 10.5], 0.0, None, false, 0, &ctx);
+        let mut respawn_prev = None;
+        while let Ok(out) = rx.try_recv() {
+            let crate::lan::Out::Packet(body) = out else {
+                continue;
+            };
+            let mut r = sunrise_protocol::buf::Reader::new(&body);
+            let id = r.varint().unwrap();
+            if let Ok(C::Respawn(respawn)) = C::decode(id, r.rest()) {
+                respawn_prev = Some((respawn.spawn.game_type, respawn.spawn.previous_game_type));
+            }
+        }
+        assert_eq!(respawn_prev, Some((3, Some(2))));
+    }
+
+    #[test]
+    fn set_game_mode_publishes_vanilla_packet_order_and_skips_no_op() {
+        let (mut hub, first) = hub_with_a_guest();
+        let (tx, second) = std::sync::mpsc::channel();
+        let mut other = Guest::new(
+            crate::lan::Joined {
+                conn: 2,
+                uuid: 2,
+                name: "Ada".into(),
+                properties: Vec::new(),
+                info: sunrise_protocol::packets::configuration::ClientInformation::new(8),
+                brand: "vanilla".into(),
+                sender: crate::lan::PlayerSender::new(tx, Arc::default()),
+                latency: Arc::new(std::sync::atomic::AtomicI32::new(0)),
+                address: "127.0.0.1:25566".parse().unwrap(),
+                expected: false,
+            },
+            2,
+            [0.5, 64.0, 0.5],
+            8,
+        );
+        other.placed = true;
+        other.dimension = "minecraft:overworld".into();
+        hub.guests.push(other);
+        let conn = hub.guests[0].conn;
+        let uuid = hub.guests[0].uuid;
+        let world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+
+        let drain_kinds = |rx: &std::sync::mpsc::Receiver<crate::lan::Out>| {
+            let mut kinds = Vec::new();
+            while let Ok(out) = rx.try_recv() {
+                let crate::lan::Out::Packet(body) = out else {
+                    continue;
+                };
+                let mut r = sunrise_protocol::buf::Reader::new(&body);
+                let id = r.varint().unwrap();
+                match C::decode(id, r.rest()).unwrap() {
+                    C::PlayerAbilities(p) => kinds.push(format!("abilities:{:#x}", p.flags)),
+                    C::PlayerInfoUpdate(p) => {
+                        assert_eq!(p.actions, 4);
+                        assert_eq!(p.entries.len(), 1);
+                        assert_eq!(p.entries[0].uuid, uuid);
+                        kinds.push(format!("player_info:{:?}", p.entries[0].game_mode));
+                    }
+                    C::GameEvent(p) => kinds.push(format!("game_event:{}:{}", p.event, p.param)),
+                    other => kinds.push(format!("other:{other:?}")),
+                }
+            }
+            kinds
+        };
+
+        hub.set_game_mode(conn, 3, &world, None);
+        assert_eq!(
+            drain_kinds(&first),
+            [
+                "abilities:0x7",
+                "player_info:Some(3)",
+                "game_event:3:3",
+                "abilities:0x7",
+            ]
+        );
+        assert_eq!(drain_kinds(&second), ["player_info:Some(3)"]);
+
+        // Same-mode call leaves custom abilities alone and sends no packets.
+        hub.guests.update(0, |g| {
+            g.abilities.flying = false;
+            g.abilities.flying_speed = 0.25;
+        });
+        hub.set_game_mode(conn, 3, &world, None);
+        assert!(!hub.guests[0].abilities.flying);
+        assert_eq!(hub.guests[0].abilities.flying_speed, 0.25);
+        assert!(drain_kinds(&first).is_empty());
+        assert!(drain_kinds(&second).is_empty());
     }
 }
