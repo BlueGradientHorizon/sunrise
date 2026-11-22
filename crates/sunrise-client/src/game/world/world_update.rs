@@ -489,7 +489,7 @@ fn order_uploads<T, K: Ord>(
     }
 
     // At equal distance, write the waiting mesh first so the fresh mesh is
-    // popped first, as on the former stable merge path.
+    // popped first.
     let merged = waiting.len() + fresh.len();
     scratch.reserve(merged);
     let mut old = waiting.drain(..).peekable();
@@ -519,8 +519,9 @@ mod tests {
         let mut scratch = Vec::new();
         let priority = |&(distance, _): &(i32, &str)| Reverse(distance);
         order_uploads(&mut waiting, &mut fresh, &mut scratch, true, priority);
-        // Two uploads this frame leave the waiting (equal-distance) mesh first
-        // in line for the next frame.
+        // Pin the stationary queue's fresh-first tie policy: two uploads leave
+        // the waiting mesh first in line next frame. The old sort_unstable_by_key
+        // did not guarantee this tie order.
         let selected: Vec<_> = std::iter::from_fn(|| waiting.pop().map(|(_, name)| name))
             .take(2)
             .collect();
