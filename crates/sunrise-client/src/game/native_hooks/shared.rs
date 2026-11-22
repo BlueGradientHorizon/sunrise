@@ -2823,7 +2823,7 @@ impl Game<'_> {
                 let Some(state) = registry.state(BlockStateId(id)) else {
                     return false;
                 };
-                if state.name.starts_with("minecraft:") {
+                if !mod_api::__private::is_content_block(&state.name) {
                     return false;
                 }
                 *blocks.entry(state.name.as_str()).or_insert_with(|| {
@@ -2852,7 +2852,7 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let container = by_block.entry(state.name.clone()).or_insert_with(|| {
@@ -2882,7 +2882,7 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let tanks = by_block.entry(state.name.clone()).or_insert_with(|| {
@@ -2906,7 +2906,7 @@ impl Game<'_> {
             let Some(state) = registry.state(sunrise_world::registry::BlockStateId(i)) else {
                 continue;
             };
-            if state.name.starts_with("minecraft:") {
+            if !mod_api::__private::is_content_block(&state.name) {
                 continue;
             }
             let buffer = by_block.entry(state.name.clone()).or_insert_with(|| {
