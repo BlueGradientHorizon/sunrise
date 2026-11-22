@@ -2,8 +2,7 @@ use super::super::*;
 use crate::chunk::{Chunk, Light};
 use mod_api::{
     __private::particle_provider_factory, BlockState, CustomParticle, LightLayer, ParticleFacing,
-    ParticleLevelView, ParticleProvider, ParticleQuad, ParticleSpawn, ParticleTickView,
-    ParticleView,
+    ParticleLevelView, ParticleProvider, ParticleSpawn, ParticleTickView, ParticleView,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{
