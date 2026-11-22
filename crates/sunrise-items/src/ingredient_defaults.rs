@@ -5,35 +5,18 @@ impl Items {
     /// station rules and loot functions are built from), for tools that need
     /// tag membership.
     pub fn tags_only(root: &Path, overlay: &PackOverlay, defaults: &ItemDefaults) -> Result<Self> {
+        let block_items = block_items(root)?;
+        let (component_registry, entity_type_tags) =
+            component_tables(root, overlay, LoadEntityTags::Prepared)?;
         let mut items = Self {
-            items: HashMap::new(),
-            block_items: Default::default(),
-            component_registry: component_registry(
-                root,
-                &load_tags(root, "entity_type", overlay)?,
-            )?,
+            component_registry,
+            entity_type_tags,
             component_defaults: component_defaults(defaults)?,
-            mob_visibility: HashMap::new(),
-            order: Vec::new(),
-            registry_order: Vec::new(),
-            block_tags: load_tags(root, "block", overlay)?,
-            block_tag_flags: Default::default(),
-            item_tags: load_tags(root, "item", overlay)?,
-            fluid_tags: load_tags(root, "fluid", overlay)?,
-            item_tag_order: load_tag_lists(root, "item", overlay)?,
-            block_tag_order: load_tag_lists(root, "block", overlay)?,
-            fluid_tag_order: load_tag_lists(root, "fluid", overlay)?,
-            loot: Default::default(),
-            loot_types: Default::default(),
-            loot_modifiers: Default::default(),
-            global_modifiers: Arc::default(),
-            predicates: Default::default(),
-            songs: HashMap::new(),
-            instruments: HashMap::new(),
-            enchantments: Default::default(),
+            ..Self::default()
         };
+        items.bind_tags(root, overlay, defaults, |id| block_items.contains_key(id))?;
         items.install_registries(
-            crate::enchant::Enchantments::load_with(root, overlay, defaults)?,
+            crate::enchant::Enchantments::load_definitions(root, overlay, defaults)?,
             HashMap::new(),
         );
         load_component_damage_registry(root, overlay, &mut items)?;
@@ -123,11 +106,21 @@ pub(super) fn block_items(root: &Path) -> Result<HashMap<String, String>> {
         .collect()
 }
 
-/// Registry metadata used by ingredient component codecs at the load boundary.
-pub(super) fn component_registry(
+pub(crate) enum LoadEntityTags<'a> {
+    Prepared,
+    Frozen(&'a Arc<[String]>),
+    Bound(&'a Arc<EntityTypeTags>),
+}
+
+/// The entity membership and registry metadata used by ingredient component codecs.
+pub(crate) fn component_tables(
     root: &Path,
-    entity_tags: &HashMap<String, HashSet<String>>,
-) -> Result<Arc<sunrise_client_core::registries::Registries>> {
+    overlay: &PackOverlay,
+    source: LoadEntityTags<'_>,
+) -> Result<(
+    Arc<sunrise_client_core::registries::Registries>,
+    Arc<EntityTypeTags>,
+)> {
     let mut registry = sunrise_client_core::registries::Registries::default();
     let path = root.join("command-registries.json");
     if path.exists() {
@@ -144,33 +137,28 @@ pub(super) fn component_registry(
                 .ids = entries.keys().cloned().collect();
         }
     }
-    // The prepared entity table includes content-mod types, unlike a vanilla-only
-    // command export. Re-read it for each catalog/load, including pack reload.
-    let path = root.join("entity-types.json");
-    let entity_ids = match fs::read(&path) {
-        Ok(bytes) => {
-            let rows: serde_json::Map<String, Value> = serde_json::from_slice(&bytes)?;
-            Some(
-                rows.keys()
-                    .map(|name| {
-                        sunrise_core::identifier::Identifier::parse(name).map(|id| id.to_string())
-                    })
-                    .collect::<std::result::Result<Vec<_>, _>>()?,
-            )
+    let entity_type_tags = match source {
+        LoadEntityTags::Prepared => {
+            // The prepared entity table includes content-mod types, unlike the command export.
+            let ids = match fs::read(root.join("entity-types.json")) {
+                Ok(bytes) => EntityTypeTags::registry_ids(&serde_json::from_slice(&bytes)?)?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Arc::from(registry.ids(EntityTypeTags::REGISTRY))
+                }
+                Err(error) => return Err(error.into()),
+            };
+            Arc::new(EntityTypeTags::load(root, overlay, ids)?)
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(error.into()),
+        LoadEntityTags::Frozen(ids) => Arc::new(EntityTypeTags::load(root, overlay, ids.clone())?),
+        LoadEntityTags::Bound(tags) => tags.clone(),
     };
-    let entity_ids = entity_ids.unwrap_or_else(|| registry.ids("minecraft:entity_type").to_vec());
     let entities = registry
         .by_registry
-        .entry("minecraft:entity_type".into())
+        .entry(EntityTypeTags::REGISTRY.into())
         .or_default();
-    entities.ids = entity_ids;
-    entities.ids.sort();
-    entities.ids.dedup();
+    entities.ids = entity_type_tags.ids().to_vec();
     // These are the current merged pack tags, not the export's stale tag names.
-    entities.tags = entity_tags.keys().cloned().collect();
+    entities.tags = entity_type_tags.ordered().keys().cloned().collect();
     entities.tags.sort();
     // The command export is vanilla-only. World recipe loads bind their active
     // frozen catalog; standalone catalogs load the full pack/mod catalog above.
@@ -179,5 +167,5 @@ pub(super) fn component_registry(
         "minecraft:damage_type".into(),
         sunrise_client_core::registries::RegistryIds::default(),
     );
-    Ok(Arc::new(registry))
+    Ok((Arc::new(registry), entity_type_tags))
 }

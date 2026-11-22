@@ -428,9 +428,9 @@ impl Game<'_> {
                     && m.extra.mount.is_none()
                     && m.width() < super::boats::WIDTH as f32
                     && !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:cannot_be_pushed_onto_boats", &m.kind.id);
+                        .items()
+                        .entity_type_tags
+                        .contains("minecraft:cannot_be_pushed_onto_boats", &m.kind.id);
                 if boards {
                     // startRiding fails quietly (no push) while the mob's
                     // boarding cooldown runs (Entity.canRide) or the boat
@@ -594,9 +594,9 @@ impl Game<'_> {
                         (true, false) => 270.0,
                     };
                     let turns = !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:can_turn_in_boats", &m.kind.id);
+                        .items()
+                        .entity_type_tags
+                        .contains("minecraft:can_turn_in_boats", &m.kind.id);
                     (
                         j,
                         offset,

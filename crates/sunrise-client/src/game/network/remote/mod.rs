@@ -589,8 +589,6 @@ pub(super) struct Remote {
     /// The block, item and fluid tags of `registries` by name, as native mods read them
     /// (`install_remote_tags`).
     pub(super) tags: Option<sunrise_client::items::Items>,
-    /// Whether the published snapshot includes the item registry, even if its table is empty.
-    pub(super) has_item_tags: bool,
     /// The game's enchantments and the server's that it lacks (a data
     /// pack's), from their synced data; `None` when the server has none.
     pub(super) enchantments: Option<Arc<sunrise_client::enchant::Enchantments>>,
@@ -1256,7 +1254,6 @@ impl Game<'_> {
             lang,
             registries: Arc::new(Dynamic::default()),
             tags: None,
-            has_item_tags: false,
             enchantments: None,
             joined: false,
             reconfiguring: None,
@@ -1508,7 +1505,6 @@ impl Game<'_> {
             lang,
             registries: Arc::new(Dynamic::default()),
             tags: None,
-            has_item_tags: false,
             enchantments: None,
             joined: false,
             reconfiguring: None,
@@ -2455,7 +2451,6 @@ impl Game<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        self.server_items = self.server_items(&registries);
         if let Some(r) = self.remote.as_mut() {
             r.enchantments = enchantments;
             let bits = ceil_log2(biomes.len());
@@ -2464,6 +2459,7 @@ impl Game<'_> {
                 Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
             r.registries = registries;
             r.resolve_clocks();
+            self.install_server_items();
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }

@@ -5,8 +5,11 @@ use super::*;
 impl Game<'_> {
     /// The server's data-pack enchantments, or the local world's registry.
     pub(super) fn item_enchantments(&self) -> &Arc<sunrise_client::enchant::Enchantments> {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
+        match self.remote.as_ref() {
+            Some(remote) => remote
+                .enchantments
+                .as_ref()
+                .unwrap_or(&self.items().enchantments),
             None => &self.stations().enchantments,
         }
     }
@@ -278,6 +281,7 @@ impl Game<'_> {
             self.res.facts(),
             &overlay,
             self.res.item_defaults(),
+            Some(self.res.items().entity_type_tags.ids()),
         )?;
         class_tags::install(&mut items, self.res.facts());
         // Tag files are read before their tags are bound, so the tag readers below keep the
@@ -434,7 +438,7 @@ impl Game<'_> {
         let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
             .into_iter()
             .chain(sunrise_client::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| *directory != "item")
+            .filter(|directory| !matches!(*directory, "item" | "entity_type"))
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .filter_map(|registry| {
@@ -460,12 +464,10 @@ impl Game<'_> {
         }
         let builtin = neoforge_mob_maps::load(
             &overlay,
-            |directory| {
-                if directory == "item" {
-                    Some(&items.item_tags)
-                } else {
-                    pack_tags.get(directory)
-                }
+            |directory| match directory {
+                "item" => Some(&items.item_tags),
+                "entity_type" => Some(items.entity_type_tags.members()),
+                _ => pack_tags.get(directory),
             },
             |registry, id| match registry {
                 "minecraft:item" => items.items.contains_key(id),
@@ -692,6 +694,7 @@ impl Game<'_> {
             &self.pack_files(),
             wire.clone(),
             advancements.clone(),
+            self.items().entity_type_tags.clone(),
         );
         if self.lan.is_some()
             && let Some(sync) = wire
@@ -730,10 +733,7 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(super) fn active_enchantment_definitions(&self) -> &sunrise_client::enchant::Enchantments {
-        match self.remote.as_ref().and_then(|r| r.enchantments.as_ref()) {
-            Some(e) => e,
-            None => &self.stations().enchantments,
-        }
+        self.item_enchantments()
     }
     /// Build and publish one server snapshot for this world load or reload.
     pub(super) fn load_server_loot(&mut self) {
@@ -881,6 +881,7 @@ impl Game<'_> {
                     &kept,
                     &sources,
                     &advancements,
+                    &items.entity_type_tags,
                 )
                 .map_err(|error| format!("wire reload: {error}"))?,
             )

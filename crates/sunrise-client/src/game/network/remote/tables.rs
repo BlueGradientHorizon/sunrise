@@ -1,16 +1,19 @@
-//! Server gameplay item tags. Typed mod tag notices remain in remote_tags.
+//! The server's gameplay tags. Typed mod tag notices remain in remote_tags.
 use super::super::Game;
 use std::{collections::HashMap, sync::Arc};
-use sunrise_client::items::Items;
-use sunrise_protocol::registry::Dynamic;
+use sunrise_client::items::EntityTypeTags;
 impl Game<'_> {
-    /// The game's items with the server's block and item tags, by name. The
-    /// window's own server thread plays with the world's tables instead.
-    pub(in crate::game) fn server_items(&self, registries: &Dynamic) -> Option<Arc<Items>> {
-        let r = self.remote.as_ref().filter(|_| self.integrated.is_none())?;
+    /// Apply the server's entity type tags on every client, including the
+    /// integrated server's window. Preserve the integrated client's block
+    /// and item tables.
+    pub(in crate::game) fn install_server_items(&mut self) {
+        let Some(remote) = self.remote.as_ref() else {
+            return;
+        };
         let names = |registry: &str| -> Option<HashMap<String, Vec<String>>> {
-            let ids = r.builtin.get(registry)?;
-            let tags = registries
+            let ids = remote.builtin.get(registry)?;
+            let tags = remote
+                .registries
                 .tags
                 .get(registry)?
                 .iter()
@@ -20,11 +23,25 @@ impl Game<'_> {
                 });
             Some(tags.collect())
         };
-        let (blocks, items) = (names("minecraft:block"), names("minecraft:item"));
-        if blocks.is_none() && items.is_none() {
-            return None;
+        let (blocks, items) = if self.integrated.is_none() {
+            (names("minecraft:block"), names("minecraft:item"))
+        } else {
+            (None, None)
+        };
+        let base = self
+            .world_tables
+            .as_ref()
+            .map_or_else(|| self.res.items(), |tables| &tables.items);
+        let mut items = base.with_tags(blocks, items);
+        let tags = EntityTypeTags::from_ordered(
+            names(EntityTypeTags::REGISTRY).unwrap_or_default(),
+            base.entity_type_tags.ids().clone(),
+        );
+        items.set_entity_type_tags(tags);
+        if let Some(enchantments) = self.remote.as_mut().and_then(|r| r.enchantments.as_mut()) {
+            Arc::make_mut(enchantments).entity_tags = items.entity_type_tags.members().clone();
         }
-        Some(Arc::new(self.res.items().with_tags(blocks, items)))
+        self.server_items = Some(Arc::new(items));
     }
 }
 #[cfg(test)]

@@ -296,6 +296,12 @@ impl Game<'_> {
                     .as_ref()
                     .map(|tables| tables.packed_registries.clone()),
                 tables.advancements.clone(),
+                tables
+                    .tables
+                    .as_ref()
+                    .map_or_else(|| self.res.items(), |t| &t.items)
+                    .entity_type_tags
+                    .clone(),
             )
             .map_err(|error| ReloadStageError::DataSource(format!("world registries: {error}")))?;
             Some((tables, wire))
@@ -1532,6 +1538,43 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "daily"]
+    fn mob_entity_membership_follows_world_pack_reload() {
+        let _publication = sunrise_client::datapack_net::isolate_server_publication();
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let world = tempfile::tempdir().unwrap();
+            game.world_root = world.path().to_owned();
+            let pack = world.path().join("datapacks/snow_walkers");
+            let tags = pack.join("data/minecraft/tags/entity_type");
+            std::fs::create_dir_all(&tags).unwrap();
+            let f = sunrise_core::version::DATA_PACK_FORMAT;
+            std::fs::write(
+                pack.join("pack.mcmeta"),
+                serde_json::json!({"pack": {
+                    "description": "Snow walkers", "pack_format": f.0,
+                    "min_format": [f.0, f.1], "max_format": [f.0, f.1]
+                }})
+                .to_string(),
+            )
+            .unwrap();
+            let tag_file = tags.join("powder_snow_walkable_mobs.json");
+            std::fs::write(&tag_file, r#"{"replace":true,"values":["minecraft:cow"]}"#).unwrap();
+            game.reload_datapacks(false, &[]).unwrap();
+            let walkable = "minecraft:powder_snow_walkable_mobs";
+            let world = game.mob_world_base(&[]);
+            assert!(world.entity_has(walkable, "minecraft:cow"));
+            assert!(!world.entity_has(walkable, "minecraft:fox"));
+
+            std::fs::write(&tag_file, r#"{"replace":true,"values":["minecraft:fox"]}"#).unwrap();
+            // This unopened-world fixture has no operator player. Run at console authority.
+            assert!(game.as_console(|game| game.run_command("reload")));
+            let world = game.mob_world_base(&[]);
+            assert!(!world.entity_has(walkable, "minecraft:cow"));
+            assert!(world.entity_has(walkable, "minecraft:fox"));
+        });
+    }
 
     #[test]
     #[ignore = "daily"]

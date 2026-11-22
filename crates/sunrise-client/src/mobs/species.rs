@@ -1540,7 +1540,7 @@ impl Def {
             flying: matches!(s, S::Ghast | S::Phantom | S::HappyGhast),
             climber: matches!(s, S::Spider | S::CaveSpider),
             lava_walker: s == S::Strider,
-            powder_snow_walkable: false,
+            entity_tag_slot: None,
             omnidirectional: matches!(s, S::Bee | S::Parrot),
             fire_immune: fire_immune
                 || matches!(
@@ -1554,20 +1554,6 @@ impl Def {
                         | S::Zoglin
                         | S::Wither
                 ),
-            // The `burn_in_daylight` entity type tag.
-            burns_in_day: matches!(
-                s,
-                S::Zombie
-                    | S::ZombieHorse
-                    | S::Drowned
-                    | S::ZombieVillager
-                    | S::Skeleton
-                    | S::Stray
-                    | S::Bogged
-                    | S::WitherSkeleton
-                    | S::Phantom
-                    | S::ZombieNautilus
-            ),
             undead,
             // `#can_breathe_under_water`. Not the dolphin: it holds its breath
             // (4800 ticks) and surfaces for air; nor the iron golem, which keeps

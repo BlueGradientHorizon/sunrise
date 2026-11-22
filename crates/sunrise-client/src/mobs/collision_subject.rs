@@ -1,9 +1,13 @@
 impl super::Mob {
-    pub(super) fn collision_subject(&self) -> crate::collisions::PowderSnowSubject<'_> {
+    pub(super) fn collision_subject(
+        &self,
+        w: &super::MobWorld,
+    ) -> crate::collisions::PowderSnowSubject<'_> {
+        use crate::items::EntityTypeTags;
         use sunrise_world::collision_context::CollisionItem;
         crate::collisions::PowderSnowSubject {
             fall_distance: self.fall_distance,
-            walkable_type: self.kind.flags.powder_snow_walkable,
+            walkable_type: w.entity_tag_bit(&self.kind, EntityTypeTags::POWDER_SNOW_WALKABLE),
             leather_boots: self
                 .extra
                 .slot_stack(sunrise_items::equipment::FEET)

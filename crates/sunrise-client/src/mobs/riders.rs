@@ -424,7 +424,7 @@ fn controller<'a>(m: &Mob, w: &'a MobWorld) -> Option<&'a Seen> {
         .and_then(|id| w.passenger_object(id))
         .filter(|r| {
             r.alive
-                && !w.data.entity_has(
+                && !w.entity_has(
                     "minecraft:non_controlling_rider",
                     &format!("minecraft:{}", super::species::def(r.species).name),
                 )

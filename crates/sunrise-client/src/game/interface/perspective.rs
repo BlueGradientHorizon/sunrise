@@ -2001,7 +2001,6 @@ mod preview_tests {
             heightmaps: Default::default(),
             animations: Default::default(),
             biome_tags: Default::default(),
-            entity_tags: Default::default(),
             villager_hats: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),

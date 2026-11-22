@@ -1,4 +1,4 @@
-/// Per-type behaviour switches derived from vanilla classes and tags.
+/// Per-type behaviour switches derived from vanilla classes.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Flags {
     /// WaterAnimal / fish: not affected by fluid physics (swims with its own control).
@@ -10,13 +10,11 @@ pub struct Flags {
     pub climber: bool,
     /// Striders stand on lava.
     pub lava_walker: bool,
-    /// EntityTypeTags.POWDER_SNOW_WALKABLE_MOBS, resolved at load.
-    pub powder_snow_walkable: bool,
+    /// Slot in the owning level's bound entity type tags. Synthetic types have no slot.
+    pub entity_tag_slot: Option<usize>,
     /// LivingEntity.omnidirectionalAirMover (bees and parrots).
     pub omnidirectional: bool,
     pub fire_immune: bool,
-    /// EntityTypeTags.BURN_IN_DAYLIGHT
-    pub burns_in_day: bool,
     pub undead: bool,
     pub breathes_water: bool,
     /// Drowns out of water (fish, squid, dolphins after their air runs out).

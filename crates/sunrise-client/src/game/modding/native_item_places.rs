@@ -152,8 +152,7 @@ impl Game<'_> {
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
     pub(super) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
-        let tag = sunrise_client::command::args::normalize(tag);
-        self.res.mob_data().entity_has(&tag, entity_type)
+        self.entity_tag_matches(tag, entity_type)
     }
     /// The stack at a player's or an item entity's place; none for an empty one, a player who
     /// isn't here or is dead, an item entity not in the level in place, any other place

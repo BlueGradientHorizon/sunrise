@@ -296,8 +296,8 @@ pub struct LootData {
     /// the items engine's selection table, never with another world's answers.
     primary_answers: crate::enchantment_answers::AnswerTable,
     support_answers: crate::enchantment_answers::AnswerTable,
-    /// Tag files' layers by (registry, tag id).
-    tags: HashMap<(String, String), crate::tag_layers::TagLayers>,
+    /// Bound tags by registry and tag ID.
+    tags: loot_tags::BoundTags,
     /// Smelting recipes in recipe id order: (ingredient, result, result count).
     smelting: Vec<(Value, String, i32)>,
 }
@@ -836,6 +836,8 @@ impl LootData {
                 }
             })
             .collect();
+        let binding = holder_sets::Binding::load(root, overlay, &items, &enchantments)?;
+        let builtin = crate::tag_layers::builtin_ids(root)?;
         let mut tags = HashMap::new();
         for registry in [
             "item",
@@ -850,26 +852,29 @@ impl LootData {
             // What `location_check`'s `biomes` names.
             "worldgen/biome",
         ] {
-            let mut raw = HashMap::new();
-            load_kind(&all, &format!("tags/{registry}"), &mut raw)?;
-            for (name, value) in raw {
-                let layers = crate::tag_layers::TagLayers::from_file(&value);
-                tags.insert((registry.to_owned(), name), layers);
+            let raw = crate::tag_layers::layers(root, registry, overlay)?;
+            if matches!(registry, "predicate" | "item_modifier") {
+                loot_tags::check_cycles(registry, &raw)?;
             }
-            // The packs' entries join the game's own, in pack order; a
-            // `replace` file drops what the lower sources put in and `remove`
-            // takes entries out (`TagLoader.load` walks the stack the same way).
-            for (id, files) in overlay.tag_kind(registry) {
-                for bytes in files {
-                    let Ok(v) = serde_json::from_slice::<Value>(bytes) else {
-                        continue;
-                    };
-                    let slot = tags.entry((registry.to_owned(), id.clone())).or_default();
-                    slot.push(&v);
-                }
-            }
+            let contains = |id: &str| match registry {
+                "item" => items.contains_key(id),
+                "block" => builtin.get(registry).is_some_and(|ids| ids.contains(id)),
+                "fluid" => builtin.get(registry).map_or_else(
+                    || crate::fluid::FluidKind::from_name(id).is_some(),
+                    |ids| ids.contains(id),
+                ),
+                "predicate" => predicates.contains_key(id),
+                "item_modifier" => modifiers.contains_key(id),
+                _ => binding.ids(registry).map_or_else(
+                    || builtin.get(registry).is_none_or(|ids| ids.contains(id)),
+                    |ids| ids.iter().any(|entry| entry == id),
+                ),
+            };
+            tags.insert(
+                registry.to_owned(),
+                crate::tag_layers::TagLayers::bind(registry, &raw, contains),
+            );
         }
-        let binding = holder_sets::Binding::load(root, overlay, &items, &enchantments)?;
         let mut loaded = Self {
             holder_sets: Default::default(),
             copies_entity_nbt: false,
@@ -1020,7 +1025,7 @@ impl LootData {
     /// Tag members in tag order (nested tags expanded in place, duplicates
     /// dropped).
     fn tag(&self, registry: &str, name: &str) -> Vec<String> {
-        loot_tags::members(&self.tags, registry, name)
+        self.members(registry, name).unwrap_or_default()
     }
     /// A published HolderSet: "#tag", "id" or resolved IDs. Objects bind at load.
     fn holder_set(&self, registry: &str, v: &Value) -> Vec<String> {
@@ -2296,19 +2301,11 @@ mod namespace_tests {
         assert!(present.contains_key("demo:replaced"));
         assert!(!present.contains_key("demo:unknown"));
         assert!(Arc::ptr_eq(&absent, &shared_tables(&root, &off).unwrap()));
-        fs::write(root.join("items.json"), "{}").unwrap();
+        fs::write(root.join("items.json"), r#"{"minecraft:stone":{}}"#).unwrap();
         let defaults = crate::item_defaults::read(&root).unwrap();
         let loot = LootData::load(&root, &off, &defaults).unwrap();
-        assert_eq!(
-            loot.tags[&("item".into(), "demo:food".into())],
-            crate::tag_layers::TagLayers::from_file(
-                &serde_json::json!({"values": ["minecraft:stone"]})
-            )
-        );
-        assert!(
-            loot.tags
-                .contains_key(&("item".into(), "demo:absent".into()))
-        );
+        assert_eq!(loot.tags["item"]["demo:food"], ["minecraft:stone"]);
+        assert!(loot.tags["item"].contains_key("demo:absent"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -3004,7 +3001,7 @@ mod namespace_tests {
         let root = std::env::temp_dir().join(format!("sunrise-loot-tag-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(root.join("data/minecraft/tags/item")).unwrap();
-        fs::write(root.join("items.json"), "{}").unwrap();
+        fs::write(root.join("items.json"), r#"{"minecraft:apple":{},"minecraft:bread":{},"minecraft:cookie":{},"minecraft:kelp":{}}"#).unwrap();
         fs::write(
             root.join("data/minecraft/tags/item/food.json"),
             r#"{"values": ["minecraft:bread", "minecraft:cookie"]}"#,

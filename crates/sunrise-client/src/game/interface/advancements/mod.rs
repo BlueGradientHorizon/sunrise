@@ -287,7 +287,7 @@ impl TagSources<'_> {
         match registry {
             "item" => Some(self.items.item_in_tag(tag, id)),
             "block" => Some(self.items.block_in_tag(tag, id)),
-            "entity_type" => Some(self.mob_data.entity_has(tag, id)),
+            "entity_type" => Some(self.items.entity_type_tags.contains(tag, id)),
             "worldgen/biome" => Some(self.mob_data.biome_has(tag, id)),
             "worldgen/structure" => Some(
                 vanilla_structure_tags(self.resources)

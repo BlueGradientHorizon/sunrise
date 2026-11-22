@@ -74,15 +74,17 @@ pub(super) fn network_recipes(
     defaults: &sunrise_world::item_defaults::ItemDefaults,
     sources: &sunrise_client::crafting::ResolvedSources,
     damage: sunrise_client_core::registries::RegistryIds,
+    entity_type_tags: &std::sync::Arc<sunrise_client::items::EntityTypeTags>,
     packed: Option<&super::data::PackRegistryDefinitions>,
 ) -> crate::Result<(BTreeMap<String, Box<str>>, HashMap<String, i32>)> {
     // The resolved copy: the load's `ingredient` answers are in place, and
     // none of them leaves it (`forget_answers` below).
-    let items = sunrise_client::items::Items::catalog_with_damage_registry(
+    let items = sunrise_client::items::Items::catalog_with_world_registries(
         resources,
         overlay,
         defaults,
         damage,
+        entity_type_tags,
         |items| match packed {
             Some(packed) => packed.install_items(items, resources, overlay, defaults),
             None => items.load_resource_registries(resources, overlay, defaults),
