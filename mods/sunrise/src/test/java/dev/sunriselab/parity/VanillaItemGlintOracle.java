@@ -748,18 +748,20 @@ public final class VanillaItemGlintOracle {
             int quadCount = rc.vertices.size() / 4;
             List<Object> quads = new ArrayList<>(quadCount);
             for (int q = 0; q < quadCount; q++) {
+                long[][] posBits = new long[4][3];
                 long[][] uv0Bits = new long[4][2];
                 long[][] glintT0Bits = isGlint ? new long[4][2] : null;
                 long[][] glintT123456Bits = isGlint ? new long[4][2] : null;
                 for (int i = 0; i < 4; i++) {
                     RecordedVertex rv = rc.vertices.get(q * 4 + i);
+                    posBits[i] = new long[] {u32(rv.x), u32(rv.y), u32(rv.z)};
                     uv0Bits[i] = new long[] {u32(rv.u), u32(rv.v)};
                     if (isGlint) {
                         glintT0Bits[i] = transformUvBits(matT0, rv.u, rv.v);
                         glintT123456Bits[i] = transformUvBits(matT123456, rv.u, rv.v);
                     }
                 }
-                Map<String, Object> qm = map("uv0_bits", uv0Bits);
+                Map<String, Object> qm = map("pos_bits", posBits, "uv0_bits", uv0Bits);
                 if (isGlint) {
                     qm.put("glint_uv_t0_bits", glintT0Bits);
                     qm.put("glint_uv_t123456_bits", glintT123456Bits);
@@ -1110,6 +1112,16 @@ public final class VanillaItemGlintOracle {
             st.submit(new PoseStack(), col, 15728880, 0, 0);
             blockItemJson.put(ctx.getSerializedName(), evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, false));
         }
+        {
+            ItemStackRenderState st = new ItemStackRenderState();
+            resolver.updateForTopItem(st, glintStone, ItemDisplayContext.GUI, null, null, 0);
+            RecordingCollector col = new RecordingCollector();
+            PoseStack ps = new PoseStack();
+            ps.translate(8.0F, 8.0F, 0.0F);
+            ps.scale(16.0F, -16.0F, 16.0F);
+            st.submit(ps, col, 15728880, 0, 0);
+            blockItemJson.put("gui_slot_pose", evaluateItemSubmits(col.items, gameRenderState, computeFoilDecalPose, false));
+        }
 
         // 7. Special foil (FoilType.SPECIAL): minecraft:compass with enchantment_glint_override = true.
         ItemStack glintCompass = new ItemStack(Items.COMPASS);
@@ -1235,6 +1247,18 @@ public final class VanillaItemGlintOracle {
                 );
             }
             specialModelsJson.put(key, perCtx);
+        }
+        {
+            ItemStackRenderState st = new ItemStackRenderState();
+            resolver.updateForTopItem(st, glintShieldPlain, ItemDisplayContext.GUI, null, null, 0);
+            RecordingCollector col = new RecordingCollector();
+            PoseStack ps = new PoseStack();
+            ps.translate(8.0F, 8.0F, 0.0F);
+            ps.scale(16.0F, -16.0F, 16.0F);
+            st.submit(ps, col, 15728880, 0, 0);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> shieldPlainMap = (Map<String, Object>) specialModelsJson.get("shield_plain");
+            shieldPlainMap.put("gui_slot_pose", map("models", evaluateModelSubmits(col.models, gameRenderState)));
         }
 
         Map<String, Object> materialBakerJson;
