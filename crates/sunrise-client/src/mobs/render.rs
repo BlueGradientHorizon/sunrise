@@ -16,6 +16,10 @@ mod frame_model;
 use frame_model::FrameBody;
 pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode, FrameModelPose};
 
+mod equipment;
+use super::skin::Paint;
+pub use equipment::{ArmorSlot, EquipmentModel, WornLayer, WornModel};
+
 // The invisible body a viewer still sees (`Entity.isInvisibleTo`), beside this file.
 #[path = "invisible_body.rs"]
 mod invisible_body;
@@ -134,11 +138,12 @@ fn eyes_layer(m: &Mob, layer: &Layer) -> bool {
 
 /// One draw of a model with a texture.
 pub struct Layer {
-    /// Equipment owns its overlay; other layers inherit the body overlay.
+    /// Final sprite UVs bound at reload; the texture name still identifies its emissive sprite.
     pub equipment_uv: Option<[f32; 4]>,
+    /// Equipment owns its overlay; other layers inherit the body overlay.
     pub equipment_overlay: Option<u32>,
     /// Reload-baked, slot-clipped replacement; never geometry supplied by a frame.
-    pub equipment_model: Option<std::sync::Arc<Part>>,
+    pub equipment_model: Option<(std::sync::Arc<EquipmentModel>, ArmorSlot)>,
     pub model: Cow<'static, str>,
     pub texture: Cow<'static, str>,
     pub color: u32,
@@ -1322,30 +1327,21 @@ pub fn draw_scrolled(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    draw_normals(
-        part,
-        base,
-        ModelNormals::new(base),
-        poses,
+    let paint = Paint {
         uv,
         scroll,
         color,
         light,
         overlay,
-        out,
-    );
+    };
+    draw_normals(part, base, ModelNormals::new(base), poses, paint, out);
 }
-#[allow(clippy::too_many_arguments)]
 fn draw_normals(
     part: &Part,
     base: glam::Mat4,
     normals: ModelNormals,
     poses: &Poses,
-    uv: [f32; 4],
-    scroll: f32,
-    color: u32,
-    light: u32,
-    overlay: u32,
+    paint: Paint,
     out: &mut Vec<Vertex>,
 ) {
     let p = poses.pose(part);
@@ -1357,34 +1353,51 @@ fn draw_normals(
     // `skips` is a name lookup: ask once per part, not once per polygon. A part
     // hidden this way still draws its children, so only the polygons are gated.
     if !poses.skips(part) {
-        for poly in &part.polygons {
-            let normal = poly.vertex_normal(normals);
-            for v in poly.vertices {
-                let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
-                // The armour glint scrolls the layer's model UV in the shader;
-                // the item path already passed its transformed UV.
-                let glint_uv = if overlay == ARMOR_GLINT {
-                    [v[3], v[4]]
-                } else {
-                    [0.0, 0.0]
-                };
-                out.push(Vertex {
-                    normal,
-                    pos: pos.to_array(),
-                    uv: [
-                        uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
-                        uv[1] + (uv[3] - uv[1]) * v[4],
-                    ],
-                    layer: overlay,
-                    color,
-                    light,
-                    glint_uv,
-                });
-            }
-        }
+        draw_polygons(&part.polygons, m, normals, paint, out);
     }
-    for c in &part.children {
-        draw_normals(c, m, normals, poses, uv, scroll, color, light, overlay, out);
+    for child in &part.children {
+        draw_normals(child, m, normals, poses, paint, out);
+    }
+}
+
+fn draw_polygons(
+    polygons: &[super::Polygon],
+    m: glam::Mat4,
+    normals: ModelNormals,
+    paint: Paint,
+    out: &mut Vec<Vertex>,
+) {
+    let Paint {
+        uv,
+        scroll,
+        color,
+        light,
+        overlay,
+    } = paint;
+    for poly in polygons {
+        let normal = poly.vertex_normal(normals);
+        for v in poly.vertices {
+            let pos = m.transform_point3(glam::Vec3::new(v[0], v[1], v[2]) / 16.0);
+            // The armour glint scrolls the layer's model UV in the shader;
+            // the item path already passed its transformed UV.
+            let glint_uv = if overlay == ARMOR_GLINT {
+                [v[3], v[4]]
+            } else {
+                [0.0, 0.0]
+            };
+            out.push(Vertex {
+                normal,
+                pos: pos.to_array(),
+                uv: [
+                    uv[0] + (uv[2] - uv[0]) * scroll_u(v[3], scroll),
+                    uv[1] + (uv[3] - uv[1]) * v[4],
+                ],
+                layer: overlay,
+                color,
+                light,
+                glint_uv,
+            });
+        }
     }
 }
 /// A part's matrix under `base` for its pose (`ModelPart.translateAndRotate`
@@ -2192,10 +2205,9 @@ fn render_selected(
                     (skin.models.tagged && (eyes_layer(m, layer) || !layer.full_bright)
                         || !layer.full_bright && !translucent_layer(m, layer))
                         && cem.layer(&layer.model).is_none()
-                        && layer
-                            .equipment_model
-                            .as_ref()
-                            .or_else(|| m.kind.layer(&layer.model))
+                        && layer.equipment_model.is_none()
+                        && m.kind
+                            .layer(&layer.model)
                             .is_none_or(|part| skin.supports(part))
                 })
         }
@@ -2260,7 +2272,19 @@ fn render_selected(
         poses.apply_frame_visibility(false);
         for (part, uv, color, layer_overlay, glows) in extra {
             let light = if *glows { FULL_BRIGHT } else { light };
-            draw(part, base, poses, *uv, *color, light, *layer_overlay, out);
+            part.submit(
+                &mut None,
+                base,
+                poses,
+                Paint {
+                    uv: *uv,
+                    scroll: 0.0,
+                    color: *color,
+                    light,
+                    overlay: *layer_overlay,
+                },
+                out,
+            );
         }
     }
     // Refill one pooled pose map for layers that run their own setupAnim.
@@ -2270,28 +2294,26 @@ fn render_selected(
         let custom = cem.layer(&layer.model);
         // `layer.texture` stays the vanilla name (the villager hats below look for its
         // `/type/` folder).
-        let texture = cem_texture(
-            custom.filter(|_| {
-                !layer.equipment_texture_final && paints_with_jem(&all_layers, i, body_keys)
-            }),
-            &layer.texture,
-            atlas,
-        )
-        .unwrap_or(&layer.texture);
-        let part = if let Some(part) = &layer.equipment_model {
-            part.clone()
+        let part = if let Some((model, slot)) = &layer.equipment_model {
+            WornModel::Override(model, *slot)
         } else {
-            match custom {
-                Some(custom) => custom.model.clone(),
-                None => match m.kind.layer(&layer.model) {
-                    Some(part) => part.clone(),
-                    None => continue,
-                },
-            }
+            let Some(part) = custom
+                .map(|c| &c.model)
+                .or_else(|| m.kind.layer(&layer.model))
+            else {
+                continue;
+            };
+            WornModel::Vanilla(part)
         };
-        let Some((drawn, uv)) = (if layer.equipment_texture_final {
-            atlas(texture).map(|uv| (texture, uv))
+        let Some((drawn, uv)) = (if let Some(uv) = layer.equipment_uv {
+            Some((layer.texture.as_ref(), uv))
         } else {
+            let texture = cem_texture(
+                custom.filter(|_| paints_with_jem(&all_layers, i, body_keys)),
+                &layer.texture,
+                atlas,
+            )
+            .unwrap_or(&layer.texture);
             sprite(texture).or_else(|| Some((texture, atlas(texture)?)))
         }) else {
             continue;
@@ -2312,21 +2334,23 @@ fn render_selected(
         } else {
             true
         };
-        let on_parent = layer.equipment_model.is_none()
-            && custom.is_none()
+        let on_parent = custom.is_none()
             && body.custom.is_none()
-            && std::sync::Arc::ptr_eq(&part, body_model);
-        let uses_body_pose = layer.equipment_model.is_some() || on_parent;
-        let draw_poses = if uses_body_pose {
-            poses.apply_frame_visibility(on_parent && type_hat_shown);
-            &mut *poses
-        } else {
-            layer_poses.reset(&part);
-            anim::setup(m, &s, &mut layer_poses, &data.mob_data().animations);
-            if let Some(animation) = custom.and_then(|c| c.animation.as_ref()) {
-                animation.run(m, &s, &mut layer_poses);
+            && matches!(part, WornModel::Vanilla(part) if std::sync::Arc::ptr_eq(part, body_model));
+        let uses_body_pose = matches!(part, WornModel::Override(..)) || on_parent;
+        let draw_poses = match part {
+            WornModel::Vanilla(part) if !uses_body_pose => {
+                layer_poses.reset(part);
+                anim::setup(m, &s, &mut layer_poses, &data.mob_data().animations);
+                if let Some(animation) = custom.and_then(|c| c.animation.as_ref()) {
+                    animation.run(m, &s, &mut layer_poses);
+                }
+                &mut layer_poses
             }
-            &mut *layer_poses
+            _ => {
+                poses.apply_frame_visibility(on_parent && type_hat_shown);
+                &mut *poses
+            }
         };
         // When the no-hat alternate borrows the body pose, its head visibility
         // change lasts only through this layer and its emissive overlay.
@@ -2344,29 +2368,25 @@ fn render_selected(
         let overlay = layer.equipment_overlay.unwrap_or(overlay);
         let start = out.len();
         let first_job = skin.as_deref().map(|skin| skin.frame.jobs.len());
-        put(
-            &mut skin,
-            &part,
-            base,
-            draw_poses,
+        let paint = Paint {
             uv,
-            layer.scroll,
-            layer.color,
+            scroll: layer.scroll,
+            color: layer.color,
             light,
             overlay,
-            out,
-        );
+        };
+        part.submit(&mut skin, base, draw_poses, paint, out);
         if let Some(glow) = emissive_uv(drawn) {
-            put(
+            part.submit(
                 &mut skin,
-                &part,
                 base,
                 draw_poses,
-                glow,
-                layer.scroll,
-                layer.color,
-                FULL_BRIGHT,
-                0,
+                Paint {
+                    uv: glow,
+                    light: FULL_BRIGHT,
+                    overlay: 0,
+                    ..paint
+                },
                 out,
             );
         }

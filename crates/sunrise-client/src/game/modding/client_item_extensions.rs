@@ -1,4 +1,4 @@
-//! Reload-owned item providers and baked humanoid equipment trees.
+//! Reload-owned item providers and baked humanoid equipment.
 use super::*;
 use mod_api::__private::game::CallbackOwner;
 use mod_api::{
@@ -14,7 +14,7 @@ use std::{
 };
 use sunrise_client::{
     fast_hash::FxHashMap,
-    mobs::{Part, Polygon},
+    mobs::{finalize::EquipmentRead, render::EquipmentModel},
 };
 
 /// One callback owner per mod and item, shared by all generations of that provider.
@@ -40,7 +40,7 @@ pub(super) struct ItemExtensionsPart {
 
 pub(super) struct ArmorModel {
     pub name: String,
-    pub slots: [Arc<Part>; 4],
+    pub geometry: Arc<EquipmentModel>,
 }
 
 pub(super) struct ArmorTexture {
@@ -96,20 +96,12 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
             return Err(format!("duplicate armour model {name}"));
         }
         let baked =
-            bake_model("root", model).map_err(|why| format!("armour model {name}: {why}"))?;
+            EquipmentModel::bake(model).map_err(|why| format!("armour model {name}: {why}"))?;
         let index = u32::try_from(self.state.models.len())
             .map_err(|_| format!("armour model {name}: model table exhausted"))?;
-        use super::equipment_piece::ArmorSlot;
-        let slots = [
-            ArmorSlot::Head,
-            ArmorSlot::Chest,
-            ArmorSlot::Legs,
-            ArmorSlot::Feet,
-        ]
-        .map(|slot| Arc::new(hide_other_slots(&baked, slot)));
         self.state.models.push(ArmorModel {
             name: name.to_owned(),
-            slots,
+            geometry: Arc::new(baked),
         });
         Ok(ArmorModelRef::__new(self.state.generation, index))
     }
@@ -153,108 +145,6 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
     }
 }
 
-// The bake's flat preorder lets slot filtering copy polygons without recursively cloning a tree.
-struct BakedPart<'a> {
-    parent: usize,
-    name: &'a str,
-    pose: [f32; 9],
-    polygons: Vec<Polygon>,
-}
-
-// All unknown geometry is validated once while baking, never during a frame.
-fn bake_model<'a>(
-    name: &'a str,
-    model: &'a ModelPart,
-) -> std::result::Result<Vec<BakedPart<'a>>, &'static str> {
-    let mut baked = Vec::new();
-    let mut pending = vec![(0, name, model)];
-    while let Some((parent, name, model)) = pending.pop() {
-        let pose = [
-            model.x,
-            model.y,
-            model.z,
-            model.x_rot,
-            model.y_rot,
-            model.z_rot,
-            model.x_scale,
-            model.y_scale,
-            model.z_scale,
-        ];
-        if !pose.iter().all(|x| x.is_finite()) {
-            return Err("non-finite model pose");
-        }
-        let mut polygons = Vec::new();
-        for polygon in &model.polygons {
-            if !polygon.normal.iter().all(|x| x.is_finite())
-                || !polygon
-                    .vertices
-                    .iter()
-                    .all(|v| v.pos.iter().chain([&v.u, &v.v]).all(|x| x.is_finite()))
-            {
-                return Err("non-finite model geometry");
-            }
-            if !model.skip_draw && model.visible {
-                polygons.push(Polygon {
-                    normal: polygon.normal,
-                    vertices: polygon
-                        .vertices
-                        .map(|v| [v.pos[0], v.pos[1], v.pos[2], v.u, v.v]),
-                    cull_back: false,
-                });
-            }
-        }
-        if model.visible {
-            let index = baked.len();
-            let start = pending.len();
-            pending.extend(model.children().map(|(name, child)| (index, name, child)));
-            pending[start..].reverse();
-        }
-        baked.push(BakedPart {
-            parent,
-            name,
-            pose,
-            polygons,
-        });
-    }
-    Ok(baked)
-}
-
-fn hide_other_slots(baked: &[BakedPart<'_>], slot: super::equipment_piece::ArmorSlot) -> Part {
-    let mut selected: Vec<Option<(Part, bool)>> = Vec::with_capacity(baked.len());
-    for (index, part) in baked.iter().enumerate() {
-        // Keep the bind pose of a hidden part, but neither its polygons nor its subtree.
-        let keep = index == 0 || matches!(&selected[part.parent], Some((_, true)));
-        selected.push(keep.then(|| {
-            let shows = slot.shows(part.name);
-            let part = Part {
-                name: part.name.to_owned(),
-                pose: part.pose,
-                polygons: if shows {
-                    part.polygons.clone()
-                } else {
-                    Vec::new()
-                },
-                children: Vec::new(),
-            };
-            (part, shows)
-        }));
-    }
-
-    // Assemble from the leaves up; reverse each sibling list to restore model order.
-    for node in baked[1..].iter().rev() {
-        if let Some((mut part, _)) = selected.pop().flatten() {
-            part.children.reverse();
-            let (parent, _) = selected[node.parent]
-                .as_mut()
-                .expect("a retained part has a retained parent");
-            parent.children.push(part);
-        }
-    }
-    let (mut root, _) = selected.pop().flatten().expect("bake retains the root");
-    root.children.reverse();
-    root
-}
-
 impl Game<'_> {
     pub(super) fn resolve_client_item_extensions(&mut self) {
         use mod_api::__private::game::RegistrationContextNew;
@@ -283,21 +173,20 @@ impl Game<'_> {
     pub(super) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,
-        stack: &sunrise_client::items::ItemStack,
+        stack: &EquipmentRead<'_>,
         trim: Option<super::equipment_piece::MaterialBinding<'a>>,
         mut texture: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
     ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
-        use sunrise_core::nbt::{JavaString, Tag};
         let state = &self.armor_stand_assets.extensions;
         if state.items.is_empty() {
             return None;
         }
-        let metadata = super::api_values::stack_read_metadata(stack);
+        let metadata = super::api_values::stack_read_metadata(stack.base());
         let item = match &metadata {
             Ok((item, ..)) => *item,
             // Only warn about a refused stack when it would have reached an active provider.
-            Err(_) => mod_api::__private::item_key(&stack.item)?,
+            Err(_) => mod_api::__private::item_key(&stack.base().item)?,
         };
         let part = state.items.get(&item)?;
         if !part.owner.is_enabled() {
@@ -313,32 +202,20 @@ impl Game<'_> {
                 return None;
             }
         };
-        let read_override = |id: &str| {
-            let bare = id.strip_prefix('!').unwrap_or(id);
-            let Tag::Compound(mut patch) =
-                sunrise_items::item_data::encode_extra_components_matching(stack, |name| {
-                    name == bare
-                })?
-            else {
-                return None;
-            };
-            patch.remove(&JavaString::from(id))
-        };
-        let project = |metadata| super::api_values::project_stack(stack, metadata).ok();
-        let view =
-            mod_api::ItemStackView::resident_with_components(metadata, &project, &read_override);
-        dispatch_equipment(
-            self,
-            state,
-            part,
-            &view,
-            piece,
-            EquipmentBindings {
-                trim,
-                default: &mut texture,
-                emissive: &mut emissive,
-            },
-        )
+        super::native_living_refs::with_equipment_view(stack, metadata, |view, _| {
+            dispatch_equipment(
+                self,
+                state,
+                part,
+                &view,
+                piece,
+                EquipmentBindings {
+                    trim,
+                    default: &mut texture,
+                    emissive: &mut emissive,
+                },
+            )
+        })
     }
 }
 
@@ -438,7 +315,7 @@ fn dispatch_equipment<'a>(
                             .then(|| state.models.get(index as usize))
                             .flatten();
                         if let Some(model) = model {
-                            Some(&model.slots[piece.slot.index()])
+                            Some(&model.geometry)
                         } else {
                             report_stale("model");
                             None
@@ -462,10 +339,15 @@ fn dispatch_equipment<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::equipment_piece::{ArmorSlot, EquipmentAssetLayer, EquipmentPiece};
+    use super::super::equipment_piece::{EquipmentAssetLayer, EquipmentPiece};
     use super::*;
     use mod_api::{
         ClientHost, EquipmentLayer, EquipmentLayerType, ModelPolygon, ModelVertex, PartPose,
+    };
+    use sunrise_client::mobs::{
+        anim::Poses,
+        render::{ArmorSlot, WornModel},
+        skin::Paint,
     };
     struct Empty;
     #[mod_api::__subscriptions]
@@ -497,23 +379,66 @@ mod tests {
         )
     }
     #[test]
-    fn a_deep_armour_model_bakes_with_slot_visibility_intact() {
-        let mut model = tree(0.0);
-        for _ in 0..64 {
-            model = ModelPart::new(Vec::new(), vec![("child".into(), model)], PartPose::ZERO);
+    fn a_deep_armour_model_draws_and_drops_with_slot_visibility_intact() {
+        let mut deep = tree(0.0);
+        deep.polygons = deep.get_child("body").unwrap().polygons.clone();
+        deep.skip_draw = true;
+        const DEPTH: u16 = 20_000;
+        for _ in 0..DEPTH {
+            deep = ModelPart::new(
+                Vec::new(),
+                vec![("link".into(), deep)],
+                PartPose::offset(1.0, 0.0, 0.0),
+            );
         }
-        let baked = bake_model("root", &model).unwrap();
-        for (slot, faces) in [(ArmorSlot::Chest, 1), (ArmorSlot::Head, 0)] {
-            let tree = hide_other_slots(&baked, slot);
-            let mut part = &tree;
-            for _ in 0..65 {
-                assert_eq!(part.children.len(), 1);
-                part = &part.children[0];
-            }
-            assert_eq!(part.name, "body");
-            assert!(part.children.is_empty());
-            assert_eq!(part.polygons.len(), faces);
-        }
+        let mut hidden = tree(100.0);
+        hidden.visible = false;
+        let root = ModelPart::new(
+            Vec::new(),
+            vec![
+                ("deep".into(), deep),
+                ("hidden".into(), hidden),
+                ("last".into(), tree(4.0)),
+            ],
+            PartPose::ZERO,
+        );
+        let baked = EquipmentModel::bake(&root).unwrap();
+        drop(root);
+
+        let draw = |slot| {
+            let mut vertices = Vec::new();
+            WornModel::Override(&baked, slot).submit(
+                &mut None,
+                glam::Mat4::IDENTITY,
+                &Poses::default(),
+                Paint {
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    scroll: 0.0,
+                    color: u32::MAX,
+                    light: 0xF0F0,
+                    overlay: 0,
+                },
+                &mut vertices,
+            );
+            vertices
+        };
+        let chest = draw(ArmorSlot::Chest);
+        assert_eq!(
+            chest.len(),
+            8,
+            "skipDraw kept its child, and visibility hid its subtree"
+        );
+        assert_eq!(chest[0].pos, [f32::from(DEPTH) / 16.0, 0.0, 0.0]);
+        assert_eq!(
+            chest[4].pos,
+            [0.25, 0.0, 0.0],
+            "sibling follows the deep subtree"
+        );
+        assert!(
+            draw(ArmorSlot::Head).is_empty(),
+            "slot visibility hides both body faces"
+        );
+        drop(baked);
     }
 
     struct TwoShapes {
@@ -709,8 +634,8 @@ mod tests {
                     .iter()
                     .map(|m| m.model.unwrap())
                     .collect::<Vec<_>>();
-                assert!(Arc::ptr_eq(selected[0], &state.models[0].slots[1]));
-                assert!(Arc::ptr_eq(selected[1], &state.models[1].slots[1]));
+                assert!(Arc::ptr_eq(selected[0], &state.models[0].geometry));
+                assert!(Arc::ptr_eq(selected[1], &state.models[1].geometry));
                 assert!(
                     Arc::ptr_eq(selected[2], selected[1]),
                     "one trim on the last material's tree"
@@ -718,14 +643,17 @@ mod tests {
                 let mut vertices = Vec::new();
                 for m in materials {
                     let model = m.model.unwrap();
-                    sunrise_client::mobs::render::draw(
-                        model,
+                    WornModel::Override(model, piece.slot).submit(
+                        &mut None,
                         glam::Mat4::IDENTITY,
-                        &sunrise_client::mobs::anim::Poses::new(model),
-                        m.binding.uv,
-                        m.color,
-                        0xF0F0,
-                        m.overlay,
+                        &Poses::default(),
+                        Paint {
+                            uv: m.binding.uv,
+                            scroll: 0.0,
+                            color: m.color,
+                            light: 0xF0F0,
+                            overlay: m.overlay,
+                        },
                         &mut vertices,
                     );
                 }
@@ -876,7 +804,7 @@ mod tests {
                     let draw = |stack: &ItemStack| {
                         game.extended_equipment_materials(
                             &piece,
-                            stack,
+                            &EquipmentRead::resident(stack),
                             None,
                             |_| Some(binding),
                             |_| None,
@@ -902,6 +830,185 @@ mod tests {
                     assert_eq!(materials[0].color, 0xFF56_3412);
                     assert!(!materials[0].final_texture);
                 });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn mob_worn_callbacks_read_gear_and_submit_reload_bound_uvs() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use mod_api::{Component, ItemStackView, Tag};
+        use sunrise_client::{
+            hud::Rect,
+            items::ItemStack,
+            mobs::{Mob, finalize, render},
+        };
+        use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Vec3};
+
+        if run_fresh_cases(
+            "game::client_item_extensions::tests::mob_worn_callbacks_read_gear_and_submit_reload_bound_uvs",
+            "SUNRISE_WORN_MOB_BINDINGS_CHILD",
+            &["mob"],
+        ) {
+            return;
+        }
+
+        const SPRITE: &str = "armor_test:entity/equipment/selected";
+        struct Protection;
+        impl Component for Protection {
+            type Value = i32;
+            fn id(&self) -> &str {
+                "minecraft:enchantments"
+            }
+            fn decode(&self, tag: &Tag) -> Option<i32> {
+                match tag.get("minecraft:protection")? {
+                    Tag::Int(level) => Some(*level),
+                    _ => None,
+                }
+            }
+            fn encode(&self, level: i32) -> Tag {
+                Tag::compound([("minecraft:protection", Tag::Int(level))])
+            }
+        }
+
+        struct Provider(ArmorTextureRef, ArmorModelRef);
+        impl ClientItemExtensions for Provider {
+            fn default_dye_color(&self, _: &dyn ClientHost, stack: &ItemStackView<'_>) -> u32 {
+                assert_eq!(stack.get(&Protection), Some(3));
+                0
+            }
+
+            fn armor_texture(
+                &self,
+                _: &dyn ClientHost,
+                _: &ItemStackView<'_>,
+                _: EquipmentLayerType,
+                _: &EquipmentLayer<'_>,
+                _: &str,
+            ) -> ArmorTextureRef {
+                self.0
+            }
+
+            fn armor_layer_model(
+                &self,
+                _: &dyn ClientHost,
+                _: &ItemStackView<'_>,
+                _: EquipmentLayerType,
+                _: &EquipmentLayer<'_>,
+                _: u32,
+            ) -> ArmorModelRef {
+                self.1
+            }
+        }
+
+        struct Register;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Register {
+            fn register_client_item_extensions(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
+            ) {
+                let texture = event.extensions.register_texture(SPRITE).unwrap();
+                let model = event
+                    .extensions
+                    .register_model("armor_test:chest", &tree(0.0))
+                    .unwrap();
+                let item = mod_api::__private::item_key("minecraft:iron_chestplate").unwrap();
+                event
+                    .extensions
+                    .client_item_extensions(item, Arc::new(Provider(texture, model)))
+                    .unwrap();
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("armor_test", Box::new(Register))].into(),
+            || {
+                with_client_game(|game| {
+                    game.gui.atlas.sprites.insert(
+                        SPRITE.into(),
+                        Rect {
+                            u0: 0.25,
+                            v0: 0.375,
+                            u1: 0.5,
+                            v1: 0.75,
+                            w: 16,
+                            h: 16,
+                        },
+                    );
+                    game.resolve_client_item_extensions();
+                    let kind = game
+                        .res
+                        .mob_types()
+                        .get("minecraft:zombie")
+                        .unwrap()
+                        .clone();
+                    let mut mob = Mob::new(1, kind, Vec3::ZERO, 0.0);
+                    let slot = EquipmentSlot::Chest;
+                    mob.extra.set_slot_stack(
+                        slot as usize,
+                        Some(ItemStack::new("minecraft:iron_chestplate", 1)),
+                    );
+                    finalize::set_slot_enchantments(
+                        &mut mob,
+                        slot as usize,
+                        vec![("minecraft:protection".into(), 3)],
+                    );
+                    let read = finalize::equipment_slot(&mob, slot).unwrap();
+                    assert!(read.base().enchantments().is_empty());
+                    let metadata =
+                        super::super::api_values::stack_read_metadata(read.base()).unwrap();
+                    super::super::native_living_refs::with_equipment_view(
+                        &read,
+                        metadata,
+                        |view, _| {
+                            assert_eq!(view.project().unwrap().get(&Protection), Some(3));
+                        },
+                    );
+
+                    let mut stack = read.base().clone();
+                    // An unrelated malformed component defeats a full projection, but not the
+                    // provider's single-component read of the live enchantment overlay.
+                    stack
+                        .data_mut()
+                        .set_other("!minecraft:damage", Some(Tag::Int(7)));
+                    mob.extra.set_slot_stack(slot as usize, Some(stack));
+                    let read = finalize::equipment_slot(&mob, slot).unwrap();
+                    let metadata =
+                        super::super::api_values::stack_read_metadata(read.base()).unwrap();
+                    super::super::native_living_refs::with_equipment_view(
+                        &read,
+                        metadata,
+                        |view, _| {
+                            assert!(view.project().is_none());
+                        },
+                    );
+                    let atlas = |name: &str| {
+                        assert_ne!(name, SPRITE, "the mob submission already has the bound UVs");
+                        Some([0.0, 0.0, 1.0, 1.0])
+                    };
+                    let mut vertices = Vec::new();
+                    render::render(
+                        &mob,
+                        0.0,
+                        glam::DVec3::ZERO,
+                        &atlas,
+                        0xF0F0,
+                        game,
+                        &mut vertices,
+                    );
+                    let worn = vertices
+                        .last_chunk::<4>()
+                        .expect("the worn model submitted a quad");
+                    assert!(worn.iter().all(|v| v.layer == render::ARMOR_GLINT));
+                    let uvs = worn.each_ref().map(|v| v.uv);
+                    assert_eq!(
+                        uvs,
+                        [[0.25, 0.375], [0.5, 0.375], [0.5, 0.75], [0.25, 0.75]]
+                    );
+                })
             },
         );
     }

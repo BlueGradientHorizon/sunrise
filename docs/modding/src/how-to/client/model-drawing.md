@@ -72,9 +72,9 @@ ID outside the `minecraft` namespace.
 The game calls each accepted supplier once when it freezes the layer table, in
 registration order. A duplicate ID does not run its supplier. The frozen table
 retains the definitions, not the suppliers. `ClientHost::bake_layer` looks up
-both mod-registered layers (`"mymod:golem#main"`) and vanilla or resource-pack
-layers (`"minecraft:zombie#main"`, `"minecraft:player#main"`) from the
-reload-bound layer set without reading from disk. Bake each layer once during
+mod-registered layers (`"mymod:golem#main"`) and layers from the prepared
+vanilla definitions (`"minecraft:zombie#main"`, `"minecraft:player#main"`)
+without reading from disk. Bake each layer once during
 renderer setup or after a resource reload and keep the owned `ModelPart` tree
 for posing and drawing; baking again reuses the indexed definition.
 
@@ -99,7 +99,9 @@ event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
 ```
 
 Implement `ClientItemExtensions` using the borrowed draw inputs and the
-reload-bound references:
+reload-bound references. If the equipment asset's `humanoid` layers specify
+`mymod:chest_inner` and `mymod:chest_outer`, the renderer expands them to the
+sprite names used in this match:
 
 ```rust,ignore
 impl ClientItemExtensions for ChestLayers {
@@ -109,14 +111,12 @@ impl ClientItemExtensions for ChestLayers {
         _stack: &ItemStackView<'_>,
         _layer_type: EquipmentLayerType,
         layer: &EquipmentLayer<'_>,
-        default_texture: &str,
+        _default_texture: &str,
     ) -> ArmorTextureRef {
-        if layer.texture == "mymod:chest_outer" {
-            self.textures[1]
-        } else if default_texture.is_empty() {
-            self.textures[0]
-        } else {
-            ArmorTextureRef::DEFAULT
+        match layer.texture {
+            "mymod:entity/equipment/humanoid/chest_inner" => self.textures[0],
+            "mymod:entity/equipment/humanoid/chest_outer" => self.textures[1],
+            _ => ArmorTextureRef::DEFAULT,
         }
     }
 

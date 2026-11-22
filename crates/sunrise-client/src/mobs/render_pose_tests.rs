@@ -401,7 +401,7 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
 fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatch_it() {
     struct Source {
         data: MobData,
-        model: std::sync::Arc<Part>,
+        model: std::sync::Arc<EquipmentModel>,
         calls: std::cell::Cell<usize>,
     }
     impl RenderDataSource for Source {
@@ -416,7 +416,8 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
                 0xFFFFFFFF,
                 ARMOR_GLINT,
             );
-            layer.equipment_model = Some(self.model.clone());
+            layer.equipment_model = Some((self.model.clone(), ArmorSlot::Chest));
+            layer.equipment_uv = Some([0.25, 0.25, 0.5, 0.5]);
             vec![layer]
         }
         fn equipment_inventory(&self, _: &Mob) -> Vec<Layer> {
@@ -424,18 +425,22 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
         }
     }
     let (mob, data) = humanoid_zombie();
+    let mut reference = (*mob.kind.model).clone();
+    reference.children.retain(|node| node.name == "body");
+    let reference = std::sync::Arc::new(reference);
+    let baked = EquipmentModel::bake(&crate::mobs::model_layers::from_part(&reference)).unwrap();
     let source = Source {
-        model: mob.kind.model.clone(),
+        model: std::sync::Arc::new(baked),
         data,
         calls: std::cell::Cell::new(0),
     };
     let uv = [0.25, 0.25, 0.5, 0.5];
     let atlas = |name: &str| {
-        Some(if name == "test:equipment" {
-            uv
-        } else {
-            [0.0, 0.0, 1.0, 1.0]
-        })
+        assert_ne!(
+            name, "test:equipment",
+            "final UVs must not consult the live atlas"
+        );
+        Some([0.0, 0.0, 1.0, 1.0])
     };
     assert!(
         !drawn_textures(&mob, &source)
@@ -466,7 +471,13 @@ fn equipment_model_override_draws_with_body_poses_and_inventory_does_not_dispatc
         &atlas,
         0xF0F0,
         &source.data,
-        &[(&source.model, uv, 0xFFFFFFFF, ARMOR_GLINT, false)],
+        &[(
+            WornModel::Vanilla(&reference),
+            uv,
+            0xFFFFFFFF,
+            ARMOR_GLINT,
+            false,
+        )],
         &mut expected,
     );
     assert_eq!(source.calls.get(), 1);

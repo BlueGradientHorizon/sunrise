@@ -696,6 +696,9 @@ pub(super) fn stage_pack(
     japanese: bool,
     progress: &super::Progress,
 ) -> sunrise_client::Result<StagedPack> {
+    // EntityModelSet.vanilla builds these definitions from the base game, not packs.
+    let entity_models_doc = sunrise_client::mobs::EntityModelDocument::load(vanilla_root)
+        .map_err(|e| format!("loading vanilla entity model definitions: {e}"))?;
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?;
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
@@ -770,10 +773,9 @@ pub(super) fn stage_pack(
     ));
     let block_entity_shapes = res.block_entity_render().shapes_for(&source);
     let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
-    let entity_models_doc = sunrise_client::mobs::EntityModelDocument::load(&root).ok();
     let armor_stand_assets =
-        super::armor_stands::ArmorStandAssets::load(&source, entity_models_doc.as_ref());
-    let entity_models = super::EntityModels::load(entity_models_doc.as_ref());
+        super::armor_stands::ArmorStandAssets::load(&source, Some(&entity_models_doc));
+    let entity_models = super::EntityModels::load(Some(&entity_models_doc));
     let frame_models = super::frames::bake_frames(pack.render.model_library.as_deref().ok());
     progress.set(3);
     Ok(StagedPack {

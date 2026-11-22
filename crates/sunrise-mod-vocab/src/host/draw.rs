@@ -12,8 +12,8 @@ pub trait DrawClientHost {
     /// Side: client.
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
     /// at its pose, as `EntityModelSet.bakeLayer` bakes it: one a native mod
-    /// registered (`register_layer_definitions`), or vanilla's, by the name
-    /// `entity-models.json` gives it (`minecraft:zombie#main`,
+    /// registered (`register_layer_definitions`), or a prepared vanilla definition by its
+    /// `entity-models.json` name (`minecraft:zombie#main`,
     /// `minecraft:player#main`). Layers are indexed once per client resource
     /// load and reload rather than read from disk on each call. The tree is
     /// the caller's own copy: bake it once, as a renderer does, and reuse it
@@ -400,7 +400,8 @@ pub trait BlockEntityDrawContext {
     /// Resolve states once through `host.block_states()` (or pass an event's
     /// resolved `BlockState`) rather than parsing properties each frame. A
     /// moving part that is not a block is a standalone model ([`Self::model`]).
-    /// Returns `false` for an unknown state without appending geometry.
+    /// The state's selected model parts, atlas coordinates and tints are bound to the active
+    /// resources. Returns `false` for an unknown state; a valid empty model draws nothing.
     fn block(&mut self, state: BlockState) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_block")
     }

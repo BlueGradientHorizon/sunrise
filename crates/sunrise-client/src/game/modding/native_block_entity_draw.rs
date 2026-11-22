@@ -31,6 +31,7 @@ use sunrise_world::registry::BlockStateId;
 pub(super) struct StandaloneGeometry {
     generation: u64,
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
+    layer_sprites: FxHashMap<u32, Rect>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
     /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
@@ -40,8 +41,8 @@ pub(super) struct StandaloneGeometry {
     >,
     /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
     states_from: u32,
-    /// Block states resolved by `block_state_model`, each once per generation.
-    states: std::cell::OnceCell<Box<[std::cell::OnceCell<StateModel>]>>,
+    /// Block states resolved for standalone terrain or block-entity draws, once per generation.
+    states: std::cell::OnceCell<Box<[std::cell::OnceCell<Box<StateModel>>]>>,
     /// How many block states the registry has: the table's size once a mod resolves one.
     state_count: usize,
 }
@@ -49,6 +50,8 @@ pub(super) struct StandaloneGeometry {
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
 pub(super) struct StateModel {
     faces: Vec<sunrise_client::models::catalog::BakedFace>,
+    prepared: Vec<super::minecarts::PreparedModelFace>,
+    tints: FxHashMap<i32, u32>,
     bounds: [[f32; 3]; 2],
 }
 
@@ -60,15 +63,13 @@ pub(super) struct InstanceSlot {
     pub bounds: [[f32; 3]; 2],
 }
 
-fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
+fn face_bounds(positions: impl IntoIterator<Item = [f32; 3]>) -> [[f32; 3]; 2] {
     let mut min = [f32::INFINITY; 3];
     let mut max = [f32::NEG_INFINITY; 3];
-    for face in faces {
-        for pos in face.positions() {
-            for axis in 0..3 {
-                min[axis] = min[axis].min(pos[axis]);
-                max[axis] = max[axis].max(pos[axis]);
-            }
+    for pos in positions {
+        for axis in 0..3 {
+            min[axis] = min[axis].min(pos[axis]);
+            max[axis] = max[axis].max(pos[axis]);
         }
     }
     if min[0].is_finite() {
@@ -81,6 +82,11 @@ fn face_bounds(faces: &[super::minecarts::PreparedModelFace]) -> [[f32; 3]; 2] {
 impl StandaloneGeometry {
     pub(super) fn new(pack: &super::PackResources, gui: &super::UiResources) -> Self {
         let catalog = &pack.render.model_catalog;
+        let layer_sprites: FxHashMap<_, _> = pack
+            .layer_names
+            .iter()
+            .filter_map(|(&layer, name)| Some((layer, *gui.atlas.sprites.get(name)?)))
+            .collect();
         let mut slots = Vec::new();
         let mut translucent = Vec::new();
         let mut bounds = Vec::new();
@@ -97,22 +103,24 @@ impl StandaloneGeometry {
                 .faces
                 .iter()
                 .filter_map(|face| {
-                    let sprite = pack
-                        .layer_names
-                        .get(&face.layer)
-                        .and_then(|name| gui.atlas.sprites.get(name))?;
+                    let sprite = layer_sprites.get(&face.layer)?;
                     Some(super::minecarts::PreparedModelFace::new(
                         &face.quad, *sprite,
                     ))
                 })
                 .collect();
             translucent[index] = model.faces.iter().any(|face| face.translucent);
-            bounds[index] = face_bounds(&prepared);
+            bounds[index] = face_bounds(
+                prepared
+                    .iter()
+                    .flat_map(super::minecarts::PreparedModelFace::positions),
+            );
             slots[index] = Some(prepared);
         }
         Self {
             generation: pack.render.generation,
             slots,
+            layer_sprites,
             translucent,
             bounds,
             fluid_looks: Default::default(),
@@ -139,35 +147,22 @@ impl StandaloneGeometry {
         })
     }
 
-    /// The slot of block state `state`, resolved with `faces` the first time.
-    pub(super) fn state_slot(
+    /// A state's seed-42 faces and atlas bindings, populated by its first consumer.
+    fn state_model(
         &self,
-        state: u32,
-        faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
-    ) -> Option<u32> {
+        state: BlockStateId,
+        build: impl FnOnce() -> StateModel,
+    ) -> Option<&StateModel> {
+        let index = state.0 as usize;
+        if index >= self.state_count {
+            return None;
+        }
         let states = self.states.get_or_init(|| {
             std::iter::repeat_with(Default::default)
                 .take(self.state_count)
                 .collect()
         });
-        let model = states.get(state as usize)?.get_or_init(|| {
-            let faces = faces();
-            let mut min = [f32::INFINITY; 3];
-            let mut max = [f32::NEG_INFINITY; 3];
-            for pos in faces.iter().flat_map(|face| face.quad.positions) {
-                for axis in 0..3 {
-                    min[axis] = min[axis].min(pos[axis]);
-                    max[axis] = max[axis].max(pos[axis]);
-                }
-            }
-            let bounds = if min[0].is_finite() {
-                [min, max]
-            } else {
-                [[0.0; 3], [0.0; 3]]
-            };
-            StateModel { faces, bounds }
-        });
-        (!model.faces.is_empty()).then_some(self.states_from + state)
+        Some(states[index].get_or_init(|| Box::new(build())).as_ref())
     }
 
     /// The baked faces of a block state's slot.
@@ -1548,17 +1543,16 @@ impl Game<'_> {
         draw: &mut BlockEntityDraw,
         state: BlockStateId,
     ) -> bool {
-        if self.pack.assets.registry.state(state).is_none() {
+        let Some(model) = self.resolved_block_model(state) else {
             return false;
-        }
-        let pose = draw.pose();
+        };
         let start = draw.vertices.len();
-        self.block_model_vertices(
-            state,
-            Self::BLOCK_MODEL_SEED,
-            pose,
-            draw.element_ambient(),
+        let light = draw.element_ambient();
+        super::minecarts::emit_model_faces(
+            model.prepared.iter().map(|&face| (face, light)),
+            draw.pose(),
             true,
+            |index| model.tints.get(&index).copied(),
             &mut draw.vertices,
         );
         draw.lit_since(start, BlockEntityDraw::cell_centre, draw.light & 0xffff);
@@ -1574,41 +1568,61 @@ impl Game<'_> {
         &self,
         id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
-        let slot = self
-            .standalone_geometry
-            .state_slot(id.0, || {
-                use sunrise_client::models::catalog::BakedFace;
-                // An unknown state resolves to no faces, which `state_slot` refuses.
-                let Ok(models) = self
-                    .pack
-                    .render
-                    .model_catalog
-                    .collect_seeded(id, Self::BLOCK_MODEL_SEED)
-                else {
-                    return Vec::new();
-                };
-                let default_tint = self.default_block_tint(id);
-                models
-                    .iter()
-                    .flat_map(|(_, model)| &model.faces)
-                    .map(|face| {
-                        let mut quad = face.quad.clone();
-                        if let Some(tint) = default_tint(quad.tint_index) {
-                            let base = quad.color.map_or(u32::MAX, |v| v as u32);
-                            quad.color = Some(sunrise_client::hud_layout::multiply(
-                                base,
-                                0xFF00_0000 | tint,
-                            ) as i32);
-                        }
-                        BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
-                    })
-                    .collect()
-            })
+        let _ = self
+            .resolved_block_model(id)
+            .filter(|model| !model.faces.is_empty())
             .ok_or(ModelError::UnknownModel)?;
         Ok(mod_api::__private::built::model_ref(
             self.standalone_geometry.generation(),
-            slot,
+            self.standalone_geometry.states_from + id.0,
         ))
+    }
+
+    /// Share the same seeded state model for terrain submissions and block-entity draws.
+    fn resolved_block_model(&self, id: BlockStateId) -> Option<&StateModel> {
+        let geometry = &self.standalone_geometry;
+        geometry.state_model(id, || {
+            use sunrise_client::models::catalog::BakedFace;
+            let mut faces = Vec::new();
+            let mut prepared = Vec::new();
+            let mut tints = FxHashMap::default();
+            let default_tint = self.default_block_tint(id);
+            if let Ok(models) = self
+                .pack
+                .render
+                .model_catalog
+                .collect_seeded(id, Self::BLOCK_MODEL_SEED)
+            {
+                for face in models.iter().flat_map(|(_, model)| &model.faces) {
+                    let mut quad = face.quad.clone();
+                    if let Some(tint) = default_tint(quad.tint_index) {
+                        tints.insert(quad.tint_index, tint);
+                        let base = quad.color.map_or(u32::MAX, |v| v as u32);
+                        quad.color = Some(sunrise_client::hud_layout::multiply(
+                            base,
+                            0xFF00_0000 | tint,
+                        ) as i32);
+                    }
+                    if let Some(&sprite) = geometry.layer_sprites.get(&face.layer) {
+                        prepared.push(super::minecarts::PreparedModelFace::new(&quad, sprite));
+                    }
+                    faces.push(BakedFace::new(
+                        quad,
+                        face.layer,
+                        face.opaque,
+                        face.translucent,
+                        None,
+                    ));
+                }
+            }
+            let bounds = face_bounds(faces.iter().flat_map(|face| face.quad.positions));
+            StateModel {
+                faces,
+                prepared,
+                tints,
+                bounds,
+            }
+        })
     }
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
@@ -1688,11 +1702,10 @@ impl Game<'_> {
 
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
     /// at its pose, as `EntityModelSet.bakeLayer` bakes it: one a native mod
-    /// registered (`native_register_layer_definitions`), or a vanilla or
-    /// resource-pack layer by the name `entity-models.json` gives it
-    /// (`minecraft:zombie#main`, `minecraft:player#main`,
-    /// `minecraft:chest#main`). All vanilla and resource-pack layers are
-    /// indexed at client resource load and reload, so `bake_layer` never reads
+    /// registered (`native_register_layer_definitions`), or a vanilla layer by
+    /// the name the prepared `entity-models.json` gives it
+    /// (`minecraft:zombie#main`, `minecraft:player#main`, `minecraft:chest#main`).
+    /// Vanilla layers are indexed at client resource load and reload, so `bake_layer` never reads
     /// from disk. The tree is the caller's own copy: bake it once, as a
     /// renderer does, and set its parts' poses each frame. None for a layer
     /// neither has. API @API:model_layers@.
@@ -2477,26 +2490,33 @@ mod tests {
             );
             assert_eq!(bytes(&surface.vertices), before);
 
-            // A failed resource build never publishes a replacement, so the handle remains valid.
-            let missing = game.options.resources.join("absent-model-test-root");
+            // An unreadable vanilla definition set fails staging, not publication.
+            let leash = game.bake_layer("minecraft:leash_knot#main").unwrap();
+            let bad_root = tempfile::tempdir().unwrap();
+            std::fs::write(bad_root.path().join("entity-models.json"), "[]").unwrap();
             let listeners = game.register_client_reload_listeners();
+            let error = super::super::packs::stage_pack(
+                bad_root.path(),
+                &[],
+                &[],
+                &game.mods,
+                listeners,
+                &[],
+                &game.pack.assets,
+                &game.res,
+                &game.pack.context,
+                false,
+                false,
+                &super::super::Progress::new(),
+            )
+            .err()
+            .expect("a malformed definition set must fail staging");
             assert!(
-                super::super::packs::stage_pack(
-                    &missing,
-                    &[],
-                    &[],
-                    &game.mods,
-                    listeners,
-                    &[],
-                    &game.pack.assets,
-                    &game.res,
-                    &game.pack.context,
-                    false,
-                    false,
-                    &super::super::Progress::new(),
-                )
-                .is_err()
+                error
+                    .to_string()
+                    .contains("loading vanilla entity model definitions")
             );
+            assert_eq!(game.bake_layer("minecraft:leash_knot#main"), Some(leash));
             assert_eq!(
                 game.native_draw_model(&mut surface, model, 0xFF12_3456),
                 Ok(())
@@ -3155,7 +3175,7 @@ mod tests {
                 })
             };
 
-            let render = |state: BlockState| {
+            let render = |game: &Game<'_>, state: BlockState| {
                 let mut surface = draw();
                 surface.light = 0x7030;
                 {
@@ -3168,8 +3188,21 @@ mod tests {
                 surface
             };
 
-            let drawn_y = render(log_y);
-            let drawn_x = render(log_x);
+            // Sprites were bound when the generation was built, not on the first block draw.
+            game.gui.atlas.sprites.remove("block/oak_log_top");
+            let drawn_y = render(game, log_y);
+            game.gui
+                .atlas
+                .sprites
+                .insert("block/oak_log_top".into(), top_sprite);
+            let drawn_x = render(game, log_x);
+
+            let air_key = game.block_key("minecraft:air").unwrap();
+            let air = BlockState::of(&game.block_states(), air_key, &[]).unwrap();
+            assert!(
+                render(game, air).vertices.is_empty(),
+                "valid empty states draw nothing"
+            );
             assert_eq!(drawn_y.vertices.len(), 24, "upright oak_log has 6 faces");
             assert_eq!(drawn_x.vertices.len(), 24, "horizontal oak_log has 6 faces");
             assert!(drawn_y.vertices.iter().all(|v| v.light == 0x7030));

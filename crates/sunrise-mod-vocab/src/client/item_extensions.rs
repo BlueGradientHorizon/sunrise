@@ -78,7 +78,8 @@ impl ArmorTextureRef {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct EquipmentLayer<'a> {
-    /// The texture name from the layer, before any renderer override such as CIT.
+    /// The asset's expanded sprite name before renderer overrides such as CIT,
+    /// e.g. `mymod:entity/equipment/humanoid/chest_inner` for `mymod:chest_inner`.
     pub texture: &'a str,
     /// Whether this layer takes the stack's dye colour.
     pub dyeable: bool,
@@ -182,7 +183,8 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
     /// Choose this layer's texture. `default_texture` names the renderer's texture after pack/CIT
     /// selection, or the asset's texture if the renderer could not bind it. Return
     /// [`ArmorTextureRef::DEFAULT`] to keep that selection, or a reload-bound sprite to override it.
-    /// An override is final. A stale reference is logged and keeps the default selection.
+    /// An override uses the sprite's UVs bound during registration, with no later texture override.
+    /// A stale reference is logged and keeps the default selection.
     fn armor_texture(
         &self,
         host: &dyn ClientHost,
@@ -202,6 +204,7 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
 pub trait ClientItemExtensionsRegistrar {
     /// Register a named [`ModelPart`] tree, validated and baked once for this resource load.
     /// Names can use any valid namespace. Malformed trees and duplicate names are refused by name.
+    /// Submission uses the baked geometry, not the caller's tree, and does not require a depth cap.
     fn register_model(&mut self, name: &str, model: &ModelPart) -> Result<ArmorModelRef, String>;
     /// Bind a requested atlas sprite and its UVs once for this resource load.
     /// An unknown texture refuses registration by name.
