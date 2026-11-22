@@ -126,7 +126,7 @@ mod sweep_tests {
         contacts: std::sync::Arc<std::sync::Mutex<Vec<[i32; 3]>>>,
         wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
-        kill_after: Option<usize>,
+        hurt_after: Option<(usize, f32)>,
         panic_after: Option<usize>,
     }
     #[mod_api::sunrise_part]
@@ -145,10 +145,12 @@ mod sweep_tests {
             if self.panic_after.is_some_and(|after| seen > after) {
                 panic!("an entity_inside part panics");
             }
-            if self.kill_after.is_some_and(|after| seen > after) {
+            if let Some((after, amount)) = self.hurt_after
+                && seen > after
+            {
                 event.run_after(
                     mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt { amount: 1000.0 },
+                    mod_api::EntityWrite::Hurt { amount },
                 );
             }
             event.run_after(
@@ -329,27 +331,33 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_flush() {
-        let part = InsidePart {
-            kill_after: Some(0),
-            ..InsidePart::default()
-        };
-        let mods = install_inside_mod("inside-kill", &part);
-        mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                let (before, after, dead) = sweep_game_player(game);
-                assert_eq!(
-                    part.contacts.lock().unwrap().len(),
-                    2,
-                    "the walk itself reaches both contacts"
-                );
-                assert!(dead, "the killing write applied");
-                assert!(
-                    (after - before).abs() < 1e-9,
-                    "the writes after the death never apply"
-                );
-            });
-        });
+        crate::game::in_own_process(
+            "game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_flush",
+            || {
+                let part = InsidePart {
+                    hurt_after: Some((0, 1000.0)),
+                    ..InsidePart::default()
+                };
+                let mods = install_inside_mod("inside-kill", &part);
+                mod_platform::testing::with_mods(mods, || {
+                    crate::game::native_entity_refs::tests::with_game(|game| {
+                        let _ =
+                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let (before, after, dead) = sweep_game_player(game);
+                        assert_eq!(
+                            part.contacts.lock().unwrap().len(),
+                            2,
+                            "the walk itself reaches both contacts"
+                        );
+                        assert!(dead, "the killing write applied");
+                        assert!(
+                            (after - before).abs() < 1e-9,
+                            "the writes after the death never apply"
+                        );
+                    });
+                });
+            },
+        );
     }
 
     /// A part that panics on its second contact: the panic is contained, the walk
@@ -657,31 +665,45 @@ mod sweep_tests {
     #[test]
     #[ignore = "daily"]
     fn a_killing_write_stops_the_items_flush() {
-        let part = InsidePart {
-            kill_after: Some(0),
-            ..InsidePart::default()
-        };
-        let mods = install_inside_mod("inside-item-kill", &part);
-        mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                let mut item = item_at_blocks(game);
-                let before = item.velocity.x;
-                sunrise_client::block_contact::in_level(
-                    sunrise_client::parallel::TickThread::mint(),
-                    Some("minecraft:overworld"),
-                    || {
-                        game.sweep_item_inside(&mut item);
-                    },
-                );
-                assert_eq!(part.contacts.lock().unwrap().len(), 2);
-                assert!(item.health <= 0, "the killing write applied");
-                assert!(
-                    (item.velocity.x - before).abs() < 1e-9,
-                    "the writes after the destruction never apply"
-                );
-            });
-        });
+        crate::game::in_own_process(
+            "game::native_hooks::entity_inside::sweep_tests::a_killing_write_stops_the_items_flush",
+            || {
+                let part = InsidePart {
+                    hurt_after: Some((0, 0.5)),
+                    ..InsidePart::default()
+                };
+                let mods = install_inside_mod("inside-item-kill", &part);
+                mod_platform::testing::with_mods(mods, || {
+                    crate::game::native_entity_refs::tests::with_game(|game| {
+                        let _ =
+                            sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                        let mut item = item_at_blocks(game);
+                        use sunrise_client::items::ItemStack;
+                        let diamonds = ItemStack::new("minecraft:diamond", 3);
+                        item.stack = ItemStack::new("minecraft:shulker_box", 1);
+                        item.stack.data_mut().container = vec![(0, diamonds.clone())];
+                        item.health = 1;
+                        let before = item.velocity.x;
+                        sunrise_client::block_contact::in_level(
+                            sunrise_client::parallel::TickThread::mint(),
+                            Some("minecraft:overworld"),
+                            || {
+                                game.sweep_item_inside(&mut item);
+                            },
+                        );
+                        assert_eq!(part.contacts.lock().unwrap().len(), 2);
+                        assert_eq!(item.health, 0, "subtract 0.5 before truncating health");
+                        assert_eq!(game.dropped.len(), 1);
+                        assert_eq!(game.dropped[0].stack, diamonds);
+                        assert_eq!(game.dropped[0].position, item.position);
+                        assert!(
+                            (item.velocity.x - before).abs() < 1e-9,
+                            "the writes after the destruction never apply"
+                        );
+                    });
+                });
+            },
+        );
     }
 
     /// A panicking part inside the item batch: the staged fire contains it, the

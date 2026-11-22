@@ -927,7 +927,7 @@ impl Game<'_> {
                 );
             }
             mod_api::EntityWrite::Hurt { amount } => {
-                let _ = item.hurt(amount as i32);
+                self.hurt_moving_item(item, amount);
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
