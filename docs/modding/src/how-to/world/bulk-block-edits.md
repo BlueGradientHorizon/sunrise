@@ -16,7 +16,8 @@ NBT is not representable. At most 65,536 filters are allowed. Unloaded chunks an
 out-of-height portions of runs are skipped. Edits preserve strict block-entity behavior,
 drop no contents from replaced block entities, notify no neighbors and send whole changed chunks.
 Inside a transaction in the level in place, the new states and entities are visible immediately.
-Abort restores both; only the outermost commit in that level publishes the changed chunks.
+Abort quietly restores both, along with the connection group each replaced block had. Only the
+outermost commit in that level publishes the changed chunks, with their resulting connection groups.
 When a bulk edit and a `LevelRef::set_block` write touch the same position, they replay in
 call order. Only the ordinary write can spill contents or notify neighbors.
 
