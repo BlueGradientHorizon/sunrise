@@ -1660,13 +1660,12 @@ impl ParticleEngine {
         drop(ctx);
         drop(frame);
         for (options, position, velocity) in out {
-            self.add_with_level(
+            self.add_with(
                 &options,
                 position,
                 velocity,
                 ParticleSpawnFlags::default(),
-                level,
-                None,
+                SpawnScope::with_level(level, None),
             );
         }
     }
@@ -1718,13 +1717,12 @@ impl ParticleEngine {
         drop(ctx);
         drop(frame);
         for (options, position, velocity) in out {
-            self.add_with_level(
+            self.add_with(
                 &options,
                 position,
                 velocity,
                 ParticleSpawnFlags::default(),
-                level,
-                None,
+                SpawnScope::with_level(level, None),
             );
         }
         self.sounds.extend(sounds);

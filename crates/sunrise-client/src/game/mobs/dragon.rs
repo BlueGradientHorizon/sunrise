@@ -28,7 +28,7 @@ use sunrise_client::{
     hud_layout, hud_overlays,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Who},
-    particles::{ParticleOptions, ParticleType},
+    particles::{ParticleOptions, ParticleSpawnFlags, ParticleType, SpawnScope},
     projectiles::{Projectile, ProjectileKind},
     random_source,
     text::Text,
@@ -3228,8 +3228,11 @@ impl Game<'_> {
                     &ParticleOptions::simple(ParticleType::DragonBreath),
                     at,
                     [0.0, 0.0, 0.0],
-                    false,
-                    true,
+                    ParticleSpawnFlags {
+                        override_limiter: false,
+                        always_show: true,
+                    },
+                    SpawnScope::BARE,
                 );
             }
             // AreaEffectCloud: after its wait, each entity every 20 ticks.

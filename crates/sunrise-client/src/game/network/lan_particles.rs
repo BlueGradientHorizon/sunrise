@@ -7,7 +7,7 @@ use sunrise_client::lan::containers::within_range;
 use sunrise_client::lan::hub::Hub;
 use sunrise_client::particles::{
     ExplosionParticle, ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags,
-    ParticleType,
+    ParticleType, SpawnScope,
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -516,7 +516,7 @@ impl Game<'_> {
         };
         let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
         let add = |particles: &mut ParticleEngine, at, v| {
-            particles.add_with_level(&options, at, v, flags, &level, None);
+            particles.add_with(&options, at, v, flags, SpawnScope::with_level(&level, None));
         };
         if p.count == 0 {
             add(
@@ -550,13 +550,12 @@ impl Game<'_> {
         }
         if let Some(options) = self.received_particle(&p.particle, p.center) {
             let level = ParticleLevel::new(&self.world, self.res.facts(), self.collision);
-            self.particles.add_with_level(
+            self.particles.add_with(
                 &options,
                 p.center,
                 [1.0, 0.0, 0.0],
                 ParticleSpawnFlags::default(),
-                &level,
-                None,
+                SpawnScope::with_level(&level, None),
             );
         }
         // A wind charge's burst lists none, and one this client can't draw is left out.

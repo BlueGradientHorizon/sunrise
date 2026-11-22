@@ -3,7 +3,7 @@ use sunrise_client::arrows::{ArrowEvent, ArrowScene};
 use sunrise_client::items::ItemStack;
 use sunrise_client::join_seq::JoinList;
 use sunrise_client::particles::{
-    ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, ParticleType,
+    ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, ParticleType, SpawnScope,
 };
 use sunrise_client::projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
@@ -65,7 +65,7 @@ pub fn cloud_client_tick(
             ]
         };
         // `addAlwaysVisibleParticle`.
-        particles.add_with_level(
+        particles.add_with(
             default.as_ref().unwrap_or(particle),
             at,
             velocity,
@@ -73,8 +73,7 @@ pub fn cloud_client_tick(
                 override_limiter: false,
                 always_show: true,
             },
-            level,
-            None,
+            SpawnScope::with_level(level, None),
         );
     }
 }

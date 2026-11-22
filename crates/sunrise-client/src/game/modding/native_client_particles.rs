@@ -4,7 +4,7 @@ use super::{
     api_values::{TryIntoApi, TryIntoEngine, block_state},
 };
 use mod_api::{FireworksRequest, ParticleOptions};
-use sunrise_client::particles::{ParticleEngine, ParticleLevel, ParticleSpawnFlags};
+use sunrise_client::particles::{ParticleEngine, ParticleLevel, ParticleSpawnFlags, SpawnScope};
 
 /// The most explosions one `create_fireworks` request draws (a crafted rocket holds at
 /// most 7 stars; a mod's show can be larger).
@@ -47,13 +47,12 @@ impl Game<'_> {
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
             let level = ParticleLevel::new(&game.world, game.res.facts(), game.collision);
-            game.particles.add_with_level(
+            game.particles.add_with(
                 &engine_options,
                 at,
                 velocity,
                 ParticleSpawnFlags::default(),
-                &level,
-                Some(options),
+                SpawnScope::with_level(&level, Some(options)),
             );
         });
         true

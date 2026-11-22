@@ -1079,16 +1079,31 @@ pub struct ParticleSpawnFlags {
 
 /// Factory inputs borrowed only for synchronous construction, not kept in the queue.
 #[derive(Clone, Copy)]
-struct SpawnScope<'a, 'l> {
-    level: Option<&'a ParticleLevel<'l>>,
-    mod_options: Option<&'a mod_api::ParticleOptions>,
+pub struct SpawnScope<'a, 'l> {
+    /// The live level, absent for built-in spawns that do not lend it.
+    pub level: Option<&'a ParticleLevel<'l>>,
+    /// Original typed options if the caller already has them.
+    pub mod_options: Option<&'a mod_api::ParticleOptions>,
 }
 
-impl SpawnScope<'_, '_> {
-    const BARE: Self = Self {
+impl<'a, 'l> SpawnScope<'a, 'l> {
+    /// A built-in spawn that borrows neither the live level nor typed mod options.
+    pub const BARE: Self = Self {
         level: None,
         mod_options: None,
     };
+
+    /// Lend the live level for provider construction. If no typed options are supplied,
+    /// construction converts the engine request's options.
+    pub fn with_level(
+        level: &'a ParticleLevel<'l>,
+        mod_options: Option<&'a mod_api::ParticleOptions>,
+    ) -> Self {
+        Self {
+            level: Some(level),
+            mod_options,
+        }
+    }
 }
 
 /// One `particlesToAdd` FIFO across render groups: admission shares the engine RNG.
@@ -1637,29 +1652,36 @@ impl ParticleEngine {
     /// `ClientLevel.addParticle`: dropped beyond 32 blocks of the camera unless
     /// the type overrides the limiter, and thinned by the Particles option.
     pub fn add(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
-        self.add_with(options, p, v, false, false);
+        self.add_with(
+            options,
+            p,
+            v,
+            ParticleSpawnFlags::default(),
+            SpawnScope::BARE,
+        );
     }
-    /// `ClientLevel.addParticle(particle, overrideLimiter, alwaysShow, ...)`
-    /// (`doAddParticle`). `always_show` is `addAlwaysVisibleParticle`'s flag.
+    /// `ClientLevel.doAddParticle`: apply level admission and construct synchronously,
+    /// lending the live level and original mod options when the caller has them.
     #[sunrise_mod_api_macros::replaceable]
     pub fn add_with(
         &mut self,
         options: &ParticleOptions,
         p: [f64; 3],
         v: [f64; 3],
-        override_limiter: bool,
-        always_show: bool,
+        flags: ParticleSpawnFlags,
+        scope: SpawnScope<'_, '_>,
     ) {
-        self.add_scoped(
-            options,
-            p,
-            v,
-            ParticleSpawnFlags {
-                override_limiter,
-                always_show,
-            },
-            SpawnScope::BARE,
-        );
+        let c = self.camera;
+        let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
+        if let Some(requested) = &mut self.requested {
+            requested.push((options.clone(), p, v));
+            REQUESTED.set(REQUESTED.get() + 1);
+            return;
+        }
+        let minimal = self.calculate_particle_level(flags.always_show) == 2;
+        if flags.override_limiter || options.ty.override_limiter() || (d2 <= 1024.0 && !minimal) {
+            self.create_scoped(options, p, v, scope);
+        }
     }
     /// `NoxiousGasCloudParticle.spawnNoxiousGasParticle`: the gas, as an
     /// always visible particle (`ClientLevel.addAlwaysVisibleParticle`).
@@ -1668,8 +1690,11 @@ impl ParticleEngine {
             &ParticleOptions::simple(ParticleType::NoxiousGas),
             pos,
             [0.0; 3],
-            false,
-            true,
+            ParticleSpawnFlags {
+                always_show: true,
+                ..Default::default()
+            },
+            SpawnScope::BARE,
         );
     }
     /// `ClientLevel.calculateParticleLevel`: minimal still shows one in ten
@@ -1820,7 +1845,7 @@ impl ParticleEngine {
                     feet[1] + height * (0.5 + ya / 4.0),
                     feet[2] + width * (za / 4.0),
                 ];
-                self.add_scoped(
+                self.add_with(
                     options,
                     p,
                     [xa, ya + 0.2, za],
@@ -3639,7 +3664,7 @@ impl ParticleEngine {
             self.groups[handle].particles = particles;
         }
         for (options, pos, velocity) in self.spawned_in_tick.take().unwrap_or_default() {
-            self.add_scoped(
+            self.add_with(
                 &options,
                 pos,
                 velocity,
@@ -6154,7 +6179,7 @@ mod tests {
             20,
         );
         // Within the camera's 32 blocks, so only the provider decides.
-        engine.add_with(&options, [0.5, 1.5, 0.5], [0.0; 3], false, false);
+        engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3]);
         assert_eq!(engine.made().get("vibration"), Some(&1));
         let q = engine
             .pending
@@ -6205,7 +6230,7 @@ mod tests {
         // The renderer consumes the resolved point, not the entity id or offset.
         // Options remain reusable; making a signal does not consume its source.
         for _ in 0..2 {
-            engine.add_with(&options, [0.5, 1.5, 0.5], [0.0; 3], false, false);
+            engine.add(&options, [0.5, 1.5, 0.5], [0.0; 3]);
         }
         assert_eq!(engine.made().get("vibration"), Some(&2));
         assert_eq!(engine.pending.len(), 2);

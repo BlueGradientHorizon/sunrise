@@ -76,13 +76,12 @@ impl ParticleEngine {
         particles: &[ExplosionParticle],
         level: &ParticleLevel<'_>,
     ) {
-        self.add_with_level(
+        self.add_with(
             emitter,
             center,
             [1.0, 0.0, 0.0],
             ParticleSpawnFlags::default(),
-            level,
-            None,
+            SpawnScope::with_level(level, None),
         );
         self.track_explosion(center, radius, block_count, particles);
     }
@@ -175,7 +174,7 @@ impl ParticleEngine {
                 explosion.center[2] + local[2] * scaling,
             ];
             let speed = f64::from(speed * particle.speed);
-            self.add_scoped(
+            self.add_with(
                 &particle.options,
                 p,
                 [d.x * speed, d.y * speed, d.z * speed],

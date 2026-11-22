@@ -31,57 +31,13 @@ impl ParticleEngine {
             self.add(options, p, v);
         }
     }
-    /// Admit a level spawn as in `ClientLevel.doAddParticle`, then construct it
-    /// synchronously with the live level and any original mod options borrowed for the call.
-    pub fn add_with_level(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-        flags: ParticleSpawnFlags,
-        level: &ParticleLevel<'_>,
-        mod_options: Option<&mod_api::ParticleOptions>,
-    ) {
-        self.add_scoped(
-            options,
-            p,
-            v,
-            flags,
-            SpawnScope {
-                level: Some(level),
-                mod_options,
-            },
-        );
-    }
-
-    pub(super) fn add_scoped(
-        &mut self,
-        options: &ParticleOptions,
-        p: [f64; 3],
-        v: [f64; 3],
-        flags: ParticleSpawnFlags,
-        scope: SpawnScope<'_, '_>,
-    ) {
-        let c = self.camera;
-        let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
-        if let Some(requested) = &mut self.requested {
-            requested.push((options.clone(), p, v));
-            REQUESTED.set(REQUESTED.get() + 1);
-            return;
-        }
-        let minimal = self.calculate_particle_level(flags.always_show) == 2;
-        if flags.override_limiter || options.ty.override_limiter() || (d2 <= 1024.0 && !minimal) {
-            self.create_scoped(options, p, v, scope);
-        }
-    }
-
     /// `ParticleEngine.createParticle`: bypass the level's distance and settings
     /// checks, but still apply `ParticleLimit.SPORE_BLOSSOM` when queuing the result.
     pub fn create(&mut self, options: &ParticleOptions, p: [f64; 3], v: [f64; 3]) {
         self.create_scoped(options, p, v, SpawnScope::BARE);
     }
 
-    fn create_scoped(
+    pub(super) fn create_scoped(
         &mut self,
         options: &ParticleOptions,
         p: [f64; 3],

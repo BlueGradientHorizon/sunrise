@@ -8,7 +8,10 @@ use crate::{
     blocks::{BlockFacts, Fluid},
     command::args::GameMode,
     items::ItemStack,
-    particles::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleType as T, along_axis},
+    particles::{
+        ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, ParticleType as T,
+        SpawnScope, along_axis,
+    },
     world::World,
 };
 use std::{
@@ -588,7 +591,16 @@ fn add(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
 }
 /// `Level.addAlwaysVisibleParticle`: still shown under the Minimal option now and then.
 fn add_visible(engine: &mut ParticleEngine, ty: T, p: [f64; 3], v: [f64; 3]) {
-    engine.add_with(&ParticleOptions::simple(ty), p, v, false, true);
+    engine.add_with(
+        &ParticleOptions::simple(ty),
+        p,
+        v,
+        ParticleSpawnFlags {
+            always_show: true,
+            ..Default::default()
+        },
+        SpawnScope::BARE,
+    );
 }
 fn sound(engine: &mut ParticleEngine, name: &'static str, p: [f64; 3], volume: f32, pitch: f32) {
     engine.sounds.push((name, p, volume, pitch, false));
@@ -2173,8 +2185,11 @@ pub fn make_campfire_smoke(
         &ParticleOptions::simple(ty),
         [x, y, z],
         [0.0, 0.07, 0.0],
-        true,
-        true,
+        ParticleSpawnFlags {
+            override_limiter: true,
+            always_show: true,
+        },
+        SpawnScope::BARE,
     );
     if smoking {
         let r = engine.random();

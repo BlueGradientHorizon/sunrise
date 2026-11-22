@@ -2399,7 +2399,7 @@ use sunrise_client::{
     models,
     motion::{MotionResources, PlayerMotion},
     mouse::{LookOptions, MouseLook},
-    particles::Particle,
+    particles::{Particle, ParticleSpawnFlags, SpawnScope},
     save::{Level, Persistent, SaveDir},
     settings::Settings,
     spans,
@@ -5895,8 +5895,11 @@ impl Game<'_> {
                         ),
                         at,
                         [0.0; 3],
-                        true,
-                        true,
+                        ParticleSpawnFlags {
+                            override_limiter: true,
+                            always_show: true,
+                        },
+                        SpawnScope::BARE,
                     );
                     let random = self.particles.level_random();
                     let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;

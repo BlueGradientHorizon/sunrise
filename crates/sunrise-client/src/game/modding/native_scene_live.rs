@@ -28,7 +28,7 @@ use sunrise_client::{
     hud::HudBatch,
     mesher::Vertex,
     mobs::Mob,
-    particles::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags},
+    particles::{ParticleEngine, ParticleLevel, ParticleOptions, ParticleSpawnFlags, SpawnScope},
     world::World,
 };
 use sunrise_core::geometry::Vec3 as Position;
@@ -469,13 +469,12 @@ impl Game<'_> {
             engine.seed_particle_randoms(seed.rotate_left(53));
             if tick == first {
                 for (options, request) in added {
-                    engine.add_with_level(
+                    engine.add_with(
                         options,
                         request.pos,
                         request.velocity,
                         ParticleSpawnFlags::default(),
-                        &level,
-                        Some(&request.options),
+                        SpawnScope::with_level(&level, Some(&request.options)),
                     );
                 }
             }

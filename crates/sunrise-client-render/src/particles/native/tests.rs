@@ -417,13 +417,12 @@ fn extract_edits_only_this_frame_and_culls_using_its_quad_size() {
     let mut e = fixture_engine(provider_factories([("example:orbit", Arc::new(Animated))]));
     let scene = Scene::new();
     let level = scene.level();
-    e.add_with_level(
+    e.add_with(
         &ParticleOptions::named("example:orbit"),
         [10.0, 0.0, 0.0],
         [0.0; 3],
         ParticleSpawnFlags::default(),
-        &level,
-        Some(&fixture_options()),
+        SpawnScope::with_level(&level, Some(&fixture_options())),
     );
     e.tick(&level); // admit without ticking the particle
     let camera = DVec3::new(2.0, 0.0, 0.0);
@@ -517,13 +516,12 @@ fn extract_panic_disables_only_that_registrations_extraction() {
     let level = scene.level();
     let ((), notices) = capture_callback_panic_notices(|| {
         for name in ["example:orbit", "example:orbit", "example:peer"] {
-            e.add_with_level(
+            e.add_with(
                 &ParticleOptions::named(name),
                 [1.0; 3],
                 [0.0; 3],
                 ParticleSpawnFlags::default(),
-                &level,
-                Some(&fixture_options()),
+                SpawnScope::with_level(&level, Some(&fixture_options())),
             );
         }
         e.tick(&level);
@@ -749,13 +747,12 @@ fn owned_particles_construct_before_fifo_admission_tick_in_order_and_drop_once()
         let mut typed = mod_api::ParticleOptions::simple(key);
         typed.scale = 2.5;
         for x in [40, 10, 20, 30] {
-            e.add_with_level(
+            e.add_with(
                 &options,
                 [f64::from(x), 64.0, 3.0],
                 [0.25, 0.0, 0.0],
                 ParticleSpawnFlags::default(),
-                &level,
-                (x != 20).then_some(&typed),
+                SpawnScope::with_level(&level, (x != 20).then_some(&typed)),
             );
         }
         use Event::*;
@@ -833,13 +830,12 @@ fn a_tick_panic_disables_only_that_registration_across_instances_and_reload() {
     let level = scene.level();
     let typed = fixture_options();
     let spawn = |e: &mut ParticleEngine, name| {
-        e.add_with_level(
+        e.add_with(
             &ParticleOptions::named(name),
             [1.0; 3],
             [0.0; 3],
             ParticleSpawnFlags::default(),
-            &level,
-            Some(&typed),
+            SpawnScope::with_level(&level, Some(&typed)),
         );
     };
     let ((), notices) = capture_callback_panic_notices(|| {
