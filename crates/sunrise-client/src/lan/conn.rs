@@ -2320,7 +2320,11 @@ impl io_pool::Session for PlayConn {
         self.payload_tick(now)
     }
     fn left(&mut self, reason: String) {
-        let _ = self.shared.events.send(NetEvent::Left(self.conn, reason));
+        // Publish logout before releasing the profile, even if gameplay filled its queue.
+        let _ = self
+            .shared
+            .events
+            .send_terminal(NetEvent::Left(self.conn, reason));
         self.shared.closing.fetch_add(1, Ordering::AcqRel);
     }
     fn closed(&mut self) {

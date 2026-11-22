@@ -2455,9 +2455,16 @@ impl Game<'_> {
         if self.level_pass.packets_drained {
             return;
         }
-        let Some(mut host) = self.take_lan_for_packet_tick() else {
+        let Some(mut host) = self.lan.take() else {
             return;
         };
+        // ServerLoginPacketListenerImpl waits for PlayerList.remove, which saves the old
+        // guest. Snapshot the new requests before polling play events: the old connection
+        // publishes Left before releasing the reservation that admitted its replacement.
+        let configuration_requests = self
+            .level_pass
+            .first
+            .then(|| host.hub.lan.configuration_requests().collect::<Vec<_>>());
         let holding = lan::Holding::start();
         // Last tick's tracked entities: enough for place collision and joins
         // before this tick moves anyone.
@@ -2540,6 +2547,11 @@ impl Game<'_> {
         self.level_pass.packets_drained = true;
         drop(holding);
         self.lan = Some(host);
+        if let Some(requests) = configuration_requests {
+            sunrise_client::spans::time("lan_configuration_tasks", || {
+                self.tick_lan_configuration_tasks(requests)
+            });
+        }
     }
 
     /// The entity id counter, once the entities Sunrise keeps without one
