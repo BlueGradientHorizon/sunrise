@@ -824,18 +824,25 @@ mod tests {
         }
         impl ArmorWorld for MagicWorld {
             type Error = ();
-            fn armor_value(&mut self) -> Result<i32, ()> {
-                Ok(0)
+            type Weapon = ();
+            type ServerLevel = ();
+            fn weapon(&mut self) -> Result<Option<()>, ()> {
+                Ok(None)
             }
-            fn armor_toughness(&mut self) -> Result<f32, ()> {
-                Ok(0.0)
+            fn server_level(&mut self) -> Result<Option<()>, ()> {
+                Ok(Some(()))
             }
-            fn modify_armor_effectiveness(&mut self, f: f32) -> Result<f32, ()> {
+            fn modify_armor_effectiveness(&mut self, (): (), (): (), f: f32) -> Result<f32, ()> {
                 Ok(f)
             }
         }
         impl DamageReductionWorld for MagicWorld {
-            type ServerLevel = ();
+            fn armor_value(&mut self) -> Result<i32, ()> {
+                Ok(0)
+            }
+            fn toughness_attribute(&mut self) -> Result<f64, ()> {
+                Ok(0.0)
+            }
             fn bypasses(&mut self, bypass: Bypass) -> Result<bool, ()> {
                 Ok(match bypass {
                     Bypass::Armor => false,
@@ -864,9 +871,6 @@ mod tests {
             }
             fn award_dealt_resisted(&mut self, _: i32) -> Result<(), ()> {
                 Ok(())
-            }
-            fn server_level(&mut self) -> Result<Option<()>, ()> {
-                Ok(Some(()))
             }
             fn damage_protection(&mut self, (): ()) -> Result<f32, ()> {
                 Ok(self.protection)
