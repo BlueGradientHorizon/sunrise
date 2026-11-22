@@ -52,6 +52,7 @@ impl Game<'_> {
             // A new entity has a new interpolation handler (a mob's or an
             // armor stand's), even under an id the server used before.
             r.stepped.remove(&id);
+            r.synced_attributes.remove(&id);
             if r.entities
                 .get(&id)
                 .is_some_and(|old| old.kind == "minecraft:item")

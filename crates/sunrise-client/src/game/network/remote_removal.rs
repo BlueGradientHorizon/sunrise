@@ -69,6 +69,7 @@ impl Game<'_> {
             if let Some(r) = self.remote.as_mut() {
                 r.glowing.remove(&id);
                 r.entities.remove(&id);
+                r.synced_attributes.remove(&id);
                 r.passenger_vehicles.remove(&(id as u32));
                 r.lerps.remove(&id);
                 r.cart_lerps.remove(&id);

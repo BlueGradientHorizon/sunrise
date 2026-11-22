@@ -155,6 +155,10 @@ impl Game<'_> {
     pub(super) fn pick_entity_hit(&self) -> Option<Option<i32>> {
         self.pick_entity_hit_at().map(|hit| hit.1)
     }
+    /// Returns the wire entity id under the crosshair before any block.
+    pub(in crate::game) fn crosshair_entity_id(&self) -> Option<i32> {
+        self.crosshair_entity_hit().map(|hit| hit.id)
+    }
 
     /// `ClientSuggestionProvider.getSelectedEntities`: the UUID
     /// (`Entity.getStringUUID`) of the entity the crosshair hits before any

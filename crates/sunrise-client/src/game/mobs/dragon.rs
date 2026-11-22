@@ -1618,6 +1618,19 @@ impl Game<'_> {
         }
         out
     }
+    /// Resolves a crosshair target id (including synthetic dragon-part and crystal ids) to its wire entity id.
+    pub(in crate::game) fn wire_entity_id(&self, id: u32) -> Option<i32> {
+        if (SPECIAL..SPECIAL + 8).contains(&id) {
+            let dragon = self.dragon.as_ref().filter(|d| d.id != 0)?;
+            return Some((dragon.id + 1 + (id - SPECIAL)) as i32);
+        }
+        if id >= CRYSTAL_IDS
+            && let Some(crystal) = self.crystals.get((id - CRYSTAL_IDS) as usize)
+        {
+            return Some(crystal.id as i32).filter(|&id| id != 0);
+        }
+        Some(id as i32)
+    }
     /// `ServerLevel.dragonParts`: where the part with that entity id is
     /// and its box.
     pub(super) fn dragon_part(&self, id: u32) -> Option<(Vec3, Aabb)> {

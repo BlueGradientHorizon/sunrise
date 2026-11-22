@@ -451,6 +451,9 @@ pub(super) struct Remote {
     /// follows (`sunrise:menu_extra`).
     pub(in crate::game) menu_extra: Option<sunrise_protocol::menu_extra::Message>,
     pub(in crate::game) entities: HashMap<i32, Tracked>,
+    /// Synced entity attributes keyed by entity id and attribute id.
+    pub(super) synced_attributes:
+        HashMap<i32, HashMap<sunrise_world::attributes::entity::AttributeId, f64>>,
     /// Per-tick remote entity scratch retained between frames.
     tick_fluids: Vec<Option<sunrise_client::mobs::living::Fluids>>,
     tick_rain: Vec<bool>,

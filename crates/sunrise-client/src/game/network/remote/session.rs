@@ -403,6 +403,7 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
+            synced_attributes: HashMap::new(),
         });
         self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         // The level's TickRateManager follows the server's ticking packets.
@@ -661,6 +662,7 @@ impl Game<'_> {
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
+            synced_attributes: HashMap::new(),
         });
         self.set_local_mode_with_previous(sunrise_client::command::args::GameMode::Survival, None);
         self.clock = sunrise_client::clock::FixedStep::client();
@@ -941,6 +943,7 @@ impl Game<'_> {
             self.clear_client_particles();
             if let Some(r) = self.remote.as_mut() {
                 r.entities.clear();
+                r.synced_attributes.clear();
                 r.passenger_vehicles.clear();
                 r.lerps.clear();
                 r.general.clear();

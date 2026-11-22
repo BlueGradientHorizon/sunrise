@@ -3,8 +3,27 @@
 use super::{Game, snapshot_value};
 use sunrise_client::entities::nameplate::NameplateDistances;
 use sunrise_protocol::packets::play;
+use sunrise_world::attributes::entity::AttributeId;
 
 impl Game<'_> {
+    /// Returns a tracked remote entity's synced attribute or its vanilla type default.
+    pub(in crate::game) fn remote_attribute(&self, id: i32, attribute: AttributeId) -> Option<f64> {
+        let remote = self.remote.as_ref()?;
+        let tracked = remote.entities.get(&id)?;
+        if let Some(&value) = remote
+            .synced_attributes
+            .get(&id)
+            .and_then(|attrs| attrs.get(&attribute))
+        {
+            return Some(value);
+        }
+        self.motion.attributes.default_base(&tracked.kind, attribute)
+    }
+
+    /// No-op on main because `remote_mob_attributes` applies updates immediately.
+    #[cfg(test)]
+    pub(in crate::game) fn refresh_remote_attributes(&mut self) {}
+
     /// Computes one synced attribute using the catalog's vanilla range.
     fn remote_attribute_value(
         &self,
@@ -43,6 +62,33 @@ impl Game<'_> {
         id: i32,
         values: &[play::AttributeSnapshot],
     ) {
+        if let Some(kind) = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.entities.get(&id))
+            .map(|t| t.kind.clone())
+        {
+            let mut updates = Vec::new();
+            for snapshot in values {
+                if let Some((attr, reg)) = self
+                    .motion
+                    .attributes
+                    .attributes()
+                    .find(|(attr, _)| attr.registry_id() == snapshot.attribute)
+                    && self.motion.attributes.default_base(&kind, attr).is_some()
+                {
+                    updates.push((attr, reg.definition.sanitize(snapshot_value(snapshot))));
+                }
+            }
+            if !updates.is_empty()
+                && let Some(r) = self.remote.as_mut()
+            {
+                let entry = r.synced_attributes.entry(id).or_default();
+                for (attr, value) in updates {
+                    entry.insert(attr, value);
+                }
+            }
+        }
         let max_health = self.remote_attribute_value("minecraft:max_health", values);
         let armor = self.remote_attribute_value("minecraft:armor", values);
         let scale = self.remote_attribute_value("minecraft:scale", values);
@@ -81,6 +127,7 @@ impl Game<'_> {
                 sunrise_client::mobs::finalize::Attr::MaxHealth,
                 max_health,
             );
+            m.health = m.health.min(m.attrs.max_health);
         }
         if let Some(armor) = armor {
             sunrise_client::mobs::finalize::set_base(
