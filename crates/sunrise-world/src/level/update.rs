@@ -393,7 +393,8 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             {
                 self.level.send_block_updated(pos);
             }
-            if update_flags & flags::UPDATE_NEIGHBORS != 0 {
+            // The two-argument LevelAccessor.updateNeighborsAt is a no-op on ClientLevel.
+            if update_flags & flags::UPDATE_NEIGHBORS != 0 && !self.level.is_client_side() {
                 let old_block = self.block_of(old);
                 self.update_neighbors_at(pos, old_block);
                 if self.has_analog_output(state) {
@@ -509,11 +510,13 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             }
         }
         let moved = update_flags & flags::UPDATE_MOVE_BY_PISTON != 0;
-        if (block_changed
-            || self
-                .b
-                .block_data(new_block)
-                .is(super::classes::Class::BaseRail))
+        let server_side = !self.level.is_client_side();
+        if server_side
+            && (block_changed
+                || self
+                    .b
+                    .block_data(new_block)
+                    .is(super::classes::Class::BaseRail))
             && (update_flags & flags::UPDATE_NEIGHBORS != 0 || moved)
         {
             self.affect_neighbors_after_removal(old, pos, moved);
@@ -521,7 +524,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if self.block_of(self.state(pos)) != new_block {
             return false;
         }
-        if update_flags & flags::UPDATE_SKIP_ON_PLACE == 0 {
+        if server_side && update_flags & flags::UPDATE_SKIP_ON_PLACE == 0 {
             self.on_place(state, pos, old, moved);
         }
         let landed = self.state(pos);
