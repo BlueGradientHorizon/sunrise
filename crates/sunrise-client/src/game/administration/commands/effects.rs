@@ -225,12 +225,10 @@ impl Game<'_> {
                         }
                         tracker.track(t, true);
                     } else if single {
-                        // getHoverName().getString(): the custom or item name, no brackets.
+                        // getHoverName().getString(): the resolved name, no brackets.
                         return Err(err(
                             "commands.enchant.failed.incompatible",
-                            &[&stack
-                                .custom_name()
-                                .unwrap_or_else(|| self.pack.names.item(&stack.item).to_string())],
+                            &[&self.stack_hover_name(&stack)],
                         ));
                     }
                 }
@@ -239,16 +237,17 @@ impl Game<'_> {
                         .mobs
                         .iter()
                         .find(|m| m.id == mob)
-                        .and_then(|m| m.extra.main_hand_id().map(str::to_owned));
+                        .and_then(|m| m.extra.main_hand_stack().cloned());
                     if single {
                         return Err(match held {
                             None => err(
                                 "commands.enchant.failed.itemless",
                                 &[&self.target_name(t).plain()],
                             ),
-                            Some(item) => err(
+                            // getMainHandItem().getHoverName().getString().
+                            Some(stack) => err(
                                 "commands.enchant.failed.incompatible",
-                                &[&self.pack.names.item(&item)],
+                                &[&self.stack_hover_name(&stack)],
                             ),
                         });
                     }

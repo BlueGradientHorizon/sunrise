@@ -987,16 +987,20 @@ impl Game<'_> {
         s.anvil.repair_item_count_cost = menu.anvil.repair_count;
         s.anvil.only_renaming = menu.anvil.only_renaming;
         s.anvil.result = s.result.clone();
-        if s.inputs[0] != s.anvil_last {
-            s.anvil_last = s.inputs[0].clone();
-            let name = s.inputs[0]
-                .as_ref()
-                .map(|i| {
-                    sunrise_client::lang::returned_to_server(|| {
-                        stations::hover_name(&self.pack.names, i)
-                    })
-                })
-                .unwrap_or_default();
+        if s.inputs[0] == s.anvil_last {
+            return;
+        }
+        // AnvilScreen.slotChanged: the box takes the input's getHoverName().getString(), a mod
+        // item's Part asked as everywhere else, as vanilla's client names it.
+        let input = s.inputs[0].clone();
+        let name = input
+            .as_ref()
+            .map(|i| {
+                sunrise_client::lang::returned_to_server(|| self.stack_hover_name_text(i).plain())
+            })
+            .unwrap_or_default();
+        if let Some(s) = self.station.as_mut() {
+            s.anvil_last = input;
             anvil::input_changed(s, name);
         }
     }
