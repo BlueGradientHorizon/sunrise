@@ -33,7 +33,7 @@ impl Game<'_> {
     }
 
     /// A chunk pass for each idle level held by a view or a spawn preparation ticket.
-    pub(super) fn run_view_passes(&mut self, ticked: &[Dim]) -> Result<()> {
+    pub(super) fn run_view_passes(&mut self, ticked: &[Dim], running: bool) -> Result<()> {
         let viewed: Vec<Dim> = Dim::all()
             .into_iter()
             .filter(|d| {
@@ -45,7 +45,7 @@ impl Game<'_> {
             self.enter_level(dim)?;
             self.update_dedicated_streaming();
             self.lan_update_streaming();
-            self.tick_spawn_tickets();
+            self.tick_spawn_tickets(running);
             self.update_world();
             // `LevelChunk.postProcessGeneration` comes before a chunk is sent
             // (`ChunkMap.prepareTickingChunk`, then `onChunkReadyToSend`), ticked or not.

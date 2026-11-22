@@ -1483,7 +1483,7 @@ impl Game<'_> {
             sunrise_client::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
-            self.tick_spawn_tickets();
+            self.tick_spawn_tickets(running == Some(true));
             sunrise_client::spans::time("update_world", || self.update_world());
             let tick_span = sunrise_client::spans::guard("level_tick");
             // This level's moving colliders, solid to its movers for this tick only.
@@ -1557,7 +1557,7 @@ impl Game<'_> {
         }
         // Levels held only by loading tickets: stream them without running the world tick.
         if result.is_ok() {
-            result = self.run_view_passes(&order);
+            result = self.run_view_passes(&order, running == Some(true));
         }
         if let Some(&first) = order.first()
             && self.dim != first
