@@ -1014,7 +1014,6 @@ recipes::transfer_recipe_id
 resources::resource
 scoreboard::add_objective
 scoreboard::add_team
-scoreboard::client_scoreboard
 scoreboard::display_slot_objective
 scoreboard::holder_team
 scoreboard::objective

@@ -344,10 +344,10 @@ pub trait ScoreboardBackendMut {
 #[sunrise_mod_api_macros::host_area]
 pub trait ScoreboardClientHost {
     /// Side: client.
-    /// What this client has been sent of the scoreboard: the objectives shown in a display
-    /// slot, with their scores, and every team. None outside a logged-in client world. A text the API cannot hold
-    /// (nested deeper than 512 component nodes) refuses the whole snapshot with
-    /// [`TextFormError::TooDeep`]; nothing is flattened or skipped.
+    /// Borrows the live board sent to this client (`ClientLevel.getScoreboard`).
+    /// `Ok(None)` means no logged-in client world; a logged-in world with an empty
+    /// board still returns a view. An unavailable read returns [`ClientSessionReadError::Unavailable`].
+    /// Only an explicit text or format copy can fail to represent one of the board's fields.
     #[access(ClientSetup)]
-    fn client_scoreboard(&self) -> Result<Option<ClientScoreboard>, TextFormError>;
+    fn client_scoreboard(&self) -> Result<Option<&dyn ClientScoreboard>, ClientSessionReadError>;
 }

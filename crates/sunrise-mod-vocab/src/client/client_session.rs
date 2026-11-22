@@ -2,6 +2,27 @@
 
 use crate::{BlockPos, GameMode, Text};
 
+/// Why a client-session read could not run.
+// no wire: this refusal is returned by in-process client-session reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ClientSessionReadError {
+    /// The current phase or backend does not allow this read.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for ClientSessionReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl crate::NoBackend for ClientSessionReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
 // no wire: borrows the current client connection and integrated world.
 /// The connected server, not the reconnect target of an earlier session.
 /// Its text borrows the host; copy it only to retain it beyond that borrow.

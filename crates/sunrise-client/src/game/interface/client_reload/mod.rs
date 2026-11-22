@@ -22,14 +22,21 @@ use sunrise_client::datapack::DataPack;
 /// listener's prepared apply.
 pub(super) type PreparedClientReload = PreparedStep<()>;
 
-/// The registration host of the first load: no game exists yet, so it reads
-/// nothing — a host read during registration panics, as its contract forbids
-/// one. The reload itself reads through the game's host.
+/// The registration host of the first load: no game exists yet. Reads with
+/// a typed refusal answer it; others can unwind in registration. The reload
+/// itself reads through the game's host.
 pub(super) struct StartupClientHost;
 impl Host for StartupClientHost {}
 mod_api::impl_host_areas!(StartupClientHost);
 impl ClientHost for StartupClientHost {}
-mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render));
+mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render, scoreboard));
+impl mod_api::prelude::ScoreboardClientHost for StartupClientHost {
+    fn client_scoreboard(
+        &self,
+    ) -> Result<Option<&dyn mod_api::ClientScoreboard>, mod_api::ClientSessionReadError> {
+        Err(mod_api::NoBackend::no_backend())
+    }
+}
 impl mod_api::prelude::ClientRenderClientHost for StartupClientHost {
     fn biome_tint(
         &self,

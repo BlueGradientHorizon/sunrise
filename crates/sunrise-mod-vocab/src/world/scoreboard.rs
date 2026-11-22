@@ -2,6 +2,7 @@
 
 use crate::text::TextStyle;
 use crate::{ClientTeam, EntityRef, PlayerRef, Text, TextFormError};
+use core::ops::ControlFlow;
 
 /// Who a score belongs to (vanilla's `ScoreHolder`). The board keys scores by one string, and
 /// every variant resolves to it: a player's profile name, another entity's UUID text, or the
@@ -261,102 +262,78 @@ impl<'a> ScoreEntry<'a> {
     }
 }
 
-/// An objective as this client was sent it: one shown in a display slot.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ClientObjective {
-    /// The objective's name.
-    pub name: String,
-    /// The display name.
-    pub display_name: Text,
+/// An objective on the client scoreboard, lent for one visitor call.
+// no wire: in-process scoped scoreboard view.
+pub trait ClientObjective {
+    /// The objective's key.
+    fn name(&self) -> &str;
+
     /// How the list and below-name slots draw it.
-    pub render_type: ObjectiveRenderType,
-    /// The objective's number format, or None for the slot's default.
-    pub number_format: Option<NumberFormat>,
-    /// The slots it is shown in, in id order.
-    pub slots: Vec<DisplaySlot>,
-    /// The scores it was sent, in the order they arrived. A holder starting with `#` is hidden
-    /// from the sidebar, but is sent.
-    pub scores: Vec<ClientScore>,
+    fn render_type(&self) -> ObjectiveRenderType;
+
+    /// Visits every slot showing this objective, in slot ID order. Return `ControlFlow::Break(())`
+    /// to stop; an objective just received from the server may have no slot yet.
+    fn visit_slots(&self, visit: &mut dyn FnMut(DisplaySlot) -> ControlFlow<()>)
+    -> ControlFlow<()>;
+
+    /// Visits the resident scores in board order, including `#` holders hidden by the sidebar.
+    /// Return `ControlFlow::Break(())` to stop. Each row is lent for its own visit.
+    fn visit_scores(
+        &self,
+        visit: &mut dyn FnMut(&dyn ClientScore) -> ControlFlow<()>,
+    ) -> ControlFlow<()>;
+
+    /// Copies the display name, or reports why this text cannot be represented.
+    fn copy_display_name(&self) -> Result<Text, TextFormError>;
+
+    /// Copies the objective's number format, or returns `Ok(None)` for the slot's default.
+    /// A conversion error applies to this copy only.
+    fn copy_number_format(&self) -> Result<Option<NumberFormat>, TextFormError>;
 }
 
-impl ClientObjective {
-    /// An objective from its parts.
-    pub fn new(
-        name: String,
-        display_name: Text,
-        render_type: ObjectiveRenderType,
-        number_format: Option<NumberFormat>,
-        slots: Vec<DisplaySlot>,
-        scores: Vec<ClientScore>,
-    ) -> Self {
-        Self {
-            name,
-            display_name,
-            render_type,
-            number_format,
-            slots,
-            scores,
-        }
-    }
-}
-
-/// One score this client was sent.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ClientScore {
+/// One score the client was sent, lent for one visitor call.
+// no wire: in-process scoped scoreboard view.
+pub trait ClientScore {
     /// The holder's key: a player's name, an entity's UUID text, or any other string.
-    pub holder: String,
-    /// The score.
-    pub value: i32,
-    /// The name to show in place of the holder's, if the server set one.
-    pub display: Option<Text>,
-    /// This score's own number format, or None for the objective's.
-    pub number_format: Option<NumberFormat>,
+    fn holder(&self) -> &str;
+
+    /// The score's value.
+    fn value(&self) -> i32;
+
+    /// Copies the display name for this holder, or returns `Ok(None)` if not set.
+    /// A conversion error applies to this copy only.
+    fn copy_display(&self) -> Result<Option<Text>, TextFormError>;
+
+    /// Copies the score's own number format, or returns `Ok(None)` to use the objective's.
+    /// A conversion error applies to this copy only.
+    fn copy_number_format(&self) -> Result<Option<NumberFormat>, TextFormError>;
 }
 
-impl ClientScore {
-    /// A score from its parts.
-    pub fn new(
-        holder: String,
-        value: i32,
-        display: Option<Text>,
-        number_format: Option<NumberFormat>,
-    ) -> Self {
-        Self {
-            holder,
-            value,
-            display,
-            number_format,
-        }
-    }
-}
+/// The live board behind vanilla's `ClientLevel.getScoreboard`: everything received from the
+/// server so far, with no server handles or writes. Copy only what you need to retain.
+// no wire: in-process scoped scoreboard view.
+pub trait ClientScoreboard {
+    /// Visits every received objective once, in board order, even before its first slot is set.
+    /// Return `ControlFlow::Break(())` to stop. The view lasts for one callback.
+    fn visit_objectives(
+        &self,
+        visit: &mut dyn FnMut(&dyn ClientObjective) -> ControlFlow<()>,
+    ) -> ControlFlow<()>;
 
-/// What this client has been sent of the scoreboard (`ClientPacketListener`'s board): the
-/// objectives the server shows in a display slot, with their scores, and every team. The server
-/// sends no other objective, and no score of one it does not show. Read-only; the client has no
-/// handles.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ClientScoreboard {
-    /// The shown objectives, each once, in the board's order.
-    pub objectives: Vec<ClientObjective>,
-    /// Every team: the server sends all of them, shown or not.
-    pub teams: Vec<ClientTeam>,
-}
+    /// Visits every received team, in board order. Return `ControlFlow::Break(())` to stop.
+    /// The view lasts for one callback.
+    fn visit_teams(
+        &self,
+        visit: &mut dyn FnMut(&dyn ClientTeam) -> ControlFlow<()>,
+    ) -> ControlFlow<()>;
 
-impl ClientScoreboard {
-    /// A view from its objectives and teams.
-    pub fn new(objectives: Vec<ClientObjective>, teams: Vec<ClientTeam>) -> Self {
-        Self { objectives, teams }
-    }
-    /// The objective shown in `slot`.
-    pub fn in_slot(&self, slot: DisplaySlot) -> Option<&ClientObjective> {
-        self.objectives.iter().find(|o| o.slots.contains(&slot))
-    }
+    /// Calls `visit` once with the objective in `slot`, or returns `None` without calling it
+    /// if the slot is empty.
+    fn with_slot(
+        &self,
+        slot: DisplaySlot,
+        visit: &mut dyn FnMut(&dyn ClientObjective),
+    ) -> Option<()>;
 }
 
 impl crate::NoBackend for ObjectiveError {

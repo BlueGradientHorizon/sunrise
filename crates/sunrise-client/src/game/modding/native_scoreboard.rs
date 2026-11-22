@@ -1,4 +1,4 @@
-//! Scoreboard objective handles for native server mods, and the client's view of the board.
+//! Scoreboard objective handles for native server mods.
 //!
 //! Every write is made on the same `Scoreboard` the `/scoreboard` command writes, with the same
 //! methods: the per-tick sync to clients (`lan/scoreboard.rs`) and the save (`save_scoreboard`)
@@ -9,9 +9,8 @@ use super::Game;
 use core::ops::ControlFlow;
 use mod_api::__private::game::*;
 use mod_api::{
-    ClientObjective, ClientScore, ClientScoreboard, DisplaySlot, NumberFormat, ObjectiveError,
-    ObjectiveReadError, ObjectiveRef, ObjectiveRenderType, ScoreEntry, ScoreHolder,
-    ServerReadError, TextFormError, WorldEpoch,
+    DisplaySlot, NumberFormat, ObjectiveError, ObjectiveReadError, ObjectiveRef,
+    ObjectiveRenderType, ScoreEntry, ScoreHolder, ServerReadError, TextFormError, WorldEpoch,
 };
 use sunrise_client::{
     scoreboard::{self as sb, Comp, comp_text, literal},
@@ -25,7 +24,7 @@ fn engine_render_type(render: ObjectiveRenderType) -> sb::RenderType {
     }
 }
 
-fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
+pub(super) fn api_render_type(render: sb::RenderType) -> ObjectiveRenderType {
     match render {
         sb::RenderType::Integer => ObjectiveRenderType::Integer,
         sb::RenderType::Hearts => ObjectiveRenderType::Hearts,
@@ -65,7 +64,7 @@ fn engine_number_format(format: &NumberFormat) -> Result<sb::NumberFormat, TextF
     })
 }
 
-fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextFormError> {
+pub(super) fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextFormError> {
     Ok(match format {
         sb::NumberFormat::Blank => NumberFormat::Blank,
         sb::NumberFormat::Fixed(comp) => NumberFormat::Fixed(api_text(&comp_text(comp))?),
@@ -76,6 +75,18 @@ fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextForm
             }
             NumberFormat::Styled(api_text(&comp_text(&json))?.style)
         }
+    })
+}
+
+pub(super) fn objective_slots<'a>(
+    board: &'a sb::Scoreboard,
+    name: &'a str,
+) -> impl Iterator<Item = DisplaySlot> + 'a {
+    DisplaySlot::all().filter(move |slot| {
+        board
+            .display
+            .get(slot.name())
+            .is_some_and(|objective| objective.as_str() == name)
     })
 }
 
@@ -332,9 +343,7 @@ impl Game<'_> {
         visit: &mut dyn FnMut(DisplaySlot) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, ObjectiveReadError> {
         let name = &self.objective_visit_state(objective)?.name;
-        Ok(DisplaySlot::all()
-            .filter(|slot| self.score.board.display.get(slot.name()) == Some(name))
-            .try_for_each(visit))
+        Ok(objective_slots(&self.score.board, name).try_for_each(visit))
     }
 
     /// `Scoreboard.getPlayerScoreInfo`'s value.
@@ -513,53 +522,6 @@ impl Game<'_> {
         self.score.board.remove_objective(&name);
         self.sync_score_registries();
         true
-    }
-
-    /// What this client has been sent of the scoreboard; None outside a logged-in client world.
-    /// A text the API cannot hold refuses the whole snapshot by name.
-    pub(super) fn client_scoreboard(&self) -> Result<Option<ClientScoreboard>, TextFormError> {
-        if self.native_session().is_none() {
-            return Ok(None);
-        }
-        let board = &self.score.board;
-        let mut objectives = Vec::new();
-        for o in &board.objectives {
-            let slots = DisplaySlot::all()
-                .filter(|slot| board.display.get(slot.name()) == Some(&o.name))
-                .collect();
-            let mut scores = Vec::new();
-            for entry in board.list_scores(&o.name) {
-                scores.push(ClientScore::new(
-                    entry.owner,
-                    entry.value,
-                    entry
-                        .display
-                        .as_ref()
-                        .map(|d| api_text(&comp_text(d)))
-                        .transpose()?,
-                    entry
-                        .number_format
-                        .as_ref()
-                        .map(api_number_format)
-                        .transpose()?,
-                ));
-            }
-            objectives.push(ClientObjective::new(
-                o.name.clone(),
-                api_text(&o.display_text())?,
-                api_render_type(o.render_type),
-                o.number_format
-                    .as_ref()
-                    .map(api_number_format)
-                    .transpose()?,
-                slots,
-                scores,
-            ));
-        }
-        Ok(Some(ClientScoreboard::new(
-            objectives,
-            self.client_teams()?,
-        )))
     }
 }
 

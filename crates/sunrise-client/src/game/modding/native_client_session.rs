@@ -275,13 +275,53 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_session_reads_follow_connection_language_and_frame_state() {
+        use core::ops::ControlFlow;
+        use mod_api::{
+            __private::{ModPhase, PhaseOwner},
+            ClientSessionReadError,
+        };
         use sunrise_client::lang::{self, Language};
+        use sunrise_core::nbt::Tag;
+        use sunrise_protocol::packets::play::SetObjective;
 
         with_client_game(|game| {
             assert_eq!(game.client_session().client_server(), None);
             assert_eq!(game.client_session().client_language(), None);
             assert_eq!(game.client_session().client_frame_stats(), None);
+            assert!(matches!(
+                ScoreboardClientHost::client_scoreboard(game),
+                Ok(None)
+            ));
             let _server = logged_client(game);
+            {
+                let _phase = PhaseOwner::scope(ModPhase::Reloading);
+                assert!(matches!(
+                    ScoreboardClientHost::client_scoreboard(game),
+                    Err(ClientSessionReadError::Unavailable)
+                ));
+            }
+            let empty_board = ScoreboardClientHost::client_scoreboard(game)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                empty_board.visit_objectives(&mut |_| panic!("new session's board is empty")),
+                ControlFlow::Continue(())
+            );
+            game.remote_objective(SetObjective {
+                name: "received".into(),
+                method: 0,
+                display: Some((Tag::String("Received".into()), 0, None)),
+            });
+            let live_board = ScoreboardClientHost::client_scoreboard(game)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                live_board.visit_objectives(&mut |objective| {
+                    assert_eq!(objective.name(), "received");
+                    ControlFlow::Break(())
+                }),
+                ControlFlow::Break(())
+            );
             let memory = game.client_session().client_server().unwrap();
             assert_eq!(memory.name, None);
             assert_eq!(memory.address, None);
@@ -382,10 +422,18 @@ pub(super) mod tests {
             assert_eq!(game.client_session().client_server(), None);
             assert_eq!(game.client_session().client_language(), None);
             assert_eq!(game.client_session().client_frame_stats(), None);
+            assert!(matches!(
+                ScoreboardClientHost::client_scoreboard(game),
+                Ok(None)
+            ));
             game.remote = None;
             // A reconnect target must not be mistaken for the current session.
             game.connection_starts("stale.example:25565", "OldPlayer", false);
             assert_eq!(game.client_session().client_server(), None);
+            assert!(matches!(
+                ScoreboardClientHost::client_scoreboard(game),
+                Ok(None)
+            ));
         });
     }
 

@@ -124,7 +124,14 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
     }
 }
 impl ClientHost for DiscoveryHost {}
-mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, client_render));
+mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, client_render, scoreboard));
+impl mod_api::prelude::ScoreboardClientHost for DiscoveryHost {
+    fn client_scoreboard(
+        &self,
+    ) -> Result<Option<&dyn mod_api::ClientScoreboard>, mod_api::ClientSessionReadError> {
+        Err(mod_api::NoBackend::no_backend())
+    }
+}
 impl mod_api::prelude::ClientRenderClientHost for DiscoveryHost {
     fn biome_tint(
         &self,

@@ -141,8 +141,34 @@ objective's are.
 
 ## On a client
 
-`ClientHost::client_scoreboard()` is what this client has been sent: the objectives shown in a
-display slot, with their slots and scores, and every team, as plain values. The server does not
-send a team's death message visibility, so a client has none to read. A client has no handles and
-cannot write. A text the API cannot hold (nested deeper than 512 component nodes) refuses the
-whole snapshot with `TextFormError::TooDeep`; nothing is flattened or skipped.
+`host.client_scoreboard()` borrows the live board this client has received. `Ok(None)` means
+there is no logged-in client world, not that the board is empty. Handle
+`Err(ClientSessionReadError::Unavailable)` when the current phase or host cannot supply the read.
+
+Use `board.visit_objectives(&mut visit)` and `board.visit_teams(&mut visit)` to read the board in
+its resident order. Each objective is visited once even if it occupies several slots, or if it
+has just arrived and has no slot yet. Use `board.with_slot(slot, &mut visit)` to read just the
+objective in a slot; an empty slot returns `None` without calling the visitor. Objective, score
+and team views last for their callback only. The `visit_*` methods return `Break(())` if the
+visitor stops the traversal, and `Continue(())` if it completes, including an empty visit.
+
+```rust,ignore
+use core::ops::ControlFlow::Continue;
+
+let mut retained = Vec::new();
+if let Some(board) = host.client_scoreboard()? {
+    let _ = board.with_slot(DisplaySlot::Sidebar, &mut |objective| {
+        let _ = objective.visit_scores(&mut |row| {
+            retained.push((row.holder().to_owned(), row.value()));
+            Continue(())
+        });
+    });
+}
+```
+
+`visit_scores` includes sent `#` holder keys even though the sidebar does not draw them. Read names
+and scalars with `name()`, `holder()`, `value()` and the other view methods. To retain a name, copy
+it inside the callback. Use `copy_display_name()`, `copy_number_format()`, `copy_display()`,
+`copy_prefix()` or `copy_suffix()` only when needed; `TextFormError` refuses that copy, not the view
+or any other field. Client views have no handles or writes and expose only what the server sends,
+which does not include a team's death message visibility.
