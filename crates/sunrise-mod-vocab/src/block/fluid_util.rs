@@ -264,8 +264,9 @@ pub fn try_place_fluid(
 /// inserts or prepares an overflow remainder, and before the dispenser's click and smoke.
 /// A single container is replaced in place (the first slot, else
 /// the second when the first was emptied); when both slots remain populated, the first slot
-/// stays in the dispenser slot and the second slot's remainder goes into the dispenser, else out
-/// of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
+/// stays in the dispenser slot and the second slot's remainder goes into the original dispenser,
+/// never a replacement at that position. If it cannot go into that dispenser, it goes out of the
+/// front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
 /// Where neither moves anything, nothing is changed and one container is dispensed as it is
 /// ([`dispense_default`](crate::prelude::ItemsServerHost::dispense_default)). The detached
 /// remainder retains its count until the active slot is written. Return None unchanged (no

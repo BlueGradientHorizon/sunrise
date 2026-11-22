@@ -61,12 +61,21 @@ struct PickupSnapshot {
     next_random: i32,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Replacement {
+    #[default]
+    None,
+    DuringTransfer,
+    BeforeNotice,
+}
+
 #[derive(Clone, Default)]
 struct Notices {
     contents: Arc<Mutex<Vec<DimensionKey>>>,
     fluids: Arc<Mutex<Vec<(String, String)>>>,
     reopen_on_pickup: bool,
     pickup_snapshots: Option<Arc<Mutex<Vec<PickupSnapshot>>>>,
+    replacement: Replacement,
 }
 
 #[mod_api::sunrise_part]
@@ -106,6 +115,8 @@ impl Hooks for Containers {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let dispenser = r.block_key("minecraft:dispenser");
         r.block_part(dispenser, self.0.clone());
+        let chest = r.block_key("minecraft:chest");
+        r.block_part(chest, self.0.clone());
         let dandelion = r.block_key("minecraft:dandelion");
         r.block_part(dandelion, SchedulingLiquidContainer);
         let stick = r.item_key("minecraft:stick");
@@ -131,11 +142,16 @@ impl Hooks for Containers {
                 )
             },
         );
+        let replace_during_transfer = self.0.replacement == Replacement::DuringTransfer;
         r.item_capability(
             &ITEM_FLUIDS,
             "minecraft:glass_bottle",
-            |_: &mut dyn ServerHost, place: &ItemPlace| {
-                Some(Box::new(Jug(place.clone())) as Box<dyn ResourceHandler<FluidResource>>)
+            move |_: &mut dyn ServerHost, place: &ItemPlace| {
+                Some(Box::new(Jug {
+                    place: place.clone(),
+                    replace_during_transfer,
+                })
+                    as Box<dyn ResourceHandler<FluidResource>>)
             },
         );
         r.item_capability(
@@ -161,6 +177,9 @@ impl Hooks for Containers {
                 if self.0.reopen_on_pickup {
                     host.transaction(|_, _| Ok::<_, ()>(())).unwrap();
                 }
+                if self.0.replacement == Replacement::BeforeNotice {
+                    replace_dispenser_with_chest(host, event.dimension);
+                }
                 if let Some(snapshots) = &self.0.pickup_snapshots {
                     let level = host.level(event.dimension).unwrap();
                     let items = level.capability(host, &ITEMS, DISPENSER, None).unwrap();
@@ -184,7 +203,10 @@ impl Hooks for Containers {
 
 /// An empty glass bottle a bucket of water turns into a potion: a mod's handler that acts on
 /// every container its place shows, as one written for a single container may.
-struct Jug(ItemPlace);
+struct Jug {
+    place: ItemPlace,
+    replace_during_transfer: bool,
+}
 impl ResourceHandler<FluidResource> for Jug {
     fn size(&self, _: &mut dyn ServerHost) -> usize {
         1
@@ -211,11 +233,14 @@ impl ResourceHandler<FluidResource> for Jug {
         }
         let potion = mod_api::__private::item_key("minecraft:potion").unwrap();
         let potion = ItemResource::of(&mod_api::ItemStack::new(potion, 1).unwrap());
-        let all = self.0.amount(host);
-        match self.0.exchange(host, tx, &potion, all) == all {
-            true => 1000,
-            false => 0,
+        let all = self.place.amount(host);
+        if self.place.exchange(host, tx, &potion, all) != all {
+            return 0;
         }
+        if self.replace_during_transfer {
+            replace_dispenser_with_chest(host, "minecraft:overworld");
+        }
+        1000
     }
     fn extract_at(
         &self,
@@ -287,6 +312,15 @@ impl ResourceHandler<FluidResource> for MultiStepJug {
     ) -> u32 {
         0
     }
+}
+
+fn replace_dispenser_with_chest(host: &mut dyn ServerHost, dimension: &str) {
+    let level = host.level(dimension).unwrap();
+    let chest = host.block_state_id("minecraft:chest").unwrap();
+    assert_eq!(
+        level.set_block(host, DISPENSER, chest, BlockUpdateFlags::NONE),
+        Ok(true)
+    );
 }
 
 fn spawn_dispenser_case(test: &str) -> bool {
@@ -948,6 +982,75 @@ fn a_transaction_in_the_fluid_pickup_listener_does_not_delay_later_attachment_re
         );
         assert!(game.world.block_entities.get(&SLOT_POS).is_none());
         assert!(rows().is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispenser_replacement_during_transfer_does_not_receive_the_remainder() {
+    if spawn_dispenser_case("dispenser_replacement_during_transfer_does_not_receive_the_remainder")
+    {
+        return;
+    }
+    run_dispenser_replacement(Replacement::DuringTransfer, |game, level| {
+        assert!(level.block_tick(game, DISPENSER));
+        assert!(
+            game.dropped
+                .iter()
+                .any(|item| item.stack.item.as_ref() == "minecraft:potion")
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispenser_replacement_before_notice_replay_does_not_receive_the_notice() {
+    if spawn_dispenser_case(
+        "dispenser_replacement_before_notice_replay_does_not_receive_the_notice",
+    ) {
+        return;
+    }
+    run_dispenser_replacement(Replacement::BeforeNotice, |game, level| {
+        game.storage_transaction(|game, _| {
+            assert!(level.block_tick(game, DISPENSER));
+            assert_eq!(
+                game.world.block_entities.get(&SLOT_POS).unwrap().slots()[1],
+                Some(ItemStack::new("minecraft:potion", 1))
+            );
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+    });
+}
+
+fn run_dispenser_replacement(replacement: Replacement, tick: impl FnOnce(&mut Game<'_>, LevelRef)) {
+    let notices = Notices {
+        replacement,
+        ..Notices::default()
+    };
+    with_dispenser_notices(notices, |game, level, notices| {
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
+        let original = game.world.block_entities.identity(SLOT_POS).unwrap();
+        set_front(game, "minecraft:water");
+        tick(game, level);
+        assert_eq!(front(game), state(game, "minecraft:air"));
+        let [x, y, z] = DISPENSER;
+        assert_eq!(game.world.block(x, y, z), state(game, "minecraft:chest"));
+        let holder = game.world.block_entities.identity(SLOT_POS).unwrap();
+        assert_ne!(holder, original);
+        let contents = game.world.block_entities.get(&SLOT_POS).unwrap().slots();
+        assert!(
+            contents.iter().all(Option::is_none),
+            "replacement contents: {contents:?}"
+        );
+        assert!(
+            notices.contents.lock().unwrap().is_empty(),
+            "replacement was notified"
+        );
     });
 }
 

@@ -2239,11 +2239,17 @@ impl Game<'_> {
         }
         // A listener can replace the block entity while the behaviour runs. Like the
         // vanilla BlockSource, the action owns the original row, not its replacement.
-        if holder.is_some() && self.world.block_entities.identity(key) == holder {
+        if let Some(holder) = holder
+            && self.world.block_entities.identity(key) == Some(holder)
+        {
             self.journal_block_entity_slot(key, slot);
             if let Some(entry) = self.slot_mut_at(&view, slot) {
                 *entry = remaining;
-                self.after_commit(super::transactions::After::Changed(key));
+                if dropper {
+                    self.after_commit(super::transactions::After::Changed(key));
+                } else {
+                    self.after_holder_changed(holder);
+                }
             }
         }
         Ok(())

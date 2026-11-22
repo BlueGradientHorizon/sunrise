@@ -5,11 +5,12 @@
 //! event and the smoke animation, event 2000).
 use super::api_values::{TryIntoApi, TryIntoEnginePreservingCount};
 use super::level_sounds::LevelSound;
-use super::{Game, item_abilities::ability};
+use super::{Dim, Game, item_abilities::ability};
 use mod_api::SoundSource;
 use std::ops::ControlFlow;
 use sunrise_client::{
     Result,
+    block_entities::BlockEntityIdentity,
     collisions::SceneCollisions,
     containers::BlockEntity,
     items::{ItemStack, Items},
@@ -72,6 +73,24 @@ enum Target {
     Guest(u32),
     Mob(usize),
     Stand(usize),
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct DispenseSource {
+    dim: Dim,
+    pos: Pos,
+    holder: Option<BlockEntityIdentity>,
+}
+
+struct DispenseScope<'a, 'g> {
+    game: &'a mut Game<'g>,
+    outer: Option<DispenseSource>,
+}
+
+impl Drop for DispenseScope<'_, '_> {
+    fn drop(&mut self) {
+        self.game.dispense_source = self.outer.take();
+    }
 }
 
 impl Game<'_> {
@@ -408,10 +427,19 @@ impl Game<'_> {
             return;
         }
         let max = self.containers().max_stack(&rest);
+        let resident = self.world.block_entities.identity(pos);
+        // Like BlockSource, a running behaviour retains its original dispenser even if
+        // the transfer or its commit listeners replace the block. A stand-alone helper
+        // call has no BlockSource and uses the currently resident container.
+        let holder = match self.dispense_source {
+            Some(source) if source.dim == self.dim && source.pos == pos => source.holder,
+            _ => resident,
+        };
         let slots = self
             .world
             .block_entities
             .get(&pos)
+            .filter(|_| holder == resident)
             .map_or(0, |entity| entity.slots().len());
         let mut set_item = false;
         for slot in 0..slots {
@@ -460,8 +488,8 @@ impl Game<'_> {
         }
         // DispenserBlockEntity.insertItem calls setItem only for an empty slot; an in-place
         // merge is covered by dispenseFrom's normal final setItem on the active slot.
-        if set_item {
-            self.after_commit(super::transactions::After::Changed(pos));
+        if set_item && let Some(holder) = holder {
+            self.after_holder_changed(holder);
         }
         if rest.count > 0 {
             self.stage_dispensed(pos, facing, rest, true);
@@ -494,6 +522,21 @@ impl Game<'_> {
     /// `DispenserBlock.getDispenseMethod(..).dispense(source, stack)`: the replacement
     /// for the slot, or `Break` when the slot must not be written at all.
     pub(super) fn dispense_item(
+        &mut self,
+        pos: Pos,
+        facing: Direction,
+        stack: ItemStack,
+    ) -> Result<ControlFlow<(), Option<ItemStack>>> {
+        let outer = self.dispense_source.replace(DispenseSource {
+            dim: self.dim,
+            pos,
+            holder: self.world.block_entities.identity(pos),
+        });
+        let scope = DispenseScope { game: self, outer };
+        scope.game.dispense_item_from_source(pos, facing, stack)
+    }
+
+    fn dispense_item_from_source(
         &mut self,
         pos: Pos,
         facing: Direction,
