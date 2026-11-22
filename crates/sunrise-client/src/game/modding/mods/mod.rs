@@ -2800,12 +2800,7 @@ mod tests {
         .unwrap();
         let result = mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("maker", Box::new(DeclaresDamage))].into(),
-            || {
-                let _registration = mod_api::__private::PhaseOwner::scope(
-                    mod_api::__private::ModPhase::Registration,
-                );
-                register_components(&root)
-            },
+            || register_components(&root),
         );
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(
@@ -2843,21 +2838,11 @@ mod tests {
                 mod_api::ModEntry::new("second", Box::new(Declares("shared:charge"))),
             ]
             .into(),
-            || {
-                let _registration = mod_api::__private::PhaseOwner::scope(
-                    mod_api::__private::ModPhase::Registration,
-                );
-                register_components(&root)
-            },
+            || register_components(&root),
         );
         let invalid = mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("broken", Box::new(Declares("bare")))].into(),
-            || {
-                let _registration = mod_api::__private::PhaseOwner::scope(
-                    mod_api::__private::ModPhase::Registration,
-                );
-                register_components(&root)
-            },
+            || register_components(&root),
         );
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(

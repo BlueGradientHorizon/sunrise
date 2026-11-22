@@ -1632,7 +1632,9 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
 #[cfg(test)]
 #[test]
 fn native_minecraft_serializer_preserves_opaque_ingredient_through_projection_and_decode() {
+    use crate::items::Items;
     use serde_json::json;
+    use std::path::Path;
 
     const KIND: &str = "minecraft:grinding_opaque";
     mod_platform::testing::with_recipe_types(&[KIND], || {
@@ -1669,8 +1671,9 @@ fn native_minecraft_serializer_preserves_opaque_ingredient_through_projection_an
         let (decoded, _) = empty
             .with_recipe_content(&catalog, part.recipes, &types)
             .unwrap();
-        assert_eq!(decoded.mod_read_only.len(), 1);
-        assert_eq!(decoded.mod_read_only[0].1.serializer, KIND);
-        assert_eq!(&*decoded.by_type[KIND][0].json, &recipe);
+        let entries = &decoded.by_type[KIND];
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "test:ore");
+        assert_eq!(&*entries[0].json, &recipe);
     });
 }

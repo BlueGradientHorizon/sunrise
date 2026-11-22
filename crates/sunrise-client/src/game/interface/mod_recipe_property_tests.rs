@@ -4,7 +4,12 @@ mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
     use sunrise_client::items::ItemStack;
-    use sunrise_protocol::{connection::Pipe, packets::recipes::UpdateRecipes};
+    use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_protocol::{
+        buf::{Codec, Reader},
+        connection::Pipe,
+        packets::recipes::UpdateRecipes,
+    };
     struct Input;
     #[mod_api::sunrise_part]
     impl MenuPart for Input {
@@ -42,7 +47,6 @@ mod tests {
                     .unwrap()
                     .id("minecraft:emerald")
                     .unwrap();
-                use sunrise_protocol::buf::{Codec, Reader, Writer};
                 let packet = UpdateRecipes {
                     properties: vec![
                         ("minecraft:custom_input".into(), vec![id]),

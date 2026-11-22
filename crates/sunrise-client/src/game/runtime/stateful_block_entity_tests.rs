@@ -248,6 +248,8 @@ fn admitted_minecraft_and_custom_blocks_share_stateful_tables_capabilities_and_m
         }
     }
     #[mod_api::sunrise_part]
+    impl BlockPart for MachineMod {}
+    #[mod_api::sunrise_part]
     impl BlockEntityPart for MachineMod {
         fn stateful_block_entity(&self, _: &dyn Host, event: &mut StatefulBlockEntityEvent<'_>) {
             if event.block == MC_BLOCK || event.block == ALT_BLOCK {
