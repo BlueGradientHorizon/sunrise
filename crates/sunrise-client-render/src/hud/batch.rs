@@ -87,6 +87,43 @@ pub struct HudBatch {
     /// Player object profiles encountered while painting text this frame.
     pub inline_profiles: Vec<std::sync::Arc<serde_json::Value>>,
 }
+struct HudTail {
+    vertices: usize,
+    pictures: usize,
+    patches: usize,
+    image_patches: usize,
+    inline_profiles: usize,
+    blends: usize,
+    last_blend: Option<(std::ops::Range<u32>, Blend)>,
+    end_portal: EndPortalFill,
+    glint_alpha: f32,
+    blur_at: u32,
+}
+
+struct HudDrawRollback<'a> {
+    batch: &'a mut HudBatch,
+    tail: Option<HudTail>,
+}
+
+impl Drop for HudDrawRollback<'_> {
+    fn drop(&mut self) {
+        let Some(tail) = self.tail.take() else { return };
+        self.batch.vertices.truncate(tail.vertices);
+        self.batch.pictures.truncate(tail.pictures);
+        self.batch.patches.truncate(tail.patches);
+        self.batch.image_patches.truncate(tail.image_patches);
+        self.batch.inline_profiles.truncate(tail.inline_profiles);
+        self.batch.blends.truncate(tail.blends);
+        // `blend_since` can extend the preceding run instead of appending a new one.
+        if let Some(last) = tail.last_blend {
+            self.batch.blends[tail.blends - 1] = last;
+        }
+        self.batch.end_portal = tail.end_portal;
+        self.batch.glint_alpha = tail.glint_alpha;
+        self.batch.blur_at = tail.blur_at;
+    }
+}
+
 /// The paint appended by one retained callback, excluding any painters it delegates to.
 pub struct HudPaintCheckpoint {
     start: usize,
@@ -225,6 +262,37 @@ impl HudBatch {
             own_ranges: SmallVec::new(),
             delegated: false,
         }
+    }
+
+    /// Paint an append-only group, restoring the batch tail and the atlas font on `Err` or
+    /// unwind. Nested groups use the same batch and font; a successful child is still undone
+    /// if its parent aborts. Requested glyph uploads are appended only on outermost success.
+    pub fn draw_scope<T, E>(
+        &mut self,
+        font: &crate::font::Font,
+        draw: impl FnOnce(&mut Self) -> std::result::Result<T, E>,
+    ) -> std::result::Result<T, E> {
+        let tail = HudTail {
+            vertices: self.vertices.len(),
+            pictures: self.pictures.len(),
+            patches: self.patches.len(),
+            image_patches: self.image_patches.len(),
+            inline_profiles: self.inline_profiles.len(),
+            blends: self.blends.len(),
+            last_blend: self.blends.last().cloned(),
+            end_portal: self.end_portal,
+            glint_alpha: self.glint_alpha,
+            blur_at: self.blur_at,
+        };
+        let mut rollback = HudDrawRollback {
+            batch: self,
+            tail: Some(tail),
+        };
+        let font = font.begin_draw();
+        let value = draw(rollback.batch)?;
+        rollback.batch.patches.extend(font.commit());
+        rollback.tail = None;
+        Ok(value)
     }
 
     /// Draw the vertices added since `start` with the inverting blend.
@@ -475,9 +543,6 @@ impl HudBatch {
             self.rect_uv(x, y, w, r.h as f32, r, u32::MAX);
         }
     }
-    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
-    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
-    /// triangles) are clipped as polygons.
     /// Scale the vertices pushed since `start` about `(cx, cy)` (a GUI pose
     /// matrix of translate, scale, translate back).
     pub fn scale_since(&mut self, start: usize, cx: f32, cy: f32, sx: f32, sy: f32) {
@@ -486,6 +551,9 @@ impl HudBatch {
             v.pos[1] = cy + (v.pos[1] - cy) * sy;
         }
     }
+    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
+    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
+    /// triangles) are clipped as polygons.
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
         let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
         self.vertices.truncate(start);
@@ -557,13 +625,19 @@ impl HudBatch {
             self.vertices.extend([0, 1, 2, 0, 2, 3].map(|i| c[i]));
         }
         moved.push(self.vertices.len() as u32);
-        let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
-        for (range, _) in &mut self.blends {
-            if range.start as usize >= start {
-                *range = at(range.start)..at(range.end);
-            }
-        }
-        self.blends.retain(|(range, _)| !range.is_empty());
+        let at = |v: u32| moved[((v as usize - start) / 6).min(moved.len() - 1)];
+        let start = start as u32;
+        let first = self.blends.partition_point(|(range, _)| range.end <= start);
+        self.blends
+            .extract_if(first.., |(range, _)| {
+                // A coalesced run can straddle the start: its prefix stays put.
+                if range.start >= start {
+                    range.start = at(range.start);
+                }
+                range.end = at(range.end);
+                range.start == range.end
+            })
+            .for_each(drop);
     }
     /// `blit` of the top-left `w x h` texels of a `tw x th` texture.
     pub fn sprite_region(

@@ -26,7 +26,7 @@ impl Game<'_> {
     pub(super) fn draw_item(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         // `GuiGraphics.renderItem`: the resolved item model (tints, foil and
         // special renderers included), then the decorations.
-        self.draw_item_model(batch, stack, x, y);
+        self.draw_item_model(batch, stack, x, y, 0);
         self.draw_item_decorations(batch, stack, x, y, None);
     }
     /// `extractSlot` of slot `slot` holding `stack` at (x, y): during a quick
@@ -56,7 +56,7 @@ impl Game<'_> {
             None => (stack.as_ref(), false),
         };
         if let Some(stack) = stack {
-            self.draw_item_model(batch, stack, x, y);
+            self.draw_item_model(batch, stack, x, y, 0);
             let text = capped.then(|| format!("\u{a7}e{}", stack.count));
             self.draw_item_decorations(batch, stack, x, y, text);
         } else if let Some(icon) =
@@ -126,6 +126,27 @@ impl Game<'_> {
         y: f32,
         count_text: Option<String>,
     ) {
+        self.draw_vanilla_item_decorations(batch, stack, x, y, count_text);
+        let hook = mod_api::HookId::ItemDecorations;
+        if mod_api::__private::has_part_hook(hook) || mod_api::__private::listened(hook) {
+            // The ordinary inventory, hotbar and tooltip paths draw in screen GUI units.
+            let _ = self.draw_gui_canvas(batch, &mut |canvas| {
+                self.native_item_decorations(stack, x, y, canvas);
+                Ok(())
+            });
+        }
+    }
+
+    /// Emit only the standard bar (including `item_bar`'s choice), cooldown and count.
+    /// A scoped caller poses this suffix before lending its canvas to the decorator.
+    pub(in crate::game) fn draw_vanilla_item_decorations(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        x: f32,
+        y: f32,
+        count_text: Option<String>,
+    ) {
         // GuiGraphicsExtractor.itemDecorations, laid out at the origin and
         // moved to (x, y): the damage bar, the cooldown shade and the count.
         let info = self.items().get(&stack.item);
@@ -164,7 +185,6 @@ impl Game<'_> {
         ));
         draws.push(hud_layout::GuiDraw::Pop);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
-        self.native_item_decorations(stack, x, y, batch);
     }
     /// The open container screen's player-inventory origin (`getXOrigin`/
     /// `getYOrigin`): the build's, or the frame's own arithmetic with no

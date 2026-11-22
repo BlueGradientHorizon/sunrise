@@ -341,26 +341,28 @@ vanilla art).
 ## Labels: wrapped text without a widget
 
 A label is text laid out in a box: measured, wrapped and placed, and nothing else. Call
-`DrawContext::text_lines` from a drawing hook with the component, the box's width, an alignment and the
-scale the label is drawn at, and draw the lines it answers with where it says:
+`DrawContext::text_lines` with the component, the box's width, an alignment and a scale. Draw the
+returned lines in a [canvas group](gui-paint.md#drawing-directly-with-a-canvas), so a refused
+line cannot leave a partial label:
 
 ```rust
-// From a menu screen draw callback, gui_render_post or another drawing hook.
+// From a menu screen draw callback, render_gui_post or another drawing hook.
+use mod_api::client::hud_layout::PoseOp;
 let scale = 2.0;
 let lines = draw.text_lines(&label, 120.0, TextAlign::Centre, scale)?;
-let mut draws = Vec::with_capacity(lines.lines.len() + 2);
-draws.push(GuiDraw::Push(vec![PoseOp::Scale(scale, scale)]));
-for line in &lines.lines {
-    draws.push(GuiDraw::Text {
-        text: line.text.clone(),
-        x: (x + line.at[0] / scale) as i32,
-        y: (y + line.at[1] / scale) as i32,
-        color: 0xFFFF_FFFF,
-        shadow: false,
-    });
-}
-draws.push(GuiDraw::Pop);
-draw.gui_paint(&draws)?;
+draw.draw_gui(&mut |canvas| {
+    canvas.scope(
+        &[PoseOp::Translate(x, y), PoseOp::Scale(scale, scale)],
+        None,
+        &mut |label| {
+            for line in &lines.lines {
+                let at = line.at.map(|value| value / scale);
+                label.text(&line.text, at, 0xFFFF_FFFF, false)?;
+            }
+            Ok(())
+        },
+    )
+})?;
 // lines.width and lines.height size the box you reserved for it.
 ```
 
@@ -378,8 +380,9 @@ than the box. Leading spaces are characters like any other and stay in the line.
 
 Each line keeps its styles, and its legacy `§` codes are applied to those styles and dropped, so a line
 drawn alone draws exactly what it measured: a `§r` goes back to the style its run carried, so right
-after a break it restores the tail run's carried style (a bold run stays bold). Draw the line through `GuiDraw::Text`; `DrawContext::text` draws plain
-characters only. A centred line sits at `wrapping width / 2 - floor(line width / 2)`, as vanilla's
+after a break it restores the tail run's carried style (a bold run stays bold). Draw the line through
+`GuiCanvas::text`; `DrawContext::text` draws plain characters only. A centred line sits at
+`wrapping width / 2 - floor(line width / 2)`, as vanilla's
 `TextAlignment.CENTER.calculateLeft` floors the half line width. `height` is the last line's `at[1]`
 plus one line height, so a scroll container sizes its content from it, and an empty component has no
 line at all.
@@ -418,8 +421,8 @@ draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40
   what the screen drew before or after it, and later drawing covers it in call order. An item's
   faces meet each other by depth, as a model's do, and its enchantment glint follows them. The
   OptiFine CIT glint layers of a stack are not drawn on this path yet
-  ([#3555](https://github.com/sunrise-org/sunrise/issues/3555)). There is no z input. `push_clip` cuts both
-  as it cuts `fill`.
+  ([#3555](https://github.com/sunrise-org/sunrise/issues/3555)). There is no z input. Use
+  [`DrawContext::with_scissor`](screen-clipping.md) to clip either subject.
 - In an available draw context, a `minecraft:air` stack is a no-op (`Ok(())`) even with an
   invalid view or unreadable component overrides, matching `GuiGraphicsExtractor.item`. Refusals draw nothing: `Gui3dError::Unavailable` (no game, or a
   server), `NotFinite` (a non-finite view value or transformed corner, or a non-positive size),

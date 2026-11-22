@@ -41,6 +41,13 @@ struct Recorder {
     fields: Vec<TextFieldView>,
 }
 impl DrawContext for Recorder {
+    fn with_scissor(
+        &mut self,
+        _: [f32; 4],
+        _: &mut dyn FnMut(&mut dyn DrawContext),
+    ) -> Result<(), crate::GuiClipRefusal> {
+        unreachable!("widgets under test do not open a scissor")
+    }
     fn widget_button(
         &mut self,
         _: [f32; 4],

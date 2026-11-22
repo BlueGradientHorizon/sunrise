@@ -660,7 +660,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
 /// API records whose game representation is owned by another crate. Conversions are
 /// implemented once by the game; this rule only selects the boundary, never its behaviour.
 fn text_value(ty: &Type) -> bool {
-    contains_value(ty, &["Text", "GuiDraw"])
+    contains_value(ty, &["Text"])
 }
 
 fn boundary_value(ty: &Type) -> bool {

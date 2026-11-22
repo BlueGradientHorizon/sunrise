@@ -619,6 +619,9 @@ mod golems;
 mod grindstone_decisions_tests;
 #[path = "game/blocks/growth.rs"]
 mod growth;
+#[cfg(test)]
+#[path = "game/modding/gui_canvas_items_tests.rs"]
+mod gui_canvas_items_tests;
 #[path = "game/modding/gui_clips.rs"]
 mod gui_clips;
 #[path = "game/interface/gui_entity.rs"]
@@ -629,13 +632,6 @@ mod gui_gradient_tests;
 #[cfg(test)]
 #[path = "game/modding/gui_layer_tests.rs"]
 mod gui_layer_tests;
-#[path = "game/modding/gui_paint_items.rs"]
-mod gui_paint_items;
-#[cfg(test)]
-#[path = "game/modding/gui_paint_items_tests.rs"]
-mod gui_paint_items_tests;
-#[path = "game/modding/gui_pose.rs"]
-mod gui_pose;
 #[path = "game/items/hand.rs"]
 mod hand;
 #[cfg(test)]
@@ -662,6 +658,8 @@ mod hook_meddler_tests;
 mod host;
 #[path = "game/runtime/hot_paths/mod.rs"]
 mod hot_paths;
+#[path = "game/modding/hotbar_items.rs"]
+mod hotbar_items;
 #[path = "game/interface/hud_editor.rs"]
 mod hud_editor;
 #[path = "game/interface/hud_render.rs"]
@@ -7429,8 +7427,8 @@ impl Game<'_> {
                             .map(|(strength, _)| strength),
                     };
                     let draws = hud_layout::hotbar(wi, hi, &inputs);
-                    // `extractSlot` for each item, in order, on the path `gui_paint` takes.
-                    let mut items = crate::game::gui_paint_items::HotbarItems { game: g };
+                    // `extractSlot` for each item, in order.
+                    let mut items = crate::game::hotbar_items::HotbarItems { game: g };
                     hud_layout::paint_items(batch, &g.gui.atlas, &draws, &mut items);
                 }
             });

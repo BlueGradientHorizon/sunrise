@@ -374,8 +374,7 @@ impl Resolver {
             self.entries.remove(&oldest);
         }
     }
-    /// How the resolution of `key` stands, starting it the first time.
-    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+    fn receive_completed(&mut self) {
         while let Ok((key, resolved)) = self.done.try_recv() {
             self.entries.insert(
                 key,
@@ -385,13 +384,17 @@ impl Resolver {
                 },
             );
         }
+    }
+    /// How the resolution of `key` stands, starting it the first time.
+    pub fn state(&mut self, key: &NameOrId) -> Resolve {
+        self.receive_completed();
         self.sweep();
         if let Some(entry) = self.entries.get_mut(key) {
             entry.touched = std::time::Instant::now();
-            return match &entry.resolved {
-                Some(resolved) => Resolve::Done(resolved.clone()),
-                None => Resolve::Pending,
-            };
+            return entry
+                .resolved
+                .clone()
+                .map_or(Resolve::Pending, Resolve::Done);
         }
         // `fetchByName` refuses an invalid name without a fetch; like every
         // other empty answer that is the cached result.
@@ -572,6 +575,77 @@ impl Resolver {
     }
 }
 
+enum SkinEffect {
+    Resolve(NameOrId),
+    Download(String),
+    Resource {
+        location: String,
+        namespace: String,
+        path: String,
+    },
+    Again(String),
+    Drawn(String),
+}
+
+/// Pending head-skin effects of a GUI draw group. Extraction uses the current skin or fallback;
+/// new requests and atlas uses are replayed in order only if the outer group commits.
+#[derive(Default)]
+pub struct HeadSkinJournal(std::cell::RefCell<Vec<SkinEffect>>);
+
+impl HeadSkinJournal {
+    /// On refusal or unwind, discard just the effects added by this scope.
+    pub fn scope<T, E>(&self, draw: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+        struct Rollback<'a> {
+            journal: &'a HeadSkinJournal,
+            mark: usize,
+            committed: bool,
+        }
+        impl Drop for Rollback<'_> {
+            fn drop(&mut self) {
+                if !self.committed {
+                    self.journal.0.borrow_mut().truncate(self.mark);
+                }
+            }
+        }
+        let mut pending = Rollback {
+            journal: self,
+            mark: self.0.borrow().len(),
+            committed: false,
+        };
+        let value = draw()?;
+        pending.committed = true;
+        Ok(value)
+    }
+
+    /// Whether any extraction requested a change to the skin caches.
+    pub fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+
+    /// Apply accepted requests and atlas uses without extracting the items again.
+    pub fn commit(self, resolver: &mut Resolver, downloads: &mut Downloader) {
+        for effect in self.0.into_inner() {
+            match effect {
+                SkinEffect::Resolve(key) => {
+                    resolver.state(&key);
+                }
+                SkinEffect::Download(url) => {
+                    downloads.state(Kind::Skin, &url);
+                }
+                SkinEffect::Resource {
+                    location,
+                    namespace,
+                    path,
+                } => downloads.resource(&location, &namespace, &path),
+                SkinEffect::Again(location) => {
+                    downloads.again(&location);
+                }
+                SkinEffect::Drawn(location) => downloads.drawn(&location),
+            }
+        }
+    }
+}
+
 /// `PlayerSkinRenderCache.getOrDefault` for a head: the resolved skin once
 /// its texture is in the atlas (`atlas`), else `partialProfile`'s default.
 pub fn head_skin(
@@ -580,8 +654,19 @@ pub fn head_skin(
     downloads: &mut Downloader,
     atlas: impl Fn(&str) -> bool,
 ) -> String {
+    head_skin_with_journal(profile, resolver, downloads, atlas, None)
+}
+
+/// Select the same skin as [`head_skin`], optionally postponing this draw's effects.
+pub fn head_skin_with_journal(
+    profile: &serde_json::Value,
+    resolver: &mut Resolver,
+    downloads: &mut Downloader,
+    atlas: impl Fn(&str) -> bool,
+    journal: Option<&HeadSkinJournal>,
+) -> String {
     if let Some(texture) = profile.get("texture").and_then(|t| t.as_str())
-        && let Some(sprite) = patch_skin(texture, downloads, &atlas)
+        && let Some(sprite) = patch_skin_with_journal(texture, downloads, &atlas, journal)
     {
         return sprite;
     }
@@ -592,7 +677,21 @@ pub fn head_skin(
         if p.info.textures.is_some() {
             return None;
         }
-        match resolver.state(key) {
+        let resolution = if let Some(journal) = journal {
+            resolver.receive_completed();
+            journal
+                .0
+                .borrow_mut()
+                .push(SkinEffect::Resolve(key.clone()));
+            resolver
+                .entries
+                .get(key)
+                .and_then(|entry| entry.resolved.clone())
+                .map_or(Resolve::Pending, Resolve::Done)
+        } else {
+            resolver.state(key)
+        };
+        match resolution {
             Resolve::Done(Some(profile)) => {
                 let (_, value, signature) = profile
                     .properties
@@ -620,16 +719,36 @@ pub fn head_skin(
         }
     });
     if let Some((url, location)) = resolved.as_deref().unwrap_or(&p).skin.as_ref() {
-        match downloads.state(Kind::Skin, url) {
-            Download::Ready if atlas(location) => {
+        let state = if let Some(journal) = journal {
+            downloads.receive_completed();
+            journal
+                .0
+                .borrow_mut()
+                .push(SkinEffect::Download(url.clone()));
+            texture_hash(url)
+                .and_then(|hash| downloads.states.get(&(Kind::Skin, hash)).copied())
+                .unwrap_or(Download::Pending)
+        } else {
+            downloads.state(Kind::Skin, url)
+        };
+        if state == Download::Ready {
+            let present = atlas(location);
+            if let Some(journal) = journal {
+                let effect = if present {
+                    SkinEffect::Drawn(location.clone())
+                } else {
+                    SkinEffect::Again(location.clone())
+                };
+                journal.0.borrow_mut().push(effect);
+            } else if present {
                 downloads.drawn(location);
-                return location.clone();
-            }
-            // Its slot was evicted: offer the image again.
-            Download::Ready => {
+            } else {
+                // Its slot was evicted: offer the image again.
                 downloads.again(location);
             }
-            _ => {}
+            if present {
+                return location.clone();
+            }
         }
     }
     crate::tab_list::default_skin(p.info.id).to_owned()
@@ -646,6 +765,15 @@ pub fn patch_skin(
     downloads: &mut Downloader,
     atlas: impl Fn(&str) -> bool,
 ) -> Option<String> {
+    patch_skin_with_journal(texture, downloads, atlas, None)
+}
+
+fn patch_skin_with_journal(
+    texture: &str,
+    downloads: &mut Downloader,
+    atlas: impl Fn(&str) -> bool,
+    journal: Option<&HeadSkinJournal>,
+) -> Option<String> {
     let (namespace, path) = texture.split_once(':').unwrap_or(("minecraft", texture));
     if !valid_texture_id(namespace, path) {
         return None;
@@ -655,10 +783,25 @@ pub fn patch_skin(
     }
     let location = format!("patch/{namespace}/{path}");
     if atlas(&location) {
-        downloads.drawn(&location);
+        if let Some(journal) = journal {
+            journal
+                .0
+                .borrow_mut()
+                .push(SkinEffect::Drawn(location.clone()));
+        } else {
+            downloads.drawn(&location);
+        }
         return Some(location);
     }
-    downloads.resource(&location, namespace, path);
+    if let Some(journal) = journal {
+        journal.0.borrow_mut().push(SkinEffect::Resource {
+            location,
+            namespace: namespace.to_owned(),
+            path: path.to_owned(),
+        });
+    } else {
+        downloads.resource(&location, namespace, path);
+    }
     None
 }
 
@@ -1112,9 +1255,7 @@ impl Downloader {
             }
         }
     }
-    /// How the download of `url` stands, starting it the first time. A
-    /// failure is permanent for `retry_after`, then tried again.
-    pub fn state(&mut self, kind: Kind, url: &str) -> Download {
+    fn receive_completed(&mut self) {
         while let Ok((key, image)) = self.done.try_recv() {
             self.in_flight = self.in_flight.saturating_sub(1);
             let state = match image {
@@ -1134,6 +1275,11 @@ impl Downloader {
             };
             self.set_state(key, state);
         }
+    }
+    /// How the download of `url` stands, starting it the first time. A
+    /// failure is permanent for `retry_after`, then tried again.
+    pub fn state(&mut self, kind: Kind, url: &str) -> Download {
+        self.receive_completed();
         let Some(hash) = texture_hash(url) else {
             return Download::Failed;
         };
@@ -1855,6 +2001,119 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn gui_head_skin_requests_commit_only_for_retained_scopes() {
+        use serde_json::json;
+        let mut resolver = Resolver::new();
+        let mut downloads = Downloader::new(std::path::PathBuf::new());
+        downloads.fetch = |_| None;
+        let ready = json!({"fixture": "ready"});
+        let pending = json!({"fixture": "new"});
+        let location = skin_location("abc123");
+        for (profile, hash) in [(&ready, "abc123"), (&pending, "def456")] {
+            resolver.heads.entries.insert(
+                profile.clone(),
+                std::sync::Arc::new(HeadProfile {
+                    info: ProfileInfo::default(),
+                    skin: Some((
+                        format!("https://textures.minecraft.net/texture/{hash}"),
+                        skin_location(hash),
+                    )),
+                }),
+            );
+        }
+        downloads.set_state((Kind::Skin, "abc123".into()), Download::Ready);
+        downloads.remember_image(&location, &[3; 64 * 64 * 4]);
+        let extract = |journal: &HeadSkinJournal,
+                       resolver: &mut Resolver,
+                       downloads: &mut Downloader,
+                       profile: &serde_json::Value| {
+            head_skin_with_journal(
+                profile,
+                resolver,
+                downloads,
+                |id| matches!(id, "patch/fixture/kept" | "patch/fixture/aborted"),
+                Some(journal),
+            )
+        };
+
+        let journal = HeadSkinJournal::default();
+        assert_eq!(
+            extract(
+                &journal,
+                &mut resolver,
+                &mut downloads,
+                &json!({"texture":"fixture:aborted"})
+            ),
+            "patch/fixture/aborted"
+        );
+        assert_eq!(
+            extract(&journal, &mut resolver, &mut downloads, &pending),
+            crate::tab_list::default_skin(0)
+        );
+        extract(&journal, &mut resolver, &mut downloads, &ready);
+        drop(journal);
+        assert_eq!(downloads.in_flight, 0);
+        assert!(downloads.take_drawn().is_empty());
+        assert!(downloads.take_ready().is_empty());
+
+        let journal = HeadSkinJournal::default();
+        extract(
+            &journal,
+            &mut resolver,
+            &mut downloads,
+            &json!({"texture":"fixture:kept"}),
+        );
+        assert_eq!(
+            journal.scope(|| {
+                extract(
+                    &journal,
+                    &mut resolver,
+                    &mut downloads,
+                    &json!({"texture":"fixture:aborted"}),
+                );
+                extract(
+                    &journal,
+                    &mut resolver,
+                    &mut downloads,
+                    &json!({"name":"aborted name", "texture":"fixture:aborted_missing"}),
+                );
+                Err::<(), _>(())
+            }),
+            Err(())
+        );
+        extract(&journal, &mut resolver, &mut downloads, &ready);
+        extract(
+            &journal,
+            &mut resolver,
+            &mut downloads,
+            &json!({"name":"kept name", "texture":"fixture:kept_missing"}),
+        );
+        // No draw callback committed yet, including the requests from the successful sibling.
+        assert!(resolver.entries.is_empty());
+        assert!(downloads.resources.is_empty());
+        assert!(downloads.take_ready().is_empty());
+        journal.commit(&mut resolver, &mut downloads);
+
+        assert_eq!(
+            downloads.take_drawn(),
+            std::collections::HashSet::from(["patch/fixture/kept".to_owned()])
+        );
+        assert_eq!(downloads.take_ready(), [(location, vec![3; 64 * 64 * 4])]);
+        assert_eq!(
+            downloads.resources,
+            std::collections::HashMap::from([(
+                "patch/fixture/kept_missing".to_owned(),
+                Download::Failed
+            )])
+        );
+        assert_eq!(resolver.entries.len(), 1);
+        assert!(matches!(
+            resolver.entries[&NameOrId::Name("kept name".into())].resolved,
+            Some(None)
+        ));
+    }
 
     #[test]
     fn skull_block_entity_profiles_supply_head_skins() {

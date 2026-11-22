@@ -74,11 +74,12 @@ class, 4 MiB at most one large slot).
 
 The id is an `Identifier` in the calling mod's namespace (`crash::current_native_mod`, as runtime levels are owned):
 `mymod:dynamic/panel` for the mod `mymod`. Creating an image inserts the id into the atlas's sprites, as the image's
-part of its slot (its `width` x `height` texels from the slot's corner, with that GUI size). Every sprite path then
-draws it as any other sprite: `DrawContext::sprite` (`native_sprite`, `src` in the image's own pixels),
-`gui_nine_slice`, `tiled_sprite`, `GuiDraw::Blit` and `gui_sprite`. An id that already names an image or a sprite of
-the packs is refused (`NameTaken`), so an image never shadows a pack's sprite. Free removes the name and returns the
-slot to the pool.
+part of its slot (its `width` x `height` texels from the slot's corner, with that GUI size). Draw it
+with `DrawContext::sprite` (`src` in the image's pixels), `gui_nine_slice` or `tiled_sprite`, or
+with `GuiCanvas::blit_sprite` or `GuiCanvas::blit` inside a checked GUI group. `gui_sprite` looks
+up the current region. An id that already names an image or a sprite of the packs is refused
+(`NameTaken`), so an image never shadows a pack's sprite. Free removes the name and returns the slot
+to the pool.
 
 ## Refusals
 

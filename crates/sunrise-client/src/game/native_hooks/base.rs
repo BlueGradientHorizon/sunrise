@@ -3076,8 +3076,7 @@ impl Game<'_> {
         self.fire_item_bar(stack, bar);
     }
     /// Append an item's custom decorations after its default bar, cooldown and count.
-    /// Coordinates are the icon's top-left in GUI units, as the batch takes them;
-    /// no item translation is active.
+    /// The icon origin is in the canvas's local coordinates, with the decoration pose active.
     /// Runs wherever the shared item-decoration path is used (hotbar, menus, tooltips,
     /// and the other screens that draw item icons: advancements, beacon, stats, trading).
     pub(in crate::game) fn native_item_decorations(
@@ -3085,7 +3084,7 @@ impl Game<'_> {
         stack: &ItemStack,
         x: f32,
         y: f32,
-        draw: &mut HudBatch,
+        draw: &mut dyn mod_api::GuiCanvas,
     ) {
         self.fire_item_decorations(stack, x, y, draw);
     }
@@ -4328,7 +4327,7 @@ impl Game<'_> {
             return false;
         }
         let start = batch.vertices.len();
-        self.draw_item_model(batch, &ItemStack::new(item, 1), at[0], at[1]);
+        self.draw_item_model(batch, &ItemStack::new(item, 1), at[0], at[1], 0);
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
@@ -4351,7 +4350,7 @@ impl Game<'_> {
             return false;
         }
         let start = batch.vertices.len();
-        self.draw_item_model(batch, stack, at[0], at[1]);
+        self.draw_item_model(batch, stack, at[0], at[1], 0);
         self.draw_item_decorations(batch, stack, at[0], at[1], Some(String::new()));
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
@@ -4378,7 +4377,7 @@ impl Game<'_> {
         );
         stack.extra = Some(Box::new(data));
         let start = batch.vertices.len();
-        self.draw_item_model(batch, &stack, at[0], at[1]);
+        self.draw_item_model(batch, &stack, at[0], at[1], 0);
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
