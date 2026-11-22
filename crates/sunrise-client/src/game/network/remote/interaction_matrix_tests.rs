@@ -360,11 +360,17 @@ fn matrix(mods: mod_api::Mods) {
 #[test]
 #[ignore = "daily"]
 fn native_interaction_shared_matrix() {
-    matrix(
-        vec![mod_api::ModEntry::new(
-            "interaction_fixture",
-            Box::new(Native),
-        )]
-        .into(),
+    // Loading the fixture's blocks freezes the process-wide block entity type table.
+    crate::game::in_own_process(
+        "game::remote::interaction_event_tests::interaction_matrix_tests::native_interaction_shared_matrix",
+        || {
+            matrix(
+                vec![mod_api::ModEntry::new(
+                    "interaction_fixture",
+                    Box::new(Native),
+                )]
+                .into(),
+            );
+        },
     );
 }
