@@ -105,14 +105,25 @@ impl mod_api::Hooks for Addon {
     };
     dependencies("native = '^1'");
     let path = library.to_str().unwrap();
+    let pin = Package::read(&library)
+        .unwrap()
+        .manifest
+        .native
+        .unwrap()
+        .sunrise;
     // A missing registry cannot stop a complete local build. Check first: the API route should
     // type-check the linkage without either linking mod libraries or fetching an engine slice.
     let offline = Some("http://127.0.0.1:1");
-    let stdout = passed(tool(&addon, &["check", "--with", path], offline));
-    assert!(
-        stdout.contains("Downloading api-") && !stdout.contains("Downloading engine-"),
-        "{stdout}"
-    );
+    passed(tool(&addon, &["check", "--with", path], offline));
+    let sdk_cache = root.join("cache/sdk").join(&pin);
+    let mut hosts = fs::read_dir(sdk_cache.join("api-slices")).unwrap();
+    let host = hosts.next().unwrap().unwrap();
+    assert!(hosts.next().is_none());
+    let slices = sunrise_native_build::prebuilt::Package::at(&host.path());
+    assert!(slices.runtime.join("bin").is_dir());
+    assert!(slices.api.join("deps").is_dir());
+    assert!(!slices.engine.exists());
+    assert!(!sdk_cache.join(host.file_name()).join("engine").exists());
     passed(tool(&addon, &["build", "--with", path], offline));
 
     let content = root.join("content");
@@ -151,12 +162,6 @@ impl mod_api::Hooks for Addon {
     );
     fs::write(&source, code).unwrap();
 
-    let pin = Package::read(&library)
-        .unwrap()
-        .manifest
-        .native
-        .unwrap()
-        .sunrise;
     let other_pin = "a".repeat(40);
     fs::write(&library_manifest, original.replace(&pin, &other_pin)).unwrap();
     let refused = tool(&addon, &["check", "--with", path], None);

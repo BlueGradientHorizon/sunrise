@@ -55,8 +55,9 @@ in `run/game/` and `run/home/`, and starts the program with `--game-dir`, `--res
 originals for both the project and its staged dependencies.
 When the pinned game supports `SUNRISE_LOG_STDERR`, `run` shows the native mod's own log records (INFO and above)
 live in the terminal. The full client log is normally in `target/sunrise-mod/run/home/logs/latest.log`.
-For a mod with `[[jar]]` entries, `run` verifies and stages the originals before building. See [Java jars as external
-assets](../../how-to/content-mods.md#java-jars-as-external-assets) for the default store, `--jars <dir>` and the development home requirements.
+For a native mod, `run` verifies and stages the required originals after building, before replacing the development
+app or starting the game. See [Java jars as external assets](../../how-to/content-mods.md#java-jars-as-external-assets)
+for the default store, `--jars <dir>` and the development home requirements.
 
 ## `release plan`
 

@@ -686,7 +686,13 @@ pub fn compile(
         own_folder(builds, out)?;
         own_folder(out, &out.join("staged"))?;
         let built = super::api_route::compile(
-            rust, package, out, projects, declared, resolution, on_mod, check_only,
+            rust,
+            package,
+            out,
+            projects,
+            declared,
+            resolution,
+            super::api_route::Options { on_mod, check_only },
         );
         // Stamped after the route has made its folder again, failed or not.
         if out.exists() {

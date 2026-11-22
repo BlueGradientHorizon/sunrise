@@ -325,7 +325,7 @@ impl Prepared {
 
 fn build_error(error: String) -> String {
     let hint = if error.contains("Cargo.lock") {
-        "\nResolve the dependencies again with: cargo sunrise-mod build --update-lock\n"
+        "\nTo refresh this project's own Cargo.lock, run: cargo sunrise-mod build --update-lock\nThat command does not update the locks of its libraries.\n"
     } else {
         "\n"
     };

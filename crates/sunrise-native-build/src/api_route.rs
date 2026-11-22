@@ -12,18 +12,21 @@ pub const TEMPLATE: &str = "native_mod_entry.rs.template";
 /// The folder of the runtime slice holding the fixed executable.
 const BIN: &str = "bin";
 
+pub(super) struct Options<'a> {
+    pub on_mod: &'a dyn Fn(&str, usize, usize),
+    pub check_only: bool,
+}
+
 /// Compile the mods in dependency order against API metadata and the runtime's dynamic
 /// closure. Return the unchanged executable and its runtime libraries, followed by mod dylibs.
-#[allow(clippy::too_many_arguments)]
-pub fn compile(
+pub(super) fn compile(
     rust: &dyn Toolchain,
     package: &prebuilt::Package,
     out: &Path,
     projects: &[api::Project<'_>],
     declared: &[Vec<dependencies::Dependency>],
     resolution: &dependencies::Resolution,
-    on_mod: &dyn Fn(&str, usize, usize),
-    check_only: bool,
+    options: Options<'_>,
 ) -> Result<Option<(PathBuf, Vec<PathBuf>)>, String> {
     let (runtime, api) = (package.runtime.as_path(), package.api.as_path());
     let sdk = prebuilt::identity(runtime)?;
@@ -43,7 +46,7 @@ pub fn compile(
     let mut rlibs: HashMap<&str, PathBuf> = HashMap::new();
     for (n, &index) in resolution.order.iter().enumerate() {
         let project = &projects[index];
-        on_mod(&project.bundle.manifest.id, n + 1, resolution.order.len());
+        (options.on_mod)(&project.bundle.manifest.id, n + 1, resolution.order.len());
         let (rlib, _) = prebuilt::compile_mod(
             project,
             &declared[index],
@@ -60,11 +63,11 @@ pub fn compile(
                 &[],
             ),
             sdk.commit(),
-            check_only,
+            options.check_only,
         )?;
         rlibs.insert(project.bundle.manifest.id.as_str(), rlib);
     }
-    if check_only {
+    if options.check_only {
         return Ok(None);
     }
     let mut installed = prebuilt::runtime_libraries(rust, &sdk, runtime)?;
