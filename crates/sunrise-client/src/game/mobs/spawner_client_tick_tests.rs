@@ -840,11 +840,18 @@ fn a_conduit_sent_again_between_ticks_starts_fresh() {
         for _ in 0..3 {
             tick_phase(game);
         }
-        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 3);
-        game.forget_remote_columns(&mut [(0, 0)].into_iter().collect(), true);
+        let pos = [8, 64, 8];
+        assert_eq!(game.block_anim(pos, 0.5).conduit.0, 3);
+        game.apply_packet(
+            sunrise_protocol::packets::play::Clientbound::ForgetLevelChunk(
+                sunrise_protocol::packets::play::ForgetLevelChunk { pos: [0, 0] },
+            ),
+        )
+        .unwrap();
         send_column(game, &entities, (0, 0), &[0], &case["fills"]);
+        assert_eq!(game.block_anim(pos, 0.5).conduit, (0, false, false, 0.0));
         tick_phase(game);
-        assert_eq!(game.be_anims.conduits[&[8, 64, 8]].tick_count, 1);
+        assert_eq!(game.block_anim(pos, 0.5).conduit.0, 1);
     });
 }
 

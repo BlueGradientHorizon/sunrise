@@ -921,7 +921,11 @@ impl Game<'_> {
             Default::default()
         };
         self.be_anims
-            .block_anim(pos, self.world.game_time, partial, sherds)
+            .block_anim(pos, self.world.game_time, partial, sherds, || {
+                self.world
+                    .block_entities
+                    .generation(&(pos[0], pos[1], pos[2]))
+            })
     }
     /// The client chest ticker, also used when replaying a moved chest.
     pub(super) fn tick_chest_lid(&mut self, pos: [i32; 3]) {

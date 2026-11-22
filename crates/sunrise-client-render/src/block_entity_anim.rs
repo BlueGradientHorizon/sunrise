@@ -1056,6 +1056,7 @@ impl BlockEntityAnims {
         game_time: i64,
         partial: f32,
         sherds: [Option<String>; 4],
+        generation: impl FnOnce() -> Option<u64>,
     ) -> BlockAnim {
         let mut anim = BlockAnim {
             sherds,
@@ -1080,7 +1081,13 @@ impl BlockEntityAnims {
                 .flatten()
                 .map(|d| DIRECTIONS[usize::from(d)]);
         }
-        if let Some(c) = self.conduits.get(&pos) {
+        // A replacement can draw before its first ConduitBlockEntity.clientTick.
+        if let Some(c) = self.conduits.get(&pos)
+            && self
+                .owners
+                .get(&pos)
+                .is_some_and(|&g| generation() == Some(g))
+        {
             anim.conduit = (c.tick_count, c.is_active, c.is_hunting, c.active_rotation);
         }
         if let Some(s) = self.skulls.get(&pos) {
