@@ -52,9 +52,9 @@ impl Codec<'_> {
 
     fn write(&self, text: &Text) -> Result<Tag, Error> {
         let tag = self.encode(text, 0)?;
-        // Nested field codecs (e.g. the player profile in an object) add more
-        // containers than just those on the recursive component path.
-        if !nbt::within_depth(&tag, Limits::default().max_depth) {
+        // Count the final binary layout: both nested field codecs and the
+        // writer's list wrappers can add containers after component encoding.
+        if !nbt::within_write_depth(&tag, Limits::default().max_depth) {
             nbt::discard_tag(tag);
             return Err(Error::TooDeep);
         }

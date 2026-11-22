@@ -45,6 +45,33 @@ fn custom_click_retains_typed_nbt_even_when_unrelated_fields_are_non_finite() {
 }
 
 #[test]
+fn click_payload_depth_includes_the_binary_mixed_list_wrapper() {
+    let reg = Registries::default();
+    let codec = codec(&reg);
+    let with_chain = |chain_len| {
+        let chain = (0..chain_len).fold(s("leaf"), |tag, _| Tag::List(vec![tag]));
+        let mut text = Text::literal("Click");
+        text.style.click = Some(TextClick::Custom {
+            id: "test:event".into(),
+            payload: Some(Tag::List(vec![s("first"), chain])),
+        });
+        text
+    };
+    // Component and event compounds, mixed list, synthetic compound, and 508 lists.
+    let text = with_chain(508);
+    let tag = codec.write(&text).unwrap();
+    let limits = Limits::default();
+    let bytes = nbt::write_network(&tag, limits).unwrap();
+    let (decoded, used) = nbt::read_network(&bytes, limits).unwrap();
+    assert_eq!(used, bytes.len());
+    assert_eq!(codec.read(&decoded), Ok(Some(text)));
+    nbt::discard_tag(tag);
+    nbt::discard_tag(decoded);
+
+    assert_eq!(codec.write(&with_chain(509)), Err(Error::TooDeep));
+}
+
+#[test]
 fn hover_item_components_use_the_persistent_text_codec() {
     let reg = Registries::default();
     let codec = codec(&reg);
