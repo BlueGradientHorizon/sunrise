@@ -1,0 +1,5 @@
+# #4475: an entity's main arm on both sides and whether the server is published read a game built
+# from the prepared 26.3 data; opening to LAN also binds a socket.
+sunrise-client game::native_main_arm_tests::a_client_reads_the_main_arm_the_server_sent lib daily resources
+sunrise-client game::native_main_arm_tests::a_server_reads_the_reported_main_hand_and_the_left_handed_flag lib daily resources
+sunrise-client game::native_server_distances::tests::the_server_is_published_while_open_to_lan lib daily resources

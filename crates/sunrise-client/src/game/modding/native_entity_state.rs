@@ -92,6 +92,31 @@ impl Game<'_> {
             _ => false,
         })
     }
+    /// `LivingEntity.getMainArm`: `Avatar`'s `DATA_PLAYER_MAIN_HAND` (a server sets it from the
+    /// player's `ClientInformation`; a client's own player draws with its Main Hand option, and
+    /// another player is a mob that keeps what the server sent), `Mob`'s left-handed flag and
+    /// `ArmorStand`'s right arm. The dragon's left-handed draw is not kept, so it reads right.
+    pub(super) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
+        let left = match self.native_entity_read_target(entity)? {
+            Target::Player if !self.is_logical_server() => self.settings.main_hand_left,
+            Target::Player => return self.guest_main_arm(self.lan_acting?),
+            Target::Guest(conn) => return self.guest_main_arm(conn),
+            Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.main_arm_left(),
+            Target::Stand(_) | Target::Dragon(_) => false,
+            _ => return None,
+        };
+        Some(if left {
+            mod_api::MainHand::Left
+        } else {
+            mod_api::MainHand::Right
+        })
+    }
+    /// A server's player's main arm, from the Main Hand its client last reported.
+    fn guest_main_arm(&self, conn: u32) -> Option<mod_api::MainHand> {
+        Some(super::lan::main_hand(
+            self.command_guest(conn)?.info.main_hand,
+        ))
+    }
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
     pub(super) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {

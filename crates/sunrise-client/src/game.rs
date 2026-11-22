@@ -1438,6 +1438,9 @@ mod native_local_player_writes;
 #[path = "game/modding/native_local_sounds.rs"]
 mod native_local_sounds;
 #[cfg(test)]
+#[path = "game/modding/native_main_arm_tests.rs"]
+mod native_main_arm_tests;
+#[cfg(test)]
 #[path = "game/modding/native_makes_piglins_neutral_tests.rs"]
 mod native_makes_piglins_neutral_tests;
 #[path = "game/modding/native_mapping_presses.rs"]

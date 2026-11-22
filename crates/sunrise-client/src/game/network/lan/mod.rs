@@ -3629,11 +3629,7 @@ pub(in crate::game) fn client_info(
         },
         chat_colors: i.chat_colors,
         model_customisation: i.model_customisation,
-        main_hand: if i.main_hand == 1 {
-            mod_api::MainHand::Right
-        } else {
-            mod_api::MainHand::Left
-        },
+        main_hand: main_hand(i.main_hand),
         text_filtering: i.text_filtering,
         allows_listing: i.allows_listing,
         particle_status: match i.particle_status.rem_euclid(3) {
@@ -3641,6 +3637,16 @@ pub(in crate::game) fn client_info(
             1 => mod_api::ParticleStatus::Decreased,
             _ => mod_api::ParticleStatus::Minimal,
         },
+    }
+}
+
+/// `HumanoidArm.BY_ID`: 1 is the right arm, and every other id the left (0, and the id an
+/// unknown one reads as).
+pub(in crate::game) fn main_hand(id: i32) -> mod_api::MainHand {
+    if id == 1 {
+        mod_api::MainHand::Right
+    } else {
+        mod_api::MainHand::Left
     }
 }
 
