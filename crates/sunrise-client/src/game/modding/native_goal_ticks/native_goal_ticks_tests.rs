@@ -1087,18 +1087,45 @@ fn a_finalize_spawn_listener_keeps_the_mod_goals() {
     });
 }
 
-/// The prey a [`Leap`] goal chose, as the mod that owns the goal knows it.
-static PREY: Mutex<Option<EntityRef>> = Mutex::new(None);
-/// What [`Leap`]'s refused writes answered, and whether they left the
-/// velocity as it was.
-static REFUSALS: Mutex<Vec<(bool, bool, bool)>> = Mutex::new(Vec::new());
+/// The pig a [`Leap`] goal leaps at: the mod that owns the goal knows the
+/// target it chose.
+const PREY: u32 = 71;
+
+/// One velocity call a [`Leap`] goal made at its start: what it answered and
+/// the velocity `delta_movement` read straight after it, as bits.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Step {
+    call: &'static str,
+    answer: bool,
+    read: [u64; 3],
+}
+
+/// The [`Leap`] goals' steps, kept by the test's own mod: the fixture lends
+/// it to each goal it registers.
+type Journal = std::sync::Arc<Mutex<Vec<Step>>>;
 
 /// `LeapAtTargetGoal(mob, 0.4)` written against the goal context: it reads
-/// its own mob's velocity and replaces it (#3926). The mob's own target read
-/// stands aside for [`PREY`]: the goal knows the target it chose.
-#[derive(Default)]
+/// its own mob's velocity and replaces it (#3926). Before the launch, its
+/// start checks every velocity call once and puts the velocity back.
 struct Leap {
+    journal: Journal,
     target: Option<EntityRef>,
+}
+impl Leap {
+    /// Make a velocity call and record its answer with the read after it.
+    fn step(
+        &self,
+        cx: &mut GoalContext<'_>,
+        call: &'static str,
+        write: impl FnOnce(&mut GoalContext<'_>) -> bool,
+    ) {
+        let answer = write(cx);
+        let read = cx.delta_movement().map(f64::to_bits);
+        self.journal
+            .lock()
+            .unwrap()
+            .push(Step { call, answer, read });
+    }
 }
 impl Goal for Leap {
     fn flags(&self) -> GoalFlags {
@@ -1108,7 +1135,7 @@ impl Goal for Leap {
         "Leap"
     }
     fn can_use(&mut self, cx: &mut GoalContext<'_>) -> bool {
-        self.target = *PREY.lock().unwrap();
+        self.target = cx.host().entity(PREY);
         let Some(target) = self.target else {
             return false;
         };
@@ -1128,15 +1155,26 @@ impl Goal for Leap {
         cx.mob().entity().on_ground(cx.host()) == Some(false)
     }
     fn start(&mut self, cx: &mut GoalContext<'_>) {
-        // Refused writes first: the launch below reads the velocity they
-        // must leave alone.
         let before = cx.delta_movement();
-        let set = cx.set_delta_movement([f64::NAN, 0.0, 0.0]);
-        let add = cx.add_delta_movement([0.0, f64::INFINITY, 0.0]);
-        REFUSALS
-            .lock()
-            .unwrap()
-            .push((set, add, cx.delta_movement() == before));
+        self.step(cx, "before", |_| true);
+        self.step(cx, "set", |cx| cx.set_delta_movement([0.25, -0.5, 0.75]));
+        self.step(cx, "add", |cx| {
+            cx.add_delta_movement([0.125, 0.0625, -0.25])
+        });
+        self.step(cx, "set NaN", |cx| {
+            cx.set_delta_movement([f64::NAN, 0.5, 0.5])
+        });
+        self.step(cx, "add infinite", |cx| {
+            cx.add_delta_movement([0.0, f64::INFINITY, 0.0])
+        });
+        self.step(cx, "set large", |cx| {
+            cx.set_delta_movement([f64::MAX, 1.0, -2.0])
+        });
+        self.step(cx, "add overflowing", |cx| {
+            cx.add_delta_movement([f64::MAX, 3.0, 4.0])
+        });
+        self.step(cx, "restore", |cx| cx.set_delta_movement(before));
+        // The launch, as vanilla's `start` computes it.
         let movement = cx.delta_movement();
         let at = self.target.and_then(|t| t.position(cx.host())).unwrap();
         let own = cx.mob().entity().position(cx.host()).unwrap();
@@ -1151,23 +1189,30 @@ impl Goal for Leap {
                 delta[2] / length * 0.4 + movement[2] * 0.2,
             ];
         }
-        cx.set_delta_movement([delta[0], f64::from(0.4_f32), delta[2]]);
+        let launch = [delta[0], f64::from(0.4_f32), delta[2]];
+        self.step(cx, "launch", |cx| cx.set_delta_movement(launch));
     }
 }
 
-struct Leaps;
+struct Leaps(Journal);
 #[mod_api::sunrise_part]
 impl EntityPart for Leaps {
     fn register_goals(&self, goals: &mut GoalRegistrar<'_>) {
-        goals.add_goal(4, Leap::default());
+        goals.add_goal(
+            4,
+            Leap {
+                journal: self.0.clone(),
+                target: None,
+            },
+        );
     }
 }
 
-struct LeapMod;
+struct LeapMod(Journal);
 #[mod_api::__subscriptions]
 impl Hooks for LeapMod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
-        r.entity_part("minecraft:wolf", Leaps);
+        r.entity_part("minecraft:wolf", Leaps(self.0.clone()));
     }
 }
 
@@ -1197,19 +1242,18 @@ fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
             }
         }
         mob_of(game, 70, "minecraft:wolf", [3.5, 65.0, 3.5]);
-        mob_of(game, 71, "minecraft:pig", [6.0, 65.0, 5.0]);
+        mob_of(game, PREY, "minecraft:pig", [6.0, 65.0, 5.0]);
         for m in game.mobs.iter_mut() {
             m.ai.goals.clear();
             m.ai.targets.clear();
         }
         let wolf = &mut game.mobs[0];
-        wolf.ai.target = Some(Who::Mob(71));
+        wolf.ai.target = Some(Who::Mob(PREY));
         if mod_goal {
             mobs::part_goals::attach(wolf);
         } else {
             wolf.ai.goals.add(4, mobs::goals::LeapAtTarget::new(0.4));
         }
-        *PREY.lock().unwrap() = Some(game.entity(71).unwrap());
         for _ in 0..40 {
             game.world.game_time += 1;
             game.tick_mobs().unwrap();
@@ -1232,14 +1276,18 @@ fn leap_trace(mod_goal: bool) -> Vec<[u64; 7]> {
 /// A mod goal that ports `LeapAtTargetGoal` through
 /// `GoalContext::set_delta_movement` launches its mob as the engine's port of
 /// vanilla's goal does, on the same seed: the same velocity and position bit
-/// for bit, tick after tick, through the flight to the landing. Its refused
-/// writes (a NaN set, an infinite add) answer false and change nothing.
+/// for bit, tick after tick, through the flight to the landing. Each velocity
+/// call answers as `Entity.setDeltaMovement` and `addDeltaMovement` decide,
+/// and `delta_movement` reads its effect at once: accepted writes land, and
+/// a refused one (a NaN set, an infinite add, a finite add whose sum
+/// overflows) changes nothing.
 #[test]
 #[ignore = "daily"]
 fn a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does() {
-    REFUSALS.lock().unwrap().clear();
-    mod_platform::__private::install(vec![ModEntry::new("leaps", Box::new(LeapMod))].into());
-    crate::game::api_values::install_parts(&[ModEntry::new("leaps", Box::new(LeapMod))]).unwrap();
+    let journal = Journal::default();
+    let entry = || ModEntry::new("leaps", Box::new(LeapMod(journal.clone())));
+    mod_platform::__private::install(vec![entry()].into());
+    crate::game::api_values::install_parts(&[entry()]).unwrap();
     let engine = leap_trace(false);
     let ported = leap_trace(true);
     let airborne = engine.iter().position(|t| t[6] == 0);
@@ -1252,10 +1300,39 @@ fn a_mod_leap_goal_flies_and_lands_as_the_engine_leap_does() {
         ported, engine,
         "the mod's leap is the engine's, bit for bit"
     );
-    let refusals = REFUSALS.lock().unwrap().clone();
-    assert!(!refusals.is_empty(), "the mod's goal started");
-    assert!(
-        refusals.iter().all(|&r| r == (false, false, true)),
-        "refused writes answer false and keep the velocity: {refusals:?}"
-    );
+
+    let steps = journal.lock().unwrap().clone();
+    assert!(!steps.is_empty(), "the mod's goal started");
+    assert_eq!(steps.len() % 9, 0, "every start makes its nine calls");
+    let bits = |v: [f64; 3]| v.map(f64::to_bits);
+    for start in steps.chunks(9) {
+        let before = start[0].read;
+        let added = bits([0.375, -0.4375, 0.5]);
+        let large = bits([f64::MAX, 1.0, -2.0]);
+        let expected = [
+            ("before", true, before),
+            ("set", true, bits([0.25, -0.5, 0.75])),
+            ("add", true, added),
+            ("set NaN", false, added),
+            ("add infinite", false, added),
+            ("set large", true, large),
+            ("add overflowing", false, large),
+            ("restore", true, before),
+        ];
+        for (step, (call, answer, read)) in start.iter().zip(expected) {
+            assert_eq!(step.call, call);
+            assert_eq!(step.answer, answer, "{call} answers {answer}");
+            assert_eq!(
+                step.read, read,
+                "{call}: delta_movement reads {read:?} straight after"
+            );
+        }
+        let launch = start[8];
+        assert_eq!((launch.call, launch.answer), ("launch", true));
+        assert_eq!(
+            launch.read[1],
+            f64::from(0.4_f32).to_bits(),
+            "the launch's rise reads back"
+        );
+    }
 }

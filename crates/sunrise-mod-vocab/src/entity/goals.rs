@@ -280,7 +280,7 @@ impl<'a> GoalContext<'a> {
     }
     /// `setDeltaMovement(x, y, z)`: replace the mob's velocity, in blocks a
     /// tick. It applies at once, inside the mob's AI step, so the travel
-    /// that follows in the same tick moves the mob by it, and clients see it
+    /// that follows in the same tick uses it, and clients see it
     /// through the entity's ordinary motion tracking. False, the velocity
     /// unchanged, when a component is not finite; nothing else is refused or
     /// clamped.
