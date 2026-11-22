@@ -73,15 +73,20 @@ impl StartupAdmission {
             .selected
             .iter()
             .map(|p| (&p.package.manifest.id, &p.path));
-        let admitted = native
+        let packages: Vec<_> = native
             .chain(content)
             .filter(|(id, _)| !refused.iter().any(|missing| missing.owners.contains(id)))
-            .map(|(id, path)| {
+            .collect();
+        let opened = super::read_package_inputs(&packages, |(_, path)| ContentSource::open(path));
+        let admitted = packages
+            .into_iter()
+            .zip(opened)
+            .map(|((id, path), opened)| {
                 (
                     id.clone(),
                     Arc::new(PackageContent {
                         path: path.clone(),
-                        opened: ContentSource::open(path),
+                        opened,
                     }),
                 )
             })
@@ -96,9 +101,11 @@ impl StartupAdmission {
 
     pub(in crate::game) fn native_packages(
         &self,
-    ) -> &[sunrise_mod_package::packages::AdjacentManifest] {
-        // Every validated native package is admitted; a missing JAR on one is fatal.
-        self.native.packages()
+    ) -> impl Iterator<Item = &sunrise_mod_package::packages::AdjacentManifest> {
+        self.native
+            .packages()
+            .iter()
+            .filter(|p| self.admitted.contains_key(&p.manifest.id))
     }
 
     pub(in crate::game) fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
@@ -170,7 +177,6 @@ mod tests {
     fn with_registration(admission: &StartupAdmission, f: impl FnOnce(RegistrationContext)) {
         let packages = admission
             .native_packages()
-            .iter()
             .map(|p| p.try_into_api().unwrap())
             .chain(
                 admission

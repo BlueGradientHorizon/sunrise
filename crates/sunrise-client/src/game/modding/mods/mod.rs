@@ -36,14 +36,14 @@ struct ContentRequest<'a> {
     admitted: Option<&'a package_files::PackageContent>,
 }
 
-/// Read filesystem-bound package declarations concurrently, retaining dependency order and
-/// keeping an individual package's refusal attached to that package.
-fn read_contents(
-    requests: &[ContentRequest<'_>],
-) -> Vec<Result<sunrise_mod_package::Content, String>> {
+/// Open package sources and read their declarations in parallel, keeping results in request order.
+fn read_package_inputs<T: Sync, U: Send>(requests: &[T], read: impl Fn(&T) -> U + Sync) -> Vec<U> {
+    if requests.is_empty() {
+        return Vec::new();
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
     let next = AtomicUsize::new(0);
-    let threads = sunrise_threads::worker_count().clamp(1, requests.len().max(1));
+    let threads = sunrise_threads::worker_count().clamp(1, requests.len());
     let mut done: Vec<_> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..threads)
             .map(|_| {
@@ -51,27 +51,10 @@ fn read_contents(
                     let mut done = Vec::new();
                     loop {
                         let index = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(ContentRequest {
-                            path,
-                            manifest,
-                            declared,
-                            admitted,
-                        }) = requests.get(index)
-                        else {
+                        let Some(request) = requests.get(index) else {
                             return done;
                         };
-                        let content = match admitted {
-                            Some(source) => source.read_declaring(manifest, declared),
-                            None => sunrise_mod_package::Content::read_declaring(
-                                path, manifest, declared,
-                            ),
-                        };
-                        if declared.is_empty()
-                            && let Ok(content) = &content
-                        {
-                            remember_verdict(path, content);
-                        }
-                        done.push((index, content));
+                        done.push((index, read(request)));
                     }
                 })
             })
@@ -87,6 +70,31 @@ fn read_contents(
     });
     done.sort_by_key(|(index, _)| *index);
     done.into_iter().map(|(_, result)| result).collect()
+}
+
+fn read_contents(
+    requests: &[ContentRequest<'_>],
+) -> Vec<Result<sunrise_mod_package::Content, String>> {
+    read_package_inputs(
+        requests,
+        |ContentRequest {
+             path,
+             manifest,
+             declared,
+             admitted,
+         }| {
+            let content = match admitted {
+                Some(source) => source.read_declaring(manifest, declared),
+                None => sunrise_mod_package::Content::read_declaring(path, manifest, declared),
+            };
+            if declared.is_empty()
+                && let Ok(content) = &content
+            {
+                remember_verdict(path, content);
+            }
+            content
+        },
+    )
 }
 
 #[derive(Default)]
