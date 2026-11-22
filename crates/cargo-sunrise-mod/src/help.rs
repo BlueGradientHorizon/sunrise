@@ -19,20 +19,20 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "build",
         everyday: true,
-        usage: "build [--update-lock] [--binaries <dir> --sunrise-release <tag> --releases <file> [--server]] | build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>",
-        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled first (--update-lock resolves its Cargo.lock again). --binaries also writes the current SDK host's archive (--server selects the dedicated server); --describe-binaries assembles a descriptor from signed host archives without compiling.",
+        usage: "build [--update-lock] [--with <path>]… | build [--update-lock] --binaries <dir> --sunrise-release <tag> --releases <file> [--server] | build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>",
+        summary: "Compiles a native mod with its required libraries and any optional libraries supplied with --with, then packs only the mod into target/sunrise-mod/<id>.smod. Use --with for local folders or .smod files; the Sunrise mod registry supplies other required libraries. --update-lock resolves its Cargo.lock again. --binaries writes an independent SDK host archive for a standalone mod; --describe-binaries assembles a descriptor without compiling.",
     },
     Command {
         name: "run",
         everyday: true,
-        usage: "run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]",
-        summary: "Builds the mod, starts the game, and shows a native mod's own log lines live; --game names the game for a content mod, --resources the prepared resources for a native mod (which runs on its pinned SDK's game), and --jars selects a folder of original Java jars named by SHA-512.",
+        usage: "run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [--with <path>]… [-- <game args>]",
+        summary: "Builds the mod and starts the game with its declared libraries; repeat --with for local mod folders or .smod files. --game names the game for a content mod, --resources names prepared resources for the native mod's pinned SDK, and --jars names a folder of original Java jars by SHA-512.",
     },
     Command {
         name: "check",
         everyday: true,
-        usage: "check [--uses] | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json]",
-        summary: "Checks the mod in this folder, or a file as the registry would; --uses lists what the mod uses of its pinned build, and a native mod's Rust code is checked on this computer.",
+        usage: "check [--uses] [--with <path>]… | check <file> [--kind <kind>] [--key <public key> --signature <file.minisig>] [--json]",
+        summary: "Checks the mod in this folder, including native Rust code with the same libraries as build, or a file as the registry would. Repeat --with for local libraries; --uses lists what the mod uses of its pinned build.",
     },
     Command {
         name: "update",
