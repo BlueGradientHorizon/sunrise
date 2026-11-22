@@ -247,7 +247,7 @@ fn orb_points(host: &dyn mod_api::Host, pos: [i32; 3]) -> i64 {
     let level = host.level("minecraft:overworld").expect("the overworld");
     let at = pos.map(f64::from);
     let mut total = 0i64;
-    level
+    let visit = level
         .visit_experience_orbs(host, at.map(|v| v - 3.0), at.map(|v| v + 4.0), &mut |orb| {
             let value = orb.value(host).expect("live orb value");
             let count = orb.count(host).expect("live orb count");
@@ -255,6 +255,7 @@ fn orb_points(host: &dyn mod_api::Host, pos: [i32; 3]) -> i64 {
             core::ops::ControlFlow::Continue(())
         })
         .expect("experience orb visit");
+    assert_eq!(visit, core::ops::ControlFlow::Continue(()));
     total
 }
 
