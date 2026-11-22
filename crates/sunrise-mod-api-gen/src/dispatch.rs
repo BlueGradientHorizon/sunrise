@@ -1246,7 +1246,7 @@ pub(super) fn emit<'a>(
                 // Let the existing journal see the unwind before invoke catches it.
                 let (host, _) = host.as_ref().unwrap();
                 let (commit, no_answer) = if contract == Contract::Listen {
-                    (format!("{expression}; Ok(())"), "()")
+                    (format!("{expression}; Ok(())"), "")
                 } else {
                     (format!("Ok({expression})"), "Flow::Continue")
                 };
