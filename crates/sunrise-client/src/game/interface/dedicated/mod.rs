@@ -2423,98 +2423,103 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn dedicated_checkpoints_continue_only_after_record_refusals() {
-        use crate::game::{
-            execution_role::ExecutionRole,
-            native_entity_refs::tests::{fixture_root, with_game_role},
-        };
-        use mod_api::{Authority, Hooks, ModEntry, ServerHost, ServerStoppedEvent};
-        use std::sync::{Arc, Mutex};
-        use sunrise_client::save::{LevelShape, SaveDir};
-        use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
-
-        struct CloseEvents(Arc<Mutex<usize>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for CloseEvents {
-            fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut ServerStoppedEvent) {
-                *self.0.lock().unwrap() += 1;
-            }
-        }
-
-        let events = Arc::new(Mutex::new(0usize));
-        let mods = vec![ModEntry::new(
-            "crash_close_events",
-            Box::new(CloseEvents(events.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
-                game.native_lifecycle.begin_open(Authority::DedicatedServer);
-                game.native_lifecycle.world_open_ready().unwrap();
-                let dir = tempfile::tempdir().unwrap();
-                game.world_root = dir.path().to_path_buf();
-                game.save = Arc::new(SaveDir::new(
-                    game.world_root.clone(),
-                    LevelShape::OVERWORLD,
-                    Some(Default::default()),
-                ));
-                game.session_lock =
-                    Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
-                game.world_adopted = true;
-                assert_eq!(
-                    game.save_dedicated_checkpoint("startup fixture").unwrap(),
-                    0
-                );
-                let fail_next_save = |game: &mut crate::game::Game<'_>| {
-                    let key = (2, 0);
-                    let mut chunk = sunrise_client::chunk::Chunk::with_layout(
-                        key.0,
-                        key.1,
-                        game.world.layout(),
-                    );
-                    let invalid = (0..=DISK_WRITE_NESTING_GUARD)
-                        .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
-                    Arc::make_mut(chunk.saved.get_or_insert_with(Default::default))
-                        .root
-                        .insert("test:invalid".into(), invalid);
-                    game.world.chunks.insert(key, Arc::new(chunk));
-                    game.world.modified.insert(key);
+        crate::game::in_own_process(
+            "game::dedicated::tests::dedicated_checkpoints_continue_only_after_record_refusals",
+            || {
+                use crate::game::{
+                    execution_role::ExecutionRole,
+                    native_entity_refs::tests::{fixture_root, with_game_role},
                 };
-                for phase in ["startup fixture", "pause fixture"] {
-                    fail_next_save(game);
-                    assert_eq!(game.save_dedicated_checkpoint(phase).unwrap(), 1);
+                use mod_api::{Authority, Hooks, ModEntry, ServerHost, ServerStoppedEvent};
+                use std::sync::{Arc, Mutex};
+                use sunrise_client::save::{LevelShape, SaveDir};
+                use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+
+                struct CloseEvents(Arc<Mutex<usize>>);
+                #[mod_api::__subscriptions]
+                impl Hooks for CloseEvents {
+                    fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut ServerStoppedEvent) {
+                        *self.0.lock().unwrap() += 1;
+                    }
                 }
-                assert_eq!(game.save.record_save_failures(), 2);
-                assert_eq!(game.save_dedicated_checkpoint("no new edits").unwrap(), 0);
 
-                fail_next_save(game);
-                let cause = "injected dedicated crash";
-                let error = game
-                    .run_server_lifecycle(true, |_| panic!("{cause}"))
-                    .unwrap_err();
-                assert!(error.to_string().contains(cause));
-                assert_eq!(*events.lock().unwrap(), 1);
-                assert_eq!(game.save.record_save_failures(), 3);
+                let events = Arc::new(Mutex::new(0usize));
+                let mods = vec![ModEntry::new(
+                    "crash_close_events",
+                    Box::new(CloseEvents(events.clone())),
+                )]
+                .into();
+                mod_platform::testing::with_mods(mods, || {
+                    with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
+                        game.native_lifecycle.begin_open(Authority::DedicatedServer);
+                        game.native_lifecycle.world_open_ready().unwrap();
+                        let dir = tempfile::tempdir().unwrap();
+                        game.world_root = dir.path().to_path_buf();
+                        game.save = Arc::new(SaveDir::new(
+                            game.world_root.clone(),
+                            LevelShape::OVERWORLD,
+                            Some(Default::default()),
+                        ));
+                        game.session_lock =
+                            Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
+                        game.world_adopted = true;
+                        assert_eq!(
+                            game.save_dedicated_checkpoint("startup fixture").unwrap(),
+                            0
+                        );
+                        let fail_next_save = |game: &mut crate::game::Game<'_>| {
+                            let key = (2, 0);
+                            let mut chunk = sunrise_client::chunk::Chunk::with_layout(
+                                key.0,
+                                key.1,
+                                game.world.layout(),
+                            );
+                            let invalid = (0..=DISK_WRITE_NESTING_GUARD)
+                                .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
+                            Arc::make_mut(chunk.saved.get_or_insert_with(Default::default))
+                                .root
+                                .insert("test:invalid".into(), invalid);
+                            game.world.chunks.insert(key, Arc::new(chunk));
+                            game.world.modified.insert(key);
+                        };
+                        for phase in ["startup fixture", "pause fixture"] {
+                            fail_next_save(game);
+                            assert_eq!(game.save_dedicated_checkpoint(phase).unwrap(), 1);
+                        }
+                        assert_eq!(game.save.record_save_failures(), 2);
+                        assert_eq!(game.save_dedicated_checkpoint("no new edits").unwrap(), 0);
 
-                let blocked = dir.path().join("level.dat_new");
-                std::fs::create_dir(&blocked).unwrap();
-                let expected = std::fs::write(blocked, b"test").unwrap_err();
-                let error = game.save_dedicated_checkpoint("pause fixture").unwrap_err();
-                assert_eq!(
-                    error.downcast_ref::<std::io::Error>().unwrap().kind(),
-                    expected.kind()
-                );
-                game.native_lifecycle.begin_open(Authority::DedicatedServer);
-                game.native_lifecycle.world_open_ready().unwrap();
-                game.session_lock =
-                    Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
-                game.world_adopted = true;
-                let error = game
-                    .run_server_lifecycle(true, |_| panic!("{cause}"))
-                    .unwrap_err();
-                assert!(error.to_string().contains(cause));
-                assert_eq!(*events.lock().unwrap(), 2);
-            });
-        });
+                        fail_next_save(game);
+                        let cause = "injected dedicated crash";
+                        let error = game
+                            .run_server_lifecycle(true, |_| panic!("{cause}"))
+                            .unwrap_err();
+                        assert!(error.to_string().contains(cause));
+                        assert_eq!(*events.lock().unwrap(), 1);
+                        assert_eq!(game.save.record_save_failures(), 3);
+
+                        let blocked = dir.path().join("level.dat_new");
+                        std::fs::create_dir(&blocked).unwrap();
+                        let expected = std::fs::write(blocked, b"test").unwrap_err();
+                        let error = game.save_dedicated_checkpoint("pause fixture").unwrap_err();
+                        assert_eq!(
+                            error.downcast_ref::<std::io::Error>().unwrap().kind(),
+                            expected.kind()
+                        );
+                        game.native_lifecycle.begin_open(Authority::DedicatedServer);
+                        game.native_lifecycle.world_open_ready().unwrap();
+                        game.session_lock =
+                            Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
+                        game.world_adopted = true;
+                        let error = game
+                            .run_server_lifecycle(true, |_| panic!("{cause}"))
+                            .unwrap_err();
+                        assert!(error.to_string().contains(cause));
+                        assert_eq!(*events.lock().unwrap(), 2);
+                    });
+                });
+            },
+        );
     }
 
     #[test]

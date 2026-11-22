@@ -2281,7 +2281,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
         "cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_preserve_nested_merge",
         || {
             use mod_api::{AttachmentKey, Flow, HostSide, ServerHost};
-            use std::sync::OnceLock;
+            use std::sync::Mutex;
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
             use sunrise_core::nbt::{Compound, Tag};
             use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Holder};
@@ -2295,7 +2295,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                 expect_before: Arc<std::sync::atomic::AtomicI32>,
                 nested_tx: Arc<AtomicBool>,
                 calls: Arc<AtomicUsize>,
-                mark: Arc<OnceLock<AttachmentKey<i32>>>,
+                mark: Arc<Mutex<Option<AttachmentKey<i32>>>>,
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for NetherPlayerAttachmentHook {
@@ -2322,7 +2322,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                             .copy_on_death(),
                         )
                         .unwrap();
-                    let _ = self.mark.set(key);
+                    *self.mark.lock().unwrap() = Some(key);
                 }
 
                 fn play_level_sound_at_position(
@@ -2335,7 +2335,7 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
                     }
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if let HostSide::Server(server) = host {
-                        let mark = self.mark.get().unwrap();
+                        let mark = self.mark.lock().unwrap().clone().unwrap();
                         let holder = Holder::Player(self.player_uuid);
                         assert_eq!(
                             mark.get_existing(server, holder, |v| v.copied()),
@@ -2362,8 +2362,8 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
             let expect_before = Arc::new(std::sync::atomic::AtomicI32::new(TENTATIVE_OVERWORLD));
             let nested_tx = Arc::new(AtomicBool::new(false));
             let calls = Arc::new(AtomicUsize::new(0));
-            let mark = Arc::new(OnceLock::new());
-            let mods = vec![mod_api::ModEntry::new(
+            let mark = Arc::new(Mutex::new(None));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "cross_level_sound_test",
                 Box::new(NetherPlayerAttachmentHook {
                     player_uuid: 12,
@@ -2375,9 +2375,10 @@ fn cross_level_sound_listener_player_attachment_writes_rollback_to_original_and_
             )]
             .into();
 
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
                 with_guests(|game| {
-                    let mark = mark.get().unwrap();
+                    let mark = mark.lock().unwrap().clone().unwrap();
                     game.options.dedicated = Some(Vec::new());
                     // Load Nether once so it sits in `levels.parked` while Overworld is active.
                     game.enter_level(super::Dim::Nether).unwrap();
@@ -2558,8 +2559,8 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             use mod_api::{
                 AttachmentKey, Flow, HostSide, ItemPlace, ItemResource, LivingRef, ServerHost,
             };
+            use std::sync::Mutex;
             use std::sync::atomic::{AtomicUsize, Ordering};
-            use std::sync::{Mutex, OnceLock};
             use sunrise_client::items::ItemStack;
             use sunrise_core::nbt::{Compound, Tag};
             use sunrise_mod_runtime::attachments::{
@@ -2633,7 +2634,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             struct NetherFakeWriteHook {
                 plan: Arc<Mutex<Option<FakeWritePlan>>>,
                 calls: Arc<AtomicUsize>,
-                mark: Arc<OnceLock<AttachmentKey<i32>>>,
+                mark: Arc<Mutex<Option<AttachmentKey<i32>>>>,
             }
             #[mod_api::__subscriptions]
             impl mod_api::Hooks for NetherFakeWriteHook {
@@ -2659,7 +2660,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                             }),
                         )
                         .unwrap();
-                    let _ = self.mark.set(key);
+                    *self.mark.lock().unwrap() = Some(key);
                 }
 
                 fn play_level_sound_at_position(
@@ -2675,7 +2676,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                     };
                     self.calls.fetch_add(1, Ordering::SeqCst);
                     if let HostSide::Server(server) = host {
-                        let mark = self.mark.get().unwrap();
+                        let mark = self.mark.lock().unwrap().clone().unwrap();
                         let apply =
                             |server: &mut dyn ServerHost, tx: &mod_api::TransactionContext| {
                                 mark.set(server, Holder::Player(FAKE_UUID), plan.mark)
@@ -2701,8 +2702,8 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
 
             let plan = Arc::new(Mutex::new(None));
             let calls = Arc::new(AtomicUsize::new(0));
-            let mark = Arc::new(OnceLock::new());
-            let mods = vec![mod_api::ModEntry::new(
+            let mark = Arc::new(Mutex::new(None));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "cross_level_fake_test",
                 Box::new(NetherFakeWriteHook {
                     plan: Arc::clone(&plan),
@@ -2712,9 +2713,10 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             )]
             .into();
 
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
                 with_guests(|game| {
-                    let mark = mark.get().unwrap();
+                    let mark = mark.lock().unwrap().clone().unwrap();
                     game.options.dedicated = Some(Vec::new());
                     let holder = Holder::Player(FAKE_UUID);
                     let place = ItemPlace::PlayerSlot {

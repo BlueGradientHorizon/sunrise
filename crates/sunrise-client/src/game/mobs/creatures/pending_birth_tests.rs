@@ -16,7 +16,7 @@ use mod_api::{
     EntityJoinLevelEvent, Flow, Holder, Hooks, HostSide, MobSplitEvent, PendingMobSpec, ServerHost,
     UnspawnedMob, UnspawnedMobError,
 };
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use sunrise_client::mobs::goals::{Cx, Goal};
 use sunrise_core::random::LegacyRandom;
 
@@ -1228,7 +1228,7 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
 
     struct Constructor {
         baby_hook_ran: Arc<AtomicBool>,
-        marker: Arc<OnceLock<AttachmentKey<i32>>>,
+        marker: Arc<Mutex<Option<AttachmentKey<i32>>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Constructor {
@@ -1239,14 +1239,14 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
                     || 0i32,
                 ))
                 .unwrap();
-            let _ = self.marker.set(key);
+            *self.marker.lock().unwrap() = Some(key);
         }
 
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             if event.kind == "minecraft:cow"
                 && let HostSide::Server(host) = host
             {
-                let marker = self.marker.get().unwrap();
+                let marker = self.marker.lock().unwrap().clone().unwrap();
                 marker.set(host, event.holder, 7).unwrap();
                 marker.set(host, Holder::Level, 41).unwrap();
             }
@@ -1262,7 +1262,7 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
         }
     }
     let baby_hook_ran = Arc::new(AtomicBool::new(false));
-    let marker = Arc::new(OnceLock::new());
+    let marker = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_birth_constructor",
         Box::new(Constructor {
@@ -1271,9 +1271,10 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
         }),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
         with_game(|game| {
-            let marker = marker.get().unwrap();
+            let marker = marker.lock().unwrap().clone().unwrap();
             let proposed_id = game.next_entity + 3;
             escaping_fault::expect(At::Constructed, proposed_id, || {
                 breed_pair(game, "minecraft:cow");
@@ -1361,7 +1362,7 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
     struct CrossWorldMod {
         construct_calls: Arc<Mutex<Vec<(Holder, String)>>>,
         attach_on_split: Arc<Mutex<bool>>,
-        marker: Arc<OnceLock<AttachmentKey<i32>>>,
+        marker: Arc<Mutex<Option<AttachmentKey<i32>>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for CrossWorldMod {
@@ -1372,14 +1373,14 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
                     || 0i32,
                 ))
                 .unwrap();
-            let _ = self.marker.set(key);
+            *self.marker.lock().unwrap() = Some(key);
         }
         fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
             self.construct_calls
                 .lock()
                 .unwrap()
                 .push((event.holder, event.kind.to_owned()));
-            let marker = self.marker.get().unwrap();
+            let marker = self.marker.lock().unwrap().clone().unwrap();
             match host {
                 HostSide::Server(host) => {
                     marker.set(host, event.holder, 41).unwrap();
@@ -1411,7 +1412,7 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
     STASH.with(|slot| *slot.borrow_mut() = None);
     let construct_calls = Arc::new(Mutex::new(Vec::new()));
     let attach_on_split = Arc::new(Mutex::new(false));
-    let marker = Arc::new(OnceLock::new());
+    let marker = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_birth_cross_world",
         Box::new(CrossWorldMod {
@@ -1421,7 +1422,8 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
         }),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
         // World 1: construct a breeding cow baby (running entity_constructing -> marker=41),
         // then take it out of the slot without spawning it.
         let old_reserved_id = {
@@ -1498,7 +1500,9 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
             assert!(game.persist.uuids.contains_key(&cow.id));
             assert_eq!(
                 marker
-                    .get()
+                    .lock()
+                    .unwrap()
+                    .clone()
                     .unwrap()
                     .get(game, Holder::Entity(cow.id), |&v| v),
                 Ok(41)
@@ -1530,7 +1534,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
     struct OrderMod {
         trace: Arc<Mutex<Vec<(&'static str, u32)>>>,
         mode: Arc<Mutex<Mode>>,
-        marker: Arc<OnceLock<AttachmentKey<i32>>>,
+        marker: Arc<Mutex<Option<AttachmentKey<i32>>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for OrderMod {
@@ -1541,7 +1545,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
                     || 0i32,
                 ))
                 .unwrap();
-            let _ = self.marker.set(key);
+            *self.marker.lock().unwrap() = Some(key);
         }
         fn mob_split(&self, _: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
             let mode = *self.mode.lock().unwrap();
@@ -1566,7 +1570,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
             if let Holder::Entity(id) = event.holder {
                 self.trace.lock().unwrap().push(("construct", id));
                 if let HostSide::Server(host) = host {
-                    let marker = self.marker.get().unwrap();
+                    let marker = self.marker.lock().unwrap().clone().unwrap();
                     marker.set(host, event.holder, 7).unwrap();
                     marker.set(host, Holder::Level, 23).unwrap();
                 }
@@ -1584,7 +1588,7 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
 
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mode = Arc::new(Mutex::new(Mode::RemoveSecond));
-    let marker = Arc::new(OnceLock::new());
+    let marker = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "pending_split_order",
         Box::new(OrderMod {
@@ -1594,9 +1598,10 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
         }),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
         with_game(|game| {
-            let marker = marker.get().unwrap();
+            let marker = marker.lock().unwrap().clone().unwrap();
             // Even the removed proposal constructs before the split event. Only the first
             // and last proposal join, keeping their existing constructor attachment.
             let mut dying = cube(game, "minecraft:slime", 4, SEED);

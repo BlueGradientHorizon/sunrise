@@ -141,6 +141,12 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     sea_level: 63,
                 };
                 let _server = connect_play_test(game, |_, _| {});
+                {
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.logged_in = true;
+                    remote.entity_id = 7;
+                    remote.profile = 42;
+                }
                 let declarations = mod_api::__private::datapack_registry_declarations();
                 let candidate = |power| {
                     DatapackCandidate::build(
