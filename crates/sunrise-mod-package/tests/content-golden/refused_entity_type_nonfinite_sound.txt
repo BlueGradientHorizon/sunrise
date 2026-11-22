@@ -36,4 +36,4 @@ icon:
 None
 
 content:
-refused: data/refused_entity_type_nonfinite_sound/sunrise/entity_type/sample.json: sounds.step.volume: 1e39 is not a finite float at line 1 column 124
+refused: data/refused_entity_type_nonfinite_sound/sunrise/entity_type/sample.json: sounds.step.volume: number out of range at line 1 column 108

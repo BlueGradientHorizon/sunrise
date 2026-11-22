@@ -65,33 +65,47 @@ impl<'de> Deserialize<'de> for StepOverride {
     /// A string or the object form only: a derived struct would also read a
     /// positional array, and an untagged enum would hide which key is wrong.
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        use serde::de::Error;
-        let value = serde_json::Value::deserialize(d)
-            .map_err(|e| D::Error::custom(format_args!("sounds.step: {e}")))?;
-        match value {
-            serde_json::Value::String(id) if id == "none" => Ok(Self::Mute(Mute::None)),
-            serde_json::Value::String(id) => Ok(Self::Id(id)),
-            object @ serde_json::Value::Object(_) => StepSound::deserialize(object)
-                .map(Self::Sound)
-                .map_err(D::Error::custom),
-            _ => Err(D::Error::custom(
-                "sounds.step: a sound id, \"none\" or {\"sound\", \"volume\", \"pitch\"}",
-            )),
+        use serde::de::{Error, MapAccess, Visitor, value::MapAccessDeserializer};
+        use std::fmt;
+
+        struct StepVisitor;
+        impl<'de> Visitor<'de> for StepVisitor {
+            type Value = StepOverride;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(
+                    "sounds.step: a sound id, \"none\" or {\"sound\", \"volume\", \"pitch\"}",
+                )
+            }
+
+            fn visit_str<E: Error>(self, id: &str) -> Result<Self::Value, E> {
+                if id == "none" {
+                    Ok(StepOverride::Mute(Mute::None))
+                } else {
+                    Ok(StepOverride::Id(id.to_owned()))
+                }
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+                // Forward the live map, not a Value: each float reads directly and a duplicate
+                // field cannot overwrite its first occurrence before it is checked.
+                StepSound::deserialize(MapAccessDeserializer::new(map)).map(StepOverride::Sound)
+            }
         }
+        d.deserialize_any(StepVisitor)
     }
 }
 /// A float as Java reads one into a `float`, refused unless finite, with its key.
 fn finite<'de, D: serde::Deserializer<'de>>(d: D, key: &str) -> Result<f32, D::Error> {
     use serde::de::Error;
     let value =
-        f64::deserialize(d).map_err(|e| D::Error::custom(format_args!("sounds.{key}: {e}")))?;
-    let float = value as f32;
-    if !float.is_finite() {
+        f32::deserialize(d).map_err(|e| D::Error::custom(format_args!("sounds.{key}: {e}")))?;
+    if !value.is_finite() {
         return Err(D::Error::custom(format_args!(
-            "sounds.{key}: {value:e} is not a finite float"
+            "sounds.{key}: expected a finite float"
         )));
     }
-    Ok(float)
+    Ok(value)
 }
 fn deserialize_volume<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<f32>, D::Error> {
     finite(d, "volume").map(Some)

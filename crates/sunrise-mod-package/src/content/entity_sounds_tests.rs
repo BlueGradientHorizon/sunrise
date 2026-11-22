@@ -103,10 +103,7 @@ fn entity_sounds_numbers_admit_any_finite_float_and_any_interval() {
     assert!(error.contains("sounds.step"), "{error}");
 }
 
-/// Refused at admission, naming the file and the key: numbers past `f32` (1e39) or past
-/// any JSON float (1e400), the step's positional array, and unknown keys of its object.
-#[test]
-fn entity_sounds_admission_refuses_bad_numbers_and_step_forms_by_key() {
+fn admit(sounds: &str) -> Result<EntitySounds, String> {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bird.smod");
     let manifest = "id = \"bird\"
@@ -116,6 +113,48 @@ api = \"0.2\"
 side = \"both\"
 capabilities = [\"registries\"]
 ";
+    let file = format!(r#"{{"template":"minecraft:wandering_trader","sounds":{sounds}}}"#);
+    std::fs::write(
+        &path,
+        Package::write_files(
+            manifest,
+            &[(
+                "data/bird/sunrise/entity_type/vulture.json",
+                file.as_bytes(),
+            )],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let package = Package::read(&path).unwrap();
+    let mut content = Content::read(&path, &package.manifest)?;
+    Ok(content.entity_types.pop().unwrap().sounds)
+}
+
+#[test]
+fn entity_sounds_admission_rounds_decimal_once_to_f32() {
+    // Just above the midpoint between 1.0 and the next f32; reading as f64 can round to the
+    // midpoint, which then rounds down to 1.0.
+    let sounds = admit(r#"{"volume":1.0000000596046448,"voice_pitch":1.0000000596046448,"step":{"sound":"bird:step","volume":1.0000000596046448,"pitch":1.0000000596046448}}"#).unwrap();
+    let Some(StepOverride::Sound(step)) = sounds.step else {
+        panic!("missing step sound");
+    };
+    assert_eq!(
+        [
+            sounds.volume.unwrap(),
+            sounds.voice_pitch.unwrap(),
+            step.volume,
+            step.pitch
+        ]
+        .map(f32::to_bits),
+        [0x3f80_0001; 4],
+    );
+}
+
+/// Refused at admission, naming the file and the key: numbers past `f32` (1e39) or past
+/// any JSON float (1e400), a duplicate scalar, the step's positional array, and unknown keys.
+#[test]
+fn entity_sounds_admission_refuses_bad_numbers_and_step_forms_by_key() {
     for (sounds, key) in [
         (r#"{"volume":1e39}"#, "sounds.volume"),
         (r#"{"volume":1e400}"#, "sounds.volume"),
@@ -131,7 +170,15 @@ capabilities = [\"registries\"]
         ),
         (
             r#"{"step":{"sound":"bird:step","volume":1e400,"pitch":1.0}}"#,
-            "sounds.step",
+            "sounds.step.volume",
+        ),
+        (
+            r#"{"step":{"sound":"bird:step","volume":1e39,"volume":0.5,"pitch":1.0}}"#,
+            "sounds.step.volume",
+        ),
+        (
+            r#"{"step":{"sound":"bird:step","volume":0.5,"volume":0.5,"pitch":1.0}}"#,
+            "duplicate field `volume`",
         ),
         (r#"{"step":["bird:step",1.0,0.8]}"#, "sounds.step"),
         (
@@ -139,21 +186,7 @@ capabilities = [\"registries\"]
             "range",
         ),
     ] {
-        let file = format!(r#"{{"template":"minecraft:wandering_trader","sounds":{sounds}}}"#);
-        std::fs::write(
-            &path,
-            Package::write_files(
-                manifest,
-                &[(
-                    "data/bird/sunrise/entity_type/vulture.json",
-                    file.as_bytes(),
-                )],
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let package = Package::read(&path).unwrap();
-        let error = Content::read(&path, &package.manifest).expect_err(sounds);
+        let error = admit(sounds).expect_err(sounds);
         assert!(
             error.starts_with("data/bird/sunrise/entity_type/vulture.json: ")
                 && error.contains(key),
