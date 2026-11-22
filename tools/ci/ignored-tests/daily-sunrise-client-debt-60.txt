@@ -13,3 +13,4 @@ sunrise-client game::stations::tooltip::component_tests::tooltip_texture_and_ite
 sunrise-client game::stations::tooltip::component_tests::two_pass_draw_order_geometry_and_zero_sized_components lib daily child-process
 sunrise-client game::stations::tooltip::component_tests::unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip lib daily child-process
 sunrise-client game::stations::tooltip::component_tests::unregistered_custom_component_aborts_before_pre_texture_and_paint_without_latching lib daily child-process
+sunrise-client game::stations::tooltip::component_tests::widget_tooltip_uses_the_same_positioner_for_pre_and_paint lib daily child-process

@@ -9,8 +9,9 @@ pub trait Hooks {
     /// left them; measure them with a font borrowed via `draw.with_tooltip_font(font, ...)`
     /// or inspect them with `as_text`, `as_bundle`, and `downcast_ref`. `place` holds the
     /// anchor point in GUI pixels before `positioner` adds its offset and keeps the box on
-    /// screen; set `x` and `y` to move it. `screen` is `[screen_width, screen_height]` in
-    /// GUI pixels. `positioner` is the active `ClientTooltipPositioner` that places the
+    /// screen; cursor anchors truncate to whole GUI pixels, and a widget positioner may
+    /// ignore the anchor. `screen` is `[screen_width, screen_height]` in GUI pixels.
+    /// `positioner` is the active `ClientTooltipPositioner` that places the
     /// tooltip box once measured. `font` is the font identifier used for measurement and
     /// drawing (starting at `minecraft:default` or the item font queried again after Gather); change it to
     /// measure and draw with a replacement font without rewrapping already-split text

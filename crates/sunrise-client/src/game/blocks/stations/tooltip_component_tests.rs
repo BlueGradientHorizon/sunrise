@@ -540,7 +540,14 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .unwrap(),
         ];
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect = game.draw_prepared_tooltip(&mut batch, None, &mut components, [10, 20], true);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            None,
+            &mut components,
+            [10, 20],
+            &DefaultTooltipPositioner,
+            true,
+        );
         // x = 10 + 12 = 22, y = 20 - 12 = 8, w = 80, h = 0 + 10 + 6 + 0 + 16 = 32.
         assert_eq!(rect, Some([22.0, 8.0, 80.0, 32.0]));
         assert_eq!(
@@ -561,8 +568,14 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .unwrap(),
         ];
         let mut single_batch = HudBatch::scratch([320, 240]);
-        let single_rect =
-            game.draw_prepared_tooltip(&mut single_batch, None, &mut single, [10, 20], true);
+        let single_rect = game.draw_prepared_tooltip(
+            &mut single_batch,
+            None,
+            &mut single,
+            [10, 20],
+            &DefaultTooltipPositioner,
+            true,
+        );
         assert_eq!(single_rect, Some([22.0, 8.0, 40.0, 14.0]));
         assert_eq!(
             std::mem::take(&mut *log.lock().unwrap()),
@@ -743,8 +756,14 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
 
         // Mode 1: move place and switch font to minecraft:alt without rewrapping.
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect =
-            game.draw_prepared_tooltip(&mut batch, Some(&stick), &mut prepared, [10, 20], true);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            Some(&stick),
+            &mut prepared,
+            [10, 20],
+            &DefaultTooltipPositioner,
+            true,
+        );
         let expected_h = (wrapped_count as i32) * 10 + 45 + 12;
         assert_eq!(rect, Some([52.0, 38.0, 130.0, expected_h as f32]));
         assert_eq!(
@@ -778,6 +797,7 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
             Some(&stick),
             &mut prepared,
             [10, 20],
+            &DefaultTooltipPositioner,
             true,
         );
         assert_eq!(cancelled, None);
@@ -1091,8 +1111,13 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
         assert_eq!(text_lines(&gathered), ["Plain"]);
 
         let mut batch = HudBatch::scratch([320, 240]);
-        let pre =
-            game.tooltip_pre_components(&mut batch, Some(&unconvertible), &mut gathered, [10, 20]);
+        let pre = game.tooltip_pre_components(
+            &mut batch,
+            Some(&unconvertible),
+            &mut gathered,
+            [10, 20],
+            &DefaultTooltipPositioner,
+        );
         assert_eq!(
             pre,
             Some(([10, 20], Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID)))
@@ -1187,6 +1212,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
             Some(&unconvertible),
             &mut one_line,
             [10, 20],
+            &DefaultTooltipPositioner,
         );
         assert_eq!(
             pre,
@@ -1218,6 +1244,7 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
                 Some(&stick),
                 &mut gathered,
                 [10, 20],
+                &DefaultTooltipPositioner,
                 true
             )
             .is_some()
@@ -1539,6 +1566,7 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
                     None,
                     std::slice::from_mut(&mut component),
                     [10, 20],
+                    &DefaultTooltipPositioner,
                     true,
                 ),
                 None
@@ -1637,6 +1665,7 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
                 None,
                 std::slice::from_mut(&mut sibling),
                 [10, 20],
+                &DefaultTooltipPositioner,
                 true,
             )
             .is_some()
@@ -1762,6 +1791,7 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
             Some(&stick),
             &mut gathered,
             [10, 20],
+            &DefaultTooltipPositioner,
             true,
         );
         assert!(rect.is_some());
@@ -1793,6 +1823,7 @@ fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
                 Some(&bundle),
                 &mut gathered_bundle,
                 [10, 20],
+                &DefaultTooltipPositioner,
                 true,
             )
             .is_some()
@@ -2212,7 +2243,7 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_client::text::Text::literal("aa aa");
         let anchor = quantize_tooltip_anchor((10.75, 20.25));
-        assert_eq!(anchor, [11, 20]);
+        assert_eq!(anchor, [10, 20]);
 
         let mut components = game
             .gather_tooltip_components(&stick, vec![(text, u32::MAX)], anchor[0], (320.0, 240.0))
@@ -2220,15 +2251,21 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         // Wrapped using item_wide (36px > 25px -> 2 lines of "aa"), NOT default (14px -> 1 line).
         assert_eq!(text_lines(&components), ["aa", "aa"]);
 
-        // Pre receives the newly queried default font and anchor [11, 20], replaces font with pre_wider, and edits
-        // only y -> 40. Final rect must use quantized x = 11 (+12 = 23), edited y = 40 (-12 = 28),
+        // Pre receives the newly queried default font and anchor [10, 20], replaces font with pre_wider, and edits
+        // only y -> 40. Final rect must use truncated x = 10 (+12 = 22), edited y = 40 (-12 = 28),
         // pre_wider width of "aa" = 30, and 2 lines height = 20 (never rewrapped in pre_wider).
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect =
-            game.draw_prepared_tooltip(&mut batch, Some(&stick), &mut components, anchor, true);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            Some(&stick),
+            &mut components,
+            anchor,
+            &DefaultTooltipPositioner,
+            true,
+        );
         assert_eq!(state.phase.load(Ordering::Relaxed), 5);
-        assert_eq!(*state.seen_pre_place.lock().unwrap(), Some((11, 20)));
-        assert_eq!(rect, Some([23.0, 28.0, 30.0, 20.0]));
+        assert_eq!(*state.seen_pre_place.lock().unwrap(), Some((10, 20)));
+        assert_eq!(rect, Some([22.0, 28.0, 30.0, 20.0]));
     });
 }
 
@@ -2290,6 +2327,7 @@ fn gather_wraps_logical_arabic_advances_but_measures_visual_lines() {
                 Some(&stack),
                 &mut components,
                 [10, 20],
+                &DefaultTooltipPositioner,
                 true,
             );
             assert_eq!(rect, Some([22.0, 8.0, 5.0, 20.0]));
@@ -2559,7 +2597,14 @@ fn tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic() {
             .unwrap(),
         ];
         let mut batch = HudBatch::scratch([320, 240]);
-        let _ = game.draw_prepared_tooltip(&mut batch, None, &mut components, [10, 20], true);
+        let _ = game.draw_prepared_tooltip(
+            &mut batch,
+            None,
+            &mut components,
+            [10, 20],
+            &DefaultTooltipPositioner,
+            true,
+        );
         // Total height wraps: 0_i32.wrapping_add(i32::MAX).wrapping_add(10) == i32::MIN + 9.
         let expected_h = 0_i32.wrapping_add(i32::MAX).wrapping_add(10);
         // DefaultTooltipPositioner keeps y = 20 - 12 = 8 (since 8 + expected_h + 6 < 240).
@@ -2572,5 +2617,72 @@ fn tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic() {
                 ("second", expected_second_y, expected_h)
             ]
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn widget_tooltip_uses_the_same_positioner_for_pre_and_paint() {
+    if run_fresh_cases(
+        concat!(
+            module_path!(),
+            "::widget_tooltip_uses_the_same_positioner_for_pre_and_paint"
+        ),
+        "SUNRISE_TOOLTIP_COMPONENT_CASE",
+        &["tooltip"],
+    ) {
+        return;
+    }
+
+    struct Observe(Arc<Mutex<Vec<[i32; 2]>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn render_tooltip_pre(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipPreEvent<'_>,
+        ) -> Flow {
+            self.0
+                .lock()
+                .unwrap()
+                .push(event.positioner.position_tooltip(
+                    [320, 240],
+                    [event.place.x, event.place.y],
+                    [0, 8],
+                ));
+            event.place.x = 80;
+            Flow::Continue
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "widget_place",
+        Box::new(Observe(seen.clone())),
+    )]
+    .into();
+    with_mod_factories(mods, |game| {
+        let lines = [(sunrise_client::text::Text::literal(""), u32::MAX)];
+        let mut batch = HudBatch::scratch([320, 240]);
+        let widget = [50, 40, 22, 22];
+        assert_eq!(
+            game.draw_tooltip_lines_positioned(
+                &mut batch,
+                &lines,
+                [61, 51],
+                &WidgetTooltipPositioner::Menu(widget)
+            ),
+            Some([92.0, 64.0, 0.0, 8.0]),
+        );
+        assert_eq!(
+            game.draw_tooltip_lines_positioned(
+                &mut batch,
+                &lines,
+                [10, 20],
+                &WidgetTooltipPositioner::BelowOrAbove(widget)
+            ),
+            Some([53.0, 66.0, 0.0, 8.0]),
+        );
+        assert_eq!(*seen.lock().unwrap(), [[73, 64], [53, 66]]);
     });
 }

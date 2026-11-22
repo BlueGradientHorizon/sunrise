@@ -2363,6 +2363,20 @@ impl Game<'_> {
     }
 
     /// The keyboard lets go of the pointer: it goes back to the real mouse.
+    /// Widget hover uses the real mouse while keyboard navigation moves the virtual pointer.
+    pub(super) fn widget_tooltip_cursor(&self) -> (f32, f32) {
+        if !self.key_focus_driving() {
+            return self.cursor;
+        }
+        self.pad
+            .menu
+            .real_pointer
+            .zip(self.renderer_pointer_projection())
+            .map_or((0.0, 0.0), |(sample, projection)| {
+                projection.project_pointer(sample).subpixel()
+            })
+    }
+
     fn key_focus_to_mouse(&mut self, event_loop: &dyn EventLoopCtl) {
         if !std::mem::take(&mut self.pad.menu.keyboard) {
             return;

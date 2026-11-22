@@ -155,7 +155,11 @@ fn render_tooltip_pre(
 
    Custom components can be inspected with `component.downcast_ref::<ChargeBarClient>()`,
    and built-in lines and bundles with `as_text()` and `as_bundle()`. Use `event.positioner`
-   to compute placement, or set `event.place.x` / `event.place.y` to move the anchor. Return
+   to compute placement. Item and cursor tooltips use the default cursor positioner, while
+   widget tooltips can position relative to the widget. Set `event.place.x` / `event.place.y`
+   to move the anchor; a widget positioner may ignore it. The initial cursor anchor is
+   truncated to whole GUI pixels. The item font is queried before wrapping and again before
+   Pre; the second answer seeds `event.font` but never changes the wrapped lines. Return
    `Flow::Cancel` to suppress the box, component passes and `render_tooltip_texture` (anything
    drawn through `event.draw` stays visible).
    Use `Hooks::render_tooltip_texture` to override the tooltip style sprites (`event.texture`)

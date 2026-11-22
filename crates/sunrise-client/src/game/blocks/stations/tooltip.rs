@@ -1,12 +1,70 @@
 use super::*;
 use crate::game::{client_item_extensions::DEFAULT_TOOLTIP_FONT_ID, host::draw::EngineTooltipFont};
+use mod_api::{ClientTooltipPositioner, DefaultTooltipPositioner};
 use std::borrow::Cow;
 use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 
 /// Single integer anchor quantization shared by Gather wrapping, `render_tooltip_pre`
-/// (`TooltipPlace`), and `DefaultTooltipPositioner::position_tooltip`.
+/// (`TooltipPlace`), and the active positioner. Vanilla GUI extraction truncates toward zero.
 pub(in crate::game) fn quantize_tooltip_anchor(at: (f32, f32)) -> [i32; 2] {
-    [at.0.round() as i32, at.1.round() as i32]
+    [at.0 as i32, at.1 as i32]
+}
+
+/// Widget-relative tooltip placement. The rectangle is `[left, top, width, height]` in GUI pixels.
+pub(in crate::game) enum WidgetTooltipPositioner {
+    Menu([i32; 4]),
+    BelowOrAbove([i32; 4]),
+}
+
+impl ClientTooltipPositioner for WidgetTooltipPositioner {
+    fn position_tooltip(
+        &self,
+        [screen_w, screen_h]: [i32; 2],
+        [anchor_x, anchor_y]: [i32; 2],
+        [w, h]: [i32; 2],
+    ) -> [i32; 2] {
+        match *self {
+            Self::Menu([_, top, _, height]) => {
+                // Vanilla MenuTooltipPositioner: beside the mouse, vertically clear of the widget.
+                let mut x = anchor_x.wrapping_add(12);
+                if x.wrapping_add(w) > screen_w.wrapping_sub(5) {
+                    x = anchor_x.wrapping_sub(12).wrapping_sub(w).max(9);
+                }
+                let y = anchor_y.wrapping_add(3);
+                let bottom = top.wrapping_add(height);
+                let box_height = h.wrapping_add(6);
+                let offset = |y: i32, edge: i32| {
+                    let distance = y.wrapping_sub(edge).wrapping_abs().min(height);
+                    let progress = distance as f32 / height as f32;
+                    let start = height.wrapping_sub(3) as f32;
+                    (f64::from(start + progress * (5.0 - start)) + 0.5).floor() as i32
+                };
+                let lowest = bottom.wrapping_add(3).wrapping_add(offset(0, 0));
+                let y = if lowest.wrapping_add(box_height) <= screen_h.wrapping_sub(5) {
+                    y.wrapping_add(offset(y, top))
+                } else {
+                    y.wrapping_sub(box_height.wrapping_add(offset(y, bottom)))
+                };
+                [x, y]
+            }
+            Self::BelowOrAbove([left, top, width, height]) => {
+                // Vanilla BelowOrAboveWidgetTooltipPositioner: the cursor is not the anchor.
+                let mut x = left.wrapping_add(3);
+                let mut y = top.wrapping_add(height).wrapping_add(4);
+                if y.wrapping_add(h).wrapping_add(3) > screen_h {
+                    y = top.wrapping_sub(h).wrapping_sub(4);
+                }
+                if x.wrapping_add(w) > screen_w {
+                    x = left
+                        .wrapping_add(width)
+                        .wrapping_sub(w)
+                        .wrapping_sub(3)
+                        .max(4);
+                }
+                [x, y]
+            }
+        }
+    }
 }
 
 /// Internal prepared tooltip item retaining engine text and prepared bundle contents so the
@@ -442,6 +500,7 @@ impl Game<'_> {
         stack: Option<&ItemStack>,
         components: &mut [PreparedTooltipItem],
         at: [i32; 2],
+        positioner: &dyn ClientTooltipPositioner,
     ) -> Option<([i32; 2], Cow<'static, mod_api::Identifier>)> {
         let font = stack.map_or(Cow::Borrowed(&*DEFAULT_TOOLTIP_FONT_ID), |stack| {
             self.item_tooltip_font(stack)
@@ -524,7 +583,7 @@ impl Game<'_> {
             components: &restore.lent,
             place: &mut place,
             screen,
-            positioner: &mod_api::DefaultTooltipPositioner,
+            positioner,
             font: &mut font,
             draw: &mut draw,
             cancel: &mut cancel,
@@ -537,7 +596,7 @@ impl Game<'_> {
     }
 
     /// `GuiGraphicsExtractor.tooltip`: run Pre, measure in Pre's chosen font without rewrapping,
-    /// position with `DefaultTooltipPositioner`, draw background (`render_tooltip_texture`), then
+    /// position with the caller's positioner, draw background (`render_tooltip_texture`), then
     /// run Pass 1 (`draw_text`) and Pass 2 (`draw_image`). Returns the drawn content rect
     /// `[x, y, w, h]` when drawn.
     pub(in crate::game) fn draw_prepared_tooltip(
@@ -546,13 +605,15 @@ impl Game<'_> {
         stack: Option<&ItemStack>,
         components: &mut [PreparedTooltipItem],
         at: [i32; 2],
+        positioner: &dyn ClientTooltipPositioner,
         extra_space_after_first_line: bool,
     ) -> Option<[f32; 4]> {
         if components.is_empty() {
             return None;
         }
         let screen = (batch.width, batch.height);
-        let (at, chosen_font) = self.tooltip_pre_components(batch, stack, components, at)?;
+        let (at, chosen_font) =
+            self.tooltip_pre_components(batch, stack, components, at, positioner)?;
 
         let tooltip_font = EngineTooltipFont::new(&self.gui.atlas.font, &chosen_font);
         let chosen_font_str = tooltip_font.name();
@@ -573,12 +634,7 @@ impl Game<'_> {
             h = h.wrapping_add(ch);
         }
 
-        let [x, y] = mod_api::ClientTooltipPositioner::position_tooltip(
-            &mod_api::DefaultTooltipPositioner,
-            [screen.0 as i32, screen.1 as i32],
-            at,
-            [w, h],
-        );
+        let [x, y] = positioner.position_tooltip([screen.0 as i32, screen.1 as i32], at, [w, h]);
 
         // A failed component pass discards this tooltip's entire paint, not Pre listener paint.
         let paint = batch.paint_checkpoint();
@@ -727,7 +783,14 @@ impl Game<'_> {
                 return;
             }
         };
-        self.draw_prepared_tooltip(batch, Some(stack), &mut components, anchor, true);
+        self.draw_prepared_tooltip(
+            batch,
+            Some(stack),
+            &mut components,
+            anchor,
+            &DefaultTooltipPositioner,
+            true,
+        );
     }
 }
 

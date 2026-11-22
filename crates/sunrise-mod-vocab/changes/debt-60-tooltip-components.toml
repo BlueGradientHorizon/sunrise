@@ -79,6 +79,7 @@ Update `Hooks::render_tooltip_gather_components` (version 3):
 - Every custom `TooltipComponent` remaining after Gather must have a factory registered in `register_client_tooltip_component_factories`; an unregistered custom type aborts that tooltip before `render_tooltip_pre`, `render_tooltip_texture`, or painting with an error log.
 
 Update `Hooks::render_tooltip_pre` (version 3):
+- Cursor anchors truncate to whole GUI pixels (rather than rounding), before wrapping or Pre. Beacon buttons lend their active widget positioner to Pre and use that same positioner for drawing; previously all tooltips used the default cursor positioner.
 - The item font is now queried again after Gather and component preparation; previously Pre received the same font that wrapped the lines. The new font never changes existing line breaks.
 - Replace `event.elements` with `event.components: &[PreparedTooltipComponent]`. Inspect entries via `as_text()`, `as_bundle()`, or `downcast_ref::<MyClient>()`.
 - Replace reads of `TooltipImage.size` with `event.draw.with_tooltip_font(event.font, |font| Some([component.width(font)?, component.height(font)?]))` on a prepared entry in Pre. `None` means measurement failed; `Some(0)` is a valid dimension. Gather only has unprepared data. Instead of supplying `TooltipImage.size` when creating a payload, implement `ClientTooltipComponent::width` and `ClientTooltipComponent::height` to return the component's size in the supplied font. The dimensions passed to `draw_image` are the size of the entire tooltip's content box, not the component.
