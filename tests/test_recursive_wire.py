@@ -48,8 +48,10 @@ class RecursiveWire(unittest.TestCase):
                 pub enum B { Other(Box<C>), A }
                 pub struct C { pub value: B }
                 pub struct Leaf { pub b: u8 }
+                pub struct Wrapped { children: PrivateChildren }
+                struct PrivateChildren(Vec<Wrapped>);
                 pub struct Generic<T: Fn()> { children: Vec<Generic<T>>, marker: T }
                 // pub struct Fake { self: Fake }
                 #[cfg(test)] mod tests { pub struct Fake { x: Fake } }
             ''')
-            self.assertEqual(recursive_types(Path(directory)), ["A", "B", "C", "Generic"])
+            self.assertEqual(recursive_types(Path(directory)), ["A", "B", "C", "Generic", "Wrapped"])
