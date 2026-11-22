@@ -240,6 +240,7 @@ impl Game<'_> {
                 join: Default::default(),
                 id,
                 state: BlockStateId(data.max(0) as u32),
+                blocks_building: true,
                 start_pos: BlockPos::default(),
                 position: at,
                 previous: at,

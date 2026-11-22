@@ -146,6 +146,9 @@ pub(super) struct NativeSound {
     /// The entity the sound follows (`ClientboundSoundEntityPacket`), sent
     /// from `at`, where it was when the mod queued the sound.
     pub entity: Option<i32>,
+    /// True when queued from inside a `play_level_sound_at_*` listener so the tick flush validates
+    /// and delivers the sound without re-dispatching level-sound listeners.
+    pub skip_hooks: bool,
 }
 
 /// Shared state for the mob runs in one entity pass.
@@ -281,6 +284,9 @@ pub(super) struct Creatures {
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
+    /// True while `ask_level_sound` is running `play_level_sound_at_*` listeners so sounds emitted
+    /// from inside a listener are not re-dispatched to level-sound hooks.
+    pub asking_level_sound: bool,
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
@@ -1697,9 +1703,22 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// Finish the death animation of a mob whose row has already left the level.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        self.last_hurt_by_player.remove(&id);
+        self.animate_mob_removal(id, at, width, height, split);
+    }
+
     /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
     /// also splits a large cube before it reaches `Entity.setRemoved`.
-    fn finish_mob_death_animation(
+    fn animate_mob_removal(
         &mut self,
         id: u32,
         at: Vec3,
@@ -1753,7 +1772,8 @@ impl Game<'_> {
 
     /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(super) fn mob_die(&mut self, m: &Mob) {
-        // The killing blow for the drop hooks, before the player's hit is forgotten.
+        // Death reads the remembered player without consuming it. A body
+        // still in the level can answer getKillCredit after this call.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self
             .last_hurt_by_player
@@ -1770,7 +1790,6 @@ impl Game<'_> {
             // The body may be gone already.
             self.set_bed_occupied(bed, false);
         }
-        self.last_hurt_by_player.remove(&m.id);
         // TamableAnimal.die, before the rest of LivingEntity.die.
         self.tell_owner_pet_died(m, killer);
         self.love_cause.remove(&m.id);
@@ -4111,12 +4130,14 @@ impl Game<'_> {
             }
             _ => p.kind.id.clone(),
         };
+        // Animal.spawnChildFromBreeding places the child at yaw zero. Its constructor still
+        // spends LivingEntity's yaw draw on the child's stream, not the level's.
         let mut child = self.create_mob_reason(
             &kind,
             [p.position.x, p.position.y, p.position.z],
             true,
             SpawnSite::Raw,
-            None,
+            Some(0.0),
         )?;
         'offspring: {
             let child = &mut child;
@@ -4277,8 +4298,16 @@ impl Game<'_> {
                 conn.and_then(|c| self.killer_uuid(c)),
                 conn.and_then(|c| self.player_entity_id_by_connection(c)),
             );
-            match self.breed_with_listeners(parent, partner, player, child) {
-                Some(baby) => child = baby,
+            match self.breed_with_listeners(parent, partner, player, child, |game, baby| {
+                game.finish_live_breeding(&p, partner, baby, experience)
+            }) {
+                // The levels' normal join hooks have now run if this was the root commit.
+                Some(joined) => {
+                    return joined.filter(|&id| {
+                        self.resident_target_dimension(super::commands::Target::Mob(id))
+                            == Some(self.dim)
+                    });
+                }
                 None => {
                     breeding_credit(&mut self.love_cause, parent, partner);
                     if let Some(q) = self.mobs.iter_mut().find(|m| m.id == partner) {
@@ -4289,12 +4318,23 @@ impl Game<'_> {
                 }
             }
         }
+        self.finish_live_breeding(&p, partner, child, experience)
+    }
+
+    fn finish_live_breeding(
+        &mut self,
+        p: &Mob,
+        partner: u32,
+        child: Mob,
+        experience: sunrise_client::mobs::BreedExperience,
+    ) -> Option<u32> {
+        let parent = p.id;
         let order = if sunrise_client::mobs::orb_after_child(p.species()) {
             OrbOrder::AfterChild
         } else {
             OrbOrder::BeforeChild
         };
-        self.finalize_breeding(&p, partner, Some(&child), order);
+        self.finalize_breeding(p, partner, Some(&child), order);
         let at = [p.position.x, p.position.y, p.position.z];
         match order {
             OrbOrder::AfterChild => {
@@ -6763,9 +6803,9 @@ impl Game<'_> {
             false
         };
         let cannot = self
-            .res
-            .mob_data()
-            .entity_has("minecraft:cannot_be_age_locked", &m.kind.id);
+            .items()
+            .entity_type_tags
+            .contains("minecraft:cannot_be_age_locked", &m.kind.id);
         sunrise_client::mobs::ai::can_use_golden_dandelion(
             item,
             baby,
