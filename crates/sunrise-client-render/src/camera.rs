@@ -561,8 +561,7 @@ pub fn view_rotation_matrix(yaw: f32, pitch: f32) -> (glam::Mat4, glam::Mat4) {
 /// [`view_rotation_matrix`] with a roll about the view direction, in degrees (`Camera.setRotation`
 /// with NeoForge's `roll`). Keeps `roll == 0.0` bit-identical to vanilla's `+0.0` z-angle.
 pub fn view_rotation_matrix_rolled(yaw: f32, pitch: f32, roll: f32) -> (glam::Mat4, glam::Mat4) {
-    let angle_z = if roll == 0.0 { 0.0 } else { -roll * DEG_TO_RAD };
-    let q = Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, angle_z);
+    let q = rotation_with_roll(yaw, pitch, roll);
     let mut m = Mat4::IDENTITY;
     m.rotation(Quat {
         x: -q.x,
@@ -577,9 +576,7 @@ pub fn view_rotation_matrix_rolled(yaw: f32, pitch: f32, roll: f32) -> (glam::Ma
 /// Camera-relative world view used by terrain, sky and the first-person hand.
 #[sunrise_mod_api_macros::replaceable]
 pub fn view_matrix(yaw: f32, pitch: f32) -> glam::Mat4 {
-    // Vanilla uses the conjugate of Camera.rotation, not a world-up look-at.
-    let q = Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, 0.0);
-    glam::Mat4::from_quat(glam::Quat::from_xyzw(-q.x, -q.y, -q.z, q.w))
+    view_matrix_rolled(yaw, pitch, 0.0)
 }
 
 /// `GameRenderer.projectPointToScreen`: world point `at` seen from a camera at `position` facing
@@ -628,10 +625,16 @@ pub fn project_point_rolled(
     ndc.iter().all(|v| v.is_finite()).then_some(ndc)
 }
 
+/// `Camera.setRotation` with NeoForge roll, in degrees (`ViewportEvent.ComputeCameraAngles`).
+pub fn rotation_with_roll(yaw: f32, pitch: f32, roll: f32) -> Quat {
+    let angle_z = if roll == 0.0 { 0.0 } else { -roll * DEG_TO_RAD };
+    Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, angle_z)
+}
+
 /// `view_matrix` with a roll about the view direction, in degrees.
 pub fn view_matrix_rolled(yaw: f32, pitch: f32, roll: f32) -> glam::Mat4 {
-    let angle_z = if roll == 0.0 { 0.0 } else { -roll * DEG_TO_RAD };
-    let q = Quat::rotation_yxz(PI - yaw * DEG_TO_RAD, -pitch * DEG_TO_RAD, angle_z);
+    // Vanilla uses the conjugate of Camera.rotation, not a world-up look-at.
+    let q = rotation_with_roll(yaw, pitch, roll);
     glam::Mat4::from_quat(glam::Quat::from_xyzw(-q.x, -q.y, -q.z, q.w))
 }
 /// `AbstractClientPlayer.getFieldOfViewModifier(firstPerson, effectScale)`.
@@ -764,8 +767,7 @@ impl Camera {
         self.x_rot = x_rot;
         self.y_rot = y_rot;
         self.roll = roll;
-        let angle_z = if roll == 0.0 { 0.0 } else { -roll * DEG_TO_RAD };
-        self.rotation = Quat::rotation_yxz(PI - y_rot * DEG_TO_RAD, -x_rot * DEG_TO_RAD, angle_z);
+        self.rotation = rotation_with_roll(y_rot, x_rot, roll);
         self.forwards = self.rotation.transform([0.0, 0.0, -1.0]);
         self.up = self.rotation.transform([0.0, 1.0, 0.0]);
         self.left = self.rotation.transform([-1.0, 0.0, 0.0]);
@@ -792,6 +794,18 @@ impl Camera {
             self.position[2] + f64::from(offset[2]),
         ];
     }
+    /// The entity's interpolated eye and look, independent of the final render camera.
+    pub fn align_eye(&mut self, entity: &CameraEntity, partial: f32) {
+        let p = f64::from(partial);
+        self.eye = [
+            lerp_d(p, entity.previous[0], entity.position[0]),
+            lerp_d(p, entity.previous[1], entity.position[1])
+                + f64::from(lerp(partial, self.eye_height_old, self.eye_height)),
+            lerp_d(p, entity.previous[2], entity.position[2]),
+        ];
+        self.eye_rotation = [entity.view_y_rot(partial), entity.view_x_rot(partial)];
+    }
+
     /// `Camera.alignWithEntity` (not riding a minecart with the new
     /// movement): the entity's view rotation and interpolated eye, then a
     /// detached camera backed off along the view (`getMaxZoom`) or a sleeping
@@ -840,15 +854,8 @@ impl Camera {
         mut clip: impl FnMut([f64; 3], [f64; 3]) -> Option<[f64; 3]>,
     ) {
         self.set_rotation_with_roll(yaw, pitch, roll);
-        let p = f64::from(partial);
-        self.position = [
-            lerp_d(p, entity.previous[0], entity.position[0]),
-            lerp_d(p, entity.previous[1], entity.position[1])
-                + f64::from(lerp(partial, self.eye_height_old, self.eye_height)),
-            lerp_d(p, entity.previous[2], entity.position[2]),
-        ];
-        self.eye = self.position;
-        self.eye_rotation = [self.y_rot, self.x_rot];
+        self.align_eye(entity, partial);
+        self.position = self.eye;
         self.detached = !camera_type.is_first_person();
         if self.detached {
             if camera_type.is_mirrored() {

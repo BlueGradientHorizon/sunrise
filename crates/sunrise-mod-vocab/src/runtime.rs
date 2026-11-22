@@ -449,6 +449,31 @@ pub(crate) fn refusable<T>(
     }
 }
 
+/// Invoke an isolated listen hook. A false result discards only this listener's outputs.
+pub(crate) fn call_isolated_listener(
+    hook_id: generated::HookId,
+    mod_id: &'static str,
+    hook: &'static str,
+    contained: bool,
+    call: impl FnOnce(),
+) -> bool {
+    match crate::callback_owner::contain_unwind(|| refusable(contained, call)) {
+        Ok(Ok(())) => true,
+        Ok(Err(refusal)) => {
+            refusal.report_each();
+            false
+        }
+        Err(message) => {
+            poison(hook_id, mod_id);
+            log::error!(
+                "mod {mod_id}: {hook} listener panicked and is disabled for this session: {message}"
+            );
+            crate::callback_owner::record_callback_panic(mod_id, "hook", hook, message);
+            false
+        }
+    }
+}
+
 pub(crate) fn mark_mod(id: &'static str, hook: &'static str) -> crate::content::crash::ModGuard {
     crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
         id,

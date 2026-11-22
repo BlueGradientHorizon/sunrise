@@ -167,7 +167,6 @@ mod bounce_restitution;
 mod break_progress_positions;
 mod build_creative_mode_tab_contents;
 mod calculate_player_turn;
-mod camera_hooks_tests;
 mod camera_position;
 mod camera_read;
 mod camera_submersion;

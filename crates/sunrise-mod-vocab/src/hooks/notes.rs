@@ -1168,11 +1168,11 @@ with the causing-entity table, is the book's "Setting off an explosion" (how-to/
 ### Presentation view transforms
 
 `render_view_transform(partial, transform)` (client) runs each frame at vanilla's `GameRenderer.bobHurt` /
-`bobView` stage, after hurt tilt and view bobbing. `transform` starts as `ViewTransform::IDENTITY`; compose
-rotations, translations, or scales onto it in dependency order (for example, camera shake scaled by
-`ClientGuiOptions::screen_effect_scale`). Sunrise multiplies the composed matrix directly into the view-bob
-matrix with no artificial angle or offset caps; the camera angles, camera position, player position, and aim
-are unchanged.
+`bobView` stage, after hurt tilt and view bobbing, including when a screen takes input while the world
+still draws. `transform` starts as `ViewTransform::IDENTITY`; compose rotations, translations, or scales
+onto it in dependency order (for example, camera shake scaled by `ClientGuiOptions::screen_effect_scale`).
+The transform and its inverse must both be finite. The camera angles and position, audio listener, player
+position and aim are unchanged.
 
 ### A player's motion
 

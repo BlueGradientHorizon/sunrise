@@ -4601,17 +4601,8 @@ fn camera_rotation_rolled(
         } else {
             (yaw, pitch, roll)
         };
-    let z_angle = if view_roll == 0.0 {
-        0.0
-    } else {
-        -view_roll.to_radians()
-    };
-    glam::Quat::from_euler(
-        glam::EulerRot::YXZ,
-        std::f32::consts::PI - view_yaw.to_radians(),
-        -view_pitch.to_radians(),
-        z_angle,
-    )
+    let q = sunrise_client::camera::rotation_with_roll(view_yaw, view_pitch, view_roll);
+    glam::Quat::from_xyzw(q.x, q.y, q.z, q.w)
 }
 /// The world directions of a camera-facing quad's x and y: `PoseStack.rotate` by the camera's
 /// orientation, as `FishingHookRenderer`, `DragonFireballRenderer` and
@@ -7700,20 +7691,16 @@ impl Game<'_> {
     /// `Camera.setRotation`: the camera's orientation, turned round in
     /// third-person front view.
     pub(super) fn camera_orientation(&self) -> glam::Quat {
-        if self.studio.flying() {
-            return camera_rotation(
-                sunrise_client::camera::CameraType::FirstPerson,
+        use sunrise_client::camera::CameraType::FirstPerson;
+        match self.posed_rotation {
+            // Extracted frame angles are already in the camera convention, including studio roll
+            // and third-person front mirroring.
+            Some((yaw, pitch, roll)) => camera_rotation_rolled(FirstPerson, yaw, pitch, roll),
+            None if self.studio.flying() => camera_rotation_rolled(
+                FirstPerson,
                 self.studio.freecam.yaw,
                 self.studio.freecam.pitch,
-            ) * glam::Quat::from_rotation_z(self.studio.freecam.roll.to_radians());
-        }
-        match self.posed_rotation {
-            // The frame's camera, already turned round in front view.
-            Some((yaw, pitch, roll)) => camera_rotation_rolled(
-                sunrise_client::camera::CameraType::FirstPerson,
-                yaw,
-                pitch,
-                roll,
+                -self.studio.freecam.roll,
             ),
             None => camera_rotation(self.camera_type, self.yaw, self.pitch),
         }
@@ -10673,6 +10660,7 @@ impl Game<'_> {
         // player's own model stay smooth while the level is frozen.
         let camera_alpha = self.clock.camera_fraction();
         let view = self.frame_camera(camera_alpha as f32);
+        self.check_screenshot_sequence_camera(view);
         // What faces the camera (particles, item sprites, block entity text) faces the frame's
         // camera (including mod angle overrides, roll, sleeping, or a spectated entity).
         self.posed_rotation = view.map(|(_, yaw, pitch, roll)| (yaw, pitch, roll));
@@ -10704,8 +10692,15 @@ impl Game<'_> {
             ),
         };
         pr.lap("pr_camera");
-        self.audio
-            .set_listener([camera.x, camera.y, camera.z], view_yaw, view_pitch);
+        // `SoundEngine.updateSource`: use the actual camera basis, not the entity's own look
+        // or presentation-only bob/spin transforms.
+        let (forward, up) = if view.is_some() {
+            (self.view.forwards, self.view.up)
+        } else {
+            let q = sunrise_client::camera::rotation_with_roll(view_yaw, view_pitch, view_roll);
+            (q.transform([0.0, 0.0, -1.0]), q.transform([0.0, 1.0, 0.0]))
+        };
+        self.audio.set_listener(camera.to_array(), forward, up);
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
@@ -10890,9 +10885,7 @@ impl Game<'_> {
             Vec::new()
         };
         pr.lap("pr_native_visuals");
-        let view = if self.studio.flying() {
-            glam::Mat4::from_quat(self.camera_orientation().conjugate())
-        } else if view_roll == 0.0 {
+        let view = if view_roll == 0.0 {
             sunrise_client::camera::view_matrix(view_yaw, view_pitch)
         } else {
             sunrise_client::camera::view_matrix_rolled(view_yaw, view_pitch, view_roll)
@@ -10974,10 +10967,10 @@ impl Game<'_> {
         } else {
             (view_yaw, view_pitch, view_roll)
         };
-        let frame_view_matrix = if roll == 0.0 {
+        let frame_view_matrix = if title {
             sunrise_client::camera::view_matrix(yaw, pitch)
         } else {
-            sunrise_client::camera::view_matrix_rolled(yaw, pitch, roll)
+            view
         };
         let fov_degrees = if title {
             85.0

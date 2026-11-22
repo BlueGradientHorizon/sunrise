@@ -175,16 +175,15 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
-    /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
-    /// session. A cancel hook rolls outputs back to the requested values and stops (#2414).
-    /// A collector receives at most one returned value per registration, and later listeners
-    /// still run after a failure.
+    /// Contain each callback of a global listen, cancel or mod-answered collect hook: one that
+    /// panics is switched off for this hook for the session. A cancel hook rolls outputs back to
+    /// the requested values and stops (#2414). A listen hook discards only the failed callback's
+    /// writes. A collector takes at most one returned value per registration.
     pub isolate: bool,
-    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
-    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
-    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
-    /// result, including its cancellation, rolls back; later listeners still run.
+    /// An isolated listen or cancel hook's per-listener check, returning
+    /// `Result<(), &'static str>` naming the first refused output. Listen validators take
+    /// references to the proposed outputs; cancel validators first take the accepted outputs.
+    /// Each set follows declaration order. A refused write leaves the last accepted outputs intact.
     pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
@@ -512,29 +511,25 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // A listener that unwinds is disabled for this hook. Cancellation rolls back and
-        // stops dispatch (#2414); an answered collector has no output until its listener returns.
         let isolate = api.isolate.unwrap_or(false);
         if isolate
             && (scope.is_some()
-                || !(api.contract == Contract::Cancel
+                || !(matches!(api.contract, Contract::Listen | Contract::Cancel)
                     || api.contract == Contract::Collect && answered_by_mod))
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error:
-                    "isolate is for a global cancel hook or a global collect hook answered by mod"
-                        .into(),
+                error: "isolate is for a global listen, cancel or mod-answered collect hook".into(),
             });
         }
         if let Some(validator) = &api.output_validator
             && (!isolate
-                || api.contract != Contract::Cancel
+                || !matches!(api.contract, Contract::Listen | Contract::Cancel)
                 || syn::parse_str::<syn::Path>(validator).is_err())
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on an isolated cancel hook".into(),
+                error: "output_validator is a path on an isolated listen or cancel hook".into(),
             });
         }
         let counterparts = Counterparts {

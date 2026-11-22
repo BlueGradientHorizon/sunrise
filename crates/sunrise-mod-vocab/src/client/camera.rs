@@ -127,12 +127,33 @@ impl CameraEntity {
     }
 }
 
+pub(crate) fn refused_angles_output(
+    yaw: &f32,
+    pitch: &f32,
+    roll: &f32,
+) -> Result<(), &'static str> {
+    for (field, angle) in [("yaw", yaw), ("pitch", pitch), ("roll", roll)] {
+        if !angle.is_finite() {
+            return Err(field);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn refused_position_output(position: &[f64; 3]) -> Result<(), &'static str> {
+    position
+        .iter()
+        .all(|coordinate| coordinate.is_finite())
+        .then_some(())
+        .ok_or("position")
+}
+
 /// Column-major 4x4 presentation-only view transform composed at vanilla's
 /// `GameRenderer.bobHurt` / `bobView` stage (`render_view_transform`).
 ///
 /// Operations post-multiply onto the current matrix (`self = self * m`), matching vanilla's
-/// `PoseStack` multiplication order. Every mutating method rejects non-finite inputs without
-/// changing the stored matrix.
+/// `PoseStack` multiplication order. The matrix and its inverse must both be finite.
+/// A method that returns `false` refused the proposed transform and left the previous one intact.
 // no wire: client-local per-frame render transform at the GameRenderer bob stage.
 // exhaustive: its field is private, so mods compose through its transform methods
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -157,11 +178,14 @@ impl ViewTransform {
         ],
     };
 
-    /// Wraps a column-major 4x4 matrix when every entry is finite.
+    /// Wraps a column-major 4x4 matrix if it and its inverse are finite.
     pub fn from_matrix(matrix: [f32; 16]) -> Option<Self> {
-        matrix
-            .iter()
-            .all(|v| v.is_finite())
+        let m = glam::Mat4::from_cols_array(&matrix);
+        if !m.is_finite() {
+            return None;
+        }
+        let determinant = m.determinant();
+        (determinant != 0.0 && determinant.is_finite() && m.inverse().is_finite())
             .then_some(Self { matrix })
     }
 
@@ -170,12 +194,12 @@ impl ViewTransform {
         self.matrix
     }
 
-    /// Replaces the transform with `matrix` when every entry is finite; returns whether it changed.
+    /// Replaces the transform with `matrix` if it and its inverse are finite.
     pub fn set_matrix(&mut self, matrix: [f32; 16]) -> bool {
-        if !matrix.iter().all(|v| v.is_finite()) {
+        let Some(transform) = Self::from_matrix(matrix) else {
             return false;
-        }
-        self.matrix = matrix;
+        };
+        *self = transform;
         true
     }
 
@@ -184,24 +208,14 @@ impl ViewTransform {
         *self = Self::IDENTITY;
     }
 
-    /// Post-multiplies by a column-major 4x4 matrix when every entry and product entry is finite.
+    /// Post-multiplies by a column-major 4x4 matrix if the product and its inverse are finite.
     pub fn mul(&mut self, rhs: [f32; 16]) -> bool {
-        if !rhs.iter().all(|v| v.is_finite()) {
-            return false;
-        }
-        let product = mul_mat4(self.matrix, rhs);
-        if !product.iter().all(|v| v.is_finite()) {
-            return false;
-        }
-        self.matrix = product;
-        true
+        let product = glam::Mat4::from_cols_array(&self.matrix) * glam::Mat4::from_cols_array(&rhs);
+        self.set_matrix(product.to_cols_array())
     }
 
     /// Post-multiplies a translation `(x, y, z)` in blocks along camera-local axes.
     pub fn translate(&mut self, x: f32, y: f32, z: f32) -> bool {
-        if !x.is_finite() || !y.is_finite() || !z.is_finite() {
-            return false;
-        }
         self.mul([
             1.0, 0.0, 0.0, 0.0, //
             0.0, 1.0, 0.0, 0.0, //
@@ -212,9 +226,6 @@ impl ViewTransform {
 
     /// Post-multiplies a rotation about the local X axis by `radians`.
     pub fn rotate_x(&mut self, radians: f32) -> bool {
-        if !radians.is_finite() {
-            return false;
-        }
         let (s, c) = radians.sin_cos();
         self.mul([
             1.0, 0.0, 0.0, 0.0, //
@@ -226,9 +237,6 @@ impl ViewTransform {
 
     /// Post-multiplies a rotation about the local Y axis by `radians`.
     pub fn rotate_y(&mut self, radians: f32) -> bool {
-        if !radians.is_finite() {
-            return false;
-        }
         let (s, c) = radians.sin_cos();
         self.mul([
             c, 0.0, -s, 0.0, //
@@ -240,9 +248,6 @@ impl ViewTransform {
 
     /// Post-multiplies a rotation about the local Z axis by `radians`.
     pub fn rotate_z(&mut self, radians: f32) -> bool {
-        if !radians.is_finite() {
-            return false;
-        }
         let (s, c) = radians.sin_cos();
         self.mul([
             c, s, 0.0, 0.0, //
@@ -254,9 +259,6 @@ impl ViewTransform {
 
     /// Post-multiplies a scale `(x, y, z)`.
     pub fn scale(&mut self, x: f32, y: f32, z: f32) -> bool {
-        if !x.is_finite() || !y.is_finite() || !z.is_finite() {
-            return false;
-        }
         self.mul([
             x, 0.0, 0.0, 0.0, //
             0.0, y, 0.0, 0.0, //
@@ -264,19 +266,6 @@ impl ViewTransform {
             0.0, 0.0, 0.0, 1.0,
         ])
     }
-}
-
-fn mul_mat4(lhs: [f32; 16], rhs: [f32; 16]) -> [f32; 16] {
-    let mut out = [0.0f32; 16];
-    for col in 0..4 {
-        for row in 0..4 {
-            out[col * 4 + row] = lhs[row] * rhs[col * 4]
-                + lhs[4 + row] * rhs[col * 4 + 1]
-                + lhs[8 + row] * rhs[col * 4 + 2]
-                + lhs[12 + row] * rhs[col * 4 + 3];
-        }
-    }
-    out
 }
 
 #[cfg(test)]
@@ -307,6 +296,24 @@ mod view_transform_tests {
         assert!(ViewTransform::from_matrix([f32::INFINITY; 16]).is_none());
         t.reset();
         assert_eq!(t, ViewTransform::IDENTITY);
+    }
+
+    #[test]
+    fn singular_view_transform_writes_are_refused_without_losing_the_previous_transform() {
+        let mut transform = ViewTransform::IDENTITY;
+        assert!(transform.translate(2.0, 3.0, 4.0));
+        let previous = transform;
+        let singular = [
+            1.0, 0.0, 0.0, 0.0, // the first two columns are identical
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        assert!(ViewTransform::from_matrix(singular).is_none());
+        assert!(!transform.set_matrix(singular));
+        assert!(!transform.mul(singular));
+        assert!(!transform.scale(0.0, 1.0, 1.0));
+        assert_eq!(transform, previous);
     }
 
     #[test]

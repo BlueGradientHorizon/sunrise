@@ -632,32 +632,6 @@ impl Game<'_> {
 /// furnace sets its `lit`.
 pub(super) use sunrise_world::level::flags;
 
-/// Filter camera angle overrides (`compute_camera_angles`): any non-finite component keeps
-/// vanilla's value.
-pub(in crate::game) fn finite_camera_angles(
-    vanilla: (f32, f32, f32),
-    yaw: f32,
-    pitch: f32,
-    roll: f32,
-) -> (f32, f32, f32) {
-    (
-        if yaw.is_finite() { yaw } else { vanilla.0 },
-        if pitch.is_finite() { pitch } else { vanilla.1 },
-        if roll.is_finite() { roll } else { vanilla.2 },
-    )
-}
-
-/// Filter camera position overrides (`camera_position`): any non-finite axis keeps vanilla's value.
-pub(in crate::game) fn finite_camera_position(vanilla: [f64; 3], position: [f64; 3]) -> [f64; 3] {
-    std::array::from_fn(|i| {
-        if position[i].is_finite() {
-            position[i]
-        } else {
-            vanilla[i]
-        }
-    })
-}
-
 /// The pose a native mod asks for the first-person hand, each out-of-range
 /// or non-finite component replaced by its identity.
 pub(in crate::game) fn hand_pose_matrix(values: [f32; 7]) -> glam::Mat4 {
@@ -3155,14 +3129,8 @@ impl Game<'_> {
     /// The presentation-only view transform native mods compose at vanilla's
     /// `GameRenderer.bobHurt` / `bobView` stage (`render_view_transform`).
     pub(super) fn native_render_view_transform_matrix(&self, partial: f32) -> glam::Mat4 {
-        if !self.playing() {
-            return glam::Mat4::IDENTITY;
-        }
         let mut transform = mod_api::ViewTransform::IDENTITY;
         self.native_render_view_transform(partial, &mut transform);
-        if transform == mod_api::ViewTransform::IDENTITY {
-            return glam::Mat4::IDENTITY;
-        }
         glam::Mat4::from_cols_array(&transform.matrix())
     }
 

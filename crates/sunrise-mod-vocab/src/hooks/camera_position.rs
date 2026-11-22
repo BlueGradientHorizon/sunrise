@@ -6,18 +6,21 @@ pub trait Hooks {
         dispatch = "flat",
         side = "client",
         contract = "listen",
+        isolate = true,
+        output_validator = "crate::client::camera::refused_position_output",
         neoforge = "none (vanilla Camera.setPosition; NeoForge has no camera position event)",
         cancellable = false
     )]
     /// Render-only world-space camera position after `Camera.alignWithEntity` places the camera
     /// (`Camera.setPosition`).
     ///
-    /// Starts from vanilla's placed world position in blocks (after entity interpolation, eye height,
-    /// sleeping offset, and third-person collision back-off). Listeners compose in dependency order;
-    /// any non-finite coordinate falls back to vanilla's value for that axis.
+    /// Starts from the frame's placed world position in blocks: after vanilla entity alignment
+    /// (including an interpolating minecart rider) or from the studio's selected position.
+    /// Listeners see the previous listener's accepted position. A non-finite write is
+    /// reported to the log with the mod ID and leaves that position intact.
     ///
-    /// Only the rendered camera position moves — the local player entity does not move, and
-    /// eye/audio consumers that read the player's entity position continue to follow the player
-    /// unless they read the camera itself (`ClientHost::camera()`).
+    /// The render camera and its audio listener move; the player's position, eye and aim do not.
+    /// A perspective request during this callback re-aligns an entity-bound camera, keeping only
+    /// the coordinates changed by listeners. It does not reposition a custom camera.
     fn camera_position(partial: f32, position: &mut [f64; 3]);
 }

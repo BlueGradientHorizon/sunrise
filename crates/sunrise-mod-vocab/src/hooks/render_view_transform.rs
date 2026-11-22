@@ -6,16 +6,19 @@ pub trait Hooks {
         dispatch = "flat",
         side = "client",
         contract = "listen",
+        isolate = true,
         neoforge = "none (vanilla GameRenderer.bobHurt/bobView; NeoForge adds no event for it)",
         cancellable = false
     )]
     /// Presentation-only view transform applied at vanilla's `GameRenderer.bobHurt` / `bobView`
-    /// stage, after hurt tilt and view bobbing and before rendering the world.
+    /// stage, after hurt tilt and view bobbing and before rendering the world. It also runs when
+    /// a screen has input focus and this world render stage still runs.
     ///
     /// `transform` starts as [`ViewTransform::IDENTITY`] each frame. Listeners compose local
     /// rotations, translations, and scales onto it in dependency order (for example, camera shake
     /// scaled by [`ClientGuiOptions::screen_effect_scale`], recoil kicks, or lean tilts). Sunrise
     /// multiplies the composed matrix directly into the view-bob matrix with no artificial angle or
-    /// offset caps; the camera position, camera angles, player position, and aim are unchanged.
+    /// offset caps. Non-finite and non-invertible candidates are refused by `ViewTransform`.
+    /// The camera position and angles, the audio listener, the player position and aim are unchanged.
     fn render_view_transform(partial: f32, transform: &mut mod_api::ViewTransform);
 }

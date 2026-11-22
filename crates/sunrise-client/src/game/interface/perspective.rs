@@ -273,6 +273,13 @@ fn shadow_pass_takes_own_model(
     shadow_draws_player && !(shader_pack && spectator)
 }
 
+struct CameraAlignment {
+    entity: CameraEntity,
+    descending: bool,
+    entity_kind: sunrise_world::collision_context::EntityContextKind,
+    interpolating_minecart: bool,
+}
+
 fn wrap(d: f32) -> f32 {
     let d = d % 360.0;
     if d >= 180.0 {
@@ -312,44 +319,37 @@ impl Game<'_> {
         changed
     }
     /// Resolve the camera entity snapshot and collision context inputs for `Camera.alignWithEntity`.
-    fn camera_alignment_source(
-        &mut self,
-        partial: f32,
-    ) -> Option<(
-        CameraEntity,
-        bool,
-        sunrise_world::collision_context::EntityContextKind,
-    )> {
+    fn camera_alignment_source(&mut self, partial: f32) -> Option<CameraAlignment> {
+        use sunrise_world::collision_context::EntityContextKind;
         // Minecraft.cameraEntity: a server's spectator camera on a mob or
         // another player.
-        match self.spectated_camera_snapshot() {
-            Some(e) => Some((
-                e,
-                false,
-                sunrise_world::collision_context::EntityContextKind::Living,
-            )),
-            None => {
-                let mut entity = self.player_camera_entity()?;
-                if let Some(position) = self.remote_minecart_rider_position(partial) {
-                    // Already evaluated at partial: do not linearly interpolate
-                    // between tick endpoints across a corner a second time.
-                    entity.position = position;
-                    entity.previous = position;
-                }
-                Some((
-                    entity,
-                    self.player.as_ref()?.shift_key_down,
-                    sunrise_world::collision_context::EntityContextKind::Player,
-                ))
-            }
+        if let Some(entity) = self.spectated_camera_snapshot() {
+            return Some(CameraAlignment {
+                entity,
+                descending: false,
+                entity_kind: EntityContextKind::Living,
+                interpolating_minecart: false,
+            });
         }
+        let mut entity = self.player_camera_entity()?;
+        let minecart_position = self.remote_minecart_rider_position(partial);
+        if let Some(position) = minecart_position {
+            // Already evaluated at partial: do not linearly interpolate
+            // between tick endpoints across a corner a second time.
+            entity.position = position;
+            entity.previous = position;
+        }
+        Some(CameraAlignment {
+            entity,
+            descending: self.player.as_ref()?.shift_key_down,
+            entity_kind: EntityContextKind::Player,
+            interpolating_minecart: minecart_position.is_some(),
+        })
     }
 
     fn align_view_with_angles(
-        &mut self,
-        entity: &CameraEntity,
-        descending: bool,
-        entity_kind: sunrise_world::collision_context::EntityContextKind,
+        &self,
+        source: &CameraAlignment,
         partial: f32,
         angles: (f32, f32, f32),
     ) -> sunrise_client::camera::Camera {
@@ -358,9 +358,9 @@ impl Game<'_> {
         let context = CollisionContext::for_entity(
             CollisionEntity {
                 identity: EntityIdentity(0),
-                kind: entity_kind,
-                y: entity.position[1],
-                descending,
+                kind: source.entity_kind,
+                y: source.entity.position[1],
+                descending: source.descending,
                 main_hand: Some(CollisionItem::EMPTY),
             },
             false,
@@ -378,12 +378,17 @@ impl Game<'_> {
             facts: self.res.facts(),
         };
         view.align_with_entity_angles(
-            entity,
+            &source.entity,
             partial,
             kind,
             angles,
             |mut distance| {
-                self.native_camera_distance(partial, kind.is_mirrored(), entity, &mut distance);
+                self.native_camera_distance(
+                    partial,
+                    kind.is_mirrored(),
+                    &source.entity,
+                    &mut distance,
+                );
                 distance
             },
             |from, to| {
@@ -399,7 +404,6 @@ impl Game<'_> {
                 (!hit.miss).then_some([hit.hit.location.x, hit.hit.location.y, hit.hit.location.z])
             },
         );
-        self.view = view;
         view
     }
 
@@ -416,9 +420,17 @@ impl Game<'_> {
                 self.studio.freecam.pitch,
             ));
         }
-        let (entity, descending, entity_kind) = self.camera_alignment_source(partial)?;
-        let angles = (entity.view_y_rot(partial), entity.view_x_rot(partial), 0.0);
-        let view = self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
+        let source = self.camera_alignment_source(partial)?;
+        let view = self.align_view_with_angles(
+            &source,
+            partial,
+            (
+                source.entity.view_y_rot(partial),
+                source.entity.view_x_rot(partial),
+                0.0,
+            ),
+        );
+        self.view = view;
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,
@@ -426,52 +438,54 @@ impl Game<'_> {
         ))
     }
 
-    /// Full frame camera alignment (`Camera.alignWithEntity`): fires `compute_camera_angles`
-    /// (`ViewportEvent.ComputeCameraAngles`) before `setRotation`, mirroring, detached back-off,
-    /// and sleeping; then fires `camera_position` (`Camera.setPosition`) on the placed world
-    /// position. Skips both hooks on the title panorama and during studio freecam.
-    ///
-    /// Returns `(position, yaw, pitch, roll)` and keeps `self.view` in sync.
+    /// The authoritative frame camera. NeoForge posts `ComputeCameraAngles` only on ordinary
+    /// entity alignment, not in `Camera.alignWithEntity`'s interpolating minecart branch. The
+    /// final `camera_position` stage sees either placed entity view, or the studio's custom view.
+    /// Neither callback runs for the title panorama.
     pub(super) fn frame_camera(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32, f32)> {
-        if self.studio.flying() {
-            return Some((
-                self.studio.freecam.position,
-                self.studio.freecam.yaw,
-                self.studio.freecam.pitch,
-                self.studio.freecam.roll,
-            ));
-        }
         self.apply_requested_camera_type();
-        let (entity, descending, entity_kind) = self.camera_alignment_source(partial)?;
-        let vanilla_angles = (entity.view_y_rot(partial), entity.view_x_rot(partial), 0.0);
         let run_hooks = !self.shows_panorama();
-        let angles = if run_hooks {
-            let (mut yaw, mut pitch, mut roll) = vanilla_angles;
-            self.native_compute_camera_angles(partial, &mut yaw, &mut pitch, &mut roll);
-            self.apply_requested_camera_type();
-            super::native_hooks::finite_camera_angles(vanilla_angles, yaw, pitch, roll)
+        let (mut view, alignment) = if self.studio.flying() {
+            let mut view = self.view;
+            if let Some(source) = self.camera_alignment_source(partial) {
+                view.align_eye(&source.entity, partial);
+            }
+            let freecam = &self.studio.freecam;
+            // Studio stores roll with the opposite sign to NeoForge's camera angles.
+            view.set_rotation_with_roll(freecam.yaw, freecam.pitch, -freecam.roll);
+            view.position = freecam.position.to_array();
+            (view, None)
         } else {
-            vanilla_angles
+            let source = self.camera_alignment_source(partial)?;
+            let (mut yaw, mut pitch, mut roll) = (
+                source.entity.view_y_rot(partial),
+                source.entity.view_x_rot(partial),
+                0.0,
+            );
+            if run_hooks && !source.interpolating_minecart {
+                self.native_compute_camera_angles(partial, &mut yaw, &mut pitch, &mut roll);
+                self.apply_requested_camera_type();
+            }
+            let angles = (yaw, pitch, roll);
+            let view = self.align_view_with_angles(&source, partial, angles);
+            (view, Some((source, angles)))
         };
-        let mut view =
-            self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
         if run_hooks {
             let placed = view.position;
             let mut position = placed;
             self.native_camera_position(partial, &mut position);
-            let final_position = super::native_hooks::finite_camera_position(placed, position);
-            if self.apply_requested_camera_type() {
-                view =
-                    self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
-                if final_position != placed {
-                    view.position = final_position;
-                    self.view = view;
+            if self.apply_requested_camera_type()
+                && let Some((source, angles)) = alignment
+            {
+                view = self.align_view_with_angles(&source, partial, angles);
+            }
+            for (i, edited) in position.into_iter().enumerate() {
+                if edited.to_bits() != placed[i].to_bits() {
+                    view.position[i] = edited;
                 }
-            } else if final_position != placed {
-                view.position = final_position;
-                self.view = view;
             }
         }
+        self.view = view;
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,

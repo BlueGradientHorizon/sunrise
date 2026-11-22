@@ -121,6 +121,7 @@ pub(super) fn emit<'a>(
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
         let isolated_collect = answered && hook.isolate && contract == Contract::Collect;
+        let isolated_listen = hook.isolate && contract == Contract::Listen;
         let output = if let Some(out) = out {
             let index = args
                 .iter()
@@ -199,7 +200,7 @@ pub(super) fn emit<'a>(
                     param,
                 )
             });
-        if isolated_collect
+        if (isolated_collect || isolated_listen)
             && (hook.context.is_some()
                 || host.as_ref().is_some_and(|(_, host)| {
                     host.ty.starts_with("&mut ")
@@ -207,7 +208,7 @@ pub(super) fn emit<'a>(
                 }))
         {
             return Err(format!(
-                "{name}: an isolated collector needs a read-only world Host"
+                "{name}: an isolated collector or listener needs a read-only world Host"
             ));
         }
         // A block notice may identify a watching block entity. Its Parts receive
@@ -505,7 +506,11 @@ pub(super) fn emit<'a>(
                 {
                     surfaces.push(name.clone());
                 }
-                if hook.isolate && batch_entry.is_none() && !rollback_pointee_is_copy(&field_ty) {
+                if hook.isolate
+                    && !isolated_listen
+                    && batch_entry.is_none()
+                    && !rollback_pointee_is_copy(&field_ty)
+                {
                     return Err(format!(
                         "{}: isolate rolls a listener's writes back to the requested values; \
                          its mutable argument {name} must be a Copy primitive or a fixed array \
@@ -1033,7 +1038,7 @@ pub(super) fn emit<'a>(
             restores.push(format!("{event}.cancelled = {saved}.{};", snaps.len()));
             snaps.push(format!("{event}.cancelled"));
         }
-        let snapshot_statement = if snaps.is_empty() {
+        let snapshot_statement = if snaps.is_empty() || isolated_listen {
             String::new()
         } else {
             // A snapshot that only copies is no work to defer: `then_some`.
@@ -1047,7 +1052,7 @@ pub(super) fn emit<'a>(
                 snaps.join(", ")
             )
         };
-        let restore_statement = if snaps.is_empty() {
+        let restore_statement = if snaps.is_empty() || isolated_listen {
             String::new()
         } else {
             format!(
@@ -1264,6 +1269,30 @@ pub(super) fn emit<'a>(
                     o = out.unwrap()
                 ),
             ),
+            None if isolated_listen => {
+                let (checkpoint, restore) = if snaps.is_empty() {
+                    (String::new(), String::new())
+                } else {
+                    (
+                        format!("let {saved} = ({},);", snaps.join(", ")),
+                        restores.join(" "),
+                    )
+                };
+                let validate = hook.output_validator.as_ref().map_or_else(String::new, |validator| {
+                    let arguments = rollback.iter().map(|(name, by_reference)| {
+                        format!("&{}{event}.{name}", if *by_reference { "*" } else { "" })
+                    }).collect::<Vec<_>>().join(", ");
+                    format!(
+                        "if let Err(field) = {validator}({arguments}) {{ {restore} log::warn!(\"mod {{}} hook {name} output {{field}} refused; preceding outputs stand\", {mod_entry}.id); continue; }}"
+                    )
+                });
+                (
+                    String::new(),
+                    format!(
+                        "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} {checkpoint} if !super::runtime::call_isolated_listener(HookId::{hook_id}, {mod_entry}.id, \"{name}\", contained, || {mod_item}.{name}({invoke})) {{ {restore} continue; }} {validate} {local_write_back} }} }}"
+                    ),
+                )
+            }
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
@@ -1347,7 +1376,7 @@ pub(super) fn emit<'a>(
             format!("if !super::listened(HookId::{hook_id}) {{ return; }}")
         };
         // One thread-local read per dispatch, not per listener.
-        let early_return = if body.contains("refusable(") {
+        let early_return = if isolated_listen || body.contains("refusable(") {
             format!("{early_return} let contained = super::runtime::outside_world();")
         } else {
             early_return
