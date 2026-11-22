@@ -8419,24 +8419,27 @@ impl Game<'_> {
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
-            camera.x.floor() as i32,
-            camera.y.floor() as i32,
-            camera.z.floor() as i32,
+            sunrise_core::mth::floor(camera.x),
+            sunrise_core::mth::floor(camera.y),
+            sunrise_core::mth::floor(camera.z),
         ];
-        // The camera inside an opaque block sees nothing through it: disable.
+        // Camera.extractRenderState: only spectator inside a solidRender block disables smartCull.
         let cave_culling = self.settings.sunrise.cave_culling
-            && !self
-                .res
-                .facts()
-                .get(self.world.block(block[0], block[1], block[2]))
-                .solid_render;
-        // The cave culling search runs on its worker while the frame is prepared.
-        if cave_culling
-            && self.title.is_none()
+            && !(self.spectator()
+                && self
+                    .res
+                    .facts()
+                    .get(self.world.block(block[0], block[1], block[2]))
+                    .solid_render);
+        // The bounded section graph runs on its worker while the frame is prepared, even when
+        // smart culling is off (`SectionOcclusionGraph.runUpdates`).
+        let effective_detail_distance = (self.effective_render_distance() * 16) as f32;
+        if self.title.is_none()
             && let Some(renderer) = self.renderer.as_mut()
         {
+            renderer.sync_loaded_columns(&self.world.chunks);
             sunrise_client::spans::time("occlusion", || {
-                renderer.start_occlusion(camera, (self.streaming.radius * 16) as f32)
+                renderer.start_occlusion(camera, effective_detail_distance, cave_culling)
             });
         }
         pr.lap("pr_occlusion");

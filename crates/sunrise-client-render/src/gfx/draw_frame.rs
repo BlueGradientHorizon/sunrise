@@ -396,10 +396,10 @@ impl Renderer {
         let mirror_low = mirror_plane
             .zip(eye)
             .map(|(plane, eye)| 2.0 * (plane - frame.camera.y as f32) - eye.y);
-        let culling = !frame.title && frame.cave_culling;
-        if culling {
+        let bounded = !frame.title;
+        if bounded {
             crate::spans::time("occlusion", || {
-                self.start_occlusion(camera, frame.detail_distance)
+                self.start_occlusion(camera, frame.detail_distance, frame.cave_culling)
             });
         }
         // A shader pack's shadow pass draws the sections in its camera's box, all of them (the
@@ -496,7 +496,7 @@ impl Renderer {
                 radius,
                 &view,
             )
-            .with_reach(self.occlusion.reach().filter(|_| culling))
+            .with_reach(self.occlusion.reach().filter(|_| bounded))
             .with_eye(eye)
             .with_view_proj(jittered)
             .with_occlude(self.cull_on);
@@ -540,7 +540,7 @@ impl Renderer {
                 camera,
                 radius,
                 &Frusta(view, mirror),
-                |k| !culling || reachable.contains(k),
+                |k| !bounded || reachable.contains(k),
                 |x, z| {
                     (!cutout.is_empty() && cutout.contains(&(x, z)))
                         || (!leaving.is_empty() && leaving.contains(&(x, z)))

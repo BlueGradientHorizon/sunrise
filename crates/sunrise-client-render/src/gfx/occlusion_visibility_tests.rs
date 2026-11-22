@@ -75,6 +75,11 @@ fn occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii() {
         );
 
         let mut o = Occlusion::new(min_y, sections);
+        for x in cam_cx - rd - 1..=cam_cx + rd + 1 {
+            for z in cam_cz - rd - 1..=cam_cz + rd + 1 {
+                o.load_column(x, z);
+            }
+        }
         if let Some(overrides) = case.get("vis_overrides").and_then(Value::as_array) {
             for ov in overrides {
                 let s = ov["section"].as_array().expect("override section");
@@ -85,7 +90,7 @@ fn occlusion_reaches_exact_vanilla_26_3_sections_across_heights_and_radii() {
                 o.set((sx, sy - min_sec_y, sz), mask);
             }
         }
-        o.settle(camera, rd);
+        o.settle(camera, rd, true);
         let reach = o.reach().expect("settled occlusion exports Reach");
 
         let mut actual = Vec::new();
@@ -150,6 +155,12 @@ fn occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band() {
         .collect();
 
         let mut o = Occlusion::new(min_y, sections);
+        let cam_sec = o.columns.section_of(camera);
+        for x in cam_sec.0 - rd - 1..=cam_sec.0 + rd + 1 {
+            for z in cam_sec.2 - rd - 1..=cam_sec.2 + rd + 1 {
+                o.load_column(x, z);
+            }
+        }
         if let Some(overrides) = case.get("vis_overrides").and_then(Value::as_array) {
             for ov in overrides {
                 let s = ov["section"].as_array().expect("override section");
@@ -163,8 +174,7 @@ fn occlusion_visible_for_camera_is_unknown_outside_vanilla_vertical_band() {
                 );
             }
         }
-        o.settle(camera, rd);
-        let cam_sec = o.columns.section_of(camera);
+        o.settle(camera, rd, true);
 
         // One section below vanilla's vertical clamp must be unknown (None), never Some(true/false).
         let below_y = cam_sec.1 - rd - 1;

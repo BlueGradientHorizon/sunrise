@@ -241,11 +241,20 @@ impl Renderer {
     pub fn has_section(&self, key: SectionKey) -> bool {
         self.sections.contains(key)
     }
-    /// Bring the cave culling graph up to date for `camera` without waiting:
+    /// Bring the section occlusion graph up to date for `camera` without waiting:
     /// a search this starts runs on its worker while the frame is prepared,
     /// and `render` takes it if it has finished.
-    pub fn start_occlusion(&mut self, camera: DVec3, distance: f32) {
-        self.occlusion.update(camera, occlusion_radius(distance));
+    pub fn start_occlusion(&mut self, camera: DVec3, distance: f32, smart_cull: bool) {
+        self.occlusion
+            .update(camera, occlusion_radius(distance), smart_cull);
+    }
+    /// Marks chunk column `(x, z)` loaded in the section occlusion graph.
+    pub fn load_column(&mut self, x: i32, z: i32) {
+        self.occlusion.load_column(x, z);
+    }
+    /// Synchronizes loaded chunk columns in the section occlusion graph with `chunks`.
+    pub fn sync_loaded_columns(&mut self, chunks: &crate::chunk_map::ChunkMap) {
+        self.occlusion.sync_loaded_columns(chunks);
     }
     /// Whether the camera's current section graph knows this section is
     /// reachable. `None` means the graph cannot safely answer for this camera
@@ -323,7 +332,12 @@ mod tests {
             expected.sort_unstable();
 
             let mut o = occlusion::Occlusion::new(min_y, sections);
-            o.settle(camera, got_rd);
+            for x in -got_rd - 2..=got_rd + 2 {
+                for z in -got_rd - 2..=got_rd + 2 {
+                    o.load_column(x, z);
+                }
+            }
+            o.settle(camera, got_rd, true);
             let mut actual = Vec::new();
             for x in -rd - 2..=rd + 2 {
                 for z in -rd - 2..=rd + 2 {
