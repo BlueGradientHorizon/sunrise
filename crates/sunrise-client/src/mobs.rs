@@ -3786,14 +3786,14 @@ impl Mob {
         random: LegacyRandom,
     ) -> Self {
         let mut mob = Self::remote_with_random(id, kind, position, yaw, random);
-        // The parts a mod attached to this entity type add their goals right
-        // after the species' own (#1077): vanilla's `registerGoals` moment,
-        // which belongs to the authoritative construction. A type with no
-        // brain is told so at the same moment (#824); a brain-driven type
-        // registers its behaviors at the brain's own construction.
-        part_goals::attach(&mut mob);
-        mod_behaviors::attach_at_construction(&mob);
+        mob.attach_mod_parts();
         mob
+    }
+    /// Register the server-only goals and behaviors after the mob has its
+    /// runtime id. A deferred NBT load can read geometry before taking an id.
+    pub fn attach_mod_parts(&mut self) {
+        part_goals::attach(self);
+        mod_behaviors::attach_at_construction(self);
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the
