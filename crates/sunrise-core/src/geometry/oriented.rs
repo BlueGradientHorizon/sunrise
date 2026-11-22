@@ -448,6 +448,12 @@ impl OrientedCollider {
         // For a turned box moving diagonally there can be several advancing faces.
         let relative = delta.scale(-1.0);
         let axes = self.axes(0.0);
+        let axis_aligned = self.frame.axes.iter().all(|axis| {
+            matches!(
+                axis.components().map(f64::abs),
+                [1.0, 0.0, 0.0] | [0.0, 1.0, 0.0] | [0.0, 0.0, 1.0]
+            )
+        });
         let components = self.frame.axes.map(|axis| delta.dot(axis));
         self.with_candidates(mover.expand_towards(relative), |candidates| {
             let mut first = 1.0_f64;
@@ -456,6 +462,21 @@ impl OrientedCollider {
                 let local = self.boxes.boxes[index];
                 if after.boxes.boxes.get(index) != Some(&local) {
                     continue;
+                }
+                if axis_aligned {
+                    // Every advancing face spans the box on the stationary axes. Compare
+                    // those bounds directly: centre/radius projection can lose a one-ULP overlap.
+                    let bounds = Aabb::new(
+                        self.frame.to_world(local.min),
+                        self.frame.to_world(local.max),
+                    );
+                    if !Axis::ALL.into_iter().all(|axis| {
+                        delta.component(axis) != 0.0
+                            || (mover.min(axis) < bounds.max(axis)
+                                && mover.max(axis) > bounds.min(axis))
+                    }) {
+                        continue;
+                    }
                 }
                 let obb = self.obb(local);
                 for (i, component) in components.into_iter().enumerate() {
@@ -469,7 +490,8 @@ impl OrientedCollider {
                         half: obb.half,
                     };
                     face.half[i] = 0.0;
-                    if let Some(time) = self.face_entry(&axes, mover, relative, &face) {
+                    if let Some(time) = self.face_entry(&axes, mover, relative, &face, axis_aligned)
+                    {
                         first = first.min(time);
                         if first == 0.0 {
                             return 1.0;
@@ -484,11 +506,21 @@ impl OrientedCollider {
     /// First time the box crosses the advancing face. Strict overlap of the
     /// projections gives an open contact interval, including a face already
     /// inside the body at the start but not a graze that never advances into it.
-    fn face_entry(&self, axes: &Axes, mover: Aabb, relative: Vec3, face: &Obb) -> Option<f64> {
+    fn face_entry(
+        &self,
+        axes: &Axes,
+        mover: Aabb,
+        relative: Vec3,
+        face: &Obb,
+        stationary_axes_checked: bool,
+    ) -> Option<f64> {
         let (mut enter, mut exit) = (0.0_f64, 1.0_f64);
         for axis in axes.iter() {
-            let (distance, radii) = self.extents(mover, face, axis);
             let speed = relative.dot(axis);
+            if speed == 0.0 && stationary_axes_checked {
+                continue;
+            }
+            let (distance, radii) = self.extents(mover, face, axis);
             if speed == 0.0 {
                 if distance.abs() >= radii {
                     return None;
@@ -830,7 +862,7 @@ mod tests {
         assert_eq!(push([0.875, 0.25, 0.25], [1.125, 0.75, 0.75]), 1.0);
         assert_eq!(push([-0.125, 0.25, 0.25], [0.125, 0.75, 0.75]), 0.0);
         assert_eq!(
-            push([1.25, 1.0 - 2.0_f64.powi(-25), 0.25], [1.5, 1.25, 0.75]),
+            push([1.25, 1.0_f64.next_down(), 0.25], [1.5, 1.25, 0.75]),
             0.75
         );
         assert_eq!(push([1.25, 1.0, 0.25], [1.5, 1.25, 0.75]), 0.0);
