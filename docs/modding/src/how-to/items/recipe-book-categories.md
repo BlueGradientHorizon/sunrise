@@ -184,7 +184,8 @@ fn recipe_book_place(
     _host: &mut dyn mod_api::ServerHost,
     event: &mut mod_api::RecipeBookPlaceEvent<'_>,
 ) {
-    // The first five slots take ingredients, as a 3 by 2 grid with a slot to spare.
+    // The first five physical container slots take ingredients as a 3 by 2 grid,
+    // clearing slots 0..6 back to the player's inventory first.
     *event.placement = mod_api::RecipeBookPlacement::Grid {
         width: 3,
         height: 2,
@@ -197,12 +198,15 @@ fn recipe_book_place(
 `event.placement` arrives as `RecipeBookPlacement::Nothing` and chooses one of three answers:
 
 - `RecipeBookPlacement::Nothing`: handle placement yourself through normal `Host` operations or do nothing.
-- `RecipeBookPlacement::Ghost`: a manual menu reports missing ingredients, so the server asks the client
-  to draw the recipe's ghosts (`recipe_book_ghost`).
+- `RecipeBookPlacement::Ghost`: a manual menu reports missing ingredients, so while the same opening
+  remains current the server sends the clicked display to the client to draw the recipe's ghosts
+  (`recipe_book_ghost`).
 - `RecipeBookPlacement::Grid { width, height, slots, clear }`: run vanilla's canonical placer
-  (`ServerPlaceRecipe.placeRecipe`) once on the menu's current state using the click's current Shift
-  (`use_max_items`) and creative flags, clearing `clear` (and the grid's own slots) first, and letting
-  the placer decide whether to send ghosts. A recipe never reaches a cell past the last slot given.
+  (`ServerPlaceRecipe.placeRecipe`) once on the active menu and its live backing storage using the
+  actual physical container slot identities in `slots` and `clear` and the click's current Shift
+  (`event.use_max_items`) and creative (`event.creative`) flags, clearing `clear` (and the grid's own
+  slots) first, syncing normal slot changes, and sending a server-origin ghost only when ingredients
+  are missing. A recipe never reaches a cell past the last slot given.
 
 After a mutating callback returns, the engine resolves the menu only to verify the same opening and uses
 its current state. Refused `Grid` inputs (a slot the menu lacks, hides or cannot store, a repeated slot,
@@ -234,11 +238,15 @@ fn recipe_book_ghost(
 }
 ```
 
-`display` is the alternative the player clicked. `ghosts` arrives holding the game's own ghosts for the
-menu's layout (the crafting, furnace, stonecutter and smithing layouts map the display to their slots; a
-`Mod` layout arrives empty); add, change or clear them. A ghost whose `display` resolves to no stack, or that
-sits in a slot the menu's screen does not show, is dropped, and at most 256 are kept. The hook fires on the
-client only, once per answer, for the open menu's book, and only for a menu whose type has a part that listens.
+`display` is the alternative the player clicked, sent directly by the server for the current opening.
+`ghosts` arrives holding the game's own ghosts for the menu's layout (the crafting, furnace, stonecutter
+and smithing layouts map the display to their slots; a `Mod` layout arrives empty); add, change or clear
+them. Following vanilla's `GhostSlots.setSlot`, ghosts are resolved against the screen's actual shown
+slots with no separate count cap: a nonempty resolved display replaces any prior ghost for the same
+physical slot in place (preserving slot order), while an unresolved empty display is dropped without
+erasing a prior ghost, and a ghost in a slot the menu's screen hides or lacks is omitted. The hook fires
+on the client only, once per server ghost response, for the open menu's book, and only for a menu whose
+type has a part that listens.
 
 `MenuScreenLayout::recipe_book_big_result` gives the result ghost vanilla's 24 by 24 frame
 (`isBiggerResultSlot`). It is off by default.

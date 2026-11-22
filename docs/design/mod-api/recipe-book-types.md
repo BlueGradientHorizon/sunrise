@@ -24,10 +24,10 @@ The values explicitly derive `Wire`.
 A client mod reads `PlayerRef::synced_recipe_book_settings` and submits intent
 with `PlayerRef::request_recipe_book_settings` through a `ClientHost`. Engine
 menu panels use the same view through `Game::custom_book_settings` and
-`Game::request_custom_book_settings`. Until a negotiated snapshot arrives, or
-while a revision gap needs a replacement snapshot, reads return `None` and
-the panel must stay disabled. Requesting never changes saved flags. Disconnecting
-with pending intent restores the server's last accepted pair on the next join.
+`Game::request_custom_book_settings`. Until a negotiated snapshot arrives, reads
+return `None` and the panel stays disabled. Requesting never changes saved flags.
+Disconnecting with pending intent restores the server's last accepted pair on the
+next join.
 
 ## Registration and ownership
 
@@ -139,23 +139,26 @@ replacement for server state.
 Use reliable ordered delivery on the connection. A snapshot starts a fresh
 connection epoch at revision 0; each accepted server change increments the
 revision. Updates contain epoch, revision, key and both flags. Clients apply
-only the current epoch in revision order; a gap disables the custom UI until
-a fresh snapshot arrives. Client requests carry the current epoch and a
-monotonic request number; the server validates ownership of the connection's
-player, capability, negotiated key, booleans and bounds before applying once.
-Reject stale/duplicate requests without mutation; answer with authoritative
-state so the UI can settle. Later valid requests are processed in arrival order.
-Server writes use the same apply path, then send the resulting update. Notify
-gameplay once after an accepted change, never for rejection or an unchanged
-pair, through the existing settings-change moment extended to typed identity.
+only the current epoch in revision order; an out-of-order or stale update is
+reported and ignored without erasing the established view. Client requests carry
+the current epoch and a monotonic request number; the server validates ownership
+of the connection's player, capability, negotiated key, booleans and bounds
+before applying once. Reject stale/duplicate requests without mutation; answer
+with authoritative state so the UI can settle. Later valid requests are
+processed in arrival order. Server writes use the same apply path, then send the
+resulting update. Notify gameplay once after an accepted change, never for
+rejection or an unchanged pair, through the existing settings-change moment
+extended to typed identity.
 
 Offers and snapshots encode entry counts as VarInts checked against the bytes
 available. Updates contain exactly one entry. The codec refuses duplicate keys
 and validates each Identifier at decode; the connection frames the complete
-registered packet. Rate-limit requests to 20 per
-second per player; excess requests are rejected and cannot alter flags. Client
+registered packet. Settings apply directly on the ordered play stream with no
+artificial per-second request budget, busy control reply or retry timer. Client
 UI may show pending intent but only authoritative replies enter saved state.
-The design called for single-player to use the same server apply operation without serialization; this build instead preserves the existing integrated server's byte-pipe connection and identical negotiated, rate-limited authority semantics, because a typed local route needs per-connection ordered queues bound to integrated player ownership and reconnect lifetime.
+Single-player uses the integrated server's byte-pipe connection with the same
+negotiated authority semantics, keeping per-connection ordered queues bound to
+integrated player ownership and reconnect lifetime.
 
 ## Worked book and acceptance cases
 
@@ -333,8 +336,10 @@ the other registrations; `RecipeBookLayout` derives `Wire`.
 - `Stonecutter { input, result }` supports stonecutting displays.
 - `Smithing { template, base, addition, result }` supports smithing displays.
 - `Mod` declares no roles: the menu's `MenuPart` answers a click with `recipe_book_place` by writing
-  `RecipeBookPlacement` (`Nothing`, `Ghost`, or `Grid { width, height, slots, clear }` to run vanilla's
-  `ServerPlaceRecipe.placeRecipe` on the mod's grid).
+  `event.placement = RecipeBookPlacement::Grid { width, height, slots, clear }` (to run vanilla's
+  `ServerPlaceRecipe.placeRecipe` on the active menu's physical slots with the click's Shift and
+  creative flags), `RecipeBookPlacement::Ghost` (to ask the server to send a ghost for the clicked
+  alternative), or leaving `RecipeBookPlacement::Nothing`.
 
 These are container slots, not the appended player inventory. Overlapping roles,
 invalid dimensions and indices outside the 256-slot menu bound refuse registration.

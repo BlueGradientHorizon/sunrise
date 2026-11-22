@@ -84,8 +84,6 @@ pub(super) struct GuestCrafting {
 
 /// The most containers `native_recipe_sources` adds to one placement.
 const MAX_RECIPE_SOURCES: usize = 64;
-/// The most containers `native_menu_links` links one menu's slots to.
-const MAX_MENU_LINKS: usize = 64;
 
 /// ServerboundContainerClickPacket's input.
 pub(super) fn input(id: i32) -> Input {
@@ -1807,7 +1805,7 @@ impl Game<'_> {
             let Some(items) = self.linkable_container(at) else {
                 continue;
             };
-            sources.push((at, items));
+            sources.push((at, items.to_vec()));
         }
         sources
     }
@@ -1817,13 +1815,13 @@ impl Game<'_> {
     /// entity's (chests, barrels, shulker boxes, hoppers, dispensers,
     /// droppers) or a mod container's, while it is in the world (not
     /// ticking). None for anything else.
-    fn linkable_container(&self, at: (i32, i32, i32)) -> Option<Vec<Option<ItemStack>>> {
+    fn linkable_container(&self, at: (i32, i32, i32)) -> Option<&[Option<ItemStack>]> {
         let state = self.world.block(at.0, at.1, at.2).0;
         match self.world.block_entities.get(&at)? {
-            BlockEntity::Chest(items) => Some(items.clone()),
+            BlockEntity::Chest(items) => Some(items.as_slice()),
             BlockEntity::Mod(m) if !m.id().is_empty() => {
                 let c = self.world.block_entities.mod_container(state)?;
-                Some(m.items.iter().take(c.slots).cloned().collect())
+                Some(&m.items[..c.slots.min(m.items.len())])
             }
             _ => None,
         }
@@ -1857,9 +1855,10 @@ impl Game<'_> {
             let mut asked = Vec::new();
             self.native_menu_links(g.uuid, t.id, [pos.0, pos.1, pos.2], &mut asked);
             let mut links: Vec<(i32, i32, i32)> = Vec::new();
+            let mut seen = std::collections::HashSet::new();
             for at in asked {
                 let at = (at[0], at[1], at[2]);
-                if at == pos || links.len() >= MAX_MENU_LINKS || links.contains(&at) {
+                if at == pos || !seen.insert(at) {
                     continue;
                 }
                 if self.linkable_container(at).is_some() {

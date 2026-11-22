@@ -369,3 +369,101 @@ fn menu_links_skip_a_furnace_the_mod_names() {
         );
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn menu_links_keep_past_sixty_four_and_preserve_order_without_duplicates_or_self() {
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        setup(game);
+        static LONG_MENU_TYPE: std::sync::LazyLock<ModMenuType> =
+            std::sync::LazyLock::new(|| ModMenuType {
+                id: "test:lending",
+                owner: "test",
+                slots: 80,
+                player_inventory: true,
+                data_slots: 0,
+                owned_slots: None,
+                results: vec![],
+                inputs: Vec::new(),
+                links: Some(ModLinks {
+                    from: 10,
+                    count: 70,
+                }),
+                crafting: Some(ModCrafting {
+                    grid: 1,
+                    size: 3,
+                    result: 0,
+                }),
+            });
+        // Keep the opening container itself lendable so failing to skip `pos` shows up in `links`.
+        game.world.block_entities.insert(
+            STATION,
+            BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:bedrock", 1)); 80]),
+        );
+        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+            let menu = guest.menu.as_mut().unwrap();
+            menu.size = 80;
+            menu.sent = vec![None; 116];
+            menu.mod_type = Some(&*LONG_MENU_TYPE);
+        });
+        let furnace = (99, 200, 4);
+        game.world.block_entities.insert(
+            furnace,
+            BlockEntity::Furnace(Furnace {
+                kind: FurnaceKind::Furnace,
+                items: [None, None, None],
+                lit_remaining: 0,
+                lit_total: 0,
+                cooking_timer: 0,
+                cooking_total: 200,
+                speed: 1.0,
+                recipes_used: Default::default(),
+            }),
+        );
+        let positions: Vec<_> = (0..66).map(|i| [100 + i, 200, 4]).collect();
+        for (i, at) in positions.iter().enumerate() {
+            let item = match i {
+                0 => "minecraft:oak_planks",
+                64 => "minecraft:diamond",
+                65 => "minecraft:emerald",
+                _ => "minecraft:stone",
+            };
+            game.world.block_entities.insert(
+                (at[0], at[1], at[2]),
+                BlockEntity::Chest(vec![Some(ItemStack::new(item, 1))]),
+            );
+        }
+        let mut answers = vec![
+            [STATION.0, STATION.1, STATION.2],
+            [98, 200, 4],
+            [furnace.0, furnace.1, furnace.2],
+            positions[0],
+            positions[0],
+        ];
+        answers.extend_from_slice(&positions[1..64]);
+        answers.push(positions[3]);
+        answers.push([STATION.0, STATION.1, STATION.2]);
+        answers.push(positions[64]);
+        answers.push(positions[65]);
+        let expected_links: Vec<_> = positions.iter().map(|p| (p[0], p[1], p[2])).collect();
+        lending(answers, Arc::default(), || {
+            game.tick_lan(false);
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            let menu = guest.menu.as_ref().unwrap();
+            assert_eq!(menu.links, expected_links);
+            assert_eq!(
+                menu.sent[10],
+                Some(ItemStack::new("minecraft:oak_planks", 1))
+            );
+            assert_eq!(menu.sent[11], Some(ItemStack::new("minecraft:stone", 1)));
+            assert_eq!(
+                menu.sent[10 + 64],
+                Some(ItemStack::new("minecraft:diamond", 1))
+            );
+            assert_eq!(
+                menu.sent[10 + 65],
+                Some(ItemStack::new("minecraft:emerald", 1))
+            );
+        });
+    });
+}

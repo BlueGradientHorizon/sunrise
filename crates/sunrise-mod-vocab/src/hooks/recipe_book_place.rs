@@ -10,13 +10,15 @@ pub trait Hooks {
     /// - Leave `RecipeBookPlacement::Nothing` to handle placement through
     ///   normal `Host` operations or do nothing.
     /// - Set `RecipeBookPlacement::Ghost` when a manual menu says ingredients
-    ///   are missing (vanilla's `PLACE_GHOST_RECIPE`): the client is then told
+    ///   are missing (vanilla's `PLACE_GHOST_RECIPE`): while the same opening
+    ///   remains current, the server sends the clicked display to the client
     ///   to draw the recipe's ghosts (`recipe_book_ghost`).
     /// - Set `RecipeBookPlacement::Grid { width, height, slots, clear }` to
     ///   have the engine run vanilla's canonical placer
-    ///   (`ServerPlaceRecipe.placeRecipe`) once on the menu's current state
-    ///   with the click's current `use_max_items` and `creative` flags and
-    ///   decide whether to send ghosts.
+    ///   (`ServerPlaceRecipe.placeRecipe`) once on the active menu and its
+    ///   live backing storage with the click's current `use_max_items` and
+    ///   `creative` flags, syncing normal slot changes and sending a ghost
+    ///   only when ingredients are missing.
     ///
     /// `use_max_items` is the Shift click and `creative` the player's mode.
     /// `player` is swapped in, so `host.players().acting_player()` names them.
