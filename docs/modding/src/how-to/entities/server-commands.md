@@ -11,9 +11,9 @@ a live `PlayerRef`, not selector text.
 Only the executor whose registration owns the parsed node runs, with its mod's
 identity. If the owner is disabled after registration, the command is refused.
 Return `Ok(n)` for success with integer result `n` (zero is also success), or
-`Err(message.into())` with a `Text` for failure. The message is red and does not depend
-on `sendCommandFeedback`; silent sources and sources that don't accept failures
-still see nothing. "Unknown or incomplete command" remains a parse error for input
+`Err(message.into())` with a `Text` for failure. Failure text defaults to red and does
+not depend on `sendCommandFeedback`. It is not shown for forked commands, silent sources,
+or sources that do not accept failures. "Unknown or incomplete command" remains a parse error for input
 that matches no usage. Neither failure nor a disabled owner tries another executor.
 `execute store result` sees `n` on success; `execute store success` sees one.
 On a returned failure, both store zero.

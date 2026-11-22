@@ -57,8 +57,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   { kind, value }`: its registered type's id and what its parser returned. Missing optional arguments are absent.
   Parsing, permission and resolution failures produce feedback without calling the executor. The console resolves from the world spawn's
   block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails).
-  Return `Ok(n)` for success, including `Ok(0)`, or `Err(message.into())` with a `Text`. Failed commands store zero and send the
-  message in red unless the source is silent or does not accept failures. No other mod is asked.
+  Return `Ok(n)` for success, including `Ok(0)`, or `Err(message.into())` with a `Text`. Failed commands store zero. No other mod is asked.
+  Failure text defaults to red and does not depend on `sendCommandFeedback`. It is not shown for forked commands, silent sources, or sources that do not accept failures.
 - **`armor_stand_manipulate(player, name, stand_id, slot, cancel)`**: a player takes an item from an armor stand or
   puts one on it, heard after the stand's disabled-slot checks and before anything moves. `slot` is `mainhand`,
   `offhand`, `feet`, `legs`, `chest` or `head`. Set `cancel` and nothing changes (the click is spent). The player's

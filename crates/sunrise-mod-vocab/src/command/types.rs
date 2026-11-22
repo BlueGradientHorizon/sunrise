@@ -88,9 +88,10 @@ impl Command {
     /// resolution. The source identifies the origin and permission, independent of
     /// `execute as`; feedback respects silence, track-output and the acting player.
     /// Return `Ok(n)` for success with result `n` (including zero), or
-    /// `Err(message.into())` with a [`Text`] for failure. A failure is shown in red even when `sendCommandFeedback` is off,
-    /// unless the source is silent or does not accept failure output. It stores zero
-    /// for both `execute store success` and `execute store result`. Neither a failed
+    /// `Err(message.into())` with a [`Text`] for failure.
+    /// Failure text defaults to red and does not depend on `sendCommandFeedback`.
+    /// It is not shown for forked commands, silent sources, or sources that do not accept failures.
+    /// A failure stores zero for both `execute store success` and `execute store result`. Neither a failed
     /// executor nor a disabled owner gives another mod a turn.
     /// A panic is reported with the mod's name and disables this usage's executor for the
     /// session. It aborts the executor's writes in the caller's open transaction and does
