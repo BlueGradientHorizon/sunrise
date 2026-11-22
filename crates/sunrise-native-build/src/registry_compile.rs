@@ -60,6 +60,41 @@ pub fn compile(
     resolution: &dependencies::Resolution,
     options: Options<'_>,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
+    stage_and_cargo(
+        rust, game, out, target_dir, projects, declared, resolution, options, false,
+    )
+    .map(|artifacts| artifacts.expect("build mode returns artifacts"))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn check(
+    rust: &dyn Toolchain,
+    game: &Path,
+    out: &Path,
+    target_dir: &Path,
+    projects: &[api::Project<'_>],
+    declared: &[Vec<dependencies::Dependency>],
+    resolution: &dependencies::Resolution,
+    options: Options<'_>,
+) -> Result<(), String> {
+    stage_and_cargo(
+        rust, game, out, target_dir, projects, declared, resolution, options, true,
+    )
+    .map(drop)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_and_cargo(
+    rust: &dyn Toolchain,
+    game: &Path,
+    out: &Path,
+    target_dir: &Path,
+    projects: &[api::Project<'_>],
+    declared: &[Vec<dependencies::Dependency>],
+    resolution: &dependencies::Resolution,
+    options: Options<'_>,
+    check_only: bool,
+) -> Result<Option<(PathBuf, Vec<PathBuf>)>, String> {
     let sdk = prebuilt::identity(game)?;
     let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     check_log_template(&template, sdk.native_log)?;
@@ -527,7 +562,7 @@ pub fn compile(
         keep_unchanged_times(out, &previous).map_err(|e| e.to_string())?;
         fs::remove_dir_all(&previous).map_err(|e| e.to_string())?;
     }
-    let mut command = super::cargo(rust, out, "build");
+    let mut command = super::cargo(rust, out, if check_only { "check" } else { "build" });
     command
         .args([
             "--workspace",
@@ -553,7 +588,11 @@ pub fn compile(
     let messages = out.join("cargo-messages.jsonl");
     let result = super::run_checked(
         command,
-        tr("Compiling registry mod libraries"),
+        if check_only {
+            tr("Checking native mod libraries")
+        } else {
+            tr("Compiling registry mod libraries")
+        },
         |_| {},
         Some(fs::File::create(&messages).map_err(|e| e.to_string())?),
         None,
@@ -599,6 +638,9 @@ pub fn compile(
             raw.lines().any(crate::rust::missing_system_libraries),
         );
         return Err(super::advised(error, blocked, libraries));
+    }
+    if check_only {
+        return Ok(None);
     }
     let binary = game.join("bin").join(if cfg!(windows) {
         "sunrise-client.exe"
@@ -651,7 +693,7 @@ pub fn compile(
             runtime.push(library);
         }
     }
-    Ok((binary, runtime))
+    Ok(Some((binary, runtime)))
 }
 
 /// Gives each file under `staged` whose bytes equal the file at the same place under `previous`

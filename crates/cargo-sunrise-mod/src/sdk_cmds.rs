@@ -775,7 +775,7 @@ fn report(
 
 /// `check [--uses]` in a mod folder: the package rules, then `cargo check` and an API use
 /// report for a native mod. `--uses` lists each item and the line that brought it in.
-pub(crate) fn check_mod(entry: ChildEntry, show_uses: bool) -> Result<(), String> {
+pub(crate) fn check_mod(entry: ChildEntry, show_uses: bool, with: &[&Path]) -> Result<(), String> {
     let root = Path::new(".");
     let package = Package::read(root)?;
     let files = package.directory_files(root)?;
@@ -794,33 +794,27 @@ pub(crate) fn check_mod(entry: ChildEntry, show_uses: bool) -> Result<(), String
     }
     crate::check::references(root, &package.manifest)?;
     if !package.is_native() {
+        if !with.is_empty() {
+            return Err("check --with supplies libraries to a native mod".into());
+        }
         println!("{}: the package rules hold.", package.manifest.name);
         return Ok(());
     }
     // The mod's `sunrise-mod-api` is a path into `.sunrise/sdk/`: fetch it before Cargo looks.
     let sdk = ensure_sdk(root)?;
     let surface = surface_of(&sdk)?;
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = Command::new(cargo)
-        .arg("check")
-        .current_dir(root)
-        .status()
-        .map_err(|e| format!("cargo check: {e}"))?;
-    if !status.success() {
-        let mut error = format!("cargo check failed: {status}");
-        let required: Vec<_> = package
-            .manifest
-            .dependencies
-            .iter()
-            .filter_map(|(id, dependency)| (!dependency.details().optional).then_some(id.as_str()))
-            .collect();
-        if !required.is_empty() {
-            error.push_str(&format!(
-                "\nRequired mods: {}. A standalone build does not supply library mods.",
-                required.join(", ")
-            ));
+    if with.is_empty() && package.manifest.dependencies.is_empty() {
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let status = Command::new(cargo)
+            .arg("check")
+            .current_dir(root)
+            .status()
+            .map_err(|e| format!("cargo check: {e}"))?;
+        if !status.success() {
+            return Err(format!("cargo check failed: {status}"));
         }
-        return Err(error);
+    } else {
+        crate::dev::check(root, &package, with)?;
     }
     match uses_table::scan(entry, root, &surface)? {
         Scanned::Uses(uses) => {

@@ -291,18 +291,7 @@ pub fn run(plan: &Plan, input: &mut dyn BufRead, out: &mut dyn Write) -> Result<
     }
 }
 
-fn compile(
-    plan: &Plan,
-    say: &dyn Fn(Event) -> Result<(), String>,
-    input: &mut dyn BufRead,
-    ids: &std::cell::RefCell<Vec<String>>,
-) -> Result<Event, String> {
-    let work = crate::root();
-    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
-    let side = match Target::from(plan.target) {
-        Target::Client => sunrise_mod_package::manifest::Side::Client,
-        Target::Server => sunrise_mod_package::manifest::Side::Server,
-    };
+fn native_projects(plan: &Plan) -> Result<Vec<crate::Bundle>, String> {
     let mods: Vec<_> = scan_bundles(&plan.mods)?
         .into_iter()
         .filter(|bundle| bundle.manifest.native.is_some())
@@ -310,10 +299,17 @@ fn compile(
     if mods.is_empty() {
         return Err(format!("{} holds no native mod.", plan.mods.display()));
     }
-    *ids.borrow_mut() = mods
-        .iter()
-        .map(|bundle| bundle.manifest.id.clone())
-        .collect();
+    Ok(mods)
+}
+
+fn code_links(
+    mods: &[crate::Bundle],
+    target: Target,
+) -> Result<(Vec<Vec<dependencies::Dependency>>, dependencies::Resolution), String> {
+    let side = match target {
+        Target::Client => sunrise_mod_package::manifest::Side::Client,
+        Target::Server => sunrise_mod_package::manifest::Side::Server,
+    };
     let declared: Vec<Vec<dependencies::Dependency>> = mods
         .iter()
         .map(|bundle| {
@@ -335,6 +331,55 @@ fn compile(
         .collect();
     let resolution = dependencies::resolve_links(&inputs)
         .map_err(|error| format!("code link requirements refused: {error}"))?;
+    Ok((declared, resolution))
+}
+
+/// Type-check a developer's staged native projects through the build's generated Cargo
+/// workspace and SDK bindings, without producing or installing native libraries.
+pub fn check_rust(plan: &Plan) -> Result<(), String> {
+    let work = crate::root();
+    let mods = native_projects(plan)?;
+    let (declared, resolution) = code_links(&mods, plan.target.into())?;
+    let projects = mods
+        .iter()
+        .map(api::Project::read)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    if let Some(reason) = prebuilt::refusal(&projects) {
+        return Err(reason.to_string());
+    }
+    let mixins = crate::MixinsIdentity::resolve(&mods, None)?;
+    let game = plan.package.whole(&work.join("prebuilt-package"))?;
+    crate::registry_compile::check(
+        &plan.toolchain,
+        &game,
+        &work.join("check-workspace"),
+        &work.join("check-target"),
+        &projects,
+        &declared,
+        &resolution,
+        crate::registry_compile::Options {
+            consent: Some(&|_| plan.registry == Some(true)),
+            adapter: &std::env::current_exe().map_err(|e| e.to_string())?,
+            mixins: &mixins,
+        },
+    )
+}
+
+fn compile(
+    plan: &Plan,
+    say: &dyn Fn(Event) -> Result<(), String>,
+    input: &mut dyn BufRead,
+    ids: &std::cell::RefCell<Vec<String>>,
+) -> Result<Event, String> {
+    let work = crate::root();
+    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let mods = native_projects(plan)?;
+    *ids.borrow_mut() = mods
+        .iter()
+        .map(|bundle| bundle.manifest.id.clone())
+        .collect();
+    let (declared, resolution) = code_links(&mods, plan.target.into())?;
     let projects: Vec<_> = mods
         .iter()
         .map(api::Project::read)

@@ -211,6 +211,150 @@ pub fn install(
     plan
 }
 
+/// A local copy takes the place of every indexed version of this id. An archive has a hash;
+/// a source directory has only its manifest identity.
+pub struct LocalMod<'a> {
+    pub manifest: &'a crate::Manifest,
+    pub sha256: Option<&'a str>,
+}
+
+/// The install planner's solution for one unpublished project. Its own manifest and explicit
+/// local copies are fixed candidates, with their real dependency edges rather than the unknown
+/// edges of unindexed installed artifacts. The result excludes the project itself.
+pub struct ManifestPlan<'a> {
+    pub local: Vec<String>,
+    pub registry: Vec<(&'a Project, &'a Version)>,
+}
+
+/// Plan a project's dependencies with the same version, side, cycle and takedown rules as
+/// [`install`]. When `optional` is set, also try to add eligible native optional libraries
+/// without changing the required selection. Explicit local optional libraries are never silently
+/// ignored on a conflict.
+pub fn for_manifest<'a>(
+    index: &'a Index,
+    manifest: &crate::Manifest,
+    locals: &[LocalMod<'_>],
+    game: &str,
+    side: Side,
+    optional: bool,
+    native_fits: impl Fn(&Project, &Version) -> bool,
+) -> Result<ManifestPlan<'a>, String> {
+    let mut fixed = BTreeMap::new();
+    for (m, hash) in std::iter::once((manifest, None))
+        .chain(locals.iter().map(|local| (local.manifest, local.sha256)))
+    {
+        if fixed
+            .insert(
+                m.id.as_str(),
+                (
+                    m,
+                    hash,
+                    m.version.to_string(),
+                    super::manifest_dependencies(m),
+                ),
+            )
+            .is_some()
+        {
+            return Err(format!("duplicate mod id {} in local sources", m.id));
+        }
+    }
+    let mut catalog = Catalog::new(index, game, side, native_fits, &Present::new());
+    for (&id, (m, hash, version, rows)) in &fixed {
+        let (suggested, required) = rows
+            .iter()
+            .filter(|dep| dep.applies(side))
+            .map(|row| Range {
+                parsed: Ok(m.dependencies[&row.id].details().version),
+                row,
+            })
+            .partition(|range| range.row.optional);
+        catalog.mods.insert(
+            id,
+            vec![Candidate {
+                version,
+                installed: false,
+                unindexed: false,
+                number: Some(m.version.clone()),
+                fit: if id != manifest.id && index.revoked(id, hash.unwrap_or_default()).is_some() {
+                    Fit::Revoked
+                } else if m.native.as_ref().is_some_and(|native| native.game != game) {
+                    Fit::WrongGame
+                } else {
+                    Fit::Yes
+                },
+                required,
+                optional: suggested,
+            }],
+        );
+    }
+    if optional {
+        // An explicitly supplied optional library counts as present when a selected mod
+        // declares it, whether that declaration came from disk or the registry.
+        for candidate in catalog.mods.values_mut().flatten() {
+            candidate
+                .required
+                .extend(candidate.optional.extract_if(.., |range| {
+                    fixed.contains_key(range.row.id.as_str()) && range.row.id != manifest.id
+                }));
+        }
+    }
+    let mut roots = Roots::from([(manifest.id.as_str(), Vec::new())]);
+    let mut budget = MAX_STATES;
+    let mut selected = catalog
+        .solve_with_budget(&roots, &Selected::new(), &mut budget)
+        .map_err(|failure| failure.reason)?;
+    if optional {
+        let mut tried = BTreeSet::new();
+        loop {
+            let targets: BTreeSet<_> = selected
+                .values()
+                .flat_map(|c| &c.optional)
+                .map(|range| range.row.id.as_str())
+                .filter(|id| !selected.contains_key(id) && !tried.contains(id))
+                .filter(|id| index.project(id).is_some_and(|p| p.kind == Kind::NativeMod))
+                .collect();
+            if targets.is_empty() || budget == 0 {
+                break;
+            }
+            for id in targets {
+                if selected.contains_key(id) || budget == 0 {
+                    continue;
+                }
+                tried.insert(id);
+                roots = selected
+                    .iter()
+                    .map(|(&id, c)| (id, vec![c.version]))
+                    .collect();
+                roots.insert(id, Vec::new());
+                if let Ok(next) = catalog.solve_with_budget(&roots, &Selected::new(), &mut budget) {
+                    selected = next;
+                }
+            }
+        }
+    }
+    let mut plan = ManifestPlan {
+        local: Vec::new(),
+        registry: Vec::new(),
+    };
+    for (id, candidate) in selected {
+        if id == manifest.id {
+            continue;
+        }
+        if fixed.contains_key(id) {
+            plan.local.push(id.to_owned());
+        } else {
+            let project = index.project(id).expect("selected indexed project");
+            let version = project
+                .versions
+                .iter()
+                .find(|v| v.version == candidate.version)
+                .expect("selected indexed version");
+            plan.registry.push((project, version));
+        }
+    }
+    Ok(plan)
+}
+
 /// List installed mods that directly or transitively require `id`, from the indexed metadata
 /// for matching installed artifacts. An optional or out-of-side dependency is not a blocker.
 pub fn removal_dependents(
