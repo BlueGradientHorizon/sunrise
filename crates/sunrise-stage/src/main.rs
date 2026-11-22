@@ -30,9 +30,10 @@
 use mod_source::mod_uses;
 use mod_surface::Surface;
 use mod_surface::uses::{Fit, ManifestFacts, Origin, UsesTable, uses_contained};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use sunrise_mod_api_gen::staging::{self, Mode};
 use sunrise_mod_api_gen::surface::{ExportOptions, engine_catalogs, export_with};
+use sunrise_mod_package::manifest::{MANIFEST, Manifest};
 
 fn surface(args: &[PathBuf]) {
     let [root, out, flags @ ..] = args else {
@@ -134,6 +135,51 @@ fn surface_catalogs(args: &[PathBuf]) {
         .unwrap_or_else(|error| fail(format!("{}: {error}", path.display())));
 }
 
+fn read_manifest_facts(dir: &Path) -> Result<ManifestFacts, String> {
+    let path = dir.join(MANIFEST);
+    if !path.is_file() {
+        return Ok(ManifestFacts::default());
+    }
+    let file = std::fs::File::open(path).map_err(|e| format!("{MANIFEST}: {e}"))?;
+    let manifest = Manifest::read(file)?;
+    if !manifest.internals.is_empty()
+        || manifest.native.as_ref().is_some_and(|native| {
+            !native.mixin.is_empty()
+                || !native.module.is_empty()
+                || !native.bridge.is_empty()
+                || !native.state.is_empty()
+                || !native.r#loop.is_empty()
+        })
+    {
+        return Err(
+            "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`".into(),
+        );
+    }
+    Ok((&manifest).into())
+}
+
+#[cfg(test)]
+#[test]
+fn manifest_over_64_kib_uses_the_same_default_capability_as_a_native_package() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let manifest = format!(
+        "id = 'large_meta'\nname = 'Large Meta'\nversion = '0.1.0'\ndescription = '{}'\n\
+         [native]\ngame = '26.3'\nsunrise = '{}'\n",
+        "m".repeat(64 << 10),
+        "a".repeat(40)
+    );
+    std::fs::write(root.join(MANIFEST), manifest).unwrap();
+    std::fs::write(root.join("Cargo.toml"), "[package]\nname = 'large_meta'\n").unwrap();
+    std::fs::create_dir(root.join("src")).unwrap();
+    std::fs::write(root.join("src/lib.rs"), "").unwrap();
+
+    let package = sunrise_mod_package::Package::read(root).unwrap();
+    let standalone = read_manifest_facts(root).unwrap();
+    assert_eq!(standalone.names, ["registries"]);
+    assert_eq!(standalone, ManifestFacts::from(&package.manifest));
+}
+
 fn uses_command(entry: mod_surface::child::ChildEntry, args: &[PathBuf]) {
     let [surface, dir, options @ ..] = args else {
         fail("usage: sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]")
@@ -151,20 +197,11 @@ fn uses_command(entry: mod_surface::child::ChildEntry, args: &[PathBuf]) {
         }
     }
     let surface = read_surface(surface);
-    let input = mod_uses::read(dir, &[]).unwrap_or_else(|e| fail(e));
-    if input.game_code {
-        fail(
-            "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`"
-                .to_owned(),
-        );
-    }
-    // No manifest form names a hook version today (the schema refuses `hook_version`).
-    let manifest = ManifestFacts {
-        names: input.manifest_names,
-    };
+    let sources = mod_uses::read_sources(dir, &[]).unwrap_or_else(|e| fail(e));
+    let manifest = read_manifest_facts(dir).unwrap_or_else(|e| fail(e));
     let uses = uses_contained(
         entry,
-        input.sources.iter().map(|(p, t)| (p.as_str(), t.as_str())),
+        sources.iter().map(|(p, t)| (p.as_str(), t.as_str())),
         &manifest,
         &surface,
     )

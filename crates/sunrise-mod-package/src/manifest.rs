@@ -14,7 +14,7 @@ pub use jar::{
 };
 pub use runtime_files::{RUNTIME_DIR, RuntimeData, RuntimeTable};
 
-use mod_surface::uses::USES_FILE;
+use mod_surface::uses::{ManifestFacts, USES_FILE};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -488,7 +488,32 @@ fn edit_distance(a: &str, b: &str) -> usize {
     row[b.len()]
 }
 
+impl From<&Manifest> for ManifestFacts {
+    fn from(manifest: &Manifest) -> Self {
+        Self {
+            names: manifest
+                .capabilities
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+        }
+    }
+}
+
 impl Manifest {
+    /// Read a manifest from an opened file or package entry, under the published byte limit.
+    pub fn read(reader: impl Read) -> Result<Self, String> {
+        let mut text = String::new();
+        reader
+            .take(MAX_MANIFEST + 1)
+            .read_to_string(&mut text)
+            .map_err(|e| format!("{MANIFEST}: {e}"))?;
+        if text.len() as u64 > MAX_MANIFEST {
+            return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
+        }
+        Self::parse(&text)
+    }
+
     pub fn parse(text: &str) -> Result<Self, String> {
         let m: Manifest = toml::from_str(text).map_err(|e| toml_error(text, &e))?;
         Internal::check_all(&m.internals)?;
@@ -865,7 +890,7 @@ impl Package {
         let mut icon = None;
         let mut has_cargo = false;
         let mut has_source = false;
-        let toml = if metadata.is_dir() {
+        let manifest = if metadata.is_dir() {
             for old in [
                 "sunrise-native.json",
                 "horizon-mixin.toml",
@@ -908,16 +933,9 @@ impl Package {
             for (name, _) in crate::content::folder_files(path)? {
                 check_folder_file(path, &name)?;
             }
-            let mut text = String::new();
-            std::fs::File::open(path.join(MANIFEST))
-                .map_err(|e| format!("{MANIFEST}: {e}"))?
-                .take(MAX_MANIFEST + 1)
-                .read_to_string(&mut text)
-                .map_err(|e| format!("{MANIFEST}: {e}"))?;
-            if text.len() as u64 > MAX_MANIFEST {
-                return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
-            }
-            text
+            let file =
+                std::fs::File::open(path.join(MANIFEST)).map_err(|e| format!("{MANIFEST}: {e}"))?;
+            Manifest::read(file)?
         } else {
             if !metadata.is_file() {
                 return Err(format!(
@@ -929,7 +947,7 @@ impl Package {
             let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
             return Self::read_zip(&mut zip);
         };
-        let package = Self::from_parts(&toml, icon, has_cargo, has_source)?;
+        let package = Self::from_parts(manifest, icon, has_cargo, has_source)?;
         package.check_runtime_layout(&crate::content::runtime_folder_files(path)?)?;
         Ok(package)
     }
@@ -998,16 +1016,10 @@ impl Package {
                 icon = Some(crate::icon::Icon::parse(bytes)?);
             }
         }
-        let mut toml = String::new();
-        zip.by_name(MANIFEST)
-            .map_err(|e| format!("{MANIFEST}: {e}"))?
-            .take(MAX_MANIFEST + 1)
-            .read_to_string(&mut toml)
+        let entry = zip
+            .by_name(MANIFEST)
             .map_err(|e| format!("{MANIFEST}: {e}"))?;
-        if toml.len() as u64 > MAX_MANIFEST {
-            return Err(format!("{MANIFEST}: over {} MiB", MAX_MANIFEST >> 20));
-        }
-        let package = Self::from_parts(&toml, icon, has_cargo, has_source)?;
+        let package = Self::from_parts(Manifest::read(entry)?, icon, has_cargo, has_source)?;
         if uses && !package.is_native() {
             return Err(format!("a content mod has no code, so no {USES_FILE}"));
         }
@@ -1121,12 +1133,11 @@ impl Package {
     }
 
     fn from_parts(
-        text: &str,
+        manifest: Manifest,
         icon: Option<crate::icon::Icon>,
         has_cargo: bool,
         has_source: bool,
     ) -> Result<Self, String> {
-        let manifest = Manifest::parse(text)?;
         if has_cargo != manifest.native.is_some() || has_source != has_cargo {
             return Err("[native] and Rust source must be declared together".into());
         }
