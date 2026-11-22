@@ -97,26 +97,40 @@ class Budgets(unittest.TestCase):
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
                 patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
             log = self.render(
+                "test guarded ... FAILED\n\nfailures:\n\n---- guarded stdout ----\n"
                 "thread 'guarded' panicked at crates/example.rs:1:1:\na listener fails\n"
+                "---- the second phase ----\n"
                 "thread 'guarded' panicked at crates/example.rs:3:1:\n"
                 "assertion `left == right` failed: aborted pass fired post callbacks\n  left: 1\n right: 0\n"
-                "test guarded ... FAILED\n"
             )
         self.assertIn('panicked at crates/example.rs:3:1', log)
         self.assertIn('message: aborted pass fired post callbacks', log)
         self.assertNotIn('crates/example.rs:1:1', log)
         self.assertNotIn('a listener fails', log)
 
+    def test_outside_a_failed_tests_capture_the_first_panic_stays(self):
+        source = ['assert!(original);', 'panic!("cleanup");']
+        with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
+                patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
+            # A fatal run: no capture header, the process dies after a cleanup panic on the same thread.
+            log = self.render(
+                "thread 'dying' panicked at crates/example.rs:1:1:\nassertion failed: original\n"
+                "thread 'dying' panicked at crates/example.rs:2:1:\ncleanup\n"
+                "test dying ... FAILED\n"
+            )
+        self.assertIn('panicked at crates/example.rs:1:1', log)
+        self.assertNotIn('crates/example.rs:2:1', log)
+
     def test_a_repeated_name_that_panics_twice_later_keeps_the_first_targets_context(self):
         source = ['assert!(first);', 'panic!("a listener fails");', 'assert!(second);']
         with patch.object(ci, 'tracked_rust_paths', return_value={'crates/example.rs'}), \
                 patch.object(ci, 'source_lines', return_value=source), patch.dict(ci._panic_locations, clear=True):
+            # Two targets' captures of one name, separated by nothing but the second's header.
             log = self.render(
+                "test same ... FAILED\ntest same ... FAILED\n\nfailures:\n\n"
                 "---- same stdout ----\nthread 'same' panicked at crates/example.rs:1:1:\nassertion failed: first\n"
-                "test same ... FAILED\n"
                 "---- same stdout ----\nthread 'same' panicked at crates/example.rs:2:1:\na listener fails\n"
                 "thread 'same' panicked at crates/example.rs:3:1:\nassertion failed: second\n"
-                "test same ... FAILED\n"
             )
         self.assertEqual(log.count('panicked at crates/example.rs:1:1'), 2)
         self.assertNotIn('crates/example.rs:3:1', log)

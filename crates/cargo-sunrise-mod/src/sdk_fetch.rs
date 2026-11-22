@@ -429,6 +429,7 @@ pub(crate) fn fetch_slices(
     index: &Index,
     target: &str,
     side: sdk::Side,
+    route: sunrise_native_build::prebuilt::Route,
     release: bool,
     dir: &Path,
     stamp: &CacheStamp,
@@ -436,10 +437,12 @@ pub(crate) fn fetch_slices(
     let build = &index.build.commit;
     let host = sdk::Asset::host_name(target, side);
     let names = index
-        .route_assets(if release { "api" } else { "engine" }, target, side)
+        .route_assets(route.inputs(), target, side)
         .map_err(|e| format!("sdk-{build} has no slices for this computer ({target}): {e}"))?;
     let into = if release {
         dir.join("release-slices").join(host)
+    } else if route == sunrise_native_build::prebuilt::Route::Api {
+        dir.join("api-slices").join(host)
     } else {
         dir.join(host)
     };

@@ -9,6 +9,12 @@ Native code runs with the player's rights, outside any sandbox. The first instal
 launcher builds native mods only on an install that allows native code (`--trust-native-code`, revocable in
 **Settings > Storage**).
 
+If your mod calls another mod's Rust library, put the requirement in `sunrise-mod.toml`. In the add-on's folder,
+use `cargo sunrise-mod check --with ../library` for a local copy, then use the same flag with `build` or `run`.
+Without `--with`, the tool looks for required libraries in the Sunrise mod registry. Use `--with` to
+include optional libraries. The built `.smod` contains only your add-on; see
+[dependencies between mods](../concepts/dependencies.md) for the wiring and version rules.
+
 The pages in this section follow a mod from its source to a player's game and a server:
 
 <!-- section-pages -->

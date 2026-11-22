@@ -20,7 +20,10 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{EventLoopCtl, native_entity_refs::tests::with_client_game};
+    use crate::game::{
+        EventLoopCtl,
+        native_entity_refs::tests::{run_fresh_cases, with_client_game},
+    };
     use mod_api::{
         __private::{HookPanicReport, take_hook_panics},
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost, Hooks,
@@ -104,6 +107,14 @@ mod tests {
             fn drop(&mut self) {
                 std::panic::panic_any(PanickingPayload);
             }
+        }
+
+        if run_fresh_cases(
+            "game::client_executor::tests::closing_window_during_pending_save_discards_pending_and_late_client_tasks",
+            "SUNRISE_CLIENT_EXECUTOR_CLOSE_DURING_SAVE_CHILD",
+            &["close"],
+        ) {
+            return;
         }
 
         with_client_game(|game| {

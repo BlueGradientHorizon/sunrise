@@ -234,10 +234,10 @@ impl Game<'_> {
             let play = host.play.get(&guest.conn);
             let menus = host.menus.get(&guest.conn);
             if menu.fields().window != 0
-                || menus.is_some_and(|m| m.crafting.table.is_some() || m.station.is_some())
-                || play.is_some_and(|p| {
-                    p.merchant.is_some() || p.lectern.is_some() || p.mount_window.is_some()
+                || menus.is_some_and(|m| {
+                    m.crafting.table.is_some() || m.station.is_some() || m.merchant.is_some()
                 })
+                || play.is_some_and(|p| p.lectern.is_some() || p.mount_window.is_some())
             {
                 return None;
             }
@@ -284,9 +284,16 @@ impl Game<'_> {
         Some(menu.fields().window)
     }
 
-    /// Registry menu type; the inventory menu has no MenuType in vanilla.
-    /// The outer None means an unavailable menu.
+    /// Registry menu type (`AbstractContainerMenu.getType`); the inventory and
+    /// mount menus have no MenuType in vanilla. The outer None means an unavailable menu.
     pub(super) fn menu_kind(&self, menu: MenuRef) -> Option<Option<String>> {
+        if self.remote.is_some() {
+            let name = self.native_client_menu_name(menu)?;
+            return Some(
+                (name != "inventory" && !name.starts_with(super::remote::MOUNT_MENU))
+                    .then(|| name.to_owned()),
+            );
+        }
         let guest = self.native_menu_guest(menu)?;
         match &guest.menu {
             Some(m) => Some(Some(

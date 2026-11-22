@@ -150,6 +150,40 @@ pub(super) fn tnt_camera_entity(t: &super::tnt::PrimedTnt) -> CameraEntity {
     }
 }
 
+/// `Camera.alignWithEntity`'s view of an `Interaction`: non-living, scalable
+/// dimensions (`EntityDimensions.scalable(width, height)` has `eyeHeight = height * 0.85F`).
+pub(super) fn interaction_camera_entity(
+    i: &super::interactions::RemoteInteraction,
+) -> CameraEntity {
+    let at = [i.position.x, i.position.y, i.position.z];
+    CameraEntity {
+        position: at,
+        previous: at,
+        x_rot: 0.0,
+        y_rot: 0.0,
+        x_rot_o: 0.0,
+        y_rot_o: 0.0,
+        eye_height: i.height * 0.85,
+        living: None,
+        mount: None,
+    }
+}
+
+/// Fallback view for any other tracked level entity (`Level.getEntity`).
+fn tracked_camera_entity(t: &super::remote::Tracked) -> CameraEntity {
+    CameraEntity {
+        position: t.position,
+        previous: t.position,
+        x_rot: 0.0,
+        y_rot: 0.0,
+        x_rot_o: 0.0,
+        y_rot_o: 0.0,
+        eye_height: 0.0,
+        living: None,
+        mount: None,
+    }
+}
+
 /// The entity lists a server's camera can name (`Level.getEntity`): the kinds
 /// this client can follow.
 pub(super) struct CameraEntities<'a> {
@@ -158,6 +192,8 @@ pub(super) struct CameraEntities<'a> {
     pub boats: &'a [super::boats::Boat],
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [super::tnt::PrimedTnt],
+    pub interactions: &'a std::collections::HashMap<i32, super::interactions::RemoteInteraction>,
+    pub tracked: Option<&'a std::collections::HashMap<i32, super::remote::Tracked>>,
 }
 
 impl CameraEntities<'_> {
@@ -168,6 +204,10 @@ impl CameraEntities<'_> {
             || self.boats.iter().any(|b| b.id == id)
             || self.frames.iter().any(|f| f.id == id)
             || self.tnts.iter().any(|t| t.id == id)
+            || self.interactions.contains_key(&(id as i32))
+            || self
+                .tracked
+                .is_some_and(|tracked| tracked.contains_key(&(id as i32)))
     }
     /// `Camera.alignWithEntity`: the view out of the entity, `None` when the
     /// level does not hold it.
@@ -184,7 +224,15 @@ impl CameraEntities<'_> {
         if let Some(f) = self.frames.iter().find(|f| f.id == id) {
             return Some(frame_camera_entity(f));
         }
-        self.tnts.iter().find(|t| t.id == id).map(tnt_camera_entity)
+        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
+            return Some(tnt_camera_entity(t));
+        }
+        if let Some(i) = self.interactions.get(&(id as i32)) {
+            return Some(interaction_camera_entity(i));
+        }
+        self.tracked
+            .and_then(|tracked| tracked.get(&(id as i32)))
+            .map(tracked_camera_entity)
     }
 }
 
@@ -214,10 +262,19 @@ impl Game<'_> {
         if let Some(r) = self.remote.as_mut() {
             r.camera = camera_after_packet(r.camera, r.entity_id, camera_id, in_level);
         }
-        // Minecraft.setCameraEntity, for an entity the level holds.
+        // Minecraft.setCameraEntity recomputes the spectated entity post effect in either perspective.
         if in_level || player {
             self.check_entity_post_effect(true);
         }
+    }
+    /// `GameRenderer.clearSpectatedEntityPostEffect`.
+    pub(super) fn clear_spectated_entity_post_effect(&mut self) {
+        self.spectated_post_effect = None;
+        self.spectated_post_effect_active = false;
+    }
+    /// `GameRenderer.toggleSpectatorPostEffect` (`key.toggleSpectatorShaderEffects` / F4).
+    pub(super) fn toggle_spectator_post_effect(&mut self) {
+        self.spectated_post_effect_active = !self.spectated_post_effect_active;
     }
     /// `GameRenderer.checkEntityPostEffect` for the camera entity, or for none
     /// (`first_person` false: the third-person view clears it).
@@ -226,6 +283,7 @@ impl Game<'_> {
             .camera_mob()
             .filter(|_| first_person)
             .and_then(|m| entity_post_effect(&m.kind.id));
+        self.spectated_post_effect_active = self.spectated_post_effect.is_some();
     }
     /// The entity a server attached the view to, when it is not the player.
     pub(in crate::game) fn remote_camera_id(&self) -> Option<u32> {
@@ -277,6 +335,8 @@ impl Game<'_> {
             boats: &self.boats,
             frames: &self.item_frames,
             tnts: &self.tnts,
+            interactions: &self.interactions,
+            tracked: self.remote.as_ref().map(|r| &r.entities),
         }
     }
     /// The entity under a spectator's crosshair (`Minecraft.hitResult` as an
