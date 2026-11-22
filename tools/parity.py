@@ -24,16 +24,14 @@ toolchains change; otherwise its last pass stands.
 Vanilla oracles are reused too: tools/parity_shim.py stands in for java and
 javac and replays an oracle run whose inputs are unchanged, so a Rust-only
 change costs only the Rust side. A harness that fails while reusing oracle
-results is rerun fresh, to say whether the replay was the difference, and stops
-reusing them if it then passes; the harness still fails, since a replay of
-byte-identical inputs that differs from a fresh run is a defect of its own
-(an oracle that is not deterministic, or an input the key misses). --fresh
+results runs once more from scratch, and stops reusing them if that run passes;
+the harness still fails, and its first failure is its outcome. --fresh
 never reuses them, and --all reuses them only when PARITY_ORACLE_KEEP names a folder
 that outlives the checkout (the daily's CI keep): the shim keeps runs there
 and replays one only for the same command on byte-identical files, and a
 harness that passed only fresh is remembered there for FRESH_ONLY_DAYS.
-Every such rerun is printed as a RETRIED line with both outcomes; the daily keeps
-both runs' logs in its private runner log. No rerun turns a failure into a pass.
+Such a rerun prints its outcome on its own line and in a RETRIED line; the daily
+keeps both runs' logs in its private runner log. No rerun turns a failure into a pass.
 
 Harness probes build into .local/parity-target with release optimisations but
 without LTO and with 16 codegen units (`PROFILE` below), which builds in
@@ -1144,7 +1142,7 @@ def remember_fresh_only(keep, results):
     share with nothing to add leaves it alone."""
     today = time.strftime("%Y-%m-%d", time.gmtime())
     added = {name: today for name, record in results.items()
-             if record.get("retried") == "reused oracle results" and record.get("runs", [])[-1:] == ["pass"]}
+             if record.get("fresh_rerun") == "pass"}
     if not added:
         return
     with open(keep / "fresh-only.lock", "w") as handle:
@@ -1157,9 +1155,9 @@ def remember_fresh_only(keep, results):
 
 def run(selected, state, hasher, environment_digest, executors, reuse_oracles, rounds=None, no_reuse=()):
     """Run the selected harnesses on the executors. rounds: how many times each must run (default once); its runs
-    must agree, and a harness that both passes and fails is reported as flaky and recorded as failing. A new failure
-    with reused oracle results runs once more from scratch, to say whether the replay was the difference; it stays a
-    failure, and its record keeps `retried` and both outcomes (the first run's log is kept beside its own).
+    must agree, and a harness that both passes and fails is reported as flaky and recorded as failing. A first round
+    that fails with reused oracle results runs once more from scratch: that round stays a failure, the fresh run's
+    outcome is kept apart as `fresh_rerun`, and the failed run's log is kept beside the fresh one's.
     no_reuse: harnesses that never reuse oracle results in this run."""
     records = state["harnesses"]
     rounds = rounds or {}
@@ -1212,35 +1210,41 @@ def run(selected, state, hasher, environment_digest, executors, reuse_oracles, r
                 queue.insert(0, label)
                 continue
             passed = record["status"] == "pass"
+            where = "" if executor is local else f" on {executor.name}"
             if not passed and reused and label == name and records.get(name, {}).get("status") != "fail":
-                # A new failure might come from a reused oracle result: run it again from scratch to find out. The
-                # failure stands whatever the rerun says. Later rounds reuse what the first just validated, so their
-                # failures count (a flaky harness).
+                # A new failure might come from a reused oracle result: run it once more from scratch. This round's
+                # failure is its outcome whatever that run says. Later rounds reuse what the first just validated, so
+                # their failures count (a flaky harness).
                 retried.add(label)
                 first_log = keep_first_log(label)
                 queue.insert(0, label)
-                print(f"retry {label} without reused oracle results (first run's log: {first_log})", flush=True)
+                print(f"FAIL {label} {record['seconds']:.0f}s{where}  ({first_log}); running it once more without "
+                      f"reused oracle results", flush=True)
                 continue
+            fresh_rerun = label in retried and not reused
             # A harness that only passes fresh no longer reuses oracle results.
-            record["oracle_reuse"] = records.get(name, {}).get("oracle_reuse", True) and not (passed and label in retried)
+            record["oracle_reuse"] = records.get(name, {}).get("oracle_reuse", True) and not (passed and fresh_rerun)
             hashes = record.pop("hashes", None)
             if record["dependencies"]:
                 record["key"] = key_from(record, hashes, environment_digest) if hashes is not None else \
                     key(record, hasher, environment_digest)
-            where = "" if executor is local else f" on {executor.name}"
-            tail = "" if passed else f"  ({STATE_DIR / 'logs' / (label + '.log')})"
-            print(f"{'PASS' if passed else 'FAIL'} {label} {record['seconds']:.0f}s{where}{tail}", flush=True)
+            if fresh_rerun:
+                # Not a record line: the round's outcome is the failure printed above.
+                record["fresh_rerun"], record["status"] = record["status"], "fail"
+                print(f"fresh rerun of {label}: {record['fresh_rerun']} in {record['seconds']:.0f}s{where}", flush=True)
+            else:
+                tail = "" if passed else f"  ({STATE_DIR / 'logs' / (label + '.log')})"
+                print(f"{'PASS' if passed else 'FAIL'} {label} {record['seconds']:.0f}s{where}{tail}", flush=True)
             done.setdefault(name, []).append(record)
             if len(done[name]) < rounds.get(name, 1):
                 continue
             runs = done.pop(name)
-            statuses = ["fail", *(run["status"] for run in runs)] if name in retried else \
-                [run["status"] for run in runs]
+            statuses = [run["status"] for run in runs]
             record = dict(runs[0], status="pass" if all(status == "pass" for status in statuses) else "fail",
                           rounds=len(runs))
-            if name in retried:
-                record["retried"] = "reused oracle results"
-                record["runs"] = statuses
+            record.pop("fresh_rerun", None)
+            if fresh := next((run["fresh_rerun"] for run in runs if "fresh_rerun" in run), None):
+                record["retried"], record["fresh_rerun"] = "reused oracle results", fresh
             if len(set(statuses)) > 1:
                 record["flaky"] = statuses
                 print(f"FLAKY {name}: {', '.join(record['flaky'])} in {len(statuses)} runs", flush=True)
@@ -1655,10 +1659,9 @@ def share_of(path, found, parser):
 
 def report_retries(results):
     """Say which harnesses failed with oracle reuse enabled and ran again from scratch, with both outcomes, here and in
-    the CI job's summary. The harness fails either way; a fresh pass says the replay was the difference (it no longer
-    reuses oracle results), though a first run with reuse enabled may have replayed nothing."""
+    the CI job's summary. The harness fails either way; one whose fresh run passed no longer reuses oracle results."""
     lines = [f"RETRIED {name}: failed with oracle reuse enabled, then "
-             f"{'passed' if record['runs'][-1] == 'pass' else 'failed again'} from scratch; it counts as failed "
+             f"{'passed' if record['fresh_rerun'] == 'pass' else 'failed again'} from scratch; it counts as failed "
              f"(first run's log: {STATE_DIR / 'logs' / (name + '.first-run.log')})"
              for name, record in sorted(results.items()) if record.get("retried")]
     for line in lines:
@@ -1877,7 +1880,8 @@ def main():
     print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed in {elapsed / 60:.1f} min.")
     report_retries(results)
     for index, name in enumerate(failed):
-        log = STATE_DIR / 'logs' / (name + '.log')
+        # A rerun from scratch keeps the failed run's log apart: that one says why the harness failed.
+        log = STATE_DIR / 'logs' / (name + ('.first-run.log' if results[name].get("retried") else '.log'))
         print(f"  {name}: {log}")
         # The end of a harness's output says why it failed, and CI shows only this output.
         if index < FAILURE_TAILS:

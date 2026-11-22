@@ -1,5 +1,7 @@
 from pathlib import Path
 import argparse
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -11,7 +13,7 @@ import unittest
 from unittest import mock
 
 from tools import parity, parity_shard
-from tools.ci import parity_shards
+from tools.ci import parity_shards, parity_verdict
 
 
 class ParityRunnerTests(unittest.TestCase):
@@ -761,17 +763,17 @@ class OracleKeepTests(unittest.TestCase):
             lately = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 5 * 86400))
             (keep / "fresh-only.json").write_text(json.dumps({"expired": long_ago, "inherited": lately}))
             parity.remember_fresh_only(keep, {
-                "loot": {"status": "fail", "retried": "reused oracle results", "runs": ["fail", "pass"],
+                "loot": {"status": "fail", "retried": "reused oracle results", "fresh_rerun": "pass",
                          "oracle_reuse": False},
                 "inherited": {"status": "pass", "oracle_reuse": False},
-                "failed": {"status": "fail", "retried": "reused oracle results", "runs": ["fail", "fail"],
+                "failed": {"status": "fail", "retried": "reused oracle results", "fresh_rerun": "fail",
                            "oracle_reuse": True},
                 "light": {"status": "pass", "oracle_reuse": True}})
             self.assertEqual(parity.fresh_only(keep), {"loot": time.strftime("%Y-%m-%d", time.gmtime()),
                                                        "inherited": lately})
             # Two shares of one daily on one host, each adding its own: the second keeps the first's.
             parity.remember_fresh_only(keep, {"sculk": {"status": "fail", "retried": "reused oracle results",
-                                                        "runs": ["fail", "pass"]}})
+                                                        "fresh_rerun": "pass"}})
             self.assertEqual(set(parity.fresh_only(keep)), {"loot", "inherited", "sculk"})
             # A share with nothing to add doesn't write: a peer's list written meanwhile stays as it is.
             (keep / "fresh-only.json").write_text(json.dumps({"peer": lately}))
@@ -931,48 +933,67 @@ class RerunTests(unittest.TestCase):
     """A failure with reused oracle results runs once more from scratch, and never becomes a pass."""
 
     def run_harnesses(self, scripts, rounds=None):
-        executor = FakeExecutor()
+        executor, output = FakeExecutor(), io.StringIO()
         state = {"harnesses": {name: {"status": "pass", "oracle_reuse": True} for name in scripts}}
         with tempfile.TemporaryDirectory() as tmp, mock.patch.multiple(parity, STATE_DIR=Path(tmp), SHARED=Path(tmp)), \
                 mock.patch.object(parity, "save_state"), mock.patch.object(parity, "time") as clock, \
-                mock.patch("builtins.print"):
+                contextlib.redirect_stdout(output):
             clock.monotonic.return_value = 0.0
             results, _ = parity.run(scripts, state, None, "env", [executor], True, rounds)
-        return results, executor.started
+        return results, executor.started, output.getvalue()
 
     def test_a_fresh_pass_after_a_reuse_failure_still_fails_and_stops_reuse(self):
-        results, started = self.run_harnesses({"food": ["fail", "pass"]})
+        results, started, _ = self.run_harnesses({"food": ["fail", "pass"]})
         self.assertEqual(started, [("food", True), ("food", False)])
         record = results["food"]
-        self.assertEqual((record["status"], record["retried"], record["runs"]), ("fail", "reused oracle results",
-                                                                               ["fail", "pass"]))
+        self.assertEqual((record["status"], record["retried"], record["fresh_rerun"]),
+                         ("fail", "reused oracle results", "pass"))
         self.assertFalse(record["oracle_reuse"])
 
+    def test_the_daily_verdict_reads_the_first_failure_not_the_fresh_pass(self):
+        results, _, output = self.run_harnesses({"food": ["fail", "pass"], "loot": ["pass"]})
+        failed = sorted(name for name, record in results.items() if record["status"] != "pass")
+        # The footer as main() prints it, after the runner's own lines.
+        log = output + f"\n{len(results) - len(failed)} passed, {len(failed)} failed in 0.0 min.\n"
+        report, _ = parity_verdict.verdict(log, {"food", "loot"}, "1")
+        self.assertEqual(report, {"passed": ["loot"], "failed": ["food"], "complete": True})
+
     def test_only_once(self):
-        results, started = self.run_harnesses({"food": ["fail", "fail"]})
-        self.assertEqual((results["food"]["status"], results["food"]["runs"], len(started)), ("fail", ["fail", "fail"], 2))
+        results, started, _ = self.run_harnesses({"food": ["fail", "fail"]})
+        self.assertEqual((results["food"]["status"], results["food"]["fresh_rerun"], len(started)), ("fail", "fail", 2))
 
     def test_repeated_runs_get_no_rerun(self):
-        results, started = self.run_harnesses({"food": ["pass", "fail"]}, rounds={"food": 2})
+        results, started, _ = self.run_harnesses({"food": ["pass", "fail"]}, rounds={"food": 2})
         self.assertEqual((results["food"]["status"], len(started)), ("fail", 2))
+        self.assertNotIn("fresh_rerun", results["food"])
 
-    def test_a_fresh_pass_is_remembered_as_fresh_only_though_it_failed(self):
-        results, _ = self.run_harnesses({"food": ["fail", "pass"], "loot": ["fail", "fail"]})
+    def test_a_failed_first_round_keeps_its_fresh_rerun_apart_from_the_later_rounds(self):
+        # Round 1 fails with reuse, its fresh rerun passes, and round 2 fails.
+        results, started, _ = self.run_harnesses({"food": ["fail", "pass", "fail"]}, rounds={"food": 2})
+        record = results["food"]
+        self.assertEqual(started, [("food", True), ("food", False), ("food~2", True)])
+        self.assertEqual((record["status"], record["rounds"], record["fresh_rerun"]), ("fail", 2, "pass"))
+        self.assertNotIn("flaky", record)  # both scheduled rounds failed
         with tempfile.TemporaryDirectory() as tmp:
             parity.remember_fresh_only(Path(tmp), results)
             self.assertEqual(set(parity.fresh_only(Path(tmp))), {"food"})
 
-    def test_reruns_reach_the_job_summary_with_both_outcomes(self):
+    def test_a_fresh_pass_is_remembered_as_fresh_only_though_it_failed(self):
+        results, _, _ = self.run_harnesses({"food": ["fail", "pass"], "loot": ["fail", "fail"]})
+        with tempfile.TemporaryDirectory() as tmp:
+            parity.remember_fresh_only(Path(tmp), results)
+            self.assertEqual(set(parity.fresh_only(Path(tmp))), {"food"})
+
+    def test_reruns_reach_the_job_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             summary = Path(tmp) / "summary.md"
             with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}), \
                     mock.patch("builtins.print"):
                 parity.report_retries({"food": {"status": "fail", "retried": "reused oracle results",
-                                                "runs": ["fail", "pass"]},
+                                                "fresh_rerun": "pass"},
                                        "loot": {"status": "pass"}})
             text = summary.read_text()
-        self.assertIn("RETRIED food: failed with oracle reuse enabled, then passed from scratch; it counts as failed",
-                      text)
+        self.assertIn("food", text)
         self.assertNotIn("loot", text)
 
 
