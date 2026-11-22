@@ -276,11 +276,16 @@ impl Game<'_> {
         // chunk format all go through that table. The window's own server
         // thread set the world's table already.
         if self.integrated.is_none() {
-            let table = registries
-                .registries
-                .get(BIOME_REGISTRY)
-                .and_then(|list| client_biomes(self.res.biomes(), list))
-                .map(Arc::new);
+            let table = match registries.registries.get(BIOME_REGISTRY) {
+                Some(list) => match client_biomes(self.res.biomes(), list) {
+                    Ok(table) => table.map(Arc::new),
+                    Err(error) => {
+                        log::warn!("Sunrise: refused biome registry: {error}");
+                        return;
+                    }
+                },
+                None => None,
+            };
             if table.is_some() || self.world_biomes.is_some() {
                 self.world_biomes_base = table.clone();
                 self.world_biomes = table;

@@ -24,7 +24,14 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
 
             let plains = BiomeKey::parse("minecraft:plains").unwrap();
             let desert = BiomeKey::parse("minecraft:desert").unwrap();
+            let marsh = BiomeKey::parse("test:marsh").unwrap();
             let unknown = BiomeKey::parse("test:nope").unwrap();
+            game.world_biomes = Some(std::sync::Arc::new(
+                game.res
+                    .biomes()
+                    .with_packs([("test:marsh", &serde_json::json!({}))])
+                    .unwrap(),
+            ));
 
             assert_eq!(
                 game.biome("minecraft:plains"),
@@ -50,7 +57,7 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
             )
             .unwrap();
 
-            let foreign_keys = mod_api::__private::BiomeKeys::new(u64::MAX, ["minecraft:plains"]);
+            let foreign_keys = mod_api::__private::BiomeKeys::new(u64::MAX, [plains.clone()]);
             let foreign_view = foreign_keys.view("minecraft:plains").unwrap();
 
             for (index, value) in ["minecraft:plains", "minecraft:savanna"]
@@ -60,7 +67,7 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                 std::fs::write(
                     &file,
                     format!(
-                        r#"{{"replace":true,"values":{{"minecraft:plains":{{"villager_type":"{value}"}}}}}}"#
+                        r#"{{"replace":true,"values":{{"test:marsh":{{"villager_type":"{value}"}}}}}}"#
                     ),
                 )
                 .unwrap();
@@ -87,8 +94,10 @@ fn biome_key_world_install_reload_and_unavailable_sides() {
                     "villager_type".into(),
                     Tag::String(value.into()),
                 )]))));
-                assert_eq!(view.data(game, &VillagerTypes), expected);
-                assert_eq!(plains.data(game, &VillagerTypes), expected);
+                let marsh_view = game.biome("test:marsh").unwrap();
+                assert_eq!(marsh_view.key(), &marsh);
+                assert_eq!(marsh_view.data(game, &VillagerTypes), expected);
+                assert_eq!(marsh.data(game, &VillagerTypes), expected);
                 assert_eq!(desert.data(game, &VillagerTypes), Ok(None));
                 assert_eq!(
                     unknown.data(game, &VillagerTypes),

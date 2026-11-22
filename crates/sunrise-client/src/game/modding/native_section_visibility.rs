@@ -3,7 +3,7 @@
 
 use super::Game;
 use mod_api::{Answered, SectionVisibility, SectionVisibilityRefusal};
-use sunrise_client::mesher::{SectionPlanBuilder, capture_input};
+use sunrise_client::mesher::SectionPlanBuilder;
 
 impl Game<'_> {
     /// Ask mods about the admitted requests and submit their combined answers to the workers.
@@ -27,26 +27,13 @@ impl Game<'_> {
             return;
         };
         let poisoned = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
-        let fallback_biome =
-            mod_api::BiomeKey::from_parts("minecraft", "plains").expect("canonical plains id");
         let mut refusals = std::mem::take(&mut self.streaming.section_visibility.refusals);
         for request in requests {
-            let input = {
-                let biomes = world_biomes!(self);
-                capture_input(
-                    &request.region,
-                    request.key.1,
-                    |raw| {
-                        index
-                            .to_api(sunrise_world::registry::BlockStateId(raw))
-                            .unwrap_or(air)
-                    },
-                    |raw| {
-                        mod_api::BiomeKey::parse(biomes.name(raw))
-                            .unwrap_or_else(|_| fallback_biome.clone())
-                    },
-                )
-            };
+            let input = request.capture_input(|raw| {
+                index
+                    .to_api(sunrise_world::registry::BlockStateId(raw))
+                    .unwrap_or(air)
+            });
             let mut plan = SectionPlanBuilder::new();
             self.native_section_visibility(mod_api::__private::SectionVisibilityCall {
                 input: &input,

@@ -270,10 +270,17 @@ impl WorldRequest {
         }
         // Bone meal's and saplings' features, over the world's data packs like its generator:
         // a pack's tree is a feature here too. The same entries, so the bundle loads once.
-        let overrides = live_feature_overrides(
+        let biomes = packed_biomes(
             &save_root,
             &options.resources,
             res.biomes(),
+            &level.enabled_features,
+            &pack.additional_data,
+        )?;
+        let (overrides, _) = worldgen_overrides_of(
+            &save_root,
+            &options.resources,
+            &biomes,
             &level.enabled_features,
             &pack.additional_data,
         );
@@ -301,13 +308,6 @@ impl WorldRequest {
         let shape = shapes.get(dim.id());
         let streaming_step = startup::step("world.make_streaming");
         let loot = sunrise_client::structure_blocks::LootSnapshot::default();
-        let biomes = packed_biomes(
-            &save_root,
-            &options.resources,
-            res.biomes(),
-            &level.enabled_features,
-            &pack.additional_data,
-        );
         let (mut streaming, save, locator) = make_streaming(
             res,
             pack,
@@ -565,7 +565,7 @@ pub(super) fn packed_biomes(
     base: &Arc<sunrise_client::biome::Biomes>,
     enabled_features: &[String],
     additional: &[Arc<sunrise_client::datapack::DataPack>],
-) -> Arc<sunrise_client::biome::Biomes> {
+) -> Result<Arc<sunrise_client::biome::Biomes>> {
     let packs = super::pack_finders::data_repository(world_root, resources, additional);
     let enabled = sunrise_client::datapack::enabled_ids(world_root, &packs, enabled_features);
     let enabled: Vec<_> = enabled
@@ -584,22 +584,10 @@ pub(super) fn packed_biomes(
         .filter_map(|(id, json)| Some((id.to_owned(), serde_json::from_str(json).ok()?)))
         .collect();
     if packed.is_empty() {
-        return base.clone();
+        return Ok(base.clone());
     }
-    Arc::new(base.with_packs(packed.iter().map(|(i, v)| (i.as_str(), v))))
-}
-/// The worldgen entries the world's generator reads, for the live feature
-/// registry: the same biome table and packs as `make_streaming`'s, so both share
-/// one loaded bundle.
-fn live_feature_overrides(
-    world_root: &std::path::Path,
-    resources: &std::path::Path,
-    base: &Arc<sunrise_client::biome::Biomes>,
-    enabled_features: &[String],
-    additional: &[Arc<sunrise_client::datapack::DataPack>],
-) -> sunrise_world::worldgen::overrides::WorldgenOverrides {
-    let biomes = packed_biomes(world_root, resources, base, enabled_features, additional);
-    worldgen_overrides_of(world_root, resources, &biomes, enabled_features, additional).0
+    base.with_packs(packed.iter().map(|(i, v)| (i.as_str(), v)))
+        .map(Arc::new)
 }
 /// The Create screen's chosen packs' worldgen entries over the game's own
 /// (`applyNewPackConfig` reloads the world with the new pack config): the

@@ -119,9 +119,7 @@ impl GenerationContext for Start<'_> {
     }
     fn noise_biome(&mut self, quart: [i32; 3]) -> BiomeKey {
         let id = self.inner.noise_biome(quart);
-        BiomeKey::parse(self.inner.biome_name(id)).unwrap_or_else(|_| {
-            BiomeKey::from_parts("minecraft", "plains").expect("canonical plains biome id")
-        })
+        self.inner.biome_key(id)
     }
     fn column_has_valid_biome(&mut self, x: i32, z: i32, min_y: i32, max_y: i32) -> bool {
         self.inner.column_has_valid_biome(x, z, min_y, max_y)

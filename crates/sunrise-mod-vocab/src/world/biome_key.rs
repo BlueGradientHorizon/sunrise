@@ -200,6 +200,15 @@ impl crate::AccessRefusal for BiomeKeyError {
     }
 }
 
+/// Parse a canonical, namespaced id at the biome registry's load or lookup boundary.
+pub fn parse_registered_biome_key(name: &str) -> Result<BiomeKey, BiomeKeyError> {
+    let (namespace, path) = name
+        .split_once(':')
+        .filter(|(namespace, _)| !namespace.is_empty())
+        .ok_or(BiomeKeyError::InvalidIdentifier)?;
+    BiomeKey::from_parts(namespace, path)
+}
+
 /// Engine-owned biome registry snapshot for one installed world-data generation.
 // no wire: engine-owned snapshot storage, never passed to mods.
 #[non_exhaustive]
@@ -212,28 +221,22 @@ pub struct BiomeKeys {
 impl BiomeKeys {
     /// Prepare the engine's unique world-data generation from its registry before installation.
     /// The engine must supply a fresh generation for every candidate, across worlds and reloads.
-    pub fn new<'a>(generation: u64, ids: impl IntoIterator<Item = &'a str>) -> Self {
-        let mut entries = BTreeMap::new();
-        for id in ids {
-            let Some(ident) = Identifier::parse_namespaced(id) else {
-                continue;
-            };
-            entries
-                .entry(BiomeKey(ident))
-                .or_insert_with(|| id.to_owned());
-        }
+    pub fn new(generation: u64, keys: impl IntoIterator<Item = BiomeKey>) -> Self {
         Self {
             generation,
-            entries,
+            entries: keys
+                .into_iter()
+                .map(|key| {
+                    let name = key.to_string();
+                    (key, name)
+                })
+                .collect(),
         }
     }
 
     /// Resolve a canonical namespaced id (`minecraft:plains`) in this installed generation.
     pub fn view(&self, id: &str) -> Result<BiomeView<'_>, BiomeKeyError> {
-        let Some(ident) = Identifier::parse_namespaced(id) else {
-            return Err(BiomeKeyError::InvalidIdentifier);
-        };
-        self.view_key(&BiomeKey(ident))
+        self.view_key(&parse_registered_biome_key(id)?)
     }
 
     /// Resolve a registered [`BiomeKey`] in this installed generation.

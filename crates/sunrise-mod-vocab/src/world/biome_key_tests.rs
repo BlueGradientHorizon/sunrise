@@ -32,16 +32,16 @@ fn biome_key_parses_hashes_and_roundtrips_as_identifier() {
     let decoded = BiomeKey::take(&mut Reader::new(&encoded)).unwrap();
     assert_eq!(decoded, custom);
 
-    // Wire encoding matches Identifier directly (vanilla ResourceKey.streamCodec).
-    let mut id_bytes = Writer::new();
-    custom.identifier().put(&mut id_bytes);
-    assert_eq!(encoded, id_bytes.into_bytes());
+    // Mod Wire: two little-endian u32 lengths and UTF-8 fields, not the vanilla network codec.
+    assert_eq!(encoded.as_slice(), b"\x07\0\0\0example\x09\0\0\0ash_waste");
 }
 
 #[test]
 fn biome_views_are_bound_to_their_installed_generation_while_keys_persist() {
-    let old = BiomeKeys::new(1, ["minecraft:plains", "example:old_only"]);
-    let new = BiomeKeys::new(2, ["minecraft:plains"]);
+    let plains = BiomeKey::parse("minecraft:plains").unwrap();
+    let retired = BiomeKey::parse("example:old_only").unwrap();
+    let old = BiomeKeys::new(1, [plains.clone(), retired]);
+    let new = BiomeKeys::new(2, [plains]);
 
     let old_plains = old.view("minecraft:plains").unwrap();
     let new_plains = new.view("minecraft:plains").unwrap();

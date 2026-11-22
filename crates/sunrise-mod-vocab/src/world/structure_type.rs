@@ -240,8 +240,8 @@ pub trait GenerationContext {
     fn base_columns(&mut self, x: i32, z: i32, kinds: &[HeightmapType]) -> Vec<Vec<bool>>;
     /// `ChunkGenerator.getBaseColumn`'s blocks: the noise column at (x, z).
     fn noise_column(&mut self, x: i32, z: i32) -> NoiseColumn;
-    /// Noise biome at a quart position (the resolver's, no zoom), as its registered
-    /// [`BiomeKey`].
+    /// Noise biome at a quart position (no zoom), as the registered [`BiomeKey`] from the
+    /// same resolver used by the structure's valid-biome checks.
     fn noise_biome(&mut self, quart: [i32; 3]) -> BiomeKey;
     /// `GenerationContext.validBiome` over inclusive block Y bounds of the
     /// column at (x, z): whether any biome the structure names occurs there.

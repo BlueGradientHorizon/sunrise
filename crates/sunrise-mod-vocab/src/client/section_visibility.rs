@@ -4,6 +4,7 @@
 //! The game captures the input and asks on the client world thread, never on a meshing worker; the
 //! workers read only the checked answers.
 use crate::{BiomeKey, BlockState};
+use std::sync::Arc;
 
 /// Cells along each axis of a [`SectionVisibilityInput`]: the section's 16 and one each side.
 pub const SECTION_INPUT_SIDE: usize = 18;
@@ -39,52 +40,30 @@ pub struct SectionVisibilityInput {
     pub origin: [i32; 3],
     cells: Box<[SectionCell]>,
     light: Box<[u8]>,
-    biome_palette: Box<[BiomeKey]>,
+    biome_keys: Arc<[BiomeKey]>,
     biomes: Box<[Option<u16>]>,
 }
 
 impl SectionVisibilityInput {
-    /// The game captures one raw state, packed light and raw biome slot per position in the halo,
-    /// resolving each distinct biome slot once through `biome_of` into the snapshot's palette.
+    /// The game captures one raw state, packed light and raw biome slot per position in the halo.
+    /// The keys are shared with the registry that the mesh worker uses for these slots.
     // hidden: engine-only snapshot construction; listeners borrow the capture supplied by the game.
     #[doc(hidden)]
     pub fn capture(
         origin: [i32; 3],
         mut cell_at: impl FnMut([i32; 3]) -> (SectionCell, u8, Option<u16>),
-        mut biome_of: impl FnMut(u16) -> BiomeKey,
+        biome_keys: Arc<[BiomeKey]>,
     ) -> Self {
         let mut cells = Vec::with_capacity(SECTION_INPUT_CELLS);
         let mut light = Vec::with_capacity(SECTION_INPUT_CELLS);
         let mut biomes = Vec::with_capacity(SECTION_INPUT_CELLS);
-        let mut biome_palette: Vec<BiomeKey> = Vec::new();
-        let mut seen: Vec<(u16, u16)> = Vec::new();
         for y in -1..=16 {
             for z in -1..=16 {
                 for x in -1..=16 {
                     let (cell, packed, raw_biome) = cell_at([x, y, z]);
                     cells.push(cell);
                     light.push(packed);
-                    let slot = raw_biome.map(|raw| {
-                        if let Some(&(_, slot)) = seen.iter().find(|&&(id, _)| id == raw) {
-                            slot
-                        } else {
-                            let key = biome_of(raw);
-                            let slot = if let Some(existing) =
-                                biome_palette.iter().position(|entry| entry == &key)
-                            {
-                                u16::try_from(existing)
-                                    .expect("section visibility biome palette fits u16")
-                            } else {
-                                let slot = u16::try_from(biome_palette.len())
-                                    .expect("section visibility biome palette fits u16");
-                                biome_palette.push(key);
-                                slot
-                            };
-                            seen.push((raw, slot));
-                            slot
-                        }
-                    });
-                    biomes.push(slot);
+                    biomes.push(raw_biome);
                 }
             }
         }
@@ -92,7 +71,7 @@ impl SectionVisibilityInput {
             origin,
             cells: cells.into_boxed_slice(),
             light: light.into_boxed_slice(),
-            biome_palette: biome_palette.into_boxed_slice(),
+            biome_keys,
             biomes: biomes.into_boxed_slice(),
         }
     }
@@ -115,9 +94,14 @@ impl SectionVisibilityInput {
         let packed = self.light[Self::index(local)?];
         Ok([packed >> 4, packed & 15])
     }
-    /// The raw, stored biome at `local`, before biome zoom and blending; `None` in a missing column.
+    /// The registered key for the stored biome at `local`, before biome zoom and blending.
+    /// Returns `Ok(None)` if the column is missing or the stored slot does not resolve to a
+    /// registered biome (for example, a saved biome from an absent pack).
     pub fn biome(&self, local: [i32; 3]) -> Result<Option<&BiomeKey>, SectionVisibilityRefusal> {
-        Ok(self.biomes[Self::index(local)?].map(|slot| &self.biome_palette[usize::from(slot)]))
+        Ok(
+            self.biomes[Self::index(local)?]
+                .and_then(|slot| self.biome_keys.get(usize::from(slot))),
+        )
     }
     /// The position seed used for seeded block-model selection at `local`.
     pub fn model_seed(&self, [x, y, z]: [i32; 3]) -> Result<i64, SectionVisibilityRefusal> {

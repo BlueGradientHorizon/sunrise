@@ -175,8 +175,9 @@ Sunrise still derives its axe steps from the inverse maps, not from `generate_bl
 
 `BiomeKey` is the persistent registered biome identifier in `minecraft:worldgen/biome`
 (vanilla's `ResourceKey<Biome>`). Construct one with `BiomeKey::new(identifier)` or
-`BiomeKey::parse("minecraft:plains")`, or keep `view.key().clone()` from a scoped view; it
-survives reloads and encodes over `Wire` as its `Identifier`.
+`BiomeKey::parse("minecraft:plains")`, or keep `view.key().clone()` from a scoped view. It
+survives reloads and uses the mod `Wire` format for `Identifier` (a length-prefixed namespace
+and a length-prefixed path); this is not the vanilla `ResourceKey.streamCodec` network format.
 
 `host.biome("minecraft:plains")` (or `key.view(host)`) resolves a scoped, generation-bound
 `BiomeView<'_>` (vanilla's `Holder<Biome>`) borrowing from the installed server world registry.
@@ -186,8 +187,9 @@ its `BiomeKey`, with no wire codec and no way to outlive the host borrow. Both
 `DataMap::Entry` is `BiomeKey`, including `neoforge:villager_types` in
 `minecraft:worldgen/biome`. Missing entries return `Ok(None)`. Lookups return
 `BiomeKeyError::Unavailable` (and `data` returns `DataMapError::Unavailable`) on clients,
-before world data is installed, or in phases that forbid world-data reads; an unregistered
-biome returns `BiomeKeyError::UnknownBiome` (or `DataMapError::InvalidKey` from `data`), and
+before world data is installed, or in phases that forbid world-data reads. An invalid identifier
+returns `BiomeKeyError::InvalidIdentifier`; an unregistered biome returns
+`BiomeKeyError::UnknownBiome` (or `DataMapError::InvalidKey` from `data`), and
 a view checked against another host or generation returns `BiomeKeyError::WrongGeneration`
 (or `DataMapError::InvalidKey` from `data`).
 
