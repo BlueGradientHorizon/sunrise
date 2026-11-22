@@ -1108,7 +1108,7 @@ fn contact_hurt_uses_the_world_damage_type_tags_and_death_message() {
                         0.0,
                     );
                     mob.no_ai = true;
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.velocity.y = -0.08;
                     if id == 74 {
                         let mut boots = ItemStack::new("minecraft:leather_boots", 1);
