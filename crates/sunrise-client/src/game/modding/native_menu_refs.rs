@@ -1220,9 +1220,16 @@ mod tests {
                 menu.slot(game, 9),
                 Some(Some(stone.try_into_api().unwrap()))
             );
+            // Like a new AbstractContainerMenu, this window starts with an empty cursor,
+            // independent of the inventory menu's carried stack.
+            assert_eq!(menu.carried(game), Some(None));
+            let stick = ItemStack::new("minecraft:stick", 2);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.carried = Some(stick.clone());
+            });
             assert_eq!(
                 menu.carried(game),
-                Some(Some(stone.try_into_api().unwrap()))
+                Some(Some(stick.try_into_api().unwrap()))
             );
             assert_eq!(
                 game.menu_slot_backing(menu, 0),
@@ -1250,6 +1257,10 @@ mod tests {
             host.hub.close_container(1);
             assert_eq!(newer.slot_count(game), None);
             let inventory = game.player_container_menu(player).unwrap();
+            assert_eq!(
+                inventory.carried(game),
+                Some(Some(stone.try_into_api().unwrap()))
+            );
             let host = game.lan.as_mut().unwrap();
             *host.menus.entry(1).or_default().crafting.table = Some((
                 7,

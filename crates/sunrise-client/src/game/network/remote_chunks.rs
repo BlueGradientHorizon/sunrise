@@ -82,6 +82,7 @@ impl Game<'_> {
             }
         };
         let (x, z) = (p.x, p.z);
+        self.supersede_group_predictions(&chunk);
         // A column sent again while it is resident (a bulk edit): only what changed is lit and meshed again.
         let resident = self.world.chunks.contains_key(&(x, z));
         if resident {

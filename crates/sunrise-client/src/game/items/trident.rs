@@ -364,7 +364,7 @@ impl Game<'_> {
             has_been_shot: false,
             owner_uuid: Some(owner_uuid),
             no_gravity: false,
-            on_ground: false,
+            ground: Default::default(),
             fire_ticks: 0,
             fall_distance: 0.0,
             sound_event: sunrise_client::entity_nbt::TRIDENT_HIT_GROUND.to_owned(),
@@ -815,7 +815,7 @@ impl Game<'_> {
                         let aim = self.attacker_aim(Some(Who::Player));
                         let mut attack = self.attack_of(attacker as i32);
                         attack.projectile = Some(t.id as i32);
-                        attack.projectile_is_arrow = true;
+                        attack.projectile_kind = sunrise_client::health::DirectEntity::Arrow;
                         Self::set_projectile_weapon(&mut attack, Some(&t.stack));
                         let trident_source = DamageKind::Named(
                             sunrise_client::mobs::NamedDamage::registered(

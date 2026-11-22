@@ -485,6 +485,20 @@ impl Game<'_> {
         }
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
     }
+    /// Set or clear the mod-published connection group at `pos`.
+    /// Returns `Ok(true)` if changed, `Ok(false)` if unchanged, unloaded, out of height, or
+    /// fenced, and `Err(LevelWriteError::Stale | Unavailable)` for stale or non-writable levels.
+    pub(super) fn level_set_connection_group(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> Result<bool, mod_api::LevelWriteError> {
+        if !self.native_level_write_position(level, pos)? {
+            return Ok(false);
+        }
+        Ok(self.journal_set_connection_group(pos, group))
+    }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the
     /// world gives `state` back.
@@ -2229,6 +2243,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_block_part_changes_the_bounce_restitution_an_entity_reads() {
+        crate::game::in_own_process(
+            "game::native_entity_refs::tests::a_block_part_changes_the_bounce_restitution_an_entity_reads",
+            block_part_bounce_restitution_in_own_process,
+        );
+    }
+
+    fn block_part_bounce_restitution_in_own_process() {
         use sunrise_client::block_contact::{Contact, bounce_restitution};
         use sunrise_core::position::BlockPos;
 
@@ -2255,14 +2276,36 @@ pub(super) mod tests {
                     state: block,
                     position: pos,
                 };
-                let level = sunrise_client::health::DamageLevel::of(
-                    &mut game.world,
-                    registry,
-                    None,
-                    Some(&game.pack.block_registries),
-                    &game.damage_hooks,
-                );
-                bounce_restitution(&mut level.on_client(client_side), contact, own)
+                use sunrise_world::native_load_context::{
+                    DataLoadOrigin, LoadContext, LoadInputs, LoopSide,
+                };
+                let context = LoadContext::new(
+                    DataLoadOrigin::ServerDataLoad,
+                    std::sync::Arc::new(LoadInputs::new(Default::default(), Default::default())),
+                    [],
+                )
+                .captured_loop_context(if client_side {
+                    LoopSide::Client
+                } else {
+                    LoopSide::Server
+                });
+                bounce_restitution(
+                    sunrise_client::motion::FrictionLevel {
+                        world: &game.world,
+                        registry,
+                        context: &context,
+                        side: &game_side!(game),
+                        coefficient: &|id| {
+                            game.res
+                                .facts()
+                                .states
+                                .get(id.0 as usize)
+                                .map(|p| p.friction)
+                        },
+                    },
+                    contact,
+                    own,
+                )
             };
             // Glass's part answers whatever the block's own value: 0.5 on a server, 0.25 on a
             // client predicting its own bounce.

@@ -739,7 +739,7 @@ impl Game<'_> {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
-            on_ground: b.on_ground,
+            on_ground: b.ground.on_ground,
             passengers: self
                 .mobs
                 .iter()
@@ -755,7 +755,7 @@ impl Game<'_> {
         EntityView {
             kind: "minecraft:item".into(),
             position: [e.position.x, e.position.y, e.position.z],
-            on_ground: e.on_ground,
+            on_ground: e.ground.on_ground,
             on_fire: e.fire_ticks > 0,
             ..Default::default()
         }
@@ -1631,7 +1631,20 @@ impl Game<'_> {
     /// `DistanceTrigger`: the player's `player` condition, `start_position`
     /// at `start`, and the `distance` from `start` to the player.
     pub(super) fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
-        let me = self.player_entity_for(name);
+        self.trigger_distance_at(name, start, None);
+    }
+
+    /// Complete a distance trigger at the position recorded by its call site.
+    pub(in crate::game) fn trigger_distance_at(
+        &mut self,
+        name: &str,
+        start: [f64; 3],
+        end: Option<[f64; 3]>,
+    ) {
+        let mut me = self.player_entity_for(name);
+        if let Some(end) = end {
+            me.position = end;
+        }
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),

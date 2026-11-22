@@ -829,12 +829,12 @@ pub fn writes_brain_target(mob: &Mob) -> bool {
 /// memory each brain keeps it in, non-expiring, with `ai.target` mirrored
 /// where the brain mirrors it. No species setter side effects. False when
 /// [`writes_brain_target`] is false.
-pub fn set_brain_target(mob: &mut Mob, target: Option<Who>) -> bool {
+pub fn set_brain_target(mob: &mut Mob, target: Option<Who>, player_id: Option<u32>) -> bool {
     if !writes_brain_target(mob) {
         return false;
     }
     match mob.species() {
-        Species::Warden => super::warden_brain::mem(mob).attack_target.set_opt(target),
+        Species::Warden => super::warden_brain::mem(mob).set_target(target, player_id),
         Species::Breeze | Species::Creaking => {
             super::monster_brain::set_attack_target(mob, target);
         }
@@ -4042,7 +4042,6 @@ pub fn accepts_damage(
         Species::Allay => !attack
             .player_uuid
             .is_some_and(|uuid| super::allay::is_liked_player(m, source.attacker, uuid)),
-        Species::Creaking => super::creaking::accepts_damage(m, source),
         Species::Wither => super::wither::accepts(m, source, attack, false),
         Species::Warden => super::warden::accepts_damage(m, source),
         Species::Shulker => super::shulker::accepts(m, source, attack),
@@ -4085,7 +4084,6 @@ pub fn after_hurt(m: &mut Mob, source: &Damage) {
     m.ai.no_action_time = 0;
     match m.species() {
         Species::Armadillo => super::armadillo::after_hurt(m, source),
-        Species::Warden => super::warden::hurt(m, source),
         Species::Nautilus | Species::ZombieNautilus => super::nautilus::after_hurt(m, source),
         Species::Zombie
         | Species::Husk

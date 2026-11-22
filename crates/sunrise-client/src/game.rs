@@ -644,7 +644,7 @@ struct FallingBlock {
     /// `Entity.fallDistance` (powder snow holds a block that fell far at 0.9).
     fall_distance: f64,
     /// `Entity.onGround`: whether its last move was stopped going down.
-    on_ground: bool,
+    ground: sunrise_world::ground_support::GroundState,
     /// `Entity.remainingFireTicks` (`Fire`): lava sets it, and it never counts
     /// down, as `FallingBlockEntity.tick` runs no `baseTick`.
     fire_ticks: i32,
@@ -726,7 +726,7 @@ struct WorldRest {
     ambient: sunrise_client::ambience::AmbientTables,
     nether_environment: Environment,
     end_environment: Environment,
-    behaviours: Behaviours,
+    behaviours: Arc<Behaviours>,
     /// The player model's right and left arms.
     player_arm: [Option<sunrise_client::mobs::Part>; 2],
     /// The slim model's right and left arms (3 pixels wide).
@@ -2162,6 +2162,10 @@ impl Dim {
             id,
             "minecraft:overworld" | "minecraft:the_nether" | "minecraft:the_end"
         )
+    }
+    /// Whether this is one of vanilla's built-in levels (Overworld, Nether, End).
+    fn is_builtin(self) -> bool {
+        matches!(self, Self::Overworld | Self::Nether | Self::End)
     }
     /// Whether the open world has the dimension `id`.
     fn exists(id: &str) -> bool {
@@ -3898,7 +3902,7 @@ impl Game<'_> {
                         portal: Default::default(),
                         drop_item: true,
                         fall_distance: 0.0,
-                        on_ground: false,
+                        ground: Default::default(),
                         fire_ticks: 0,
                         sync_velocity: false,
                         stuck: Vec3::ZERO,
@@ -4163,9 +4167,9 @@ impl Game<'_> {
             // EnderChestBlock.useWithoutItem
             self.award_custom_stat("open_enderchest", 1);
             self.anger_piglins(true);
-            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN
-            // (ContainerOpenersCounter.incrementOpeners), as for chests below.
-            if self.container_opener_event(key, true) {
+            // Guests start the opener only when the handoff installs their menu.
+            // EnderChestBlockEntity.startOpen: the first opener's CONTAINER_OPEN.
+            if self.lan_acting.is_none() && self.container_opener_event(key, true) {
                 self.post_block_game_event(
                     "minecraft:container_open",
                     [key.0, key.1, key.2],
@@ -4196,7 +4200,9 @@ impl Game<'_> {
             });
             self.container = Some(key);
             self.open_container_slots = Some((key, self.open_container_size()));
-            let first = self.container_opener_event(key, true);
+            // ChestMenu and ShulkerBoxMenu start the opener in their constructors.
+            // For a guest, open_block_menu does that after the turn's handoff.
+            let first = self.lan_acting.is_none() && self.container_opener_event(key, true);
             if first {
                 self.post_block_game_event(
                     "minecraft:container_open",
@@ -10907,7 +10913,11 @@ impl<'a> Game<'a> {
                 None,
             )
         })?;
-        let world = Game::world_for_mods(res.facts().air, 0);
+        let world = if options.execution_role.is_logical_server() {
+            Game::authoritative_world_for_mods(res, 0)
+        } else {
+            Game::world_for_mods(res.facts().air, 0)
+        };
         let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
             settings.file.int("tutorialStep"),
         ));
@@ -11669,6 +11679,7 @@ pub(crate) fn run_with(
     options
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
+    mods::validate_startup_packages(&options.mods)?;
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;

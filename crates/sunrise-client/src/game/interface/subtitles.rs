@@ -14,7 +14,7 @@ pub(super) fn in_game_ui(screen: Screen, book_or_sign: bool) -> bool {
         )
 }
 
-pub(super) use sunrise_client_gameplay::subtitles::{Subtitles, subtitles};
+pub use sunrise_client_gameplay::subtitles::{Subtitles, subtitles};
 
 #[cfg(test)]
 mod tests {
