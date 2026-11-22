@@ -207,7 +207,7 @@ impl Event {
             | Self::Transfer(_)
             | Self::Status(_)
             | Self::Joined { .. }
-            | Self::Reconfigured(_)
+            | Self::Reconfigured { .. }
             | Self::Features(_)
             | Self::FarTerrain(_)
             | Self::CustomBooks

@@ -1889,6 +1889,45 @@ impl MotionWorld<'_, '_, '_> {
         }
         self.player.impulse.try_reset();
     }
+    fn apply_entity_write(&mut self, write: mod_api::EntityWrite) -> Result<()> {
+        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
+        match write {
+            mod_api::EntityWrite::Push(v) => {
+                self.player.velocity = self.player.velocity.add_vector(triple(v));
+            }
+            mod_api::EntityWrite::SetMovement(v) => self.player.velocity = triple(v),
+            mod_api::EntityWrite::StuckIn(v) => {
+                self.make_stuck_in_block(triple(v));
+            }
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(kind) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                        .and_then(|name| self.health.damage.id(name))
+                {
+                    self.environment_hurt_type(kind, amount)?;
+                }
+            }
+            mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
+            mod_api::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
+            mod_api::EntityWrite::AddEffect {
+                effect,
+                duration,
+                amplifier,
+            } => {
+                if let Some(id) = mod_api::__private::effect_key_id(effect) {
+                    self.player.events.push(MotionEvent::InsideEffect {
+                        id,
+                        duration,
+                        amplifier,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
     /// `Player.makeStuckInBlock`: the next move is scaled by `multiplier`
     /// (and the fall forgotten) unless flying; the impulse context resets
     /// either way.
@@ -3142,16 +3181,6 @@ impl mod_api::InsideEntityAccess for PlayerInsideAccess<'_, '_, '_, '_> {
         if self.m.player.invulnerable || self.m.player.spectator {
             return false;
         }
-        if self.m.player.burn_from_stepping_immune
-            && matches!(
-                damage_type
-                    .strip_prefix("minecraft:")
-                    .unwrap_or(damage_type),
-                "hot_floor" | "campfire"
-            )
-        {
-            return false;
-        }
         let id = self.m.health.damage.id(damage_type).or_else(|| {
             (!damage_type.contains(':'))
                 .then(|| format!("minecraft:{damage_type}"))
@@ -3168,7 +3197,8 @@ impl mod_api::InsideEntityAccess for PlayerInsideAccess<'_, '_, '_, '_> {
                 self.m.tag_items,
                 self.m.block_registries,
                 self.m.damage_hooks,
-            ),
+            )
+            .with_player_equipment(self.m.side.player_equipment()),
             self.m.health,
             rules,
             id,

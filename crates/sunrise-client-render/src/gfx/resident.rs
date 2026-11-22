@@ -583,7 +583,7 @@ impl<T> Resident<T> {
     }
 }
 
-pub(super) struct PrimarySelection<'a> {
+pub struct PrimarySelection<'a> {
     pub frustum: &'a Frustum,
     pub detail_columns: &'a FxHashMap<(i32, i32), SectionMask>,
     pub out: &'a mut Vec<(u64, SectionKey, Option<u32>)>,
