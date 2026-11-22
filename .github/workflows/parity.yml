@@ -159,12 +159,16 @@ jobs:
           CARGO_PROFILE_DEV_OPT_LEVEL: '3'
         run: |
           export CARGO_TARGET_DIR="$PWD/.local/parity-target"
-          exec > "$PARITY_LOG_DIR/game-probes.log" 2>&1
+          exec 3>&1 > "$PARITY_LOG_DIR/game-probes.log" 2>&1
           # This share's harnesses, from the one plan (a shard NAME#N is NAME's script); a run with no plan scans all.
           plan="$RUNNER_TEMP/plan/bucket-${BUCKET:-0}.json"
           if [ -f "$plan" ]; then
-            scripts=($(python3 -c 'import json, sys
-          for name in sorted({entry.split("#")[0] for entry in json.load(open(sys.argv[1]))}): print(f"tools/test_{name}_parity.py")' "$plan"))
+            listed=$(python3 -c 'import json, sys
+          for name in sorted({entry.split("#")[0] for entry in json.load(open(sys.argv[1]))}): print(f"tools/test_{name}_parity.py")' "$plan") || {
+              echo "::error::Could not read the game-probe plan for this parity share." >&3
+              exit 1
+            }
+            scripts=($listed)
           else
             scripts=(tools/test_*_parity.py)
           fi

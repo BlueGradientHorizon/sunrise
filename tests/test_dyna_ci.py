@@ -657,6 +657,12 @@ class DynaRoutingTests(unittest.TestCase):
             Path(temporary, "plan", "bucket-1.json").write_text("[]\n")
             subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, check=True)
             self.assertFalse(calls.exists())
+            # A plan it cannot read fails the step with a fixed annotation, not a silent empty build.
+            Path(temporary, "plan", "bucket-1.json").write_text("not json\n")
+            failed = subprocess.run(["bash", "-e", "-c", script], cwd=tree, env=env, capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertEqual(failed.stdout, "::error::Could not read the game-probe plan for this parity share.\n")
+            self.assertFalse(calls.exists())
 
 class PersistentTargetTests(unittest.TestCase):
     def test_every_job_that_can_build_on_a_self_hosted_runner_keeps_the_source_snapshot_first(self):
