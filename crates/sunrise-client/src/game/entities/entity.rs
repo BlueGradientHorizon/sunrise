@@ -799,9 +799,6 @@ macro_rules! stored_ground {
         fn body_fall_distance(&self) -> f64 {
             self.$fall_distance
         }
-        stored_ground!(@state);
-    };
-    (@state) => {
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
         }
