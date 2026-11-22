@@ -1913,9 +1913,7 @@ impl Game<'_> {
         // No column until this frame draws one: a closed book draws none.
         self.screen_state.drawn_book_tabs.set(None);
         if self.native_screen_shown() {
-            let tooltip = self.draw_mod_book(batch);
-            self.apply_drawn_book_tabs();
-            return tooltip;
+            return self.draw_mod_book(batch);
         }
         let book_type = self.active_book()?;
         self.ensure_book();
@@ -1943,7 +1941,6 @@ impl Game<'_> {
         } else {
             None
         };
-        self.apply_drawn_book_tabs();
         self.narrate_recipe_book(batch, book_type, [bx, by, 20.0, 18.0]);
         tooltip
     }
@@ -2136,13 +2133,6 @@ impl Game<'_> {
                 }
             })
             .collect();
-        // The tabs this frame draws are the region `ScreenView::regions` reports.
-        self.screen_state
-            .drawn_book_tabs
-            .set(sunrise_client::recipe_book_screen::tab_column(
-                (xo, yo),
-                &tabs,
-            ));
         let pages = ui.view.buttons.len().div_ceil(20);
         let first = ui.page * 20;
         let (buttons, overlay) = match ui.book.as_ref() {
@@ -2204,6 +2194,12 @@ impl Game<'_> {
             text_width: &text_width,
         };
         let calls = screen::draw(&layout);
+        // The tabs as painted are the region `ScreenView::regions` reports (with a subscriber).
+        if self.screen_view_listened() {
+            self.screen_state
+                .drawn_book_tabs
+                .set(screen::sprite_bounds(&calls, screen::is_tab_sprite));
+        }
         let tooltip = self.paint_book(batch, &calls);
         // The squeeze animations run down with the frames.
         let frame = self.frame_ticks;

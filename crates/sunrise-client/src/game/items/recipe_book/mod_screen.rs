@@ -316,18 +316,6 @@ impl Game<'_> {
             .into_iter()
             .map(|index| presentation.tabs[index].clone())
             .collect();
-        // The tabs and arrows this frame draws are the region `ScreenView::regions` reports.
-        let mut column = sunrise_client::recipe_book_screen::tab_column((xo, yo), &tabs);
-        for (_, [x, y, w, h], _, _) in tab_arrows(ui, xo, yo).filter(|arrow| arrow.0) {
-            column = Some(match column {
-                None => [x, y, w, h],
-                Some([cx, cy, cw, ch]) => {
-                    let (l, t) = (cx.min(x), cy.min(y));
-                    [l, t, (cx + cw).max(x + w) - l, (cy + ch).max(y + h) - t]
-                }
-            });
-        }
-        self.screen_state.drawn_book_tabs.set(column);
         let translate = |key: &str| self.translate_with_fallback(key, key);
         let text_width = |s: &str| HudBatch::text_width(&self.gui.atlas, s) as i32;
         let layout = Layout {
@@ -348,6 +336,8 @@ impl Game<'_> {
             text_width: &text_width,
         };
         let mut calls = screen::draw(&layout);
+        // The tab sprites, and the category arrows painted beside them (none under an overlay).
+        let mut tab_arrow_ids = Vec::new();
         if ui.overlay.is_none() {
             for (_, [x, y, w, h], name, key) in tab_arrows(ui, xo, yo) {
                 let hover = inside(self.cursor, x, y, w, h);
@@ -355,6 +345,7 @@ impl Game<'_> {
                     "recipe_book/{name}{}",
                     if hover { "_highlighted" } else { "" }
                 );
+                tab_arrow_ids.push(id.clone());
                 calls.push(Drawn {
                     call: Call::Sprite {
                         id,
@@ -372,6 +363,14 @@ impl Game<'_> {
                     });
                 }
             }
+        }
+        // The tabs and arrows as painted are the region `ScreenView::regions` reports.
+        if self.screen_view_listened() {
+            self.screen_state
+                .drawn_book_tabs
+                .set(screen::sprite_bounds(&calls, |id| {
+                    screen::is_tab_sprite(id) || tab_arrow_ids.iter().any(|arrow| arrow == id)
+                }));
         }
         self.paint_book(batch, &calls)
     }

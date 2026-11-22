@@ -219,30 +219,22 @@ impl Screen<'_> {
     }
 }
 
-/// The recipe book's calls, in vanilla's order.
-pub fn draw(s: &Screen) -> Vec<Drawn> {
+/// Just the category tabs `draw` puts beside a book at `origin`, as it draws them.
+#[cfg(test)]
+fn draw_tabs_for_test(origin: (i32, i32), tabs: &[TabView]) -> Vec<Drawn> {
     let mut out = Vec::new();
-    let mut put = |call: Call, pose: [f32; 6]| out.push(Drawn { call, pose });
-    let (xo, yo) = s.origin();
-    put(
-        Call::Blit {
-            texture: "textures/gui/recipe_book.png",
-            x: xo,
-            y: yo,
-            w: 147,
-            h: 166,
-            u: 1.0,
-            v: 1.0,
-            tw: 256,
-            th: 256,
-        },
-        IDENTITY,
-    );
-    search_box(s, xo + 25, yo + 13, &mut put);
-    // updateTabs.
+    let (xo, yo) = origin;
+    put_tabs(xo, yo, tabs, &mut |call, pose| {
+        out.push(Drawn { call, pose })
+    });
+    out
+}
+
+/// `updateTabs`' tabs, and each one's icons: what `draw` puts for them.
+fn put_tabs(xo: i32, yo: i32, tabs: &[TabView], put: &mut impl FnMut(Call, [f32; 6])) {
     let tab_x = xo - 30;
     let tab_y = yo + 3;
-    for (n, tab) in s.tabs.iter().enumerate() {
+    for (n, tab) in tabs.iter().enumerate() {
         let (x, y) = (tab_x, tab_y + 27 * n as i32);
         let mut pose = IDENTITY;
         if tab.anim > 0.0 {
@@ -271,6 +263,30 @@ pub fn draw(s: &Screen) -> Vec<Drawn> {
             None => put(fake(&tab.icons.0, x + 9 + left), pose),
         }
     }
+}
+
+/// The recipe book's calls, in vanilla's order.
+pub fn draw(s: &Screen) -> Vec<Drawn> {
+    let mut out = Vec::new();
+    let mut put = |call: Call, pose: [f32; 6]| out.push(Drawn { call, pose });
+    let (xo, yo) = s.origin();
+    put(
+        Call::Blit {
+            texture: "textures/gui/recipe_book.png",
+            x: xo,
+            y: yo,
+            w: 147,
+            h: 166,
+            u: 1.0,
+            v: 1.0,
+            tw: 256,
+            th: 256,
+        },
+        IDENTITY,
+    );
+    search_box(s, xo + 25, yo + 13, &mut put);
+    // updateTabs.
+    put_tabs(xo, yo, s.tabs, &mut put);
     // The craftable filter.
     let (fx, fy) = (xo + 110, yo + 12);
     let hover = s.hovered(fx, fy, 26, 16);
@@ -461,32 +477,35 @@ pub fn ghost(index: usize, left: i32, top: i32, big: bool, ghosts: &[GhostView])
 }
 
 /// `1 + 0.1 sin(t / 15 * PI)`, the squeeze of new recipes' buttons and tabs.
-/// The box the tabs `draw` puts beside a book at `origin` make (`updateTabs`): each 35 x 27 at
-/// `xPosTab`, 30 left of the book and 3 down, 27 apart; the selected one 2 further left; an
-/// animating one squeezed about its middle as it is drawn. None for no tab.
-pub fn tab_column(origin: (f32, f32), tabs: &[TabView]) -> Option<[f32; 4]> {
-    let (xo, yo) = origin;
+/// The box the sprites of `calls` that `wanted` picks cover, each through its pose as the painter
+/// draws it: the recipe book's tab column is its `recipe_book/tab` and `tab_selected` sprites,
+/// squeezed as they animate. None when no such sprite was drawn.
+pub fn sprite_bounds(calls: &[Drawn], wanted: impl Fn(&str) -> bool) -> Option<[f32; 4]> {
     let mut bounds: Option<[f32; 4]> = None;
-    for (n, tab) in tabs.iter().enumerate() {
-        let (x, y) = (xo - 30.0, yo + 3.0 + 27.0 * n as f32);
-        let left = if tab.selected { x - 2.0 } else { x };
-        let (mut top, mut bottom) = (y, y + 27.0);
-        if tab.anim > 0.0 {
-            let (s, cy) = (squeeze(tab.anim), y + 12.0);
-            (top, bottom) = (cy + (top - cy) * s, cy + (bottom - cy) * s);
+    for drawn in calls {
+        let Call::Sprite { id, x, y, w, h } = &drawn.call else {
+            continue;
+        };
+        if !wanted(id) {
+            continue;
         }
-        let rect = [left, top.min(bottom), left + 35.0, top.max(bottom)];
-        bounds = Some(match bounds {
-            None => rect,
-            Some(b) => [
-                b[0].min(rect[0]),
-                b[1].min(rect[1]),
-                b[2].max(rect[2]),
-                b[3].max(rect[3]),
-            ],
-        });
+        let m = drawn.pose;
+        let (x0, y0, x1, y1) = (*x as f32, *y as f32, (*x + *w) as f32, (*y + *h) as f32);
+        for (px, py) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+            // JOML `Matrix3x2f.transformPosition`.
+            let (tx, ty) = (m[0] * px + m[2] * py + m[4], m[1] * px + m[3] * py + m[5]);
+            bounds = Some(match bounds {
+                None => [tx, ty, tx, ty],
+                Some(b) => [b[0].min(tx), b[1].min(ty), b[2].max(tx), b[3].max(ty)],
+            });
+        }
     }
     bounds.map(|b| [b[0], b[1], b[2] - b[0], b[3] - b[1]])
+}
+
+/// Whether `id` is one of the recipe book's category tab sprites.
+pub fn is_tab_sprite(id: &str) -> bool {
+    id == "recipe_book/tab" || id == "recipe_book/tab_selected"
 }
 
 fn squeeze(time: f32) -> f32 {
@@ -784,7 +803,7 @@ mod overlay_tests;
 
 #[cfg(test)]
 mod tab_column_tests {
-    use super::{TabView, tab_column};
+    use super::{Drawn, IDENTITY, TabView, draw_tabs_for_test, is_tab_sprite, sprite_bounds};
 
     fn tab(selected: bool, anim: f32) -> TabView {
         TabView {
@@ -794,29 +813,44 @@ mod tab_column_tests {
         }
     }
 
+    fn column(tabs: &[TabView]) -> Option<[f32; 4]> {
+        let calls: Vec<Drawn> = draw_tabs_for_test((54, 37), tabs);
+        sprite_bounds(&calls, is_tab_sprite)
+    }
+
     /// `updateTabs` beside a book at (54, 37): x 24, from y 40, 35 x 27 each, 27 apart; the
-    /// selected tab 2 further left; an animating one squeezed about its middle, past its slot.
+    /// selected tab 2 further left; an animating one as the painter squeezes it.
     #[test]
-    fn the_column_is_the_box_of_the_tabs_drawn() {
-        assert_eq!(tab_column((54.0, 37.0), &[]), None);
+    fn the_column_is_the_box_of_the_tab_sprites_drawn() {
+        assert_eq!(column(&[]), None);
+        assert_eq!(column(&[tab(false, 0.0)]), Some([24.0, 40.0, 35.0, 27.0]));
+        assert_eq!(column(&[tab(true, 0.0)]), Some([22.0, 40.0, 35.0, 27.0]));
         assert_eq!(
-            tab_column((54.0, 37.0), &[tab(false, 0.0)]),
-            Some([24.0, 40.0, 35.0, 27.0])
-        );
-        assert_eq!(
-            tab_column((54.0, 37.0), &[tab(true, 0.0)]),
-            Some([22.0, 40.0, 35.0, 27.0])
-        );
-        assert_eq!(
-            tab_column(
-                (54.0, 37.0),
-                &[tab(true, 0.0), tab(false, 0.0), tab(false, 0.0)]
-            ),
+            column(&[tab(true, 0.0), tab(false, 0.0), tab(false, 0.0)]),
             Some([22.0, 40.0, 37.0, 81.0])
         );
-        // 7.5 ticks in, the squeeze is 1.1: a 27 tall tab draws 29.7 tall about y + 12.
-        let [_, y, _, h] = tab_column((54.0, 37.0), &[tab(false, 7.5)]).unwrap();
-        assert!((y - (52.0 - 12.0 * 1.1)).abs() < 1e-3, "{y}");
-        assert!((h - 27.0 * 1.1).abs() < 1e-3, "{h}");
+        // 7.5 ticks in: the pose scales the tab by 1 + 0.1 * sin(pi / 2) = 1.1 about y + 12,
+        // so it spans 52 - 12 * 1.1 to 52 + 15 * 1.1, exactly as the painter transforms it.
+        let pose_scale = 1.0 + 0.1 * f64::from(7.5f32 / 15.0 * std::f32::consts::PI).sin() as f32;
+        let (cy, top, bottom) = (52.0f32, 40.0f32, 67.0f32);
+        let want = [
+            24.0,
+            cy + (top - cy) * pose_scale,
+            35.0,
+            (cy + (bottom - cy) * pose_scale) - (cy + (top - cy) * pose_scale),
+        ];
+        assert_eq!(column(&[tab(false, 7.5)]), Some(want));
+        // A sprite drawn with no pose is its own rectangle.
+        let lone = [Drawn {
+            call: super::Call::Sprite {
+                id: "recipe_book/page_forward".into(),
+                x: 1,
+                y: 2,
+                w: 12,
+                h: 17,
+            },
+            pose: IDENTITY,
+        }];
+        assert_eq!(sprite_bounds(&lone, |_| true), Some([1.0, 2.0, 12.0, 17.0]));
     }
 }

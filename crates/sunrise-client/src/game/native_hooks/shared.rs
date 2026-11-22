@@ -313,6 +313,9 @@ impl Game<'_> {
         opens: bool,
         closes: bool,
     ) -> Option<Answered<ScreenOpening>> {
+        // Asked before either screen draws: nothing beside it yet.
+        let current = &crate::game::screen_backgrounds::without_regions(current);
+        let new = &crate::game::screen_backgrounds::without_regions(new);
         let mut outcome = None;
         if opens {
             self.native_screen_opening(current, new, &mut outcome);
