@@ -1,5 +1,8 @@
 use super::{ItemStack, Tag, component_edits::ComponentEdit};
-use crate::{Host, Text, text::TextFormError};
+use crate::{
+    Host, Text,
+    text::{TextContent, TextFormError, TextHover, TextObject},
+};
 use std::borrow::Cow;
 
 const CUSTOM_NAME: &str = "minecraft:custom_name";
@@ -143,8 +146,36 @@ impl ItemStack {
 }
 
 fn same_text_value(host: &dyn Host, a: &Tag, b: &Tag) -> bool {
-    match (host.text_from_nbt(a), host.text_from_nbt(b)) {
-        (Ok(Some(a)), Ok(Some(b))) => sunrise_core::nbt::with_tree_stack(|| a == b),
-        _ => false,
+    let (Ok(Some(mut a)), Ok(Some(mut b))) = (host.text_from_nbt(a), host.text_from_nbt(b)) else {
+        return false;
+    };
+    // TextColor.equals compares RGB, while the codec preserves the spelling.
+    // Only adjust these temporary decoded values used for the comparison.
+    let mut pending = vec![&mut a, &mut b];
+    while let Some(text) = pending.pop() {
+        if let Some(color) = &mut text.style.color
+            && let Some(rgb) = sunrise_core::text::named_color(color)
+        {
+            *color = format!("#{rgb:06X}");
+        }
+        pending.extend(&mut text.children);
+        match &mut text.content {
+            TextContent::Translatable { arguments, .. } => pending.extend(arguments),
+            TextContent::Selector { separator, .. } | TextContent::Nbt { separator, .. } => {
+                pending.extend(separator.as_deref_mut());
+            }
+            TextContent::Object(
+                TextObject::Player { fallback, .. } | TextObject::Atlas { fallback, .. },
+            ) => pending.extend(fallback.as_deref_mut()),
+            _ => {}
+        }
+        match &mut text.style.hover {
+            Some(TextHover::Text(child)) => pending.push(child),
+            Some(TextHover::Entity {
+                name: Some(child), ..
+            }) => pending.push(child),
+            _ => {}
+        }
     }
+    sunrise_core::nbt::with_tree_stack(|| a == b)
 }

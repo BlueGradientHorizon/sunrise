@@ -402,7 +402,7 @@ mod tests {
                 [
                     (
                         "minecraft:custom_name".into(),
-                        json!({"text": "Default custom"}),
+                        json!({"text": "Default custom", "color": "red"}),
                     ),
                     ("minecraft:item_name".into(), json!("Default item")),
                     ("minecraft:lore".into(), json!([["Default lore"]])),
@@ -486,12 +486,14 @@ mod tests {
             let too_deep = extras(leaf);
             assert_eq!(host.text_to_nbt(&too_deep), Err(TextFormError::TooDeep));
 
+            let mut default_custom_name = Text::literal("Default custom");
+            default_custom_name.style.color = Some("red".into());
             for (id, defaults) in [("minecraft:stone", true), ("minecraft:stick", false)] {
                 let key = host.item_key(&Identifier::parse(id).unwrap()).unwrap();
                 let mut stack = ItemStack::of(key);
                 assert_eq!(
                     stack.custom_name(host),
-                    Ok(defaults.then(|| Text::literal("Default custom")))
+                    Ok(defaults.then(|| default_custom_name.clone()))
                 );
                 assert_eq!(
                     stack.item_name(host),
@@ -586,9 +588,13 @@ mod tests {
                 assert_eq!(stack.lore(host), Ok(full));
 
                 let restore_defaults = |stack: &mut ItemStack| {
-                    stack
-                        .set_custom_name(host, Some(&Text::literal("Default custom")))
-                        .unwrap();
+                    let mut equivalent = Text::literal("Default custom");
+                    equivalent.style.color = Some("#FF5555".into());
+                    stack.set_custom_name(host, Some(&equivalent)).unwrap();
+                    assert_eq!(
+                        stack.custom_name(host),
+                        Ok(Some(default_custom_name.clone()))
+                    );
                     stack
                         .set_item_name(host, Some(&Text::literal("Default item")))
                         .unwrap();

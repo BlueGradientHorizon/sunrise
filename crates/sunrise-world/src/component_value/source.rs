@@ -333,12 +333,9 @@ pub fn text_color_name(name: &str) -> Result<std::borrow::Cow<'_, str>> {
         }
         return Ok(format!("#{value:06X}").into());
     }
-    match name {
-        "black" | "dark_blue" | "dark_green" | "dark_aqua" | "dark_red" | "dark_purple"
-        | "gold" | "gray" | "dark_gray" | "blue" | "green" | "aqua" | "red" | "light_purple"
-        | "yellow" | "white" => Ok(name.into()),
-        _ => Err(format!("invalid text color {name}")),
-    }
+    sunrise_core::text::named_color(name)
+        .map(|_| name.into())
+        .ok_or_else(|| format!("invalid text color {name}"))
 }
 
 fn click_event(t: &Tag, source: Source) -> Result<Value> {
