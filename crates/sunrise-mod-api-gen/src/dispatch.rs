@@ -1841,7 +1841,7 @@ pub(super) fn emit<'a>(
                 let part_step = plain_cancel_step(&cancel_invocation(&part_item, &listener_id));
                 let o = cancel_out.unwrap();
                 dispatch.push_str(&format!(
-                    "#[doc(hidden)] pub fn dispatch_{name}_part({part_dispatch_signature}) {{ {unpack}if *{o} {{ return; }} {lookup} {build} for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_step} if {event}.cancelled {{ break; }} }} *{o} = {event}.cancelled; {write_back} }}\n"
+                    "#[doc(hidden)] pub fn dispatch_{name}_part({part_dispatch_signature}) {{ {unpack}if *{o} {{ return; }} {lookup} {build} for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {part_step}\nif {event}.cancelled {{ break; }} }} *{o} = {event}.cancelled; {write_back} }}\n"
                 ));
             }
         }
