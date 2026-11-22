@@ -1095,6 +1095,7 @@ enum Source {
     Zip {
         path: PathBuf,
         archive: Arc<Mutex<zip::ZipArchive<std::fs::File>>>,
+        entries: Arc<BTreeMap<String, (u32, u64)>>,
     },
     /// No files: content a native mod declares in code.
     Code,
@@ -1104,6 +1105,7 @@ enum Source {
 #[derive(Debug)]
 pub struct Content {
     source: Source,
+    from_admission: bool,
     /// Every content file (`assets/...`, `data/...`), sorted.
     pub files: Arc<[String]>,
     pub blocks: Vec<Block>,
@@ -1183,17 +1185,20 @@ impl ContentSource {
         } else {
             let mut zip = open_zip(path)?;
             let mut out = Vec::new();
+            let mut entries = BTreeMap::new();
             for i in 0..zip.len() {
                 let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
                 let name = entry.name().map_err(|e| e.to_string())?.into_owned();
                 if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
-                    out.push((name.to_owned(), entry.size()));
+                    entries.insert(name.clone(), (entry.crc32(), entry.size()));
+                    out.push((name, entry.size()));
                 }
             }
             (
                 Source::Zip {
                     path: path.to_owned(),
                     archive: Arc::new(Mutex::new(zip)),
+                    entries: Arc::new(entries),
                 },
                 out,
             )
@@ -1227,9 +1232,36 @@ impl ContentSource {
         self.files.clone()
     }
 
+    /// Check the manifest's namespace fence before any registrant can see these files.
+    pub fn admit(self, manifest: &Manifest) -> Result<AdmittedContentSource, String> {
+        for name in self.files.iter() {
+            check_namespace(name, manifest)?;
+        }
+        Ok(AdmittedContentSource(self))
+    }
+
+    /// The opened archive's content index: file names, CRCs and uncompressed sizes.
+    /// A loose folder has no archive index.
+    pub fn archive_index(&self) -> Option<&BTreeMap<String, (u32, u64)>> {
+        match &self.source {
+            Source::Zip { entries, .. } => Some(entries),
+            _ => None,
+        }
+    }
+
     /// A reader of its files, which checks each path and size again as it reads.
     pub fn reader(&self) -> FileReader<'_> {
         self.source.reader()
+    }
+}
+
+/// A package's opened file index, already checked against its manifest's namespace fence.
+#[derive(Debug)]
+pub struct AdmittedContentSource(ContentSource);
+
+impl AdmittedContentSource {
+    pub fn source(&self) -> &ContentSource {
+        &self.0
     }
 }
 
@@ -1280,11 +1312,16 @@ enum FileLocation<'a> {
 impl FileReader<'_> {
     /// One content file's bytes.
     pub fn read(&self, name: &str) -> Result<Vec<u8>, ReadError> {
+        self.read_head(name, MAX_FILE + 1)
+    }
+
+    /// Read no more than `max` bytes, and keep the package's own full-file bound.
+    pub fn read_head(&self, name: &str, max: u64) -> Result<Vec<u8>, ReadError> {
         check_path(name).map_err(ReadError::Other)?;
         let read = |reader: &mut dyn Read| {
             let mut out = Vec::new();
             reader
-                .take(MAX_FILE + 1)
+                .take(max.min(MAX_FILE + 1))
                 .read_to_end(&mut out)
                 .map_err(|error| ReadError::from_io(name, error))?;
             if out.len() as u64 > MAX_FILE {
@@ -1354,7 +1391,7 @@ impl Content {
     /// `crafting_remainder` in one of its own namespaces; engine loading calls
     /// [`Content::read_declaring`] with the actual code-declared items.
     pub fn read(path: &Path, manifest: &Manifest) -> Result<Content, String> {
-        Self::read_inner(&ContentSource::open(path)?, manifest, None)
+        Self::read_inner(&ContentSource::open(path)?, manifest, None, false)
     }
     /// [`Content::read`] for a mod whose native code (or serving host) also declares items
     /// (`native_items` / `blocks`): a file's `crafting_remainder` may name one of those `declared`
@@ -1364,25 +1401,27 @@ impl Content {
         manifest: &Manifest,
         declared: &[String],
     ) -> Result<Content, String> {
-        Self::read_opened(&ContentSource::open(path)?, manifest, declared)
+        Self::read_inner(&ContentSource::open(path)?, manifest, Some(declared), false)
     }
 
-    /// Read the declarations using the file list and source already opened at package admission.
+    /// Read the declarations using the source already checked against this manifest at admission.
     pub fn read_opened(
-        source: &ContentSource,
+        source: &AdmittedContentSource,
         manifest: &Manifest,
         declared: &[String],
     ) -> Result<Content, String> {
-        Self::read_inner(source, manifest, Some(declared))
+        Self::read_inner(source.source(), manifest, Some(declared), true)
     }
 
     fn read_inner(
         source: &ContentSource,
         manifest: &Manifest,
         declared: Option<&[String]>,
+        from_admission: bool,
     ) -> Result<Content, String> {
         let mut content = Content {
             source: source.source.clone(),
+            from_admission,
             files: source.names(),
             blocks: Vec::new(),
             items: Vec::new(),
@@ -1404,6 +1443,7 @@ impl Content {
     pub fn declared(namespace: &str) -> Content {
         Content {
             source: Source::Code,
+            from_admission: false,
             files: Arc::default(),
             blocks: Vec::new(),
             items: Vec::new(),
@@ -1599,6 +1639,14 @@ impl Content {
         ))
     }
 
+    /// The fixed listing and reader captured at startup, if this content came from admission.
+    pub fn admitted_source(&self) -> Option<ContentSource> {
+        self.from_admission.then(|| ContentSource {
+            source: self.source.clone(),
+            files: self.files.clone(),
+        })
+    }
+
     /// One content file's bytes.
     pub fn file(&self, name: &str) -> Result<Vec<u8>, String> {
         Ok(self.reader().read(name)?)
@@ -1609,7 +1657,7 @@ impl Content {
         self.source.reader()
     }
 
-    /// Where content may go, and the declarations.
+    /// Read and validate declarations, enforcing the namespace fence if not checked at admission.
     fn check(&mut self, manifest: &Manifest, declared: Option<&[String]>) -> Result<(), String> {
         let id = manifest.id.as_str();
         let mut blocks = Vec::new();
@@ -1628,7 +1676,9 @@ impl Content {
                 parts.next().unwrap_or(""),
             );
             let owned = manifest.owned_namespaces().any(|owned| owned == namespace);
-            check_namespace(name, manifest)?;
+            if !self.from_admission {
+                check_namespace(name, manifest)?;
+            }
             let Some(decl) = (owned && top == "data")
                 .then(|| rest.strip_prefix("sunrise/"))
                 .flatten()

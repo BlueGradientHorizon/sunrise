@@ -4,8 +4,8 @@
 //! (`ModList.getModFileById(id).getFile().getContents()`, a `JarContents`: `containsFile`,
 //! `readFile`, `visitContent`). Here a native mod lists and reads any enabled package's `assets/`
 //! and `data/` files from registration on, so it can turn another package's files into the
-//! blocks and items it registers. The list is the one used to load the package's declarations,
-//! and each read uses the same reader and checks.
+//! blocks and items it registers. The list and reader are the ones used to load the package's
+//! declarations and resources.
 use std::{borrow::Cow, sync::Arc};
 
 /// The game's side of one enabled package's content files. A mod reaches it through
@@ -105,10 +105,10 @@ impl PackageFiles {
 }
 
 impl crate::RegistrationContext {
-    /// The `assets/…` and `data/…` file list that declaration loading uses for package `id`.
+    /// The `assets/…` and `data/…` file list used to load package `id`.
     /// The caller can read its own package or any other package [`mods`](Self::mods) lists.
     /// A native mod switched off in settings still registers, so its package is listed.
-    /// Namespace and declaration checks that need registration results run later, during content loading.
+    /// Admission checks file namespaces against the manifest; checks that need registration results run later.
     /// Keep the handle to read after registration.
     pub fn package_files(&self, id: &str) -> Result<PackageFiles, PackageFilesError> {
         crate::content::crash::current_native_mod().ok_or(PackageFilesError::Unavailable)?;

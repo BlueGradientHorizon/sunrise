@@ -304,7 +304,7 @@ impl ModsState {
         if let Some(missing) = self.fatal_missing_jar(&refused) {
             return Err(missing.clone().into());
         }
-        let admission = Arc::new(package_files::StartupAdmission::open(self, refused));
+        let admission = Arc::new(package_files::StartupAdmission::open(self, refused)?);
         self.startup_admission = Some(admission.clone());
         Ok(admission)
     }
@@ -346,6 +346,13 @@ impl ModsState {
                 .filter(|missing| missing.owners.contains(&row.id))
                 .map(ToString::to_string)
                 .collect();
+            if let Some(detail) = self
+                .startup_admission
+                .as_deref()
+                .and_then(|a| a.namespace_refusal(&row.id))
+            {
+                problems.push(format!("Can't be read: {detail}"));
+            }
             for (content_id, host_id) in self.disabled_served.iter() {
                 if *content_id == row.id {
                     problems.push(format!(

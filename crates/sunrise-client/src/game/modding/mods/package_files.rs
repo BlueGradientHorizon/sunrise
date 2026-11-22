@@ -1,5 +1,4 @@
-//! The content index captured for each package at startup, shared by registration and declaration
-//! loading.
+//! The content index captured for each package at startup, shared by registration and loading.
 use super::ModsState;
 use std::{
     collections::BTreeMap,
@@ -8,24 +7,44 @@ use std::{
 };
 use sunrise_mod_package::{
     Content, Manifest,
-    content::{ContentSource, ReadError},
+    content::{AdmittedContentSource, ContentSource, ReadError},
     manifest::MissingJar,
     selection::SelectedPackage,
 };
 
 pub(super) struct PackageContent {
     path: PathBuf,
-    opened: Result<ContentSource, String>,
+    opened: Result<AdmittedContentSource, OpenError>,
+}
+
+enum OpenError {
+    Read(String),
+    Namespace(String),
+}
+
+impl OpenError {
+    fn detail(&self) -> &str {
+        match self {
+            Self::Read(detail) | Self::Namespace(detail) => detail,
+        }
+    }
 }
 
 impl PackageContent {
+    fn namespace_refusal(&self) -> Option<&str> {
+        match &self.opened {
+            Err(OpenError::Namespace(detail)) => Some(detail),
+            _ => None,
+        }
+    }
+
     pub(super) fn read_declaring(
         &self,
         manifest: &Manifest,
         declared: &[String],
     ) -> Result<Content, String> {
         Content::read_opened(
-            self.opened.as_ref().map_err(Clone::clone)?,
+            self.opened.as_ref().map_err(|e| e.detail().to_owned())?,
             manifest,
             declared,
         )
@@ -36,14 +55,15 @@ impl mod_api::PackageFileSource for PackageContent {
     fn names(&self) -> Result<Arc<[String]>, String> {
         self.opened
             .as_ref()
-            .map(ContentSource::names)
-            .map_err(Clone::clone)
+            .map(|opened| opened.source().names())
+            .map_err(|e| e.detail().to_owned())
     }
 
     fn read(&self, name: &str) -> Result<Vec<u8>, mod_api::PackageReadError> {
         self.opened
             .as_ref()
-            .map_err(|error| mod_api::PackageReadError::Read(error.clone()))?
+            .map_err(|error| mod_api::PackageReadError::Read(error.detail().to_owned()))?
+            .source()
             .reader()
             .read(name)
             .map_err(|error| match error {
@@ -59,44 +79,62 @@ pub(in crate::game) struct StartupAdmission {
     selected: Arc<[SelectedPackage]>,
     native: Arc<sunrise_mod_package::runtime::Runtime>,
     pub(super) refused: Vec<MissingJar>,
-    admitted: BTreeMap<String, Arc<PackageContent>>,
+    packages: BTreeMap<String, Arc<PackageContent>>,
 }
 
 impl StartupAdmission {
-    pub(super) fn open(mods: &ModsState, refused: Vec<MissingJar>) -> Self {
+    pub(super) fn open(mods: &ModsState, refused: Vec<MissingJar>) -> sunrise_client::Result<Self> {
         let native = mods
             .native
             .packages()
             .iter()
-            .map(|p| (&p.manifest.id, &p.path));
-        let content = mods
-            .selected
-            .iter()
-            .map(|p| (&p.package.manifest.id, &p.path));
+            .map(|p| (&p.manifest, &p.path));
+        let content = mods.selected.iter().map(|p| (&p.package.manifest, &p.path));
         let packages: Vec<_> = native
             .chain(content)
-            .filter(|(id, _)| !refused.iter().any(|missing| missing.owners.contains(id)))
+            .filter(|(m, _)| !refused.iter().any(|missing| missing.owners.contains(&m.id)))
             .collect();
-        let opened = super::read_package_inputs(&packages, |(_, path)| ContentSource::open(path));
-        let admitted = packages
-            .into_iter()
-            .zip(opened)
-            .map(|((id, path), opened)| {
-                (
-                    id.clone(),
-                    Arc::new(PackageContent {
-                        path: path.clone(),
-                        opened,
-                    }),
-                )
-            })
-            .collect();
-        Self {
+        let opened = super::read_package_inputs(&packages, |(manifest, path)| {
+            ContentSource::open(path)
+                .map_err(OpenError::Read)?
+                .admit(manifest)
+                .map_err(OpenError::Namespace)
+        });
+        let mut indexed = BTreeMap::new();
+        for ((manifest, path), opened) in packages.into_iter().zip(opened) {
+            if let Err(OpenError::Namespace(detail)) = &opened
+                && manifest.served_by.is_some()
+            {
+                return Err(Box::new(super::ServedContentLoadError {
+                    mod_id: manifest.id.clone(),
+                    stage: super::ServedContentStage::Read,
+                    detail: detail.clone(),
+                }));
+            }
+            indexed.insert(
+                manifest.id.clone(),
+                Arc::new(PackageContent {
+                    path: path.clone(),
+                    opened,
+                }),
+            );
+        }
+        Ok(Self {
             selected: mods.selected.clone(),
             native: mods.native.clone(),
             refused,
-            admitted,
-        }
+            packages: indexed,
+        })
+    }
+
+    fn is_admitted(&self, id: &str) -> bool {
+        self.packages
+            .get(id)
+            .is_some_and(|package| package.namespace_refusal().is_none())
+    }
+
+    pub(super) fn namespace_refusal(&self, id: &str) -> Option<&str> {
+        self.packages.get(id)?.namespace_refusal()
     }
 
     pub(in crate::game) fn native_packages(
@@ -105,13 +143,13 @@ impl StartupAdmission {
         self.native
             .packages()
             .iter()
-            .filter(|p| self.admitted.contains_key(&p.manifest.id))
+            .filter(|p| self.is_admitted(&p.manifest.id))
     }
 
     pub(in crate::game) fn content_packages(&self) -> impl Iterator<Item = &SelectedPackage> {
         self.selected
             .iter()
-            .filter(|p| self.admitted.contains_key(&p.package.manifest.id))
+            .filter(|p| self.is_admitted(&p.package.manifest.id))
     }
 
     pub(super) fn matches_selection(&self, selected: &Arc<[SelectedPackage]>) -> bool {
@@ -119,7 +157,7 @@ impl StartupAdmission {
     }
 
     pub(super) fn package(&self, id: &str, path: &Path) -> Option<&PackageContent> {
-        self.admitted
+        self.packages
             .get(id)
             .filter(|source| source.path == path)
             .map(Arc::as_ref)
@@ -131,8 +169,9 @@ pub(in crate::game) fn sources(
     admission: &StartupAdmission,
 ) -> BTreeMap<String, Arc<dyn mod_api::PackageFileSource>> {
     admission
-        .admitted
+        .packages
         .iter()
+        .filter(|(_, source)| source.namespace_refusal().is_none())
         .map(|(id, source)| {
             let source: Arc<dyn mod_api::PackageFileSource> = source.clone();
             (id.clone(), source)
@@ -269,7 +308,86 @@ mod tests {
     }
 
     #[test]
-    fn a_registration_handle_keeps_the_admitted_archive_after_replacement() {
+    fn unowned_namespace_refuses_registration_metadata_and_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let demo = folder(root, "demo", "");
+        let foreign = "data/other/lumen/main.luau";
+        write(&demo, foreign, b"return 1");
+        let mut mods = ModsState {
+            dev: vec![demo.clone()],
+            ..Default::default()
+        };
+        mods.select(root, &Default::default());
+        validate_startup_packages(&mods).unwrap();
+        let admission = mods.admit_startup_packages(&root.join("jars")).unwrap();
+        with_registration(&admission, |cx| {
+            assert!(cx.mods().get("demo").is_none());
+            assert_eq!(
+                cx.package_files("demo").err(),
+                Some(PackageFilesError::NotEnabled)
+            );
+        });
+        // Repairing the folder does not undo the original admission refusal.
+        fs::remove_file(demo.join(foreign)).unwrap();
+        let rejection = admission
+            .package("demo", &demo)
+            .unwrap()
+            .read_declaring(&mods.selected[0].package.manifest, &[])
+            .unwrap_err();
+        assert!(
+            rejection
+                .starts_with("data/other/lumen/main.luau: a mod adds files in its own namespaces")
+        );
+        let mut rows = [sunrise_mod_package::mod_list::Installed {
+            id: "demo".into(),
+            title: "Demo".into(),
+            description: String::new(),
+            problem: None,
+            dev: true,
+            native: None,
+        }];
+        mods.report_refusals(&mut rows);
+        assert_eq!(rows[0].problem, Some(format!("Can't be read: {rejection}")));
+    }
+
+    fn mount(
+        root: &Path,
+        mods: &ModsState,
+        path: &Path,
+    ) -> (Content, sunrise_assets::resource_source::ResourceRoot) {
+        use sunrise_client::mod_content::{ContentMod, resolved_resources};
+        let id = &mods.selected[0].package.manifest.id;
+        let content = read_contents(&[ContentRequest {
+            path,
+            manifest: &mods.selected[0].package.manifest,
+            declared: vec!["demo:registered_item".into()],
+            admitted: mods.startup_admission().and_then(|a| a.package(id, path)),
+        }])
+        .pop()
+        .unwrap()
+        .unwrap();
+        let base = root.join("base");
+        fs::create_dir_all(&base).unwrap();
+        let mounted = [ContentMod {
+            id: id.clone(),
+            content,
+            jars: Vec::new(),
+        }];
+        let resources = resolved_resources(
+            &base,
+            base.clone(),
+            &root.join("jars"),
+            &mounted,
+            root.join("cache"),
+        )
+        .unwrap();
+        let [ContentMod { content, .. }] = mounted;
+        (content, resources)
+    }
+
+    #[test]
+    fn registration_and_resource_loading_keep_the_admitted_archive_after_replacement() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("demo.smod");
         let replacement = dir.path().join("replacement.smod");
@@ -294,10 +412,13 @@ mod tests {
             fs::rename(&replacement, &path).unwrap();
             assert_eq!(files.read(SCRIPT).unwrap(), b"original");
         });
+        let (loaded, resources) = mount(dir.path(), &mods, &path);
+        assert_eq!(loaded.file(SCRIPT).unwrap(), b"original");
+        assert_eq!(resources.mod_layers()[0].read(SCRIPT).unwrap(), b"original");
     }
 
     #[test]
-    fn registration_and_declaration_loading_share_the_admission_index_and_read_loose_bytes_live() {
+    fn registration_declarations_and_resources_share_the_index_and_read_loose_bytes_live() {
         let dir = tempfile::tempdir().unwrap();
         let demo = folder(dir.path(), "demo", "");
         write(&demo, SCRIPT, b"return 1");
@@ -314,17 +435,10 @@ mod tests {
         write(&demo, later, b"return 3");
         write(&demo, SCRIPT, b"return 2");
 
-        let loaded = read_contents(&[ContentRequest {
-            path: &demo,
-            manifest: &mods.selected[0].package.manifest,
-            declared: vec!["demo:registered_item".into()],
-            admitted: mods
-                .startup_admission()
-                .and_then(|a| a.package("demo", &demo)),
-        }])
-        .pop()
-        .unwrap()
-        .unwrap();
+        let (loaded, resources) = mount(dir.path(), &mods, &demo);
+        let layer = &resources.mod_layers()[0];
+        assert!(!layer.contains(later));
+        assert_eq!(layer.read(SCRIPT).unwrap(), b"return 2");
         with_registration(&admission, |cx| {
             let files = cx.package_files("demo").unwrap();
             assert_eq!(files.list("").collect::<Vec<_>>(), [SCRIPT]);
