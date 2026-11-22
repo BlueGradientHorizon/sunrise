@@ -250,6 +250,88 @@ fn a_give_to_a_borrowed_player_drops_in_their_level() {
     });
 }
 
+/// A gift that fits uses the recipient's RNG and sounds at their feet in their own level.
+#[test]
+#[ignore = "daily"]
+fn a_give_that_fits_plays_pickup_in_the_players_level() {
+    use std::sync::{Arc, mpsc};
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_core::random::{EntityRandom, LegacyRandom, RandomSource};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
+
+    if run_fresh_cases(
+        "game::native_player_level_tests::a_give_that_fits_plays_pickup_in_the_players_level",
+        "SUNRISE_GIVE_OVERFLOW_CHILD",
+        &["sound"],
+    ) {
+        return;
+    }
+    with_guests(|game| {
+        let diamond = in_the_nether(game);
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let [overworld, nether] = [12, 13].map(|conn| {
+            let (tx, rx) = mpsc::channel();
+            hub.update_guest(conn, |g| {
+                if conn == 12 {
+                    g.dimension = "minecraft:overworld".to_owned();
+                }
+                g.sender = PlayerSender::new(tx, Arc::default());
+            })
+            .unwrap();
+            rx
+        });
+        let C::Sound(pickup) = hub.sound_packet(
+            "minecraft:entity.item.pickup",
+            [3.0, 64.0, 5.0],
+            0.2,
+            2.0,
+            7,
+            0,
+        ) else {
+            unreachable!()
+        };
+        game.as_guest(13, |g| {
+            g.player.as_mut().unwrap().random = EntityRandom::own(LegacyRandom::new(0x5eed));
+        })
+        .unwrap();
+        game.audio.capture = Some(Vec::new());
+        let player = game.player(13).unwrap();
+        let host: &mut dyn ServerHost = game;
+        let given = host.transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));
+        assert_eq!(given, Ok(Ok(None)));
+        assert_eq!(diamonds(game, 13), 1);
+        assert_eq!(game.dim, Dim::Overworld);
+        game.lan_broadcast_effects();
+
+        let pickups = |rx: mpsc::Receiver<Out>| {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    Out::Disconnect(_) => vec![],
+                })
+                .filter_map(|body| {
+                    let mut r = Reader::new(&body);
+                    let id = r.varint().unwrap();
+                    match C::decode(id, r.rest()).unwrap() {
+                        C::Sound(s) if s.sound == pickup.sound => {
+                            Some(([s.x, s.y, s.z], s.source, s.volume, s.pitch.to_bits()))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(pickups(overworld).is_empty());
+        // Java Random(0x5eed), two nextFloat draws for GiveCommand's pitch.
+        assert_eq!(pickups(nether), [([24, 512, 40], 7, 0.2, 0x3fe2595d)]);
+        game.as_guest(13, |g| {
+            assert_eq!(g.player.as_mut().unwrap().random.next_int(), -1829641234);
+        })
+        .unwrap();
+    });
+}
+
 /// `/give` run through the console inside an open transaction, while a Nether guest with a full
 /// inventory is borrowed into an Overworld turn: the command takes the stack in the guest's own
 /// level, so on commit the overflow lies in the Nether at the guest, nothing in the Overworld

@@ -1,5 +1,7 @@
 //! `/give`'s handing over of one stack.
 use super::{Dim, Game, Target};
+use crate::game::level_sounds::LevelSound;
+use mod_api::SoundSource;
 use sunrise_client::items::ItemStack;
 use sunrise_core::random::RandomSource;
 
@@ -40,15 +42,17 @@ impl Game<'_> {
         }
         None
     }
+    /// `GiveCommand.giveItem` plays to everyone in range in the recipient's level.
     pub(in crate::game) fn give_pickup(&mut self) {
-        let p = self
-            .target_position(Target::Player)
-            .unwrap_or(self.source_position());
-        // GiveCommand uses the receiving player's random, not the level's.
-        let mut r = sunrise_client::random_source::entity();
+        let player = self.player.as_mut().unwrap();
+        let at = [player.position.x, player.position.y, player.position.z];
+        let r = &mut player.random;
         let pitch = ((r.next_float() - r.next_float()) * 0.7 + 1.0) * 2.0;
-        self.audio
-            .play("minecraft:entity.item.pickup", Some(p), 0.2, pitch);
+        self.send_level_sound(
+            LevelSound::new("minecraft:entity.item.pickup", at, 0.2, pitch)
+                .in_source(SoundSource::Players),
+            None,
+        );
     }
     /// The receiving player's eyes, where what did not fit is thrown from.
     fn give_eye(&self) -> [f64; 3] {

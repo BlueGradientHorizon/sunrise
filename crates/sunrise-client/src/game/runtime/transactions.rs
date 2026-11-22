@@ -473,8 +473,7 @@ pub(super) enum After {
     Drop([i32; 3], ItemStack),
     /// `Player.drop(stack, false)` by the player with this UUID: what no longer fits.
     PlayerDrop(u128, ItemStack),
-    /// `/give`'s pickup sound for the player with this UUID, in the level that was in place
-    /// when the stack was accepted (a command run for a borrowed player swaps it in).
+    /// `/give`'s pickup sound in the receiving player's level when the stack was accepted.
     GivePickup(u128, super::Dim),
     InventoryTrigger(u128),
     GrindstoneEvent([i32; 3]),
@@ -1521,7 +1520,9 @@ impl Game<'_> {
             After::GivePickup(uuid, dim) => {
                 self.native_as_player(uuid, |g| {
                     let back = g.enter_command_level(dim);
-                    g.give_pickup();
+                    if g.dim == dim {
+                        g.give_pickup();
+                    }
                     if let Some(back) = back {
                         g.enter_command_level(back);
                     }
