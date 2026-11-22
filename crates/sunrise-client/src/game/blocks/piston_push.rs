@@ -593,7 +593,9 @@ impl Game<'_> {
         sunrise_client::collisions::PowderSnowSubject<'_>,
     )> {
         match target {
-            MoveWho::Entity(EntityHandle::Mob(i)) => Some(self.mobs[i].support_collision()),
+            MoveWho::Entity(EntityHandle::Mob(i)) => {
+                Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
+            }
             MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
                 Some(self.armor_stands[i].support_collision())
             }
@@ -1696,6 +1698,7 @@ impl Game<'_> {
                 let _ = stand.update_retained_ground(
                     &self.world,
                     self.collision,
+                    &world_items!(self).entity_type_tags,
                     wanted.y < 0.0 && wanted.y != moved.y,
                     Some(moved),
                 );
@@ -1788,7 +1791,7 @@ impl Game<'_> {
             MoveWho::Guest(conn) => self.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
                     // The body and the hub's copy of its position move together:
-                    // `leave_guest` writes the body back over the hub's.
+                    // the put-back at the end of `guest_turn` writes the body back over the hub's.
                     for (slot, delta) in g.position.iter_mut().zip(movement.components()) {
                         *slot += delta;
                     }

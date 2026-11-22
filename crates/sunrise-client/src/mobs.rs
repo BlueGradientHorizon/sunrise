@@ -399,7 +399,8 @@ impl MobTypes {
     ) -> crate::Result<Self> {
         let attribute_bounds = finalize::AttrBounds::of(attributes);
         let bytes = fs::read(root.join("entity-types.json"))?;
-        let types: Value = serde_json::from_slice(&bytes)?;
+        let types: serde_json::Map<String, Value> = serde_json::from_slice(&bytes)?;
+        let entity_ids = crate::items::EntityTypeTags::registry_ids(&types)?;
         let exact = exact_attributes(&bytes);
         let models = models_needed
             .then(|| -> crate::Result<EntityModelDocument> {
@@ -409,9 +410,6 @@ impl MobTypes {
                 }
             })
             .transpose()?;
-        let entity_type_tags =
-            crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)?;
-        let burn_in_daylight = entity_type_tags.get("minecraft:burn_in_daylight");
         let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
@@ -470,23 +468,18 @@ impl MobTypes {
         // A content mod's living type (its row names a vanilla `template`) is
         // its template's mob under its own id: the template's model, sounds
         // and behaviour, with the attributes its row has.
-        let mod_types = types
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter_map(|(id, row)| {
-                let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
-                let def = species::ALL.iter().find(|d| d.name == template)?;
-                Some((id.clone(), def))
-            });
+        let mod_types = types.iter().filter_map(|(id, row)| {
+            let template = row["template"].as_str()?.strip_prefix("minecraft:")?;
+            let def = species::ALL.iter().find(|d| d.name == template)?;
+            Some((id.clone(), def))
+        });
         let vanilla = species::ALL
             .iter()
             .map(|def| (format!("minecraft:{}", def.name), def));
         for (id, def) in vanilla.chain(mod_types) {
-            let t = &types[&id];
-            if t.is_null() {
+            let Some(t) = types.get(&id).filter(|row| !row.is_null()) else {
                 continue;
-            }
+            };
             let model_key = format!("minecraft:{}", def.model);
             let model = models
                 .as_ref()
@@ -517,10 +510,7 @@ impl MobTypes {
             if let Some(allowed) = t["allowed_in_peaceful"].as_bool() {
                 flags.not_in_peaceful = !allowed;
             }
-            flags.powder_snow_walkable = entity_type_tags
-                .get("minecraft:powder_snow_walkable_mobs")
-                .is_some_and(|members| members.contains(&id));
-            flags.burns_in_day = burn_in_daylight.is_some_and(|members| members.contains(&id));
+            flags.entity_tag_slot = entity_ids.binary_search(&id).ok();
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
             out.insert(
@@ -619,9 +609,10 @@ impl NamedDamage {
     pub const NO_ANGER: u32 = 1 << 15;
     pub const BYPASSES_WOLF_ARMOR: u32 = 1 << 16;
     pub const SULFUR_CUBE_WITH_BLOCK_IMMUNE_TO: u32 = 1 << 17;
+    pub const PANIC_ENVIRONMENTAL_CAUSES: u32 = 1 << 18;
 
     /// Each flag with the damage tag it stands for.
-    const TAG_FLAGS: [(u32, &'static str); 18] = [
+    const TAG_FLAGS: [(u32, &'static str); 19] = [
         (Self::IS_FIRE, "minecraft:is_fire"),
         (Self::BYPASSES_ARMOR, "minecraft:bypasses_armor"),
         (Self::NO_KNOCKBACK, "minecraft:no_knockback"),
@@ -632,6 +623,10 @@ impl NamedDamage {
         (Self::BYPASSES_EFFECTS, "minecraft:bypasses_effects"),
         (Self::BYPASSES_RESISTANCE, "minecraft:bypasses_resistance"),
         (Self::PANIC_CAUSES, "minecraft:panic_causes"),
+        (
+            Self::PANIC_ENVIRONMENTAL_CAUSES,
+            "minecraft:panic_environmental_causes",
+        ),
         (Self::IS_PROJECTILE, "minecraft:is_projectile"),
         (Self::IS_EXPLOSION, "minecraft:is_explosion"),
         (Self::IS_FALL, "minecraft:is_fall"),
@@ -673,12 +668,30 @@ impl NamedDamage {
                 leaked
             }
         };
+        Some(Self::with_catalog_tags(catalog, id, name))
+    }
+
+    /// Contact keys already own the names for the installation's lifetime.
+    pub(crate) fn from_contact_key(
+        catalog: &sunrise_world::damage_source::Catalog,
+        key: mod_api::DamageTypeKey,
+    ) -> Option<Self> {
+        let name = mod_api::__private::parts_installation::damage_type_name(key)?;
+        Some(Self::with_catalog_tags(catalog, catalog.id(name)?, name))
+    }
+
+    fn with_catalog_tags(
+        catalog: &sunrise_world::damage_source::Catalog,
+        id: sunrise_world::damage_source::DamageTypeId,
+        name: &'static str,
+    ) -> Self {
         let tags = Self::TAG_FLAGS
             .iter()
             .filter(|(_, tag)| catalog.in_tag(id, tag))
             .fold(0, |tags, (flag, _)| tags | flag);
-        Some(Self { name, tags })
+        Self { name, tags }
     }
+
     pub const fn has(self, tag: u32) -> bool {
         self.tags & tag != 0
     }
@@ -3768,14 +3781,14 @@ impl Mob {
         random: LegacyRandom,
     ) -> Self {
         let mut mob = Self::remote_with_random(id, kind, position, yaw, random);
-        // The parts a mod attached to this entity type add their goals right
-        // after the species' own (#1077): vanilla's `registerGoals` moment,
-        // which belongs to the authoritative construction. A type with no
-        // brain is told so at the same moment (#824); a brain-driven type
-        // registers its behaviors at the brain's own construction.
-        part_goals::attach(&mut mob);
-        mod_behaviors::attach_at_construction(&mob);
+        mob.attach_mod_parts();
         mob
+    }
+    /// Register the server-only goals and behaviors after the mob has its
+    /// runtime id. A deferred NBT load can read geometry before taking an id.
+    pub fn attach_mod_parts(&mut self) {
+        part_goals::attach(self);
+        mod_behaviors::attach_at_construction(self);
     }
     /// The same construction without the mod parts' goals: a client's copy of
     /// a server's mob, from its spawn packet. The species' goals stand — the
@@ -7169,6 +7182,51 @@ mod effect_refusal_tests {
         assert_eq!(aquatic::dark_ticks(&struck), 100);
     }
 }
+#[cfg(test)]
+#[test]
+fn content_mob_tag_slot_uses_the_entity_registry_index() {
+    use crate::items::{EntityTypeTags, Items};
+    use serde_json::json;
+    use sunrise_world::loot::PackOverlay;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(
+        root.join("entity-types.json"),
+        json!({
+            "test:walker": {"template": "minecraft:zombie"},
+            "minecraft:item": {},
+            "minecraft:zombie": {},
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(root.join("items.json"), "{}").unwrap();
+    let tags = root.join("data/minecraft/tags/entity_type");
+    fs::create_dir_all(&tags).unwrap();
+    fs::write(
+        tags.join("powder_snow_walkable_mobs.json"),
+        r#"{"values":["test:walker"]}"#,
+    )
+    .unwrap();
+    let attributes = sunrise_world::attributes::entity::Catalog::from_json(&json!({
+        "data_version": sunrise_core::version::DATA_VERSION,
+        "attributes": [], "entities": {},
+    }))
+    .unwrap();
+    let types = MobTypes::load_for_server(root, &attributes).unwrap();
+    let defaults = sunrise_world::item_defaults::read(root).unwrap();
+    let items = Items::tags_only(root, &PackOverlay::NONE, &defaults).unwrap();
+    let ids = items.component_registry.ids(EntityTypeTags::REGISTRY);
+    let slot = types.types["test:walker"].flags.entity_tag_slot.unwrap();
+    assert_eq!(ids[slot], "test:walker");
+    assert!(
+        items
+            .entity_type_tags
+            .has_bit(Some(slot), EntityTypeTags::POWDER_SNOW_WALKABLE)
+    );
+}
+
 #[cfg(test)]
 mod model_document_sharing_tests {
     use super::*;

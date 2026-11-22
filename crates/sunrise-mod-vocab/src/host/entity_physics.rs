@@ -100,8 +100,9 @@ pub trait EntityPhysicsBackendMut {
     /// (sunrise-org/sunrise#1909). The collider is saved with the entity, sent to
     /// the Sunrise clients that track it when they start to (and then only what changed), and
     /// dropped with the entity. Replacing a collider sends the boxes that were added or removed
-    /// by index. An entity the new boxes overlap is treated as vanilla treats a block that
-    /// appears inside it, with no push-out. Refused by name, with the old collider kept, when
+    /// by index. A shape edit does not directly displace an overlapping body. On its movement
+    /// tick, a Sunrise local player checks solid boxes in the sampled collision scene for the
+    /// normal closest-space velocity nudge. Refused by name, with the old collider kept, when
     /// the handle is stale, a value is not finite, the rotation is not a unit quaternion,
     /// there are too many boxes, or a box lies too far from the entity (see
     /// [`ColliderError`]).

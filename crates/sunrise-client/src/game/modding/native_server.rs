@@ -1203,7 +1203,7 @@ impl Game<'_> {
             return false;
         }
         // The connection to tell: a parked guest's, or the acting guest's, whose state is in
-        // place for their turn (`leave_guest` stores the slot back but sends nothing). The host
+        // place for their turn (the put-back at the end of `guest_turn` stores the slot back but sends nothing). The host
         // has none.
         let conn = match self.player_handle_read(player) {
             Some(PlayerRead::Guest(guest)) => Some(guest.conn),
@@ -2137,9 +2137,9 @@ impl Game<'_> {
     }
 
     /// Whether the acting player is in the level in place: a guest's own level is their hub
-    /// record's, also when a hook of another level borrows them into its turn. What lands
-    /// in the world at a player (a thrown stack, an overflow drop, a sound, a broken block) is
-    /// left out for a player in another level, whose inventory and data writes still hold.
+    /// record's, also when a hook of another level borrows them into its turn. A raw throw,
+    /// equip sound or block break requires that level in place; `/give`'s effects replay in
+    /// that level separately.
     pub(in crate::game) fn acting_in_level_in_place(&self) -> bool {
         let Some(conn) = self.lan_acting else {
             return true;

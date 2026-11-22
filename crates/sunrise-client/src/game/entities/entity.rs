@@ -134,7 +134,10 @@ pub(super) trait Entity: EntityRules {
     fn ground_state_mut(&mut self) -> Option<&mut GroundState> {
         None
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
             Some(PowderSnowSubject {
@@ -148,6 +151,7 @@ pub(super) trait Entity: EntityRules {
         &mut self,
         world: &sunrise_client::world::World,
         binding: &sunrise_world::block_collision::BlockCollisionRegistry<'_>,
+        tags: &sunrise_items::items::EntityTypeTags,
         on_ground: bool,
         movement: Option<Vec3>,
     ) -> Result<bool, CollisionScanError<std::io::Error>> {
@@ -155,7 +159,7 @@ pub(super) trait Entity: EntityRules {
             return Ok(false);
         };
         ground.on_ground = on_ground;
-        let (context, subject) = self.support_collision();
+        let (context, subject) = self.support_collision(tags);
         let mut scene = SceneCollisions {
             world,
             binding,
@@ -1010,8 +1014,15 @@ impl Game<'_> {
                 item.stuck = triple(v);
                 item.fall_distance = 0.0;
             }
-            mod_api::EntityWrite::Hurt { amount } => {
-                self.hurt_moving_item(item, amount);
+            mod_api::EntityWrite::Hurt {
+                damage_type,
+                amount,
+            } => {
+                if let Some(name) =
+                    mod_api::__private::parts_installation::damage_type_name(damage_type)
+                {
+                    self.hurt_moving_item(item, name, amount);
+                }
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
@@ -1769,7 +1780,7 @@ macro_rules! hit_effects_of {
 /// (`$lend`: the attacker the site holds a live borrow of, built with `HitLend`, or `None` where
 /// it cannot lend one).
 macro_rules! damage_level_of {
-    ($game:ident, $attack:expr, no_push, $lend:expr) => {
+    ($game:ident, $attack:expr, no_push, $lend:expr $(, $equipment:expr)?) => {
         &mut sunrise_client::health::DamageLevel::of(
             &mut $game.world,
             $game.pack.assets.registry,
@@ -1780,6 +1791,7 @@ macro_rules! damage_level_of {
         .attacked_by($attack)
         .no_push()
         .with_effects(crate::game::entity::hit_effects_of!($game, $lend))
+        $(.with_player_equipment($equipment))?
     };
     ($game:ident, $attack:expr, $credit:expr, $lend:expr) => {
         &mut sunrise_client::health::DamageLevel::of(
@@ -2054,8 +2066,11 @@ impl Entity for Mob {
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
     }
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        let (context, subject) = Mob::support_collision(self);
+    fn support_collision(
+        &self,
+        tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+        let (context, subject) = Mob::support_collision(self, Some(tags));
         (context, Some(subject))
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
@@ -2190,7 +2205,10 @@ impl Entity for Mob {
 
 impl Entity for ItemEntity {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             self.collision_context(),
             Some(PowderSnowSubject {
@@ -2535,7 +2553,10 @@ fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
 
 impl Entity for ArmorStand {
     stored_ground!(enchantment_fall_distance);
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         let (context, subject) = ArmorStand::support_collision(self);
         (context, Some(subject))
     }
@@ -2680,7 +2701,10 @@ impl Entity for ArmorStand {
 
 impl Entity for PrimedTnt {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (self.collision_context(), Some(self.powder_snow_subject()))
     }
     fn reset_fall_distance(&mut self) {
@@ -2767,7 +2791,10 @@ impl Entity for PrimedTnt {
 
 impl Entity for FallingBlock {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
@@ -2844,7 +2871,10 @@ impl Entity for FallingBlock {
 
 impl Entity for Projectile {
     stored_ground!();
-    fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
+    fn support_collision(
+        &self,
+        _tags: &sunrise_items::items::EntityTypeTags,
+    ) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {

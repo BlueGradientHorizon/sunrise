@@ -19,9 +19,9 @@ use super::Vertex;
 /// `POLYGON_OFFSET` text (`SubmitNodeCollection.canRenderAsSolid`). Material storage order
 /// is independent of their draw stages.
 const MATERIALS: usize = 18;
-/// Opaque text in `Font.DisplayMode.POLYGON_OFFSET` (`SubmitNodeCollection.canRenderAsSolid`):
-/// drawn in the solid pass in both classic and OIT modes, pulled toward the camera.
-pub const TEXT_POLYGON_OFFSET_SOLID_OVERLAY: u32 = 47;
+/// Opaque `Font.DisplayMode.POLYGON_OFFSET` text (`SubmitNodeCollection.canRenderAsSolid`).
+pub const TEXT_POLYGON_OFFSET_SOLID_OVERLAY: u32 = 48;
+const _: () = assert!(TEXT_POLYGON_OFFSET_SOLID_OVERLAY != super::EXPLICIT_PARTICLE_OVERLAY);
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;

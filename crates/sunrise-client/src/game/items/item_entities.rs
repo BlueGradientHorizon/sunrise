@@ -942,23 +942,7 @@ impl Game<'_> {
         randomly: bool,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        // `Player.drop` draws the spread from the player's own random. A throw with no player
-        // in place (a `/give` remainder whose target this game doesn't hold) keeps a fresh one
-        // rather than losing the item.
-        let v = match self.player.as_mut() {
-            Some(player) => sunrise_client::entities::drop_motion(
-                &mut player.random,
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-            None => sunrise_client::entities::drop_motion(
-                &mut random_source::entity(),
-                self.yaw,
-                self.pitch,
-                randomly,
-            ),
-        };
+        let v = self.player_drop_motion(randomly);
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
         let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
@@ -971,6 +955,24 @@ impl Game<'_> {
         let item = self.dropped.iter_mut().rev().find(|d| d.id == id)?;
         item.thrower = uuid;
         Some(item.id)
+    }
+
+    /// `LivingEntity.createItemStackToDrop` draws the spread from the player's own random.
+    pub(super) fn player_drop_motion(&mut self, randomly: bool) -> [f64; 3] {
+        match self.player.as_mut() {
+            Some(player) => sunrise_client::entities::drop_motion(
+                &mut player.random,
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+            None => sunrise_client::entities::drop_motion(
+                &mut random_source::entity(),
+                self.yaw,
+                self.pitch,
+                randomly,
+            ),
+        }
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the

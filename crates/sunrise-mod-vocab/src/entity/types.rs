@@ -47,6 +47,38 @@ pub enum AttributeRegistrationError {
 // exhaustive: its field is private, so only registration creates a key
 pub struct EffectKey(pub(crate) u32);
 
+/// A damage type requested once through [`crate::Registrar::damage_type_key`].
+/// The key names the same registry ID that [`crate::HurtSource::damage_type`]
+/// reports; a level resolves that name in its current damage-type registry.
+// exhaustive: the scalar codec validates host slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+#[wire(via = u32)]
+pub struct DamageTypeKey(pub(crate) u32);
+
+impl From<&DamageTypeKey> for u32 {
+    fn from(key: &DamageTypeKey) -> Self {
+        key.0
+    }
+}
+impl TryFrom<u32> for DamageTypeKey {
+    type Error = &'static str;
+    fn try_from(slot: u32) -> Result<Self, Self::Error> {
+        let known = crate::parts::registration_membership(
+            crate::parts::RegistrationKeyKind::DamageType,
+            slot,
+        )
+        .unwrap_or_else(|| {
+            crate::parts::requested_keys()
+                .damage_types
+                .id(slot)
+                .is_some()
+        });
+        known
+            .then_some(Self(slot))
+            .ok_or("unknown DamageTypeKey slot")
+    }
+}
+
 /// An entity type (`minecraft:zombie`) in the built-in entity-type registry, in
 /// registration order. Returned by `EntityRef::kind`; Copy/Eq comparisons do not
 /// allocate. `key.id(host)` pins its namespaced name, if available, without
@@ -1652,9 +1684,9 @@ pub enum MoveCause {
     ShulkerBox,
     /// `MoverType.SHULKER`: a shulker mob's opening lid pushes it away.
     Shulker,
-    /// Sunrise's own: a moving collider (an entity's `set_collider`) carries the body standing on
-    /// it by the displacement of the contact point, once a tick after the level's entities ticked.
-    /// Vanilla has no such mover.
+    /// Sunrise's own: a moving collider (an entity's `set_collider`) carries a body standing on
+    /// it or shoves a body swept by its translation, after the level's entities tick. Vanilla
+    /// has no such mover.
     Carried,
 }
 
