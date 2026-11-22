@@ -169,7 +169,7 @@ mod tests {
 
         let dir = scratch_dir("freeze");
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let slot = OnceLock::new();
+        let slot: OnceLock<HashMap<String, LayerDefinition>> = OnceLock::new();
         let registered = |id: &str| slot.get().and_then(|map| map.get(id));
 
         // Missing, invalid, non-object, and empty entity-models.json fail closed before publishing.
