@@ -763,99 +763,252 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
     };
 
     const SIZE: [u32; 2] = [320, 240];
-    const SPRITES: [&str; 3] = ["fixture:normal", "fixture:highlighted", "fixture:disabled"];
-    const COLORS: [[u8; 4]; 3] = [[64, 16, 230, 255], [88, 96, 192, 255], [112, 176, 154, 255]];
-    const BOUNDS: [[f32; 4]; 3] = [
-        [10.0, 10.0, 50.0, 20.0],
-        [70.0, 10.0, 50.0, 20.0],
-        [130.0, 10.0, 50.0, 20.0],
-    ];
+    const COUNT: usize = 50;
+    fn bounds(i: usize) -> [f32; 4] {
+        [
+            10.0 + (i % 10) as f32 * 20.0,
+            10.0 + (i / 10) as f32 * 20.0,
+            14.0,
+            15.0,
+        ]
+    }
+    fn sprite(i: usize, state: u8) -> String {
+        format!("fixture:button/{i}/{state}")
+    }
+    let color = |i: usize, state: u8| [64 + i as u8, 16 + state * 80, 230, 255];
 
-    struct SpriteMod;
+    struct SpriteMod(Arc<Mutex<Vec<usize>>>);
     #[mod_api::__subscriptions]
     impl Hooks for SpriteMod {
+        fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id != "mod" {
+                return;
+            }
+            for i in 0..COUNT {
+                let mut art = ButtonSprites::new(sprite(i, 0));
+                art.highlighted = Some(sprite(i, 1));
+                art.disabled = Some(sprite(i, 2));
+                let log = self.0.clone();
+                event.widgets.add_button(
+                    Button::new(bounds(i), ApiText::literal("iii"), move |_, _| {
+                        log.lock().unwrap().push(i);
+                    })
+                    .active(i != 1)
+                    .sprites(art),
+                );
+            }
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new(
+            "sprite_fixture",
+            Box::new(SpriteMod(log.clone())),
+        )]
+        .into(),
+        || {
+            with_client_game(|game| {
+                let (_event_loop, _win_id) = attach_offscreen_window(game);
+                let atlas = &mut game.gui.atlas;
+                let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
+                let (aw, ah) = (atlas.width as f32, atlas.height as f32);
+                let mut palette = Vec::new();
+                for state in 0..3 {
+                    for i in 0..COUNT {
+                        let x = ox + i as u32;
+                        let y = oy + u32::from(state);
+                        palette.extend(color(i, state));
+                        atlas.gui.insert(
+                            sprite(i, state),
+                            GuiSprite::Present {
+                                rect: Rect {
+                                    u0: x as f32 / aw,
+                                    v0: y as f32 / ah,
+                                    u1: (x + 1) as f32 / aw,
+                                    v1: (y + 1) as f32 / ah,
+                                    w: 1,
+                                    h: 1,
+                                },
+                                scaling: None,
+                            },
+                        );
+                    }
+                }
+                let patch = ImagePatch {
+                    origin: [ox, oy],
+                    size: [COUNT as u32, 3],
+                    rgba: palette.into(),
+                };
+                let pixel = |pixels: &[u8], [x, y, _, _]: [f32; 4]| {
+                    let at = (((y as u32 + 1) * SIZE[0] + x as u32 + 1) * 4) as usize;
+                    <[u8; 4]>::try_from(&pixels[at..at + 4]).unwrap()
+                };
+                let mut stock = HudBatch::scratch(SIZE);
+                for i in 0..COUNT {
+                    let [x, y, w, h] = bounds(i);
+                    sunrise_client::ui::button(
+                        &mut stock,
+                        &game.gui.atlas,
+                        x,
+                        y,
+                        w,
+                        h,
+                        &sunrise_client::text::Text::literal("iii"),
+                        i != 1,
+                        false,
+                    );
+                }
+                widgets::end_frame(1);
+                let stock = render_hud(&stock, &game.gui.atlas, SIZE).unwrap();
+                assert!(game.mod_screen_open("sprite_fixture"));
+                let frame = |game: &mut Game<'_>, at, serial| {
+                    game.cursor = at;
+                    let mut batch = HudBatch::scratch(SIZE);
+                    batch.image_patches.push(patch.clone());
+                    widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
+                    game.draw_mounted_screen_widgets(&mut batch);
+                    widgets::end_frame(serial);
+                    render_hud(&batch, &game.gui.atlas, SIZE).unwrap()
+                };
+                let custom = frame(game, (1.0, 1.0), 2);
+                for i in 0..COUNT {
+                    let expected = color(i, if i == 1 { 2 } else { 0 });
+                    assert_eq!(pixel(&custom, bounds(i)), expected);
+                    assert_ne!(pixel(&stock, bounds(i)), expected);
+                }
+                for (i, (a, b)) in custom
+                    .chunks_exact(4)
+                    .zip(stock.chunks_exact(4))
+                    .enumerate()
+                {
+                    let (x, y) = ((i as u32 % SIZE[0]) as f32, (i as u32 / SIZE[0]) as f32);
+                    if !(0..COUNT).any(|n| {
+                        let [l, t, w, h] = bounds(n);
+                        (l..l + w).contains(&x) && (t..t + h).contains(&y)
+                    }) {
+                        assert_eq!(a, b, "outside mounted buttons at {x},{y}");
+                    }
+                }
+                let buttons = widgets::last();
+                assert_eq!(buttons.len(), COUNT);
+                for (i, button) in buttons.iter().enumerate() {
+                    assert_eq!([button.x, button.y, button.w, button.h], bounds(i));
+                    assert_eq!(button.enabled, i != 1);
+                    assert!(matches!(button.kind, Kind::Mounted { field: false, .. }));
+                }
+
+                let hovered = frame(game, (11.0, 11.0), 3);
+                assert_eq!(pixel(&hovered, bounds(0)), color(0, 1));
+                assert_eq!(widgets::take_cursor(), Cursor::PointingHand);
+                let disabled = frame(game, (31.0, 11.0), 4);
+                assert_eq!(pixel(&disabled, bounds(1)), color(1, 2));
+                assert!(!game.mounted_widget_mouse_clicked([31.0, 11.0], 0, 0, false));
+                assert!(game.mounted_widget_mouse_clicked([11.0, 11.0], 0, 0, false));
+                assert!(game.mounted_widget_mouse_released([11.0, 11.0], 0, 0));
+                assert!(game.key_focus_key(&NoLoop, KeyCode::Tab).is_some());
+                assert_eq!(game.screen_state.widgets.focused_index(), Some(2));
+
+                let _ = widgets::take_cursor();
+                widgets::set_narrating(true);
+                let focused = frame(game, (1.0, 1.0), 5);
+                widgets::set_narrating(false);
+                assert_eq!(widgets::take_cursor(), Cursor::Arrow);
+                assert_eq!(pixel(&focused, bounds(2)), color(2, 1));
+                let narration = widgets::take_last_narration();
+                assert_eq!(narration.items.len(), COUNT);
+                assert!(
+                    matches!(&narration.items[2].what, What::Button { message, active: true } if message == "iii")
+                );
+                assert_eq!(narration.items[2].rect, bounds(2));
+                assert!(game.mounted_widget_key_pressed(KeyCode::Enter, false, 0));
+                assert!(game.mounted_widget_key_pressed(KeyCode::Space, false, 0));
+                assert_eq!(*log.lock().unwrap(), [0, 2, 2]);
+            });
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn mounted_widgets_draw_as_the_games_own() {
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::mounted_widgets_draw_as_the_games_own",
+        "SUNRISE_WIDGET_STOCK_ART_CHILD",
+        &["stock"],
+    ) {
+        return;
+    }
+    use crate::game::screen_widgets::MountedWidgetKind;
+    const LONG: &str = "a long name that does not fit in sixty pixels";
+    struct StockWidgets;
+    #[mod_api::__subscriptions]
+    impl Hooks for StockWidgets {
         fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
             if event.screen.id != "paused" {
                 return;
             }
-            let mut art = ButtonSprites::new(SPRITES[0]);
-            art.highlighted = Some(SPRITES[1].into());
-            art.disabled = Some(SPRITES[2].into());
-            event.widgets.add_button(
-                Button::new(BOUNDS[0], ApiText::literal("Normal"), |_, _| {}).sprites(art.clone()),
-            );
-            let focused = event.widgets.add_button(
-                Button::new(BOUNDS[1], ApiText::literal("Focused"), |_, _| {}).sprites(art.clone()),
-            );
-            event.widgets.set_initial_focus(focused);
-            event
+            event.widgets.add_button(Button::new(
+                [10.0, 10.0, 100.0, 20.0],
+                ApiText::literal("Done"),
+                |_, _| {},
+            ));
+            let field = event
                 .widgets
-                .add_button(Button::inactive(BOUNDS[2], ApiText::literal("Disabled")).sprites(art));
+                .add_text_field(TextField::new([10.0, 40.0, 60.0, 20.0], 64).value(LONG));
+            event.widgets.set_initial_focus(field);
         }
     }
-
     with_mods(
-        vec![ModEntry::new("sprite_fixture", Box::new(SpriteMod))].into(),
+        vec![ModEntry::new("stock_widgets", Box::new(StockWidgets))].into(),
         || {
             with_client_game(|game| {
-                let atlas = &mut game.gui.atlas;
-                let [ox, oy] = atlas.dynamic_texture_pool.as_ref().unwrap().origin(0, 0);
-                let (aw, ah) = (atlas.width as f32, atlas.height as f32);
-                for (i, sprite) in SPRITES.into_iter().enumerate() {
-                    let x = ox + i as u32;
-                    atlas.gui.insert(
-                        sprite.into(),
-                        GuiSprite::Present {
-                            rect: Rect {
-                                u0: x as f32 / aw,
-                                v0: oy as f32 / ah,
-                                u1: (x + 1) as f32 / aw,
-                                v1: (oy + 1) as f32 / ah,
-                                w: 1,
-                                h: 1,
-                            },
-                            scaling: None,
-                        },
-                    );
-                }
                 game.set_screen(Screen::Paused);
-                game.cursor = (1.0, 1.0);
-                let _ = widgets::take_cursor();
-                widgets::set_narrating(true);
-                widgets::begin_screen(|| ScreenInfo::new("fixture", "Mounted sprite buttons"));
-                let mut batch = HudBatch::scratch(SIZE);
-                batch.image_patches.push(ImagePatch {
-                    origin: [ox, oy],
-                    size: [3, 1],
-                    rgba: COLORS.concat().into(),
-                });
-                game.draw_mounted_screen_widgets(&mut batch);
-                assert_eq!(widgets::take_cursor(), Cursor::Arrow);
-                widgets::end_frame(1);
-                widgets::set_narrating(false);
-
-                let pixels = render_hud(&batch, &game.gui.atlas, SIZE).expect("offscreen HUD");
-                for (rect, color) in BOUNDS.into_iter().zip(COLORS) {
-                    let [x, y, _, _] = rect;
-                    let at = (((y as u32 + 1) * SIZE[0] + x as u32 + 1) * 4) as usize;
-                    assert_eq!(pixels[at..at + 4], color);
-                }
-                let buttons = widgets::last();
-                assert_eq!(buttons.len(), 3);
-                for (i, button) in buttons.iter().enumerate() {
-                    assert_eq!([button.x, button.y, button.w, button.h], BOUNDS[i]);
-                    assert_eq!(button.enabled, i != 2);
-                    assert!(matches!(button.kind, Kind::Mounted { field: false, .. }));
-                }
-                let narration = widgets::take_last_narration();
-                assert_eq!(narration.items.len(), 3);
-                assert!(
-                    matches!(&narration.items[1].what, What::Button { message, active: true } if message == "Focused")
-                );
-                assert_eq!(narration.items[1].rect, BOUNDS[1]);
                 game.cursor = (11.0, 11.0);
-                game.draw_mounted_screen_widgets(&mut HudBatch::scratch(SIZE));
-                assert_eq!(widgets::take_cursor(), Cursor::PointingHand);
+                let mut ours = HudBatch::scratch([320, 240]);
+                game.draw_mounted_screen_widgets(&mut ours);
+                let mut stock = HudBatch::scratch([320, 240]);
+                sunrise_client::ui::button(
+                    &mut stock,
+                    &game.gui.atlas,
+                    10.0,
+                    10.0,
+                    100.0,
+                    20.0,
+                    &sunrise_client::text::Text::literal("Done"),
+                    true,
+                    true,
+                );
+                let n = stock.vertices.len();
+                assert!(n > 0 && ours.vertices.len() > n);
+                assert_eq!(
+                    bytemuck::cast_slice::<_, u8>(&ours.vertices[..n]),
+                    bytemuck::cast_slice::<_, u8>(&stock.vertices)
+                );
+
+                let first = game
+                    .with_mounted_widget(1, |game, entry| {
+                        let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind else {
+                            panic!("expected the initialized text field")
+                        };
+                        edit_box.view_state(&game.gui.atlas).0
+                    })
+                    .unwrap();
+                assert!(first > 0);
+                let shown = &LONG[first..]; // ASCII fixture: edit indices are byte boundaries.
+                let font = &game.gui.atlas.font;
+                assert_eq!(font.fit(shown, 52.0), shown.len());
+                let edges: Vec<_> = (0..=shown.len())
+                    .map(|i| 14.0 + font.width(&shown[..i]))
+                    .collect();
+                assert_eq!(edges[0], 14.0);
+                assert!(edges.windows(2).all(|w| w[0] < w[1]));
+                assert!(*edges.last().unwrap() <= 66.0);
+                assert!(game.mounted_widget_mouse_clicked([edges[1].ceil(), 50.0], 0, 0, false));
+                assert_eq!(
+                    game.mounted_focused_text_edit(None).unwrap().cursor,
+                    first + 1
+                );
             });
         },
     );
@@ -1036,11 +1189,12 @@ fn text_field_editing_ime_and_double_click_word_selection() {
             game.ime_preedit("ni", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:ni"]);
 
-            // Clicking outside all widgets clears focus too.
+            // A click that hits no child leaves the current focus unchanged.
+            let focused = game.screen_state.widgets.focused_id().unwrap();
             move_mouse(game, win_id, 400.0, 400.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.screen_state.widgets.focused_index(), None);
+            assert_eq!(game.screen_state.widgets.focused_id(), Some(focused));
             assert!(!game.text_field_focused());
             game.ime_preedit("go", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:go"]);
@@ -1296,10 +1450,18 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 "{events:?}"
             );
 
-            // The focused custom child is blurred on close, including when it is
-            // temporarily extracted and closes the screen from its own callback.
-            assert!(game.close_screen());
+            // The focused custom child is blurred on a rebuild, on close, and
+            // when temporarily extracted if it closes the screen itself.
+            game.handle_window_event(
+                &NoLoop,
+                win_id,
+                WindowEvent::Resized(PhysicalSize::new(800, 600)),
+                InputOrigin::User,
+            );
             assert_eq!(take_log(&log), ["focus:false"]);
+            game.sync_mounted_focus(game.mounted_widget_targets()[0]);
+            assert!(game.close_screen());
+            assert_eq!(take_log(&log), ["focus:true", "focus:false"]);
             assert!(game.mod_screen_open("panic_mod"));
             game.sync_mounted_focus(game.mounted_widget_targets()[0]);
             assert!(game.mounted_widget_key_pressed(KeyCode::KeyX, false, 0));
