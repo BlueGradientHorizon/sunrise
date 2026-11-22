@@ -92,18 +92,23 @@ impl Hub {
     pub fn tick_time_subscribers(&self) -> Vec<u32> {
         self.guests
             .iter()
-            .filter(|g| g.debug_subscriptions.contains(&0) && self.ops.contains_key(&g.uuid))
+            .filter(|g| {
+                g.participates_online()
+                    && g.joined()
+                    && !g.disconnect_pending
+                    && g.debug_subscriptions.contains(&0)
+                    && self.ops.contains_key(&g.uuid)
+                    && g.sender.is_live()
+            })
             .map(|g| g.conn)
             .collect()
     }
 
-    /// One packet to each of `conns`, encoded once.
+    /// One packet to each snapshotted connection, encoded once.
     pub fn send_to_each(&self, conns: &[u32], packet: &C) {
         let body = packet.encode();
         for g in conns.iter().filter_map(|c| self.guest(*c)) {
-            if g.participates_online() {
-                g.sender.send(body.clone());
-            }
+            g.sender.send(body.clone());
         }
     }
 
