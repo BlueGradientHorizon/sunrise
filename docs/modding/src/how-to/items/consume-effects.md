@@ -21,7 +21,7 @@ built-in effects; stack patches can change or remove the list.
 - An unclaimed kind reports a missing callback when applied. A panic in the consume callback
   logs the mod's name, queues the mod error toast and disables only that callback for the rest
   of the session. The remaining built-in and other mods' effects still run. An unwind from
-  delegated living-effect work, such as a different listener panicking during `add_effect`,
+  delegated host work, such as a different listener panicking during `add_effect` or `heal`,
   propagates instead: it does not disable the calling consume callback or resume this use.
 - Consumable and death protection payloads are decoded once for item definitions
   and stack component patches. The event borrows the retained payload. Player death

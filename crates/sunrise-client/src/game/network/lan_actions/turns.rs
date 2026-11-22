@@ -575,17 +575,19 @@ impl Game<'_> {
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
-        // The callbacks a turn ends with (combat, armor, the totem, the food hook) can reach a
-        // mod and panic. The swap is still restored below and the guest's progress written
-        // back; the panic resumes at the end (#2240). `as_guest_at` calls this after catching a
-        // panic of the turn itself, so a panic here then goes on in place of that one.
+        // The callbacks a turn ends with (combat, armor, the totem, the food, projectile-launch
+        // and sound hooks) can reach a mod and panic. The swap is still restored below and the
+        // guest's progress written back; the panic resumes at the end (#2240). `as_guest_at` calls
+        // this after catching a panic of the turn itself, so a panic here then goes on in place of
+        // that one.
+        let mut totem = None;
         let callbacks = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if !turn_events.is_empty() {
                 self.record_combat(&turn_events);
                 self.wear_armor(&turn_events);
             }
             // A totem that saved the guest this turn (its hurt set it off).
-            let totem = self.apply_totem();
+            totem = self.apply_totem();
             // The mods hear the food level the turn changed (eating, hunger,
             // starving...), once for the change it made as a whole, with the
             // guest's state still swapped in; they may change or undo it before it
@@ -613,13 +615,65 @@ impl Game<'_> {
                     }
                 }
             }
-            totem
+            // What the guest shot is theirs (Projectile.setOwner) before launch listeners run.
+            for i in swap.projectiles..self.creatures.projectiles.len() {
+                self.creatures.projectiles.update(i, |p| {
+                    if p.owner == Some(sunrise_client::mobs::Who::Player) && p.guest.is_none() {
+                        p.guest = Some(swap.conn);
+                    }
+                });
+            }
+            let listening = mod_api::__private::listened(mod_api::HookId::PlayerLaunchProjectile);
+            for projectile in swap.projectiles..self.creatures.projectiles.len() {
+                if !listening {
+                    break;
+                }
+                let item = match &self.creatures.projectiles[projectile].kind {
+                    sunrise_client::projectiles::ProjectileKind::Snowball => {
+                        Some("minecraft:snowball".to_owned())
+                    }
+                    sunrise_client::projectiles::ProjectileKind::Egg => {
+                        Some("minecraft:egg".to_owned())
+                    }
+                    sunrise_client::projectiles::ProjectileKind::EnderPearl => {
+                        Some("minecraft:ender_pearl".to_owned())
+                    }
+                    sunrise_client::projectiles::ProjectileKind::Trident => {
+                        Some("minecraft:trident".to_owned())
+                    }
+                    sunrise_client::projectiles::ProjectileKind::Potion(stack, _) => {
+                        Some(stack.item.to_string())
+                    }
+                    _ => None,
+                };
+                if let Some(item) = item {
+                    let Some(host) = self.lan.as_ref() else {
+                        unreachable!("LanHost dropped inside a guest turn; closes are deferred");
+                    };
+                    let guest = &host.hub.guests[swap.i];
+                    let (uuid, name) = (guest.uuid, guest.name.clone());
+                    self.native_player_launch_projectile(uuid, &name, &item);
+                }
+            }
+            // Player.playSound: everyone near but the guest, in the players' source,
+            // through `ServerLevel.playSeededSound` like any level sound.
+            for (name, at, volume, pitch) in std::mem::take(&mut self.guest_player_sounds) {
+                let sound =
+                    LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Players);
+                self.send_level_sound(sound, Some(swap.conn));
+            }
+            // Block-source sounds exclude the acting player, like player sounds.
+            for (name, at, volume, pitch) in std::mem::take(&mut self.guest_block_sounds) {
+                let sound =
+                    LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Blocks);
+                self.send_level_sound(sound, Some(swap.conn));
+            }
         }));
-        let (totem, panic) = match callbacks {
-            Ok(totem) => (totem, None),
+        let panic = match callbacks {
+            Ok(()) => None,
             Err(payload) => {
                 self.record_open_turns();
-                (None, Some(payload))
+                Some(payload)
             }
         };
         let GuestSwap {
@@ -702,7 +756,7 @@ impl Game<'_> {
         let guest_combat = std::mem::replace(&mut self.combat, combat);
         self.guest_combat.insert(conn, guest_combat);
         play.modifiers = std::mem::replace(&mut self.applied_modifiers, modifiers);
-        // What the guest shot is theirs (Projectile.setOwner).
+        // What the guest shot is theirs (Projectile.setOwner), even if a turn-exit callback panicked.
         for i in projectiles..self.creatures.projectiles.len() {
             self.creatures.projectiles.update(i, |p| {
                 if p.owner == Some(sunrise_client::mobs::Who::Player) && p.guest.is_none() {
@@ -710,56 +764,11 @@ impl Game<'_> {
                 }
             });
         }
-        let listening = mod_api::__private::listened(mod_api::HookId::PlayerLaunchProjectile);
-        for projectile in projectiles..self.creatures.projectiles.len() {
-            if !listening {
-                break;
-            }
-            let item = match &self.creatures.projectiles[projectile].kind {
-                sunrise_client::projectiles::ProjectileKind::Snowball => {
-                    Some("minecraft:snowball".to_owned())
-                }
-                sunrise_client::projectiles::ProjectileKind::Egg => {
-                    Some("minecraft:egg".to_owned())
-                }
-                sunrise_client::projectiles::ProjectileKind::EnderPearl => {
-                    Some("minecraft:ender_pearl".to_owned())
-                }
-                sunrise_client::projectiles::ProjectileKind::Trident => {
-                    Some("minecraft:trident".to_owned())
-                }
-                sunrise_client::projectiles::ProjectileKind::Potion(stack, _) => {
-                    Some(stack.item.to_string())
-                }
-                _ => None,
-            };
-            if let Some(item) = item {
-                let Some(host) = self.lan.as_ref() else {
-                    unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-                };
-                let guest = &host.hub.guests[i];
-                let (uuid, name) = (guest.uuid, guest.name.clone());
-                self.native_player_launch_projectile(uuid, &name, &item);
-            }
-        }
         // The guest's swings are theirs: the host's own count stays the host's.
         play.swings += self.swings_started.wrapping_sub(swings);
         self.swings_started = swings;
-        // Player.playSound: everyone near but the guest, in the players' source,
-        // through `ServerLevel.playSeededSound` like any level sound.
-        for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.guest_player_sounds, player_sounds)
-        {
-            let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Players);
-            self.send_level_sound(sound, Some(conn));
-        }
-        // Block-source sounds exclude the acting player, like player sounds.
-        for (name, at, volume, pitch) in
-            std::mem::replace(&mut self.guest_block_sounds, block_sounds)
-        {
-            let sound = LevelSound::new(&name, at, volume, pitch).in_source(SoundSource::Blocks);
-            self.send_level_sound(sound, Some(conn));
-        }
+        self.guest_player_sounds = player_sounds;
+        self.guest_block_sounds = block_sounds;
         let outgoing = std::mem::replace(&mut self.guest_packets, packets);
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
@@ -1073,6 +1082,15 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
         self.bind_current_hook_residency();
+        if let Some(host) = self.lan.as_ref() {
+            refresh_building_player(host, conn);
+        }
+        // An inner turn can move, kill, or change the mode of a hub-owned body.
+        if let (Some(actor), Some(host)) = (self.lan_acting, self.lan.as_ref()) {
+            self.lan_building_boxes =
+                self.lan_building_boxes
+                    .for_turn(actor, None, building_players(host));
+        }
         for event in turn_events {
             match event {
                 MotionEvent::Health(sunrise_client::health::HealthEvent::DamageBroadcast {
@@ -1115,15 +1133,6 @@ impl Game<'_> {
         self.open_turn_ender_menus(conn);
         // The turn's teleports are in the hub now: the mods hear them.
         self.flush_teleport_notes();
-        if let Some(host) = self.lan.as_ref() {
-            refresh_building_player(host, conn);
-        }
-        // An inner turn can move, kill, or change the mode of a hub-owned body.
-        if let (Some(actor), Some(host)) = (self.lan_acting, self.lan.as_ref()) {
-            self.lan_building_boxes =
-                self.lan_building_boxes
-                    .for_turn(actor, None, building_players(host));
-        }
         if let Some(payload) = panic {
             std::panic::resume_unwind(payload);
         }

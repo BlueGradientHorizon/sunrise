@@ -209,10 +209,11 @@ fn parse_consume_effect(
                     id: Identifier::parse(sound.get("sound_id")?.as_str()?)
                         .ok()?
                         .to_string(),
-                    range: match sound.get("range") {
-                        Some(range) => Some(range.as_f64()? as f32),
-                        None => None,
-                    },
+                    // SoundEvent.DIRECT_CODEC uses lenientOptionalFieldOf("range").
+                    range: sound
+                        .get("range")
+                        .and_then(serde_json::Value::as_f64)
+                        .map(|range| range as f32),
                 }
             };
             Some(ConsumeEffect::PlaySound(holder))
@@ -3536,6 +3537,50 @@ mod consume_effect_tests {
             parse_consume_effect(&v(r#"{"amount":42}"#))
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn play_sound_consume_effect_uses_lenient_optional_range() {
+        let v = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
+        assert_eq!(
+            parse_consume_effect(&v(
+                r#"{"type":"minecraft:play_sound","sound":"minecraft:entity.fox.eat"}"#,
+            ))
+            .unwrap(),
+            Some(ConsumeEffect::PlaySound(ConsumeSound::Registered(
+                "minecraft:entity.fox.eat".into(),
+            )))
+        );
+        assert_eq!(
+            parse_consume_effect(&v(
+                r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime","range":24.5}}"#,
+            ))
+            .unwrap(),
+            Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
+                id: "demo:chime".into(),
+                range: Some(24.5),
+            }))
+        );
+        assert_eq!(
+            parse_consume_effect(&v(
+                r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime"}}"#,
+            ))
+            .unwrap(),
+            Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
+                id: "demo:chime".into(),
+                range: None,
+            }))
+        );
+        assert_eq!(
+            parse_consume_effect(&v(
+                r#"{"type":"minecraft:play_sound","sound":{"sound_id":"demo:chime","range":"oops"}}"#,
+            ))
+            .unwrap(),
+            Some(ConsumeEffect::PlaySound(ConsumeSound::Direct {
+                id: "demo:chime".into(),
+                range: None,
+            }))
         );
     }
 }

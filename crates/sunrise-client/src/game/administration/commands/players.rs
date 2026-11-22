@@ -245,9 +245,14 @@ impl Game<'_> {
             if result.is_err() {
                 self.record_interrupted_turn(conn);
             }
-            self.leave_guest(swap);
+            let exit = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.leave_guest(swap);
+            }));
             self.send_guest_messages(conn, messages);
-            Some(result)
+            Some(match (exit, result) {
+                (Err(payload), _) => Err(payload),
+                (Ok(()), result) => result,
+            })
         }));
         if self.dim != back
             && let Err(e) = self.enter_level(back)

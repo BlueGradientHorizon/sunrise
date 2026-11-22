@@ -9,7 +9,7 @@ pub trait Hooks {
     /// is bound when the definition is decoded. Nested applications run in call
     /// order, including another entry of the same kind. A panic in the callback
     /// disables that callback for the session; later effects still run. An unwind
-    /// from engine work or another listener reached through a living-effect call
+    /// from engine work or another listener reached through a host call
     /// propagates instead, without disabling the calling consume callback.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_consume_effect",

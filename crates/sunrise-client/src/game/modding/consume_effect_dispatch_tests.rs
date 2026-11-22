@@ -574,3 +574,162 @@ fn a_foxs_later_custom_effect_keeps_the_original_user_and_stack_after_discard() 
         });
     });
 }
+
+struct HealingMeal;
+#[mod_api::__subscriptions]
+impl Hooks for HealingMeal {
+    fn consume_effect(&self, host: &mut dyn ServerHost, event: &mut ConsumeEffectEvent<'_>) {
+        let living = host.living(event.user).unwrap();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert!(living.heal(host, 2.0));
+        }));
+    }
+}
+
+struct PanickingHealListener(std::sync::atomic::AtomicBool);
+#[mod_api::__subscriptions]
+impl Hooks for PanickingHealListener {
+    fn living_heal(
+        &self,
+        _: &dyn mod_api::LoopContext,
+        _: &mut mod_api::LivingHealEvent,
+    ) -> mod_api::Flow {
+        if self.0.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            panic!("foreign heal listener");
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_foreign_heal_listener_unwinds_without_disabling_the_consume_callback() {
+    crate::entry::install_client_hooks();
+    let mods = vec![
+        ModEntry::new("healing_meal", Box::new(HealingMeal)),
+        ModEntry::new(
+            "heal_listener",
+            Box::new(PanickingHealListener(true.into())),
+        ),
+    ];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_guests(|game| {
+            game.as_guest(12, |game| {
+                let id = game.player.as_ref().unwrap().entity_id as u32;
+                let living = game.living(game.entity(id).unwrap()).unwrap();
+                assert!(living.set_health(game, 10.0));
+                let stack = ItemStack::new("minecraft:apple", 1);
+                let info = game.items().get(&stack.item).unwrap().clone();
+                let consumable = parse_consumable(&serde_json::json!({
+                    "on_consume_effects": [
+                        {"type": "healing_meal:effect"},
+                        {"type": "minecraft:apply_effects", "effects": [
+                            {"id": "minecraft:water_breathing", "duration": 120}
+                        ]}
+                    ]
+                }))
+                .unwrap();
+                game.inventory[game.selected] = Some(stack.clone());
+                let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    game.finish_consuming(&info, &consumable, &stack);
+                }))
+                .unwrap_err();
+                assert_eq!(panic.downcast_ref::<&str>(), Some(&"foreign heal listener"));
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 10.0);
+                assert!(game.potions.effects.get("water_breathing").is_none());
+
+                // The calling consume callback stays enabled and runs cleanly on the next use.
+                game.finish_consuming(&info, &consumable, &stack);
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 12.0);
+                assert!(game.potions.effects.get("water_breathing").is_some());
+            })
+            .unwrap();
+        });
+    });
+}
+
+struct PanickingProjectileLaunchListener(std::sync::atomic::AtomicBool);
+#[mod_api::__subscriptions]
+impl Hooks for PanickingProjectileLaunchListener {
+    fn player_launch_projectile(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::PlayerLaunchProjectileEvent<'_>,
+    ) {
+        if event.item == "minecraft:snowball"
+            && self.0.swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            panic!("turn exit projectile listener");
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_turn_exit_projectile_listener_panic_still_restores_cross_level_guest_and_chat() {
+    let mods = vec![ModEntry::new(
+        "launch_listener",
+        Box::new(PanickingProjectileLaunchListener(true.into())),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_guests(|game| {
+            let world = tempfile::tempdir().unwrap();
+            game.world_root = world.path().to_path_buf();
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(13, |guest| guest.dimension = Dim::Nether.id().into())
+                .unwrap();
+            let outer_dim = game.dim;
+            game.as_guest(12, |game| {
+                use sunrise_client::{
+                    mobs::Who,
+                    projectiles::{Projectile, ProjectileKind},
+                    text::Text,
+                };
+                game.chat_capture = Some(vec![Text::literal("outer guest")]);
+                let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    game.for_player(crate::game::commands::Target::Guest(13), |game| {
+                        game.chat_capture
+                            .as_mut()
+                            .unwrap()
+                            .push(Text::literal("inner guest"));
+                        game.creatures.projectiles.push(Projectile::new(
+                            ProjectileKind::Snowball,
+                            Vec3::ZERO,
+                            Some(Who::Player),
+                        ));
+                    });
+                }))
+                .unwrap_err();
+                assert_eq!(
+                    panic.downcast_ref::<&str>(),
+                    Some(&"turn exit projectile listener")
+                );
+                assert_eq!(game.lan_acting, Some(12));
+                assert_eq!(game.lan_guest_swaps, [12]);
+                assert_eq!(game.dim, outer_dim);
+                assert_eq!(game.chat_capture.as_ref().unwrap().len(), 1);
+                assert_eq!(
+                    game.chat_capture.as_ref().unwrap()[0].plain(),
+                    "outer guest"
+                );
+                assert_eq!(
+                    game.for_player(crate::game::commands::Target::Guest(13), |game| {
+                        game.creatures
+                            .projectiles
+                            .iter()
+                            .any(|projectile| projectile.guest == Some(13))
+                    }),
+                    Some(true)
+                );
+                assert_eq!(game.dim, outer_dim);
+                assert_eq!(game.lan_acting, Some(12));
+                assert_eq!(game.lan_guest_swaps, [12]);
+                game.chat_capture = None;
+            })
+            .unwrap();
+        });
+    });
+}

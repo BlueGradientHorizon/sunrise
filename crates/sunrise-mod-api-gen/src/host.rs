@@ -574,7 +574,8 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         format!("self, {args}")
                     };
                     let sig = entry.sig.to_token_stream();
-                    let call = if entry.attrs.iter().any(|a| a.path().is_ident("service")) {
+                    let is_service = entry.attrs.iter().any(|a| a.path().is_ident("service"));
+                    let call = if is_service {
                         "self".into()
                     } else if via_game {
                         let table = table.unwrap_or_default();
@@ -671,16 +672,12 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             "mod_api::__private::check_access({name:?}, mod_api::__private::LoadAccess::{level});"
                         )
                     };
-                    if entry
-                        .attrs
-                        .iter()
-                        .any(|a| a.path().is_ident("delegate_engine"))
-                    {
-                        code.push_str(&format!(
-                            "{sig} {{ {access} {setup} mod_api::__private::game::CallbackOwner::call_engine(|| {{ {call} }}) }}\n"
-                        ));
-                    } else {
+                    if is_service || borrows_caller_callback(&entry.sig) {
                         code.push_str(&format!("{sig} {{ {access} {setup} {call} }}\n"));
+                    } else {
+                        code.push_str(&format!(
+                            "{sig} {{ {access} {setup} mod_api::__private::game::CallbackOwner::call_host(|| {{ {call} }}) }}\n"
+                        ));
                     }
                 }
                 code.push_str("}\n");
@@ -692,6 +689,47 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
     let imports = standard_imports(&parsed);
     let parsed = syn::parse_file(&(imports + &code)).map_err(|e| e.to_string())?;
     Ok(prettyplease::unparse(&parsed))
+}
+
+/// Whether `sig` takes a borrowed callable the engine invokes synchronously on the caller's
+/// behalf. Those methods stay inside the caller's retained panic scope so a panic in the
+/// caller's closure still blames that caller.
+fn borrows_caller_callback(sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(|input| {
+        let FnArg::Typed(arg) = input else {
+            return false;
+        };
+        is_borrowed_callable(&arg.ty)
+    })
+}
+
+fn is_borrowed_callable(mut ty: &Type) -> bool {
+    while let Type::Paren(paren) = ty {
+        ty = &paren.elem;
+    }
+    let Type::Reference(reference) = ty else {
+        return false;
+    };
+    let mut elem = &*reference.elem;
+    while let Type::Paren(paren) = elem {
+        elem = &paren.elem;
+    }
+    matches!(
+        elem,
+        Type::TraitObject(object)
+            if object.bounds.iter().any(|bound| {
+                matches!(
+                    bound,
+                    syn::TypeParamBound::Trait(trait_bound)
+                        if trait_bound.path.segments.last().is_some_and(|segment| {
+                            matches!(
+                                segment.ident.to_string().as_str(),
+                                "Fn" | "FnMut" | "FnOnce"
+                            )
+                        })
+                )
+            })
+    )
 }
 
 /// The error types a gated method may refuse with: those the mod vocabulary crate implements
@@ -1817,5 +1855,55 @@ mod tests {
                 .filter(|area| area.tiers.is_empty())
                 .all(|area| matches!(area.stem.as_str(), "draw" | "services"))
         );
+    }
+
+    #[test]
+    fn game_forwarders_delegate_non_callback_host_calls_through_call_host() {
+        assert!(!borrows_caller_callback(
+            &entry("fn living_heal(&mut self, living: LivingRef, amount: f32) -> bool;").sig
+        ));
+        assert!(!borrows_caller_callback(
+            &entry("fn schedule_task(&mut self, delay: u32, task: Box<dyn FnOnce(&mut dyn ServerHost)>) -> Result<TaskId, ScheduleError>;").sig
+        ));
+        assert!(borrows_caller_callback(
+            &entry("fn level_visit_all_entities(&self, level: LevelRef, visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>) -> Result<core::ops::ControlFlow<()>, LevelReadError>;").sig
+        ));
+        assert!(borrows_caller_callback(
+            &entry("fn player_read_inventory(&self, player: PlayerRef, read: &mut dyn for<'a> FnMut(InventoryView<'a>)) -> Option<()>;").sig
+        ));
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let source = game_forwarders(&root).unwrap();
+        let file = syn::parse_file(&source).unwrap();
+        let mut saw_heal = false;
+        let mut saw_visit = false;
+        let mut saw_service = false;
+        for item in file.items {
+            let Item::Impl(item) = item else {
+                continue;
+            };
+            for member in item.items {
+                let syn::ImplItem::Fn(method) = member else {
+                    continue;
+                };
+                let body = method.block.to_token_stream().to_string();
+                match method.sig.ident.to_string().as_str() {
+                    "living_heal" => {
+                        assert!(body.contains("CallbackOwner :: call_host"), "{body}");
+                        saw_heal = true;
+                    }
+                    "level_visit_all_entities" => {
+                        assert!(!body.contains("CallbackOwner :: call_host"), "{body}");
+                        saw_visit = true;
+                    }
+                    "commands" => {
+                        assert!(!body.contains("CallbackOwner :: call_host"), "{body}");
+                        saw_service = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(saw_heal && saw_visit && saw_service);
     }
 }
