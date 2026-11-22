@@ -8,18 +8,20 @@ use crate::{
 /// A host's record of each mob's `LivingEntity.lastHurtByPlayer` UUID, by mob id.
 pub trait PlayerMemory {
     fn remembered(&self, mob: u32) -> Option<u128>;
+    fn forget(&mut self, mob: u32);
 }
 impl<T: Copy + Into<u128>> PlayerMemory for std::collections::HashMap<u32, T> {
     fn remembered(&self, mob: u32) -> Option<u128> {
         self.get(&mob).map(|&credit| credit.into())
     }
+    fn forget(&mut self, mob: u32) {
+        self.remove(&mob);
+    }
 }
 
-/// `EntityReference.getPlayer` for a remembered player: the player in place, else a guest placed
-/// in the level. A level built with none resolves no remembered player.
+/// `EntityReference.getPlayer`: the player in place, else a guest placed in the level.
 #[derive(Clone, Copy)]
 pub struct PlayerResolver<'a> {
-    pub memory: &'a dyn PlayerMemory,
     /// The acting player's UUID, when a player is in place.
     pub in_place: Option<[i32; 4]>,
     pub hub: Option<&'a crate::lan::hub::Hub>,
@@ -39,12 +41,6 @@ impl PlayerResolver<'_> {
             .iter()
             .find(|g| g.placed && g.uuid == uuid)
             .map(|g| Some(g.conn))
-    }
-    /// Whether `mob`'s remembered player resolves now.
-    pub(super) fn remembered_resolves(&self, mob: u32) -> bool {
-        self.memory
-            .remembered(mob)
-            .is_some_and(|uuid| self.resolve(uuid).is_some())
     }
 }
 

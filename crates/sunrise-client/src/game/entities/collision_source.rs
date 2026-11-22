@@ -1,7 +1,9 @@
 //! The game's inputs to `EntityGetter.getEntityCollisions`: the entity lists, the spatial
 //! queries and the stand's root-vehicle grid, offered to the one rule in
 //! `sunrise_client::entity_solids` (which a mob's own move reads too).
-use super::{Game, boats::Boat, minecarts::Minecart};
+use super::{
+    Game, boats::Boat, commands::Target, minecarts::Minecart, remote_vehicles::passenger_root,
+};
 use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 use sunrise_core::geometry::{Aabb, Vec3};
 
@@ -119,7 +121,13 @@ impl Game<'_> {
             ),
             Mover::Passive => (Rule::Passive, None),
             Mover::Cart(c) => (Rule::Cart { id: c.id }, Some(cart_reach(c))),
-            Mover::Boat { id, area } => (Rule::Boat { id }, Some(area)),
+            Mover::Boat { id, area } => (
+                Rule::Boat {
+                    id,
+                    root: self.boat_collision_root(id, Target::Boat(id)),
+                },
+                Some(area),
+            ),
         };
         let solids = Solids::new(rule, area);
         match mover {
@@ -183,26 +191,40 @@ impl Game<'_> {
             Mover::Boat { id, area } => {
                 self.mobs_meeting(area, |j, m, _| {
                     let c = m.solid_candidate();
-                    if solids.accepts(&c, || self.mob_root_vehicle(j)) {
+                    let target = Target::Mob(m.id);
+                    if solids.accepts(&c, || self.boat_collision_root(m.id, target))
+                        && !self.target_removed(&target)
+                    {
                         each(&c, Some(j));
                     }
                 });
-                for o in self
+                for (c, target) in self
                     .boats
                     .iter()
-                    .map(boat)
-                    .chain(self.carts.iter().map(cart))
+                    .map(|b| (boat(b), Target::Boat(b.id)))
+                    .chain(self.carts.iter().map(|c| (cart(c), Target::Cart(c.id))))
                     .chain(
                         self.players_outside(id)
                             .into_iter()
-                            .map(|(bb, _)| player(bb)),
+                            .map(|(bb, target, id)| {
+                                (Candidate::fixed(SolidKind::Player, id, bb), target)
+                            }),
                     )
                 {
-                    if solids.accepts(&o, || None) {
-                        each(&o, None);
+                    if solids.accepts(&c, || self.boat_collision_root(c.id, target))
+                        && !self.target_removed(&target)
+                    {
+                        each(&c, None);
                     }
                 }
             }
+        }
+    }
+
+    fn boat_collision_root(&self, id: u32, target: Target) -> Option<u32> {
+        match self.remote.as_ref() {
+            Some(r) => passenger_root(&r.passenger_vehicles, id).ok(),
+            None => self.native_root_vehicle_id(id, target),
         }
     }
 }

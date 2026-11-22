@@ -119,7 +119,7 @@ impl Drop for FrameRecording {
 /// Whether this thread records spans: globally, here, or for a timeline capture.
 #[inline]
 pub fn recording_here() -> bool {
-    ENABLED.load(Ordering::Relaxed) || HERE.with(Cell::get) != 0 || timeline::on()
+    ENABLED.load(Ordering::Relaxed) || timeline::on() || HERE.with(Cell::get) != 0
 }
 /// The thread's CPU time when spans are on for every thread (`SUNRISE_SPIKES`): spans recorded
 /// by `record_here` alone keep wall time only.
