@@ -5938,7 +5938,12 @@ mod tests {
         assert!(catalog.items["minecraft:bundle"].is_bundle_item());
         assert!(catalog.items["minecraft:red_bundle"].is_bundle_item());
         assert!(catalog.items["ruby:dyed_pouch"].is_bundle_item());
-        assert!(catalog.items["ruby:pouch"].bundle);
+        assert!(
+            catalog.items["ruby:pouch"]
+                .components
+                .iter()
+                .any(|component| component == "minecraft:bundle_contents")
+        );
         assert!(
             !catalog.items["ruby:pouch"].is_bundle_item(),
             "a default bundle_contents component alone does not make an item a BundleItem"
