@@ -438,35 +438,52 @@ mod tests {
             assert_eq!(host.text_from_nbt(&deep_tag), Err(TextFormError::TooDeep));
             sunrise_core::nbt::discard_tag(deep_tag);
 
-            // Vanilla counts compounds, not Text nodes: 512 selectors and a string leaf.
-            let (valid_deep, expected_deep) = (0..512).fold(
-                (Text::literal("leaf"), Tag::String("leaf".into())),
-                |(child, tag), _| {
-                    (
-                        Text::new(TextContent::Selector {
-                            pattern: "@s".into(),
-                            separator: Some(Box::new(child)),
-                        }),
-                        Tag::compound([("selector", Tag::String("@s".into())), ("separator", tag)]),
-                    )
-                },
-            );
-            let encoded_deep = host.text_to_nbt(&valid_deep).unwrap();
-            let mut expected = &expected_deep;
-            let mut actual = &encoded_deep;
+            // A separator uses one container per parent; extra uses a compound
+            // and a list. A string leaf adds none; a styled literal adds one.
+            let selector = |child| {
+                Text::new(TextContent::Selector {
+                    pattern: "@s".into(),
+                    separator: Some(Box::new(child)),
+                })
+            };
+            let separators = (0..512).fold(Text::literal("leaf"), |child, _| selector(child));
+            let encoded = host.text_to_nbt(&separators).unwrap();
+            let mut at = &encoded;
             for _ in 0..512 {
-                assert_eq!(actual.get("selector"), expected.get("selector"));
-                expected = expected.get("separator").unwrap();
-                actual = actual.get("separator").unwrap();
+                assert_eq!(at.get("selector"), Some(&Tag::String("@s".into())));
+                at = at.get("separator").unwrap();
             }
-            assert_eq!(actual, expected);
-            assert!(host.text_from_nbt(&encoded_deep).unwrap().is_some());
-            sunrise_core::nbt::discard_tag(encoded_deep);
-            sunrise_core::nbt::discard_tag(expected_deep);
+            assert_eq!(at, &Tag::String("leaf".into()));
+            assert!(host.text_from_nbt(&encoded).unwrap().is_some());
+            assert_eq!(
+                host.text_to_nbt(&selector(separators)),
+                Err(TextFormError::TooDeep)
+            );
+            let over = Tag::compound([
+                ("selector", Tag::String("@s".into())),
+                ("separator", encoded),
+            ]);
+            assert_eq!(host.text_from_nbt(&over), Err(TextFormError::TooDeep));
+            sunrise_core::nbt::discard_tag(over);
 
-            let too_deep = (0..512).fold(Text::literal("leaf"), |child, _| {
-                Text::literal("parent").append(child)
-            });
+            let extras =
+                |leaf| (0..256).fold(leaf, |child, _| Text::literal("parent").append(child));
+            let mut encoded = host.text_to_nbt(&extras(Text::literal("leaf"))).unwrap();
+            assert!(host.text_from_nbt(&encoded).unwrap().is_some());
+            let mut at = &mut encoded;
+            for _ in 0..256 {
+                let Some(Tag::List(children)) = at.get_mut("extra") else {
+                    panic!("extra list missing");
+                };
+                at = &mut children[0];
+            }
+            assert_eq!(at, &Tag::String("leaf".into()));
+            *at = Tag::compound([("text", Tag::String("leaf".into())), ("bold", Tag::Byte(1))]);
+            assert_eq!(host.text_from_nbt(&encoded), Err(TextFormError::TooDeep));
+            sunrise_core::nbt::discard_tag(encoded);
+            let mut leaf = Text::literal("leaf");
+            leaf.style.bold = Some(true);
+            let too_deep = extras(leaf);
             assert_eq!(host.text_to_nbt(&too_deep), Err(TextFormError::TooDeep));
 
             for (id, defaults) in [("minecraft:stone", true), ("minecraft:stick", false)] {
