@@ -468,11 +468,16 @@ fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) {
         if commit {
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), replacement);
             assert!(game.world.block_entities.get(&POS).is_none());
-            assert_eq!(game.inventory[0], Some(taken));
-            let [drop] = game.dropped.as_ref() else {
-                panic!("expected exactly the item left in the replaced container");
+            assert_eq!(game.inventory[0], Some(taken.clone()));
+            let [fake_give, drop] = game.dropped.as_ref() else {
+                panic!(
+                    "expected the /give pickup visual and the item left in the replaced container"
+                );
             };
+            assert_eq!(fake_give.stack, ItemStack { count: 1, ..taken });
+            assert_eq!((fake_give.pickup_delay, fake_give.age), (32767, 5999));
             assert_eq!(drop.stack, left);
+            assert_ne!(drop.pickup_delay, 32767);
         } else {
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
             assert_eq!(
@@ -532,6 +537,8 @@ fn edit_then_replace_commit_spills_only_the_remaining_contents() {
     assert_eq!(
         *observed.lock().unwrap(),
         [
+            Seen::Join { row_present: true },
+            Seen::Spawn,
             Seen::Join { row_present: true },
             Seen::Spawn,
             Seen::Neighbor { row_present: false },

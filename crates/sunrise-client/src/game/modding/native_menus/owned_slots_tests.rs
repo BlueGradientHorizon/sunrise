@@ -609,7 +609,15 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
                     vec![]
                 }
             );
-            assert!(game.dropped.is_empty());
+            if return_contents {
+                let [fake_give] = game.dropped.as_ref() else {
+                    panic!("expected only the /give pickup visual when returning owned slots");
+                };
+                assert_eq!(fake_give.stack, ItemStack::new("minecraft:stick", 1));
+                assert_eq!((fake_give.pickup_delay, fake_give.age), (32767, 5999));
+            } else {
+                assert!(game.dropped.is_empty());
+            }
             let (_, reopened) = open(game, key);
             assert_eq!(reopened.slot(game, 1), Some(None));
         });
